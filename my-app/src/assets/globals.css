@@ -1,0 +1,352 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: hsl(0, 0%, 100%);
+    --foreground: hsl(222.2, 84%, 4.9%);
+
+    --card: hsl(0, 0%, 92%);
+    --card-foreground: hsl(0, 0%, 0%);
+    --card-hover: hsl(200, 18%, 90%);
+    --card-foreground-hover: hsl(220, 80%, 5%);
+
+    --popover: hsl(221, 12%, 48%);
+    --popover-foreground: hsl(224, 72%, 25%);
+    --popover-hover: hsl(226, 14%, 48%);
+    --popover-foreground-hover: hsl(224, 67%, 30%);
+
+    --primary: hsl(0, 0%, 100%);
+    --primary-foreground: hsl(0, 0%, 0%);
+    --primary-hover: hsl(221, 59%, 24%);
+    --primary-foreground-hover: hsl(0, 0%, 95%);
+
+    --secondary: hsl(0, 0%, 100%);
+    --secondary-foreground: hsl(0, 0%, 0%);
+    --secondary-hover: hsl(0, 0%, 95%);
+    --secondary-foreground-hover: hsl(219, 81%, 8%);
+
+    --tertiary: hsl(0, 0%, 73%);
+    --tertiary-foreground: hsl(0, 0%, 100%);
+    --tertiary-hover: hsl(206, 87%, 65%);
+    --tertiary-foreground-hover: hsl(0, 0%, 0%);
+
+    --info: hsl(206, 84%, 50%);
+    --info-foreground: hsl(88, 96%, 89%);
+    --info-hover: hsl(206, 79%, 45%);
+    --info-foreground-hover: hsl(88, 91%, 84%);
+
+    --success: hsl(138, 98%, 33%);
+    --success-foreground: hsl(0, 0%, 100%);
+    --success-hover: hsl(138, 93%, 24%);
+    --success-foreground-hover: hsl(0, 0%, 100%);
+
+    --warning: hsl(38, 92%, 50%);
+    --warning-foreground: hsl(48, 96%, 89%);
+    --warning-hover: hsl(38, 87%, 45%);
+    --warning-foreground-hover: hsl(48, 91%, 84%);
+
+    --muted: hsl(0, 0%, 98%);
+    --muted-foreground: hsl(0, 0%, 41%);
+    --muted-foreground-2: hsl(210, 4%, 29%);
+    --muted-hover: hsl(0, 0%, 86%);
+    --muted-foreground-hover: hsl(210, 7%, 17%);
+
+    --accent: hsl(237, 49%, 91%);
+    --accent-foreground: hsl(0, 0%, 0%);
+    --accent-hover: hsl(238, 46%, 55%);
+    --accent-foreground-hover: hsl(0, 0%, 5%);
+
+    --destructive: hsl(0, 84%, 60%);
+    --destructive-foreground: hsl(210, 40%, 98%);
+    --destructive-hover: hsl(0, 79%, 55%);
+    --destructive-foreground-hover: hsl(210, 35%, 93%);
+
+    --whatsapp: hsl(120, 61%, 35%);
+    --whatsapp-foreground: hsl(0, 0%, 100%);
+    --whatsapp-hover: hsl(120, 56%, 30%);
+    --whatsapp-foreground-hover: hsl(0, 0%, 95%);
+
+    --ring: 0;
+    --border: hsl(214.3, 31.8%, 91.4%);
+    --border-hover: hsl(214.3, 26.8%, 86.4%);
+    --input: hsl(0, 0%, 66%);
+    --input-hover: hsl(214.3, 26.8%, 86.4%);
+
+    --radius: 1rem;
+
+    --chart-1: 338, 100%, 39%;
+    --chart-2: 206, 85%, 32%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+
+    --status-waiting-for-evaluation: hsl(50, 100%, 85%);
+    --status-waiting-for-evaluation-foreground: hsl(36, 100%, 24%);
+    --status-under-evaluation: hsl(45, 87%, 70%);
+    --status-under-evaluation-foreground: hsl(35, 100%, 20%);
+    --status-waiting-for-approval: hsl(30, 87%, 62%);
+    --status-waiting-for-approval-foreground: hsl(27, 90%, 33%);
+
+    --status-budget-approved: hsl(140, 63%, 65%);
+    --status-budget-approved-foreground: hsl(145, 63%, 22%);
+    --status-waiting-for-parts: hsl(150, 55%, 50%);
+    --status-waiting-for-parts-foreground: hsl(152, 58%, 30%);
+    --status-waiting-for-repair: hsl(165, 75%, 35%);
+    --status-waiting-for-repair-foreground: hsl(165, 100%, 15%);
+    --status-ready-notify-client: hsl(195, 78%, 60%);
+    --status-ready-notify-client-foreground: hsl(200, 90%, 25%);
+    --status-ready-waiting-pickup: hsl(220, 65%, 50%);
+    --status-ready-waiting-pickup-foreground: hsl(225, 75%, 25%);
+    --status-ready-delivered-pickedup: hsl(205, 75%, 40%);
+    --status-ready-delivered-pickedup-foreground: hsl(210, 90%, 20%);
+
+    --status-budget-rejected: hsl(0, 75%, 60%);
+    --status-budget-rejected-foreground: hsl(0, 75%, 35%);
+    --status-pickedup-no-repair: hsl(0, 65%, 45%);
+    --status-pickedup-no-repair-foreground: hsl(0, 60%, 30%);
+    --status-waiting-pickup: hsl(0, 0%, 50%);
+    --status-waiting-pickup-foreground: hsl(0, 0%, 30%);
+    --status-no-conditions-repair: hsl(0, 0%, 40%);
+    --status-no-conditions-repair-foreground: hsl(0, 0%, 20%);
+  }
+
+  .dark {
+    --background: hsl(225, 38%, 16%);
+    --foreground: hsl(210, 40%, 98%);
+
+    --card: hsl(0, 0%, 0%);
+    --card-foreground: hsl(210, 40%, 98%);
+    --card-hover: hsl(222.2, 79%, 9%);
+    --card-foreground-hover: hsl(210, 35%, 93%);
+
+    --popover: hsl(215, 87%, 15%);
+    --popover-foreground: hsl(210, 40%, 98%);
+    --popover-hover: hsl(223, 83%, 30%);
+    --popover-foreground-hover: hsl(210, 35%, 93%);
+
+    --primary: hsl(0, 0%, 0%);
+    --primary-foreground: hsl(210, 3%, 89%);
+    --primary-hover: hsl(220, 62%, 29%);
+    --primary-foreground-hover: hsl(210, 8%, 84%);
+
+    --secondary: hsl(0, 0%, 9%);
+    --secondary-foreground: hsl(210, 40%, 98%);
+    --secondary-hover: hsl(224, 67%, 15%);
+    --secondary-foreground-hover: hsl(210, 35%, 93%);
+
+    --tertiary: hsl(0, 0%, 12%);
+    --tertiary-foreground: hsl(0, 0%, 100%);
+    --tertiary-hover: hsl(206, 61%, 54%);
+    --tertiary-foreground-hover: hsl(222.2, 42.4%, 16.2%);
+
+    --info: hsl(206, 84%, 50%);
+    --info-foreground: hsl(88, 96%, 89%);
+    --info-hover: hsl(206, 79%, 45%);
+    --info-foreground-hover: hsl(88, 91%, 84%);
+
+    --success: hsl(138, 98%, 33%);
+    --success-foreground: hsl(148, 96%, 89%);
+    --success-hover: hsl(138, 93%, 24%);
+    --success-foreground-hover: hsl(148, 91%, 84%);
+
+    --warning: hsl(48, 96%, 89%);
+    --warning-foreground: hsl(38, 92%, 50%);
+    --warning-hover: hsl(48, 91%, 84%);
+    --warning-foreground-hover: hsl(38, 87%, 45%);
+
+    --muted: hsl(217.2, 32.6%, 17.5%);
+    --muted-foreground: hsl(0, 0%, 52%);
+    --muted-foreground-2: hsl(0, 0%, 83%);
+    --muted-hover: hsl(217.2, 27.6%, 22.5%);
+    --muted-foreground-hover: hsl(215, 15.2%, 70.1%);
+
+    --accent: hsl(0, 0%, 27%);
+    --accent-foreground: hsl(0, 0%, 86%);
+    --accent-hover: hsl(0, 0%, 27%);
+    --accent-foreground-hover: hsl(0, 0%, 91%);
+
+    --destructive: hsl(0, 62%, 30%);
+    --destructive-foreground: hsl(210, 40%, 98%);
+    --destructive-hover: hsl(0, 57%, 35%);
+    --destructive-foreground-hover: hsl(210, 35%, 93%);
+
+    --whatsapp: hsl(120, 61%, 35%);
+    --whatsapp-foreground: hsl(0, 0%, 100%);
+    --whatsapp-hover: hsl(120, 56%, 30%);
+    --whatsapp-foreground-hover: hsl(0, 0%, 95%);
+
+    --ring: 0;
+    --border: hsl(214, 9%, 15%);
+    --border-hover: hsl(217.2, 27.6%, 22.5%);
+    --input: hsl(0, 0%, 22%);
+    --input-hover: hsl(217.2, 27.6%, 22.5%);
+
+    --chart-1:338, 100%, 39%;
+    --chart-2:206, 85%, 32%;
+    --chart-3:30 80% 55%;
+    --chart-4:280 65% 60%;
+    --chart-5:340 75% 55%;
+
+    --sidebar-background: hsl(0, 0%, 100%);
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+
+    --status-waiting-for-evaluation: hsl(50, 100%, 65%);
+    --status-waiting-for-evaluation-foreground: hsl(36, 100%, 85%);
+    --status-under-evaluation: hsl(45, 87%, 50%);
+    --status-under-evaluation-foreground: hsl(35, 100%, 70%);
+    --status-waiting-for-approval: hsl(30, 87%, 42%);
+    --status-waiting-for-approval-foreground: hsl(27, 90%, 62%);
+
+    --status-budget-approved: hsl(140, 63%, 45%);
+    --status-budget-approved-foreground: hsl(145, 63%, 65%);
+    --status-waiting-for-parts: hsl(150, 55%, 30%);
+    --status-waiting-for-parts-foreground: hsl(152, 58%, 50%);
+    --status-waiting-for-repair: hsl(165, 75%, 15%);
+    --status-waiting-for-repair-foreground: hsl(165, 100%, 35%);
+    --status-ready-notify-client: hsl(195, 78%, 40%);
+    --status-ready-notify-client-foreground: hsl(200, 90%, 60%);
+    --status-ready-waiting-pickup: hsl(220, 65%, 30%);
+    --status-ready-waiting-pickup-foreground: hsl(225, 75%, 50%);
+    --status-ready-delivered-pickedup: hsl(205, 75%, 20%);
+    --status-ready-delivered-pickedup-foreground: hsl(210, 90%, 40%);
+
+    --status-budget-rejected: hsl(0, 75%, 40%);
+    --status-budget-rejected-foreground: hsl(0, 75%, 60%);
+    --status-pickedup-no-repair: hsl(0, 65%, 25%);
+    --status-pickedup-no-repair-foreground: hsl(0, 60%, 45%);
+    --status-waiting-pickup: hsl(0, 0%, 30%);
+    --status-waiting-pickup-foreground: hsl(0, 0%, 50%);
+    --status-no-conditions-repair: hsl(0, 0%, 20%);
+    --status-no-conditions-repair-foreground: hsl(0, 0%, 40%);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply flex overflow-hidden bg-background text-foreground;
+  }
+
+  #root {
+    @apply flex h-full overflow-hidden;
+  }
+
+  *::-webkit-scrollbar {
+    @apply w-1.5 h-2;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    @apply bg-transparent rounded-sm;
+  }
+
+  *:focus::-webkit-scrollbar-thumb,
+  *:hover::-webkit-scrollbar-thumb,
+  *::-webkit-scrollbar-thumb:hover {
+    @apply w-5 cursor-pointer bg-slate-400;
+  }
+
+  .date-picker-portal {
+    position: fixed;
+    /* Usa posicionamento fixo para evitar ser cortado */
+    top: 0;
+    left: 0;
+    width: 100vw;
+    /* Largura total da viewport */
+    height: 100vh;
+    /* Altura total da viewport */
+    z-index: 9999;
+    /* Certifique-se de que está acima de todos os outros elementos */
+    pointer-events: none;
+    /* Permite clicar em outros elementos quando o dropdown está fechado */
+  }
+
+  .date-picker-dropdown {
+    max-height: 400px;
+    /* Limita a altura máxima */
+    overflow-y: auto;
+    /* Permite o scroll interno */
+    position: absolute;
+    pointer-events: auto;
+    /* Habilita eventos de clique */
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    background: white;
+    z-index: 1000;
+    border-radius: 8px;
+  }
+
+  /* Estilo customizado para input */
+  .react-tel-input .form-control {
+    background-color: var(--color-bg-card);
+    color: var(--color-text-card-foreground);
+    border-color: var(--color-card-border);
+    border-radius: 0.375rem;
+    /* Ajuste para arredondamento padrão do ShadCN */
+    width: 100%;
+  }
+
+  .react-tel-input .form-control:focus {
+    border-color: transparent;
+    box-shadow: 0 0 0 2px var(--color-ring-card-accent);
+  }
+
+  /* Estilo customizado para dropdown */
+  .react-tel-input .flag-dropdown {
+    background-color: var(--color-bg-card-primary);
+    border-color: var(--color-card-border);
+    color: var(--color-text-card-primary-foreground);
+    border-radius: 0.375rem;
+  }
+
+  .react-tel-input .country-list {
+    background-color: var(--color-bg-card);
+    border: 1px solid var(--color-card-border);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    border-radius: 0.375rem;
+  }
+
+  .react-tel-input .country:hover {
+    background-color: var(--color-bg-card-hover);
+  }
+
+  .breadcrumb-scrollable {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scroll-behavior: smooth;
+  }
+  
+  .breadcrumb-scrollable::-webkit-scrollbar {
+    height: 8px;
+  }
+  
+  .breadcrumb-scrollable::-webkit-scrollbar-thumb {
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+  }
+  
+  .breadcrumb-scrollable > * {
+    flex-shrink: 0;
+  }
+  
+
+}
