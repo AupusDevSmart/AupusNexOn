@@ -1,13 +1,12 @@
 // src/pages/dashboard/index.tsx
-import React from 'react';
-import { Layout } from '@/components/common/Layout';
-import { TitleCard } from '@/components/common/title-card';
-import { OverviewCards } from '@/features/dashboard/components/overview-cards';
-import { TaskPriorities } from '@/features/dashboard/components/task-priorities';
-import { ServiceSeverityCharts } from '@/features/dashboard/components/service-severity-charts';
-import { PlannedVsCompletedChart } from '@/features/dashboard/components/planned-vs-completed-chart';
-import { SystemStatusCards } from '@/features/dashboard/components/system-status-cards';
-import { WorkOrdersPanel } from '@/features/dashboard/components/work-orders-panel';
+import { Layout } from "@/components/common/Layout";
+import { TitleCard } from "@/components/common/title-card";
+import { OverviewCards } from "@/features/dashboard/components/overview-cards";
+import { PlannedVsCompletedChart } from "@/features/dashboard/components/planned-vs-completed-chart";
+import { ServiceSeverityCharts } from "@/features/dashboard/components/service-severity-charts";
+import { SystemStatusCards } from "@/features/dashboard/components/system-status-cards";
+import { TaskPriorities } from "@/features/dashboard/components/task-priorities";
+import { WorkOrdersPanel } from "@/features/dashboard/components/work-orders-panel";
 
 // Dados simulados - normalmente viriam de uma API
 const dashboardData = {
@@ -17,45 +16,45 @@ const dashboardData = {
     assetsDown: 2,
     openWorker: 8,
     workInProgress: 4,
-    completed: 12
+    completed: 12,
   },
   taskPriorities: [
     {
       id: 1,
       title: "Inspecionar conexões do inversor",
       priority: "high",
-      status: "pending"
+      status: "pending",
     },
     {
       id: 2,
       title: "Substituir módulo danificado",
       priority: "urgent",
-      status: "pending"
+      status: "pending",
     },
     {
       id: 3,
       title: "Verificar sistema de aterramento",
       priority: "medium",
-      status: "pending"
-    }
+      status: "pending",
+    },
   ],
   serviceSeverity: {
     minor: 25,
     major: 45,
-    critical: 30
+    critical: 30,
   },
   riskLevels: {
     low: 20,
     medium: 30,
-    high: 50
+    high: 50,
   },
   plannedVsCompleted: [
-    { month: 'Fev', planejadas: 8, concluidas: 6 },
-    { month: 'Mar', planejadas: 12, concluidas: 10 },
-    { month: 'Abr', planejadas: 15, concluidas: 12 },
-    { month: 'Mai', planejadas: 18, concluidas: 16 },
-    { month: 'Jun', planejadas: 22, concluidas: 20 },
-    { month: 'Jul', planejadas: 25, concluidas: 23 }
+    { month: "Fev", planejadas: 8, concluidas: 6 },
+    { month: "Mar", planejadas: 12, concluidas: 10 },
+    { month: "Abr", planejadas: 15, concluidas: 12 },
+    { month: "Mai", planejadas: 18, concluidas: 16 },
+    { month: "Jun", planejadas: 22, concluidas: 20 },
+    { month: "Jul", planejadas: 25, concluidas: 23 },
   ],
   systemStatus: {
     scheduledDowntime: 2,
@@ -63,15 +62,15 @@ const dashboardData = {
     assetClass: 3,
     unscheduledDowntime: 5,
     faultsCausingDamage: 3,
-    sensorsDamaged: 5
+    sensorsDamaged: 5,
   },
   workOrders: {
     openWorkOrders: 8,
     workGrade: 75,
     overdueWorkOrders: 1,
     completedWorkOrders: 12,
-    workloadIndicator: 75
-  }
+    workloadIndicator: 75,
+  },
 };
 
 export function DashboardPage() {
@@ -82,7 +81,7 @@ export function DashboardPage() {
           title="Dashboard"
           description="Visão geral completa do sistema e operações"
         />
-        
+
         <div className="space-y-6">
           {/* Primeira linha - Overview, Service Severity e Opevode */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -90,15 +89,15 @@ export function DashboardPage() {
             <div className="lg:col-span-4">
               <OverviewCards data={dashboardData.overview} />
             </div>
-            
+
             {/* Severidade dos Serviços */}
             <div className="lg:col-span-4">
-              <ServiceSeverityCharts 
+              <ServiceSeverityCharts
                 serviceSeverity={dashboardData.serviceSeverity}
                 riskLevels={dashboardData.riskLevels}
               />
             </div>
-            
+
             {/* Ordens de Trabalho */}
             <div className="lg:col-span-4">
               <WorkOrdersPanel data={dashboardData.workOrders} />
@@ -111,10 +110,12 @@ export function DashboardPage() {
             <div className="lg:col-span-4">
               <TaskPriorities tasks={dashboardData.taskPriorities} />
             </div>
-            
+
             {/* Gráfico Planejadas vs Concluídas */}
             <div className="lg:col-span-8">
-              <PlannedVsCompletedChart data={dashboardData.plannedVsCompleted} />
+              <PlannedVsCompletedChart
+                data={dashboardData.plannedVsCompleted}
+              />
             </div>
           </div>
 
