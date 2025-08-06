@@ -1,26 +1,19 @@
-// @ts-nocheck
-
-import { ChartColumnBig } from '@/components/icons/ChartColumnBig';
-import { ChartNoAxesColumn } from '@/components/icons/ChartNoAxesColumn';
-import { Permissao } from '@/types/dtos/usuarios-dto';
+import { ChartColumnBig } from "@/components/icons/ChartColumnBig";
+import { ChartNoAxesColumn } from "@/components/icons/ChartNoAxesColumn";
+import { Permissao } from "@/types/dtos/usuarios-dto";
 import {
   type LucideIcon,
   Activity,
   BookUser,
   Building2,
-  Component,
-  DollarSign,
-  Folder,
-  Handshake,
+  Cpu,
   Magnet,
+  Map,
+  Monitor,
+  ScrollText,
   SquareActivity,
-  Users,
-  UtilityPole,
   Zap,
-} from 'lucide-react';
-
-import { FileUser } from '@/components/icons/FileUser';
-import { HousePlugIcon } from '@/components/icons/HousePlugIcon';
+} from "lucide-react";
 
 export type NavigationLink = {
   key: string;
@@ -32,14 +25,109 @@ export type NavigationLink = {
   links?: NavigationLink[];
 };
 
- export const navigationLinks: Array<NavigationLink> = [
+export const navigationLinks: Array<NavigationLink> = [
   {
-    key: 'admin',
-    featureKey: 'Dashboard',
-    path: '/dashboard',
+    key: "admin",
+    featureKey: "Dashboard",
+    path: "/dashboard",
     icon: ChartNoAxesColumn,
-    label: 'Dashboard SA',
-    hint: 'Dashboard SA',
+    label: "Dashboard SA",
+    hint: "Dashboard SA",
+  },
+  // SCADA - Adicionado
+  {
+    key: "scada",
+    featureKey: "SCADA",
+    path: "/scada",
+    icon: Activity,
+    label: "SCADA",
+    hint: "Sistema SCADA",
+  },
+  // Seção Supervisório
+  {
+    key: "supervisorio",
+    featureKey: "supervisorio",
+    path: "/supervisorio",
+    icon: Monitor,
+    label: "Supervisório",
+    hint: "Sistema de Supervisão NexON",
+    links: [
+      {
+        key: "supervisorio",
+        featureKey: "supervisorio",
+        path: "/supervisorio/coa",
+        icon: Map,
+        label: "COA",
+        hint: "Centro de Operação de Ativos",
+      },
+      {
+        key: "supervisorio",
+        featureKey: "supervisorio",
+        path: "/supervisorio/cadastro-unidades",
+        icon: Building2,
+        label: "Cadastro de Unidades",
+        hint: "Gerenciar unidades monitoradas",
+      },
+      {
+        key: "supervisorio",
+        featureKey: "supervisorio",
+        path: "/supervisorio/logs-eventos",
+        icon: ScrollText,
+        label: "Logs de Eventos",
+        hint: "Histórico de eventos e alarmes",
+      },
+      {
+        key: "supervisorio",
+        featureKey: "supervisorio",
+        path: "/supervisorio/sinoptico",
+        icon: Cpu,
+        label: "Sinóptico do Ativo",
+        hint: "Visualização detalhada dos ativos",
+      },
+    ],
+  },
+  // Financeiro
+  {
+    key: "financeiro",
+    featureKey: "Financeiro", // Corrigido para maiúscula
+    path: "/financeiro",
+    icon: Zap,
+    label: "Financeiro",
+    hint: "Financeiro",
+    links: [
+      {
+        key: "financeiro",
+        featureKey: "Financeiro",
+        path: "/financeiro/contas-a-pagar",
+        icon: ChartColumnBig,
+        label: "Contas a Pagar",
+        hint: "Contas a Pagar",
+      },
+      {
+        key: "financeiro",
+        featureKey: "Financeiro",
+        path: "/financeiro/contas-a-receber",
+        icon: SquareActivity,
+        label: "Contas a Receber",
+        hint: "Contas a Receber",
+      },
+      {
+        key: "financeiro",
+        featureKey: "Financeiro",
+        path: "/financeiro/fluxo-caixa",
+        icon: BookUser,
+        label: "Fluxo de Caixa",
+        hint: "Fluxo de Caixa",
+      },
+      {
+        key: "financeiro",
+        featureKey: "Financeiro",
+        path: "/financeiro/centros-custo",
+        icon: Magnet,
+        label: "Centros de Custo",
+        hint: "Centros de Custo",
+      },
+    ],
   },
   // {
   //   key: 'admin',
@@ -65,48 +153,6 @@ export type NavigationLink = {
   //   label: 'Área do Associado',
   //   hint: 'Área do Associado',
   // },
-  {
-    key: 'financeiro',
-    featureKey: 'financeiro',
-    path: '/financeiro',
-    icon: Zap,
-    label: 'Financeiro',
-    hint: 'Financeiro',
-    links: [
-      {
-        key: 'financeiro',
-        featureKey: 'financeiro',
-        path: '/financeiro/contas-a-pagar',
-        icon: ChartColumnBig,
-        label: 'Contas a Pagar',
-        hint: 'Contas a Pagar',
-      },
-      {
-        key: 'financeiro',
-        featureKey: 'financeiro',
-        path: '/financeiro/contas-a-receber',
-        icon: SquareActivity,
-        label: 'Contas a Receber',
-        hint: 'Contas a Receber',
-      },
-      {
-        key: 'financeiro',
-        featureKey: 'financeiro',
-        path: '/financeiro/fluxo-caixa',
-        icon: BookUser,
-        label: 'Fluxo de Caixa',
-        hint: 'Fluxo de Caixa',
-      },
-      {
-        key: 'financeiro',
-        featureKey: 'financeiro',
-        path: '/financeiro/centros-custo',
-        icon: Magnet,
-        label: 'Centros de Custo',
-        hint: 'Centros de Custo',
-      },
-    ]
-  },
   // {
   //   key: 'associados',
   //   featureKey: 'Associados',
@@ -114,7 +160,6 @@ export type NavigationLink = {
   //   icon: SquareActivity,
   //   label: 'Associados',
   //   hint: 'Associados',
-
   // },
   // {
   //   key: 'prospeccao',
@@ -171,7 +216,7 @@ export type NavigationLink = {
   //   icon: Building2,
   //   label: 'Organizações',
   //   hint: 'Organizações',
-  // }
+  // },
   // {
   //   key: 'configuracoes',
   //   featureKey: 'Configuracoes',

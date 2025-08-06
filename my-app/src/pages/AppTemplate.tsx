@@ -1,12 +1,15 @@
-import { QueryClient, QueryClientProvider } from 'react-query';
-import { CustomBreadcrumbs } from '@/components/common/CustomBreadcrumbs';
-import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
-import { CommandPallete } from '@/features/navigation/components/CommandPallete';
-import { Outlet, useNavigate } from 'react-router-dom';
-import { AppSidebar } from '@/features/navigation/components/Sidebar/app-sidebar';
-import { useUserStore } from '@/store/useUserStore';
-import { useEffect } from 'react';
-import { NotificacoesSheet } from '@/components/common/notification-sheet';
+import { CustomBreadcrumbs } from "@/components/common/CustomBreadcrumbs";
+import { NotificacoesSheet } from "@/components/common/notification-sheet";
+import {
+  SidebarInset,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
+import { CommandPallete } from "@/features/navigation/components/CommandPallete";
+import { AppSidebar } from "@/features/navigation/components/Sidebar/app-sidebar";
+import { useUserStore } from "@/store/useUserStore";
+import { QueryClient, QueryClientProvider } from "react-query";
+import { Outlet, useNavigate } from "react-router-dom";
 
 const queryClient = new QueryClient();
 

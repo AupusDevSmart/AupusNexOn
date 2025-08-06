@@ -1,17 +1,17 @@
-import { RouterProvider } from 'react-router-dom';
+import { RouterProvider } from "react-router-dom";
 // import { Analytics } from "@vercel/analytics/react"
 // import { SpeedInsights } from "@vercel/speed-insights/react"
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 // import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 
-import { Toaster } from './components/ui/toaster';
-import { TooltipProvider } from './components/ui/tooltip';
+import { Toaster } from "./components/ui/toaster";
+import { TooltipProvider } from "./components/ui/tooltip";
 
-import { appRoutes } from './AppRoutes';
-import { FIFTEEN_MINUTES, FIVE_MINUTES, isDev } from './config/constants';
-import { ThemeProvider } from './components/theme-provider';
-import React from 'react';
-import { configureAxios } from './config/api';
+import { appRoutes } from "./AppRoutes";
+import { ThemeProvider } from "./components/theme-provider";
+import { FIFTEEN_MINUTES, FIVE_MINUTES } from "./config/constants";
+//import React from "react";
+//import { configureAxios } from "./config/api";
 
 const queryClient = new QueryClient({
   defaultOptions: {

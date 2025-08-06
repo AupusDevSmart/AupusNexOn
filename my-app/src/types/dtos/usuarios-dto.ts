@@ -22,45 +22,46 @@ export interface UsuarioDTO {
 }
 
 export enum UsuarioStatus {
-  ATIVO = 'Ativo',
-  INATIVO = 'Inativo',
+  ATIVO = "Ativo",
+  INATIVO = "Inativo",
 }
 
 export enum UsuarioRole {
-  SUPER_ADMIN = 'super-admin',
-  ADMIN = 'admin',
-  CATIVO = 'cativo',
-  PROPIETARIO = 'propietario',
-  LOCATARIO = 'associado',
-  AUPUS = 'aupus',
+  SUPER_ADMIN = "super-admin",
+  ADMIN = "admin",
+  CATIVO = "cativo",
+  PROPIETARIO = "propietario",
+  LOCATARIO = "associado",
+  AUPUS = "aupus",
 }
 
 interface Role {
   id: string;
-  name: string; 
+  name: string;
   description: string;
   created_at: Date;
   updated_at: Date;
 }
 
 export type Permissao =
-  | 'MonitoramentoConsumo'
-  | 'GeracaoEnergia'
-  | 'GestaoOportunidades'
-  | 'Financeiro'
-  | 'Oportunidades'
-  | 'Prospeccao'
-  | 'ProspeccaoListagem'
-  | 'MonitoramentoClientes'
-  | 'ClubeAupus'
-  | 'Usuarios'
-  | 'Organizacoes'
-  | 'AreaDoProprietario'
-  | 'UnidadesConsumidoras'
-  | 'Configuracoes'
-  | 'AreaDoAssociado'
-  | 'Documentos'
-  | 'Associados'
-  | 'MinhasUsinas'
-  | 'Dashboard'
-  | 'Financeiro'
+  | "MonitoramentoConsumo"
+  | "GeracaoEnergia"
+  | "GestaoOportunidades"
+  | "Financeiro"
+  | "Oportunidades"
+  | "Prospeccao"
+  | "ProspeccaoListagem"
+  | "MonitoramentoClientes"
+  | "ClubeAupus"
+  | "Usuarios"
+  | "Organizacoes"
+  | "AreaDoProprietario"
+  | "UnidadesConsumidoras"
+  | "Configuracoes"
+  | "AreaDoAssociado"
+  | "Documentos"
+  | "Associados"
+  | "MinhasUsinas"
+  | "Dashboard"
+  | "SCADA"
+  | "supervisorio";
