@@ -31,7 +31,7 @@ interface LocationState {
   message?: string;
 }
 
-// Dados simulados com informações completas para o modal
+// Dados simulados com informações completas para o modal de Conta
 const allContas: Conta[] = [
   {
     id: "1",
