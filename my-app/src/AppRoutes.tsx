@@ -26,17 +26,17 @@ const CadastroUnidadesPage = lazy(() =>
   }))
 );
 
-// ✅ CORRIGIDO: Lazy load para Logs de Eventos (caminho correto)
+// ✅ NOVO: Lazy load para Logs de Eventos
 const LogsEventosPage = lazy(() =>
   import("@/pages/logs-eventos").then((module) => ({
     default: module.LogsEventosPage,
   }))
 );
 
-// ✅ CORRIGIDO: Lazy load para Sinóptico do Ativo (caminho correto)
-const SinopticoAtivoPage = lazy(() =>
-  import("@/pages/supervisorio/sinoptico-ativo").then((module) => ({
-    default: module.SinopticoAtivoPage,
+// ✅ NOVO: Lazy load para Sinóptico (ESTA ERA A LINHA QUE ESTAVA FALTANDO!)
+const SinopticoPage = lazy(() =>
+  import("@/pages/supervisorio/sinoptico").then((module) => ({
+    default: module.SinopticoPage,
   }))
 );
 
@@ -144,7 +144,6 @@ export const appRoutes = createBrowserRouter([
           </FeatureWrapper>
         ),
       },
-      // ✅ ROTA: Logs de eventos
       {
         path: "supervisorio/logs-eventos",
         element: (
@@ -155,13 +154,13 @@ export const appRoutes = createBrowserRouter([
           </FeatureWrapper>
         ),
       },
-      // ✅ ROTA: Sinóptico do ativo
+      // ✅ NOVO: Rota para sinóptico do ativo (ESTA ROTA ESTAVA FALTANDO!)
       {
-        path: "supervisorio/sinoptico-ativo/:ativoId",
+        path: "supervisorio/sinoptico",
         element: (
           <FeatureWrapper feature="supervisorio">
             <Suspense fallback={<div>Carregando...</div>}>
-              <SinopticoAtivoPage />
+              <SinopticoPage />
             </Suspense>
           </FeatureWrapper>
         ),
