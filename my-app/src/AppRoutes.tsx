@@ -26,6 +26,13 @@ const CadastroUnidadesPage = lazy(() =>
   }))
 );
 
+// ✅ NOVO: Lazy load para Logs de Eventos
+const LogsEventosPage = lazy(() =>
+  import("@/pages/logs-eventos").then((module) => ({
+    default: module.LogsEventosPage,
+  }))
+);
+
 export const appRoutes = createBrowserRouter([
   {
     path: "/",
@@ -126,6 +133,17 @@ export const appRoutes = createBrowserRouter([
           <FeatureWrapper feature="supervisorio">
             <Suspense fallback={<div>Carregando...</div>}>
               <CadastroUnidadesPage />
+            </Suspense>
+          </FeatureWrapper>
+        ),
+      },
+      // ✅ NOVO: Rota para logs de eventos
+      {
+        path: "supervisorio/logs-eventos",
+        element: (
+          <FeatureWrapper feature="supervisorio">
+            <Suspense fallback={<div>Carregando...</div>}>
+              <LogsEventosPage />
             </Suspense>
           </FeatureWrapper>
         ),
