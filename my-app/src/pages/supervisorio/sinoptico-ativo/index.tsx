@@ -26,7 +26,7 @@ export function SinopticoAtivoPage() {
   const navigate = useNavigate();
 
   // Mock data para o ativo
-  const [ativoData] = useState({
+  const [ativoData, setAtivoData] = useState({
     id: ativoId,
     nome: "UFV Solar Goiânia",
     tipo: "Usina Fotovoltaica",

@@ -26,10 +26,17 @@ const CadastroUnidadesPage = lazy(() =>
   }))
 );
 
-// ✅ NOVO: Lazy load para Logs de Eventos
+// ✅ CORRIGIDO: Lazy load para Logs de Eventos (caminho correto)
 const LogsEventosPage = lazy(() =>
   import("@/pages/logs-eventos").then((module) => ({
     default: module.LogsEventosPage,
+  }))
+);
+
+// ✅ CORRIGIDO: Lazy load para Sinóptico do Ativo (caminho correto)
+const SinopticoAtivoPage = lazy(() =>
+  import("@/pages/supervisorio/sinoptico-ativo").then((module) => ({
+    default: module.SinopticoAtivoPage,
   }))
 );
 
@@ -137,13 +144,24 @@ export const appRoutes = createBrowserRouter([
           </FeatureWrapper>
         ),
       },
-      // ✅ NOVO: Rota para logs de eventos
+      // ✅ ROTA: Logs de eventos
       {
         path: "supervisorio/logs-eventos",
         element: (
           <FeatureWrapper feature="supervisorio">
             <Suspense fallback={<div>Carregando...</div>}>
               <LogsEventosPage />
+            </Suspense>
+          </FeatureWrapper>
+        ),
+      },
+      // ✅ ROTA: Sinóptico do ativo
+      {
+        path: "supervisorio/sinoptico-ativo/:ativoId",
+        element: (
+          <FeatureWrapper feature="supervisorio">
+            <Suspense fallback={<div>Carregando...</div>}>
+              <SinopticoAtivoPage />
             </Suspense>
           </FeatureWrapper>
         ),

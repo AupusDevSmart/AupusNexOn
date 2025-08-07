@@ -233,21 +233,8 @@ export function LogsEventosPage() {
 
   return (
     <Layout>
-      <div className="space-y-6">
-        {/* Título e botões de ação */}
-        <div className="flex items-center justify-between">
-          <TitleCard title="Logs de Eventos" />
-          <div className="flex gap-2">
-            <Button onClick={handleExportarPDF} variant="outline" size="sm">
-              <Download className="mr-2 h-4 w-4" />
-              Exportar PDF
-            </Button>
-            <Button onClick={handleExportarExcel} variant="outline" size="sm">
-              <FileSpreadsheet className="mr-2 h-4 w-4" />
-              Exportar Excel
-            </Button>
-          </div>
-        </div>
+      <Layout.Main>
+        <TitleCard title="Logs de Eventos" />
 
         {/* Resumo - agora no topo */}
         <LogsEventosSummary resumo={resumo} />
@@ -260,6 +247,24 @@ export function LogsEventosPage() {
           onLimparFiltros={handleLimparFiltros}
           onAplicarFiltros={() => console.log("Filtros aplicados:", filtros)}
         />
+
+        {/* Ações */}
+        <div className="mb-4 flex items-center justify-between">
+          <div className="text-sm text-muted-foreground">
+            {eventosFiltrados.length} eventos encontrados
+          </div>
+
+          <div className="flex gap-2">
+            <Button onClick={handleExportarPDF} variant="outline" size="sm">
+              <Download className="mr-2 h-4 w-4" />
+              Exportar PDF
+            </Button>
+            <Button onClick={handleExportarExcel} variant="outline" size="sm">
+              <FileSpreadsheet className="mr-2 h-4 w-4" />
+              Exportar Excel
+            </Button>
+          </div>
+        </div>
 
         {/* Tabela de eventos */}
         <LogsEventosTable
@@ -281,7 +286,7 @@ export function LogsEventosPage() {
           onAssociarOS={handleAssociarOS}
           onMarcarReconhecido={handleMarcarReconhecido}
         />
-      </div>
+      </Layout.Main>
     </Layout>
   );
 }
