@@ -33,10 +33,9 @@ const LogsEventosPage = lazy(() =>
   }))
 );
 
-// ✅ NOVO: Lazy load para Sinóptico (ESTA ERA A LINHA QUE ESTAVA FALTANDO!)
 const SinopticoPage = lazy(() =>
-  import("@/pages/supervisorio/sinoptico").then((module) => ({
-    default: module.SinopticoPage,
+  import("@/pages/supervisorio/sinoptico-ativo").then((module) => ({
+    default: module.SinopticoAtivoPage,
   }))
 );
 
