@@ -2,10 +2,12 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 import type { ComponenteDU } from "@/types/dtos/sinoptico-ativo";
 import {
   Activity,
   Circle,
+  Info,
   Settings,
   Square,
   Triangle,
@@ -70,17 +72,18 @@ export function SinopticoDiagrama({
   };
 
   return (
-    <Card>
-      <CardHeader>
+    <Card className="h-full">
+      <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2">
           <Settings className="h-5 w-5 text-purple-500" />
-          Diagrama Unifilar - Clique nos componentes
+          Diagrama Unifilar
         </CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-4">
+        {/* Área do Diagrama */}
         <div
-          className="relative bg-muted/20 rounded-lg p-6"
-          style={{ minHeight: "400px" }}
+          className="relative bg-muted/20 rounded-lg p-6 border-2 border-dashed border-muted-foreground/20"
+          style={{ height: "350px" }}
         >
           {/* SVG para linhas de conexão */}
           <svg
@@ -94,7 +97,7 @@ export function SinopticoDiagrama({
               x2="90%"
               y2="50%"
               stroke="currentColor"
-              strokeWidth="2"
+              strokeWidth="3"
               className="text-muted-foreground"
             />
 
@@ -151,13 +154,14 @@ export function SinopticoDiagrama({
             <div
               key={componente.id}
               className={`absolute cursor-pointer transition-all duration-200 ${
-                hoveredComponent === componente.id ? "scale-110" : "scale-100"
+                hoveredComponent === componente.id
+                  ? "scale-110 z-20"
+                  : "scale-100 z-10"
               }`}
               style={{
                 left: `${componente.posicao.x}%`,
                 top: `${componente.posicao.y}%`,
                 transform: "translate(-50%, -50%)",
-                zIndex: 2,
               }}
               onClick={() => onComponenteClick(componente)}
               onMouseEnter={() => setHoveredComponent(componente.id)}
@@ -169,7 +173,9 @@ export function SinopticoDiagrama({
                 relative p-3 rounded-full text-white transition-all duration-200
                 ${getStatusColor(componente.status)}
                 ${
-                  hoveredComponent === componente.id ? "shadow-lg" : "shadow-md"
+                  hoveredComponent === componente.id
+                    ? "shadow-lg ring-4 ring-white/50"
+                    : "shadow-md"
                 }
               `}
               >
@@ -177,13 +183,13 @@ export function SinopticoDiagrama({
 
                 {/* Indicador de status pulsante para alarmes/falhas */}
                 {componente.status !== "NORMAL" && (
-                  <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+                  <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-pulse ring-2 ring-white"></div>
                 )}
               </div>
 
               {/* Label do componente */}
               <div className="mt-2 text-center">
-                <div className="text-xs font-medium text-foreground whitespace-nowrap">
+                <div className="text-xs font-medium text-foreground whitespace-nowrap max-w-20 truncate">
                   {componente.nome}
                 </div>
                 <Badge
@@ -198,44 +204,64 @@ export function SinopticoDiagrama({
 
               {/* Tooltip no hover */}
               {hoveredComponent === componente.id && (
-                <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-background p-2 border border-border rounded-lg shadow-lg whitespace-nowrap z-10">
+                <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-background p-3 border border-border rounded-lg shadow-lg whitespace-nowrap z-30">
                   <div className="text-sm font-medium">{componente.nome}</div>
                   <div className="text-xs text-muted-foreground">
-                    {componente.tipo}
+                    Tipo: {componente.tipo}
                   </div>
                   <div className="text-xs">Status: {componente.status}</div>
-                  <div className="text-xs text-blue-500">
-                    Clique para detalhes
+                  <div className="text-xs text-blue-500 font-medium">
+                    🖱️ Clique para ver detalhes
                   </div>
                 </div>
               )}
             </div>
           ))}
+        </div>
 
-          {/* Legenda */}
-          <div className="absolute bottom-4 left-4 bg-background/90 backdrop-blur p-3 rounded-lg border border-border">
-            <div className="text-xs font-medium mb-2">Legenda:</div>
-            <div className="flex flex-col gap-1 text-xs">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                <span>Normal</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
-                <span>Alarme</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-red-500 rounded-full"></div>
-                <span>Falha</span>
-              </div>
+        <Separator />
+
+        {/* Legenda */}
+        <div className="bg-muted/50 p-3 rounded-lg">
+          <div className="flex items-center gap-2 text-sm font-medium mb-2">
+            <Info className="h-4 w-4" />
+            Legenda:
+          </div>
+          <div className="flex gap-4 text-xs">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+              <span>Normal</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 bg-yellow-500 rounded-full animate-pulse"></div>
+              <span>Alarme</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+              <span>Falha</span>
             </div>
           </div>
+        </div>
 
-          {/* Instruções */}
-          <div className="absolute bottom-4 right-4 bg-background/90 backdrop-blur p-3 rounded-lg border border-border">
-            <div className="text-xs text-muted-foreground">
-              💡 Clique nos componentes para ver detalhes
+        {/* Resumo dos Status */}
+        <div className="grid grid-cols-3 gap-2 text-center">
+          <div className="bg-green-50 border border-green-200 p-2 rounded">
+            <div className="text-lg font-bold text-green-600">
+              {componentes.filter((c) => c.status === "NORMAL").length}
             </div>
+            <div className="text-xs text-green-700">Normais</div>
+          </div>
+          <div className="bg-yellow-50 border border-yellow-200 p-2 rounded">
+            <div className="text-lg font-bold text-yellow-600">
+              {componentes.filter((c) => c.status === "ALARME").length}
+            </div>
+            <div className="text-xs text-yellow-700">Alarmes</div>
+          </div>
+          <div className="bg-red-50 border border-red-200 p-2 rounded">
+            <div className="text-lg font-bold text-red-600">
+              {componentes.filter((c) => c.status === "FALHA").length}
+            </div>
+            <div className="text-xs text-red-700">Falhas</div>
           </div>
         </div>
       </CardContent>

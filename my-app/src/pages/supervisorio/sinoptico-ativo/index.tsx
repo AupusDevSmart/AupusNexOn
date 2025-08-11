@@ -1,5 +1,3 @@
-// src/pages/supervisorio/sinoptico-ativo/index.tsx
-
 import { Layout } from "@/components/common/Layout";
 import { TitleCard } from "@/components/common/title-card";
 import { Button } from "@/components/ui/button";
@@ -16,6 +14,7 @@ import { SinopticoGraficos } from "@/features/supervisorio/components/sinoptico-
 import { SinopticoHeader } from "@/features/supervisorio/components/sinoptico-header";
 import { SinopticoIndicadores } from "@/features/supervisorio/components/sinoptico-indicadores";
 import { TransformadorModal } from "@/features/supervisorio/components/transformador-modal";
+// Adicione estas importações após as outras
 
 // Tipos
 import type {
@@ -206,6 +205,24 @@ export function SinopticoAtivoPage() {
     setModalAberto(null);
     setComponenteSelecionado(null);
   };
+  // Estados para os novos modais
+  const [modalIndicadorAberto, setModalIndicadorAberto] = useState<
+    string | null
+  >(null);
+
+  // Dados de exemplo para os modais
+  const [alarmes] = useState([
+    {
+      id: "alm-001",
+      equipamento: "Inversor Solar 2",
+      descricao: "Temperatura do inversor acima do limite normal (45°C > 40°C)",
+      prioridade: "MEDIA" as const,
+      timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+      status: "ATIVO" as const,
+      responsavel: "João Silva",
+      observacoes: "Verificar sistema de ventilação do inversor",
+    },
+  ]);
 
   return (
     <Layout>

@@ -54,7 +54,7 @@ export function NavMain() {
                     }}
                     className={`
                       p-4 rounded-sm select-none flex items-center gap-3
-                      transition-colors duration-200
+                      transition-colors duration-200 relative
                       ${
                         isSelected
                           ? "bg-gray-200 dark:bg-gray-900 text-gray-800 dark:text-gray-300 font-medium"
@@ -75,7 +75,7 @@ export function NavMain() {
                     {item.links && (
                       <ChevronRight
                         className={`
-                          w-5 h-5 shrink-0 transition-transform duration-200 
+                          w-5 h-5 shrink-0 transition-transform duration-200
                           group-data-[state=open]/collapsible:rotate-90
                           ${
                             isSelected
@@ -99,7 +99,7 @@ export function NavMain() {
                             <SidebarMenuSubButton
                               asChild
                               className={`
-                                flex items-center
+                                flex items-center relative
                                 ${
                                   isSubItemActive
                                     ? "bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-300 font-medium"
