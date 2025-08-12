@@ -213,139 +213,200 @@ export function COAPage() {
           <div className="flex flex-col gap-6 p-6">
             <TitleCard title="Centro de Operação de Ativos (COA)" />
 
-            {/* Cards de Indicadores */}
+            {/* Cards de Indicadores Principais */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <Card className="p-6">
+              <Card className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
                       Potência Total
                     </p>
-                    <p className="text-2xl font-bold">133.3 MW</p>
+                    <p className="text-xl font-bold">133.3 MW</p>
                     <p className="text-xs text-green-600">+6.3% hoje</p>
                   </div>
-                  <Zap className="h-8 w-8 text-yellow-500" />
+                  <Zap className="h-6 w-6 text-yellow-500" />
                 </div>
               </Card>
 
-              <Card className="p-6">
+              <Card className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
                       Geração Atual
                     </p>
-                    <p className="text-2xl font-bold">121.6 MW</p>
-                    <p className="text-xs text-blue-600">91.2% da capacidade</p>
-                  </div>
-                  <Battery className="h-8 w-8 text-green-500" />
-                </div>
-              </Card>
-
-              <Card className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
-                      Alarmes Ativos
-                    </p>
-                    <p className="text-2xl font-bold text-yellow-600">3</p>
-                    <p className="text-xs text-muted-foreground">
-                      2 médios, 1 baixo
-                    </p>
-                  </div>
-                  <AlertTriangle className="h-8 w-8 text-yellow-500" />
-                </div>
-              </Card>
-
-              <Card className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
-                      Ativos Online
-                    </p>
-                    <p className="text-2xl font-bold text-blue-600">7/8</p>
-                    <p className="text-xs text-red-600">1 em TRIP</p>
-                  </div>
-                  <FileText className="h-8 w-8 text-blue-500" />
-                </div>
-              </Card>
-              {/* Estatísticas Adicionais */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Card className="p-6">
-                  <h4 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">
-                    Eficiência Média
-                  </h4>
-                  <p className="text-2xl font-bold text-green-600">
-                    {(
-                      ativosNoBrasil
-                        .filter((a) => a.eficiencia)
-                        .reduce((acc, a) => acc + (a.eficiencia || 0), 0) /
-                      ativosNoBrasil.filter((a) => a.eficiencia).length
-                    ).toFixed(1)}
-                    %
-                  </p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    +2.3% em relação ao mês anterior
-                  </p>
-                </Card>
-
-                <Card className="p-6">
-                  <h4 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">
-                    Disponibilidade Média
-                  </h4>
-                  <p className="text-2xl font-bold text-blue-600">
-                    {(
-                      ativosNoBrasil
-                        .filter((a) => a.disponibilidade)
-                        .reduce((acc, a) => acc + (a.disponibilidade || 0), 0) /
-                      ativosNoBrasil.filter((a) => a.disponibilidade).length
-                    ).toFixed(1)}
-                    %
-                  </p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Dentro da meta estabelecida
-                  </p>
-                </Card>
-
-                <Card className="p-6">
-                  <h4 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">
-                    Total Geração Hoje
-                  </h4>
-                  <p className="text-2xl font-bold text-purple-600">
-                    {ativosNoBrasil
-                      .filter((a) => a.potenciaAtual)
-                      .reduce((acc, a) => acc + (a.potenciaAtual || 0), 0)
-                      .toFixed(1)}{" "}
-                    MW
-                  </p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {(
-                      (ativosNoBrasil
+                    <p className="text-xl font-bold">
+                      {ativosNoBrasil
                         .filter((a) => a.potenciaAtual)
-                        .reduce((acc, a) => acc + (a.potenciaAtual || 0), 0) /
-                        ativosNoBrasil.reduce(
-                          (acc, a) => acc + a.potenciaNominal,
-                          0
-                        )) *
-                      100
-                    ).toFixed(1)}
-                    % da capacidade total
-                  </p>
-                </Card>
-              </div>
+                        .reduce((acc, a) => acc + (a.potenciaAtual || 0), 0)
+                        .toFixed(1)}{" "}
+                      MW
+                    </p>
+                    <p className="text-xs text-blue-600">
+                      {(
+                        (ativosNoBrasil
+                          .filter((a) => a.potenciaAtual)
+                          .reduce((acc, a) => acc + (a.potenciaAtual || 0), 0) /
+                          ativosNoBrasil.reduce(
+                            (acc, a) => acc + a.potenciaNominal,
+                            0
+                          )) *
+                        100
+                      ).toFixed(1)}
+                      % da capacidade
+                    </p>
+                  </div>
+                  <Battery className="h-6 w-6 text-green-500" />
+                </div>
+              </Card>
+
+              <Card className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Eficiência Média
+                    </p>
+                    <p className="text-xl font-bold text-green-600">
+                      {(
+                        ativosNoBrasil
+                          .filter((a) => a.eficiencia)
+                          .reduce((acc, a) => acc + (a.eficiencia || 0), 0) /
+                        ativosNoBrasil.filter((a) => a.eficiencia).length
+                      ).toFixed(1)}
+                      %
+                    </p>
+                    <p className="text-xs text-green-600">
+                      +2.3% vs mês anterior
+                    </p>
+                  </div>
+                  <TrendingUp className="h-6 w-6 text-green-500" />
+                </div>
+              </Card>
+
+              <Card className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Disponibilidade
+                    </p>
+                    <p className="text-xl font-bold text-blue-600">
+                      {(
+                        ativosNoBrasil
+                          .filter((a) => a.disponibilidade)
+                          .reduce(
+                            (acc, a) => acc + (a.disponibilidade || 0),
+                            0
+                          ) /
+                        ativosNoBrasil.filter((a) => a.disponibilidade).length
+                      ).toFixed(1)}
+                      %
+                    </p>
+                    <p className="text-xs text-blue-600">Dentro da meta</p>
+                  </div>
+                  <Activity className="h-6 w-6 text-blue-500" />
+                </div>
+              </Card>
             </div>
 
-            {/* Layout Principal: Mapa + Informações das Usinas */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Coluna Esquerda: Mapa + Gráfico de Performance */}
-              <div className="lg:col-span-2 space-y-6">
-                {/* Mapa do Brasil */}
+            {/* Cards de Status e Alertas */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <Card className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Alarmes Ativos
+                    </p>
+                    <p className="text-xl font-bold text-yellow-600">
+                      {
+                        ativosNoBrasil.filter((a) => a.status === "ALARME")
+                          .length
+                      }
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Média prioridade
+                    </p>
+                  </div>
+                  <AlertTriangle className="h-6 w-6 text-yellow-500" />
+                </div>
+              </Card>
+
+              <Card className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Ativos Online
+                    </p>
+                    <p className="text-xl font-bold text-green-600">
+                      {ativosNoBrasil.filter((a) => a.status !== "TRIP").length}
+                      /{ativosNoBrasil.length}
+                    </p>
+                    <p className="text-xs text-green-600">
+                      {(
+                        (ativosNoBrasil.filter((a) => a.status !== "TRIP")
+                          .length /
+                          ativosNoBrasil.length) *
+                        100
+                      ).toFixed(0)}
+                      % disponível
+                    </p>
+                  </div>
+                  <FileText className="h-6 w-6 text-green-500" />
+                </div>
+              </Card>
+
+              <Card className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Status Crítico
+                    </p>
+                    <p className="text-xl font-bold text-red-600">
+                      {
+                        ativosNoBrasil.filter((a) =>
+                          ["URGENCIA", "TRIP"].includes(a.status)
+                        ).length
+                      }
+                    </p>
+                    <p className="text-xs text-red-600">
+                      {ativosNoBrasil.filter((a) => a.status === "TRIP").length}{" "}
+                      em TRIP
+                    </p>
+                  </div>
+                  <AlertTriangle className="h-6 w-6 text-red-500" />
+                </div>
+              </Card>
+
+              <Card className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Última Atualização
+                    </p>
+                    <p className="text-xl font-bold text-blue-600">
+                      {new Date().toLocaleTimeString("pt-BR", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </p>
+                    <p className="text-xs text-blue-600">Tempo real</p>
+                  </div>
+                  <Activity className="h-6 w-6 text-blue-500" />
+                </div>
+              </Card>
+            </div>
+
+            {/* Layout Principal: Mapa + Gráfico de Performance */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Mapa do Brasil */}
+              <div>
                 <MapaBrasil
                   ativos={ativosNoBrasil}
                   onAtivoClick={handleAtivoClick}
                   atualizacaoTempo={5}
                 />
+              </div>
 
-                {/* Gráfico de Performance por Região */}
+              {/* Gráfico de Performance por Região - VERSÃO MELHORADA */}
+              <div>
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
@@ -354,8 +415,11 @@ export function COAPage() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <ResponsiveContainer width="100%" height={280}>
-                      <BarChart data={performancePorRegiao}>
+                    <ResponsiveContainer width="100%" height={360}>
+                      <BarChart
+                        data={performancePorRegiao}
+                        margin={{ top: 20, right: 30, left: 20, bottom: 100 }}
+                      >
                         <CartesianGrid
                           strokeDasharray="3 3"
                           className="opacity-30"
@@ -363,9 +427,11 @@ export function COAPage() {
                         <XAxis
                           dataKey="regiao"
                           fontSize={12}
-                          angle={-45}
-                          textAnchor="end"
+                          angle={0}
+                          textAnchor="middle"
                           height={60}
+                          interval={0}
+                          tick={{ fontSize: 11 }}
                         />
                         <YAxis
                           fontSize={12}
@@ -373,6 +439,7 @@ export function COAPage() {
                             value: "MW",
                             angle: -90,
                             position: "insideLeft",
+                            style: { textAnchor: "middle" },
                           }}
                         />
                         <Tooltip
@@ -381,249 +448,40 @@ export function COAPage() {
                             border: "1px solid var(--border)",
                             borderRadius: "6px",
                           }}
+                          formatter={(value, name) => [
+                            `${value} MW`,
+                            name === "geracao"
+                              ? "Geração Atual"
+                              : name === "meta"
+                              ? "Meta"
+                              : name,
+                          ]}
                         />
-                        <Legend />
+                        <Legend
+                          verticalAlign="bottom"
+                          align="left"
+                          wrapperStyle={{
+                            paddingTop: "35px",
+                            fontSize: "12px",
+                          }}
+                        />
                         <Bar
                           dataKey="geracao"
                           fill="#3b82f6"
                           name="Geração Atual"
-                          radius={[2, 2, 0, 0]}
+                          radius={[4, 4, 0, 0]}
+                          maxBarSize={80}
                         />
                         <Bar
                           dataKey="meta"
                           fill="#e5e7eb"
                           name="Meta"
-                          radius={[2, 2, 0, 0]}
+                          radius={[4, 4, 0, 0]}
+                          maxBarSize={80}
                         />
                       </BarChart>
                     </ResponsiveContainer>
                   </CardContent>
-                </Card>
-              </div>
-
-              {/* Painel de Informações das Usinas - 1/3 da largura */}
-              <div className="lg:col-span-1 space-y-6">
-                {/* Card de Usinas Fotovoltaicas */}
-                <Card className="p-6">
-                  <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                    ☀️ Usinas Fotovoltaicas
-                    <Badge variant="outline" className="text-xs">
-                      {ativosNoBrasil.filter((a) => a.tipo === "UFV").length}{" "}
-                      ativos
-                    </Badge>
-                  </h3>
-                  <div className="space-y-3 max-h-96 overflow-y-auto">
-                    {ativosNoBrasil
-                      .filter((a) => a.tipo === "UFV")
-                      .map((ativo) => (
-                        <div
-                          key={ativo.id}
-                          className="p-3 border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
-                          onClick={() =>
-                            navigate(
-                              `/supervisorio/sinoptico-ativo/${ativo.id}`
-                            )
-                          }
-                        >
-                          <div className="flex items-center justify-between mb-2">
-                            <h4 className="font-medium text-sm">
-                              {ativo.nome}
-                            </h4>
-                            <Badge
-                              variant="outline"
-                              className={
-                                ativo.status === "NORMAL"
-                                  ? "bg-green-100 text-green-800 text-xs"
-                                  : ativo.status === "ALARME"
-                                  ? "bg-yellow-100 text-yellow-800 text-xs"
-                                  : "bg-red-100 text-red-800 text-xs"
-                              }
-                            >
-                              {ativo.status}
-                            </Badge>
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-                            <div>
-                              <span className="font-medium">Localização:</span>
-                              <br />
-                              {ativo.cidade}, {ativo.estado}
-                            </div>
-                            <div>
-                              <span className="font-medium">Potência:</span>
-                              <br />
-                              <span className="text-foreground font-semibold">
-                                {ativo.potenciaNominal} MW
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground mt-2">
-                            <div>
-                              <span className="font-medium">
-                                Geração Atual:
-                              </span>
-                              <br />
-                              <span
-                                className={`font-semibold ${
-                                  ativo.potenciaAtual === 0
-                                    ? "text-red-600"
-                                    : "text-green-600"
-                                }`}
-                              >
-                                {ativo.potenciaAtual} MW
-                              </span>
-                            </div>
-                            <div>
-                              <span className="font-medium">Eficiência:</span>
-                              <br />
-                              <span className="text-foreground font-semibold">
-                                {ativo.eficiencia || 0}%
-                              </span>
-                            </div>
-                          </div>
-
-                          {ativo.disponibilidade && (
-                            <div className="mt-2 text-xs">
-                              <span className="text-muted-foreground font-medium">
-                                Disponibilidade:{" "}
-                              </span>
-                              <span className="text-foreground font-semibold">
-                                {ativo.disponibilidade}%
-                              </span>
-                            </div>
-                          )}
-
-                          <div className="mt-2 pt-2 border-t">
-                            <div className="flex items-center justify-between text-xs">
-                              <span className="text-muted-foreground">
-                                Atualizado:{" "}
-                                {new Date(
-                                  ativo.ultimaAtualizacao
-                                ).toLocaleTimeString("pt-BR")}
-                              </span>
-                              <span className="text-blue-600 font-medium">
-                                → Ver Sinóptico
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                  </div>
-                </Card>
-
-                {/* Card de Outros Ativos */}
-                <Card className="p-6">
-                  <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                    ⚡ Outros Ativos
-                    <Badge variant="outline" className="text-xs">
-                      {ativosNoBrasil.filter((a) => a.tipo !== "UFV").length}{" "}
-                      ativos
-                    </Badge>
-                  </h3>
-                  <div className="space-y-3 max-h-64 overflow-y-auto">
-                    {ativosNoBrasil
-                      .filter((a) => a.tipo !== "UFV")
-                      .map((ativo) => (
-                        <div
-                          key={ativo.id}
-                          className="p-3 border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
-                          onClick={() =>
-                            navigate(
-                              `/supervisorio/sinoptico-ativo/${ativo.id}`
-                            )
-                          }
-                        >
-                          <div className="flex items-center justify-between mb-2">
-                            <h4 className="font-medium text-sm flex items-center gap-1">
-                              {ativo.tipo === "CARGA"
-                                ? "⚡"
-                                : ativo.tipo === "TRANSFORMADOR"
-                                ? "🔌"
-                                : "🔋"}
-                              {ativo.nome}
-                            </h4>
-                            <Badge
-                              variant="outline"
-                              className={
-                                ativo.status === "NORMAL"
-                                  ? "bg-green-100 text-green-800 text-xs"
-                                  : ativo.status === "ALARME"
-                                  ? "bg-yellow-100 text-yellow-800 text-xs"
-                                  : "bg-red-100 text-red-800 text-xs"
-                              }
-                            >
-                              {ativo.status}
-                            </Badge>
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-                            <div>
-                              <span className="font-medium">Tipo:</span>
-                              <br />
-                              {ativo.tipo}
-                            </div>
-                            <div>
-                              <span className="font-medium">Potência:</span>
-                              <br />
-                              <span className="text-foreground font-semibold">
-                                {ativo.potenciaNominal} MW
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="mt-2 text-xs text-muted-foreground">
-                            {ativo.cidade}, {ativo.estado}
-                          </div>
-                        </div>
-                      ))}
-                  </div>
-                </Card>
-
-                {/* Card de Estatísticas Rápidas */}
-                <Card className="p-4">
-                  <h4 className="font-semibold mb-3 text-sm">
-                    📊 Resumo Rápido
-                  </h4>
-                  <div className="grid grid-cols-2 gap-3 text-xs">
-                    <div className="text-center p-2 bg-green-50 rounded border">
-                      <div className="font-bold text-green-600 text-lg">
-                        {
-                          ativosNoBrasil.filter((a) => a.status === "NORMAL")
-                            .length
-                        }
-                      </div>
-                      <div className="text-green-700">Normais</div>
-                    </div>
-                    <div className="text-center p-2 bg-yellow-50 rounded border">
-                      <div className="font-bold text-yellow-600 text-lg">
-                        {
-                          ativosNoBrasil.filter((a) => a.status === "ALARME")
-                            .length
-                        }
-                      </div>
-                      <div className="text-yellow-700">Alarmes</div>
-                    </div>
-                    <div className="text-center p-2 bg-red-50 rounded border">
-                      <div className="font-bold text-red-600 text-lg">
-                        {
-                          ativosNoBrasil.filter((a) =>
-                            ["URGENCIA", "TRIP"].includes(a.status)
-                          ).length
-                        }
-                      </div>
-                      <div className="text-red-700">Críticos</div>
-                    </div>
-                    <div className="text-center p-2 bg-blue-50 rounded border">
-                      <div className="font-bold text-blue-600 text-lg">
-                        {ativosNoBrasil
-                          .filter((a) => a.potenciaAtual && a.potenciaAtual > 0)
-                          .reduce((acc, a) => acc + (a.potenciaAtual || 0), 0)
-                          .toFixed(0)}
-                      </div>
-                      <div className="text-blue-700">MW Ativo</div>
-                    </div>
-                  </div>
                 </Card>
               </div>
             </div>
