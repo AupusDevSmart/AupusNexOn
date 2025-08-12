@@ -26,106 +26,11 @@ import {
   YAxis,
 } from "recharts";
 
-// Dados dos ativos no Brasil - formato profissional
+// Dados dos ativos em Goiás - formato profissional
 const ativosNoBrasil = [
   {
-    id: "sp-001",
-    nome: "UFV São Paulo",
-    tipo: "UFV" as const,
-    estado: "São Paulo",
-    cidade: "São Paulo",
-    coordenadas: {
-      latitude: -23.5505,
-      longitude: -46.6333,
-      x: 60,
-      y: 65,
-    },
-    status: "NORMAL" as const,
-    potenciaNominal: 25.5,
-    potenciaAtual: 23.8,
-    eficiencia: 95.2,
-    disponibilidade: 99.1,
-    ultimaAtualizacao: new Date().toISOString(),
-  },
-  {
-    id: "rj-001",
-    nome: "UFV Rio de Janeiro",
-    tipo: "UFV" as const,
-    estado: "Rio de Janeiro",
-    cidade: "Rio de Janeiro",
-    coordenadas: {
-      latitude: -22.9068,
-      longitude: -43.1729,
-      x: 65,
-      y: 70,
-    },
-    status: "ALARME" as const,
-    potenciaNominal: 18.2,
-    potenciaAtual: 16.1,
-    eficiencia: 88.5,
-    disponibilidade: 97.3,
-    ultimaAtualizacao: new Date().toISOString(),
-  },
-  {
-    id: "mg-001",
-    nome: "UFV Minas Gerais",
-    tipo: "UFV" as const,
-    estado: "Minas Gerais",
-    cidade: "Belo Horizonte",
-    coordenadas: {
-      latitude: -19.9167,
-      longitude: -43.9345,
-      x: 62,
-      y: 62,
-    },
-    status: "NORMAL" as const,
-    potenciaNominal: 32.1,
-    potenciaAtual: 31.1,
-    eficiencia: 96.8,
-    disponibilidade: 99.7,
-    ultimaAtualizacao: new Date().toISOString(),
-  },
-  {
-    id: "ba-001",
-    nome: "UFV Bahia",
-    tipo: "UFV" as const,
-    estado: "Bahia",
-    cidade: "Salvador",
-    coordenadas: {
-      latitude: -12.9714,
-      longitude: -38.5014,
-      x: 58,
-      y: 55,
-    },
-    status: "TRIP" as const,
-    potenciaNominal: 15.8,
-    potenciaAtual: 0,
-    eficiencia: 0,
-    disponibilidade: 85.2,
-    ultimaAtualizacao: new Date().toISOString(),
-  },
-  {
-    id: "ce-001",
-    nome: "UFV Ceará",
-    tipo: "UFV" as const,
-    estado: "Ceará",
-    cidade: "Fortaleza",
-    coordenadas: {
-      latitude: -3.7319,
-      longitude: -38.5267,
-      x: 56,
-      y: 45,
-    },
-    status: "NORMAL" as const,
-    potenciaNominal: 22.3,
-    potenciaAtual: 21.1,
-    eficiencia: 94.7,
-    disponibilidade: 98.9,
-    ultimaAtualizacao: new Date().toISOString(),
-  },
-  {
     id: "go-001",
-    nome: "UFV Goiás",
+    nome: "UFV Goiânia Central",
     tipo: "UFV" as const,
     estado: "Goiás",
     cidade: "Goiânia",
@@ -136,23 +41,118 @@ const ativosNoBrasil = [
       y: 58,
     },
     status: "NORMAL" as const,
-    potenciaNominal: 19.4,
-    potenciaAtual: 18.1,
-    eficiencia: 93.2,
+    potenciaNominal: 25.5,
+    potenciaAtual: 23.8,
+    eficiencia: 95.2,
+    disponibilidade: 99.1,
+    ultimaAtualizacao: new Date().toISOString(),
+  },
+  {
+    id: "go-002",
+    nome: "UFV Senador Canedo",
+    tipo: "UFV" as const,
+    estado: "Goiás",
+    cidade: "Senador Canedo",
+    coordenadas: {
+      latitude: -16.705,
+      longitude: -49.0928,
+      x: 56,
+      y: 59,
+    },
+    status: "NORMAL" as const,
+    potenciaNominal: 18.2,
+    potenciaAtual: 16.8,
+    eficiencia: 92.3,
+    disponibilidade: 98.7,
+    ultimaAtualizacao: new Date().toISOString(),
+  },
+  {
+    id: "go-003",
+    nome: "UFV Aparecida de Goiânia",
+    tipo: "UFV" as const,
+    estado: "Goiás",
+    cidade: "Aparecida de Goiânia",
+    coordenadas: {
+      latitude: -16.8233,
+      longitude: -49.2442,
+      x: 55,
+      y: 60,
+    },
+    status: "ALARME" as const,
+    potenciaNominal: 32.1,
+    potenciaAtual: 28.9,
+    eficiencia: 90.1,
+    disponibilidade: 97.3,
+    ultimaAtualizacao: new Date().toISOString(),
+  },
+  {
+    id: "go-004",
+    nome: "UFV Anápolis Industrial",
+    tipo: "UFV" as const,
+    estado: "Goiás",
+    cidade: "Anápolis",
+    coordenadas: {
+      latitude: -16.3281,
+      longitude: -48.9531,
+      x: 57,
+      y: 56,
+    },
+    status: "NORMAL" as const,
+    potenciaNominal: 22.3,
+    potenciaAtual: 21.1,
+    eficiencia: 94.7,
     disponibilidade: 99.2,
     ultimaAtualizacao: new Date().toISOString(),
   },
   {
-    id: "carga-001",
-    nome: "Carga Industrial SP",
-    tipo: "CARGA" as const,
-    estado: "São Paulo",
-    cidade: "São Bernardo do Campo",
+    id: "go-005",
+    nome: "UFV Catalão",
+    tipo: "UFV" as const,
+    estado: "Goiás",
+    cidade: "Catalão",
     coordenadas: {
-      latitude: -23.6914,
-      longitude: -46.5646,
-      x: 61,
-      y: 66,
+      latitude: -18.1658,
+      longitude: -47.9467,
+      x: 58,
+      y: 63,
+    },
+    status: "TRIP" as const,
+    potenciaNominal: 15.8,
+    potenciaAtual: 0,
+    eficiencia: 0,
+    disponibilidade: 85.2,
+    ultimaAtualizacao: new Date().toISOString(),
+  },
+  {
+    id: "go-006",
+    nome: "UFV Rio Verde",
+    tipo: "UFV" as const,
+    estado: "Goiás",
+    cidade: "Rio Verde",
+    coordenadas: {
+      latitude: -17.7944,
+      longitude: -50.9256,
+      x: 53,
+      y: 62,
+    },
+    status: "NORMAL" as const,
+    potenciaNominal: 28.7,
+    potenciaAtual: 26.3,
+    eficiencia: 91.6,
+    disponibilidade: 98.4,
+    ultimaAtualizacao: new Date().toISOString(),
+  },
+  {
+    id: "go-007",
+    nome: "Carga Industrial Goiânia",
+    tipo: "CARGA" as const,
+    estado: "Goiás",
+    cidade: "Goiânia",
+    coordenadas: {
+      latitude: -16.72,
+      longitude: -49.3,
+      x: 54,
+      y: 59,
     },
     status: "NORMAL" as const,
     potenciaNominal: 12.5,
@@ -161,22 +161,59 @@ const ativosNoBrasil = [
     ultimaAtualizacao: new Date().toISOString(),
   },
   {
-    id: "trafo-001",
-    nome: "Subestação RJ Norte",
+    id: "go-008",
+    nome: "Subestação Anápolis Norte",
     tipo: "TRANSFORMADOR" as const,
-    estado: "Rio de Janeiro",
-    cidade: "Nova Iguaçu",
+    estado: "Goiás",
+    cidade: "Anápolis",
     coordenadas: {
-      latitude: -22.759,
-      longitude: -43.4509,
-      x: 64,
-      y: 71,
+      latitude: -16.29,
+      longitude: -48.92,
+      x: 57,
+      y: 55,
     },
-    status: "ALARME" as const,
+    status: "NORMAL" as const,
     potenciaNominal: 50.0,
     potenciaAtual: 45.2,
     eficiencia: 97.8,
-    disponibilidade: 98.1,
+    disponibilidade: 99.1,
+    ultimaAtualizacao: new Date().toISOString(),
+  },
+  {
+    id: "go-009",
+    nome: "UFV Caldas Novas",
+    tipo: "UFV" as const,
+    estado: "Goiás",
+    cidade: "Caldas Novas",
+    coordenadas: {
+      latitude: -17.7406,
+      longitude: -48.6253,
+      x: 56,
+      y: 62,
+    },
+    status: "NORMAL" as const,
+    potenciaNominal: 19.4,
+    potenciaAtual: 18.1,
+    eficiencia: 93.2,
+    disponibilidade: 98.9,
+    ultimaAtualizacao: new Date().toISOString(),
+  },
+  {
+    id: "go-010",
+    nome: "Carga Comercial Aparecida",
+    tipo: "CARGA" as const,
+    estado: "Goiás",
+    cidade: "Aparecida de Goiânia",
+    coordenadas: {
+      latitude: -16.85,
+      longitude: -49.27,
+      x: 55,
+      y: 60,
+    },
+    status: "ALARME" as const,
+    potenciaNominal: 8.3,
+    potenciaAtual: 7.1,
+    disponibilidade: 96.8,
     ultimaAtualizacao: new Date().toISOString(),
   },
 ];
@@ -189,13 +226,13 @@ const dadosPerformance = Array.from({ length: 24 }, (_, i) => ({
   meta: 85,
 }));
 
-// Dados de performance por região
+// Dados de performance por região (apenas Centro-Oeste com Goiás)
 const performancePorRegiao = [
-  { regiao: "Sudeste", geracao: 75.8, meta: 80, eficiencia: 94.2 },
-  { regiao: "Nordeste", geracao: 68.4, meta: 70, eficiencia: 92.1 },
-  { regiao: "Centro-Oeste", geracao: 18.1, meta: 20, eficiencia: 93.2 },
-  { regiao: "Sul", geracao: 12.3, meta: 15, eficiencia: 89.7 },
-  { regiao: "Norte", geracao: 8.9, meta: 10, eficiencia: 91.4 },
+  { regiao: "Goiânia", geracao: 75.8, meta: 80, eficiencia: 94.2 },
+  { regiao: "Anápolis", geracao: 68.4, meta: 70, eficiencia: 92.1 },
+  { regiao: "Aparecida", geracao: 58.1, meta: 65, eficiencia: 89.3 },
+  { regiao: "Rio Verde", geracao: 72.3, meta: 75, eficiencia: 93.7 },
+  { regiao: "Catalão", geracao: 15.2, meta: 45, eficiencia: 33.8 },
 ];
 
 export function COAPage() {
@@ -411,7 +448,7 @@ export function COAPage() {
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <Activity className="h-5 w-5 text-purple-500" />
-                      Performance por Região
+                      Performance por Cidade (Goiás)
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
@@ -432,6 +469,12 @@ export function COAPage() {
                           height={60}
                           interval={0}
                           tick={{ fontSize: 11 }}
+                          label={{
+                            value: "Cidades de Goiás",
+                            position: "insideBottom",
+                            offset: -5,
+                            fontSize: 12,
+                          }}
                         />
                         <YAxis
                           fontSize={12}
@@ -554,22 +597,24 @@ export function COAPage() {
 
             {/* Tabela de Cargas - Layout Simplificado */}
             <Card className="p-6">
-              <h3 className="text-lg font-semibold mb-4">Cargas Monitoradas</h3>
+              <h3 className="text-lg font-semibold mb-4">
+                Cargas Monitoradas em Goiás
+              </h3>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
                     <tr className="border-b">
                       <th className="text-left py-2">Nome</th>
-                      <th className="text-left py-2">Tipo</th>
+                      <th className="text-left py-2">Cidade</th>
                       <th className="text-right py-2">Consumo</th>
                       <th className="text-right py-2">Status</th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr className="border-b hover:bg-muted/50">
-                      <td className="py-2">Fábrica ABC</td>
-                      <td className="py-2">Industrial</td>
-                      <td className="text-right py-2">12.3 MW</td>
+                      <td className="py-2">Indústria Metalúrgica GO</td>
+                      <td className="py-2">Goiânia</td>
+                      <td className="text-right py-2">11.8 MW</td>
                       <td className="text-right py-2">
                         <Badge
                           variant="outline"
@@ -580,22 +625,9 @@ export function COAPage() {
                       </td>
                     </tr>
                     <tr className="border-b hover:bg-muted/50">
-                      <td className="py-2">Shopping XYZ</td>
-                      <td className="py-2">Comercial</td>
-                      <td className="text-right py-2">8.7 MW</td>
-                      <td className="text-right py-2">
-                        <Badge
-                          variant="outline"
-                          className="bg-green-100 text-green-800 text-xs"
-                        >
-                          Normal
-                        </Badge>
-                      </td>
-                    </tr>
-                    <tr className="border-b hover:bg-muted/50">
-                      <td className="py-2">Hospital Central</td>
-                      <td className="py-2">Hospitalar</td>
-                      <td className="text-right py-2">5.2 MW</td>
+                      <td className="py-2">Shopping Aparecida Center</td>
+                      <td className="py-2">Aparecida de Goiânia</td>
+                      <td className="text-right py-2">7.1 MW</td>
                       <td className="text-right py-2">
                         <Badge
                           variant="outline"
@@ -606,8 +638,23 @@ export function COAPage() {
                       </td>
                     </tr>
                     <tr className="border-b hover:bg-muted/50">
-                      <td className="py-2">Data Center Alpha</td>
-                      <td className="py-2">Tecnologia</td>
+                      <td className="py-2">Hospital Regional Anápolis</td>
+                      <td className="py-2">Anápolis</td>
+                      <td className="text-right py-2">5.2 MW</td>
+                      <td className="text-right py-2">
+                        <Badge
+                          variant="outline"
+                          className="bg-green-100 text-green-800 text-xs"
+                        >
+                          Normal
+                        </Badge>
+                      </td>
+                    </tr>
+                    <tr className="border-b hover:bg-muted/50">
+                      <td className="py-2">
+                        Distrito Industrial Senador Canedo
+                      </td>
+                      <td className="py-2">Senador Canedo</td>
                       <td className="text-right py-2">9.5 MW</td>
                       <td className="text-right py-2">
                         <Badge
@@ -625,13 +672,15 @@ export function COAPage() {
 
             {/* Eventos Recentes */}
             <Card className="p-6">
-              <h3 className="text-lg font-semibold mb-4">Eventos Recentes</h3>
+              <h3 className="text-lg font-semibold mb-4">
+                Eventos Recentes - Goiás
+              </h3>
               <div className="space-y-2">
                 <div className="flex items-center justify-between py-2 border-b">
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
                     <span className="text-sm">
-                      UFV Bahia - Sistema em TRIP - Técnico despachado
+                      UFV Catalão - Sistema em TRIP - Técnico despachado
                     </span>
                   </div>
                   <span className="text-xs text-gray-500">11:15</span>
@@ -640,7 +689,7 @@ export function COAPage() {
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
                     <span className="text-sm">
-                      UFV São Paulo - Manutenção preventiva iniciada
+                      UFV Goiânia Central - Manutenção preventiva iniciada
                     </span>
                   </div>
                   <span className="text-xs text-gray-500">10:30</span>
@@ -649,7 +698,8 @@ export function COAPage() {
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 bg-green-500 rounded-full"></div>
                     <span className="text-sm">
-                      UFV Ceará - Performance acima da meta por 48h consecutivas
+                      UFV Rio Verde - Performance acima da meta por 48h
+                      consecutivas
                     </span>
                   </div>
                   <span className="text-xs text-gray-500">09:45</span>
@@ -658,10 +708,19 @@ export function COAPage() {
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
                     <span className="text-sm">
-                      Subestação RJ Norte - Temperatura elevada detectada
+                      Subestação Anápolis Norte - Temperatura elevada detectada
                     </span>
                   </div>
                   <span className="text-xs text-gray-500">08:22</span>
+                </div>
+                <div className="flex items-center justify-between py-2 border-b">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+                    <span className="text-sm">
+                      Carga Comercial Aparecida - Consumo acima do normal
+                    </span>
+                  </div>
+                  <span className="text-xs text-gray-500">07:58</span>
                 </div>
               </div>
             </Card>
