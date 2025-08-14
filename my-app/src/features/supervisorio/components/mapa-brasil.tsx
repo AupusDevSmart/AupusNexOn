@@ -1,4 +1,5 @@
 // src/features/supervisorio/components/mapa-brasil.tsx
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { RotateCcw, ZoomIn, ZoomOut } from "lucide-react";
@@ -476,45 +477,36 @@ export function MapaBrasil({
       </div>
 
       {/* CSS para animações */}
-      <style jsx>{`
-        @keyframes pulse {
-          0% {
-            transform: scale(1);
-            opacity: 1;
+      <style>{`
+          @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.3); opacity: 0.7; }
+            100% { transform: scale(1); opacity: 1; }
           }
-          50% {
-            transform: scale(1.3);
-            opacity: 0.7;
+          
+          .custom-marker-coa {
+            background: transparent !important;
+            border: none !important;
           }
-          100% {
-            transform: scale(1);
-            opacity: 1;
+          
+          .custom-popup-coa {
+            border-radius: 8px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.15);
           }
-        }
-
-        .custom-marker-coa {
-          background: transparent !important;
-          border: none !important;
-        }
-
-        .custom-popup-coa {
-          border-radius: 8px;
-          box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
-        }
-
-        .custom-popup-coa .leaflet-popup-content-wrapper {
-          border-radius: 8px;
-          padding: 0;
-        }
-
-        .custom-popup-coa .leaflet-popup-content {
-          margin: 16px;
-        }
-
-        .custom-popup-coa .leaflet-popup-tip {
-          background: white;
-        }
-      `}</style>
+          
+          .custom-popup-coa .leaflet-popup-content-wrapper {
+            border-radius: 8px;
+            padding: 0;
+          }
+          
+          .custom-popup-coa .leaflet-popup-content {
+            margin: 16px;
+          }
+          
+          .custom-popup-coa .leaflet-popup-tip {
+            background: white;
+          }
+        `}</style>
     </Card>
   );
 }

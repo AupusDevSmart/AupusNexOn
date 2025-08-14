@@ -8,17 +8,11 @@ import { ContasAReceberPage } from "@/pages/contas-a-receber";
 import { FluxoDeCaixaPage } from "@/pages/fluxo-de-caixa";
 import ScadaPage from "@/pages/scada";
 import { Settings } from "@/pages/settings";
-import { UsinasPage } from "@/pages/usinas";
 import { createBrowserRouter } from "react-router-dom";
+import { DashboardPage } from "./pages/dashboard";
 
 // Lazy load para evitar problemas de import
 import { lazy, Suspense } from "react";
-
-const COAPage = lazy(() =>
-  import("@/pages/supervisorio/coa").then((module) => ({
-    default: module.COAPage,
-  }))
-);
 
 const CadastroUnidadesPage = lazy(() =>
   import("@/pages/supervisorio/cadastro-unidades").then((module) => ({
@@ -48,7 +42,7 @@ export const appRoutes = createBrowserRouter([
         path: "dashboard",
         element: (
           <FeatureWrapper feature="Dashboard">
-            <UsinasPage />
+            <DashboardPage />
           </FeatureWrapper>
         ),
       },
@@ -123,16 +117,7 @@ export const appRoutes = createBrowserRouter([
           </FeatureWrapper>
         ),
       },
-      {
-        path: "supervisorio/coa",
-        element: (
-          <FeatureWrapper feature="supervisorio">
-            <Suspense fallback={<div>Carregando...</div>}>
-              <COAPage />
-            </Suspense>
-          </FeatureWrapper>
-        ),
-      },
+
       {
         path: "supervisorio/cadastro-unidades",
         element: (

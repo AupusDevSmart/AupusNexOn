@@ -31,8 +31,8 @@ export const navigationLinks: Array<NavigationLink> = [
     featureKey: "Dashboard",
     path: "/dashboard",
     icon: ChartNoAxesColumn,
-    label: "Dashboard SA",
-    hint: "Dashboard SA",
+    label: "COA - Centro de Operações de Ativos",
+    hint: "COA - Centro de Operações de Ativos",
   },
   // SCADA - Adicionado
   {
@@ -52,14 +52,7 @@ export const navigationLinks: Array<NavigationLink> = [
     label: "Supervisório",
     hint: "Sistema de Supervisão NexON",
     links: [
-      {
-        key: "supervisorio",
-        featureKey: "supervisorio",
-        path: "/supervisorio/coa",
-        icon: Map,
-        label: "COA",
-        hint: "Centro de Operação de Ativos",
-      },
+     
       {
         key: "supervisorio",
         featureKey: "supervisorio",
