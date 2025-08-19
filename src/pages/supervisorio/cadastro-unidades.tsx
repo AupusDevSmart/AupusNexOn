@@ -297,7 +297,7 @@ export function CadastroUnidadesPage() {
 
   return (
     <Layout>
-      <div className="flex flex-col gap-6 h-full overflow-y-auto pb-6">
+      <div className="flex flex-col gap-6 h-full overflow-y-auto pb-6 m-8">
         <TitleCard title="Cadastro de Unidades" />
 
         {/* Formulário de Cadastro/Edição */}

@@ -228,7 +228,7 @@ export function SinopticoAtivoPage() {
     <Layout>
       <Layout.Main>
         {/* Header com botão voltar */}
-        <div className="flex items-center gap-4 mb-6">
+        <div className="flex items-center gap-4 m-6 max-w-full">
           <Button
             variant="outline"
             size="sm"
@@ -245,9 +245,9 @@ export function SinopticoAtivoPage() {
         <SinopticoHeader ativo={ativoData} statusRede={statusRede} />
 
         {/* Layout Principal */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6 w-full">
           {/* Gráficos à Esquerda */}
-          <div className="space-y-6">
+          <div className="space-y-6 w-full">
             <SinopticoGraficos
               dadosPotencia={dadosGraficos}
               dadosTensao={dadosGraficos}

@@ -10,7 +10,6 @@ import { AppSidebar } from "@/features/navigation/components/Sidebar/app-sidebar
 import { useUserStore } from "@/store/useUserStore";
 import { QueryClient, QueryClientProvider } from "react-query";
 import { Outlet, useNavigate } from "react-router-dom";
-
 const queryClient = new QueryClient();
 
 export function AppTemplate() {
@@ -34,7 +33,7 @@ export function AppTemplate() {
               </div>
               <NotificacoesSheet />
             </header>
-            <main className="flex-1 overflow-y-auto overflow-x-hidden bg-secondary mx-auto w-full max-w-[1300px] items-center justify-center">
+            <main className="flex-1 overflow-y-auto overflow-x-hidden bg-secondary mx-auto w-full items-center justify-center">
               <Outlet />
             </main>
             <CommandPallete />

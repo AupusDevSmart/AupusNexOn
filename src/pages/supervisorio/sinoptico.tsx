@@ -16,9 +16,9 @@ import { useNavigate, useParams } from "react-router-dom";
 
 // Componente do Header com status da rede
 const SinopticoHeader = () => (
-  <Card>
-    <CardHeader>
-      <CardTitle className="flex items-center justify-between">
+  <Card className="w-full">
+    <CardHeader className="w-full">
+      <CardTitle className="flex items-center justify-between w-full">
         <span>Status da Rede</span>
         <Badge variant="default" className="bg-green-500">
           <CheckCircle className="h-4 w-4 mr-1" />
@@ -26,8 +26,8 @@ const SinopticoHeader = () => (
         </Badge>
       </CardTitle>
     </CardHeader>
-    <CardContent>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+    <CardContent className="w-full">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full">
         <div className="text-center">
           <div className="text-2xl font-bold text-green-600">220V</div>
           <div className="text-sm text-muted-foreground">Tensão L1</div>
@@ -51,50 +51,50 @@ const SinopticoHeader = () => (
 
 // Componente dos Gráficos
 const SinopticoGraficos = () => (
-  <div className="space-y-4">
-    <Card>
-      <CardHeader>
+  <div className="space-y-4 w-full">
+    <Card className="w-full">
+      <CardHeader className="w-full">
         <CardTitle className="flex items-center gap-2">
           <Zap className="h-5 w-5" />
           Potência Ativa
         </CardTitle>
       </CardHeader>
-      <CardContent>
-        <div className="space-y-4">
-          <div>
-            <div className="flex justify-between text-sm mb-1">
+      <CardContent className="w-full">
+        <div className="space-y-4 w-full">
+          <div className="w-full">
+            <div className="flex justify-between text-sm mb-1 w-full">
               <span>L1</span>
               <span>750 kW</span>
             </div>
-            <Progress value={75} className="h-2" />
+            <Progress value={75} className="h-2 w-full" />
           </div>
-          <div>
-            <div className="flex justify-between text-sm mb-1">
+          <div className="w-full">
+            <div className="flex justify-between text-sm mb-1 w-full">
               <span>L2</span>
               <span>820 kW</span>
             </div>
-            <Progress value={82} className="h-2" />
+            <Progress value={82} className="h-2 w-full" />
           </div>
-          <div>
-            <div className="flex justify-between text-sm mb-1">
+          <div className="w-full">
+            <div className="flex justify-between text-sm mb-1 w-full">
               <span>L3</span>
               <span>780 kW</span>
             </div>
-            <Progress value={78} className="h-2" />
+            <Progress value={78} className="h-2 w-full" />
           </div>
         </div>
       </CardContent>
     </Card>
 
-    <Card>
-      <CardHeader>
+    <Card className="w-full">
+      <CardHeader className="w-full">
         <CardTitle className="flex items-center gap-2">
           <Activity className="h-5 w-5" />
           Corrente
         </CardTitle>
       </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-3 gap-4 text-center">
+      <CardContent className="w-full">
+        <div className="grid grid-cols-3 gap-4 text-center w-full">
           <div>
             <div className="text-xl font-bold">125A</div>
             <div className="text-sm text-muted-foreground">L1</div>
@@ -115,15 +115,15 @@ const SinopticoGraficos = () => (
 
 // Componente do Diagrama Unifilar
 const SinopticoDiagrama = () => (
-  <Card className="h-full">
-    <CardHeader>
+  <Card className="h-full w-full">
+    <CardHeader className="w-full">
       <CardTitle>Diagrama Unifilar</CardTitle>
     </CardHeader>
-    <CardContent className="h-full">
-      <div className="flex flex-col items-center justify-center h-64 bg-slate-50 rounded-lg border-2 border-dashed border-slate-200">
-        <div className="text-center space-y-4">
+    <CardContent className="h-full w-full">
+      <div className="flex flex-col items-center justify-center h-64 bg-slate-50 rounded-lg border-2 border-dashed border-slate-200 w-full">
+        <div className="text-center space-y-4 w-full">
           {/* Representação visual simples */}
-          <div className="flex items-center justify-center space-x-8">
+          <div className="flex items-center justify-center space-x-8 w-full">
             <div className="flex flex-col items-center">
               <div className="w-12 h-12 bg-yellow-500 rounded-full flex items-center justify-center">
                 <Zap className="h-6 w-6 text-white" />
@@ -156,10 +156,10 @@ const SinopticoDiagrama = () => (
 
 // Componente dos Indicadores do Rodapé
 const SinopticoIndicadores = () => (
-  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-    <Card>
-      <CardContent className="p-4">
-        <div className="flex items-center space-x-2">
+  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full">
+    <Card className="w-full">
+      <CardContent className="p-4 w-full">
+        <div className="flex items-center space-x-2 w-full">
           <CheckCircle className="h-5 w-5 text-green-500" />
           <div>
             <div className="font-medium">Sistema</div>
@@ -169,9 +169,9 @@ const SinopticoIndicadores = () => (
       </CardContent>
     </Card>
 
-    <Card>
-      <CardContent className="p-4">
-        <div className="flex items-center space-x-2">
+    <Card className="w-full">
+      <CardContent className="p-4 w-full">
+        <div className="flex items-center space-x-2 w-full">
           <Zap className="h-5 w-5 text-blue-500" />
           <div>
             <div className="font-medium">2.350 kW</div>
@@ -181,9 +181,9 @@ const SinopticoIndicadores = () => (
       </CardContent>
     </Card>
 
-    <Card>
-      <CardContent className="p-4">
-        <div className="flex items-center space-x-2">
+    <Card className="w-full">
+      <CardContent className="p-4 w-full">
+        <div className="flex items-center space-x-2 w-full">
           <Activity className="h-5 w-5 text-orange-500" />
           <div>
             <div className="font-medium">0.92</div>
@@ -195,9 +195,9 @@ const SinopticoIndicadores = () => (
       </CardContent>
     </Card>
 
-    <Card>
-      <CardContent className="p-4">
-        <div className="flex items-center space-x-2">
+    <Card className="w-full">
+      <CardContent className="p-4 w-full">
+        <div className="flex items-center space-x-2 w-full">
           <AlertTriangle className="h-5 w-5 text-yellow-500" />
           <div>
             <div className="font-medium">0</div>
@@ -229,39 +229,41 @@ export function SinopticoPage() {
 
   return (
     <Layout>
-      <Layout.Main>
-        {/* Header com botão voltar */}
-        <div className="flex items-center gap-4 mb-6">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleVoltar}
-            className="flex items-center gap-2"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Voltar
-          </Button>
-          <TitleCard title={`Sinóptico - ${ativoData.nome}`} />
-        </div>
-
-        {/* Status da Rede */}
-        <SinopticoHeader />
-
-        {/* Layout Principal */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-          {/* Gráficos à Esquerda */}
-          <div className="space-y-6">
-            <SinopticoGraficos />
+      <Layout.Main className="w-full">
+        <div className="w-full space-y-6">
+          {/* Header com botão voltar */}
+          <div className="flex items-center gap-4 w-full">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleVoltar}
+              className="flex items-center gap-2"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Voltar
+            </Button>
+            <div className="flex-1">
+              <TitleCard title={`Sinóptico - ${ativoData.nome}`} />
+            </div>
           </div>
 
-          {/* Diagrama Unifilar à Direita */}
-          <div>
-            <SinopticoDiagrama />
-          </div>
-        </div>
+          {/* Status da Rede */}
+          <SinopticoHeader />
 
-        {/* Indicadores do Rodapé */}
-        <div className="mt-6">
+          {/* Layout Principal */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 w-full">
+            {/* Gráficos à Esquerda */}
+            <div className="w-full">
+              <SinopticoGraficos />
+            </div>
+
+            {/* Diagrama Unifilar à Direita */}
+            <div className="w-full">
+              <SinopticoDiagrama />
+            </div>
+          </div>
+
+          {/* Indicadores do Rodapé */}
           <SinopticoIndicadores />
         </div>
       </Layout.Main>

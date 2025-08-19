@@ -162,10 +162,10 @@ export function FluxoDeCaixaPage(): JSX.Element {
           </div>
         </div>
         
-        {/* Tabela Detalhada */}
+        {/* Tabela Detalhada
         <div className="w-full">
           <FluxoCaixaTable data={dadosFiltrados.table} />
-        </div>
+        </div> */}
       </Layout.Main>
     </Layout>
   );

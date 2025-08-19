@@ -1,10 +1,10 @@
 // src/features/supervisorio/components/mapa-brasil.tsx
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { RotateCcw, ZoomIn, ZoomOut } from "lucide-react";
-import { useCallback, useEffect, useRef } from "react";
-
+import { Activity, RotateCcw, X, ZoomIn, ZoomOut } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 interface Ativo {
   id: string;
   nome: string;
@@ -29,16 +29,33 @@ interface MapaBrasilProps {
   ativos: Ativo[];
   onAtivoClick: (ativoId: string) => void;
   atualizacaoTempo?: number;
+  focoAtivo?: string | null;
 }
+
+// Dados mock para gráficos
+const dadosGraficos24h = [
+  { hora: "00:00", potencia: 0, meta: 0 },
+  { hora: "06:00", potencia: 15, meta: 20 },
+  { hora: "09:00", potencia: 45, meta: 50 },
+  { hora: "12:00", potencia: 85, meta: 80 },
+  { hora: "15:00", potencia: 70, meta: 75 },
+  { hora: "18:00", potencia: 25, meta: 30 },
+  { hora: "21:00", potencia: 5, meta: 10 },
+];
 
 export function MapaBrasil({
   ativos,
   onAtivoClick,
   atualizacaoTempo = 5,
+  focoAtivo = null,
 }: MapaBrasilProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
+
+  // Estados para o painel sinóptico
+  const [ativoSelecionado, setAtivoSelecionado] = useState<Ativo | null>(null);
+  const [painelAberto, setPainelAberto] = useState(false);
 
   // Função para calcular o centro e zoom baseado nos ativos
   const calcularFocoInteligente = useCallback(() => {
@@ -132,11 +149,14 @@ export function MapaBrasil({
       }).setView(center, zoom);
 
       // Adicionar camada do OpenStreetMap
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: "© OpenStreetMap contributors",
-        maxZoom: 18,
-        minZoom: 4,
-      }).addTo(map);
+      L.tileLayer(
+        "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png",
+        {
+          attribution: "© OpenStreetMap contributors,  © CartoDB",
+          maxZoom: 18,
+          minZoom: 4,
+        }
+      ).addTo(map);
 
       mapInstanceRef.current = map;
     }
@@ -191,16 +211,20 @@ export function MapaBrasil({
         };
 
         // Criar ícone customizado mais elaborado
+        const isSelected =
+          focoAtivo === ativo.id || ativoSelecionado?.id === ativo.id;
+
+        // Criar ícone customizado mais elaborado
         const icon = L.divIcon({
           html: `
             <div style="
               position: relative;
-              width: 24px;
-              height: 24px;
+              width: ${isSelected ? "32px" : "24px"};
+              height: ${isSelected ? "32px" : "24px"};
             ">
               <div style="
-                width: 20px;
-                height: 20px;
+                width: ${isSelected ? "28px" : "20px"};
+                height: ${isSelected ? "28px" : "20px"};
                 background-color: ${getStatusColor(ativo.status)};
                 border: 2px solid #fff;
                 border-radius: 50%;
@@ -208,7 +232,8 @@ export function MapaBrasil({
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                font-size: 10px;
+                font-size: ${isSelected ? "14px" : "10px"};
+                ${isSelected ? "animation: pulse 2s infinite;" : ""}
               ">${getTipoIcon(ativo.tipo)}</div>
               ${
                 ativo.status === "TRIP" || ativo.status === "URGENCIA"
@@ -228,107 +253,27 @@ export function MapaBrasil({
             </div>
           `,
           className: "custom-marker-coa",
-          iconSize: [24, 24],
-          iconAnchor: [12, 12],
+          iconSize: [isSelected ? 32 : 24, isSelected ? 32 : 24],
+          iconAnchor: [isSelected ? 16 : 12, isSelected ? 16 : 12],
         });
 
-        // Criar marcador com popup detalhado
+        // Criar marcador
         const marker = L.marker(
           [ativo.coordenadas.latitude, ativo.coordenadas.longitude],
           { icon }
-        )
-          .addTo(map)
-          .bindPopup(
-            `
-            <div style="min-width: 250px; font-family: system-ui;">
-              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
-                <span style="font-size: 16px;">${getTipoIcon(ativo.tipo)}</span>
-                <h3 style="margin: 0; font-weight: bold; font-size: 14px;">${
-                  ativo.nome
-                }</h3>
-              </div>
-              
-              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; font-size: 12px;">
-                <div>
-                  <strong>Tipo:</strong><br/>
-                  <span style="color: #6B7280;">${ativo.tipo}</span>
-                </div>
-                <div>
-                  <strong>Status:</strong><br/>
-                  <span style="
-                    color: ${getStatusColor(ativo.status)};
-                    font-weight: bold;
-                  ">${ativo.status}</span>
-                </div>
-                <div>
-                  <strong>Potência:</strong><br/>
-                  <span style="color: #6B7280;">${
-                    ativo.potenciaNominal
-                  } MW</span>
-                </div>
-                <div>
-                  <strong>Localização:</strong><br/>
-                  <span style="color: #6B7280;">${ativo.cidade}, ${
-              ativo.estado
-            }</span>
-                </div>
-              </div>
-              
-              ${
-                ativo.potenciaAtual !== undefined
-                  ? `
-                <div style="margin-bottom: 12px; font-size: 12px;">
-                  <strong>Geração Atual:</strong> 
-                  <span style="color: ${
-                    ativo.potenciaAtual === 0 ? "#EF4444" : "#10B981"
-                  }; font-weight: bold;">
-                    ${ativo.potenciaAtual} MW
-                  </span>
-                </div>
-              `
-                  : ""
-              }
-              
-              ${
-                ativo.eficiencia !== undefined
-                  ? `
-                <div style="margin-bottom: 12px; font-size: 12px;">
-                  <strong>Eficiência:</strong> 
-                  <span style="color: #6B7280;">${ativo.eficiencia}%</span>
-                </div>
-              `
-                  : ""
-              }
-              
-              <button 
-                onclick="window.abrirSinopticoAtivo('${ativo.id}')"
-                style="
-                  background: #3B82F6;
-                  color: white;
-                  border: none;
-                  padding: 8px 16px;
-                  border-radius: 6px;
-                  cursor: pointer;
-                  width: 100%;
-                  font-size: 12px;
-                  font-weight: 500;
-                "
-                onmouseover="this.style.background='#2563EB'"
-                onmouseout="this.style.background='#3B82F6'"
-              >
-                🔍 Ver Sinóptico
-              </button>
-            </div>
-          `,
-            {
-              maxWidth: 300,
-              className: "custom-popup-coa",
-            }
-          );
+        ).addTo(map);
 
-        // Adicionar evento de clique
+        // Adicionar evento de clique para abrir painel sinóptico
         marker.on("click", () => {
-          console.log(`Clicado no ativo: ${ativo.id}`);
+          setAtivoSelecionado(ativo);
+          setPainelAberto(true);
+
+          // Centralizar mapa no ativo
+          map.setView(
+            [ativo.coordenadas.latitude, ativo.coordenadas.longitude],
+            Math.max(map.getZoom(), 10),
+            { animate: true, duration: 0.5 }
+          );
         });
 
         markersRef.current.push(marker);
@@ -338,8 +283,33 @@ export function MapaBrasil({
       (window as any).abrirSinopticoAtivo = (ativoId: string) => {
         onAtivoClick(ativoId);
       };
+
+      // Lógica de zoom automático para ativo focado
+      if (focoAtivo) {
+        const ativoFocado = ativos.find((a) => a.id === focoAtivo);
+        if (ativoFocado) {
+          // Dar zoom na localização do ativo focado
+          map.setView(
+            [
+              ativoFocado.coordenadas.latitude,
+              ativoFocado.coordenadas.longitude,
+            ],
+            12,
+            {
+              animate: true,
+              duration: 1.0,
+            }
+          );
+        }
+      }
     }
-  }, [ativos, onAtivoClick, calcularFocoInteligente]);
+  }, [
+    ativos,
+    onAtivoClick,
+    calcularFocoInteligente,
+    focoAtivo,
+    ativoSelecionado,
+  ]);
 
   // Funções de controle de zoom
   const zoomIn = () => {
@@ -364,6 +334,24 @@ export function MapaBrasil({
     }
   };
 
+  const centralizarAtivo = () => {
+    if (ativoSelecionado && mapInstanceRef.current) {
+      mapInstanceRef.current.setView(
+        [
+          ativoSelecionado.coordenadas.latitude,
+          ativoSelecionado.coordenadas.longitude,
+        ],
+        12,
+        { animate: true, duration: 1 }
+      );
+    }
+  };
+
+  const fecharPainel = () => {
+    setAtivoSelecionado(null);
+    setPainelAberto(false);
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case "NORMAL":
@@ -380,18 +368,8 @@ export function MapaBrasil({
   };
 
   return (
-    <Card className="p-6 h-full">
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h3 className="text-lg font-semibold text-foreground mb-1">
-            Mapa dos Ativos
-          </h3>
-          <p className="text-sm text-muted-foreground">
-            {ativos.length} ativo{ativos.length !== 1 ? "s" : ""} monitorado
-            {ativos.length !== 1 ? "s" : ""}
-          </p>
-        </div>
-
+    <Card className="p-2 h-full relative z-0">
+      <div className="flex items-center justify-end mb-2">
         {/* Controles de Zoom */}
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={zoomIn} title="Zoom In">
@@ -417,34 +395,172 @@ export function MapaBrasil({
       </div>
 
       <div className="relative">
-        {/* Contêiner do Mapa */}
+        {/* Layout 2/3 + 1/3 com Mapa e Sinóptico */}
         <div
-          ref={mapRef}
-          className="w-full h-96 rounded-lg border border-border bg-muted"
-          style={{ minHeight: "400px" }}
+          className={`grid gap-4 transition-all duration-300 ${
+            painelAberto ? "grid-cols-1 lg:grid-cols-3" : "grid-cols-1"
+          }`}
         >
-          {/* Fallback se o Leaflet não carregar */}
-          {typeof window === "undefined" || !(window as any).L ? (
-            <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-              <div className="text-center">
-                <div className="mb-2">🗺️ Carregando mapa...</div>
-                <div className="text-sm">
-                  Focando nos estados com instalações
+          {/* ÁREA DO MAPA - 2/3 quando painel aberto */}
+          <div className={painelAberto ? "lg:col-span-2" : "col-span-1"}>
+            <div
+              ref={mapRef}
+              className="w-full h-96 rounded-lg border border-border bg-muted relative z-0"
+              style={{ minHeight: "420px" }}
+            >
+              {/* Fallback se o Leaflet não carregar */}
+              {typeof window === "undefined" || !(window as any).L ? (
+                <div className="w-full h-full flex items-center justify-center text-muted-foreground">
+                  <div className="text-center">
+                    <div className="mb-2">🗺️ Carregando mapa...</div>
+                    <div className="text-sm">
+                      Focando nos estados com instalações
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          {/* PAINEL SINÓPTICO LATERAL - 1/3 da tela */}
+          {painelAberto && ativoSelecionado && (
+            <div className="lg:col-span-1">
+              <div
+                className="h-96 bg-slate-50 dark:bg-gray-700/50 rounded-lg border border-border overflow-hidden flex flex-col"
+                style={{ minHeight: "420px" }}
+              >
+                {/* Header do Painel */}
+                <div className="flex items-center justify-between p-3 border-b bg-white dark:bg-gray-800 flex-shrink-0">
+                  <div className="flex items-center gap-2">
+                    <Activity className="h-4 w-4 text-blue-600" />
+                    <h3 className="font-semibold text-slate-800 dark:text-gray-200 text-sm">
+                      {ativoSelecionado.nome}
+                    </h3>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={fecharPainel}
+                    className="h-6 w-6 p-0 text-slate-500 hover:text-slate-700"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+
+                {/* Conteúdo Simples - Ocupa toda altura restante */}
+                <div className="flex-1 p-4 space-y-4 flex flex-col justify-center">
+                  {/* Tipo e Status */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <span className="text-xs font-medium text-slate-600 dark:text-gray-400 uppercase">
+                        Tipo:
+                      </span>
+                      <p className="text-sm font-medium text-slate-800 dark:text-gray-200">
+                        {ativoSelecionado.tipo}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-xs font-medium text-slate-600 dark:text-gray-400 uppercase">
+                        Status:
+                      </span>
+                      <Badge
+                        variant={
+                          ativoSelecionado.status === "NORMAL"
+                            ? "default"
+                            : "destructive"
+                        }
+                        className="text-xs"
+                      >
+                        {ativoSelecionado.status}
+                      </Badge>
+                    </div>
+                  </div>
+
+                  {/* Localização */}
+                  <div>
+                    <span className="text-xs font-medium text-slate-600 dark:text-gray-400 uppercase">
+                      Localização:
+                    </span>
+                    <p className="text-sm text-slate-700 dark:text-gray-300">
+                      {ativoSelecionado.cidade}, {ativoSelecionado.estado}
+                    </p>
+                  </div>
+
+                  {/* Potência Nominal e Geração Atual */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <span className="text-xs font-medium text-slate-600 dark:text-gray-400 uppercase">
+                        Potência Nominal:
+                      </span>
+                      <p className="text-sm font-medium text-blue-600">
+                        {ativoSelecionado.potenciaNominal} MW
+                      </p>
+                    </div>
+                    {ativoSelecionado.potenciaAtual !== undefined && (
+                      <div>
+                        <span className="text-xs font-medium text-slate-600 dark:text-gray-400 uppercase">
+                          Geração Atual:
+                        </span>
+                        <p className="text-sm font-medium text-green-600">
+                          {ativoSelecionado.potenciaAtual} MW
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Eficiência e Disponibilidade */}
+                  {(ativoSelecionado.eficiencia ||
+                    ativoSelecionado.disponibilidade) && (
+                    <div className="grid grid-cols-2 gap-3">
+                      {ativoSelecionado.eficiencia !== undefined && (
+                        <div>
+                          <span className="text-xs font-medium text-slate-600 dark:text-gray-400 uppercase">
+                            Eficiência:
+                          </span>
+                          <p className="text-sm font-medium text-slate-700 dark:text-gray-300">
+                            {ativoSelecionado.eficiencia}%
+                          </p>
+                        </div>
+                      )}
+                      {ativoSelecionado.disponibilidade && (
+                        <div>
+                          <span className="text-xs font-medium text-slate-600 dark:text-gray-400 uppercase">
+                            Disponibilidade:
+                          </span>
+                          <p className="text-sm font-medium text-slate-700 dark:text-gray-300">
+                            {ativoSelecionado.disponibilidade}%
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Última Atualização */}
+                  <div>
+                    <span className="text-xs font-medium text-slate-600 dark:text-gray-400 uppercase">
+                      Última Atualização:
+                    </span>
+                    <p className="text-xs text-slate-500 dark:text-gray-500">
+                      {new Date(
+                        ativoSelecionado.ultimaAtualizacao
+                      ).toLocaleString("pt-BR")}
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
-          ) : null}
+          )}
         </div>
 
         {/* Indicador de atualização */}
         {atualizacaoTempo && (
-          <div className="absolute top-3 left-3 bg-background/90 backdrop-blur-sm border rounded-lg px-3 py-1 text-xs text-muted-foreground">
+          <div className="absolute top-3 left-3 bg-background/90 backdrop-blur-sm border rounded-lg px-3 py-1 text-xs text-muted-foreground z-10">
             ⟳ Atualiza a cada {atualizacaoTempo}s
           </div>
         )}
 
         {/* Legenda */}
-        <div className="mt-4 flex flex-wrap items-center justify-center gap-4 text-sm">
+        <div className="mt-2 flex flex-wrap items-center justify-center gap-4 text-sm">
           <div className="flex items-center gap-2">
             <div
               className="w-3 h-3 rounded-full"
@@ -487,24 +603,6 @@ export function MapaBrasil({
           .custom-marker-coa {
             background: transparent !important;
             border: none !important;
-          }
-          
-          .custom-popup-coa {
-            border-radius: 8px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.15);
-          }
-          
-          .custom-popup-coa .leaflet-popup-content-wrapper {
-            border-radius: 8px;
-            padding: 0;
-          }
-          
-          .custom-popup-coa .leaflet-popup-content {
-            margin: 16px;
-          }
-          
-          .custom-popup-coa .leaflet-popup-tip {
-            background: white;
           }
         `}</style>
     </Card>

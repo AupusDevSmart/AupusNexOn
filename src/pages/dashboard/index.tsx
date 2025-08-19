@@ -1,7 +1,6 @@
 // src/pages/dashboard/index.tsx - NOVO COA
 import { Layout } from "@/components/common/Layout";
 import { TitleCard } from "@/components/common/title-card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -17,23 +16,12 @@ import {
   Activity,
   AlertTriangle,
   Battery,
-  FileText,
   TrendingUp,
   X,
   Zap,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  CartesianGrid,
-  Legend,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
 
 // Dados dos clientes e suas unidades
 const clientesUnidades = [
@@ -330,6 +318,7 @@ export function DashboardPage() {
   const navigate = useNavigate();
   const [clienteSelecionado, setClienteSelecionado] = useState<string>("todos");
   const [unidadeSelecionada, setUnidadeSelecionada] = useState<string>("todas");
+  const [focoMapa, setFocoMapa] = useState<string | null>(null);
 
   const handleAtivoClick = (ativoId: string) => {
     console.log(`Navegando para sinóptico do ativo: ${ativoId}`);
@@ -363,66 +352,73 @@ export function DashboardPage() {
     return gerarDadosPerformance(ativosFiltrados);
   }, [ativosFiltrados]);
 
-  // Gerar dados de performance por unidade/cidade
-  const performancePorUnidade = useMemo(() => {
-    if (ativosFiltrados.length === 0) return [];
-
-    if (clienteSelecionado === "todos") {
-      // Performance por cidade quando todos estão selecionados
-      const cidadesAgrupadas = ativosFiltrados.reduce((acc, ativo) => {
-        const cidade = ativo.cidade;
-        if (!acc[cidade]) {
-          acc[cidade] = { geracao: 0, meta: 0, count: 0 };
-        }
-        acc[cidade].geracao += ativo.potenciaAtual || 0;
-        acc[cidade].meta += ativo.potenciaNominal * 0.85;
-        acc[cidade].count += 1;
-        return acc;
-      }, {} as Record<string, { geracao: number; meta: number; count: number }>);
-
-      return Object.entries(cidadesAgrupadas)
-        .map(([cidade, data]) => ({
-          regiao: cidade.length > 10 ? cidade.substring(0, 10) + "..." : cidade,
-          geracao: Number(data.geracao.toFixed(1)),
-          meta: Number(data.meta.toFixed(1)),
-        }))
-        .slice(0, 5);
-    } else {
-      // Performance por unidade quando cliente específico está selecionado
-      return ativosFiltrados
-        .map((ativo) => ({
-          regiao: ativo.nome
-            .replace(/^UFV\s|^Carga\s|^Subestação\s/, "")
-            .substring(0, 12),
-          geracao: Number((ativo.potenciaAtual || 0).toFixed(1)),
-          meta: Number((ativo.potenciaNominal * 0.85).toFixed(1)),
-        }))
-        .slice(0, 5);
+  // Determinar ativo focado no mapa
+  const ativoFocado = useMemo(() => {
+    // Se uma unidade específica está selecionada, focar nela
+    if (unidadeSelecionada !== "todas" && unidadeSelecionada !== "") {
+      return unidadeSelecionada;
     }
-  }, [ativosFiltrados, clienteSelecionado]);
+    return focoMapa;
+  }, [focoMapa, unidadeSelecionada]);
 
   // Reset unidade quando cliente muda
   const handleClienteChange = (clienteId: string) => {
     setClienteSelecionado(clienteId);
     setUnidadeSelecionada("todas");
+
+    // Se um cliente específico foi selecionado, focar no primeiro ativo
+    if (clienteId !== "todos") {
+      const ativosDoCliente = ativosNoBrasil.filter(
+        (ativo) => ativo.clienteId === clienteId
+      );
+      if (ativosDoCliente.length > 0) {
+        setFocoMapa(ativosDoCliente[0].id);
+      }
+    } else {
+      setFocoMapa(null);
+    }
+  };
+
+  // Handler para mudança de unidade com foco
+  const handleUnidadeChange = (unidadeId: string) => {
+    setUnidadeSelecionada(unidadeId);
+
+    // Se uma unidade específica foi selecionada, focar nela
+    if (unidadeId !== "todas" && unidadeId !== "") {
+      setFocoMapa(unidadeId);
+    } else {
+      // Se voltou para "todas", manter foco no primeiro do cliente
+      if (clienteSelecionado !== "todos") {
+        const ativosDoCliente = ativosNoBrasil.filter(
+          (ativo) => ativo.clienteId === clienteSelecionado
+        );
+        if (ativosDoCliente.length > 0) {
+          setFocoMapa(ativosDoCliente[0].id);
+        }
+      } else {
+        setFocoMapa(null);
+      }
+    }
   };
 
   // Limpar filtros
   const limparFiltros = () => {
     setClienteSelecionado("todos");
     setUnidadeSelecionada("todas");
+    setFocoMapa(null);
   };
 
   return (
     <Layout>
       <Layout.Main>
-        <div className="min-h-screen">
+        <div className="min-h-screen w-full">
           <div className="max-h-[calc(100vh-4rem)] overflow-y-auto">
-            <div className="flex flex-col gap-6 p-6">
+            <div className="flex flex-col gap-2 p-3">
               <TitleCard title="Centro de Operação de Ativos (COA)" />
 
-              {/* Cards de Indicadores Principais - DADOS FILTRADOS */}
+              {/* Cards de Indicadores Principais - 4 ESPECÍFICOS SOLICITADOS */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {/* 1. Potência Total Monitorada */}
                 <Card className="p-4">
                   <div className="flex items-center justify-between">
                     <div>
@@ -435,194 +431,99 @@ export function DashboardPage() {
                           .toFixed(1)}{" "}
                         MW
                       </p>
-                      <p className="text-xs text-green-600">
+                      <p className="text-xs text-blue-600">
                         {ativosFiltrados.length} ativo
                         {ativosFiltrados.length !== 1 ? "s" : ""}
                       </p>
                     </div>
-                    <Zap className="h-6 w-6 text-yellow-500" />
+                    <Zap className="h-6 w-6 text-blue-500" />
                   </div>
                 </Card>
 
+                {/* 2. Carga Total Monitorada */}
                 <Card className="p-4">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-xs text-gray-500 dark:text-gray-400">
-                        Geração Atual
+                        Carga Total
                       </p>
                       <p className="text-xl font-bold">
                         {ativosFiltrados
-                          .reduce((acc, a) => acc + (a.potenciaAtual || 0), 0)
+                          .filter((a) => a.tipo === "CARGA")
+                          .reduce((acc, a) => acc + a.potenciaNominal, 0)
                           .toFixed(1)}{" "}
                         MW
                       </p>
-                      <p className="text-xs text-blue-600">
-                        {ativosFiltrados.length > 0
-                          ? (
-                              (ativosFiltrados.reduce(
-                                (acc, a) => acc + (a.potenciaAtual || 0),
-                                0
-                              ) /
-                                ativosFiltrados.reduce(
-                                  (acc, a) => acc + a.potenciaNominal,
-                                  0
-                                )) *
-                              100
-                            ).toFixed(1)
-                          : 0}
-                        % da capacidade
+                      <p className="text-xs text-green-600">
+                        {
+                          ativosFiltrados.filter((a) => a.tipo === "CARGA")
+                            .length
+                        }{" "}
+                        cargas ativas
                       </p>
                     </div>
                     <Battery className="h-6 w-6 text-green-500" />
                   </div>
                 </Card>
 
+                {/* 3. Energia Acumulada */}
                 <Card className="p-4">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-xs text-gray-500 dark:text-gray-400">
-                        Eficiência Média
+                        Energia Acumulada
                       </p>
-                      <p className="text-xl font-bold text-green-600">
-                        {ativosFiltrados.length > 0
-                          ? (
-                              ativosFiltrados
-                                .filter((a) => a.eficiencia)
-                                .reduce(
-                                  (acc, a) => acc + (a.eficiencia || 0),
-                                  0
-                                ) /
-                              ativosFiltrados.filter((a) => a.eficiencia).length
-                            ).toFixed(1)
-                          : 0}
-                        %
+                      <p className="text-xl font-bold">
+                        {(
+                          (ativosFiltrados.reduce(
+                            (acc, a) => acc + (a.potenciaAtual || 0),
+                            0
+                          ) *
+                            24 *
+                            30) /
+                          1000
+                        ).toFixed(1)}{" "}
+                        GWh
                       </p>
-                      <p className="text-xs text-green-600">Filtro aplicado</p>
+                      <p className="text-xs text-purple-600">
+                        Estimativa mensal
+                      </p>
                     </div>
-                    <TrendingUp className="h-6 w-6 text-green-500" />
+                    <TrendingUp className="h-6 w-6 text-purple-500" />
                   </div>
                 </Card>
 
+                {/* 4. Contadores (Trips, Alarmes, Urgências, OS abertas) */}
                 <Card className="p-4">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-xs text-gray-500 dark:text-gray-400">
-                        Disponibilidade
+                        Total de Eventos
                       </p>
-                      <p className="text-xl font-bold text-blue-600">
-                        {ativosFiltrados.length > 0
-                          ? (
-                              ativosFiltrados
-                                .filter((a) => a.disponibilidade)
-                                .reduce(
-                                  (acc, a) => acc + (a.disponibilidade || 0),
-                                  0
-                                ) /
-                              ativosFiltrados.filter((a) => a.disponibilidade)
-                                .length
-                            ).toFixed(1)
-                          : 0}
-                        %
-                      </p>
-                      <p className="text-xs text-blue-600">Média do filtro</p>
-                    </div>
-                    <Activity className="h-6 w-6 text-blue-500" />
-                  </div>
-                </Card>
-              </div>
-
-              {/* Cards de Status e Alertas - DADOS FILTRADOS */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <Card className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        Alarmes Ativos
-                      </p>
-                      <p className="text-xl font-bold text-yellow-600">
-                        {
+                      <p className="text-xl font-bold">
+                        {ativosFiltrados.filter((a) => a.status === "TRIP")
+                          .length +
                           ativosFiltrados.filter((a) => a.status === "ALARME")
-                            .length
-                        }
+                            .length +
+                          ativosFiltrados.filter((a) => a.status === "URGENCIA")
+                            .length +
+                          3}{" "}
+                        {/* 3 representa OS abertas mockadas */}
                       </p>
-                      <p className="text-xs text-muted-foreground">
-                        No filtro atual
-                      </p>
-                    </div>
-                    <AlertTriangle className="h-6 w-6 text-yellow-500" />
-                  </div>
-                </Card>
-
-                <Card className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        Ativos Online
-                      </p>
-                      <p className="text-xl font-bold text-green-600">
-                        {
-                          ativosFiltrados.filter((a) => a.status !== "TRIP")
-                            .length
-                        }
-                        /{ativosFiltrados.length}
-                      </p>
-                      <p className="text-xs text-green-600">
-                        {ativosFiltrados.length > 0
-                          ? (
-                              (ativosFiltrados.filter(
-                                (a) => a.status !== "TRIP"
-                              ).length /
-                                ativosFiltrados.length) *
-                              100
-                            ).toFixed(0)
-                          : 0}
-                        % disponível
-                      </p>
-                    </div>
-                    <FileText className="h-6 w-6 text-green-500" />
-                  </div>
-                </Card>
-
-                <Card className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        Status Crítico
-                      </p>
-                      <p className="text-xl font-bold text-red-600">
-                        {
-                          ativosFiltrados.filter((a) =>
-                            ["URGENCIA", "TRIP"].includes(a.status)
-                          ).length
-                        }
-                      </p>
-                      <p className="text-xs text-red-600">
+                      <p className="text-xs text-amber-600">
                         {
                           ativosFiltrados.filter((a) => a.status === "TRIP")
                             .length
                         }{" "}
-                        em TRIP
+                        trips,{" "}
+                        {
+                          ativosFiltrados.filter((a) => a.status === "ALARME")
+                            .length
+                        }{" "}
+                        alarmes, 3 OS
                       </p>
                     </div>
-                    <AlertTriangle className="h-6 w-6 text-red-500" />
-                  </div>
-                </Card>
-
-                <Card className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        Última Atualização
-                      </p>
-                      <p className="text-xl font-bold text-blue-600">
-                        {new Date().toLocaleTimeString("pt-BR", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </p>
-                      <p className="text-xs text-blue-600">Tempo real</p>
-                    </div>
-                    <Activity className="h-6 w-6 text-blue-500" />
+                    <AlertTriangle className="h-6 w-6 text-amber-500" />
                   </div>
                 </Card>
               </div>
@@ -675,7 +576,7 @@ export function DashboardPage() {
                           </Label>
                           <Select
                             value={unidadeSelecionada}
-                            onValueChange={setUnidadeSelecionada}
+                            onValueChange={handleUnidadeChange}
                             disabled={clienteSelecionado === "todos"}
                           >
                             <SelectTrigger className="w-48 h-8">
@@ -735,223 +636,14 @@ export function DashboardPage() {
 
                   <CardContent>
                     <MapaBrasil
-                      ativos={ativosNoBrasil} // Sempre todos os ativos no mapa
+                      ativos={ativosNoBrasil}
                       onAtivoClick={handleAtivoClick}
                       atualizacaoTempo={5}
+                      focoAtivo={ativoFocado}
                     />
                   </CardContent>
                 </Card>
               </div>
-
-              {/* Gráfico de Performance das Últimas 24h - DADOS FILTRADOS */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <TrendingUp className="h-5 w-5 text-green-500" />
-                    Performance Últimas 24h -{" "}
-                    {clienteSelecionado === "todos"
-                      ? "Geral"
-                      : clientesUnidades.find(
-                          (c) => c.id === clienteSelecionado
-                        )?.nome || "Seleção"}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ResponsiveContainer width="100%" height={280}>
-                    <LineChart data={dadosPerformance}>
-                      <CartesianGrid
-                        strokeDasharray="3 3"
-                        className="opacity-30"
-                      />
-                      <XAxis
-                        dataKey="hora"
-                        fontSize={12}
-                        interval="preserveStartEnd"
-                      />
-                      <YAxis
-                        fontSize={12}
-                        label={{
-                          value: "MW",
-                          angle: -90,
-                          position: "insideLeft",
-                        }}
-                      />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: "var(--background)",
-                          border: "1px solid var(--border)",
-                          borderRadius: "6px",
-                        }}
-                        formatter={(value, name) => [
-                          `${Number(value).toFixed(1)} MW`,
-                          name === "geracao"
-                            ? "Geração"
-                            : name === "consumo"
-                            ? "Consumo"
-                            : "Meta",
-                        ]}
-                      />
-                      <Legend />
-                      <Line
-                        type="monotone"
-                        dataKey="geracao"
-                        stroke="#22c55e"
-                        strokeWidth={2}
-                        name="Geração"
-                        dot={false}
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="consumo"
-                        stroke="#3b82f6"
-                        strokeWidth={2}
-                        name="Consumo"
-                        dot={false}
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="meta"
-                        stroke="#ef4444"
-                        strokeWidth={2}
-                        strokeDasharray="5 5"
-                        name="Meta"
-                        dot={false}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
-
-              {/* Tabela de Cargas - DADOS GLOBAIS */}
-              <Card className="p-6">
-                <h3 className="text-lg font-semibold mb-4">
-                  Cargas Monitoradas em Goiás
-                </h3>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b">
-                        <th className="text-left py-2">Nome</th>
-                        <th className="text-left py-2">Cidade</th>
-                        <th className="text-right py-2">Consumo</th>
-                        <th className="text-right py-2">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr className="border-b hover:bg-muted/50">
-                        <td className="py-2">Indústria Metalúrgica GO</td>
-                        <td className="py-2">Goiânia</td>
-                        <td className="text-right py-2">11.8 MW</td>
-                        <td className="text-right py-2">
-                          <Badge
-                            variant="outline"
-                            className="bg-green-100 text-green-800 text-xs"
-                          >
-                            Normal
-                          </Badge>
-                        </td>
-                      </tr>
-                      <tr className="border-b hover:bg-muted/50">
-                        <td className="py-2">Shopping Aparecida Center</td>
-                        <td className="py-2">Aparecida de Goiânia</td>
-                        <td className="text-right py-2">7.1 MW</td>
-                        <td className="text-right py-2">
-                          <Badge
-                            variant="outline"
-                            className="bg-yellow-100 text-yellow-800 text-xs"
-                          >
-                            Alerta
-                          </Badge>
-                        </td>
-                      </tr>
-                      <tr className="border-b hover:bg-muted/50">
-                        <td className="py-2">Hospital Regional Anápolis</td>
-                        <td className="py-2">Anápolis</td>
-                        <td className="text-right py-2">5.2 MW</td>
-                        <td className="text-right py-2">
-                          <Badge
-                            variant="outline"
-                            className="bg-green-100 text-green-800 text-xs"
-                          >
-                            Normal
-                          </Badge>
-                        </td>
-                      </tr>
-                      <tr className="border-b hover:bg-muted/50">
-                        <td className="py-2">
-                          Distrito Industrial Senador Canedo
-                        </td>
-                        <td className="py-2">Senador Canedo</td>
-                        <td className="text-right py-2">9.5 MW</td>
-                        <td className="text-right py-2">
-                          <Badge
-                            variant="outline"
-                            className="bg-green-100 text-green-800 text-xs"
-                          >
-                            Normal
-                          </Badge>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </Card>
-
-              {/* Eventos Recentes - DADOS GLOBAIS */}
-              <Card className="p-6">
-                <h3 className="text-lg font-semibold mb-4">
-                  Eventos Recentes - Goiás
-                </h3>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between py-2 border-b">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-                      <span className="text-sm">
-                        UFV Catalão - Sistema em TRIP - Técnico despachado
-                      </span>
-                    </div>
-                    <span className="text-xs text-gray-500">11:15</span>
-                  </div>
-                  <div className="flex items-center justify-between py-2 border-b">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                      <span className="text-sm">
-                        UFV Goiânia Central - Manutenção preventiva iniciada
-                      </span>
-                    </div>
-                    <span className="text-xs text-gray-500">10:30</span>
-                  </div>
-                  <div className="flex items-center justify-between py-2 border-b">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                      <span className="text-sm">
-                        UFV Rio Verde - Performance acima da meta por 48h
-                        consecutivas
-                      </span>
-                    </div>
-                    <span className="text-xs text-gray-500">09:45</span>
-                  </div>
-                  <div className="flex items-center justify-between py-2 border-b">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
-                      <span className="text-sm">
-                        Subestação Anápolis Norte - Temperatura elevada
-                        detectada
-                      </span>
-                    </div>
-                    <span className="text-xs text-gray-500">08:22</span>
-                  </div>
-                  <div className="flex items-center justify-between py-2 border-b">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
-                      <span className="text-sm">
-                        Carga Comercial Aparecida - Consumo acima do normal
-                      </span>
-                    </div>
-                    <span className="text-xs text-gray-500">07:58</span>
-                  </div>
-                </div>
-              </Card>
             </div>
           </div>
         </div>

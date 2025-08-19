@@ -1,7 +1,6 @@
 // src/features/usinas/components/mapa-usinas.tsx
 import { Card } from "@/components/ui/card";
 import { useEffect, useRef } from "react";
-
 interface Usina {
   id: number;
   nome: string;

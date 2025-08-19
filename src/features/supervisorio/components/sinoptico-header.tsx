@@ -1,5 +1,4 @@
 // src/features/supervisorio/components/sinoptico-header.tsx
-
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import type { AtivoData, StatusRede } from "@/types/dtos/sinoptico-ativo";
@@ -60,9 +59,9 @@ export function SinopticoHeader({ ativo, statusRede }: SinopticoHeaderProps) {
   };
 
   return (
-    <Card className="mb-6">
+    <Card className="mb-6 w-full">
       <CardContent className="p-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 w-full">
           {/* Status da Rede */}
           <div className="flex items-center space-x-3">
             <div className="flex-shrink-0">{getStatusRedeIcon()}</div>

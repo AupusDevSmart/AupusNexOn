@@ -1,5 +1,4 @@
 // src/features/supervisorio/components/sinoptico-graficos.tsx
-
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DadosGrafico } from "@/types/dtos/sinoptico-ativo";
@@ -66,7 +65,7 @@ export function SinopticoGraficos({
   const dadosFormatadosTensao = formatarDadosGrafico(dadosTensao);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 w-full">
       {/* Gráfico de Potência */}
       <Card>
         <CardHeader>

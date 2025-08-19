@@ -63,7 +63,6 @@ interface FluxoCaixaDetailed {
 }
 
 interface FluxoCaixaTableProps {
-  // Future props for API integration
   apiEndpoint?: string;
   defaultYear?: string;
   onExport?: (data: FluxoCaixaDetailed[], filters: DateFilters) => void;
@@ -82,13 +81,7 @@ interface SortConfig {
 
 // Mock API function - replace with real API call
 const fetchFluxoCaixaData = async (year: string): Promise<FluxoCaixaDetailed[]> => {
-  // Simulate API loading time
   await new Promise(resolve => setTimeout(resolve, 1000));
-  
-  // In the future, replace this with:
-  // const response = await fetch(`/api/fluxo-caixa/${year}`);
-  // return response.json();
-  
   return mockApiData;
 };
 
@@ -172,6 +165,13 @@ export function FluxoCaixaTable({
     return 0;
   });
 
+  // Ordenar os dados para garantir a sequência correta
+  const orderedData = sortedData.sort((a, b) => {
+    const order = ['saldo-inicial', 'entrada', 'saida', 'resultado', 'saldo-final'];
+    return order.indexOf(a.tipo) - order.indexOf(b.tipo);
+  });
+
+  // Funções auxiliares definidas após orderedData
   const formatCurrency = (value: number): string => {
     if (value === 0) return 'R$ -';
     const formatted = Math.abs(value).toLocaleString('pt-BR', { 
@@ -179,6 +179,51 @@ export function FluxoCaixaTable({
       maximumFractionDigits: 2 
     });
     return value < 0 ? `-R$ ${formatted}` : `R$ ${formatted}`;
+  };
+
+  const calculateTotal = (key: keyof FluxoCaixaDetailed) => {
+    return orderedData.reduce((sum, row) => {
+      const value = row[key] as number;
+      return sum + (value || 0);
+    }, 0);
+  };
+
+  const getResponsiveWidths = () => {
+    const numMonths = filteredMonths.length;
+    const baseModuleWidth = 200;
+    const minMonthWidth = 90;
+    
+    if (numMonths <= 6) {
+      return {
+        moduleWidth: 240,
+        monthWidth: 130,
+        totalWidth: 240 + (numMonths * 130)
+      };
+    }
+    else if (numMonths <= 9) {
+      return {
+        moduleWidth: 220,
+        monthWidth: 110,
+        totalWidth: 220 + (numMonths * 110)
+      };
+    }
+    else {
+      return {
+        moduleWidth: baseModuleWidth,
+        monthWidth: minMonthWidth,
+        totalWidth: baseModuleWidth + (numMonths * minMonthWidth)
+      };
+    }
+  };
+
+  const { moduleWidth, monthWidth, totalWidth } = getResponsiveWidths();
+
+  const handleExport = (): void => {
+    if (onExport) {
+      onExport(orderedData, dateFilters);
+    } else {
+      console.log('Exportando dados:', { data: orderedData, filters: dateFilters });
+    }
   };
 
   const getValueIcon = (value: number, tipo: string) => {
@@ -246,28 +291,6 @@ export function FluxoCaixaTable({
     }
   };
 
-  // Ordenar os dados para garantir a sequência correta
-  const orderedData = sortedData.sort((a, b) => {
-    const order = ['saldo-inicial', 'entrada', 'saida', 'resultado', 'saldo-final'];
-    return order.indexOf(a.tipo) - order.indexOf(b.tipo);
-  });
-
-  const handleExport = (): void => {
-    if (onExport) {
-      onExport(orderedData, dateFilters);
-    } else {
-      // Default export behavior
-      console.log('Exportando dados:', { data: orderedData, filters: dateFilters });
-    }
-  };
-
-  const calculateTotal = (key: keyof FluxoCaixaDetailed) => {
-    return orderedData.reduce((sum, row) => {
-      const value = row[key] as number;
-      return sum + (value || 0);
-    }, 0);
-  };
-
   // Loading state
   if (loading) {
     return (
@@ -305,7 +328,7 @@ export function FluxoCaixaTable({
   }
 
   return (
-    <div className="w-full space-y-6">
+    <div className="w-full max-w-full space-y-6">
       {/* Filtros de Data */}
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-slate-200 dark:border-gray-700 p-6">
         <div className="flex items-center space-x-4 mb-4">
@@ -366,84 +389,95 @@ export function FluxoCaixaTable({
         </div>
       </div>
 
-      {/* Tabela Principal */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-slate-200 dark:border-gray-700 overflow-hidden">
+      {/* Tabela Principal - Container com overflow controlado */}
+      <div className="w-full bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-slate-200 dark:border-gray-700 overflow-hidden">
         {/* Header */}
         <div className="bg-gradient-to-r from-slate-900 to-slate-800 dark:from-gray-900 dark:to-gray-800 px-4 sm:px-6 py-4 sm:py-6">
           <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
             <div className="w-10 h-10 sm:w-12 sm:h-12 bg-white/10 rounded-xl flex items-center justify-center backdrop-blur-sm">
               <DollarSign className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
             </div>
-            <div className="flex-1">
-              <h2 className="text-xl sm:text-2xl font-bold text-white">
+            <div className="flex-1 min-w-0">
+              <h2 className="text-xl sm:text-2xl font-bold text-white truncate">
                 Fluxo de Caixa {dateFilters.year}
               </h2>
-              <p className="text-slate-300 dark:text-gray-300 text-sm mt-1">
+              <p className="text-slate-300 dark:text-gray-300 text-sm mt-1 truncate">
                 {filteredLabels[0]} - {filteredLabels[filteredLabels.length - 1]}
               </p>
             </div>
           </div>
         </div>
 
-        {/* Tabela */}
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[800px]">
-            <thead>
-              <tr className="bg-slate-100/80 dark:bg-gray-700/50 border-b-2 border-slate-200 dark:border-gray-600">
-                <th className="text-left py-3 sm:py-5 px-4 sm:px-6 font-semibold text-slate-700 dark:text-gray-300 min-w-[200px] sm:min-w-[250px]">
-                  <button 
-                    className="flex items-center space-x-2 hover:text-slate-900 dark:hover:text-gray-100 transition-colors group"
-                    onClick={() => handleSort('modulo')}
-                  >
-                    <BarChart3 className="h-4 w-4" />
-                    <span className="text-sm sm:text-base">Módulo</span>
-                    <ArrowUpDown className="h-4 w-4 opacity-50 group-hover:opacity-100 transition-opacity" />
-                  </button>
-                </th>
-                {filteredLabels.map((mes, index) => (
-                  <th key={mes} className="text-center py-3 sm:py-5 px-2 sm:px-4 font-semibold text-slate-700 dark:text-gray-300 min-w-[100px] sm:min-w-[130px]">
-                    <div className="flex flex-col items-center space-y-1 sm:space-y-2">
-                      <span className="text-sm sm:text-base">{mes}</span>
-                      <div className="text-xs text-slate-500 dark:text-gray-400 font-normal bg-slate-200/50 dark:bg-gray-600/50 px-1 sm:px-2 py-1 rounded-md whitespace-nowrap">
-                        {formatCurrency(calculateTotal(filteredMonths[index]))}
-                      </div>
-                    </div>
+        {/* Container da Tabela com overflow rigorosamente controlado */}
+        <div className="w-full overflow-x-auto" style={{ maxWidth: '100%' }}>
+          <div style={{ width: `${totalWidth}px`, maxWidth: 'none' }}>
+            <table className="w-full table-fixed border-collapse">
+              <thead>
+                <tr className="bg-slate-100/80 dark:bg-gray-700/50 border-b-2 border-slate-200 dark:border-gray-600">
+                  <th className="text-left py-3 sm:py-5 px-4 sm:px-6 font-semibold text-slate-700 dark:text-gray-300" style={{ width: `${moduleWidth}px` }}>
+                    <button 
+                      className="flex items-center space-x-2 hover:text-slate-900 dark:hover:text-gray-100 transition-colors group"
+                      onClick={() => handleSort('modulo')}
+                    >
+                      <BarChart3 className="h-4 w-4 flex-shrink-0" />
+                      <span className="text-sm sm:text-base truncate">Módulo</span>
+                      <ArrowUpDown className="h-4 w-4 opacity-50 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+                    </button>
                   </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {orderedData.map((row, index) => (
-                <tr key={index} className={getRowClass(row.tipo, index)}>
-                  <td className="py-3 sm:py-4 px-4 sm:px-6 font-medium">
-                    <div className="flex items-center space-x-2 sm:space-x-3">
-                      <div className={getCellTextClass(row.tipo)}>
-                        {getModuleIcon(row.tipo)}
-                      </div>
-                      <span className={`${getCellTextClass(row.tipo)} text-sm sm:text-base truncate`}>
-                        {row.modulo}
-                      </span>
-                    </div>
-                  </td>
-                  {filteredMonths.map((mes) => {
-                    const value = row[mes] as number || 0;
-                    return (
-                      <td key={mes} className="text-center py-3 sm:py-4 px-2 sm:px-4">
-                        <div className="flex flex-col sm:flex-row items-center justify-center space-y-1 sm:space-y-0 sm:space-x-2">
-                          <div className="sm:inline hidden">
-                            {getValueIcon(value, row.tipo)}
-                          </div>
-                          <span className={`${getCellTextClass(row.tipo, value)} text-xs sm:text-sm whitespace-nowrap`}>
-                            {formatCurrency(value)}
-                          </span>
+                  {filteredLabels.map((mes, index) => (
+                    <th key={mes} className="text-center py-3 sm:py-5 px-2 font-semibold text-slate-700 dark:text-gray-300" style={{ width: `${monthWidth}px` }}>
+                      <div className="flex flex-col items-center space-y-1 sm:space-y-2">
+                        <span className="text-sm sm:text-base">{mes}</span>
+                        <div className="text-xs text-slate-500 dark:text-gray-400 font-normal bg-slate-200/50 dark:bg-gray-600/50 px-1 py-1 rounded-md truncate max-w-full" title={formatCurrency(calculateTotal(filteredMonths[index]))}>
+                          {filteredMonths.length > 9 ? 
+                            formatCurrency(calculateTotal(filteredMonths[index])).replace('R$ ', '').replace(',00', '') 
+                            : formatCurrency(calculateTotal(filteredMonths[index]))
+                          }
                         </div>
-                      </td>
-                    );
-                  })}
+                      </div>
+                    </th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {orderedData.map((row, index) => (
+                  <tr key={index} className={getRowClass(row.tipo, index)}>
+                    <td className="py-3 sm:py-4 px-4 sm:px-6 font-medium" style={{ width: `${moduleWidth}px` }}>
+                      <div className="flex items-center space-x-2 sm:space-x-3 min-w-0">
+                        <div className={`${getCellTextClass(row.tipo)} flex-shrink-0`}>
+                          {getModuleIcon(row.tipo)}
+                        </div>
+                        <span className={`${getCellTextClass(row.tipo)} text-sm sm:text-base truncate flex-1 min-w-0`} title={row.modulo}>
+                          {row.modulo}
+                        </span>
+                      </div>
+                    </td>
+                    {filteredMonths.map((mes) => {
+                      const value = row[mes] as number || 0;
+                      return (
+                        <td key={mes} className="text-center py-3 sm:py-4 px-2" style={{ width: `${monthWidth}px` }}>
+                          <div className="flex flex-col items-center justify-center space-y-1 min-w-0">
+                            <div className="sm:inline hidden flex-shrink-0">
+                              {getValueIcon(value, row.tipo)}
+                            </div>
+                            <span 
+                              className={`${getCellTextClass(row.tipo, value)} text-xs sm:text-sm truncate max-w-full`} 
+                              title={formatCurrency(value)}
+                            >
+                              {filteredMonths.length > 9 ? 
+                                formatCurrency(value).replace('R$ ', '').replace(',00', '') 
+                                : formatCurrency(value)
+                              }
+                            </span>
+                          </div>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
