@@ -3,8 +3,16 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Activity, RotateCcw, X, ZoomIn, ZoomOut } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Activity, Minus, Plus, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
+
 interface Ativo {
   id: string;
   nome: string;
@@ -32,17 +40,6 @@ interface MapaBrasilProps {
   focoAtivo?: string | null;
 }
 
-// Dados mock para gráficos
-const dadosGraficos24h = [
-  { hora: "00:00", potencia: 0, meta: 0 },
-  { hora: "06:00", potencia: 15, meta: 20 },
-  { hora: "09:00", potencia: 45, meta: 50 },
-  { hora: "12:00", potencia: 85, meta: 80 },
-  { hora: "15:00", potencia: 70, meta: 75 },
-  { hora: "18:00", potencia: 25, meta: 30 },
-  { hora: "21:00", potencia: 5, meta: 10 },
-];
-
 export function MapaBrasil({
   ativos,
   onAtivoClick,
@@ -52,10 +49,11 @@ export function MapaBrasil({
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
+  const navigate = useNavigate();
 
-  // Estados para o painel sinóptico
+  // Estados para o modal sinóptico
   const [ativoSelecionado, setAtivoSelecionado] = useState<Ativo | null>(null);
-  const [painelAberto, setPainelAberto] = useState(false);
+  const [modalAberto, setModalAberto] = useState(false);
 
   // Função para calcular o centro e zoom baseado nos ativos
   const calcularFocoInteligente = useCallback(() => {
@@ -138,7 +136,7 @@ export function MapaBrasil({
       const L = (window as any).L;
       const { center, zoom } = calcularFocoInteligente();
 
-      // Criar mapa com foco inteligente
+      // Criar mapa com foco inteligente - SEM controles padrão
       const map = L.map(mapRef.current, {
         zoomControl: false, // Removemos o controle padrão para usar nossos botões
         scrollWheelZoom: true,
@@ -263,10 +261,10 @@ export function MapaBrasil({
           { icon }
         ).addTo(map);
 
-        // Adicionar evento de clique para abrir painel sinóptico
+        // Adicionar evento de clique para abrir modal sinóptico
         marker.on("click", () => {
           setAtivoSelecionado(ativo);
-          setPainelAberto(true);
+          setModalAberto(true);
 
           // Centralizar mapa no ativo
           map.setView(
@@ -334,22 +332,9 @@ export function MapaBrasil({
     }
   };
 
-  const centralizarAtivo = () => {
-    if (ativoSelecionado && mapInstanceRef.current) {
-      mapInstanceRef.current.setView(
-        [
-          ativoSelecionado.coordenadas.latitude,
-          ativoSelecionado.coordenadas.longitude,
-        ],
-        12,
-        { animate: true, duration: 1 }
-      );
-    }
-  };
-
-  const fecharPainel = () => {
+  const fecharModal = () => {
     setAtivoSelecionado(null);
-    setPainelAberto(false);
+    setModalAberto(false);
   };
 
   const getStatusColor = (status: string) => {
@@ -368,229 +353,500 @@ export function MapaBrasil({
   };
 
   return (
-    <Card className="p-2 h-full relative z-0">
-      <div className="flex items-center justify-end mb-2">
-        {/* Controles de Zoom */}
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={zoomIn} title="Zoom In">
-            <ZoomIn className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={zoomOut}
-            title="Zoom Out"
+    <Card className="p-0 h-full relative z-0 border-0 shadow-none bg-transparent">
+      {/* Layout Principal: Mapa + Tabelas lado a lado */}
+      <div className="flex gap-1">
+        {/* LADO ESQUERDO: Mapa (50%) */}
+        <div className="w-1/2 relative">
+          <div
+            ref={mapRef}
+            className="w-full h-[600px] rounded-lg border border-border bg-muted relative z-0"
+            style={{ minHeight: "600px" }}
           >
-            <ZoomOut className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={resetView}
-            title="Reset View"
-          >
-            <RotateCcw className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
-
-      <div className="relative">
-        {/* Layout 2/3 + 1/3 com Mapa e Sinóptico */}
-        <div
-          className={`grid gap-4 transition-all duration-300 ${
-            painelAberto ? "grid-cols-1 lg:grid-cols-3" : "grid-cols-1"
-          }`}
-        >
-          {/* ÁREA DO MAPA - 2/3 quando painel aberto */}
-          <div className={painelAberto ? "lg:col-span-2" : "col-span-1"}>
-            <div
-              ref={mapRef}
-              className="w-full h-96 rounded-lg border border-border bg-muted relative z-0"
-              style={{ minHeight: "420px" }}
-            >
-              {/* Fallback se o Leaflet não carregar */}
-              {typeof window === "undefined" || !(window as any).L ? (
-                <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-                  <div className="text-center">
-                    <div className="mb-2">🗺️ Carregando mapa...</div>
-                    <div className="text-sm">
-                      Focando nos estados com instalações
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          </div>
-
-          {/* PAINEL SINÓPTICO LATERAL - 1/3 da tela */}
-          {painelAberto && ativoSelecionado && (
-            <div className="lg:col-span-1">
-              <div
-                className="h-96 bg-slate-50 dark:bg-gray-700/50 rounded-lg border border-border overflow-hidden flex flex-col"
-                style={{ minHeight: "420px" }}
-              >
-                {/* Header do Painel */}
-                <div className="flex items-center justify-between p-3 border-b bg-white dark:bg-gray-800 flex-shrink-0">
-                  <div className="flex items-center gap-2">
-                    <Activity className="h-4 w-4 text-blue-600" />
-                    <h3 className="font-semibold text-slate-800 dark:text-gray-200 text-sm">
-                      {ativoSelecionado.nome}
-                    </h3>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={fecharPainel}
-                    className="h-6 w-6 p-0 text-slate-500 hover:text-slate-700"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-
-                {/* Conteúdo Simples - Ocupa toda altura restante */}
-                <div className="flex-1 p-4 space-y-4 flex flex-col justify-center">
-                  {/* Tipo e Status */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <span className="text-xs font-medium text-slate-600 dark:text-gray-400 uppercase">
-                        Tipo:
-                      </span>
-                      <p className="text-sm font-medium text-slate-800 dark:text-gray-200">
-                        {ativoSelecionado.tipo}
-                      </p>
-                    </div>
-                    <div>
-                      <span className="text-xs font-medium text-slate-600 dark:text-gray-400 uppercase">
-                        Status:
-                      </span>
-                      <Badge
-                        variant={
-                          ativoSelecionado.status === "NORMAL"
-                            ? "default"
-                            : "destructive"
-                        }
-                        className="text-xs"
-                      >
-                        {ativoSelecionado.status}
-                      </Badge>
-                    </div>
-                  </div>
-
-                  {/* Localização */}
-                  <div>
-                    <span className="text-xs font-medium text-slate-600 dark:text-gray-400 uppercase">
-                      Localização:
-                    </span>
-                    <p className="text-sm text-slate-700 dark:text-gray-300">
-                      {ativoSelecionado.cidade}, {ativoSelecionado.estado}
-                    </p>
-                  </div>
-
-                  {/* Potência Nominal e Geração Atual */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <span className="text-xs font-medium text-slate-600 dark:text-gray-400 uppercase">
-                        Potência Nominal:
-                      </span>
-                      <p className="text-sm font-medium text-blue-600">
-                        {ativoSelecionado.potenciaNominal} MW
-                      </p>
-                    </div>
-                    {ativoSelecionado.potenciaAtual !== undefined && (
-                      <div>
-                        <span className="text-xs font-medium text-slate-600 dark:text-gray-400 uppercase">
-                          Geração Atual:
-                        </span>
-                        <p className="text-sm font-medium text-green-600">
-                          {ativoSelecionado.potenciaAtual} MW
-                        </p>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Eficiência e Disponibilidade */}
-                  {(ativoSelecionado.eficiencia ||
-                    ativoSelecionado.disponibilidade) && (
-                    <div className="grid grid-cols-2 gap-3">
-                      {ativoSelecionado.eficiencia !== undefined && (
-                        <div>
-                          <span className="text-xs font-medium text-slate-600 dark:text-gray-400 uppercase">
-                            Eficiência:
-                          </span>
-                          <p className="text-sm font-medium text-slate-700 dark:text-gray-300">
-                            {ativoSelecionado.eficiencia}%
-                          </p>
-                        </div>
-                      )}
-                      {ativoSelecionado.disponibilidade && (
-                        <div>
-                          <span className="text-xs font-medium text-slate-600 dark:text-gray-400 uppercase">
-                            Disponibilidade:
-                          </span>
-                          <p className="text-sm font-medium text-slate-700 dark:text-gray-300">
-                            {ativoSelecionado.disponibilidade}%
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Última Atualização */}
-                  <div>
-                    <span className="text-xs font-medium text-slate-600 dark:text-gray-400 uppercase">
-                      Última Atualização:
-                    </span>
-                    <p className="text-xs text-slate-500 dark:text-gray-500">
-                      {new Date(
-                        ativoSelecionado.ultimaAtualizacao
-                      ).toLocaleString("pt-BR")}
-                    </p>
+            {/* Fallback se o Leaflet não carregar */}
+            {typeof window === "undefined" || !(window as any).L ? (
+              <div className="w-full h-full flex items-center justify-center text-muted-foreground">
+                <div className="text-center">
+                  <div className="mb-2">🗺️ Carregando mapa...</div>
+                  <div className="text-sm">
+                    Focando nos estados com instalações
                   </div>
                 </div>
               </div>
+            ) : null}
+          </div>
+
+          {/* Indicador de atualização */}
+          {atualizacaoTempo && (
+            <div className="absolute top-1 left-1 bg-background/90 backdrop-blur-sm border rounded-lg px-2 py-1 text-xs text-muted-foreground z-10">
+              ⟳ Atualiza a cada {atualizacaoTempo}s
             </div>
           )}
+
+          {/* CONTROLES + LEGENDA - Agora horizontais abaixo do mapa */}
+          <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
+            {/* Legenda do mapa à esquerda */}
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <div className="flex items-center gap-1">
+                <div
+                  className="w-2 h-2 rounded-full"
+                  style={{ backgroundColor: getStatusColor("NORMAL") }}
+                ></div>
+                <span className="text-muted-foreground">Normal</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div
+                  className="w-2 h-2 rounded-full"
+                  style={{ backgroundColor: getStatusColor("ALARME") }}
+                ></div>
+                <span className="text-muted-foreground">Alarme</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div
+                  className="w-2 h-2 rounded-full"
+                  style={{ backgroundColor: getStatusColor("TRIP") }}
+                ></div>
+                <span className="text-muted-foreground">Trip</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div
+                  className="w-2 h-2 rounded-full"
+                  style={{ backgroundColor: getStatusColor("URGENCIA") }}
+                ></div>
+                <span className="text-muted-foreground">Urgência</span>
+              </div>
+            </div>
+
+            {/* Controles do mapa à direita - Horizontais */}
+            <div className="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={zoomIn}
+                className="w-6 h-6 p-0"
+                title="Aumentar zoom"
+              >
+                <Plus className="h-3 w-3" />
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={zoomOut}
+                className="w-6 h-6 p-0"
+                title="Diminuir zoom"
+              >
+                <Minus className="h-3 w-3" />
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={resetView}
+                className="w-6 h-6 p-0"
+                title="Recarregar mapa"
+              >
+                <RotateCcw className="h-3 w-3" />
+              </Button>
+            </div>
+          </div>
         </div>
 
-        {/* Indicador de atualização */}
-        {atualizacaoTempo && (
-          <div className="absolute top-3 left-3 bg-background/90 backdrop-blur-sm border rounded-lg px-3 py-1 text-xs text-muted-foreground z-10">
-            ⟳ Atualiza a cada {atualizacaoTempo}s
-          </div>
-        )}
+        {/* LADO DIREITO: Tabelas (50%) */}
+        <div className="w-1/2 space-y-2 h-[600px] flex flex-col">
+          {/* Tabela de Usinas Fotovoltaicas */}
+          <div className="bg-card border rounded-lg p-3 flex-1 overflow-hidden flex flex-col">
+            <div className="flex items-center gap-2 mb-3 flex-shrink-0">
+              <h3 className="text-sm font-semibold text-foreground">
+                USINAS FOTOVOLTAICAS
+              </h3>
+              <span className="text-xs text-muted-foreground ml-auto">
+                (5 mais recentes)
+              </span>
+            </div>
 
-        {/* Legenda */}
-        <div className="mt-2 flex flex-wrap items-center justify-center gap-4 text-sm">
-          <div className="flex items-center gap-2">
-            <div
-              className="w-3 h-3 rounded-full"
-              style={{ backgroundColor: getStatusColor("NORMAL") }}
-            ></div>
-            <span className="text-muted-foreground">Normal</span>
+            <div className="overflow-auto flex-1">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-card">
+                  <tr className="border-b border-border/50">
+                    <th className="text-left py-2 text-muted-foreground font-medium text-xs">
+                      Nome
+                    </th>
+                    <th className="text-left py-2 text-muted-foreground font-medium text-xs">
+                      Potência
+                    </th>
+                    <th className="text-center py-2 text-muted-foreground font-medium text-xs">
+                      Status
+                    </th>
+                    <th className="text-center py-2 text-muted-foreground font-medium text-xs">
+                      Trip
+                    </th>
+                    <th className="text-center py-2 text-muted-foreground font-medium text-xs">
+                      Alarme
+                    </th>
+                    <th className="text-right py-2 text-muted-foreground font-medium text-xs">
+                      Update
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="space-y-1">
+                  {ativos
+                    .filter((ativo) => ativo.tipo === "UFV")
+                    .slice(0, 5)
+                    .map((ativo, index) => {
+                      const percentage = Math.round(
+                        ((ativo.potenciaAtual || 0) / ativo.potenciaNominal) *
+                          100
+                      );
+                      const updateTime = new Date(
+                        ativo.ultimaAtualizacao
+                      ).toLocaleTimeString("pt-BR", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      });
+                      const tripsCount = ativo.status === "TRIP" ? 1 : 0;
+                      const alarmesCount = ativo.status === "ALARME" ? 1 : 0;
+
+                      return (
+                        <tr
+                          key={ativo.id}
+                          className="border-b border-border/30 hover:bg-muted/30"
+                        >
+                          <td
+                            className="py-2 text-foreground font-medium truncate max-w-[140px] text-sm"
+                            title={ativo.nome}
+                          >
+                            {ativo.nome}
+                          </td>
+                          <td className="py-2">
+                            <div className="flex items-center gap-1">
+                              <div className="w-16 h-2 bg-muted rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-blue-500 transition-all duration-300"
+                                  style={{
+                                    width: `${Math.min(percentage, 100)}%`,
+                                  }}
+                                ></div>
+                              </div>
+                              <span className="text-xs text-muted-foreground w-8 text-right">
+                                {percentage}%
+                              </span>
+                            </div>
+                          </td>
+                          <td className="py-2 text-center">
+                            <div
+                              className="w-3 h-3 rounded-full mx-auto"
+                              style={{
+                                backgroundColor:
+                                  ativo.status === "NORMAL"
+                                    ? "#10B981"
+                                    : ativo.status === "ALARME"
+                                    ? "#F59E0B"
+                                    : "#EF4444",
+                              }}
+                            ></div>
+                          </td>
+                          <td className="py-2 text-center">
+                            <span
+                              className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-bold ${
+                                tripsCount > 0
+                                  ? "bg-red-100 text-red-600"
+                                  : "bg-gray-100 text-gray-500"
+                              }`}
+                            >
+                              {tripsCount}
+                            </span>
+                          </td>
+                          <td className="py-2 text-center">
+                            <span
+                              className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-bold ${
+                                alarmesCount > 0
+                                  ? "bg-amber-100 text-amber-600"
+                                  : "bg-gray-100 text-gray-500"
+                              }`}
+                            >
+                              {alarmesCount}
+                            </span>
+                          </td>
+                          <td className="py-2 text-right text-muted-foreground font-mono text-xs">
+                            {updateTime}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <div
-              className="w-3 h-3 rounded-full"
-              style={{ backgroundColor: getStatusColor("ALARME") }}
-            ></div>
-            <span className="text-muted-foreground">Alarme</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div
-              className="w-3 h-3 rounded-full"
-              style={{ backgroundColor: getStatusColor("TRIP") }}
-            ></div>
-            <span className="text-muted-foreground">Trip</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div
-              className="w-3 h-3 rounded-full"
-              style={{ backgroundColor: getStatusColor("URGENCIA") }}
-            ></div>
-            <span className="text-muted-foreground">Urgência</span>
+
+          {/* Tabela de Cargas Monitoradas */}
+          <div className="bg-card border rounded-lg p-3 flex-1 overflow-hidden flex flex-col">
+            <div className="flex items-center gap-2 mb-3 flex-shrink-0">
+              <h3 className="text-sm font-semibold text-foreground">
+                CARGAS MONITORADAS
+              </h3>
+              <span className="text-xs text-muted-foreground ml-auto">
+                (5 mais recentes)
+              </span>
+            </div>
+
+            <div className="overflow-auto flex-1">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-card">
+                  <tr className="border-b border-border/50">
+                    <th className="text-left py-2 text-muted-foreground font-medium text-xs">
+                      Nome
+                    </th>
+                    <th className="text-left py-2 text-muted-foreground font-medium text-xs">
+                      Consumo
+                    </th>
+                    <th className="text-center py-2 text-muted-foreground font-medium text-xs">
+                      Status
+                    </th>
+                    <th className="text-center py-2 text-muted-foreground font-medium text-xs">
+                      Trip
+                    </th>
+                    <th className="text-center py-2 text-muted-foreground font-medium text-xs">
+                      Alarme
+                    </th>
+                    <th className="text-right py-2 text-muted-foreground font-medium text-xs">
+                      Update
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="space-y-1">
+                  {(() => {
+                    const cargas = ativos.filter(
+                      (ativo) => ativo.tipo === "CARGA"
+                    );
+                    if (cargas.length === 0) {
+                      return (
+                        <tr>
+                          <td
+                            colSpan={6}
+                            className="py-4 text-center text-muted-foreground text-sm"
+                          >
+                            Nenhuma carga monitorada encontrada
+                          </td>
+                        </tr>
+                      );
+                    }
+                    return cargas.slice(0, 5).map((ativo, index) => {
+                      const percentage = Math.round(
+                        ((ativo.potenciaAtual || 0) / ativo.potenciaNominal) *
+                          100
+                      );
+                      const updateTime = new Date(
+                        ativo.ultimaAtualizacao
+                      ).toLocaleTimeString("pt-BR", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      });
+                      const tripsCount = ativo.status === "TRIP" ? 1 : 0;
+                      const alarmesCount = ativo.status === "ALARME" ? 1 : 0;
+
+                      return (
+                        <tr
+                          key={ativo.id}
+                          className="border-b border-border/30 hover:bg-muted/30"
+                        >
+                          <td
+                            className="py-2 text-foreground font-medium truncate max-w-[140px] text-sm"
+                            title={ativo.nome}
+                          >
+                            {ativo.nome}
+                          </td>
+                          <td className="py-2">
+                            <div className="flex items-center gap-1">
+                              <div className="w-16 h-2 bg-muted rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-green-500 transition-all duration-300"
+                                  style={{
+                                    width: `${Math.min(percentage, 100)}%`,
+                                  }}
+                                ></div>
+                              </div>
+                              <span className="text-xs text-muted-foreground w-8 text-right">
+                                {percentage}%
+                              </span>
+                            </div>
+                          </td>
+                          <td className="py-2 text-center">
+                            <div
+                              className="w-3 h-3 rounded-full mx-auto"
+                              style={{
+                                backgroundColor:
+                                  ativo.status === "NORMAL"
+                                    ? "#10B981"
+                                    : ativo.status === "ALARME"
+                                    ? "#F59E0B"
+                                    : "#EF4444",
+                              }}
+                            ></div>
+                          </td>
+                          <td className="py-2 text-center">
+                            <span
+                              className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-bold ${
+                                tripsCount > 0
+                                  ? "bg-red-100 text-red-600"
+                                  : "bg-gray-100 text-gray-500"
+                              }`}
+                            >
+                              {tripsCount}
+                            </span>
+                          </td>
+                          <td className="py-2 text-center">
+                            <span
+                              className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-bold ${
+                                alarmesCount > 0
+                                  ? "bg-amber-100 text-amber-600"
+                                  : "bg-gray-100 text-gray-500"
+                              }`}
+                            >
+                              {alarmesCount}
+                            </span>
+                          </td>
+                          <td className="py-2 text-right text-muted-foreground font-mono text-xs">
+                            {updateTime}
+                          </td>
+                        </tr>
+                      );
+                    });
+                  })()}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Modal do Sinóptico */}
+      <Dialog open={modalAberto} onOpenChange={fecharModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Activity className="h-4 w-4 text-blue-600" />
+              {ativoSelecionado?.nome}
+            </DialogTitle>
+          </DialogHeader>
+
+          {ativoSelecionado && (
+            <div className="space-y-4">
+              {/* Tipo e Status */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <span className="text-xs font-medium text-slate-600 dark:text-gray-400 uppercase">
+                    Tipo:
+                  </span>
+                  <p className="text-sm font-medium text-slate-800 dark:text-gray-200">
+                    {ativoSelecionado.tipo}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-xs font-medium text-slate-600 dark:text-gray-400 uppercase">
+                    Status:
+                  </span>
+                  <Badge
+                    variant={
+                      ativoSelecionado.status === "NORMAL"
+                        ? "default"
+                        : "destructive"
+                    }
+                    className="text-xs"
+                  >
+                    {ativoSelecionado.status}
+                  </Badge>
+                </div>
+              </div>
+
+              {/* Localização */}
+              <div>
+                <span className="text-xs font-medium text-slate-600 dark:text-gray-400 uppercase">
+                  Localização:
+                </span>
+                <p className="text-sm text-slate-700 dark:text-gray-300">
+                  {ativoSelecionado.cidade}, {ativoSelecionado.estado}
+                </p>
+              </div>
+
+              {/* Potência Nominal e Geração Atual */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <span className="text-xs font-medium text-slate-600 dark:text-gray-400 uppercase">
+                    Potência Nominal:
+                  </span>
+                  <p className="text-sm font-medium text-blue-600">
+                    {ativoSelecionado.potenciaNominal} MW
+                  </p>
+                </div>
+                {ativoSelecionado.potenciaAtual !== undefined && (
+                  <div>
+                    <span className="text-xs font-medium text-slate-600 dark:text-gray-400 uppercase">
+                      Geração Atual:
+                    </span>
+                    <p className="text-sm font-medium text-green-600">
+                      {ativoSelecionado.potenciaAtual} MW
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Eficiência e Disponibilidade */}
+              {(ativoSelecionado.eficiencia !== undefined ||
+                ativoSelecionado.disponibilidade !== undefined) && (
+                <div className="grid grid-cols-2 gap-3">
+                  {ativoSelecionado.eficiencia !== undefined && (
+                    <div>
+                      <span className="text-xs font-medium text-slate-600 dark:text-gray-400 uppercase">
+                        Eficiência:
+                      </span>
+                      <p className="text-sm font-medium text-slate-700 dark:text-gray-300">
+                        {ativoSelecionado.eficiencia}%
+                      </p>
+                    </div>
+                  )}
+                  {ativoSelecionado.disponibilidade !== undefined && (
+                    <div>
+                      <span className="text-xs font-medium text-slate-600 dark:text-gray-400 uppercase">
+                        Disponibilidade:
+                      </span>
+                      <p className="text-sm font-medium text-slate-700 dark:text-gray-300">
+                        {ativoSelecionado.disponibilidade}%
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Última Atualização */}
+              <div>
+                <span className="text-xs font-medium text-slate-600 dark:text-gray-400 uppercase">
+                  Última Atualização:
+                </span>
+                <p className="text-xs text-slate-500 dark:text-gray-500">
+                  {new Date(ativoSelecionado.ultimaAtualizacao).toLocaleString(
+                    "pt-BR"
+                  )}
+                </p>
+              </div>
+
+              {/* Botão para Sinóptico Completo */}
+              <div className="pt-4 border-t">
+                <Button
+                  onClick={() => {
+                    fecharModal();
+                    navigate("/supervisorio/sinoptico");
+                  }}
+                  className="w-full"
+                  size="sm"
+                >
+                  Ver Sinóptico Completo
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* CSS para animações */}
       <style>{`

@@ -1,6 +1,5 @@
-// src/pages/dashboard/index.tsx - NOVO COA
+// src/pages/dashboard/index.tsx - COA com espaçamento corrigido
 import { Layout } from "@/components/common/Layout";
-import { TitleCard } from "@/components/common/title-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -23,7 +22,7 @@ import {
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-// Dados dos clientes e suas unidades
+// Dados dos clientes e suas unidades - ATUALIZADO COM 3 NOVAS CARGAS
 const clientesUnidades = [
   {
     id: "cliente-001",
@@ -32,6 +31,7 @@ const clientesUnidades = [
       { id: "go-001", nome: "UFV Goiânia Central", cidade: "Goiânia" },
       { id: "go-002", nome: "UFV Senador Canedo", cidade: "Senador Canedo" },
       { id: "go-007", nome: "Carga Industrial Goiânia", cidade: "Goiânia" },
+      { id: "go-011", nome: "Carga Shopping Center", cidade: "Goiânia" },
     ],
   },
   {
@@ -56,12 +56,16 @@ const clientesUnidades = [
     unidades: [
       { id: "go-004", nome: "UFV Anápolis Industrial", cidade: "Anápolis" },
       { id: "go-008", nome: "Subestação Anápolis Norte", cidade: "Anápolis" },
+      { id: "go-012", nome: "Carga Hospital Municipal", cidade: "Anápolis" },
     ],
   },
   {
     id: "cliente-004",
     nome: "Catalão Energias Renováveis",
-    unidades: [{ id: "go-005", nome: "UFV Catalão", cidade: "Catalão" }],
+    unidades: [
+      { id: "go-005", nome: "UFV Catalão", cidade: "Catalão" },
+      { id: "go-013", nome: "Carga Fábrica Têxtil", cidade: "Catalão" },
+    ],
   },
   {
     id: "cliente-005",
@@ -77,7 +81,7 @@ const clientesUnidades = [
   },
 ];
 
-// Dados dos ativos em Goiás - formato profissional
+// Dados dos ativos em Goiás - ATUALIZADO COM 3 NOVAS CARGAS
 const ativosNoBrasil = [
   {
     id: "go-001",
@@ -277,6 +281,64 @@ const ativosNoBrasil = [
     disponibilidade: 96.8,
     ultimaAtualizacao: new Date().toISOString(),
   },
+
+  {
+    id: "go-011",
+    nome: "Carga Shopping Center",
+    tipo: "CARGA" as const,
+    estado: "Goiás",
+    cidade: "Goiânia",
+    clienteId: "cliente-001",
+    coordenadas: {
+      latitude: -16.6756,
+      longitude: -49.2534,
+      x: 55,
+      y: 58,
+    },
+    status: "NORMAL" as const,
+    potenciaNominal: 15.2,
+    potenciaAtual: 14.3,
+    disponibilidade: 98.7,
+    ultimaAtualizacao: new Date().toISOString(),
+  },
+  {
+    id: "go-012",
+    nome: "Carga Hospital Municipal",
+    tipo: "CARGA" as const,
+    estado: "Goiás",
+    cidade: "Anápolis",
+    clienteId: "cliente-003",
+    coordenadas: {
+      latitude: -16.3102,
+      longitude: -48.9445,
+      x: 57,
+      y: 56,
+    },
+    status: "TRIP" as const,
+    potenciaNominal: 9.8,
+    potenciaAtual: 0,
+    disponibilidade: 87.4,
+    ultimaAtualizacao: new Date().toISOString(),
+  },
+  {
+    id: "go-013",
+    nome: "Carga Fábrica Têxtil",
+    tipo: "CARGA" as const,
+    estado: "Goiás",
+    cidade: "Catalão",
+    clienteId: "cliente-004",
+    coordenadas: {
+      latitude: -18.1522,
+      longitude: -47.9311,
+      x: 58,
+      y: 63,
+    },
+    status: "ALARME" as const,
+    potenciaNominal: 18.7,
+    potenciaAtual: 16.2,
+    disponibilidade: 94.1,
+    ultimaAtualizacao: new Date().toISOString(),
+  },
 ];
 
 // Função para gerar dados de performance das últimas 24h baseado no filtro
@@ -413,11 +475,17 @@ export function DashboardPage() {
       <Layout.Main>
         <div className="min-h-screen w-full">
           <div className="max-h-[calc(100vh-4rem)] overflow-y-auto">
-            <div className="flex flex-col gap-2 p-3">
-              <TitleCard title="Centro de Operação de Ativos (COA)" />
+            {/* Alteração principal: mudei de gap-2 para gap-3 e ajustei o padding */}
+            <div className="flex flex-col gap-3 p-3">
+              {/* TitleCard sem margem extra - usando className para sobrescrever */}
+              <div className="w-full 1">
+                <h1 className="text-2xl font-bold text-foreground">
+                  Centro de Operação de Ativos (COA)
+                </h1>
+              </div>
 
-              {/* Cards de Indicadores Principais - 4 ESPECÍFICOS SOLICITADOS */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Cards de Indicadores Principais - 5 CARDS NA MESMA LINHA */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                 {/* 1. Potência Total Monitorada */}
                 <Card className="p-4">
                   <div className="flex items-center justify-between">
@@ -526,19 +594,38 @@ export function DashboardPage() {
                     <AlertTriangle className="h-6 w-6 text-amber-500" />
                   </div>
                 </Card>
+
+                {/* 5. Visualização Geral */}
+                <Card className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Visualização Geral
+                      </p>
+                      <p className="text-xl font-bold">
+                        {ativosNoBrasil.length}
+                      </p>
+                      <p className="text-xs text-indigo-600">
+                        ativos no sistema
+                      </p>
+                    </div>
+                    <Activity className="h-6 w-6 text-indigo-500" />
+                  </div>
+                </Card>
               </div>
 
               {/* Layout Principal: Mapa com Filtros Integrados */}
               <div>
                 <Card>
                   <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="flex items-center gap-2">
+                    <div className="flex items-center gap-6">
+                      {/* Título na esquerda */}
+                      <div className="flex items-center gap-2">
                         <Activity className="h-5 w-5 text-purple-500" />
-                        Mapa dos Ativos
-                      </CardTitle>
+                        <CardTitle>Mapa dos Ativos</CardTitle>
+                      </div>
 
-                      {/* Filtros integrados no header do mapa */}
+                      {/* Filtros também na esquerda, ao lado do título */}
                       <div className="flex items-center gap-3">
                         <div className="flex items-center gap-2">
                           <Label
@@ -551,16 +638,16 @@ export function DashboardPage() {
                             value={clienteSelecionado}
                             onValueChange={handleClienteChange}
                           >
-                            <SelectTrigger className="w-48 h-8">
+                            <SelectTrigger className="min-w-48 w-auto h-8">
                               <SelectValue placeholder="Todos os clientes" />
                             </SelectTrigger>
-                            <SelectContent>
+                            <SelectContent className="max-w-80">
                               <SelectItem value="todos">
-                                🌍 Todos os Clientes
+                                Todos os Clientes
                               </SelectItem>
                               {clientesUnidades.map((cliente) => (
                                 <SelectItem key={cliente.id} value={cliente.id}>
-                                  🏢 {cliente.nome.split(" ")[0]}...
+                                  🏢 {cliente.nome}
                                 </SelectItem>
                               ))}
                             </SelectContent>
@@ -579,7 +666,7 @@ export function DashboardPage() {
                             onValueChange={handleUnidadeChange}
                             disabled={clienteSelecionado === "todos"}
                           >
-                            <SelectTrigger className="w-48 h-8">
+                            <SelectTrigger className="min-w-48 w-auto h-8">
                               <SelectValue
                                 placeholder={
                                   clienteSelecionado === "todos"
@@ -588,18 +675,13 @@ export function DashboardPage() {
                                 }
                               />
                             </SelectTrigger>
-                            <SelectContent>
+                            <SelectContent className="max-w-80">
                               <SelectItem value="todas">
-                                ⚡ Todas as Unidades
+                                Todas as Unidades
                               </SelectItem>
                               {unidadesDoCliente.map((unidade) => (
                                 <SelectItem key={unidade.id} value={unidade.id}>
-                                  🏭{" "}
-                                  {unidade.nome
-                                    .split(" ")
-                                    .slice(0, 2)
-                                    .join(" ")}
-                                  ...
+                                  🏭 {unidade.nome}
                                 </SelectItem>
                               ))}
                             </SelectContent>
@@ -619,19 +701,6 @@ export function DashboardPage() {
                         )}
                       </div>
                     </div>
-
-                    {/* Indicador do filtro ativo - mais discreto */}
-                    <p className="text-xs text-muted-foreground">
-                      {clienteSelecionado === "todos"
-                        ? `Mostrando todos os ativos (${ativosNoBrasil.length} total)`
-                        : unidadeSelecionada === "todas"
-                        ? `Filtro: ${
-                            clientesUnidades.find(
-                              (c) => c.id === clienteSelecionado
-                            )?.nome
-                          } (${ativosFiltrados.length} ativos)`
-                        : `Filtro: ${ativosFiltrados[0]?.nome}`}
-                    </p>
                   </CardHeader>
 
                   <CardContent>

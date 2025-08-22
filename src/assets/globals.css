@@ -192,11 +192,11 @@
     --input: hsl(0, 0%, 22%);
     --input-hover: hsl(217.2, 27.6%, 22.5%);
 
-    --chart-1:338, 100%, 39%;
-    --chart-2:206, 85%, 32%;
-    --chart-3:30 80% 55%;
-    --chart-4:280 65% 60%;
-    --chart-5:340 75% 55%;
+    --chart-1: 338, 100%, 39%;
+    --chart-2: 206, 85%, 32%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
 
     --sidebar-background: hsl(0, 0%, 100%);
     --sidebar-foreground: 240 4.8% 95.9%;
@@ -334,19 +334,17 @@
     overflow-x: auto;
     scroll-behavior: smooth;
   }
-  
+
   .breadcrumb-scrollable::-webkit-scrollbar {
     height: 8px;
   }
-  
+
   .breadcrumb-scrollable::-webkit-scrollbar-thumb {
     background-color: rgba(0, 0, 0, 0.2);
     border-radius: 4px;
   }
-  
+
   .breadcrumb-scrollable > * {
     flex-shrink: 0;
   }
-  
-
 }
