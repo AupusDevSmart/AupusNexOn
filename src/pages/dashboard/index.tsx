@@ -484,41 +484,44 @@ export function DashboardPage() {
                 </h1>
               </div>
 
-              {/* Cards de Indicadores Principais - 5 CARDS NA MESMA LINHA */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-                {/* 1. Potência Total Monitorada */}
+              {/* Cards de Indicadores Principais - 6 CARDS NA MESMA LINHA */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+                {/* 1. Energia Consumida */}
                 <Card className="p-4">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-xs text-gray-500 dark:text-gray-400">
-                        Potência Total
+                        Energia Consumida
                       </p>
                       <p className="text-xl font-bold">
-                        {ativosFiltrados
-                          .reduce((acc, a) => acc + a.potenciaNominal, 0)
-                          .toFixed(1)}{" "}
-                        MW
+                        {(
+                          (ativosFiltrados.reduce(
+                            (acc, a) => acc + (a.potenciaAtual || 0),
+                            0
+                          ) *
+                            24 *
+                            30) /
+                          1000
+                        ).toFixed(1)}{" "}
+                        MWh
                       </p>
-                      <p className="text-xs text-blue-600">
-                        {ativosFiltrados.length} ativo
-                        {ativosFiltrados.length !== 1 ? "s" : ""}
-                      </p>
+                      <p className="text-xs text-blue-600">Estimativa mensal</p>
                     </div>
                     <Zap className="h-6 w-6 text-blue-500" />
                   </div>
                 </Card>
 
-                {/* 2. Carga Total Monitorada */}
+                {/* 2. Consumo Total */}
                 <Card className="p-4">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-xs text-gray-500 dark:text-gray-400">
-                        Carga Total
+                        Consumo Total
                       </p>
                       <p className="text-xl font-bold">
                         {ativosFiltrados
                           .filter((a) => a.tipo === "CARGA")
-                          .reduce((acc, a) => acc + a.potenciaNominal, 0)
+                          .reduce((acc, a) => acc + (a.potenciaAtual || 0), 0)
                           .toFixed(1)}{" "}
                         MW
                       </p>
@@ -534,34 +537,30 @@ export function DashboardPage() {
                   </div>
                 </Card>
 
-                {/* 3. Energia Acumulada */}
+                {/* 3. Potência Instalada */}
                 <Card className="p-4">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-xs text-gray-500 dark:text-gray-400">
-                        Energia Acumulada
+                        Potência Instalada
                       </p>
                       <p className="text-xl font-bold">
                         {(
-                          (ativosFiltrados.reduce(
+                          ativosFiltrados.reduce(
                             (acc, a) => acc + (a.potenciaAtual || 0),
                             0
-                          ) *
-                            24 *
-                            30) /
-                          1000
-                        ).toFixed(1)}{" "}
-                        GWh
+                          ) * 1000
+                        ).toFixed(0)}{" "}
+                        kW
                       </p>
-                      <p className="text-xs text-purple-600">
-                        Estimativa mensal
-                      </p>
+                      <p className="text-xs text-orange-600">Tempo real</p>
                     </div>
-                    <TrendingUp className="h-6 w-6 text-purple-500" />
+                    <TrendingUp className="h-6 w-6 text-orange-500" />
                   </div>
                 </Card>
 
-                {/* 4. Contadores (Trips, Alarmes, Urgências, OS abertas) */}
+                
+                {/* 4. Total de Eventos */}
                 <Card className="p-4">
                   <div className="flex items-center justify-between">
                     <div>
@@ -595,19 +594,15 @@ export function DashboardPage() {
                   </div>
                 </Card>
 
-                {/* 5. Visualização Geral */}
+                {/* 5. Ativos Monitorados */}
                 <Card className="p-4">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-xs text-gray-500 dark:text-gray-400">
-                        Visualização Geral
+                        Ativos Monitorados
                       </p>
-                      <p className="text-xl font-bold">
-                        {ativosNoBrasil.length}
-                      </p>
-                      <p className="text-xs text-indigo-600">
-                        ativos no sistema
-                      </p>
+                      <p className="text-xl font-bold">10</p>
+                      <p className="text-xs text-indigo-600">5 UGs, 5 Us</p>
                     </div>
                     <Activity className="h-6 w-6 text-indigo-500" />
                   </div>

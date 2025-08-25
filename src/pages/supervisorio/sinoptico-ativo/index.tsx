@@ -11,7 +11,7 @@ import { InversorModal } from "@/features/supervisorio/components/inversor-modal
 import { MedidorModal } from "@/features/supervisorio/components/medidor-modal";
 import { SinopticoDiagrama } from "@/features/supervisorio/components/sinoptico-diagrama";
 import { SinopticoGraficos } from "@/features/supervisorio/components/sinoptico-graficos";
-import { SinopticoHeader } from "@/features/supervisorio/components/sinoptico-header";
+// REMOVIDO: import { SinopticoHeader } from "@/features/supervisorio/components/sinoptico-header";
 import { SinopticoIndicadores } from "@/features/supervisorio/components/sinoptico-indicadores";
 import { TransformadorModal } from "@/features/supervisorio/components/transformador-modal";
 // Adicione estas importações após as outras
@@ -241,8 +241,13 @@ export function SinopticoAtivoPage() {
           <TitleCard title={`Sinóptico - ${ativoData.nome}`} />
         </div>
 
-        {/* Status da Rede */}
-        <SinopticoHeader ativo={ativoData} statusRede={statusRede} />
+        {/* Indicadores movidos para o topo */}
+        <div className="mt-6">
+          <SinopticoIndicadores indicadores={indicadores} />
+        </div>
+
+        {/* REMOVIDO: Cards superiores - Status da Rede, Status do Ativo, Tensão da Rede, Potência Atual */}
+        {/* <SinopticoHeader ativo={ativoData} statusRede={statusRede} /> */}
 
         {/* Layout Principal */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6 w-full">
@@ -263,10 +268,7 @@ export function SinopticoAtivoPage() {
           </div>
         </div>
 
-        {/* Indicadores do Rodapé */}
-        <div className="mt-6">
-          <SinopticoIndicadores indicadores={indicadores} />
-        </div>
+        {/* REMOVIDO: Indicadores do rodapé - movidos para o topo */}
 
         {/* Modais específicos para cada tipo de componente */}
         <MedidorModal

@@ -9,7 +9,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Activity, Minus, Plus, RotateCcw } from "lucide-react";
+import {
+  Activity,
+  Cloud,
+  CloudRain,
+  Minus,
+  Plus,
+  RotateCcw,
+  Sun,
+  Wind,
+} from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -31,6 +40,9 @@ interface Ativo {
   eficiencia?: number;
   disponibilidade?: number;
   ultimaAtualizacao: string;
+  // Novos campos adicionados
+  fc?: number; // Fator de Capacidade em %
+  climaAtual?: "sol" | "nublado" | "chuva" | "vento";
 }
 
 interface MapaBrasilProps {
@@ -39,6 +51,24 @@ interface MapaBrasilProps {
   atualizacaoTempo?: number;
   focoAtivo?: string | null;
 }
+
+// Função para obter ícone do clima
+const getClimaIcon = (clima?: string) => {
+  if (!clima) return null;
+
+  switch (clima) {
+    case "sol":
+      return <Sun className="h-4 w-4 text-yellow-500" />;
+    case "nublado":
+      return <Cloud className="h-4 w-4 text-gray-500" />;
+    case "chuva":
+      return <CloudRain className="h-4 w-4 text-blue-500" />;
+    case "vento":
+      return <Wind className="h-4 w-4 text-gray-600" />;
+    default:
+      return null;
+  }
+};
 
 export function MapaBrasil({
   ativos,
@@ -476,6 +506,15 @@ export function MapaBrasil({
                       Potência
                     </th>
                     <th className="text-center py-2 text-muted-foreground font-medium text-xs">
+                      Potência Inst.
+                    </th>
+                    <th className="text-center py-2 text-muted-foreground font-medium text-xs">
+                      FC
+                    </th>
+                    <th className="text-center py-2 text-muted-foreground font-medium text-xs">
+                      Clima
+                    </th>
+                    <th className="text-center py-2 text-muted-foreground font-medium text-xs">
                       Status
                     </th>
                     <th className="text-center py-2 text-muted-foreground font-medium text-xs">
@@ -513,14 +552,14 @@ export function MapaBrasil({
                           className="border-b border-border/30 hover:bg-muted/30"
                         >
                           <td
-                            className="py-2 text-foreground font-medium truncate max-w-[140px] text-sm"
+                            className="py-2 text-foreground font-medium truncate max-w-[120px] text-sm"
                             title={ativo.nome}
                           >
                             {ativo.nome}
                           </td>
                           <td className="py-2">
                             <div className="flex items-center gap-1">
-                              <div className="w-16 h-2 bg-muted rounded-full overflow-hidden">
+                              <div className="w-12 h-2 bg-muted rounded-full overflow-hidden">
                                 <div
                                   className="h-full bg-blue-500 transition-all duration-300"
                                   style={{
@@ -534,8 +573,27 @@ export function MapaBrasil({
                             </div>
                           </td>
                           <td className="py-2 text-center">
+                            <span className="text-sm font-medium text-green-600">
+                              {ativo.potenciaAtual || 0} MW
+                            </span>
+                          </td>
+                          <td className="py-2 text-center">
+                            <span className="text-sm font-medium text-blue-600">
+                              {ativo.fc || 0}%
+                            </span>
+                          </td>
+                          <td className="py-2 text-center">
+                            <div className="flex justify-center">
+                              {ativo.climaAtual ? (
+                                getClimaIcon(ativo.climaAtual)
+                              ) : (
+                                <Sun className="h-4 w-4 text-yellow-500" />
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-2 text-center">
                             <div
-                              className="w-3 h-3 rounded-full mx-auto"
+                              className="w-4 h-4 rounded-full mx-auto"
                               style={{
                                 backgroundColor:
                                   ativo.status === "NORMAL"
@@ -548,7 +606,7 @@ export function MapaBrasil({
                           </td>
                           <td className="py-2 text-center">
                             <span
-                              className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-bold ${
+                              className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold ${
                                 tripsCount > 0
                                   ? "bg-red-100 text-red-600"
                                   : "bg-gray-100 text-gray-500"
@@ -559,7 +617,7 @@ export function MapaBrasil({
                           </td>
                           <td className="py-2 text-center">
                             <span
-                              className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-bold ${
+                              className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold ${
                                 alarmesCount > 0
                                   ? "bg-amber-100 text-amber-600"
                                   : "bg-gray-100 text-gray-500"
@@ -601,6 +659,15 @@ export function MapaBrasil({
                       Consumo
                     </th>
                     <th className="text-center py-2 text-muted-foreground font-medium text-xs">
+                      Potência Inst.
+                    </th>
+                    <th className="text-center py-2 text-muted-foreground font-medium text-xs">
+                      FC
+                    </th>
+                    <th className="text-center py-2 text-muted-foreground font-medium text-xs">
+                      Clima
+                    </th>
+                    <th className="text-center py-2 text-muted-foreground font-medium text-xs">
                       Status
                     </th>
                     <th className="text-center py-2 text-muted-foreground font-medium text-xs">
@@ -623,7 +690,7 @@ export function MapaBrasil({
                       return (
                         <tr>
                           <td
-                            colSpan={6}
+                            colSpan={9}
                             className="py-4 text-center text-muted-foreground text-sm"
                           >
                             Nenhuma carga monitorada encontrada
@@ -651,14 +718,14 @@ export function MapaBrasil({
                           className="border-b border-border/30 hover:bg-muted/30"
                         >
                           <td
-                            className="py-2 text-foreground font-medium truncate max-w-[140px] text-sm"
+                            className="py-2 text-foreground font-medium truncate max-w-[120px] text-sm"
                             title={ativo.nome}
                           >
                             {ativo.nome}
                           </td>
                           <td className="py-2">
                             <div className="flex items-center gap-1">
-                              <div className="w-16 h-2 bg-muted rounded-full overflow-hidden">
+                              <div className="w-12 h-2 bg-muted rounded-full overflow-hidden">
                                 <div
                                   className="h-full bg-green-500 transition-all duration-300"
                                   style={{
@@ -672,8 +739,27 @@ export function MapaBrasil({
                             </div>
                           </td>
                           <td className="py-2 text-center">
+                            <span className="text-sm font-medium text-orange-600">
+                              {ativo.potenciaAtual || 0} MW
+                            </span>
+                          </td>
+                          <td className="py-2 text-center">
+                            <span className="text-sm font-medium text-purple-600">
+                              {ativo.fc || 0}%
+                            </span>
+                          </td>
+                          <td className="py-2 text-center">
+                            <div className="flex justify-center">
+                              {ativo.climaAtual ? (
+                                getClimaIcon(ativo.climaAtual)
+                              ) : (
+                                <Cloud className="h-4 w-4 text-gray-500" />
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-2 text-center">
                             <div
-                              className="w-3 h-3 rounded-full mx-auto"
+                              className="w-4 h-4 rounded-full mx-auto"
                               style={{
                                 backgroundColor:
                                   ativo.status === "NORMAL"
@@ -686,7 +772,7 @@ export function MapaBrasil({
                           </td>
                           <td className="py-2 text-center">
                             <span
-                              className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-bold ${
+                              className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold ${
                                 tripsCount > 0
                                   ? "bg-red-100 text-red-600"
                                   : "bg-gray-100 text-gray-500"
@@ -697,7 +783,7 @@ export function MapaBrasil({
                           </td>
                           <td className="py-2 text-center">
                             <span
-                              className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-bold ${
+                              className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold ${
                                 alarmesCount > 0
                                   ? "bg-amber-100 text-amber-600"
                                   : "bg-gray-100 text-gray-500"
@@ -768,6 +854,36 @@ export function MapaBrasil({
                   {ativoSelecionado.cidade}, {ativoSelecionado.estado}
                 </p>
               </div>
+
+              {/* FC e Clima (novos campos) */}
+              {(ativoSelecionado.fc !== undefined ||
+                ativoSelecionado.climaAtual) && (
+                <div className="grid grid-cols-2 gap-3">
+                  {ativoSelecionado.fc !== undefined && (
+                    <div>
+                      <span className="text-xs font-medium text-slate-600 dark:text-gray-400 uppercase">
+                        Fator de Capacidade:
+                      </span>
+                      <p className="text-sm font-medium text-blue-600">
+                        {ativoSelecionado.fc}%
+                      </p>
+                    </div>
+                  )}
+                  {ativoSelecionado.climaAtual && (
+                    <div>
+                      <span className="text-xs font-medium text-slate-600 dark:text-gray-400 uppercase">
+                        Clima Atual:
+                      </span>
+                      <div className="flex items-center gap-2">
+                        {getClimaIcon(ativoSelecionado.climaAtual)}
+                        <p className="text-sm font-medium text-slate-700 dark:text-gray-300 capitalize">
+                          {ativoSelecionado.climaAtual}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Potência Nominal e Geração Atual */}
               <div className="grid grid-cols-2 gap-3">

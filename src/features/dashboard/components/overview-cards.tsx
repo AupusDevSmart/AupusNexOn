@@ -79,9 +79,9 @@ function MetricCard({
 export function COAOverviewCards({ data }: COAOverviewCardsProps) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
-      {/* Potência Total Monitorada */}
+      {/* Energia Consumida */}
       <MetricCard
-        title="Potência Total Monitorada"
+        title="Energia Consumida"
         value={data.potenciaTotalMonitorada}
         unit="MW"
         subtitle="Capacidade instalada total"
@@ -89,9 +89,9 @@ export function COAOverviewCards({ data }: COAOverviewCardsProps) {
         variant="success"
       />
 
-      {/* Carga Total Monitorada */}
+      {/* Consumo Total */}
       <MetricCard
-        title="Carga Total Monitorada"
+        title="Consumo Total"
         value={data.cargaTotalMonitorada}
         unit="MW"
         subtitle="Demanda atual total"
