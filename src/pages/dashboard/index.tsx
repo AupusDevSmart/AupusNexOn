@@ -485,7 +485,7 @@ export function DashboardPage() {
               </div>
 
               {/* Cards de Indicadores Principais - 6 CARDS NA MESMA LINHA */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                 {/* 1. Energia Consumida */}
                 <Card className="p-4">
                   <div className="flex items-center justify-between">
@@ -559,7 +559,6 @@ export function DashboardPage() {
                   </div>
                 </Card>
 
-                
                 {/* 4. Total de Eventos */}
                 <Card className="p-4">
                   <div className="flex items-center justify-between">

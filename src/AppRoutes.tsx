@@ -20,7 +20,7 @@ const CadastroUnidadesPage = lazy(() =>
   }))
 );
 
-// ✅ NOVO: Lazy load para Logs de Eventos
+// ✅ Lazy load para Logs de Eventos
 const LogsEventosPage = lazy(() =>
   import("@/pages/logs-eventos").then((module) => ({
     default: module.LogsEventosPage,
@@ -31,6 +31,10 @@ const SinopticoPage = lazy(() =>
   import("@/pages/supervisorio/sinoptico-ativo").then((module) => ({
     default: module.SinopticoAtivoPage,
   }))
+);
+
+const EditorDiagramaPage = lazy(
+  () => import("@/pages/supervisorio/editor-diagrama")
 );
 
 export const appRoutes = createBrowserRouter([
@@ -117,7 +121,6 @@ export const appRoutes = createBrowserRouter([
           </FeatureWrapper>
         ),
       },
-
       {
         path: "supervisorio/cadastro-unidades",
         element: (
@@ -138,13 +141,23 @@ export const appRoutes = createBrowserRouter([
           </FeatureWrapper>
         ),
       },
-      // ✅ NOVO: Rota para sinóptico do ativo (ESTA ROTA ESTAVA FALTANDO!)
       {
         path: "supervisorio/sinoptico",
         element: (
           <FeatureWrapper feature="supervisorio">
             <Suspense fallback={<div>Carregando...</div>}>
               <SinopticoPage />
+            </Suspense>
+          </FeatureWrapper>
+        ),
+      },
+      // ✅ NOVO: Rota para Editor de Diagrama
+      {
+        path: "supervisorio/editor-diagrama",
+        element: (
+          <FeatureWrapper feature="supervisorio">
+            <Suspense fallback={<div>Carregando...</div>}>
+              <EditorDiagramaPage />
             </Suspense>
           </FeatureWrapper>
         ),

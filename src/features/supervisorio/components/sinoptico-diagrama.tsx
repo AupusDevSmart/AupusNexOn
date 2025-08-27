@@ -2,18 +2,459 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import type { ComponenteDU } from "@/types/dtos/sinoptico-ativo";
-import {
-  Activity,
-  Circle,
-  Info,
-  Settings,
-  Square,
-  Triangle,
-  Zap,
-} from "lucide-react";
+import { Settings } from "lucide-react";
 import { useState } from "react";
+
+// Componentes de ícones elétricos técnicos
+const ElectricIcons = {
+  // Medidor de Energia - Círculo com display digital
+  MEDIDOR: ({ className = "" }: { className?: string }) => (
+    <div className={`relative ${className}`}>
+      <svg width="24" height="24" viewBox="0 0 24 24" className="text-current">
+        <circle
+          cx="12"
+          cy="12"
+          r="10"
+          stroke="currentColor"
+          strokeWidth="2"
+          fill="none"
+        />
+        <circle
+          cx="12"
+          cy="12"
+          r="6"
+          stroke="currentColor"
+          strokeWidth="1"
+          fill="currentColor"
+          fillOpacity="0.1"
+        />
+        <rect
+          x="8"
+          y="10"
+          width="8"
+          height="4"
+          rx="1"
+          stroke="currentColor"
+          strokeWidth="0.5"
+          fill="currentColor"
+          fillOpacity="0.2"
+        />
+        <line
+          x1="10"
+          y1="11"
+          x2="10"
+          y2="13"
+          stroke="currentColor"
+          strokeWidth="0.5"
+        />
+        <line
+          x1="12"
+          y1="11"
+          x2="12"
+          y2="13"
+          stroke="currentColor"
+          strokeWidth="0.5"
+        />
+        <line
+          x1="14"
+          y1="11"
+          x2="14"
+          y2="13"
+          stroke="currentColor"
+          strokeWidth="0.5"
+        />
+      </svg>
+    </div>
+  ),
+
+  // Transformador - Dois círculos conectados
+  TRANSFORMADOR: ({ className = "" }: { className?: string }) => (
+    <div className={`relative ${className}`}>
+      <svg width="28" height="24" viewBox="0 0 28 24" className="text-current">
+        <circle
+          cx="8"
+          cy="12"
+          r="6"
+          stroke="currentColor"
+          strokeWidth="2"
+          fill="none"
+        />
+        <circle
+          cx="20"
+          cy="12"
+          r="6"
+          stroke="currentColor"
+          strokeWidth="2"
+          fill="none"
+        />
+        <line
+          x1="14"
+          y1="8"
+          x2="14"
+          y2="16"
+          stroke="currentColor"
+          strokeWidth="1"
+        />
+        <text
+          x="8"
+          y="16"
+          fontSize="6"
+          textAnchor="middle"
+          className="fill-current"
+        >
+          P
+        </text>
+        <text
+          x="20"
+          y="16"
+          fontSize="6"
+          textAnchor="middle"
+          className="fill-current"
+        >
+          S
+        </text>
+      </svg>
+    </div>
+  ),
+
+  // Inversor Solar - Retângulo com onda senoidal
+  INVERSOR: ({ className = "" }: { className?: string }) => (
+    <div className={`relative ${className}`}>
+      <svg width="24" height="24" viewBox="0 0 24 24" className="text-current">
+        <rect
+          x="3"
+          y="6"
+          width="18"
+          height="12"
+          rx="2"
+          stroke="currentColor"
+          strokeWidth="2"
+          fill="none"
+        />
+        <path
+          d="M6 12 Q8 8 10 12 T14 12 Q16 8 18 12"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          fill="none"
+        />
+        <circle
+          cx="19"
+          cy="8"
+          r="2"
+          stroke="currentColor"
+          strokeWidth="1"
+          fill="yellow"
+          fillOpacity="0.8"
+        />
+        <path
+          d="M18 7 L19 8.5 L20 7"
+          stroke="currentColor"
+          strokeWidth="0.5"
+          fill="none"
+        />
+      </svg>
+    </div>
+  ),
+
+  // Motor Elétrico - Círculo com M
+  MOTOR: ({ className = "" }: { className?: string }) => (
+    <div className={`relative ${className}`}>
+      <svg width="24" height="24" viewBox="0 0 24 24" className="text-current">
+        <circle
+          cx="12"
+          cy="12"
+          r="9"
+          stroke="currentColor"
+          strokeWidth="2"
+          fill="none"
+        />
+        <circle
+          cx="12"
+          cy="12"
+          r="6"
+          stroke="currentColor"
+          strokeWidth="1"
+          fill="currentColor"
+          fillOpacity="0.1"
+        />
+        <text
+          x="12"
+          y="16"
+          fontSize="10"
+          fontWeight="bold"
+          textAnchor="middle"
+          className="fill-current"
+        >
+          M
+        </text>
+        <line
+          x1="12"
+          y1="3"
+          x2="12"
+          y2="6"
+          stroke="currentColor"
+          strokeWidth="1"
+        />
+        <line
+          x1="12"
+          y1="18"
+          x2="12"
+          y2="21"
+          stroke="currentColor"
+          strokeWidth="1"
+        />
+        <line
+          x1="3"
+          y1="12"
+          x2="6"
+          y2="12"
+          stroke="currentColor"
+          strokeWidth="1"
+        />
+        <line
+          x1="18"
+          y1="12"
+          x2="21"
+          y2="12"
+          stroke="currentColor"
+          strokeWidth="1"
+        />
+      </svg>
+    </div>
+  ),
+
+  // Banco de Capacitores - Duas linhas paralelas
+  CAPACITOR: ({ className = "" }: { className?: string }) => (
+    <div className={`relative ${className}`}>
+      <svg width="24" height="24" viewBox="0 0 24 24" className="text-current">
+        <line
+          x1="9"
+          y1="4"
+          x2="9"
+          y2="20"
+          stroke="currentColor"
+          strokeWidth="3"
+        />
+        <line
+          x1="15"
+          y1="4"
+          x2="15"
+          y2="20"
+          stroke="currentColor"
+          strokeWidth="3"
+        />
+        <line
+          x1="2"
+          y1="12"
+          x2="9"
+          y2="12"
+          stroke="currentColor"
+          strokeWidth="2"
+        />
+        <line
+          x1="15"
+          y1="12"
+          x2="22"
+          y2="12"
+          stroke="currentColor"
+          strokeWidth="2"
+        />
+        <text
+          x="12"
+          y="8"
+          fontSize="6"
+          textAnchor="middle"
+          className="fill-current"
+        >
+          C
+        </text>
+      </svg>
+    </div>
+  ),
+
+  // Disjuntor - Retângulo com chave
+  DISJUNTOR: ({
+    className = "",
+    isOpen = false,
+  }: {
+    className?: string;
+    isOpen?: boolean;
+  }) => (
+    <div className={`relative ${className}`}>
+      <svg width="24" height="20" viewBox="0 0 24 20" className="text-current">
+        <rect
+          x="4"
+          y="4"
+          width="16"
+          height="12"
+          rx="1"
+          stroke="currentColor"
+          strokeWidth="2"
+          fill="none"
+        />
+        <line
+          x1="2"
+          y1="10"
+          x2="4"
+          y2="10"
+          stroke="currentColor"
+          strokeWidth="2"
+        />
+        <line
+          x1="20"
+          y1="10"
+          x2="22"
+          y2="10"
+          stroke="currentColor"
+          strokeWidth="2"
+        />
+        <line
+          x1="8"
+          y1="10"
+          x2={isOpen ? "14" : "16"}
+          y2={isOpen ? "6" : "10"}
+          stroke="currentColor"
+          strokeWidth="2"
+        />
+        <circle cx="8" cy="10" r="1" fill="currentColor" />
+        <circle cx="16" cy="10" r="1" fill="currentColor" />
+        <text
+          x="12"
+          y="14"
+          fontSize="4"
+          textAnchor="middle"
+          className="fill-current"
+        >
+          DJ
+        </text>
+      </svg>
+    </div>
+  ),
+
+  // Chave Seccionadora
+  CHAVE: ({
+    className = "",
+    isOpen = false,
+  }: {
+    className?: string;
+    isOpen?: boolean;
+  }) => (
+    <div className={`relative ${className}`}>
+      <svg width="24" height="16" viewBox="0 0 24 16" className="text-current">
+        <line
+          x1="2"
+          y1="8"
+          x2="6"
+          y2="8"
+          stroke="currentColor"
+          strokeWidth="2"
+        />
+        <line
+          x1="18"
+          y1="8"
+          x2="22"
+          y2="8"
+          stroke="currentColor"
+          strokeWidth="2"
+        />
+        <line
+          x1="6"
+          y1="8"
+          x2={isOpen ? "16" : "18"}
+          y2={isOpen ? "4" : "8"}
+          stroke="currentColor"
+          strokeWidth="2"
+        />
+        <circle cx="6" cy="8" r="1" fill="currentColor" />
+        <circle cx="18" cy="8" r="1" fill="currentColor" />
+      </svg>
+    </div>
+  ),
+
+  // Painel Solar
+  PAINEL_SOLAR: ({ className = "" }: { className?: string }) => (
+    <div className={`relative ${className}`}>
+      <svg width="24" height="24" viewBox="0 0 24 24" className="text-current">
+        <rect
+          x="4"
+          y="8"
+          width="16"
+          height="8"
+          stroke="currentColor"
+          strokeWidth="2"
+          fill="none"
+        />
+        <line
+          x1="8"
+          y1="8"
+          x2="8"
+          y2="16"
+          stroke="currentColor"
+          strokeWidth="0.5"
+        />
+        <line
+          x1="12"
+          y1="8"
+          x2="12"
+          y2="16"
+          stroke="currentColor"
+          strokeWidth="0.5"
+        />
+        <line
+          x1="16"
+          y1="8"
+          x2="16"
+          y2="16"
+          stroke="currentColor"
+          strokeWidth="0.5"
+        />
+        <line
+          x1="4"
+          y1="10.5"
+          x2="20"
+          y2="10.5"
+          stroke="currentColor"
+          strokeWidth="0.5"
+        />
+        <line
+          x1="4"
+          y1="13.5"
+          x2="20"
+          y2="13.5"
+          stroke="currentColor"
+          strokeWidth="0.5"
+        />
+        <circle
+          cx="12"
+          cy="4"
+          r="2"
+          stroke="currentColor"
+          strokeWidth="1"
+          fill="yellow"
+          fillOpacity="0.8"
+        />
+        <path
+          d="M11 3 L12 4.5 L13 3"
+          stroke="currentColor"
+          strokeWidth="0.5"
+          fill="none"
+        />
+        <path
+          d="M11 5 L12 3.5 L13 5"
+          stroke="currentColor"
+          strokeWidth="0.5"
+          fill="none"
+        />
+      </svg>
+    </div>
+  ),
+
+  // Default para tipos não reconhecidos
+  DEFAULT: ({ className = "" }: { className?: string }) => (
+    <Settings className={`h-6 w-6 ${className}`} />
+  ),
+};
 
 interface SinopticoDiagramaProps {
   componentes: ComponenteDU[];
@@ -26,23 +467,11 @@ export function SinopticoDiagrama({
 }: SinopticoDiagramaProps) {
   const [hoveredComponent, setHoveredComponent] = useState<string | null>(null);
 
-  const getComponenteIcon = (tipo: string) => {
-    switch (tipo) {
-      case "MEDIDOR":
-        return <Activity className="h-6 w-6" />;
-      case "TRANSFORMADOR":
-        return <Square className="h-8 w-8" />;
-      case "INVERSOR":
-        return <Zap className="h-6 w-6" />;
-      case "MOTOR":
-        return <Circle className="h-6 w-6" />;
-      case "CAPACITOR":
-        return <Triangle className="h-6 w-6" />;
-      case "DISJUNTOR":
-        return <Settings className="h-6 w-6" />;
-      default:
-        return <Activity className="h-6 w-6" />;
-    }
+  const getComponenteIcon = (tipo: string, isOpen?: boolean) => {
+    const IconComponent =
+      ElectricIcons[tipo as keyof typeof ElectricIcons] ||
+      ElectricIcons.DEFAULT;
+    return <IconComponent className="text-current" isOpen={isOpen} />;
   };
 
   const getStatusColor = (status: string) => {
@@ -61,13 +490,27 @@ export function SinopticoDiagrama({
   const getStatusBadgeColor = (status: string) => {
     switch (status) {
       case "NORMAL":
-        return "bg-green-100 text-green-800";
+        return "bg-green-100 text-green-800 border-green-200";
       case "ALARME":
-        return "bg-yellow-100 text-yellow-800";
+        return "bg-yellow-100 text-yellow-800 border-yellow-200";
       case "FALHA":
-        return "bg-red-100 text-red-800";
+        return "bg-red-100 text-red-800 border-red-200";
       default:
-        return "bg-gray-100 text-gray-800";
+        return "bg-gray-100 text-gray-800 border-gray-200";
+    }
+  };
+
+  // Função para determinar o tamanho do container baseado no tipo
+  const getContainerSize = (tipo: string) => {
+    switch (tipo) {
+      case "TRANSFORMADOR":
+        return "p-4"; // Maior para transformador
+      case "INVERSOR":
+        return "p-3.5";
+      case "MOTOR":
+        return "p-3.5";
+      default:
+        return "p-3";
     }
   };
 
@@ -79,11 +522,11 @@ export function SinopticoDiagrama({
           Diagrama Unifilar
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="p-0">
         {/* Área do Diagrama */}
         <div
-          className="relative bg-muted/20 rounded-lg p-6 border-2 border-dashed border-muted-foreground/20"
-          style={{ height: "350px" }}
+        className="relative bg-muted/20 rounded-none p-4 border-0"
+        style={{ height: "600px" }}
         >
           {/* SVG para linhas de conexão */}
           <svg
@@ -147,13 +590,38 @@ export function SinopticoDiagrama({
               strokeWidth="2"
               className="text-muted-foreground"
             />
+
+            {/* Setas indicando fluxo de energia */}
+            <defs>
+              <marker
+                id="arrowhead"
+                markerWidth="10"
+                markerHeight="7"
+                refX="9"
+                refY="3.5"
+                orient="auto"
+                className="text-blue-500"
+              >
+                <polygon points="0 0, 10 3.5, 0 7" fill="currentColor" />
+              </marker>
+            </defs>
+            <line
+              x1="15%"
+              y1="48%"
+              x2="25%"
+              y2="48%"
+              stroke="currentColor"
+              strokeWidth="2"
+              className="text-blue-500"
+              markerEnd="url(#arrowhead)"
+            />
           </svg>
 
           {/* Componentes clicáveis */}
           {componentes.map((componente) => (
             <div
               key={componente.id}
-              className={`absolute cursor-pointer transition-all duration-200 ${
+              className={`absolute cursor-pointer transition-all duration-300 ${
                 hoveredComponent === componente.id
                   ? "scale-110 z-20"
                   : "scale-100 z-10"
@@ -167,101 +635,103 @@ export function SinopticoDiagrama({
               onMouseEnter={() => setHoveredComponent(componente.id)}
               onMouseLeave={() => setHoveredComponent(null)}
             >
-              {/* Círculo de status com ícone */}
+              {/* Container com ícone elétrico técnico */}
               <div
                 className={`
-                relative p-3 rounded-full text-white transition-all duration-200
-                ${getStatusColor(componente.status)}
-                ${
-                  hoveredComponent === componente.id
-                    ? "shadow-lg ring-4 ring-white/50"
-                    : "shadow-md"
-                }
-              `}
+                  relative rounded-lg text-white transition-all duration-300 border-2 border-white/30
+                  ${getContainerSize(componente.tipo)}
+                  ${getStatusColor(componente.status)}
+                  ${
+                    hoveredComponent === componente.id
+                      ? "shadow-xl ring-4 ring-white/50 scale-105"
+                      : "shadow-lg"
+                  }
+                `}
               >
-                {getComponenteIcon(componente.tipo)}
+                {getComponenteIcon(componente.tipo, componente.dados?.isOpen)}
 
                 {/* Indicador de status pulsante para alarmes/falhas */}
                 {componente.status !== "NORMAL" && (
-                  <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-pulse ring-2 ring-white"></div>
+                  <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-pulse ring-2 ring-white shadow-md"></div>
                 )}
+
+                {/* Badge de status pequeno no canto superior esquerdo */}
+                <div className="absolute -top-2 -left-2">
+                  <div
+                    className={`w-4 h-4 rounded-full ${getStatusColor(
+                      componente.status
+                    )} ring-2 ring-white`}
+                  ></div>
+                </div>
               </div>
 
-              {/* Label do componente */}
-              <div className="mt-2 text-center">
-                <div className="text-xs font-medium text-foreground whitespace-nowrap max-w-20 truncate">
+              {/* Label do componente melhorado */}
+              <div className="mt-3 text-center">
+                <div className="text-xs font-semibold text-foreground whitespace-nowrap max-w-24 truncate">
                   {componente.nome}
+                </div>
+                <div className="text-xs text-muted-foreground mt-0.5">
+                  {componente.tipo.replace("_", " ")}
                 </div>
                 <Badge
                   variant="outline"
                   className={`text-xs mt-1 ${getStatusBadgeColor(
                     componente.status
-                  )}`}
+                  )} font-medium`}
                 >
                   {componente.status}
                 </Badge>
               </div>
 
-              {/* Tooltip no hover */}
+              {/* Tooltip melhorado no hover */}
               {hoveredComponent === componente.id && (
-                <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-background p-3 border border-border rounded-lg shadow-lg whitespace-nowrap z-30">
-                  <div className="text-sm font-medium">{componente.nome}</div>
-                  <div className="text-xs text-muted-foreground">
-                    Tipo: {componente.tipo}
+                <div className="absolute bottom-full mb-4 left-1/2 transform -translate-x-1/2 bg-background/95 backdrop-blur-sm p-4 border border-border rounded-lg shadow-xl whitespace-nowrap z-30 min-w-48">
+                  <div className="space-y-2">
+                    <div className="text-sm font-semibold border-b pb-1">
+                      {componente.nome}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <span className="text-muted-foreground">Tipo:</span>
+                        <div className="font-medium">
+                          {componente.tipo.replace("_", " ")}
+                        </div>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Status:</span>
+                        <div
+                          className={`font-medium ${
+                            componente.status === "NORMAL"
+                              ? "text-green-600"
+                              : componente.status === "ALARME"
+                              ? "text-yellow-600"
+                              : "text-red-600"
+                          }`}
+                        >
+                          {componente.status}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-xs text-blue-500 font-medium pt-1 border-t">
+                      🖱️ Clique para ver detalhes técnicos
+                    </div>
                   </div>
-                  <div className="text-xs">Status: {componente.status}</div>
-                  <div className="text-xs text-blue-500 font-medium">
-                    🖱️ Clique para ver detalhes
-                  </div>
+                  {/* Seta do tooltip */}
+                  <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-border"></div>
                 </div>
               )}
             </div>
           ))}
-        </div>
 
-        <Separator />
-
-        {/* Legenda */}
-        <div className="bg-muted/50 p-3 rounded-lg">
-          <div className="flex items-center gap-2 text-sm font-medium mb-2">
-            <Info className="h-4 w-4" />
-            Legenda:
+          {/* Labels das seções */}
+          <div className="absolute top-2 left-4 text-xs font-semibold text-muted-foreground bg-background/80 px-2 py-1 rounded">
+            ENTRADA
           </div>
-          <div className="flex gap-4 text-xs">
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-              <span>Normal</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 bg-yellow-500 rounded-full animate-pulse"></div>
-              <span>Alarme</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
-              <span>Falha</span>
-            </div>
+          <div className="absolute top-2 right-4 text-xs font-semibold text-muted-foreground bg-background/80 px-2 py-1 rounded">
+            GERAÇÃO
           </div>
-        </div>
-
-        {/* Resumo dos Status */}
-        <div className="grid grid-cols-3 gap-2 text-center">
-          <div className="bg-green-50 border border-green-200 p-2 rounded">
-            <div className="text-lg font-bold text-green-600">
-              {componentes.filter((c) => c.status === "NORMAL").length}
-            </div>
-            <div className="text-xs text-green-700">Normais</div>
-          </div>
-          <div className="bg-yellow-50 border border-yellow-200 p-2 rounded">
-            <div className="text-lg font-bold text-yellow-600">
-              {componentes.filter((c) => c.status === "ALARME").length}
-            </div>
-            <div className="text-xs text-yellow-700">Alarmes</div>
-          </div>
-          <div className="bg-red-50 border border-red-200 p-2 rounded">
-            <div className="text-lg font-bold text-red-600">
-              {componentes.filter((c) => c.status === "FALHA").length}
-            </div>
-            <div className="text-xs text-red-700">Falhas</div>
+          <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 text-xs font-semibold text-muted-foreground bg-background/80 px-2 py-1 rounded">
+            CARGAS E EQUIPAMENTOS
           </div>
         </div>
       </CardContent>

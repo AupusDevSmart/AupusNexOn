@@ -502,13 +502,13 @@ export function MapaBrasil({
                     <th className="text-left py-2 text-muted-foreground font-medium text-xs">
                       Nome
                     </th>
-                    <th className="text-left py-2 text-muted-foreground font-medium text-xs">
+                    <th className="text-left py-2 text-muted-foreground font-medium text-xs pr-0 pl-14">
                       Potência
                     </th>
-                    <th className="text-center py-2 text-muted-foreground font-medium text-xs">
+                    <th className="text-center py-2 text-muted-foreground font-medium text-xs pl-0">
                       Potência Inst.
                     </th>
-                    <th className="text-center py-2 text-muted-foreground font-medium text-xs">
+                    <th className="text-center py-2 text-muted-foreground font-medium text-xs" title="Fator de Capacidade">
                       FC
                     </th>
                     <th className="text-center py-2 text-muted-foreground font-medium text-xs">
@@ -557,9 +557,9 @@ export function MapaBrasil({
                           >
                             {ativo.nome}
                           </td>
-                          <td className="py-2">
+                          <td className="py-2 pr-0 pl-10">
                             <div className="flex items-center gap-1">
-                              <div className="w-12 h-2 bg-muted rounded-full overflow-hidden">
+                              <div className="w-20 h-2 bg-muted rounded-full overflow-hidden">
                                 <div
                                   className="h-full bg-blue-500 transition-all duration-300"
                                   style={{
@@ -572,12 +572,12 @@ export function MapaBrasil({
                               </span>
                             </div>
                           </td>
-                          <td className="py-2 text-center">
+                          <td className="py-2 text-center pl-0">
                             <span className="text-sm font-medium text-green-600">
                               {ativo.potenciaAtual || 0} MW
                             </span>
                           </td>
-                          <td className="py-2 text-center">
+                          <td className="py-2 text-center" title="Fator de Capacidade">
                             <span className="text-sm font-medium text-blue-600">
                               {ativo.fc || 0}%
                             </span>
@@ -655,13 +655,13 @@ export function MapaBrasil({
                     <th className="text-left py-2 text-muted-foreground font-medium text-xs">
                       Nome
                     </th>
-                    <th className="text-left py-2 text-muted-foreground font-medium text-xs">
+                    <th className="text-left py-2 text-muted-foreground font-medium text-xs pr-0 pl-14">
                       Consumo
                     </th>
-                    <th className="text-center py-2 text-muted-foreground font-medium text-xs">
+                    <th className="text-center py-2 text-muted-foreground font-medium text-xs pl-0">
                       Potência Inst.
                     </th>
-                    <th className="text-center py-2 text-muted-foreground font-medium text-xs">
+                    <th className="text-center py-2 text-muted-foreground font-medium text-xs" title="Fator de Carga">
                       FC
                     </th>
                     <th className="text-center py-2 text-muted-foreground font-medium text-xs">
@@ -723,9 +723,9 @@ export function MapaBrasil({
                           >
                             {ativo.nome}
                           </td>
-                          <td className="py-2">
+                          <td className="py-2 pr-0 pl-10">
                             <div className="flex items-center gap-1">
-                              <div className="w-12 h-2 bg-muted rounded-full overflow-hidden">
+                              <div className="w-20 h-2 bg-muted rounded-full overflow-hidden">
                                 <div
                                   className="h-full bg-green-500 transition-all duration-300"
                                   style={{
@@ -738,12 +738,12 @@ export function MapaBrasil({
                               </span>
                             </div>
                           </td>
-                          <td className="py-2 text-center">
+                          <td className="py-2 text-center pl-0">
                             <span className="text-sm font-medium text-orange-600">
                               {ativo.potenciaAtual || 0} MW
                             </span>
                           </td>
-                          <td className="py-2 text-center">
+                          <td className="py-2 text-center" title="Fator de Carga">
                             <span className="text-sm font-medium text-purple-600">
                               {ativo.fc || 0}%
                             </span>
