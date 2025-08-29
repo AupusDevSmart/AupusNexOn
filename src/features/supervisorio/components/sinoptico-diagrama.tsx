@@ -516,17 +516,15 @@ export function SinopticoDiagrama({
 
   return (
     <Card className="h-full w-full">
+      <CardContent className="p-0"></CardContent>
       <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2">
-          <Settings className="h-5 w-5 text-purple-500" />
-          Diagrama Unifilar
-        </CardTitle>
+        <CardTitle className="flex items-center gap-2"></CardTitle>
       </CardHeader>
       <CardContent className="p-0">
         {/* Área do Diagrama */}
         <div
-        className="relative bg-muted/20 rounded-none p-4 border-0"
-        style={{ height: "600px" }}
+          className="relative bg-muted/20 rounded-none p-4 border-0"
+          style={{ height: "600px" }}
         >
           {/* SVG para linhas de conexão */}
           <svg

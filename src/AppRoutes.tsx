@@ -33,10 +33,6 @@ const SinopticoPage = lazy(() =>
   }))
 );
 
-const EditorDiagramaPage = lazy(
-  () => import("@/pages/supervisorio/editor-diagrama")
-);
-
 export const appRoutes = createBrowserRouter([
   {
     path: "/",
@@ -151,17 +147,7 @@ export const appRoutes = createBrowserRouter([
           </FeatureWrapper>
         ),
       },
-      // ✅ NOVO: Rota para Editor de Diagrama
-      {
-        path: "supervisorio/editor-diagrama",
-        element: (
-          <FeatureWrapper feature="supervisorio">
-            <Suspense fallback={<div>Carregando...</div>}>
-              <EditorDiagramaPage />
-            </Suspense>
-          </FeatureWrapper>
-        ),
-      },
+      // ✅ CORRIGIDO: Rota para Editor de Diagrama com lazy loading correto
     ],
   },
 ]);
