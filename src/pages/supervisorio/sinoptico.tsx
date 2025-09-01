@@ -5,268 +5,320 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Activity,
   AlertTriangle,
   ArrowLeft,
   CheckCircle,
   Zap,
+  XCircle,
+  AlertCircle,
+  Wrench,
+  Thermometer,
+  Gauge,
+  Power,
+  RotateCcw,
+  Battery,
+  ToggleLeft,
+  ToggleRight,
+  TrendingUp,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from 'recharts';
 
-// Componente do Header com status da rede
-const SinopticoHeader = () => (
-  <Card className="w-full">
-    <CardHeader className="w-full">
-      <CardTitle className="flex items-center justify-between w-full">
-        <span>Status da Rede</span>
-        <Badge variant="default" className="bg-green-500">
-          <CheckCircle className="h-4 w-4 mr-1" />
-          NORMAL
-        </Badge>
-      </CardTitle>
-    </CardHeader>
-    <CardContent className="w-full">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full">
-        <div className="text-center">
-          <div className="text-2xl font-bold text-green-600">220V</div>
-          <div className="text-sm text-muted-foreground">Tensão L1</div>
-        </div>
-        <div className="text-center">
-          <div className="text-2xl font-bold text-green-600">219V</div>
-          <div className="text-sm text-muted-foreground">Tensão L2</div>
-        </div>
-        <div className="text-center">
-          <div className="text-2xl font-bold text-green-600">221V</div>
-          <div className="text-sm text-muted-foreground">Tensão L3</div>
-        </div>
-        <div className="text-center">
-          <div className="text-2xl font-bold text-blue-600">60Hz</div>
-          <div className="text-sm text-muted-foreground">Frequência</div>
-        </div>
-      </div>
-    </CardContent>
-  </Card>
-);
+// Tipos para os dados dos equipamentos
+interface MedidorEnergia {
+  ufer: number;
+  demanda: number;
+  energiaConsumida: number;
+  energiaInjetada: number;
+  tensao: { l1: number; l2: number; l3: number };
+  corrente: { l1: number; l2: number; l3: number };
+  fatorPotencia: number;
+}
 
-// Componente dos Gráficos
-const SinopticoGraficos = () => (
-  <div className="space-y-4 w-full">
-    <Card className="w-full">
-      <CardHeader className="w-full">
-        <CardTitle className="flex items-center gap-2">
-          <Zap className="h-5 w-5" />
-          Potência Ativa
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="w-full">
-        <div className="space-y-4 w-full">
-          <div className="w-full">
-            <div className="flex justify-between text-sm mb-1 w-full">
-              <span>L1</span>
-              <span>750 kW</span>
-            </div>
-            <Progress value={75} className="h-2 w-full" />
-          </div>
-          <div className="w-full">
-            <div className="flex justify-between text-sm mb-1 w-full">
-              <span>L2</span>
-              <span>820 kW</span>
-            </div>
-            <Progress value={82} className="h-2 w-full" />
-          </div>
-          <div className="w-full">
-            <div className="flex justify-between text-sm mb-1 w-full">
-              <span>L3</span>
-              <span>780 kW</span>
-            </div>
-            <Progress value={78} className="h-2 w-full" />
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+interface Transformador {
+  potenciaNominal: number;
+  potenciaAtual: number;
+  carregamento: number;
+  temperatura: number;
+  tensaoPrimario: { l1: number; l2: number; l3: number };
+  tensaoSecundario: { l1: number; l2: number; l3: number };
+  corrente: { l1: number; l2: number; l3: number };
+  status: 'normal' | 'alerta' | 'falha';
+}
 
-    <Card className="w-full">
-      <CardHeader className="w-full">
-        <CardTitle className="flex items-center gap-2">
-          <Activity className="h-5 w-5" />
-          Corrente
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="w-full">
-        <div className="grid grid-cols-3 gap-4 text-center w-full">
-          <div>
-            <div className="text-xl font-bold">125A</div>
-            <div className="text-sm text-muted-foreground">L1</div>
-          </div>
-          <div>
-            <div className="text-xl font-bold">130A</div>
-            <div className="text-sm text-muted-foreground">L2</div>
-          </div>
-          <div>
-            <div className="text-xl font-bold">128A</div>
-            <div className="text-sm text-muted-foreground">L3</div>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  </div>
-);
+interface InversorSolar {
+  potenciaAC: number;
+  potenciaCC: number;
+  tensaoMPPT1: number;
+  tensaoMPPT2: number;
+  correnteString1: number;
+  correnteString2: number;
+  eficiencia: number;
+  temperatura: number;
+  geracaoHoje: number;
+  geracaoTotal: number;
+  status: 'produzindo' | 'standby' | 'falha';
+}
 
-// Componente do Diagrama Unifilar
-const SinopticoDiagrama = () => (
-  <Card className="h-full w-full">
-    <CardHeader className="w-full">
-      <CardTitle>Diagrama Unifilar</CardTitle>
-    </CardHeader>
-    <CardContent className="h-full w-full">
-      <div className="flex flex-col items-center justify-center h-64 bg-slate-50 rounded-lg border-2 border-dashed border-slate-200 w-full">
-        <div className="text-center space-y-4 w-full">
-          {/* Representação visual simples */}
-          <div className="flex items-center justify-center space-x-8 w-full">
-            <div className="flex flex-col items-center">
-              <div className="w-12 h-12 bg-yellow-500 rounded-full flex items-center justify-center">
-                <Zap className="h-6 w-6 text-white" />
-              </div>
-              <span className="text-xs mt-1">Geração</span>
-            </div>
-            <div className="border-t-2 border-gray-400 w-16"></div>
-            <div className="flex flex-col items-center">
-              <div className="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center">
-                <Activity className="h-6 w-6 text-white" />
-              </div>
-              <span className="text-xs mt-1">Medição</span>
-            </div>
-            <div className="border-t-2 border-gray-400 w-16"></div>
-            <div className="flex flex-col items-center">
-              <div className="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center">
-                <CheckCircle className="h-6 w-6 text-white" />
-              </div>
-              <span className="text-xs mt-1">Rede</span>
-            </div>
-          </div>
-          <div className="text-sm text-muted-foreground">
-            Diagrama unifilar simplificado
-          </div>
-        </div>
-      </div>
-    </CardContent>
-  </Card>
-);
+interface MotorEletrico {
+  tensao: { l1: number; l2: number; l3: number };
+  corrente: { l1: number; l2: number; l3: number };
+  vibracao: number;
+  temperatura: number;
+  desequilibrioTensao: number;
+  rpm: number;
+  potencia: number;
+  status: 'funcionando' | 'parado' | 'falha';
+}
 
-// Componente dos Indicadores do Rodapé
-const SinopticoIndicadores = () => (
-  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full">
-    <Card className="w-full">
-      <CardContent className="p-4 w-full">
-        <div className="flex items-center space-x-2 w-full">
-          <CheckCircle className="h-5 w-5 text-green-500" />
-          <div>
-            <div className="font-medium">Sistema</div>
-            <div className="text-sm text-muted-foreground">Normal</div>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+interface BancoCapacitores {
+  tensao: number;
+  corrente: number;
+  potenciaReativa: number;
+  status: 'ligado' | 'desligado' | 'falha';
+  numeroEstagiOS: number;
+  estagiosLigados: number;
+}
 
-    <Card className="w-full">
-      <CardContent className="p-4 w-full">
-        <div className="flex items-center space-x-2 w-full">
-          <Zap className="h-5 w-5 text-blue-500" />
-          <div>
-            <div className="font-medium">2.350 kW</div>
-            <div className="text-sm text-muted-foreground">Potência Total</div>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+interface DisjuntorChave {
+  status: 'aberto' | 'fechado';
+  estadoMola: 'armada' | 'desarmada';
+  corrente: number;
+  tensao: number;
+  numeroOperacoes: number;
+  ultimaOperacao: string;
+  tipo: 'disjuntor' | 'chave';
+}
 
-    <Card className="w-full">
-      <CardContent className="p-4 w-full">
-        <div className="flex items-center space-x-2 w-full">
-          <Activity className="h-5 w-5 text-orange-500" />
-          <div>
-            <div className="font-medium">0.92</div>
-            <div className="text-sm text-muted-foreground">
-              Fator de Potência
-            </div>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-
-    <Card className="w-full">
-      <CardContent className="p-4 w-full">
-        <div className="flex items-center space-x-2 w-full">
-          <AlertTriangle className="h-5 w-5 text-yellow-500" />
-          <div>
-            <div className="font-medium">0</div>
-            <div className="text-sm text-muted-foreground">Alertas</div>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  </div>
-);
-
-export function SinopticoPage() {
-  const { ativoId } = useParams<{ ativoId: string }>();
-  const navigate = useNavigate();
-
-  // Mock data para o ativo
-  const [ativoData] = useState({
-    id: ativoId,
-    nome: "UFV Solar Goiânia",
-    tipo: "Usina Fotovoltaica",
-    status: "NORMAL",
-    potencia: "2500 kW",
-    localizacao: "Goiânia - GO",
+// Hook personalizado para dados em tempo real
+const useDadosTempoReal = (ativoId: string) => {
+  const [dados, setDados] = useState({
+    statusRede: 'Normal',
+    tensoes: { l1: 220, l2: 219, l3: 221 },
+    frequencia: 60.02,
+    potencia: { l1: 750, l2: 820, l3: 780, total: 2350 },
+    corrente: { l1: 125, l2: 130, l3: 128 },
+    indicadores: {
+      thd: 2.3,
+      fatorPotencia: 0.92,
+      dt: 1.8,
+      alarmes: 0,
+      falhas: 1,
+      urgencias: 0,
+      osAbertas: 3
+    },
+    faltaEnergia: null as { tempoInicio: string; protocolo: string } | null
   });
 
-  const handleVoltar = () => {
-    navigate(-1); // Volta para página anterior
-  };
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  return (
-    <Layout>
-      <Layout.Main className="w-full">
-        <div className="w-full space-y-6">
-          {/* Header com botão voltar */}
-          <div className="flex items-center gap-4 w-full">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleVoltar}
-              className="flex items-center gap-2"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Voltar
-            </Button>
-            <div className="flex-1">
-              <TitleCard title={`Sinóptico - ${ativoData.nome}`} />
-            </div>
-          </div>
+  const fetchDados = useCallback(async () => {
+    try {
+      setLoading(true);
+      
+      // Simulação de dados dinâmicos para demonstração
+      setDados(prevDados => ({
+        ...prevDados,
+        tensoes: {
+          l1: 220 + Math.random() * 4 - 2,
+          l2: 219 + Math.random() * 4 - 2,
+          l3: 221 + Math.random() * 4 - 2,
+        },
+        frequencia: 60 + Math.random() * 0.2 - 0.1,
+        potencia: {
+          l1: 750 + Math.random() * 100 - 50,
+          l2: 820 + Math.random() * 100 - 50,
+          l3: 780 + Math.random() * 100 - 50,
+          total: 2350 + Math.random() * 200 - 100,
+        }
+      }));
+      
+      setError(null);
+    } catch (err) {
+      console.error('Erro ao buscar dados:', err);
+      setError(err instanceof Error ? err.message : 'Erro desconhecido');
+    } finally {
+      setLoading(false);
+    }
+  }, [ativoId]);
 
-          {/* Status da Rede */}
-          <SinopticoHeader />
+  useEffect(() => {
+    fetchDados();
+    const interval = setInterval(fetchDados, 3000);
+    return () => clearInterval(interval);
+  }, [ativoId, fetchDados]);
 
-          {/* Layout Principal */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 w-full">
-            {/* Gráficos à Esquerda */}
-            <div className="w-full">
-              <SinopticoGraficos />
-            </div>
+  return { dados, loading, error, refetch: fetchDados };
+};
 
-            {/* Diagrama Unifilar à Direita */}
-            <div className="w-full">
-              <SinopticoDiagrama />
-            </div>
-          </div>
+// Hook para histórico de dados
+const useHistoricoDados = (ativoId: string) => {
+  const [historico] = useState({
+    potencia: [
+      { tempo: '09:00', potencia: 750 },
+      { tempo: '09:15', potencia: 820 },
+      { tempo: '09:30', potencia: 890 },
+      { tempo: '09:45', potencia: 945 },
+      { tempo: '10:00', potencia: 1020 },
+      { tempo: '10:15', potencia: 1150 },
+      { tempo: '10:30', potencia: 1280 },
+      { tempo: '10:45', potencia: 1420 },
+      { tempo: '11:00', potencia: 1580 },
+      { tempo: '11:15', potencia: 1650 },
+    ],
+    tensao: [
+      { tempo: '09:00', l1: 220, l2: 218, l3: 221 },
+      { tempo: '09:15', l1: 219, l2: 220, l3: 219 },
+      { tempo: '09:30', l1: 221, l2: 219, l3: 220 },
+      { tempo: '09:45', l1: 220, l2: 221, l3: 218 },
+      { tempo: '10:00', l1: 218, l2: 220, l3: 222 },
+      { tempo: '10:15', l1: 220, l2: 219, l3: 220 },
+      { tempo: '10:30', l1: 221, l2: 220, l3: 219 },
+      { tempo: '10:45', l1: 219, l2: 221, l3: 220 },
+      { tempo: '11:00', l1: 220, l2: 220, l3: 221 },
+      { tempo: '11:15', l1: 221, l2: 219, l3: 220 },
+    ]
+  });
 
-          {/* Indicadores do Rodapé */}
-          <SinopticoIndicadores />
+  return { historico };
+};
+
+// MODALS DOS EQUIPAMENTOS
+
+// Modal do Medidor de Energia
+const MedidorEnergiaModal = ({ isOpen, onClose, dados }: { isOpen: boolean; onClose: () => void; dados: MedidorEnergia; }) => (
+  <Dialog open={isOpen} onOpenChange={onClose}>
+    <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2">
+          <Gauge className="h-5 w-5 text-blue-500" />
+          Medidor de Energia
+        </DialogTitle>
+      </DialogHeader>
+      
+      <div className="space-y-6">
+        <div className="grid grid-cols-2 gap-4">
+          <Card>
+            <CardContent className="p-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-green-600">{dados.ufer.toFixed(1)}</div>
+                <div className="text-sm text-muted-foreground">UFER (MWh)</div>
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardContent className="p-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-orange-600">{dados.demanda.toFixed(0)} kW</div>
+                <div className="text-sm text-muted-foreground">Demanda Atual</div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
-      </Layout.Main>
-    </Layout>
-  );
-}
+
+        <div className="space-y-3">
+          <h4 className="font-semibold flex items-center gap-2">
+            <Zap className="h-4 w-4" />
+            Energia
+          </h4>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="p-3 bg-red-50 rounded-lg">
+              <div className="text-lg font-bold text-red-600">{dados.energiaConsumida.toLocaleString()} kWh</div>
+              <div className="text-sm text-red-700">Consumida</div>
+            </div>
+            <div className="p-3 bg-green-50 rounded-lg">
+              <div className="text-lg font-bold text-green-600">{dados.energiaInjetada.toLocaleString()} kWh</div>
+              <div className="text-sm text-green-700">Injetada</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <h4 className="font-semibold">Medições por Fase</h4>
+          <div className="space-y-2">
+            {(['l1', 'l2', 'l3'] as const).map((fase) => (
+              <div key={fase} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                <span className="font-medium">Fase {fase.toUpperCase()}</span>
+                <div className="flex items-center gap-4">
+                  <span className="text-sm">{dados.tensao[fase].toFixed(1)}V</span>
+                  <span className="text-sm">{dados.corrente[fase].toFixed(1)}A</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="p-4 bg-blue-50 rounded-lg">
+          <div className="flex items-center justify-between">
+            <span className="font-medium">Fator de Potência</span>
+            <div className="text-right">
+              <div className="text-xl font-bold text-blue-600">{dados.fatorPotencia}</div>
+              <Badge variant={dados.fatorPotencia > 0.92 ? "default" : "destructive"}>
+                {dados.fatorPotencia > 0.92 ? "Normal" : "Baixo"}
+              </Badge>
+            </div>
+          </div>
+        </div>
+      </div>
+    </DialogContent>
+  </Dialog>
+);
+
+// Modal do Transformador  
+const TransformadorModal = ({ isOpen, onClose, dados }: { isOpen: boolean; onClose: () => void; dados: Transformador; }) => (
+  <Dialog open={isOpen} onOpenChange={onClose}>
+    <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2">
+          <Power className="h-5 w-5 text-purple-500" />
+          Transformador
+        </DialogTitle>
+      </DialogHeader>
+      
+      <div className="space-y-6">
+        <div className="grid grid-cols-2 gap-4">
+          <Card>
+            <CardContent className="p-4">
+              <div className="text-center">
+                <Badge variant={dados.status === 'normal' ? "default" : "destructive"} className="mb-2">
+                  {dados.status.toUpperCase()}
+                </Badge>
+                <div className="text-sm text-muted-foreground">Status</div>
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardContent className="p-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-orange-600">{dados.carregamento}%</div>
+                <Progress value={dados.carregamento} className="mt-2" />
+                <div className="text-sm text-muted-foreground mt-1">Carregamento</div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="space-y-3">
+          <h4 className="font-semibold flex items-center gap-2">
+            <Zap className="h-4 w-4" />
+            Potências
+          </h4>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="p-3 bg-blue-50 rounded-lg">
+              <div className="text-lg font-bold text-blue-600">{dados.potenciaNominal} kVA</div>
+              <div className="text-sm text-blue-700">Nominal</div>
+            </div>
+            <div className="p-3 bg-green-50 rounded-lg">
+              <div className="text-lg font-bold text-green-600">{dados.potenciaAtual} kVA</div>
+              <div className="text-sm text-green-700">Atual

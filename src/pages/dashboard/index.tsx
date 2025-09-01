@@ -476,7 +476,7 @@ export function DashboardPage() {
         <div className="min-h-screen w-full">
           <div className="max-h-[calc(100vh-4rem)] overflow-y-auto">
             {/* Alteração principal: mudei de gap-2 para gap-3 e ajustei o padding */}
-            <div className="flex flex-col gap-3 p-3">
+            <div className="flex flex-col gap-3 p-2">
               {/* TitleCard sem margem extra - usando className para sobrescrever */}
               <div className="w-full 1">
                 <h1 className="text-2xl font-bold text-foreground">

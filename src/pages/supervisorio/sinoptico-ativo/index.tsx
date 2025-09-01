@@ -329,9 +329,9 @@ export function SinopticoAtivoPage() {
     <Layout>
       <Layout.Main>
         {/* Container principal com espaçamento do COA */}
-        <div className="flex flex-col gap-3 p-3">
+        <div className="w-full max-w-full space-y-3">
           {/* Header com botão voltar */}
-          <div className="flex items-center gap-4 w-full">
+          <div className="flex items-center gap-3 p-2">
             <Button
               variant="outline"
               size="sm"
@@ -494,7 +494,7 @@ export function SinopticoAtivoPage() {
           <div
             className={`grid grid-cols-1 ${
               modoEdicao ? "lg:grid-cols-1" : "lg:grid-cols-2"
-            } gap-6 w-full`}
+            } gap-4 w-full`}
           >
             {/* Gráficos à Esquerda (ocultos no modo edição para dar mais espaço) */}
             {!modoEdicao && (
