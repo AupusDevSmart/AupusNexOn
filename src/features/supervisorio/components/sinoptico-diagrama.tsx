@@ -1,12 +1,24 @@
 // src/features/supervisorio/components/sinoptico-diagrama.tsx
 
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type { ComponenteDU } from "@/types/dtos/sinoptico-ativo";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Settings } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
-// Componentes de ícones elétricos técnicos
+// Interfaces dos tipos de dados
+interface ComponenteDU {
+  id: string;
+  nome: string;
+  tipo: string;
+  status: "NORMAL" | "ALARME" | "FALHA";
+  posicao: {
+    x: number;
+    y: number;
+  };
+  dados?: Record<string, any>;
+}
+
+// Componentes de ícones elétricos técnicos (mantidos do código original)
 const ElectricIcons = {
   // Medidor de Energia - Círculo com display digital
   MEDIDOR: ({ className = "" }: { className?: string }) => (
@@ -465,8 +477,18 @@ export function SinopticoDiagrama({
   componentes,
   onComponenteClick,
 }: SinopticoDiagramaProps) {
+  // Estados apenas para funcionalidades básicas
   const [hoveredComponent, setHoveredComponent] = useState<string | null>(null);
 
+  // Função para abrir modal
+  const handleComponentClick = useCallback(
+    (componente: ComponenteDU) => {
+      onComponenteClick(componente);
+    },
+    [onComponenteClick]
+  );
+
+  // Funções auxiliares (mantidas do código original)
   const getComponenteIcon = (tipo: string, isOpen?: boolean) => {
     const IconComponent =
       ElectricIcons[tipo as keyof typeof ElectricIcons] ||
@@ -500,11 +522,10 @@ export function SinopticoDiagrama({
     }
   };
 
-  // Função para determinar o tamanho do container baseado no tipo
   const getContainerSize = (tipo: string) => {
     switch (tipo) {
       case "TRANSFORMADOR":
-        return "p-4"; // Maior para transformador
+        return "p-4";
       case "INVERSOR":
         return "p-3.5";
       case "MOTOR":
@@ -516,22 +537,20 @@ export function SinopticoDiagrama({
 
   return (
     <Card className="h-full w-full">
-      <CardContent className="p-0"></CardContent>
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2"></CardTitle>
-      </CardHeader>
+      <CardHeader className="pb-3"></CardHeader>
+
       <CardContent className="p-0">
         {/* Área do Diagrama */}
         <div
           className="relative bg-muted/20 rounded-none p-4 border-0"
-          style={{ height: "600px" }}
+          style={{ height: "800px" }}
         >
           {/* SVG para linhas de conexão */}
           <svg
             className="absolute inset-0 w-full h-full pointer-events-none"
             style={{ zIndex: 1 }}
           >
-            {/* Linha principal horizontal */}
+            {/* Linhas originais do diagrama (mantidas) */}
             <line
               x1="10%"
               y1="50%"
@@ -541,8 +560,6 @@ export function SinopticoDiagrama({
               strokeWidth="3"
               className="text-muted-foreground"
             />
-
-            {/* Linhas verticais de conexão */}
             <line
               x1="20%"
               y1="30%"
@@ -588,31 +605,6 @@ export function SinopticoDiagrama({
               strokeWidth="2"
               className="text-muted-foreground"
             />
-
-            {/* Setas indicando fluxo de energia */}
-            <defs>
-              <marker
-                id="arrowhead"
-                markerWidth="10"
-                markerHeight="7"
-                refX="9"
-                refY="3.5"
-                orient="auto"
-                className="text-blue-500"
-              >
-                <polygon points="0 0, 10 3.5, 0 7" fill="currentColor" />
-              </marker>
-            </defs>
-            <line
-              x1="15%"
-              y1="48%"
-              x2="25%"
-              y2="48%"
-              stroke="currentColor"
-              strokeWidth="2"
-              className="text-blue-500"
-              markerEnd="url(#arrowhead)"
-            />
           </svg>
 
           {/* Componentes clicáveis */}
@@ -629,7 +621,7 @@ export function SinopticoDiagrama({
                 top: `${componente.posicao.y}%`,
                 transform: "translate(-50%, -50%)",
               }}
-              onClick={() => onComponenteClick(componente)}
+              onClick={() => handleComponentClick(componente)}
               onMouseEnter={() => setHoveredComponent(componente.id)}
               onMouseLeave={() => setHoveredComponent(null)}
             >
@@ -663,8 +655,8 @@ export function SinopticoDiagrama({
                 </div>
               </div>
 
-              {/* Label do componente melhorado */}
-              <div className="mt-3 text-center">
+              {/* Label do componente */}
+              <div className="mt-3 text-center pointer-events-none">
                 <div className="text-xs font-semibold text-foreground whitespace-nowrap max-w-24 truncate">
                   {componente.nome}
                 </div>
@@ -681,9 +673,9 @@ export function SinopticoDiagrama({
                 </Badge>
               </div>
 
-              {/* Tooltip melhorado no hover */}
+              {/* Tooltip */}
               {hoveredComponent === componente.id && (
-                <div className="absolute bottom-full mb-4 left-1/2 transform -translate-x-1/2 bg-background/95 backdrop-blur-sm p-4 border border-border rounded-lg shadow-xl whitespace-nowrap z-30 min-w-48">
+                <div className="absolute bottom-full mb-4 left-1/2 transform -translate-x-1/2 bg-background/95 backdrop-blur-sm p-4 border border-border rounded-lg shadow-xl whitespace-nowrap z-30 min-w-48 pointer-events-none">
                   <div className="space-y-2">
                     <div className="text-sm font-semibold border-b pb-1">
                       {componente.nome}
@@ -722,13 +714,13 @@ export function SinopticoDiagrama({
           ))}
 
           {/* Labels das seções */}
-          <div className="absolute top-2 left-4 text-xs font-semibold text-muted-foreground bg-background/80 px-2 py-1 rounded">
+          <div className="absolute top-2 left-4 text-xs font-semibold text-muted-foreground bg-background/80 px-2 py-1 rounded pointer-events-none">
             ENTRADA
           </div>
-          <div className="absolute top-2 right-4 text-xs font-semibold text-muted-foreground bg-background/80 px-2 py-1 rounded">
+          <div className="absolute top-2 right-4 text-xs font-semibold text-muted-foreground bg-background/80 px-2 py-1 rounded pointer-events-none">
             GERAÇÃO
           </div>
-          <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 text-xs font-semibold text-muted-foreground bg-background/80 px-2 py-1 rounded">
+          <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 text-xs font-semibold text-muted-foreground bg-background/80 px-2 py-1 rounded pointer-events-none">
             CARGAS E EQUIPAMENTOS
           </div>
         </div>
