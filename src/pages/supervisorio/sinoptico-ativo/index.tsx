@@ -79,7 +79,7 @@ const TIPOS_COMPONENTES = [
   },
 ];
 
-// Componente para renderizar símbolos elétricos
+// Componente para renderizar símbolos elétricos - ATUALIZADO
 const ElectricalSymbol = ({
   tipo,
   status = "NORMAL",
@@ -89,33 +89,54 @@ const ElectricalSymbol = ({
   status: string;
   onClick?: () => void;
 }) => {
-  const getStatusColor = (status: string) => {
+  // Usar classes CSS consistentes com o design system
+  const getStatusClasses = (status: string) => {
     switch (status) {
       case "NORMAL":
-        return "#059669";
+        return {
+          stroke: "stroke-green-600 dark:stroke-green-400",
+          fill: "fill-green-600 dark:fill-green-400",
+          bg: "bg-green-500",
+        };
       case "ALARME":
-        return "#f59e0b";
+        return {
+          stroke: "stroke-amber-600 dark:stroke-amber-400",
+          fill: "fill-amber-600 dark:fill-amber-400",
+          bg: "bg-amber-500",
+        };
       case "FALHA":
-        return "#dc2626";
+        return {
+          stroke: "stroke-red-600 dark:stroke-red-400",
+          fill: "fill-red-600 dark:fill-red-400",
+          bg: "bg-red-500",
+        };
       default:
-        return "#374151";
+        return {
+          stroke: "stroke-muted-foreground",
+          fill: "fill-muted-foreground",
+          bg: "bg-muted",
+        };
     }
   };
 
-  const strokeColor = getStatusColor(status);
+  const statusClasses = getStatusClasses(status);
 
   const renderSymbol = () => {
     switch (tipo) {
       case "MEDIDOR":
         return (
-          <svg width="40" height="40" viewBox="0 0 40 40">
+          <svg
+            width="32"
+            height="32"
+            viewBox="0 0 40 40"
+            className="drop-shadow-sm"
+          >
             <circle
               cx="20"
               cy="20"
               r="18"
-              stroke={strokeColor}
+              className={`${statusClasses.stroke} fill-background`}
               strokeWidth="2"
-              fill="white"
             />
             <text
               x="20"
@@ -123,8 +144,8 @@ const ElectricalSymbol = ({
               textAnchor="middle"
               dominantBaseline="central"
               fontSize="14"
-              fontWeight="bold"
-              fill={strokeColor}
+              fontWeight="600"
+              className={statusClasses.fill}
             >
               M
             </text>
@@ -133,29 +154,32 @@ const ElectricalSymbol = ({
 
       case "TRANSFORMADOR":
         return (
-          <svg width="60" height="40" viewBox="0 0 60 40">
+          <svg
+            width="48"
+            height="32"
+            viewBox="0 0 60 40"
+            className="drop-shadow-sm"
+          >
             <circle
               cx="15"
               cy="20"
               r="12"
-              stroke={strokeColor}
+              className={`${statusClasses.stroke} fill-background`}
               strokeWidth="2"
-              fill="white"
             />
             <circle
               cx="45"
               cy="20"
               r="12"
-              stroke={strokeColor}
+              className={`${statusClasses.stroke} fill-background`}
               strokeWidth="2"
-              fill="white"
             />
             <line
               x1="27"
               y1="20"
               x2="33"
               y2="20"
-              stroke={strokeColor}
+              className={statusClasses.stroke}
               strokeWidth="2"
             />
             <line
@@ -163,7 +187,7 @@ const ElectricalSymbol = ({
               y1="8"
               x2="29"
               y2="32"
-              stroke={strokeColor}
+              className={statusClasses.stroke}
               strokeWidth="2"
             />
             <line
@@ -171,7 +195,7 @@ const ElectricalSymbol = ({
               y1="8"
               x2="31"
               y2="32"
-              stroke={strokeColor}
+              className={statusClasses.stroke}
               strokeWidth="2"
             />
           </svg>
@@ -179,20 +203,24 @@ const ElectricalSymbol = ({
 
       case "INVERSOR":
         return (
-          <svg width="40" height="40" viewBox="0 0 40 40">
+          <svg
+            width="32"
+            height="32"
+            viewBox="0 0 40 40"
+            className="drop-shadow-sm"
+          >
             <rect
               x="2"
               y="2"
               width="36"
               height="36"
-              stroke={strokeColor}
+              className={`${statusClasses.stroke} fill-background`}
               strokeWidth="2"
-              fill="white"
-              rx="2"
+              rx="3"
             />
             <path
               d="M8,20 Q14,12 20,20 T32,20"
-              stroke={strokeColor}
+              className={statusClasses.stroke}
               strokeWidth="2"
               fill="none"
             />
@@ -202,8 +230,8 @@ const ElectricalSymbol = ({
               textAnchor="middle"
               dominantBaseline="central"
               fontSize="8"
-              fontWeight="bold"
-              fill={strokeColor}
+              fontWeight="600"
+              className={statusClasses.fill}
             >
               INV
             </text>
@@ -212,26 +240,31 @@ const ElectricalSymbol = ({
 
       case "DISJUNTOR":
         return (
-          <svg width="40" height="20" viewBox="0 0 40 20">
+          <svg
+            width="32"
+            height="16"
+            viewBox="0 0 40 20"
+            className="drop-shadow-sm"
+          >
             <rect
               x="2"
               y="2"
               width="36"
               height="16"
-              stroke={strokeColor}
+              className={`${statusClasses.stroke} fill-background`}
               strokeWidth="2"
-              fill="white"
+              rx="2"
             />
             {status === "FALHA" ? (
               <path
                 d="M8,10 L16,4 M24,16 L32,10"
-                stroke={strokeColor}
+                className={statusClasses.stroke}
                 strokeWidth="2"
               />
             ) : (
               <path
                 d="M8,10 L16,6 L24,14 L32,10"
-                stroke={strokeColor}
+                className={statusClasses.stroke}
                 strokeWidth="2"
                 fill="none"
               />
@@ -241,14 +274,18 @@ const ElectricalSymbol = ({
 
       case "MOTOR":
         return (
-          <svg width="40" height="40" viewBox="0 0 40 40">
+          <svg
+            width="32"
+            height="32"
+            viewBox="0 0 40 40"
+            className="drop-shadow-sm"
+          >
             <circle
               cx="20"
               cy="20"
               r="18"
-              stroke={strokeColor}
+              className={`${statusClasses.stroke} fill-background`}
               strokeWidth="2"
-              fill="white"
             />
             <text
               x="20"
@@ -256,8 +293,8 @@ const ElectricalSymbol = ({
               textAnchor="middle"
               dominantBaseline="central"
               fontSize="14"
-              fontWeight="bold"
-              fill={strokeColor}
+              fontWeight="600"
+              className={statusClasses.fill}
             >
               M
             </text>
@@ -266,7 +303,7 @@ const ElectricalSymbol = ({
               y1="5"
               x2="12"
               y2="12"
-              stroke={strokeColor}
+              className={statusClasses.stroke}
               strokeWidth="2"
             />
             <line
@@ -274,7 +311,7 @@ const ElectricalSymbol = ({
               y1="5"
               x2="28"
               y2="12"
-              stroke={strokeColor}
+              className={statusClasses.stroke}
               strokeWidth="2"
             />
             <line
@@ -282,7 +319,7 @@ const ElectricalSymbol = ({
               y1="38"
               x2="20"
               y2="31"
-              stroke={strokeColor}
+              className={statusClasses.stroke}
               strokeWidth="2"
             />
           </svg>
@@ -290,23 +327,27 @@ const ElectricalSymbol = ({
 
       case "CAPACITOR":
         return (
-          <svg width="40" height="40" viewBox="0 0 40 40">
+          <svg
+            width="32"
+            height="32"
+            viewBox="0 0 40 40"
+            className="drop-shadow-sm"
+          >
             <rect
               x="2"
               y="2"
               width="36"
               height="36"
               rx="4"
-              stroke={strokeColor}
+              className={`${statusClasses.stroke} fill-background`}
               strokeWidth="2"
-              fill="white"
             />
             <line
               x1="15"
               y1="8"
               x2="15"
               y2="32"
-              stroke={strokeColor}
+              className={statusClasses.stroke}
               strokeWidth="2"
             />
             <line
@@ -314,7 +355,7 @@ const ElectricalSymbol = ({
               y1="8"
               x2="25"
               y2="32"
-              stroke={strokeColor}
+              className={statusClasses.stroke}
               strokeWidth="2"
             />
             <text
@@ -323,8 +364,8 @@ const ElectricalSymbol = ({
               textAnchor="middle"
               dominantBaseline="central"
               fontSize="10"
-              fontWeight="bold"
-              fill={strokeColor}
+              fontWeight="600"
+              className={statusClasses.fill}
             >
               C
             </text>
@@ -333,15 +374,20 @@ const ElectricalSymbol = ({
 
       default:
         return (
-          <svg width="40" height="40" viewBox="0 0 40 40">
+          <svg
+            width="32"
+            height="32"
+            viewBox="0 0 40 40"
+            className="drop-shadow-sm"
+          >
             <rect
               x="5"
               y="5"
               width="30"
               height="30"
-              stroke={strokeColor}
+              className={`${statusClasses.stroke} fill-background`}
               strokeWidth="2"
-              fill="white"
+              rx="3"
             />
             <text
               x="20"
@@ -349,7 +395,7 @@ const ElectricalSymbol = ({
               textAnchor="middle"
               dominantBaseline="central"
               fontSize="12"
-              fill={strokeColor}
+              className="fill-muted-foreground"
             >
               ?
             </text>
@@ -360,18 +406,13 @@ const ElectricalSymbol = ({
 
   return (
     <div
-      className="relative cursor-pointer transition-transform hover:scale-105"
+      className="relative cursor-pointer transition-all duration-200 hover:scale-110 hover:shadow-md"
       onClick={onClick}
     >
       {renderSymbol()}
+      {/* Indicador de status mais elegante */}
       <div
-        className={`absolute -top-2 -right-2 w-3 h-3 rounded-full border-2 border-white shadow-sm ${
-          status === "NORMAL"
-            ? "bg-green-500"
-            : status === "ALARME"
-            ? "bg-yellow-500"
-            : "bg-red-500"
-        }`}
+        className={`absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-background shadow-lg ${statusClasses.bg}`}
       />
     </div>
   );
@@ -1031,7 +1072,7 @@ export function SinopticoAtivoPage() {
                               status={componente.status}
                               onClick={() => handleComponenteClick(componente)}
                             />
-                            <div className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs font-medium text-gray-600 bg-white/90 px-2 py-1 rounded whitespace-nowrap">
+                            <div className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs font-medium text-muted-foreground bg-background/90 px-2 py-1 rounded whitespace-nowrap border">
                               {componente.nome}
                             </div>
                           </div>
@@ -1146,23 +1187,20 @@ export function SinopticoAtivoPage() {
                               y1={fromY}
                               x2={toX}
                               y2={toY}
-                              stroke="#374151"
+                              className="stroke-muted-foreground"
                               strokeWidth="2"
-                              className="drop-shadow-sm"
                             />
                             <circle
                               cx={fromX}
                               cy={fromY}
                               r="3"
-                              fill="#374151"
-                              className="drop-shadow-sm"
+                              className="fill-muted-foreground"
                             />
                             <circle
                               cx={toX}
                               cy={toY}
                               r="3"
-                              fill="#374151"
-                              className="drop-shadow-sm"
+                              className="fill-muted-foreground"
                             />
                           </g>
                         );
@@ -1181,7 +1219,7 @@ export function SinopticoAtivoPage() {
                               <path
                                 d="M 40 0 L 0 0 0 40"
                                 fill="none"
-                                stroke="#e5e7eb"
+                                className="stroke-border"
                                 strokeWidth="0.5"
                                 opacity="0.3"
                               />
@@ -1214,7 +1252,7 @@ export function SinopticoAtivoPage() {
                             status={componente.status}
                             onClick={() => handleComponenteClick(componente)}
                           />
-                          <div className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs font-medium text-gray-600 bg-white/90 px-2 py-1 rounded whitespace-nowrap">
+                          <div className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs font-medium text-muted-foreground bg-background/90 px-2 py-1 rounded whitespace-nowrap border">
                             {componente.nome}
                           </div>
                         </div>
@@ -1274,11 +1312,11 @@ export function SinopticoAtivoPage() {
                               ].map(({ port, style }) => (
                                 <div
                                   key={port}
-                                  className={`absolute w-5 h-5 rounded-full border-2 border-white cursor-pointer transition-all duration-200 pointer-events-auto z-30 hover:scale-110 shadow-lg ${
+                                  className={`absolute w-5 h-5 rounded-full border-2 border-background cursor-pointer transition-all duration-200 pointer-events-auto z-30 hover:scale-110 shadow-lg ${
                                     connecting &&
                                     connecting.from === componente.id &&
                                     connecting.port === port
-                                      ? "bg-yellow-500 animate-pulse"
+                                      ? "bg-amber-500 animate-pulse"
                                       : connecting &&
                                         connecting.from === componente.id
                                       ? "bg-blue-300"
@@ -1316,7 +1354,7 @@ export function SinopticoAtivoPage() {
                                       : "direita"
                                   }`}
                                 >
-                                  <div className="absolute inset-1 rounded-full bg-white/40" />
+                                  <div className="absolute inset-1 rounded-full bg-background/40" />
                                 </div>
                               ))}
                             </>
@@ -1362,7 +1400,7 @@ export function SinopticoAtivoPage() {
                                 ].map(({ port, style }) => (
                                   <div
                                     key={port}
-                                    className="absolute w-3 h-3 bg-gray-400 rounded-full border border-white pointer-events-none shadow-sm"
+                                    className="absolute w-3 h-3 bg-muted-foreground rounded-full border border-background pointer-events-none shadow-sm"
                                     style={style as React.CSSProperties}
                                   />
                                 ))}
@@ -1376,8 +1414,8 @@ export function SinopticoAtivoPage() {
 
                           {/* Indicador de conexão */}
                           {connecting && connecting.from === componente.id && (
-                            <div className="absolute inset-0 ring-2 ring-yellow-400 ring-offset-2 rounded-lg pointer-events-none animate-pulse">
-                              <div className="absolute -top-10 left-1/2 transform -translate-x-1/2 bg-yellow-400 text-yellow-900 text-xs px-3 py-1 rounded-full whitespace-nowrap font-medium">
+                            <div className="absolute inset-0 ring-2 ring-amber-400 ring-offset-2 rounded-lg pointer-events-none animate-pulse">
+                              <div className="absolute -top-10 left-1/2 transform -translate-x-1/2 bg-amber-400 text-amber-900 text-xs px-3 py-1 rounded-full whitespace-nowrap font-medium">
                                 Clique em outro componente
                               </div>
                             </div>
@@ -1433,7 +1471,7 @@ export function SinopticoAtivoPage() {
                           </span>
                         </div>
                         {connecting && (
-                          <span className="text-yellow-600">
+                          <span className="text-amber-600">
                             • Conectando...
                           </span>
                         )}
