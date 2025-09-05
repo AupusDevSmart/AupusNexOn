@@ -5,7 +5,6 @@ import { DadosGrafico } from "@/types/dtos/sinoptico-ativo";
 import { Activity, TrendingUp, Zap } from "lucide-react";
 import {
   CartesianGrid,
-  Legend,
   Line,
   LineChart,
   ResponsiveContainer,
@@ -48,7 +47,7 @@ const CustomTooltip = ({ active, payload, label }: CustomTooltipProps) => {
         <p className="text-sm font-medium">{`Hora: ${label}`}</p>
         {payload.map((entry, index) => (
           <p key={index} className="text-sm" style={{ color: entry.color }}>
-            {`${entry.name}: ${entry.value.toFixed(2)}`}
+            {`${entry.value.toFixed(2)}`}
           </p>
         ))}
       </div>
@@ -91,13 +90,11 @@ export function SinopticoGraficos({
                 }}
               />
               <Tooltip content={<CustomTooltip />} />
-              <Legend wrapperStyle={{ fontSize: "12px" }} iconType="line" />
               <Line
                 type="monotone"
                 dataKey="potencia"
                 stroke="#eab308"
                 strokeWidth={2}
-                name="Potência (MW)"
                 dot={false}
                 activeDot={{ r: 4 }}
               />
@@ -161,13 +158,11 @@ export function SinopticoGraficos({
                 }}
               />
               <Tooltip content={<CustomTooltip />} />
-              <Legend wrapperStyle={{ fontSize: "12px" }} iconType="line" />
               <Line
                 type="monotone"
                 dataKey="tensao"
                 stroke="#3b82f6"
                 strokeWidth={2}
-                name="Tensão (V)"
                 dot={false}
                 activeDot={{ r: 4 }}
               />
@@ -225,46 +220,16 @@ export function SinopticoGraficos({
                 }}
               />
               <Tooltip content={<CustomTooltip />} />
-              <Legend wrapperStyle={{ fontSize: "12px" }} iconType="line" />
               <Line
                 type="monotone"
                 dataKey="corrente"
                 stroke="#8b5cf6"
                 strokeWidth={2}
-                name="Corrente (A)"
                 dot={false}
                 activeDot={{ r: 4 }}
               />
             </LineChart>
           </ResponsiveContainer>
-
-          {/* Indicadores resumo */}
-          <div className="grid grid-cols-3 gap-4 mt-4 pt-4 border-t">
-            <div className="text-center">
-              <div className="text-lg font-bold text-purple-600">
-                {dadosTensao[dadosTensao.length - 1]?.corrente.toFixed(0) ||
-                  "0"}{" "}
-                A
-              </div>
-              <div className="text-sm text-muted-foreground">Atual</div>
-            </div>
-            <div className="text-center">
-              <div className="text-lg font-bold text-green-600">
-                {Math.max(...dadosTensao.map((d) => d.corrente)).toFixed(0)} A
-              </div>
-              <div className="text-sm text-muted-foreground">Máximo</div>
-            </div>
-            <div className="text-center">
-              <div className="text-lg font-bold text-blue-600">
-                {(
-                  dadosTensao.reduce((acc, d) => acc + d.corrente, 0) /
-                  dadosTensao.length
-                ).toFixed(0)}{" "}
-                A
-              </div>
-              <div className="text-sm text-muted-foreground">Médio</div>
-            </div>
-          </div>
         </CardContent>
       </Card>
     </div>

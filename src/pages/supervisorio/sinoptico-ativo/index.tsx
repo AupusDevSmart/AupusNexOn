@@ -27,13 +27,13 @@ import { useNavigate, useParams } from "react-router-dom";
 import { DisjuntorModal } from "@/features/supervisorio/components/disjuntor-modal";
 import { InversorModal } from "@/features/supervisorio/components/inversor-modal";
 import { MedidorModal } from "@/features/supervisorio/components/medidor-modal";
+import { SinopticoDiagrama } from "@/features/supervisorio/components/sinoptico-diagrama";
 import { SinopticoGraficos } from "@/features/supervisorio/components/sinoptico-graficos";
 import { SinopticoIndicadores } from "@/features/supervisorio/components/sinoptico-indicadores";
 import { TransformadorModal } from "@/features/supervisorio/components/transformador-modal";
 
 // Tipos - CORRIGIDOS com interfaces locais caso os imports falhem
 import type { ComponenteDU } from "@/types/dtos/sinoptico-ativo";
-import { SinopticoDiagrama } from "../../../features/supervisorio/components/sinoptico-diagrama";
 
 // Interfaces de backup caso os imports não funcionem
 interface ComponenteDUBackup {
@@ -145,7 +145,7 @@ const getStatusClasses = (status: string) => {
   }
 };
 
-// Componente para renderizar símbolos elétricos - APRIMORADO
+// Componente para renderizar símbolos elétricos - APENAS PARA MODO EDIÇÃO
 const ElectricalSymbol = ({
   tipo,
   status = "NORMAL",
@@ -631,6 +631,10 @@ export function SinopticoAtivoPage() {
     null
   );
 
+  // NOVOS ESTADOS PARA GRID
+  const [gridSize, setGridSize] = useState(20);
+  const [snapToGrid, setSnapToGrid] = useState(true);
+
   // Estados para drag and drop
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState<Position>({ x: 0, y: 0 });
@@ -753,6 +757,99 @@ export function SinopticoAtivoPage() {
     },
   ]);
 
+  // NOVA FUNÇÃO DE SNAP PARA GRID
+  const snapPositionToGrid = useCallback(
+    (x: number, y: number, enabled: boolean = snapToGrid) => {
+      if (!enabled) return { x, y };
+
+      const gridStep = 5; // 5% steps for positioning
+      return {
+        x: Math.round(x / gridStep) * gridStep,
+        y: Math.round(y / gridStep) * gridStep,
+      };
+    },
+    [snapToGrid]
+  );
+
+  // FUNÇÕES DE LAYOUT
+  const autoArrangeComponents = useCallback(() => {
+    const arranged = [...componentes];
+    const categories = {
+      MEDIDOR: { row: 1, order: 1 },
+      TRANSFORMADOR: { row: 2, order: 1 },
+      INVERSOR: { row: 3, order: 1 },
+      DISJUNTOR: { row: 1, order: 2 },
+      TSA: { row: 2, order: 2 },
+      RETIFICADOR: { row: 3, order: 2 },
+      BANCO_BATERIAS: { row: 4, order: 1 },
+      MOTOR: { row: 4, order: 2 },
+      CAPACITOR: { row: 4, order: 3 },
+    };
+
+    const grouped = arranged.reduce((acc, comp) => {
+      const category = categories[comp.tipo] || { row: 5, order: 1 };
+      const key = `${category.row}-${category.order}`;
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(comp);
+      return acc;
+    }, {} as Record<string, ComponenteDU[]>);
+
+    const newComponents: ComponenteDU[] = [];
+
+    Object.entries(grouped).forEach(([key, components]) => {
+      const [row, order] = key.split("-").map(Number);
+      const baseY = 15 + (row - 1) * 20; // 15%, 35%, 55%, 75%
+      const baseX = 10 + (order - 1) * 30; // 10%, 40%, 70%
+
+      components.forEach((comp, index) => {
+        const x = baseX + index * 15; // Espaçar horizontalmente
+        const y = baseY;
+
+        newComponents.push({
+          ...comp,
+          posicao: {
+            x: Math.min(x, 85),
+            y: Math.min(y, 85),
+          },
+        });
+      });
+    });
+
+    setComponentes(newComponents);
+  }, [componentes]);
+
+  const alignHorizontal = useCallback(() => {
+    if (componentes.length < 2) return;
+
+    const avgY =
+      componentes.reduce((sum, comp) => sum + comp.posicao.y, 0) /
+      componentes.length;
+    const aligned = componentes.map((comp) => ({
+      ...comp,
+      posicao: {
+        ...comp.posicao,
+        y: snapPositionToGrid(comp.posicao.x, avgY).y,
+      },
+    }));
+    setComponentes(aligned);
+  }, [componentes, snapPositionToGrid]);
+
+  const alignVertical = useCallback(() => {
+    if (componentes.length < 2) return;
+
+    const avgX =
+      componentes.reduce((sum, comp) => sum + comp.posicao.x, 0) /
+      componentes.length;
+    const aligned = componentes.map((comp) => ({
+      ...comp,
+      posicao: {
+        ...comp.posicao,
+        x: snapPositionToGrid(avgX, comp.posicao.y).x,
+      },
+    }));
+    setComponentes(aligned);
+  }, [componentes, snapPositionToGrid]);
+
   // Mock data para modais
   const dadosMedidor = {
     ufer: 0.952,
@@ -811,7 +908,7 @@ export function SinopticoAtivoPage() {
     navigate(-1);
   };
 
-  // Função principal de clique em componente - OTIMIZADA
+  // Função principal de clique em componente
   const handleComponenteClick = useCallback(
     (componente: ComponenteDU, event?: React.MouseEvent) => {
       if (modoEdicao) {
@@ -846,7 +943,7 @@ export function SinopticoAtivoPage() {
     }
   };
 
-  // Sistema de drag and drop - APRIMORADO
+  // Sistema de drag and drop
   const handleMouseDown = useCallback(
     (e: React.MouseEvent, componentId: string) => {
       if (modoFerramenta !== "arrastar" || !modoEdicao) return;
@@ -873,6 +970,7 @@ export function SinopticoAtivoPage() {
     [modoFerramenta, modoEdicao, componentes]
   );
 
+  // MOUSE MOVE ATUALIZADO COM SNAP
   const handleMouseMove = useCallback(
     (e: MouseEvent) => {
       if (!isDragging || !componenteDragId || !canvasRef.current) return;
@@ -884,23 +982,22 @@ export function SinopticoAtivoPage() {
       let newX = (mouseX / canvasRect.width) * 100;
       let newY = (mouseY / canvasRect.height) * 100;
 
+      // Aplicar limites
       newX = Math.max(2, Math.min(98, newX));
       newY = Math.max(2, Math.min(98, newY));
 
-      if (mostrarGrid) {
-        newX = Math.round(newX / 5) * 5;
-        newY = Math.round(newY / 5) * 5;
-      }
+      // Aplicar snap ao grid
+      const snappedPos = snapPositionToGrid(newX, newY);
 
       setComponentes((prev) =>
         prev.map((comp) =>
           comp.id === componenteDragId
-            ? { ...comp, posicao: { x: newX, y: newY } }
+            ? { ...comp, posicao: { x: snappedPos.x, y: snappedPos.y } }
             : comp
         )
       );
     },
-    [isDragging, componenteDragId, dragOffset, mostrarGrid]
+    [isDragging, componenteDragId, dragOffset, snapPositionToGrid]
   );
 
   const handleMouseUp = useCallback(() => {
@@ -921,7 +1018,7 @@ export function SinopticoAtivoPage() {
     }
   }, [isDragging, handleMouseMove, handleMouseUp]);
 
-  // Sistema de conexões - APRIMORADO
+  // Sistema de conexões
   const startConnection = useCallback(
     (componentId: string, port: "top" | "bottom" | "left" | "right") => {
       if (modoFerramenta !== "conectar" || !modoEdicao) return;
@@ -968,7 +1065,7 @@ export function SinopticoAtivoPage() {
     }
   };
 
-  // Funções de edição de componentes - LIMPAS
+  // Funções de edição de componentes
   const adicionarComponente = (tipo: string) => {
     const novoId = `${tipo.toLowerCase()}-${Date.now()}`;
     const novoComponente: ComponenteDU = {
@@ -1096,7 +1193,7 @@ export function SinopticoAtivoPage() {
                     </div>
                   </div>
 
-                  {/* Adicionar Componentes - DROPDOWN LIMPO */}
+                  {/* Adicionar Componentes */}
                   <div className="flex items-center gap-2 border-r pr-4">
                     <span className="text-sm font-medium">Adicionar:</span>
                     <select
@@ -1104,7 +1201,7 @@ export function SinopticoAtivoPage() {
                       onChange={(e) => {
                         if (e.target.value) {
                           adicionarComponente(e.target.value);
-                          e.target.value = ""; // Reset selection
+                          e.target.value = "";
                         }
                       }}
                       defaultValue=""
@@ -1139,7 +1236,7 @@ export function SinopticoAtivoPage() {
                     </select>
                   </div>
 
-                  {/* Ações - BOTÕES DESABILITADOS TEMPORARIAMENTE */}
+                  {/* Ações */}
                   <div className="flex items-center gap-2 border-r pr-4">
                     <span className="text-sm font-medium">Ações:</span>
                     <div className="flex gap-1">
@@ -1147,7 +1244,7 @@ export function SinopticoAtivoPage() {
                         variant="outline"
                         size="sm"
                         disabled
-                        title="Desfazer (funcionalidade em desenvolvimento)"
+                        title="Desfazer (em desenvolvimento)"
                       >
                         <Undo className="h-4 w-4" />
                       </Button>
@@ -1155,7 +1252,7 @@ export function SinopticoAtivoPage() {
                         variant="outline"
                         size="sm"
                         disabled
-                        title="Refazer (funcionalidade em desenvolvimento)"
+                        title="Refazer (em desenvolvimento)"
                       >
                         <Redo className="h-4 w-4" />
                       </Button>
@@ -1196,9 +1293,40 @@ export function SinopticoAtivoPage() {
                     </div>
                   </div>
 
-                  {/* Visualização */}
+                  {/* NOVAS FERRAMENTAS DE LAYOUT */}
+                  <div className="flex items-center gap-2 border-r pr-4">
+                    <span className="text-sm font-medium">Layout:</span>
+                    <div className="flex gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={autoArrangeComponents}
+                        title="Organizar automaticamente"
+                      >
+                        Auto
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={alignHorizontal}
+                        title="Alinhar horizontalmente"
+                      >
+                        ═══
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={alignVertical}
+                        title="Alinhar verticalmente"
+                      >
+                        |||
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* CONFIGURAÇÕES DO GRID ATUALIZADAS */}
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">Visualização:</span>
+                    <span className="text-sm font-medium">Grid:</span>
                     <Button
                       variant={mostrarGrid ? "default" : "outline"}
                       size="sm"
@@ -1206,8 +1334,36 @@ export function SinopticoAtivoPage() {
                       className="flex items-center gap-1"
                     >
                       <Grid3x3 className="h-4 w-4" />
-                      Grid
+                      {mostrarGrid ? "Ocultar" : "Mostrar"}
                     </Button>
+                    <div className="flex items-center gap-3 ml-3 border-l pl-3">
+                      <span className="text-sm font-medium">Snap:</span>
+                      <button
+                        onClick={() => setSnapToGrid(!snapToGrid)}
+                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 ${
+                          snapToGrid
+                            ? "bg-white border-2 border-gray-400"
+                            : "bg-gray-200 border-2 border-gray-300"
+                        }`}
+                        type="button"
+                        title={
+                          snapToGrid
+                            ? "Magnetismo ativado"
+                            : "Magnetismo desativado"
+                        }
+                      >
+                        <span
+                          className={`inline-block h-3 w-3 rounded-full transition-transform duration-200 ease-in-out transform ${
+                            snapToGrid
+                              ? "translate-x-5 bg-gray-600"
+                              : "translate-x-0.5 bg-gray-400"
+                          }`}
+                        />
+                      </button>
+                      <span className="text-xs text-muted-foreground">
+                        {snapToGrid ? "ON" : "OFF"}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
@@ -1289,81 +1445,47 @@ export function SinopticoAtivoPage() {
                   />
                 </div>
 
-                {/* Diagrama Unifilar */}
+                {/* Diagrama Unifilar - MODO VISUALIZAÇÃO */}
                 <div className="lg:col-span-2 flex">
                   <Card className="flex flex-col w-full min-h-[900px]">
                     <div className="flex items-center justify-between p-4 pb-2 border-b flex-shrink-0">
                       <h3 className="text-lg font-semibold text-foreground">
                         Diagrama Unifilar
                       </h3>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={toggleModoEdicao}
-                        className="flex items-center gap-2"
-                      >
-                        <Edit3 className="h-4 w-4" />
-                        Editar
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant={mostrarGrid ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setMostrarGrid(!mostrarGrid)}
+                          className="flex items-center gap-1"
+                        >
+                          <Grid3x3 className="h-4 w-4" />
+                          Grid
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={toggleModoEdicao}
+                          className="flex items-center gap-2"
+                        >
+                          <Edit3 className="h-4 w-4" />
+                          Editar
+                        </Button>
+                      </div>
                     </div>
 
-                    <div
-                      className="relative flex-1 min-h-[580px]"
-                      ref={canvasRef}
-                    >
+                    {/* CHAMADA ATUALIZADA DO COMPONENTE */}
+                    <div className="flex-1 min-h-[580px]">
                       <SinopticoDiagrama
                         componentes={componentes}
                         onComponenteClick={handleComponenteClick}
                         mostrarGrid={mostrarGrid}
-                      ></SinopticoDiagrama>
-                      {/* Grid de visualização */}
-                      {mostrarGrid && (
-                        <svg className="absolute inset-0 w-full h-full pointer-events-none z-0">
-                          <defs>
-                            <pattern
-                              id="grid-view"
-                              width="40"
-                              height="40"
-                              patternUnits="userSpaceOnUse"
-                            >
-                              <path
-                                d="M 40 0 L 0 0 0 40"
-                                fill="none"
-                                className="stroke-border"
-                                strokeWidth="0.5"
-                                opacity="0.3"
-                              />
-                            </pattern>
-                          </defs>
-                          <rect
-                            width="100%"
-                            height="100%"
-                            fill="url(#grid-view)"
-                          />
-                        </svg>
-                      )}
-                      <div className="absolute inset-0 z-10">
-                        {componentes.map((componente) => (
-                          <div
-                            key={componente.id}
-                            className="absolute"
-                            style={{
-                              left: `${componente.posicao.x}%`,
-                              top: `${componente.posicao.y}%`,
-                              transform: "translate(-50%, -50%)",
-                            }}
-                          >
-                            <ElectricalSymbol
-                              tipo={componente.tipo}
-                              status={componente.status}
-                              onClick={() => handleComponenteClick(componente)}
-                            />
-                            <div className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs font-medium text-muted-foreground bg-background/90 px-2 py-1 rounded whitespace-nowrap border">
-                              {componente.nome}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
+                        gridSize={gridSize}
+                        snapToGrid={snapToGrid}
+                        modoEdicao={modoEdicao}
+                        componenteEditando={componenteEditando}
+                        connecting={connecting}
+                      />
                     </div>
                   </Card>
                 </div>
@@ -1483,37 +1605,21 @@ export function SinopticoAtivoPage() {
                         </g>
                       );
                     })}
-
-                    {/* Grid de Edição */}
-                    {mostrarGrid && (
-                      <>
-                        <defs>
-                          <pattern
-                            id="grid"
-                            width="40"
-                            height="40"
-                            patternUnits="userSpaceOnUse"
-                          >
-                            <path
-                              d="M 40 0 L 0 0 0 40"
-                              fill="none"
-                              className="stroke-border"
-                              strokeWidth="0.5"
-                              opacity="0.3"
-                            />
-                          </pattern>
-                        </defs>
-                        <rect
-                          width="100%"
-                          height="100%"
-                          fill="url(#grid)"
-                          className="pointer-events-none"
-                        />
-                      </>
-                    )}
                   </svg>
 
-                  {/* Componentes */}
+                  {/* CHAMADA ATUALIZADA PARA MODO EDIÇÃO TAMBÉM */}
+                  <SinopticoDiagrama
+                    componentes={componentes}
+                    onComponenteClick={handleComponenteClick}
+                    mostrarGrid={mostrarGrid}
+                    gridSize={gridSize}
+                    snapToGrid={snapToGrid}
+                    modoEdicao={modoEdicao}
+                    componenteEditando={componenteEditando}
+                    connecting={connecting}
+                  />
+
+                  {/* Componentes no Modo Edição */}
                   <div className="absolute inset-0 z-10">
                     {componentes.map((componente) => (
                       <div
@@ -1618,15 +1724,7 @@ export function SinopticoAtivoPage() {
                                 }}
                                 title={`${
                                   connecting ? "Finalizar" : "Iniciar"
-                                } conexão pela ${
-                                  port === "top"
-                                    ? "parte superior"
-                                    : port === "bottom"
-                                    ? "parte inferior"
-                                    : port === "left"
-                                    ? "esquerda"
-                                    : "direita"
-                                }`}
+                                } conexão`}
                               >
                                 <div className="absolute inset-1 rounded-full bg-background/40" />
                               </div>
@@ -1681,22 +1779,20 @@ export function SinopticoAtivoPage() {
                   {/* Indicador de Status */}
                   <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 text-xs text-muted-foreground bg-background/90 px-3 py-2 rounded-full border">
                     <div className="flex items-center gap-2">
-                      <div className="flex items-center gap-1">
-                        <div
-                          className={`w-2 h-2 rounded-full ${
-                            modoFerramenta === "selecionar"
-                              ? "bg-blue-500"
-                              : modoFerramenta === "arrastar"
-                              ? "bg-green-500"
-                              : "bg-purple-500"
-                          }`}
-                        />
-                        <span>
-                          {modoFerramenta === "selecionar" && "Modo Seleção"}
-                          {modoFerramenta === "arrastar" && "Modo Arrastar"}
-                          {modoFerramenta === "conectar" && "Modo Conectar"}
-                        </span>
-                      </div>
+                      <div
+                        className={`w-2 h-2 rounded-full ${
+                          modoFerramenta === "selecionar"
+                            ? "bg-blue-500"
+                            : modoFerramenta === "arrastar"
+                            ? "bg-green-500"
+                            : "bg-purple-500"
+                        }`}
+                      />
+                      <span>
+                        {modoFerramenta === "selecionar" && "Modo Seleção"}
+                        {modoFerramenta === "arrastar" && "Modo Arrastar"}
+                        {modoFerramenta === "conectar" && "Modo Conectar"}
+                      </span>
                       {connecting && (
                         <span className="text-amber-600">• Conectando...</span>
                       )}
