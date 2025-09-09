@@ -8,7 +8,6 @@ import {
   Circle,
   Copy,
   Edit3,
-  Grid3x3,
   Link,
   Move,
   Redo,
@@ -24,6 +23,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 // Componentes implementados
+import { ConexoesDiagrama } from "@/features/supervisorio/components/conexoes-diagrama";
 import { DisjuntorModal } from "@/features/supervisorio/components/disjuntor-modal";
 import { InversorModal } from "@/features/supervisorio/components/inversor-modal";
 import { MedidorModal } from "@/features/supervisorio/components/medidor-modal";
@@ -626,14 +626,9 @@ export function SinopticoAtivoPage() {
   const [modoFerramenta, setModoFerramenta] = useState<
     "selecionar" | "arrastar" | "conectar"
   >("selecionar");
-  const [mostrarGrid, setMostrarGrid] = useState(false);
   const [componenteEditando, setComponenteEditando] = useState<string | null>(
     null
   );
-
-  // NOVOS ESTADOS PARA GRID
-  const [gridSize, setGridSize] = useState(20);
-  const [snapToGrid, setSnapToGrid] = useState(true);
 
   // Estados para drag and drop
   const [isDragging, setIsDragging] = useState(false);
@@ -757,21 +752,30 @@ export function SinopticoAtivoPage() {
     },
   ]);
 
-  // NOVA FUNÇÃO DE SNAP PARA GRID
-  const snapPositionToGrid = useCallback(
-    (x: number, y: number, enabled: boolean = snapToGrid) => {
-      if (!enabled) return { x, y };
+  // CARREGAR DIAGRAMA SALVO AO INICIALIZAR
+  useEffect(() => {
+    const carregarDiagrama = () => {
+      try {
+        const diagramaSalvo = localStorage.getItem(`diagrama_${ativoId}`);
+        if (diagramaSalvo) {
+          const data = JSON.parse(diagramaSalvo);
+          if (data.componentes) setComponentes(data.componentes);
+          if (data.connections) setConnections(data.connections);
+          console.log("Diagrama carregado com sucesso:", data);
+        }
+      } catch (error) {
+        console.error("Erro ao carregar diagrama:", error);
+      }
+    };
 
-      const gridStep = 5; // 5% steps for positioning
-      return {
-        x: Math.round(x / gridStep) * gridStep,
-        y: Math.round(y / gridStep) * gridStep,
-      };
-    },
-    [snapToGrid]
-  );
+    if (ativoId) {
+      carregarDiagrama();
+    }
+  }, [ativoId]);
 
-  // FUNÇÕES DE LAYOUT
+  // FUNÇÕES DE LAYOUT COM PREVENÇÃO DE SOBREPOSIÇÃO
+  const MIN_SPACING = 15; // Espaçamento mínimo entre componentes em %
+
   const autoArrangeComponents = useCallback(() => {
     const arranged = [...componentes];
     const categories = {
@@ -801,18 +805,35 @@ export function SinopticoAtivoPage() {
       const baseY = 15 + (row - 1) * 20; // 15%, 35%, 55%, 75%
       const baseX = 10 + (order - 1) * 30; // 10%, 40%, 70%
 
-      components.forEach((comp, index) => {
-        const x = baseX + index * 15; // Espaçar horizontalmente
-        const y = baseY;
+      // Distribuição horizontal inteligente para cada grupo
+      const startX = baseX;
+      const maxX = baseX + 25; // Máximo 25% de largura por coluna
+      const numInGroup = components.length;
 
+      if (numInGroup === 1) {
+        // Se só há 1 componente no grupo, usar posição base
         newComponents.push({
-          ...comp,
+          ...components[0],
           posicao: {
-            x: Math.min(x, 85),
-            y: Math.min(y, 85),
+            x: startX,
+            y: baseY,
           },
         });
-      });
+      } else {
+        // Se há múltiplos componentes, distribuir uniformemente
+        const availableWidth = maxX - startX;
+        const spacing = availableWidth / (numInGroup - 1);
+
+        components.forEach((comp, index) => {
+          newComponents.push({
+            ...comp,
+            posicao: {
+              x: Math.min(startX + index * spacing, 85),
+              y: baseY,
+            },
+          });
+        });
+      }
     });
 
     setComponentes(newComponents);
@@ -821,34 +842,82 @@ export function SinopticoAtivoPage() {
   const alignHorizontal = useCallback(() => {
     if (componentes.length < 2) return;
 
+    // Calcular Y médio
     const avgY =
       componentes.reduce((sum, comp) => sum + comp.posicao.y, 0) /
       componentes.length;
-    const aligned = componentes.map((comp) => ({
-      ...comp,
-      posicao: {
-        ...comp.posicao,
-        y: snapPositionToGrid(comp.posicao.x, avgY).y,
-      },
-    }));
+
+    // Ordenar por posição X para manter ordem
+    const sortedComponents = [...componentes].sort(
+      (a, b) => a.posicao.x - b.posicao.x
+    );
+
+    const aligned: ComponenteDU[] = [];
+    let currentX = 10; // Começar em 10%
+
+    sortedComponents.forEach((comp) => {
+      aligned.push({
+        ...comp,
+        posicao: {
+          x: currentX,
+          y: avgY,
+        },
+      });
+
+      currentX += MIN_SPACING; // Próximo componente com espaçamento
+      if (currentX > 85) currentX = 85; // Limitar à tela
+    });
+
     setComponentes(aligned);
-  }, [componentes, snapPositionToGrid]);
+  }, [componentes]);
 
   const alignVertical = useCallback(() => {
     if (componentes.length < 2) return;
 
+    // Calcular X médio
     const avgX =
       componentes.reduce((sum, comp) => sum + comp.posicao.x, 0) /
       componentes.length;
-    const aligned = componentes.map((comp) => ({
-      ...comp,
-      posicao: {
-        ...comp.posicao,
-        x: snapPositionToGrid(avgX, comp.posicao.y).x,
-      },
-    }));
+
+    // Ordenar por posição Y para manter ordem
+    const sortedComponents = [...componentes].sort(
+      (a, b) => a.posicao.y - b.posicao.y
+    );
+
+    const aligned: ComponenteDU[] = [];
+
+    // Calcular espaçamento disponível
+    const startY = 10;
+    const endY = 85;
+    const availableSpace = endY - startY;
+    const numComponents = sortedComponents.length;
+
+    if (numComponents === 1) {
+      // Se só há 1 componente, centralizar
+      aligned.push({
+        ...sortedComponents[0],
+        posicao: {
+          x: avgX,
+          y: 50, // Centro da tela
+        },
+      });
+    } else {
+      // Se há múltiplos componentes, distribuir uniformemente
+      const spacing = availableSpace / (numComponents - 1);
+
+      sortedComponents.forEach((comp, index) => {
+        aligned.push({
+          ...comp,
+          posicao: {
+            x: avgX,
+            y: startY + index * spacing,
+          },
+        });
+      });
+    }
+
     setComponentes(aligned);
-  }, [componentes, snapPositionToGrid]);
+  }, [componentes]);
 
   // Mock data para modais
   const dadosMedidor = {
@@ -970,7 +1039,6 @@ export function SinopticoAtivoPage() {
     [modoFerramenta, modoEdicao, componentes]
   );
 
-  // MOUSE MOVE ATUALIZADO COM SNAP
   const handleMouseMove = useCallback(
     (e: MouseEvent) => {
       if (!isDragging || !componenteDragId || !canvasRef.current) return;
@@ -986,18 +1054,15 @@ export function SinopticoAtivoPage() {
       newX = Math.max(2, Math.min(98, newX));
       newY = Math.max(2, Math.min(98, newY));
 
-      // Aplicar snap ao grid
-      const snappedPos = snapPositionToGrid(newX, newY);
-
       setComponentes((prev) =>
         prev.map((comp) =>
           comp.id === componenteDragId
-            ? { ...comp, posicao: { x: snappedPos.x, y: snappedPos.y } }
+            ? { ...comp, posicao: { x: newX, y: newY } }
             : comp
         )
       );
     },
-    [isDragging, componenteDragId, dragOffset, snapPositionToGrid]
+    [isDragging, componenteDragId, dragOffset]
   );
 
   const handleMouseUp = useCallback(() => {
@@ -1065,6 +1130,11 @@ export function SinopticoAtivoPage() {
     }
   };
 
+  // Função para remover conexão
+  const removerConexao = (connectionId: string) => {
+    setConnections((prev) => prev.filter((conn) => conn.id !== connectionId));
+  };
+
   // Funções de edição de componentes
   const adicionarComponente = (tipo: string) => {
     const novoId = `${tipo.toLowerCase()}-${Date.now()}`;
@@ -1109,7 +1179,15 @@ export function SinopticoAtivoPage() {
   };
 
   const salvarDiagrama = () => {
-    console.log("Salvando diagrama...", { componentes, connections });
+    const diagramaData = {
+      ativoId: ativoId,
+      componentes: componentes,
+      connections: connections,
+      ultimaAtualizacao: new Date().toISOString(),
+    };
+
+    localStorage.setItem(`diagrama_${ativoId}`, JSON.stringify(diagramaData));
+    console.log("Diagrama salvo no localStorage:", diagramaData);
     alert("Diagrama salvo com sucesso!");
   };
 
@@ -1293,8 +1371,8 @@ export function SinopticoAtivoPage() {
                     </div>
                   </div>
 
-                  {/* NOVAS FERRAMENTAS DE LAYOUT */}
-                  <div className="flex items-center gap-2 border-r pr-4">
+                  {/* Ferramentas de Layout */}
+                  <div className="flex items-center gap-2">
                     <span className="text-sm font-medium">Layout:</span>
                     <div className="flex gap-1">
                       <Button
@@ -1321,48 +1399,6 @@ export function SinopticoAtivoPage() {
                       >
                         |||
                       </Button>
-                    </div>
-                  </div>
-
-                  {/* CONFIGURAÇÕES DO GRID ATUALIZADAS */}
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">Grid:</span>
-                    <Button
-                      variant={mostrarGrid ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setMostrarGrid(!mostrarGrid)}
-                      className="flex items-center gap-1"
-                    >
-                      <Grid3x3 className="h-4 w-4" />
-                      {mostrarGrid ? "Ocultar" : "Mostrar"}
-                    </Button>
-                    <div className="flex items-center gap-3 ml-3 border-l pl-3">
-                      <span className="text-sm font-medium">Snap:</span>
-                      <button
-                        onClick={() => setSnapToGrid(!snapToGrid)}
-                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 ${
-                          snapToGrid
-                            ? "bg-white border-2 border-gray-400"
-                            : "bg-gray-200 border-2 border-gray-300"
-                        }`}
-                        type="button"
-                        title={
-                          snapToGrid
-                            ? "Magnetismo ativado"
-                            : "Magnetismo desativado"
-                        }
-                      >
-                        <span
-                          className={`inline-block h-3 w-3 rounded-full transition-transform duration-200 ease-in-out transform ${
-                            snapToGrid
-                              ? "translate-x-5 bg-gray-600"
-                              : "translate-x-0.5 bg-gray-400"
-                          }`}
-                        />
-                      </button>
-                      <span className="text-xs text-muted-foreground">
-                        {snapToGrid ? "ON" : "OFF"}
-                      </span>
                     </div>
                   </div>
                 </div>
@@ -1454,15 +1490,6 @@ export function SinopticoAtivoPage() {
                       </h3>
                       <div className="flex items-center gap-2">
                         <Button
-                          variant={mostrarGrid ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => setMostrarGrid(!mostrarGrid)}
-                          className="flex items-center gap-1"
-                        >
-                          <Grid3x3 className="h-4 w-4" />
-                          Grid
-                        </Button>
-                        <Button
                           variant="outline"
                           size="sm"
                           onClick={toggleModoEdicao}
@@ -1474,14 +1501,22 @@ export function SinopticoAtivoPage() {
                       </div>
                     </div>
 
-                    {/* CHAMADA ATUALIZADA DO COMPONENTE */}
-                    <div className="flex-1 min-h-[580px]">
+                    <div
+                      className="flex-1 min-h-[580px] relative"
+                      ref={canvasRef}
+                    >
+                      {/* COMPONENTE DE CONEXÕES PARA MODO VISUALIZAÇÃO */}
+                      <ConexoesDiagrama
+                        connections={connections}
+                        componentes={componentes}
+                        containerRef={canvasRef}
+                        modoEdicao={false}
+                        className="z-10"
+                      />
+
                       <SinopticoDiagrama
                         componentes={componentes}
                         onComponenteClick={handleComponenteClick}
-                        mostrarGrid={mostrarGrid}
-                        gridSize={gridSize}
-                        snapToGrid={snapToGrid}
                         modoEdicao={modoEdicao}
                         componenteEditando={componenteEditando}
                         connecting={connecting}
@@ -1526,94 +1561,20 @@ export function SinopticoAtivoPage() {
                 </div>
 
                 <div className="relative flex-1 min-h-[580px]" ref={canvasRef}>
-                  {/* SVG para conexões */}
-                  <svg className="absolute inset-0 w-full h-full pointer-events-none z-10">
-                    {connections.map((conn) => {
-                      const fromComp = componentes.find(
-                        (c) => c.id === conn.from
-                      );
-                      const toComp = componentes.find((c) => c.id === conn.to);
-                      if (!fromComp || !toComp || !canvasRef.current)
-                        return null;
+                  {/* COMPONENTE DE CONEXÕES PARA MODO EDIÇÃO */}
+                  <ConexoesDiagrama
+                    connections={connections}
+                    componentes={componentes}
+                    containerRef={canvasRef}
+                    modoEdicao={true}
+                    connecting={connecting}
+                    onRemoverConexao={removerConexao}
+                    className="z-10"
+                  />
 
-                      const rect = canvasRef.current.getBoundingClientRect();
-                      const fromCenterX =
-                        (fromComp.posicao.x / 100) * rect.width;
-                      const fromCenterY =
-                        (fromComp.posicao.y / 100) * rect.height;
-                      const toCenterX = (toComp.posicao.x / 100) * rect.width;
-                      const toCenterY = (toComp.posicao.y / 100) * rect.height;
-
-                      const symbolRadius = 25;
-                      let fromX = fromCenterX;
-                      let fromY = fromCenterY;
-                      let toX = toCenterX;
-                      let toY = toCenterY;
-
-                      switch (conn.fromPort) {
-                        case "top":
-                          fromY -= symbolRadius;
-                          break;
-                        case "bottom":
-                          fromY += symbolRadius;
-                          break;
-                        case "left":
-                          fromX -= symbolRadius;
-                          break;
-                        case "right":
-                          fromX += symbolRadius;
-                          break;
-                      }
-
-                      switch (conn.toPort) {
-                        case "top":
-                          toY -= symbolRadius;
-                          break;
-                        case "bottom":
-                          toY += symbolRadius;
-                          break;
-                        case "left":
-                          toX -= symbolRadius;
-                          break;
-                        case "right":
-                          toX += symbolRadius;
-                          break;
-                      }
-
-                      return (
-                        <g key={conn.id}>
-                          <line
-                            x1={fromX}
-                            y1={fromY}
-                            x2={toX}
-                            y2={toY}
-                            className="stroke-muted-foreground"
-                            strokeWidth="2"
-                          />
-                          <circle
-                            cx={fromX}
-                            cy={fromY}
-                            r="3"
-                            className="fill-muted-foreground"
-                          />
-                          <circle
-                            cx={toX}
-                            cy={toY}
-                            r="3"
-                            className="fill-muted-foreground"
-                          />
-                        </g>
-                      );
-                    })}
-                  </svg>
-
-                  {/* CHAMADA ATUALIZADA PARA MODO EDIÇÃO TAMBÉM */}
                   <SinopticoDiagrama
                     componentes={componentes}
                     onComponenteClick={handleComponenteClick}
-                    mostrarGrid={mostrarGrid}
-                    gridSize={gridSize}
-                    snapToGrid={snapToGrid}
                     modoEdicao={modoEdicao}
                     componenteEditando={componenteEditando}
                     connecting={connecting}
@@ -1793,6 +1754,10 @@ export function SinopticoAtivoPage() {
                         {modoFerramenta === "arrastar" && "Modo Arrastar"}
                         {modoFerramenta === "conectar" && "Modo Conectar"}
                       </span>
+                      {/* ADICIONAR INFO DE CONEXÕES */}
+                      <span className="text-muted-foreground">
+                        • {connections.length} conexões
+                      </span>
                       {connecting && (
                         <span className="text-amber-600">• Conectando...</span>
                       )}
@@ -1807,7 +1772,7 @@ export function SinopticoAtivoPage() {
           </div>
         </div>
 
-        {/* Modais */}
+        {/* Modals */}
         <MedidorModal
           open={modalAberto === "MEDIDOR"}
           onClose={fecharModal}

@@ -10,12 +10,15 @@ interface ComponenteDU {
   dados: any;
 }
 
-// Props do componente
+// Props do componente - ADICIONADO modoEdicao
 interface SinopticoDiagramaProps {
   componentes: ComponenteDU[];
   onComponenteClick: (componente: ComponenteDU) => void;
   className?: string;
   mostrarGrid?: boolean;
+  modoEdicao?: boolean; // NOVO PROP
+  componenteEditando?: string | null; // NOVO PROP
+  connecting?: { from: string; port: string } | null; // NOVO PROP
 }
 
 // Componente para renderizar símbolos elétricos - APENAS VISUALIZAÇÃO
@@ -907,12 +910,15 @@ const ElectricalSymbol = ({
   );
 };
 
-// Componente principal - APENAS VISUALIZAÇÃO
+// Componente principal - CORREÇÃO APLICADA
 export function SinopticoDiagrama({
   componentes,
   onComponenteClick,
   className = "",
   mostrarGrid = false,
+  modoEdicao = false, // NOVO PROP
+  componenteEditando, // NOVO PROP
+  connecting, // NOVO PROP
 }: SinopticoDiagramaProps) {
   const [hoveredComponent, setHoveredComponent] = useState<string | null>(null);
 
@@ -940,44 +946,47 @@ export function SinopticoDiagrama({
           <rect width="100%" height="100%" fill="url(#grid-sinoptico)" />
         </svg>
       )}
-      {/* Área de visualização dos componentes */}
-      <div className="absolute inset-0">
-        {componentes.map((componente) => (
-          <div
-            key={componente.id}
-            className="absolute"
-            style={{
-              left: `${componente.posicao.x}%`,
-              top: `${componente.posicao.y}%`,
-              transform: "translate(-50%, -50%)",
-            }}
-            onMouseEnter={() => setHoveredComponent(componente.id)}
-            onMouseLeave={() => setHoveredComponent(null)}
-            onClick={() => onComponenteClick(componente)}
-          >
-            <ElectricalSymbol
-              tipo={componente.tipo}
-              status={componente.status}
-            />
 
-            {/* Label do componente */}
+      {/* CONDIÇÃO ADICIONADA: Só renderiza componentes se NÃO estiver no modo edição */}
+      {!modoEdicao && (
+        <div className="absolute inset-0">
+          {componentes.map((componente) => (
             <div
-              className={`absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs font-medium text-muted-foreground bg-background/90 px-2 py-1 rounded whitespace-nowrap border transition-opacity ${
-                hoveredComponent === componente.id
-                  ? "opacity-100"
-                  : "opacity-80"
-              }`}
+              key={componente.id}
+              className="absolute"
+              style={{
+                left: `${componente.posicao.x}%`,
+                top: `${componente.posicao.y}%`,
+                transform: "translate(-50%, -50%)",
+              }}
+              onMouseEnter={() => setHoveredComponent(componente.id)}
+              onMouseLeave={() => setHoveredComponent(null)}
+              onClick={() => onComponenteClick(componente)}
             >
-              {componente.nome}
-            </div>
+              <ElectricalSymbol
+                tipo={componente.tipo}
+                status={componente.status}
+              />
 
-            {/* Highlight no hover */}
-            {hoveredComponent === componente.id && (
-              <div className="absolute inset-0 ring-2 ring-blue-400 ring-offset-1 rounded-lg pointer-events-none animate-pulse" />
-            )}
-          </div>
-        ))}
-      </div>
+              {/* Label do componente */}
+              <div
+                className={`absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs font-medium text-muted-foreground bg-background/90 px-2 py-1 rounded whitespace-nowrap border transition-opacity ${
+                  hoveredComponent === componente.id
+                    ? "opacity-100"
+                    : "opacity-80"
+                }`}
+              >
+                {componente.nome}
+              </div>
+
+              {/* Highlight no hover */}
+              {hoveredComponent === componente.id && (
+                <div className="absolute inset-0 ring-2 ring-blue-400 ring-offset-1 rounded-lg pointer-events-none animate-pulse" />
+              )}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Indicador quando não há componentes */}
       {componentes.length === 0 && (

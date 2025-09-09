@@ -64,7 +64,7 @@ export function SinopticoGraficos({
   const dadosFormatadosTensao = formatarDadosGrafico(dadosTensao);
 
   return (
-    <div className="space-y-6 w-full">
+    <div className="space-y-4 w-full">
       {/* Gráfico de Potência */}
       <Card>
         <CardHeader>
@@ -101,7 +101,8 @@ export function SinopticoGraficos({
             </LineChart>
           </ResponsiveContainer>
 
-          {/* Indicadores resumo */}
+          {/* SEÇÃO REMOVIDA: Indicadores resumo de Potência */}
+          {/* 
           <div className="grid grid-cols-3 gap-4 mt-4 pt-4 border-t">
             <div className="text-center">
               <div className="text-lg font-bold text-yellow-600">
@@ -129,6 +130,7 @@ export function SinopticoGraficos({
               <div className="text-sm text-muted-foreground">Médio</div>
             </div>
           </div>
+          */}
         </CardContent>
       </Card>
 
@@ -169,7 +171,8 @@ export function SinopticoGraficos({
             </LineChart>
           </ResponsiveContainer>
 
-          {/* Indicadores resumo */}
+          {/* SEÇÃO REMOVIDA: Indicadores resumo de Tensão */}
+          {/*
           <div className="grid grid-cols-3 gap-4 mt-4 pt-4 border-t">
             <div className="text-center">
               <div className="text-lg font-bold text-blue-600">
@@ -192,6 +195,7 @@ export function SinopticoGraficos({
               <div className="text-sm text-muted-foreground">Mínimo</div>
             </div>
           </div>
+          */}
         </CardContent>
       </Card>
 
@@ -230,6 +234,9 @@ export function SinopticoGraficos({
               />
             </LineChart>
           </ResponsiveContainer>
+
+          {/* SEÇÃO REMOVIDA: Indicadores resumo de Corrente */}
+          {/* Nota: O gráfico de corrente não tinha indicadores no código original */}
         </CardContent>
       </Card>
     </div>
