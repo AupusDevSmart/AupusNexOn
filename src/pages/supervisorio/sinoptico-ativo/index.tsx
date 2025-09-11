@@ -10,6 +10,7 @@ import {
   Edit3,
   Link,
   Move,
+  Network,
   Redo,
   Save,
   Square,
@@ -31,6 +32,9 @@ import { SinopticoDiagrama } from "@/features/supervisorio/components/sinoptico-
 import { SinopticoGraficos } from "@/features/supervisorio/components/sinoptico-graficos";
 import { SinopticoIndicadores } from "@/features/supervisorio/components/sinoptico-indicadores";
 import { TransformadorModal } from "@/features/supervisorio/components/transformador-modal";
+
+// Hook para histórico undo/redo - REMOVIDO
+// import { useHistory } from "@/features/supervisorio/hooks/useHistory";
 
 // Tipos - CORRIGIDOS com interfaces locais caso os imports falhem
 import type { ComponenteDU } from "@/types/dtos/sinoptico-ativo";
@@ -56,6 +60,12 @@ interface Connection {
 interface Position {
   x: number;
   y: number;
+}
+
+// Interface para o estado do diagrama (para histórico)
+interface DiagramState {
+  componentes: ComponenteDU[];
+  connections: Connection[];
 }
 
 // Tipos de componentes disponíveis - EXPANDIDO
@@ -616,6 +626,15 @@ export function SinopticoAtivoPage() {
   const { ativoId } = useParams<{ ativoId: string }>();
   const navigate = useNavigate();
 
+  // NOVO: Ativo selecionado (substitui ativoId)
+  const [ativoSelecionado, setAtivoSelecionado] =
+    useState<string>("ativo-principal");
+
+  // NOVO: Estados principais
+  const [componentes, setComponentes] = useState<ComponenteDU[]>([]);
+  const [connections, setConnections] = useState<Connection[]>([]);
+  const [diagramaCarregado, setDiagramaCarregado] = useState(false);
+
   // Estados para modais
   const [modalAberto, setModalAberto] = useState<string | null>(null);
   const [componenteSelecionado, setComponenteSelecionado] =
@@ -637,11 +656,170 @@ export function SinopticoAtivoPage() {
   const canvasRef = useRef<HTMLDivElement>(null);
 
   // Estados para conexões
-  const [connections, setConnections] = useState<Connection[]>([]);
   const [connecting, setConnecting] = useState<{
     from: string;
     port: "top" | "bottom" | "left" | "right";
   } | null>(null);
+
+  // Lista de ativos disponíveis
+  const ativosDisponiveis = [
+    { id: "ativo-principal", nome: "UFV Solar Goiânia" },
+    { id: "ativo-secundario", nome: "UFV Industrial Brasília" },
+    { id: "ativo-teste", nome: "Usina Teste" },
+  ];
+
+  // Função do diagrama padrão
+  const getDiagramaPadrao = useCallback(
+    (): ComponenteDU[] => [
+      {
+        id: "medidor-01",
+        tipo: "MEDIDOR",
+        nome: "Medidor Principal",
+        posicao: { x: 20, y: 30 },
+        status: "NORMAL",
+        dados: {},
+      },
+      {
+        id: "transformador-01",
+        tipo: "TRANSFORMADOR",
+        nome: "Trafo 13.8kV/380V",
+        posicao: { x: 35, y: 70 },
+        status: "NORMAL",
+        dados: {},
+      },
+      {
+        id: "inversor-01",
+        tipo: "INVERSOR",
+        nome: "Inversor Solar 1",
+        posicao: { x: 50, y: 30 },
+        status: "NORMAL",
+        dados: {},
+      },
+      {
+        id: "inversor-02",
+        tipo: "INVERSOR",
+        nome: "Inversor Solar 2",
+        posicao: { x: 65, y: 70 },
+        status: "ALARME",
+        dados: {},
+      },
+      {
+        id: "disjuntor-01",
+        tipo: "DISJUNTOR",
+        nome: "Disjuntor Principal",
+        posicao: { x: 80, y: 30 },
+        status: "NORMAL",
+        dados: {},
+      },
+      {
+        id: "tsa-01",
+        tipo: "TSA",
+        nome: "TSA Principal",
+        posicao: { x: 25, y: 50 },
+        status: "NORMAL",
+        dados: {},
+      },
+      {
+        id: "retificador-01",
+        tipo: "RETIFICADOR",
+        nome: "Retificador 24V",
+        posicao: { x: 55, y: 50 },
+        status: "NORMAL",
+        dados: {},
+      },
+      {
+        id: "baterias-01",
+        tipo: "BANCO_BATERIAS",
+        nome: "Banco Baterias",
+        posicao: { x: 75, y: 50 },
+        status: "NORMAL",
+        dados: {},
+      },
+    ],
+    []
+  );
+
+  // Estados já definidos acima - remover esta seção completamente
+
+  // Função auxiliar para atualizar o diagrama
+  const updateDiagram = useCallback(
+    (newComponentes?: ComponenteDU[], newConnections?: Connection[]) => {
+      if (newComponentes) setComponentes(newComponentes);
+      if (newConnections) setConnections(newConnections);
+    },
+    []
+  );
+
+  // CARREGAR DIAGRAMA SALVO
+  useEffect(() => {
+    const carregarDiagrama = () => {
+      console.log("🚀 Carregando diagrama para ativo:", ativoSelecionado);
+
+      try {
+        const key = `diagrama_${ativoSelecionado}`;
+        const diagramaSalvo = localStorage.getItem(key);
+
+        if (diagramaSalvo) {
+          const data = JSON.parse(diagramaSalvo);
+          console.log("✅ Dados encontrados:", data);
+
+          if (
+            data.componentes &&
+            Array.isArray(data.componentes) &&
+            data.componentes.length > 0
+          ) {
+            setComponentes(data.componentes);
+            setConnections(data.connections || []);
+            console.log(
+              "📊 Diagrama restaurado:",
+              data.componentes.length,
+              "componentes"
+            );
+          } else {
+            setComponentes(getDiagramaPadrao());
+            setConnections([]);
+          }
+        } else {
+          console.log("📋 Usando diagrama padrão");
+          setComponentes(getDiagramaPadrao());
+          setConnections([]);
+        }
+      } catch (error) {
+        console.error("❌ Erro ao carregar:", error);
+        setComponentes(getDiagramaPadrao());
+        setConnections([]);
+      }
+
+      setDiagramaCarregado(true);
+    };
+
+    carregarDiagrama();
+  }, [ativoSelecionado, getDiagramaPadrao]);
+
+  // AUTO-SAVE quando houver mudanças
+  useEffect(() => {
+    if (!diagramaCarregado || componentes.length === 0) return;
+
+    const timeoutId = setTimeout(() => {
+      try {
+        const diagramaData = {
+          ativoId: ativoSelecionado,
+          componentes,
+          connections,
+          ultimaAtualizacao: new Date().toISOString(),
+          versao: "1.0",
+        };
+
+        const key = `diagrama_${ativoSelecionado}`;
+        localStorage.setItem(key, JSON.stringify(diagramaData));
+        console.log("💾 Auto-save:", key, componentes.length, "componentes");
+      } catch (error) {
+        console.error("❌ Erro auto-save:", error);
+      }
+    }, 2000);
+
+    return () => clearTimeout(timeoutId);
+  }, [componentes, connections, diagramaCarregado, ativoSelecionado]);
 
   // Mock data atualizado com dados realistas
   const [ativoData] = useState({
@@ -684,94 +862,85 @@ export function SinopticoAtivoPage() {
     osAbertas: 2,
   });
 
-  // Componentes com tipos expandidos
-  const [componentes, setComponentes] = useState<ComponenteDU[]>([
-    {
-      id: "medidor-01",
-      tipo: "MEDIDOR",
-      nome: "Medidor Principal",
-      posicao: { x: 20, y: 30 },
-      status: "NORMAL",
-      dados: {},
-    },
-    {
-      id: "transformador-01",
-      tipo: "TRANSFORMADOR",
-      nome: "Trafo 13.8kV/380V",
-      posicao: { x: 35, y: 70 },
-      status: "NORMAL",
-      dados: {},
-    },
-    {
-      id: "inversor-01",
-      tipo: "INVERSOR",
-      nome: "Inversor Solar 1",
-      posicao: { x: 50, y: 30 },
-      status: "NORMAL",
-      dados: {},
-    },
-    {
-      id: "inversor-02",
-      tipo: "INVERSOR",
-      nome: "Inversor Solar 2",
-      posicao: { x: 65, y: 70 },
-      status: "ALARME",
-      dados: {},
-    },
-    {
-      id: "disjuntor-01",
-      tipo: "DISJUNTOR",
-      nome: "Disjuntor Principal",
-      posicao: { x: 80, y: 30 },
-      status: "NORMAL",
-      dados: {},
-    },
-    {
-      id: "tsa-01",
-      tipo: "TSA",
-      nome: "TSA Principal",
-      posicao: { x: 25, y: 50 },
-      status: "NORMAL",
-      dados: {},
-    },
-    {
-      id: "retificador-01",
-      tipo: "RETIFICADOR",
-      nome: "Retificador 24V",
-      posicao: { x: 55, y: 50 },
-      status: "NORMAL",
-      dados: {},
-    },
-    {
-      id: "baterias-01",
-      tipo: "BANCO_BATERIAS",
-      nome: "Banco Baterias",
-      posicao: { x: 75, y: 50 },
-      status: "NORMAL",
-      dados: {},
-    },
-  ]);
+  // Sistema de Undo/Redo simples
+  const [history, setHistory] = useState<DiagramState[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
 
-  // CARREGAR DIAGRAMA SALVO AO INICIALIZAR
+  const canUndo = historyIndex > 0;
+  const canRedo = historyIndex < history.length - 1;
+
+  const addToHistory = useCallback(
+    (state: DiagramState) => {
+      setHistory((prev) => {
+        const newHistory = prev.slice(0, historyIndex + 1);
+        newHistory.push(state);
+        return newHistory.slice(-50); // Manter apenas as últimas 50 ações
+      });
+      setHistoryIndex((prev) => prev + 1);
+    },
+    [historyIndex]
+  );
+
+  const undo = useCallback(() => {
+    if (canUndo) {
+      const prevState = history[historyIndex - 1];
+      setComponentes(prevState.componentes);
+      setConnections(prevState.connections);
+      setHistoryIndex((prev) => prev - 1);
+    }
+  }, [canUndo, history, historyIndex]);
+
+  const redo = useCallback(() => {
+    if (canRedo) {
+      const nextState = history[historyIndex + 1];
+      setComponentes(nextState.componentes);
+      setConnections(nextState.connections);
+      setHistoryIndex((prev) => prev + 1);
+    }
+  }, [canRedo, history, historyIndex]);
+
+  // Atualizar histórico quando componentes/conexões mudarem
   useEffect(() => {
-    const carregarDiagrama = () => {
-      try {
-        const diagramaSalvo = localStorage.getItem(`diagrama_${ativoId}`);
-        if (diagramaSalvo) {
-          const data = JSON.parse(diagramaSalvo);
-          if (data.componentes) setComponentes(data.componentes);
-          if (data.connections) setConnections(data.connections);
-          console.log("Diagrama carregado com sucesso:", data);
+    if (diagramaCarregado && componentes.length > 0) {
+      const currentState = { componentes, connections };
+      const lastState = history[historyIndex];
+
+      // Só adicionar ao histórico se houve mudança real
+      if (
+        !lastState ||
+        JSON.stringify(lastState.componentes) !== JSON.stringify(componentes) ||
+        JSON.stringify(lastState.connections) !== JSON.stringify(connections)
+      ) {
+        addToHistory(currentState);
+      }
+    }
+  }, [componentes, connections, diagramaCarregado]);
+
+  // Atalhos de teclado para undo/redo
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.ctrlKey || event.metaKey) {
+        switch (event.key.toLowerCase()) {
+          case "z":
+            if (event.shiftKey) {
+              event.preventDefault();
+              redo();
+            } else {
+              event.preventDefault();
+              undo();
+            }
+            break;
+          case "y":
+            event.preventDefault();
+            redo();
+            break;
         }
-      } catch (error) {
-        console.error("Erro ao carregar diagrama:", error);
       }
     };
 
-    if (ativoId) {
-      carregarDiagrama();
-    }
-  }, [ativoId]);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [undo, redo]);
 
   // FUNÇÕES DE LAYOUT COM PREVENÇÃO DE SOBREPOSIÇÃO
   const MIN_SPACING = 15; // Espaçamento mínimo entre componentes em %
@@ -836,8 +1005,8 @@ export function SinopticoAtivoPage() {
       }
     });
 
-    setComponentes(newComponents);
-  }, [componentes]);
+    updateDiagram(newComponents);
+  }, [componentes, updateDiagram]);
 
   const alignHorizontal = useCallback(() => {
     if (componentes.length < 2) return;
@@ -868,8 +1037,8 @@ export function SinopticoAtivoPage() {
       if (currentX > 85) currentX = 85; // Limitar à tela
     });
 
-    setComponentes(aligned);
-  }, [componentes]);
+    updateDiagram(aligned);
+  }, [componentes, updateDiagram]);
 
   const alignVertical = useCallback(() => {
     if (componentes.length < 2) return;
@@ -916,8 +1085,8 @@ export function SinopticoAtivoPage() {
       });
     }
 
-    setComponentes(aligned);
-  }, [componentes]);
+    updateDiagram(aligned);
+  }, [componentes, updateDiagram]);
 
   // Mock data para modais
   const dadosMedidor = {
@@ -970,11 +1139,6 @@ export function SinopticoAtivoPage() {
     correntes: { primario: 100.2, secundario: 3625.5 },
     temperatura: 65.8,
     carregamento: 85.2,
-  };
-
-  // Funções de navegação
-  const handleVoltar = () => {
-    navigate(-1);
   };
 
   // Função principal de clique em componente
@@ -1054,19 +1218,20 @@ export function SinopticoAtivoPage() {
       newX = Math.max(2, Math.min(98, newX));
       newY = Math.max(2, Math.min(98, newY));
 
-      setComponentes((prev) =>
-        prev.map((comp) =>
-          comp.id === componenteDragId
-            ? { ...comp, posicao: { x: newX, y: newY } }
-            : comp
-        )
+      const newComponentes = componentes.map((comp) =>
+        comp.id === componenteDragId
+          ? { ...comp, posicao: { x: newX, y: newY } }
+          : comp
       );
+
+      setComponentes(newComponentes);
     },
-    [isDragging, componenteDragId, dragOffset]
+    [isDragging, componenteDragId, dragOffset, componentes]
   );
 
   const handleMouseUp = useCallback(() => {
     if (!isDragging) return;
+
     setIsDragging(false);
     setComponenteDragId(null);
   }, [isDragging]);
@@ -1102,7 +1267,7 @@ export function SinopticoAtivoPage() {
             fromPort: connecting.port,
             toPort: port,
           };
-          setConnections((prev) => [...prev, newConnection]);
+          updateDiagram(undefined, [...connections, newConnection]);
           setConnecting(null);
         }
       } else {
@@ -1110,7 +1275,7 @@ export function SinopticoAtivoPage() {
         setComponenteEditando(componentId);
       }
     },
-    [modoFerramenta, modoEdicao, connecting]
+    [modoFerramenta, modoEdicao, connecting, connections, updateDiagram]
   );
 
   // Funções de controle
@@ -1123,7 +1288,7 @@ export function SinopticoAtivoPage() {
     setModoEdicao(!modoEdicao);
     if (modoEdicao) {
       setComponenteEditando(null);
-      setModoFerramenta("selecionar");
+      setModoConectar(false);
       setConnecting(null);
       setIsDragging(false);
       setComponenteDragId(null);
@@ -1132,7 +1297,10 @@ export function SinopticoAtivoPage() {
 
   // Função para remover conexão
   const removerConexao = (connectionId: string) => {
-    setConnections((prev) => prev.filter((conn) => conn.id !== connectionId));
+    updateDiagram(
+      undefined,
+      connections.filter((conn) => conn.id !== connectionId)
+    );
   };
 
   // Funções de edição de componentes
@@ -1146,14 +1314,15 @@ export function SinopticoAtivoPage() {
       status: "NORMAL",
       dados: {},
     };
-    setComponentes([...componentes, novoComponente]);
+    updateDiagram([...componentes, novoComponente]);
   };
 
   const removerComponente = (id: string) => {
-    setComponentes(componentes.filter((c) => c.id !== id));
-    setConnections((prev) =>
-      prev.filter((conn) => conn.from !== id && conn.to !== id)
+    const newComponentes = componentes.filter((c) => c.id !== id);
+    const newConnections = connections.filter(
+      (conn) => conn.from !== id && conn.to !== id
     );
+    updateDiagram(newComponentes, newConnections);
     setComponenteEditando(null);
   };
 
@@ -1169,27 +1338,64 @@ export function SinopticoAtivoPage() {
           y: componenteOriginal.posicao.y + 5,
         },
       };
-      setComponentes([...componentes, novoComponente]);
+      updateDiagram([...componentes, novoComponente]);
     }
   };
 
   const limparConexoes = () => {
-    setConnections([]);
+    updateDiagram(undefined, []);
     setConnecting(null);
   };
 
-  const salvarDiagrama = () => {
-    const diagramaData = {
-      ativoId: ativoId,
-      componentes: componentes,
-      connections: connections,
-      ultimaAtualizacao: new Date().toISOString(),
-    };
+  const salvarDiagrama = useCallback(() => {
+    console.log("💾 Salvando diagrama para ativo:", ativoSelecionado);
 
-    localStorage.setItem(`diagrama_${ativoId}`, JSON.stringify(diagramaData));
-    console.log("Diagrama salvo no localStorage:", diagramaData);
-    alert("Diagrama salvo com sucesso!");
-  };
+    try {
+      const diagramaData = {
+        ativoId: ativoSelecionado,
+        componentes,
+        connections,
+        ultimaAtualizacao: new Date().toISOString(),
+        versao: "1.0",
+      };
+
+      const key = `diagrama_${ativoSelecionado}`;
+      localStorage.setItem(key, JSON.stringify(diagramaData));
+
+      console.log("💾 Salvo:", key, componentes.length, "componentes");
+
+      const verificacao = localStorage.getItem(key);
+      if (verificacao) {
+        alert(
+          `Diagrama salvo!\nAtivo: ${ativoSelecionado}\nComponentes: ${componentes.length}`
+        );
+      }
+    } catch (error) {
+      console.error("❌ Erro ao salvar:", error);
+      alert("Erro ao salvar diagrama!");
+    }
+  }, [ativoSelecionado, componentes, connections]);
+
+  // LOADING STATE - Não renderizar até carregar
+  if (!diagramaCarregado) {
+    return (
+      <Layout>
+        <Layout.Main>
+          <div className="flex items-center justify-center min-h-[400px]">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+              <p className="text-muted-foreground">Carregando diagrama...</p>
+              <p className="text-xs text-muted-foreground mt-2">
+                Ativo: {ativoSelecionado}
+              </p>
+            </div>
+          </div>
+        </Layout.Main>
+      </Layout>
+    );
+  }
+
+  const ativoAtual = ativosDisponiveis.find((a) => a.id === ativoSelecionado);
 
   return (
     <Layout>
@@ -1200,15 +1406,37 @@ export function SinopticoAtivoPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={handleVoltar}
+              onClick={() => navigate(-1)}
               className="flex items-center gap-2"
             >
               <ArrowLeft className="h-4 w-4" />
               Voltar
             </Button>
-            <h1 className="text-2xl font-bold text-foreground">
-              Sinóptico - {ativoData.nome}
-            </h1>
+
+            <div className="flex items-center gap-4">
+              <h1 className="text-2xl font-bold text-foreground">
+                Sinóptico - {ativoAtual?.nome}
+              </h1>
+
+              {/* Seletor de Ativo */}
+              <select
+                value={ativoSelecionado}
+                onChange={(e) => setAtivoSelecionado(e.target.value)}
+                className="h-8 px-3 py-1 text-sm border border-input bg-background rounded-md"
+              >
+                {ativosDisponiveis.map((ativo) => (
+                  <option key={ativo.id} value={ativo.id}>
+                    {ativo.nome}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Debug info */}
+            <div className="text-xs text-muted-foreground">
+              Componentes: {componentes.length} | LocalStorage: diagrama_
+              {ativoSelecionado}
+            </div>
           </div>
 
           {/* Indicadores */}
@@ -1314,23 +1542,33 @@ export function SinopticoAtivoPage() {
                     </select>
                   </div>
 
-                  {/* Ações */}
+                  {/* Ações - BOTÕES UNDO/REDO FUNCIONAIS */}
                   <div className="flex items-center gap-2 border-r pr-4">
                     <span className="text-sm font-medium">Ações:</span>
                     <div className="flex gap-1">
                       <Button
                         variant="outline"
                         size="sm"
-                        disabled
-                        title="Desfazer (em desenvolvimento)"
+                        onClick={undo}
+                        disabled={!canUndo}
+                        title={
+                          canUndo
+                            ? "Desfazer última ação (Ctrl+Z)"
+                            : "Nenhuma ação para desfazer"
+                        }
                       >
                         <Undo className="h-4 w-4" />
                       </Button>
                       <Button
                         variant="outline"
                         size="sm"
-                        disabled
-                        title="Refazer (em desenvolvimento)"
+                        onClick={redo}
+                        disabled={!canRedo}
+                        title={
+                          canRedo
+                            ? "Refazer ação (Ctrl+Y)"
+                            : "Nenhuma ação para refazer"
+                        }
                       >
                         <Redo className="h-4 w-4" />
                       </Button>
@@ -1485,7 +1723,8 @@ export function SinopticoAtivoPage() {
                 <div className="lg:col-span-2 flex">
                   <Card className="flex flex-col w-full min-h-[900px]">
                     <div className="flex items-center justify-between p-4 pb-2 border-b flex-shrink-0">
-                      <h3 className="text-lg font-semibold text-foreground">
+                      <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                        <Network className="h-5 w-5" />
                         Diagrama Unifilar
                       </h3>
                       <div className="flex items-center gap-2">
@@ -1531,7 +1770,8 @@ export function SinopticoAtivoPage() {
             {modoEdicao && (
               <Card className="flex flex-col min-h-[900px]">
                 <div className="flex items-center justify-between p-4 pb-2 border-b flex-shrink-0">
-                  <h3 className="text-lg font-semibold text-foreground">
+                  <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                    <Network className="h-5 w-5" />
                     Diagrama Unifilar
                   </h3>
                   <div className="flex items-center gap-2">
@@ -1547,6 +1787,7 @@ export function SinopticoAtivoPage() {
                     <div className="text-xs text-muted-foreground flex items-center gap-3">
                       <span>Componentes: {componentes.length}</span>
                       <span>Conexões: {connections.length}</span>
+                      <span>Histórico: {canUndo ? "Disponível" : "Vazio"}</span>
                     </div>
                     <Button
                       variant="default"
