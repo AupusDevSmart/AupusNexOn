@@ -642,8 +642,9 @@ export function SinopticoAtivoPage() {
 
   // Estados para o modo de edição
   const [modoEdicao, setModoEdicao] = useState(false);
+  // CORRIGIDO: Tipo ajustado para "selecionar" | "conectar"
   const [modoFerramenta, setModoFerramenta] = useState<
-    "selecionar" | "arrastar" | "conectar"
+    "selecionar" | "conectar"
   >("selecionar");
   const [componenteEditando, setComponenteEditando] = useState<string | null>(
     null
@@ -1141,7 +1142,7 @@ export function SinopticoAtivoPage() {
     carregamento: 85.2,
   };
 
-  // Função principal de clique em componente
+  // Função principal de clique em componente - CORRIGIDO
   const handleComponenteClick = useCallback(
     (componente: ComponenteDU, event?: React.MouseEvent) => {
       if (modoEdicao) {
@@ -1176,10 +1177,10 @@ export function SinopticoAtivoPage() {
     }
   };
 
-  // Sistema de drag and drop
+  // Sistema de drag and drop - CORRIGIDO
   const handleMouseDown = useCallback(
     (e: React.MouseEvent, componentId: string) => {
-      if (modoFerramenta !== "arrastar" || !modoEdicao) return;
+      if (modoFerramenta !== "selecionar" || !modoEdicao) return;
 
       e.preventDefault();
       e.stopPropagation();
@@ -1288,7 +1289,6 @@ export function SinopticoAtivoPage() {
     setModoEdicao(!modoEdicao);
     if (modoEdicao) {
       setComponenteEditando(null);
-      setModoConectar(false);
       setConnecting(null);
       setIsDragging(false);
       setComponenteDragId(null);
@@ -1447,7 +1447,7 @@ export function SinopticoAtivoPage() {
             <div className="mb-6">
               <Card className="p-4">
                 <div className="flex flex-wrap items-center gap-4">
-                  {/* Modos de Ferramentas */}
+                  {/* Modos de Ferramentas - CORRIGIDO: BOTÃO ÚNICO */}
                   <div className="flex items-center gap-2 border-r pr-4">
                     <span className="text-sm font-medium">Modo:</span>
                     <div className="flex gap-1">
@@ -1460,26 +1460,14 @@ export function SinopticoAtivoPage() {
                         size="sm"
                         onClick={() => {
                           setModoFerramenta("selecionar");
+                          setConnecting(null);
                           setIsDragging(false);
                           setComponenteDragId(null);
                         }}
                         className="flex items-center gap-1"
                       >
-                        Selecionar
-                      </Button>
-                      <Button
-                        variant={
-                          modoFerramenta === "arrastar" ? "default" : "outline"
-                        }
-                        size="sm"
-                        onClick={() => {
-                          setModoFerramenta("arrastar");
-                          setConnecting(null);
-                        }}
-                        className="flex items-center gap-1"
-                      >
                         <Move className="h-4 w-4" />
-                        Arrastar
+                        Selecionar
                       </Button>
                       <Button
                         variant={
@@ -1948,12 +1936,12 @@ export function SinopticoAtivoPage() {
                           </div>
                         )}
 
-                        {/* Área de Interação */}
+                        {/* Área de Interação - CORRIGIDO */}
                         <div
                           className="absolute inset-0 pointer-events-auto"
                           style={{
                             cursor:
-                              modoFerramenta === "arrastar"
+                              modoFerramenta === "selecionar"
                                 ? isDragging &&
                                   componenteDragId === componente.id
                                   ? "grabbing"
@@ -1963,12 +1951,12 @@ export function SinopticoAtivoPage() {
                                 : "pointer",
                           }}
                           onMouseDown={(e) => {
-                            if (modoFerramenta === "arrastar") {
+                            if (modoFerramenta === "selecionar") {
                               handleMouseDown(e, componente.id);
                             }
                           }}
                           onClick={(e) => {
-                            if (modoFerramenta !== "arrastar") {
+                            if (modoFerramenta !== "selecionar") {
                               e.stopPropagation();
                               handleComponenteClick(componente, e);
                             }
@@ -1978,21 +1966,19 @@ export function SinopticoAtivoPage() {
                     ))}
                   </div>
 
-                  {/* Indicador de Status */}
+                  {/* Indicador de Status - CORRIGIDO */}
                   <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 text-xs text-muted-foreground bg-background/90 px-3 py-2 rounded-full border">
                     <div className="flex items-center gap-2">
                       <div
                         className={`w-2 h-2 rounded-full ${
                           modoFerramenta === "selecionar"
                             ? "bg-blue-500"
-                            : modoFerramenta === "arrastar"
-                            ? "bg-green-500"
                             : "bg-purple-500"
                         }`}
                       />
                       <span>
-                        {modoFerramenta === "selecionar" && "Modo Seleção"}
-                        {modoFerramenta === "arrastar" && "Modo Arrastar"}
+                        {modoFerramenta === "selecionar" &&
+                          "Clique para selecionar, arraste para mover"}
                         {modoFerramenta === "conectar" && "Modo Conectar"}
                       </span>
                       {/* ADICIONAR INFO DE CONEXÕES */}
