@@ -215,15 +215,7 @@ export interface EquipmentData {
 
 export interface Equipment {
   id: string;
-  type:
-    | "m300"
-    | "m160"
-    | "a966"
-    | "esp32"
-    | "raspberry"
-    | "switch"
-    | "breaker"
-    | "battery";
+  type: "m300" | "m160" | "landisE750" | "a966";
   position: { x: number; y: number };
   data: EquipmentData;
 }

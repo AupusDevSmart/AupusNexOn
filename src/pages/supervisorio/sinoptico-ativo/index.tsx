@@ -8,10 +8,13 @@ import {
   Circle,
   Copy,
   Edit3,
+  Gauge,
+  HardDrive,
   Link,
   Move,
   Network,
   Redo,
+  Router,
   Save,
   Square,
   Trash2,
@@ -27,7 +30,9 @@ import { useNavigate, useParams } from "react-router-dom";
 import { ConexoesDiagrama } from "@/features/supervisorio/components/conexoes-diagrama";
 import { DisjuntorModal } from "@/features/supervisorio/components/disjuntor-modal";
 import { InversorModal } from "@/features/supervisorio/components/inversor-modal";
+import { M160Modal } from "@/features/supervisorio/components/m160-modal";
 import { MedidorModal } from "@/features/supervisorio/components/medidor-modal";
+import { M160Modal } from "@/features/supervisorio/components/m160-modal";
 import { SinopticoDiagrama } from "@/features/supervisorio/components/sinoptico-diagrama";
 import { SinopticoGraficos } from "@/features/supervisorio/components/sinoptico-graficos";
 import { SinopticoIndicadores } from "@/features/supervisorio/components/sinoptico-indicadores";
@@ -123,6 +128,27 @@ const TIPOS_COMPONENTES = [
   { tipo: "SCADA", icon: Circle, label: "SCADA", cor: "bg-teal-600" },
   { tipo: "CFTV", icon: Circle, label: "CFTV", cor: "bg-lime-600" },
   { tipo: "TELECOM", icon: Circle, label: "Telecom", cor: "bg-amber-600" },
+
+  // Componentes SCADA
+  {
+    tipo: "M160",
+    icon: Gauge,
+    label: "M160 Multimedidor",
+    cor: "bg-green-600",
+  },
+  {
+    tipo: "M300",
+    icon: Activity,
+    label: "M300 Multimeter",
+    cor: "bg-blue-600",
+  },
+  {
+    tipo: "LANDIS_E750",
+    icon: HardDrive,
+    label: "Landis+Gyr E750",
+    cor: "bg-purple-600",
+  },
+  { tipo: "A966", icon: Router, label: "A-966 Gateway", cor: "bg-orange-600" },
 ];
 
 // Função para obter classes de status - CORRIGIDA
@@ -573,6 +599,182 @@ const ElectricalSymbol = ({
               className={statusClasses.fill}
             >
               C
+            </text>
+          </svg>
+        );
+      case "M160":
+        return (
+          <svg
+            width="32"
+            height="32"
+            viewBox="0 0 40 40"
+            className="drop-shadow-sm"
+          >
+            <rect
+              x="2"
+              y="2"
+              width="36"
+              height="36"
+              className={`${statusClasses.stroke} fill-background`}
+              strokeWidth="2"
+              rx="6"
+            />
+            <circle
+              cx="20"
+              cy="15"
+              r="6"
+              className={`${statusClasses.stroke} fill-background`}
+              strokeWidth="1.5"
+            />
+            <text
+              x="20"
+              y="15"
+              textAnchor="middle"
+              dominantBaseline="central"
+              fontSize="6"
+              fontWeight="600"
+              className={statusClasses.fill}
+            >
+              M160
+            </text>
+            <line
+              x1="8"
+              y1="28"
+              x2="32"
+              y2="28"
+              className={statusClasses.stroke}
+              strokeWidth="1.5"
+            />
+            <circle cx="12" cy="28" r="1.5" className={statusClasses.fill} />
+            <circle cx="20" cy="28" r="1.5" className={statusClasses.fill} />
+            <circle cx="28" cy="28" r="1.5" className={statusClasses.fill} />
+          </svg>
+        );
+
+      case "M300":
+        return (
+          <svg
+            width="32"
+            height="32"
+            viewBox="0 0 40 40"
+            className="drop-shadow-sm"
+          >
+            <circle
+              cx="20"
+              cy="20"
+              r="18"
+              className={`${statusClasses.stroke} fill-background`}
+              strokeWidth="2"
+            />
+            <text
+              x="20"
+              y="18"
+              textAnchor="middle"
+              dominantBaseline="central"
+              fontSize="10"
+              fontWeight="600"
+              className={statusClasses.fill}
+            >
+              M300
+            </text>
+            <path
+              d="M8,30 Q14,26 20,30 T32,30"
+              className={statusClasses.stroke}
+              strokeWidth="1.5"
+              fill="none"
+            />
+          </svg>
+        );
+
+      case "LANDIS_E750":
+        return (
+          <svg
+            width="32"
+            height="32"
+            viewBox="0 0 40 40"
+            className="drop-shadow-sm"
+          >
+            <rect
+              x="3"
+              y="3"
+              width="34"
+              height="34"
+              className={`${statusClasses.stroke} fill-background`}
+              strokeWidth="2"
+              rx="4"
+            />
+            <rect
+              x="7"
+              y="7"
+              width="26"
+              height="10"
+              className={statusClasses.fill}
+              rx="2"
+            />
+            <text
+              x="20"
+              y="12"
+              textAnchor="middle"
+              dominantBaseline="central"
+              fontSize="6"
+              fontWeight="600"
+              className="fill-background"
+            >
+              E750
+            </text>
+            <rect x="7" y="20" width="6" height="4" className={statusClasses.fill} rx="1" />
+            <rect x="17" y="20" width="6" height="4" className={statusClasses.fill} rx="1" />
+            <rect x="27" y="20" width="6" height="4" className={statusClasses.fill} rx="1" />
+            <text
+              x="20"
+              y="30"
+              textAnchor="middle"
+              dominantBaseline="central"
+              fontSize="6"
+              fontWeight="600"
+              className={statusClasses.fill}
+            >
+              SyM2
+            </text>
+          </svg>
+        );
+
+      case "A966":
+        return (
+          <svg
+            width="32"
+            height="32"
+            viewBox="0 0 40 40"
+            className="drop-shadow-sm"
+          >
+            <rect
+              x="4"
+              y="8"
+              width="32"
+              height="24"
+              className={`${statusClasses.stroke} fill-background`}
+              strokeWidth="2"
+              rx="3"
+            />
+            <circle cx="12" cy="16" r="2" className={statusClasses.fill} />
+            <circle cx="20" cy="16" r="2" className={statusClasses.fill} />
+            <circle cx="28" cy="16" r="2" className={statusClasses.fill} />
+            <path
+              d="M8,24 Q12,20 16,24 M16,24 Q20,20 24,24 M24,24 Q28,20 32,24"
+              className={statusClasses.stroke}
+              strokeWidth="1.5"
+              fill="none"
+            />
+            <text
+              x="20"
+              y="28"
+              textAnchor="middle"
+              dominantBaseline="central"
+              fontSize="7"
+              fontWeight="600"
+              className={statusClasses.fill}
+            >
+              A966
             </text>
           </svg>
         );
@@ -1527,6 +1729,12 @@ export function SinopticoAtivoPage() {
                         <option value="CFTV">CFTV</option>
                         <option value="TELECOM">Telecom</option>
                       </optgroup>
+                      <optgroup label="Equipamentos SCADA">
+                        <option value="M160">M160 Multimedidor</option>
+                        <option value="M300">M300 Multimeter</option>
+                        <option value="LANDIS_E750">Landis+Gyr E750</option>
+                        <option value="A966">A-966 Gateway</option>
+                      </optgroup>
                     </select>
                   </div>
 
@@ -2027,6 +2235,15 @@ export function SinopticoAtivoPage() {
           dados={dadosTransformador}
           nomeComponente={componenteSelecionado?.nome || ""}
         />
+
+        {modalAberto === "M160" && (
+          <M160Modal
+            isOpen={true}
+            onClose={fecharModal}
+            componenteData={componenteSelecionado}
+          />
+        )}
+
       </Layout.Main>
     </Layout>
   );

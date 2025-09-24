@@ -1,14 +1,5 @@
 // DiagramEditor/EquipmentToolbar.tsx
-import {
-  Activity,
-  Battery,
-  Cpu,
-  Gauge,
-  Microchip,
-  Router,
-  ToggleLeft,
-  Zap,
-} from "lucide-react";
+import { Activity, Gauge, HardDrive, Router } from "lucide-react";
 import React from "react";
 
 interface EquipmentToolbarProps {
@@ -21,12 +12,8 @@ export const EquipmentToolbar: React.FC<EquipmentToolbarProps> = ({
   const equipmentTypes = [
     { type: "m300", icon: Activity, label: "M-300 Multimeter" },
     { type: "m160", icon: Gauge, label: "M-160 Multimedidor" },
+    { type: "landisE750", icon: HardDrive, label: "Landis+Gyr E750" },
     { type: "a966", icon: Router, label: "A-966 Gateway IoT" },
-    { type: "esp32", icon: Cpu, label: "ESP32 Controller" },
-    { type: "raspberry", icon: Microchip, label: "Raspberry Pi Gateway" },
-    { type: "switch", icon: ToggleLeft, label: "Switch" },
-    { type: "breaker", icon: Zap, label: "Circuit Breaker" },
-    { type: "battery", icon: Battery, label: "Battery" },
   ];
 
   return (

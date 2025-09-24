@@ -52,6 +52,42 @@ export const DiagramEditor: React.FC = () => {
           reactiveExport: 89.45,
         },
       };
+    } else if (type === "landisE750") {
+      equipmentReadings = {
+        voltage: { L1: 220.8, L2: 221.5, L3: 219.2 },
+        current: { L1: 18.5, L2: 17.8, L3: 18.9, N: 1.2 },
+        energy: {
+          activeImport: 2456.78,
+          activeExport: 1234.56,
+          reactiveQ1: 567.89,
+          reactiveQ2: 234.12,
+          reactiveQ3: 123.45,
+          reactiveQ4: 89.67,
+        },
+        power: {
+          active: 12.8,
+          reactive: 4.2,
+          apparent: 13.5,
+        },
+        communication: {
+          moduleType: "GSM_GPRS" as const,
+          signalStrength: 85,
+          connectionStatus: "connected" as const,
+          lastSync: new Date(),
+        },
+        system: {
+          firmwareVersion: "v2.1.4",
+          moduleId: "E750-001",
+          signatureStatus: "valid" as const,
+          secondIndex: 1634567,
+          batteryBackup: 7,
+        },
+        loadProfile: {
+          channels: 6,
+          interval: 15,
+          depth: 3,
+        },
+      };
     } else if (type === "a966") {
       equipmentReadings = {
         inputs: {
@@ -80,195 +116,6 @@ export const DiagramEditor: React.FC = () => {
           lastSync: "2min ago",
           dataPoints: 1247,
           errors: 0,
-        },
-      };
-    } else if (type === "esp32") {
-      equipmentReadings = {
-        connectivity: {
-          wifi: {
-            status: "connected",
-            ssid: "IndustrialNet",
-            rssi: -45,
-            ip: "192.168.1.150",
-          },
-          bluetooth: {
-            status: "enabled",
-            devices: 2,
-          },
-        },
-        systemStatus: {
-          cpu: 35,
-          memory: 180, // KB livres
-          temperature: 42,
-          uptime: 72.3,
-        },
-        devices: [
-          { name: "Bomba1", type: "pump", pin: 2, status: "on", power: 750 },
-          { name: "Valv1", type: "valve", pin: 4, status: "on", power: 24 },
-          { name: "Alarm", type: "alarm", pin: 5, status: "off", power: 0 },
-          {
-            name: "Motor1",
-            type: "motor",
-            pin: 18,
-            status: "auto",
-            power: 1100,
-          },
-        ],
-        protocols: {
-          mqtt: {
-            status: "connected",
-            broker: "broker.hivemq.com",
-            messages: 45,
-          },
-          modbus: {
-            status: "active",
-            slaves: 3,
-            requests: 12,
-          },
-          http: {
-            status: "active",
-            server: true,
-            requests: 8,
-          },
-          serial: {
-            status: "active",
-            baudRate: 9600,
-            protocol: "RS485",
-          },
-        },
-        control: {
-          totalDevices: 4,
-          activeDevices: 3,
-          powerConsumption: 1874, // W
-          commandsPerMin: 28,
-          errors: 0,
-        },
-      };
-    } else if (type === "raspberry") {
-      equipmentReadings = {
-        system: {
-          model: "Pi 4 Model B",
-          os: "Raspberry Pi OS",
-          uptime: 312.5, // horas
-          cpu: {
-            usage: 28,
-            temperature: 45.2,
-            frequency: 1800,
-            cores: 4,
-          },
-          memory: {
-            total: 4096, // MB
-            used: 1250,
-            available: 2846,
-          },
-        },
-        connectivity: {
-          ethernet: {
-            status: "connected",
-            ip: "192.168.1.200",
-            speed: "1Gbps",
-            interfaces: 1,
-          },
-          wifi: {
-            status: "connected",
-            ssid: "IndustrialNet_5G",
-            signal: 78,
-            ip: "192.168.1.201",
-          },
-          cellular: {
-            status: "connected",
-            operator: "Vivo",
-            signal: 85,
-            technology: "4G",
-          },
-        },
-        rpiProtocols: [
-          {
-            name: "MQTT",
-            type: "bidirectional",
-            status: "active",
-            connections: 12,
-            throughput: 45.2,
-          },
-          {
-            name: "Modbus TCP",
-            type: "input",
-            status: "active",
-            connections: 8,
-            throughput: 12.3,
-          },
-          {
-            name: "OPC-UA",
-            type: "output",
-            status: "active",
-            connections: 3,
-            throughput: 8.7,
-          },
-          {
-            name: "HTTP API",
-            type: "bidirectional",
-            status: "active",
-            connections: 15,
-            throughput: 67.1,
-          },
-        ],
-        bridges: [
-          {
-            name: "Modbus2MQTT",
-            source: "Modbus",
-            destination: "MQTT",
-            status: "bridging",
-            messagesPerMin: 120,
-            errorRate: 0.5,
-          },
-          {
-            name: "OPC2HTTP",
-            source: "OPC-UA",
-            destination: "HTTP",
-            status: "bridging",
-            messagesPerMin: 45,
-            errorRate: 0.2,
-          },
-          {
-            name: "Serial2TCP",
-            source: "RS485",
-            destination: "TCP",
-            status: "bridging",
-            messagesPerMin: 78,
-            errorRate: 1.1,
-          },
-        ],
-        interfaces: {
-          serial: {
-            rs485: { active: true, devices: 6 },
-            rs232: { active: true, devices: 2 },
-          },
-          usb: {
-            devices: 3,
-            protocols: ["USB-Serial", "HID"],
-          },
-          gpio: {
-            digitalInputs: 8,
-            digitalOutputs: 6,
-            i2c: { devices: 4 },
-            spi: { devices: 2 },
-          },
-        },
-        gateway: {
-          totalConnections: 38,
-          activeConnections: 34,
-          dataProcessed: 125.7, // MB
-          messagesPerMin: 243,
-          errorRate: 0.8, // %
-          upstreamLatency: 12, // ms
-          downstreamLatency: 8, // ms
-        },
-        services: {
-          mqtt: { status: "running", clients: 12 },
-          opcua: { status: "running", connections: 3 },
-          modbus: { status: "running", slaves: 8 },
-          http: { status: "running", requests: 156 },
-          database: { status: "running", type: "InfluxDB" },
         },
       };
     }

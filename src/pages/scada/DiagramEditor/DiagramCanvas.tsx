@@ -1,10 +1,9 @@
 // DiagramEditor/DiagramCanvas.tsx
 import {
   A966Gateway,
-  ESP32Controller,
+  LandisGyrE750,
   M160Multimeter,
   M300Multimeter,
-  RaspberryGateway,
 } from "@/components/equipment";
 import { Equipment } from "@/types/equipment";
 import React, { useCallback, useRef, useState } from "react";
@@ -107,6 +106,36 @@ export const DiagramCanvas: React.FC<DiagramCanvasProps> = ({
             scale={0.8}
           />
         );
+      case "landisE750":
+        return (
+          <LandisGyrE750
+            id={eq.id}
+            name={eq.data.name}
+            readings={
+              eq.data.readings || {
+                voltage: {},
+                current: {},
+                energy: {},
+                power: {},
+                communication: {},
+                system: {},
+                loadProfile: {},
+              }
+            }
+            status={eq.data.status as any}
+            displayMode={eq.data.displayMode as any}
+            scale={0.8}
+            moduleConfiguration={{
+              baseModule: true,
+              communicationModule: "GSM_GPRS",
+              pulseModule: true,
+              networkNode: false,
+            }}
+            onModuleConfig={(module) =>
+              console.log("Configure module:", module)
+            }
+          />
+        );
       case "a966":
         return (
           <A966Gateway
@@ -126,48 +155,7 @@ export const DiagramCanvas: React.FC<DiagramCanvasProps> = ({
             scale={0.8}
           />
         );
-      case "esp32":
-        return (
-          <ESP32Controller
-            id={eq.id}
-            name={eq.data.name}
-            readings={{
-              connectivity: eq.data.readings?.connectivity || {
-                wifi: { status: "disconnected" },
-                bluetooth: { status: "disabled" },
-              },
-              system: eq.data.readings?.systemStatus || {},
-              devices: eq.data.readings?.devices || [],
-              protocols: eq.data.readings?.protocols || {},
-              control: eq.data.readings?.control || {},
-            }}
-            status={eq.data.status}
-            displayMode={eq.data.displayMode as any}
-            scale={0.8}
-          />
-        );
-      case "raspberry":
-        return (
-          <RaspberryGateway
-            id={eq.id}
-            name={eq.data.name}
-            readings={{
-              system: eq.data.readings?.system || {},
-              connectivity: eq.data.readings?.connectivity || {
-                ethernet: { status: "disconnected" },
-                wifi: { status: "disconnected" },
-              },
-              protocols: eq.data.readings?.rpiProtocols || [],
-              bridges: eq.data.readings?.bridges || [],
-              interfaces: eq.data.readings?.interfaces || {},
-              gateway: eq.data.readings?.gateway || {},
-              services: eq.data.readings?.services || {},
-            }}
-            status={eq.data.status}
-            displayMode={eq.data.displayMode as any}
-            scale={0.8}
-          />
-        );
+
       // Adicionar outros equipamentos aqui
       default:
         return null;
