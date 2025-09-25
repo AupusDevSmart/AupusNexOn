@@ -27,6 +27,8 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 // Componentes implementados
+import { M300Modal } from "@/features/supervisorio/components/m300-modal";
+import type { M300Reading } from "@/components/equipment/M300/M300.types"; // Hook para histórico undo/redo - REMOVIDO
 import { ConexoesDiagrama } from "@/features/supervisorio/components/conexoes-diagrama";
 import { DisjuntorModal } from "@/features/supervisorio/components/disjuntor-modal";
 import { InversorModal } from "@/features/supervisorio/components/inversor-modal";
@@ -36,8 +38,6 @@ import { SinopticoDiagrama } from "@/features/supervisorio/components/sinoptico-
 import { SinopticoGraficos } from "@/features/supervisorio/components/sinoptico-graficos";
 import { SinopticoIndicadores } from "@/features/supervisorio/components/sinoptico-indicadores";
 import { TransformadorModal } from "@/features/supervisorio/components/transformador-modal";
-
-// Hook para histórico undo/redo - REMOVIDO
 // import { useHistory } from "@/features/supervisorio/hooks/useHistory";
 
 // Tipos - CORRIGIDOS com interfaces locais caso os imports falhem
@@ -653,21 +653,37 @@ const ElectricalSymbol = ({
       case "M300":
         return (
           <svg
-            width="32"
-            height="32"
-            viewBox="0 0 40 40"
+            width="36"
+            height="36"
+            viewBox="0 0 44 44"
             className="drop-shadow-sm"
           >
-            <circle
-              cx="20"
-              cy="20"
-              r="18"
+            {/* Corpo retangular do multímetro */}
+            <rect
+              x="4"
+              y="4"
+              width="36"
+              height="36"
+              rx="4"
               className={`${statusClasses.stroke} fill-background`}
               strokeWidth="2"
             />
+
+            {/* Display LCD (retângulo superior) */}
+            <rect
+              x="8"
+              y="8"
+              width="28"
+              height="10"
+              rx="1"
+              className="fill-gray-800 stroke-gray-600"
+              strokeWidth="1"
+            />
+
+            {/* Texto M300 */}
             <text
-              x="20"
-              y="18"
+              x="22"
+              y="28"
               textAnchor="middle"
               dominantBaseline="central"
               fontSize="10"
@@ -676,11 +692,39 @@ const ElectricalSymbol = ({
             >
               M300
             </text>
-            <path
-              d="M8,30 Q14,26 20,30 T32,30"
-              className={statusClasses.stroke}
-              strokeWidth="1.5"
-              fill="none"
+
+            {/* LEDs de status (pequenos círculos) */}
+            <circle cx="10" cy="32" r="2" className={statusClasses.fill} />
+            <circle cx="16" cy="32" r="2" className={statusClasses.fill} />
+
+            {/* Conectores na parte inferior */}
+            <rect
+              x="12"
+              y="38"
+              width="2"
+              height="4"
+              className="fill-gray-600"
+            />
+            <rect
+              x="18"
+              y="38"
+              width="2"
+              height="4"
+              className="fill-gray-600"
+            />
+            <rect
+              x="24"
+              y="38"
+              width="2"
+              height="4"
+              className="fill-gray-600"
+            />
+            <rect
+              x="30"
+              y="38"
+              width="2"
+              height="4"
+              className="fill-gray-600"
             />
           </svg>
         );
@@ -958,6 +1002,15 @@ export function SinopticoAtivoPage() {
         status: "NORMAL",
         dados: {},
       },
+      {
+        id: "m300-01",  // ← ADICIONAR ESTE COMPONENTE
+      tipo: "M300",
+      nome: "M300-01",
+      posicao: { x: 60, y: 30 },
+      status: "NORMAL", 
+      dados: {},
+    },
+      
     ],
     []
   );
@@ -1362,6 +1415,61 @@ export function SinopticoAtivoPage() {
     correntes: { primario: 100.2, secundario: 3625.5 },
     temperatura: 65.8,
     carregamento: 85.2,
+  };
+
+  const dadosM160: M160Reading = {
+    voltage: {
+      L1: 220.5,
+      L2: 219.8,
+      L3: 221.2,
+      LN: 127.3,
+    },
+    current: {
+      L1: 15.2,
+      L2: 14.8,
+      L3: 15.5,
+      N: 2.1,
+    },
+    power: {
+      active: -8.5, // Negativo = gerando energia (4 quadrantes)
+      reactive: 3.2,
+      apparent: 9.1,
+      import: 0,
+      export: 8.5,
+    },
+    frequency: 60.02,
+    powerFactor: 0.95,
+    thd: {
+      voltage: 2.1, // THD de tensão (%)
+      current: 4.8, // THD de corrente (%)
+    },
+    energy: {
+      activeImport: 1234.56, // Energia ativa importada
+      activeExport: 567.89, // Energia ativa exportada
+      reactiveImport: 234.12, // Energia reativa importada
+      reactiveExport: 89.45, // Energia reativa exportada
+    },
+  };
+
+  // Dados mockados para M300 (Multímetro básico)
+  const dadosM300: M300Reading = {
+    voltage: {
+      L1: 220.5,
+      L2: 219.8,
+      L3: 221.2,
+    },
+    current: {
+      L1: 15.2,
+      L2: 14.8,
+      L3: 15.5,
+    },
+    power: {
+      active: 10.5,
+      reactive: 3.2,
+      apparent: 11.0,
+    },
+    frequency: 60.02,
+    powerFactor: 0.95,
   };
 
   // Função principal de clique em componente - CORRIGIDO
@@ -2263,6 +2371,33 @@ export function SinopticoAtivoPage() {
             componenteData={componenteSelecionado}
           />
         )}
+        <M300Modal
+          open={modalAberto === "M300"}
+          onClose={fecharModal}
+          dados={dadosM300}
+          nomeComponente={componenteSelecionado?.nome || ""}
+        />
+
+        <InversorModal
+          open={modalAberto === "INVERSOR"}
+          onClose={fecharModal}
+          dados={dadosInversor}
+          nomeComponente={componenteSelecionado?.nome || ""}
+        />
+
+        <DisjuntorModal
+          open={modalAberto === "DISJUNTOR"}
+          onClose={fecharModal}
+          dados={dadosDisjuntor}
+          nomeComponente={componenteSelecionado?.nome || ""}
+        />
+
+        <TransformadorModal
+          open={modalAberto === "TRANSFORMADOR"}
+          onClose={fecharModal}
+          dados={dadosTransformador}
+          nomeComponente={componenteSelecionado?.nome || ""}
+        />
       </Layout.Main>
     </Layout>
   );
