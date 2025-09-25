@@ -32,7 +32,6 @@ import { DisjuntorModal } from "@/features/supervisorio/components/disjuntor-mod
 import { InversorModal } from "@/features/supervisorio/components/inversor-modal";
 import { M160Modal } from "@/features/supervisorio/components/m160-modal";
 import { MedidorModal } from "@/features/supervisorio/components/medidor-modal";
-import { M160Modal } from "@/features/supervisorio/components/m160-modal";
 import { SinopticoDiagrama } from "@/features/supervisorio/components/sinoptico-diagrama";
 import { SinopticoGraficos } from "@/features/supervisorio/components/sinoptico-graficos";
 import { SinopticoIndicadores } from "@/features/supervisorio/components/sinoptico-indicadores";
@@ -722,9 +721,30 @@ const ElectricalSymbol = ({
             >
               E750
             </text>
-            <rect x="7" y="20" width="6" height="4" className={statusClasses.fill} rx="1" />
-            <rect x="17" y="20" width="6" height="4" className={statusClasses.fill} rx="1" />
-            <rect x="27" y="20" width="6" height="4" className={statusClasses.fill} rx="1" />
+            <rect
+              x="7"
+              y="20"
+              width="6"
+              height="4"
+              className={statusClasses.fill}
+              rx="1"
+            />
+            <rect
+              x="17"
+              y="20"
+              width="6"
+              height="4"
+              className={statusClasses.fill}
+              rx="1"
+            />
+            <rect
+              x="27"
+              y="20"
+              width="6"
+              height="4"
+              className={statusClasses.fill}
+              rx="1"
+            />
             <text
               x="20"
               y="30"
@@ -2243,7 +2263,6 @@ export function SinopticoAtivoPage() {
             componenteData={componenteSelecionado}
           />
         )}
-
       </Layout.Main>
     </Layout>
   );
