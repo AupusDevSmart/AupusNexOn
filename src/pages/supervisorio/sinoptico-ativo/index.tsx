@@ -3,6 +3,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Activity,
   ArrowLeft,
   Circle,
@@ -31,11 +37,9 @@ import type { A966Reading } from "@/components/equipment/A966/A966.types";
 import type { LandisGyrE750Reading } from "@/components/equipment/LandisGyr/LandisGyr.types";
 import type { M300Reading } from "@/components/equipment/M300/M300.types"; // Hook para histórico undo/redo - REMOVIDO
 import { A966Modal } from "@/features/supervisorio/components/a966-modal";
-import { LandisGyrModal } from "@/features/supervisorio/components/landisgyr-modal"; 
 import { ConexoesDiagrama } from "@/features/supervisorio/components/conexoes-diagrama";
 import { DisjuntorModal } from "@/features/supervisorio/components/disjuntor-modal";
 import { InversorModal } from "@/features/supervisorio/components/inversor-modal";
-import { LandisGyrModal } from "@/features/supervisorio/components/landisgyr-modal";
 import { M160Modal } from "@/features/supervisorio/components/m160-modal";
 import { M300Modal } from "@/features/supervisorio/components/m300-modal";
 import { MedidorModal } from "@/features/supervisorio/components/medidor-modal";
@@ -944,7 +948,58 @@ const ElectricalSymbol = ({
     </div>
   );
 };
+// Modal LandisGyr inline
+function LandisGyrModalInline({
+  open,
+  onClose,
+  dados,
+  nomeComponente,
+}: {
+  open: boolean;
+  onClose: () => void;
+  dados: LandisGyrE750Reading;
+  nomeComponente: string;
+}) {
+  const [Component, setComponent] = React.useState<any>(null);
 
+  React.useEffect(() => {
+    import("@/components/equipment/LandisGyr/LandisGyrE750").then((m) =>
+      setComponent(() => m.default)
+    );
+  }, []);
+
+  if (!Component) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-md max-h-[90vh] overflow-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Gauge className="h-5 w-5 text-purple-500" />
+            {nomeComponente} - Medidor Landis+Gyr E750
+          </DialogTitle>
+        </DialogHeader>
+        <div className="flex justify-center items-center py-6">
+          <div className="bg-gray-900 p-8 rounded-lg shadow-lg">
+            <Component
+              id="landisgyr-modal"
+              name={nomeComponente}
+              readings={dados}
+              status="online"
+              scale={1.0}
+              onConfig={() => console.log("Config")}
+            />
+            <div className="mt-6 text-center">
+              <Badge variant="outline" className="text-xs">
+                Medidor Inteligente em Tempo Real
+              </Badge>
+            </div>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
 export function SinopticoAtivoPage() {
   const { ativoId } = useParams<{ ativoId: string }>();
   const navigate = useNavigate();
@@ -2577,7 +2632,7 @@ export function SinopticoAtivoPage() {
           dados={dadosA966}
           nomeComponente={componenteSelecionado?.nome || "Gateway A966"}
         />
-        <LandisGyrModal
+        <LandisGyrModalInline
           open={modalAberto === "LANDIS_E750"}
           onClose={fecharModal}
           dados={dadosLandisGyr}
