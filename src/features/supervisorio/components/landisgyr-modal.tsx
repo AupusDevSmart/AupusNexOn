@@ -1,5 +1,5 @@
-import type { A966Reading } from "@/components/equipment/A966/A966.types";
-import A966Gateway from "@/components/equipment/A966/A966Gateway";
+import type { LandisGyrE750Reading } from "@/components/equipment/LandisGyr/LandisGyr.types";
+import LandisGyrE750 from "@/components/equipment/LandisGyr/LandisGyrE750";
 import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
@@ -7,35 +7,35 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Wifi } from "lucide-react";
+import { Gauge } from "lucide-react";
 
-interface A966ModalProps {
+interface LandisGyrModalProps {
   open: boolean;
   onClose: () => void;
-  dados: A966Reading;
+  dados: LandisGyrE750Reading;
   nomeComponente: string;
 }
 
-export function A966Modal({
+export function LandisGyrModal({
   open,
   onClose,
   dados,
   nomeComponente,
-}: A966ModalProps) {
+}: LandisGyrModalProps) {
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Wifi className="h-5 w-5 text-green-500" />
-            {nomeComponente} - Gateway IoT A-966
+            <Gauge className="h-5 w-5 text-purple-500" />
+            {nomeComponente} - Medidor Landis+Gyr E750
           </DialogTitle>
         </DialogHeader>
 
         <div className="flex justify-center items-center py-6">
           <div className="bg-gray-900 p-8 rounded-lg shadow-lg">
-            <A966Gateway
-              id="a966-modal"
+            <LandisGyrE750
+              id="landisgyr-modal"
               name={nomeComponente}
               readings={dados}
               status="online"
@@ -43,10 +43,9 @@ export function A966Modal({
               onConfig={() => console.log("Configurar", nomeComponente)}
             />
 
-            {/* Informações do Display */}
             <div className="mt-6 text-center">
               <Badge variant="outline" className="text-xs">
-                Gateway IoT em Tempo Real
+                Medidor Inteligente em Tempo Real
               </Badge>
             </div>
           </div>

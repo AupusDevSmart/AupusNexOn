@@ -27,12 +27,17 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 // Componentes implementados
-import { M300Modal } from "@/features/supervisorio/components/m300-modal";
+import type { A966Reading } from "@/components/equipment/A966/A966.types";
+import type { LandisGyrE750Reading } from "@/components/equipment/LandisGyr/LandisGyr.types";
 import type { M300Reading } from "@/components/equipment/M300/M300.types"; // Hook para histórico undo/redo - REMOVIDO
+import { A966Modal } from "@/features/supervisorio/components/a966-modal";
+import { LandisGyrModal } from "@/features/supervisorio/components/landisgyr-modal"; 
 import { ConexoesDiagrama } from "@/features/supervisorio/components/conexoes-diagrama";
 import { DisjuntorModal } from "@/features/supervisorio/components/disjuntor-modal";
 import { InversorModal } from "@/features/supervisorio/components/inversor-modal";
+import { LandisGyrModal } from "@/features/supervisorio/components/landisgyr-modal";
 import { M160Modal } from "@/features/supervisorio/components/m160-modal";
+import { M300Modal } from "@/features/supervisorio/components/m300-modal";
 import { MedidorModal } from "@/features/supervisorio/components/medidor-modal";
 import { SinopticoDiagrama } from "@/features/supervisorio/components/sinoptico-diagrama";
 import { SinopticoGraficos } from "@/features/supervisorio/components/sinoptico-graficos";
@@ -732,73 +737,82 @@ const ElectricalSymbol = ({
       case "LANDIS_E750":
         return (
           <svg
-            width="32"
-            height="32"
-            viewBox="0 0 40 40"
+            width="40"
+            height="40"
+            viewBox="0 0 50 50"
             className="drop-shadow-sm"
           >
+            {/* Corpo principal do medidor */}
             <rect
-              x="3"
-              y="3"
-              width="34"
-              height="34"
+              x="5"
+              y="5"
+              width="40"
+              height="40"
               className={`${statusClasses.stroke} fill-background`}
               strokeWidth="2"
               rx="4"
             />
+
+            {/* Display LCD superior */}
             <rect
-              x="7"
-              y="7"
-              width="26"
-              height="10"
+              x="9"
+              y="9"
+              width="32"
+              height="12"
               className={statusClasses.fill}
               rx="2"
             />
+
+            {/* Texto E750 no display */}
             <text
-              x="20"
-              y="12"
+              x="25"
+              y="15"
               textAnchor="middle"
               dominantBaseline="central"
-              fontSize="6"
+              fontSize="7"
               fontWeight="600"
               className="fill-background"
             >
               E750
             </text>
+
+            {/* Indicadores de energia (3 retângulos) */}
             <rect
-              x="7"
-              y="20"
-              width="6"
-              height="4"
+              x="9"
+              y="25"
+              width="8"
+              height="5"
               className={statusClasses.fill}
               rx="1"
             />
             <rect
-              x="17"
-              y="20"
-              width="6"
-              height="4"
+              x="21"
+              y="25"
+              width="8"
+              height="5"
               className={statusClasses.fill}
               rx="1"
             />
             <rect
-              x="27"
-              y="20"
-              width="6"
-              height="4"
+              x="33"
+              y="25"
+              width="8"
+              height="5"
               className={statusClasses.fill}
               rx="1"
             />
+
+            {/* Logo/Marca SyM2 */}
             <text
-              x="20"
-              y="30"
+              x="25"
+              y="38"
               textAnchor="middle"
               dominantBaseline="central"
               fontSize="6"
               fontWeight="600"
               className={statusClasses.fill}
             >
-              SyM2
+              SyM²
             </text>
           </svg>
         );
@@ -806,32 +820,75 @@ const ElectricalSymbol = ({
       case "A966":
         return (
           <svg
-            width="32"
+            width="40"
             height="32"
-            viewBox="0 0 40 40"
+            viewBox="0 0 50 40"
             className="drop-shadow-sm"
           >
+            {/* Corpo do gateway */}
             <rect
-              x="4"
-              y="8"
-              width="32"
-              height="24"
+              x="5"
+              y="5"
+              width="40"
+              height="30"
               className={`${statusClasses.stroke} fill-background`}
               strokeWidth="2"
-              rx="3"
+              rx="4"
             />
-            <circle cx="12" cy="16" r="2" className={statusClasses.fill} />
-            <circle cx="20" cy="16" r="2" className={statusClasses.fill} />
-            <circle cx="28" cy="16" r="2" className={statusClasses.fill} />
+
+            {/* Antena WiFi esquerda */}
             <path
-              d="M8,24 Q12,20 16,24 M16,24 Q20,20 24,24 M24,24 Q28,20 32,24"
-              className={statusClasses.stroke}
-              strokeWidth="1.5"
+              d="M 12 5 Q 12 2 15 1"
               fill="none"
+              className={statusClasses.stroke}
+              strokeWidth="2"
+              strokeLinecap="round"
             />
+
+            {/* Antena WiFi direita */}
+            <path
+              d="M 38 5 Q 38 2 35 1"
+              fill="none"
+              className={statusClasses.stroke}
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+
+            {/* Indicadores de sinal */}
+            <circle cx="15" cy="15" r="2" className={statusClasses.fill} />
+            <circle cx="25" cy="15" r="2" className={statusClasses.fill} />
+            <circle cx="35" cy="15" r="2" className={statusClasses.fill} />
+
+            {/* Portas de comunicação */}
+            <rect
+              x="12"
+              y="23"
+              width="6"
+              height="4"
+              className="fill-blue-500"
+              rx="1"
+            />
+            <rect
+              x="22"
+              y="23"
+              width="6"
+              height="4"
+              className="fill-blue-500"
+              rx="1"
+            />
+            <rect
+              x="32"
+              y="23"
+              width="6"
+              height="4"
+              className="fill-blue-500"
+              rx="1"
+            />
+
+            {/* Label A966 */}
             <text
-              x="20"
-              y="28"
+              x="25"
+              y="12"
               textAnchor="middle"
               dominantBaseline="central"
               fontSize="7"
@@ -1003,14 +1060,29 @@ export function SinopticoAtivoPage() {
         dados: {},
       },
       {
-        id: "m300-01",  // ← ADICIONAR ESTE COMPONENTE
-      tipo: "M300",
-      nome: "M300-01",
-      posicao: { x: 60, y: 30 },
-      status: "NORMAL", 
-      dados: {},
-    },
-      
+        id: "m300-01",
+        tipo: "M300",
+        nome: "M300-01",
+        posicao: { x: 60, y: 30 },
+        status: "NORMAL",
+        dados: {},
+      },
+      {
+        id: "a966-01",
+        tipo: "A966",
+        nome: "Gateway Principal",
+        posicao: { x: 45, y: 50 },
+        status: "NORMAL",
+        dados: {},
+      },
+      {
+        id: "landisgyr-01",
+        tipo: "LANDIS_E750",
+        nome: "Medidor Principal",
+        posicao: { x: 70, y: 40 },
+        status: "NORMAL",
+        dados: {},
+      },
     ],
     []
   );
@@ -1470,6 +1542,128 @@ export function SinopticoAtivoPage() {
     },
     frequency: 60.02,
     powerFactor: 0.95,
+  };
+
+  // Dados mockados do A966 Gateway
+  const dadosA966: A966Reading = {
+    inputs: {
+      modbus: {
+        protocol: "modbus",
+        interface: "rs485",
+        status: "connected",
+        baudRate: 9600,
+        devices: 3,
+        messagesPerMinute: 120,
+      },
+      ssu: {
+        protocol: "ssu",
+        interface: "rs485",
+        status: "connected",
+        baudRate: 115200,
+        devices: 12,
+        dataRate: 2048,
+      },
+    },
+    outputs: {
+      mqttWifi: {
+        protocol: "mqtt",
+        interface: "wifi",
+        status: "connected",
+        messagesPerMinute: 60,
+      },
+      mqttEthernet: {
+        protocol: "mqtt",
+        interface: "ethernet",
+        status: "connected",
+        messagesPerMinute: 60,
+      },
+    },
+    systemStatus: {
+      cpu: 35,
+      memory: 48,
+      temperature: 45,
+      uptime: 720, // 30 dias em horas
+      signalStrength: 85,
+    },
+    network: {
+      ipAddress: "192.168.1.100",
+      macAddress: "A4:CF:12:34:56:78",
+      ssid: "NexON-Industrial",
+      gateway: "192.168.1.1",
+      connectionType: "both",
+    },
+    iotStatus: {
+      platform: "NexON Cloud",
+      lastSync: new Date().toISOString(),
+      dataPoints: 15847,
+      errors: 0,
+    },
+  };
+
+  // Dados mockados do LandisGyr E750
+  const dadosLandisGyr: LandisGyrE750Reading = {
+    voltage: {
+      L1: 220.5,
+      L2: 219.8,
+      L3: 221.2,
+      phaseAngles: {
+        L1: 0,
+        L2: 120,
+        L3: 240,
+      },
+    },
+    current: {
+      L1: 45.2,
+      L2: 44.8,
+      L3: 45.5,
+      N: 2.1,
+      phaseAngles: {
+        L1: -15,
+        L2: 105,
+        L3: 225,
+      },
+    },
+    energy: {
+      activeImport: 125847.5, // kWh importada
+      activeExport: 87432.8, // kWh exportada
+      reactiveQ1: 12458.2,
+      reactiveQ2: 8745.6,
+      reactiveQ3: 9854.3,
+      reactiveQ4: 7456.9,
+    },
+    power: {
+      active: 29.85, // kW
+      reactive: 8.5, // kVAr
+      apparent: 31.05, // kVA
+    },
+    loadProfile: {
+      channels: 6,
+      interval: 15, // 15 minutos
+      depth: 90, // 3 meses em dias
+    },
+    communication: {
+      moduleType: "GSM_GPRS",
+      signalStrength: 85,
+      connectionStatus: "connected",
+      lastSync: new Date(Date.now() - 5 * 60 * 1000), // 5 minutos atrás
+    },
+    system: {
+      firmwareVersion: "v4.2.1",
+      moduleId: "E750-2024-001",
+      signatureStatus: "valid",
+      secondIndex: 3600,
+      batteryBackup: 168, // 7 dias em horas
+    },
+    tariff: {
+      currentTariff: 1,
+      tariffChanges: 4,
+    },
+    qualityMonitoring: {
+      voltageMonitoring: true,
+      currentMonitoring: true,
+      neutralDisconnected: false,
+      harmonicAccuracy: true,
+    },
   };
 
   // Função principal de clique em componente - CORRIGIDO
@@ -2376,6 +2570,20 @@ export function SinopticoAtivoPage() {
           onClose={fecharModal}
           dados={dadosM300}
           nomeComponente={componenteSelecionado?.nome || ""}
+        />
+        <A966Modal
+          open={modalAberto === "A966"}
+          onClose={fecharModal}
+          dados={dadosA966}
+          nomeComponente={componenteSelecionado?.nome || "Gateway A966"}
+        />
+        <LandisGyrModal
+          open={modalAberto === "LANDIS_E750"}
+          onClose={fecharModal}
+          dados={dadosLandisGyr}
+          nomeComponente={
+            componenteSelecionado?.nome || "Medidor Landis+Gyr E750"
+          }
         />
 
         <InversorModal
