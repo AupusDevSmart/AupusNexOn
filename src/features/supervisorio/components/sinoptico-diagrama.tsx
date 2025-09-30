@@ -218,6 +218,46 @@ const ElectricalSymbol = ({
             )}
           </svg>
         );
+      case "BOTOEIRA":
+       return (
+      <svg width="32" height="32" viewBox="0 0 40 40" className="drop-shadow-sm">
+      <circle cx="20" cy="20" r="14" className={`${statusClasses.stroke} fill-background`} strokeWidth="2" />
+      <circle cx="20" cy="20" r="8" className={statusClasses.fill} />
+      <line x1="20" y1="6" x2="20" y2="12" className={statusClasses.stroke} strokeWidth="2" />
+      <line x1="20" y1="28" x2="20" y2="34" className={statusClasses.stroke} strokeWidth="2" />
+    </svg>
+  );
+
+case "CHAVE_ABERTA":
+  return (
+    <svg width="32" height="32" viewBox="0 0 40 40" className="drop-shadow-sm">
+      <circle cx="10" cy="20" r="4" className={`${statusClasses.stroke} fill-background`} strokeWidth="2" />
+      <circle cx="30" cy="20" r="4" className={`${statusClasses.stroke} fill-background`} strokeWidth="2" />
+      {/* Linha diagonal = aberta */}
+      <line x1="10" y1="20" x2="26" y2="8" className="stroke-red-600" strokeWidth="2" />
+    </svg>
+  );
+
+case "CHAVE_FECHADA":
+  return (
+    <svg width="32" height="32" viewBox="0 0 40 40" className="drop-shadow-sm">
+      <circle cx="10" cy="20" r="4" className={`${statusClasses.stroke} fill-background`} strokeWidth="2" />
+      <circle cx="30" cy="20" r="4" className={`${statusClasses.stroke} fill-background`} strokeWidth="2" />
+      {/* Linha horizontal = fechada */}
+      <line x1="10" y1="20" x2="30" y2="20" className="stroke-green-600" strokeWidth="2" />
+    </svg>
+  );
+
+case "RELE":
+  return (
+    <svg width="32" height="32" viewBox="0 0 40 40" className="drop-shadow-sm">
+      <rect x="8" y="8" width="24" height="24" className={`${statusClasses.stroke} fill-background`} strokeWidth="2" rx="2" />
+      <line x1="14" y1="20" x2="26" y2="20" className={statusClasses.stroke} strokeWidth="2" />
+      <circle cx="14" cy="20" r="2" className={statusClasses.fill} />
+      <circle cx="26" cy="20" r="2" className={statusClasses.fill} />
+      <path d="M20,14 L20,26" className={statusClasses.stroke} strokeWidth="1.5" strokeDasharray="2,2" />
+    </svg>
+  );
 
       case "MOTOR":
         return (

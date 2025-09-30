@@ -94,14 +94,17 @@ const TIPOS_COMPONENTES = [
   { tipo: "INVERSOR", icon: Zap, label: "Inversor", cor: "bg-yellow-500" },
   { tipo: "DISJUNTOR", icon: Square, label: "Disjuntor", cor: "bg-red-500" },
   { tipo: "MOTOR", icon: Circle, label: "Motor", cor: "bg-purple-500" },
+  { tipo: "BOTOEIRA", icon: Circle, label: "Botoeira", cor: "bg-cyan-500" },
+  { tipo: "CHAVE_ABERTA", icon: Square, label: "Chave Aberta", cor: "bg-amber-500" },
+  { tipo: "CHAVE_FECHADA", icon: Square, label: "Chave Fechada", cor: "bg-amber-500" },
+  {tipo: "RELE", icon: Triangle, label: "Relé", cor: "bg-indigo-500" },
   {
     tipo: "CAPACITOR",
     icon: Triangle,
     label: "Capacitor",
     cor: "bg-indigo-500",
   },
-
-  // Componentes de subestação
+   // Componentes de subestação
   { tipo: "TSA", icon: Square, label: "TSA", cor: "bg-emerald-600" },
   {
     tipo: "RETIFICADOR",
@@ -349,6 +352,96 @@ const ElectricalSymbol = ({
                 fill="none"
               />
             )}
+          </svg>
+        );
+      case "BOTOEIRA":
+        return (
+          <svg
+            width="32"
+            height="32"
+            viewBox="0 0 40 40"
+            className="drop-shadow-sm"
+          >
+            <circle
+              cx="20"
+              cy="20"
+              r="14"
+              className={`${statusClasses.stroke} fill-background`}
+              strokeWidth="2"
+            />
+            <circle cx="20" cy="20" r="8" className={statusClasses.fill} />
+            <line
+              x1="20"
+              y1="6"
+              x2="20"
+              y2="12"
+              className={statusClasses.stroke}
+              strokeWidth="2"
+            />
+            <line
+              x1="20"
+              y1="28"
+              x2="20"
+              y2="34"
+              className={statusClasses.stroke}
+              strokeWidth="2"
+            />
+          </svg>
+        );
+
+      case "CHAVE_ABERTA":
+  return (
+    <svg width="32" height="32" viewBox="0 0 40 40" className="drop-shadow-sm">
+      <circle cx="10" cy="20" r="4" className={`${statusClasses.stroke} fill-background`} strokeWidth="2" />
+      <circle cx="30" cy="20" r="4" className={`${statusClasses.stroke} fill-background`} strokeWidth="2" />
+      {/* Linha diagonal = aberta */}
+      <line x1="10" y1="20" x2="26" y2="8" className="stroke-red-600" strokeWidth="2" />
+    </svg>
+  );
+
+case "CHAVE_FECHADA":
+  return (
+    <svg width="32" height="32" viewBox="0 0 40 40" className="drop-shadow-sm">
+      <circle cx="10" cy="20" r="4" className={`${statusClasses.stroke} fill-background`} strokeWidth="2" />
+      <circle cx="30" cy="20" r="4" className={`${statusClasses.stroke} fill-background`} strokeWidth="2" />
+      {/* Linha horizontal = fechada */}
+      <line x1="10" y1="20" x2="30" y2="20" className="stroke-green-600" strokeWidth="2" />
+    </svg>
+  );
+  
+      case "RELE":
+        return (
+          <svg
+            width="32"
+            height="32"
+            viewBox="0 0 40 40"
+            className="drop-shadow-sm"
+          >
+            <rect
+              x="8"
+              y="8"
+              width="24"
+              height="24"
+              className={`${statusClasses.stroke} fill-background`}
+              strokeWidth="2"
+              rx="2"
+            />
+            <line
+              x1="14"
+              y1="20"
+              x2="26"
+              y2="20"
+              className={statusClasses.stroke}
+              strokeWidth="2"
+            />
+            <circle cx="14" cy="20" r="2" className={statusClasses.fill} />
+            <circle cx="26" cy="20" r="2" className={statusClasses.fill} />
+            <path
+              d="M20,14 L20,26"
+              className={statusClasses.stroke}
+              strokeWidth="1.5"
+              strokeDasharray="2,2"
+            />
           </svg>
         );
 
@@ -2087,8 +2180,13 @@ export function SinopticoAtivoPage() {
                         <option value="TRANSFORMADOR">Transformador</option>
                         <option value="INVERSOR">Inversor</option>
                         <option value="DISJUNTOR">Disjuntor</option>
+                        <option value="BOTOEIRA">Botoeira</option>         
+                        <option value="CHAVE_ABERTA">Chave Aberta</option>   
+                        <option value="CHAVE_FECHADA">Chave Fechada</option>
+                        <option value="RELE">Relé</option>                  
                         <option value="MOTOR">Motor</option>
                         <option value="CAPACITOR">Capacitor</option>
+                        <option value="MOTOR">Motor</option>                        
                       </optgroup>
                       <optgroup label="Subestação">
                         <option value="TSA">TSA</option>
