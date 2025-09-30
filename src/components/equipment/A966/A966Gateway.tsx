@@ -1,8 +1,15 @@
 // components/equipment/A966/A966Gateway.tsx
 
-import { Activity, Cable, Cloud, Router, Settings, Wifi } from "lucide-react";
+import {
+  Cable,
+  ChevronLeft,
+  ChevronRight,
+  Cloud,
+  Settings,
+  Wifi,
+} from "lucide-react";
 import React, { useEffect, useState } from "react";
-import { A966Communication, A966Props } from "./A966.types";
+import { A966Props } from "./A966.types";
 
 // Componente Display Digital para Gateway
 const GatewayDisplay = ({
@@ -78,41 +85,6 @@ const StatusLED = ({
   );
 };
 
-// Indicador de Protocolo
-const ProtocolIndicator = ({
-  protocol,
-  interface: iface,
-  status,
-}: A966Communication & { protocol: string; interface: string }) => {
-  const getProtocolIcon = (protocol: string) => {
-    switch (protocol) {
-      case "modbus":
-        return <Activity size={12} className="text-blue-400" />;
-      case "mqtt":
-        return <Cloud size={12} className="text-green-400" />;
-      case "wifi":
-        return <Wifi size={12} className="text-purple-400" />;
-      case "ethernet":
-        return <Cable size={12} className="text-orange-400" />;
-      default:
-        return <Router size={12} className="text-gray-400" />;
-    }
-  };
-
-  return (
-    <div className="bg-gray-700 rounded px-2 py-1 flex items-center gap-1">
-      {getProtocolIcon(protocol)}
-      <div className="flex flex-col">
-        <span className="text-xs text-white font-mono">
-          {protocol.toUpperCase()}
-        </span>
-        <span className="text-xs text-gray-400">{iface}</span>
-      </div>
-      <StatusLED status={status} label="" />
-    </div>
-  );
-};
-
 // Componente Principal A-966
 const A966Gateway: React.FC<A966Props> = ({
   name = "A-966",
@@ -123,16 +95,36 @@ const A966Gateway: React.FC<A966Props> = ({
   scale = 1,
 }) => {
   const [currentDisplay, setCurrentDisplay] = useState(0);
+  const [manualMode, setManualMode] = useState(false);
 
-  // Rotação automática do display quando em modo "all"
+  const displayModes = [
+    { index: 0, label: "ENTRADAS (1/5)", mode: "inputs" },
+    { index: 1, label: "SAÍDAS (2/5)", mode: "outputs" },
+    { index: 2, label: "SISTEMA (3/5)", mode: "system" },
+    { index: 3, label: "REDE (4/5)", mode: "network" },
+    { index: 4, label: "IoT (5/5)", mode: "iot" },
+  ];
+
+  // Rotação automática do display quando em modo "all" e não manual
   useEffect(() => {
-    if (displayMode === "all") {
+    if (displayMode === "all" && !manualMode) {
       const interval = setInterval(() => {
-        setCurrentDisplay((prev) => (prev + 1) % 5); // 5 modos
+        setCurrentDisplay((prev) => (prev + 1) % 5);
       }, 3000);
       return () => clearInterval(interval);
     }
-  }, [displayMode]);
+  }, [displayMode, manualMode]);
+
+  // Navegação manual
+  const handlePrevious = () => {
+    setManualMode(true);
+    setCurrentDisplay((prev) => (prev - 1 + 5) % 5);
+  };
+
+  const handleNext = () => {
+    setManualMode(true);
+    setCurrentDisplay((prev) => (prev + 1) % 5);
+  };
 
   // Renderizar displays baseado no modo
   const renderDisplays = () => {
@@ -143,19 +135,19 @@ const A966Gateway: React.FC<A966Props> = ({
       return (
         <>
           <GatewayDisplay
-            value="MODBUS"
+            value={readings.inputs.modbus ? "MODBUS/RS485" : "---"}
             label="Entrada 1"
             status={readings.inputs.modbus?.status}
           />
           <GatewayDisplay
-            value="SSU/NBR"
+            value={readings.inputs.ssu ? "SSU/RS485" : "---"}
             label="Entrada 2"
             status={readings.inputs.ssu?.status}
           />
           <GatewayDisplay
-            value="PULSE"
-            label="Entrada 3"
-            status={readings.inputs.pulse?.status}
+            value={readings.inputs.modbus?.devices || 0}
+            unit="devices"
+            label="Dispositivos"
           />
         </>
       );
@@ -176,13 +168,8 @@ const A966Gateway: React.FC<A966Props> = ({
             status={readings.outputs.mqttEthernet?.status}
           />
           <GatewayDisplay
-            value={readings.iotStatus.platform || "IoT"}
+            value={readings.iotStatus?.platform || "---"}
             label="Plataforma"
-            status={
-              readings.iotStatus.errors && readings.iotStatus.errors > 0
-                ? "error"
-                : "connected"
-            }
           />
         </>
       );
@@ -193,35 +180,19 @@ const A966Gateway: React.FC<A966Props> = ({
       return (
         <>
           <GatewayDisplay
-            value={readings.systemStatus.cpu}
+            value={readings.systemStatus?.cpu}
             unit="%"
             label="CPU"
-            status={
-              readings.systemStatus.cpu && readings.systemStatus.cpu > 80
-                ? "error"
-                : "online"
-            }
           />
           <GatewayDisplay
-            value={readings.systemStatus.memory}
+            value={readings.systemStatus?.memory}
             unit="%"
-            label="Mem"
-            status={
-              readings.systemStatus.memory && readings.systemStatus.memory > 85
-                ? "error"
-                : "online"
-            }
+            label="Memória"
           />
           <GatewayDisplay
-            value={readings.systemStatus.temperature}
+            value={readings.systemStatus?.temperature}
             unit="°C"
-            label="Temp"
-            status={
-              readings.systemStatus.temperature &&
-              readings.systemStatus.temperature > 55
-                ? "error"
-                : "online"
-            }
+            label="Temperatura"
           />
         </>
       );
@@ -233,24 +204,15 @@ const A966Gateway: React.FC<A966Props> = ({
         <>
           <GatewayDisplay
             value={readings.network.ipAddress || "---"}
-            label="IP Addr"
+            label="IP Address"
           />
           <GatewayDisplay
-            value={readings.network.ssid || "Ethernet"}
-            label={
-              readings.network.connectionType === "wifi" ? "WiFi" : "Network"
-            }
+            value={readings.network.ssid || "---"}
+            label="WiFi SSID"
           />
           <GatewayDisplay
-            value={readings.systemStatus.signalStrength}
-            unit="%"
-            label="Signal"
-            status={
-              readings.systemStatus.signalStrength &&
-              readings.systemStatus.signalStrength < 30
-                ? "error"
-                : "connected"
-            }
+            value={readings.network.connectionType?.toUpperCase() || "---"}
+            label="Conexão"
           />
         </>
       );
@@ -261,132 +223,120 @@ const A966Gateway: React.FC<A966Props> = ({
       return (
         <>
           <GatewayDisplay
-            value={readings.iotStatus.dataPoints}
-            label="Data Pts"
+            value={readings.iotStatus?.platform || "---"}
+            label="Plataforma"
           />
           <GatewayDisplay
-            value={readings.iotStatus.lastSync || "Syncing"}
-            label="Last Sync"
-          />
-          <GatewayDisplay
-            value={readings.iotStatus.errors || 0}
-            label="Errors"
-            status={
-              readings.iotStatus.errors && readings.iotStatus.errors > 0
-                ? "error"
-                : "online"
+            value={
+              readings.systemStatus?.uptime
+                ? `${Math.floor(readings.systemStatus.uptime / 24)}d`
+                : "---"
             }
+            label="Uptime"
+          />
+          <GatewayDisplay
+            value={readings.iotStatus?.dataPoints || 0}
+            label="Data Points"
           />
         </>
       );
     }
-    return null;
   };
 
   return (
     <div
-      className="relative inline-block"
-      style={{ transform: `scale(${scale})` }}
+      className="bg-gray-800 border-2 border-gray-600 rounded-lg p-4 shadow-xl"
+      style={{
+        transform: `scale(${scale})`,
+        transformOrigin: "top center",
+        width: "320px",
+      }}
     >
-      {/* Corpo principal do A-966 */}
-      <div className="bg-gray-800 border-2 border-gray-600 rounded-lg p-4 shadow-xl w-64">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-3 border-b border-gray-600 pb-2">
-          <h3 className="text-white font-bold text-sm">{name}</h3>
-          <div className="flex gap-2">
-            <StatusLED status={status} label="PWR" />
-            {readings.network.connectionType === "wifi" && (
-              <Wifi size={14} className="text-purple-400" />
-            )}
-            {readings.network.connectionType === "ethernet" && (
+      {/* Header */}
+      <div className="flex justify-between items-center mb-3 border-b border-gray-600 pb-2">
+        <h3 className="text-white font-bold text-sm">{name}</h3>
+        <div className="flex gap-2">
+          {readings.network.connectionType === "wifi" && (
+            <Wifi size={14} className="text-green-400" />
+          )}
+          {readings.network.connectionType === "ethernet" && (
+            <Cable size={14} className="text-orange-400" />
+          )}
+          {readings.network.connectionType === "both" && (
+            <>
+              <Wifi size={14} className="text-green-400" />
               <Cable size={14} className="text-orange-400" />
-            )}
-            {onConfig && (
-              <button
-                onClick={onConfig}
-                className="text-gray-400 hover:text-white transition-colors"
-              >
-                <Settings size={16} />
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Display Area */}
-        <div className="space-y-1 mb-3">{renderDisplays()}</div>
-
-        {/* Informações adicionais - Protocolos */}
-        <div className="grid grid-cols-2 gap-2 text-xs mb-2">
-          <div className="bg-gray-700 rounded px-2 py-1">
-            <span className="text-gray-400">Uptime:</span>
-            <span className="text-white ml-1">
-              {readings.systemStatus.uptime?.toFixed(0) || "---"}h
-            </span>
-          </div>
-          <div className="bg-gray-700 rounded px-2 py-1 flex items-center gap-1">
-            <div className="flex items-center gap-1">
-              <Cloud size={10} className="text-green-400" />
-              <span className="text-gray-400">IoT:</span>
-            </div>
-            <span className="text-white text-xs">
-              {readings.iotStatus.platform?.substring(0, 3) || "---"}
-            </span>
-          </div>
-        </div>
-
-        {/* Indicador de modo de display */}
-        {displayMode === "all" && (
-          <div className="flex justify-center gap-1 mt-3">
-            {[0, 1, 2, 3, 4].map((index) => (
-              <div
-                key={index}
-                className={`h-1 w-6 rounded ${
-                  currentDisplay === index ? "bg-green-500" : "bg-gray-600"
-                }`}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Pontos de conexão - Entradas */}
-      <div className="absolute -top-2 left-4">
-        <div className="flex gap-2">
-          <div
-            className="w-3 h-3 bg-blue-600 rounded-full border border-gray-400"
-            title="Modbus RS-485"
-          />
-          <div
-            className="w-3 h-3 bg-yellow-600 rounded-full border border-gray-400"
-            title="SSU/TTL"
-          />
-          <div
-            className="w-3 h-3 bg-green-600 rounded-full border border-gray-400"
-            title="Pulse/TTL"
-          />
+            </>
+          )}
+          <StatusLED status={status} label="PWR" />
+          {onConfig && (
+            <button
+              onClick={onConfig}
+              className="text-gray-400 hover:text-white transition-colors"
+            >
+              <Settings size={16} />
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Pontos de conexão - Saídas */}
-      <div className="absolute -top-2 right-4">
-        <div className="flex gap-2">
-          <div
-            className="w-3 h-3 bg-purple-600 rounded-full border border-gray-400"
-            title="WiFi"
-          />
-          <div
-            className="w-3 h-3 bg-orange-600 rounded-full border border-gray-400"
-            title="Ethernet"
-          />
+      {/* Barra de Navegação */}
+      <div className="flex justify-between items-center mb-2 bg-gray-700 rounded px-2 py-1">
+        <button
+          onClick={handlePrevious}
+          className="text-green-400 hover:text-green-300 transition-colors"
+        >
+          <ChevronLeft size={16} />
+        </button>
+        <span className="text-green-400 text-xs font-mono">
+          {displayModes[currentDisplay].label}
+        </span>
+        <button
+          onClick={handleNext}
+          className="text-green-400 hover:text-green-300 transition-colors"
+        >
+          <ChevronRight size={16} />
+        </button>
+      </div>
+
+      {/* Display Area */}
+      <div className="space-y-1 mb-3">{renderDisplays()}</div>
+
+      {/* Info Bar */}
+      <div className="grid grid-cols-2 gap-2 text-xs mb-2">
+        <div className="bg-gray-700 rounded px-2 py-1">
+          <span className="text-gray-400">Uptime:</span>
+          <span className="text-white ml-1">
+            {readings.systemStatus?.uptime
+              ? `${Math.floor(readings.systemStatus.uptime / 24)}h`
+              : "---"}
+          </span>
+        </div>
+        <div className="bg-gray-700 rounded px-2 py-1 flex items-center gap-1">
+          <Cloud size={12} className="text-green-400" />
+          <span className="text-gray-400 text-xs">IoT:</span>
+          <span className="text-white text-xs">
+            {readings.iotStatus?.platform ? "Nex" : "---"}
+          </span>
         </div>
       </div>
 
-      {/* Indicador visual de Gateway IoT */}
-      <div className="absolute -bottom-1 right-2">
-        <div className="bg-purple-600 text-white text-xs px-1 py-0.5 rounded font-mono flex items-center gap-1">
-          <Cloud size={10} />
-          IoT
-        </div>
+      {/* Status Indicators */}
+      <div className="flex justify-center gap-1 mt-3">
+        {[0, 1, 2, 3, 4].map((index) => (
+          <div
+            key={index}
+            className={`h-1 w-6 rounded transition-colors duration-200 ${
+              index === currentDisplay ? "bg-green-500" : "bg-gray-600"
+            }`}
+          />
+        ))}
+      </div>
+
+      <div className="flex justify-center mt-1">
+        <span className="text-xs text-green-400">
+          {manualMode ? "MANUAL" : "AUTO"}
+        </span>
       </div>
     </div>
   );

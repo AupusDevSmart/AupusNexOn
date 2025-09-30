@@ -1,5 +1,3 @@
-// src/features/supervisorio/components/m300-modal.tsx
-
 import type { M300Reading } from "@/components/equipment/M300/M300.types";
 import M300Multimeter from "@/components/equipment/M300/M300Multimeter";
 import { Badge } from "@/components/ui/badge";
@@ -42,14 +40,13 @@ export function M300Modal({
               readings={dados}
               status="online"
               displayMode="all"
-              scale={1.5}
+              scale={1.0}
               onConfig={() => console.log("Configurar", nomeComponente)}
             />
 
-            {/* Informações do Display */}
             <div className="mt-6 text-center">
               <Badge variant="outline" className="text-xs">
-                Display Interativo em Tempo Real
+                Display Interativo com Navegação
               </Badge>
             </div>
           </div>

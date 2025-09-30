@@ -24,7 +24,7 @@ export function A966Modal({
 }: A966ModalProps) {
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-auto">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Wifi className="h-5 w-5 text-green-500" />
@@ -39,11 +39,11 @@ export function A966Modal({
               name={nomeComponente}
               readings={dados}
               status="online"
-              scale={1.5}
+              displayMode="all"
+              scale={1.0}
               onConfig={() => console.log("Configurar", nomeComponente)}
             />
 
-            {/* Informações do Display */}
             <div className="mt-6 text-center">
               <Badge variant="outline" className="text-xs">
                 Gateway IoT em Tempo Real

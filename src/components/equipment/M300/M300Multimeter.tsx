@@ -1,6 +1,6 @@
-import { Settings } from "lucide-react";
+import { ChevronLeft, ChevronRight, Settings } from "lucide-react";
 import React, { useEffect, useState } from "react";
-import { M300Props, M300Reading } from "./M300.types";
+import { M300Props } from "./M300.types";
 
 // Componente Display Digital
 const DigitalDisplay = ({
@@ -35,7 +35,6 @@ const StatusLED = ({
     offline: "bg-gray-500",
     alarm: "bg-red-500 shadow-red-500/50 animate-pulse",
   };
-
   return (
     <div className="flex items-center gap-2">
       <div className={`w-3 h-3 rounded-full ${colors[status]} shadow-lg`} />
@@ -54,16 +53,34 @@ const M300Multimeter: React.FC<M300Props> = ({
   scale = 1,
 }) => {
   const [currentDisplay, setCurrentDisplay] = useState(0);
+  const [manualMode, setManualMode] = useState(false);
 
-  // Rotação automática do display quando em modo "all"
+  const displayModes = [
+    { index: 0, label: "TENSÕES (1/3)", mode: "voltage" },
+    { index: 1, label: "CORRENTES (2/3)", mode: "current" },
+    { index: 2, label: "POTÊNCIAS (3/3)", mode: "power" },
+  ];
+
+  // Rotação automática do display quando em modo "all" e não manual
   useEffect(() => {
-    if (displayMode === "all") {
+    if (displayMode === "all" && !manualMode) {
       const interval = setInterval(() => {
         setCurrentDisplay((prev) => (prev + 1) % 3);
       }, 3000);
       return () => clearInterval(interval);
     }
-  }, [displayMode]);
+  }, [displayMode, manualMode]);
+
+  // Navegação manual
+  const handlePrevious = () => {
+    setManualMode(true);
+    setCurrentDisplay((prev) => (prev - 1 + 3) % 3);
+  };
+
+  const handleNext = () => {
+    setManualMode(true);
+    setCurrentDisplay((prev) => (prev + 1) % 3);
+  };
 
   // Renderizar displays baseado no modo
   const renderDisplays = () => {
@@ -109,204 +126,90 @@ const M300Multimeter: React.FC<M300Props> = ({
         </>
       );
     }
-    return null;
   };
 
   return (
     <div
-      className="relative inline-block"
-      style={{ transform: `scale(${scale})` }}
+      className="bg-gray-800 border-2 border-gray-600 rounded-lg p-4 shadow-xl"
+      style={{
+        transform: `scale(${scale})`,
+        transformOrigin: "top center",
+        width: "256px",
+      }}
     >
-      {/* Corpo principal do M-300 */}
-      <div className="bg-gray-800 border-2 border-gray-600 rounded-lg p-4 shadow-xl w-64">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-3 border-b border-gray-600 pb-2">
-          <h3 className="text-white font-bold text-sm">{name}</h3>
-          <div className="flex gap-2">
-            <StatusLED status={status} label="COM" />
-            {onConfig && (
-              <button
-                onClick={onConfig}
-                className="text-gray-400 hover:text-white transition-colors"
-              >
-                <Settings size={16} />
-              </button>
-            )}
-          </div>
+      {/* Header */}
+      <div className="flex justify-between items-center mb-3 border-b border-gray-600 pb-2">
+        <h3 className="text-white font-bold text-sm">{name}</h3>
+        <div className="flex gap-2">
+          <StatusLED status={status} label="COM" />
+          {onConfig && (
+            <button
+              onClick={onConfig}
+              className="text-gray-400 hover:text-white transition-colors"
+            >
+              <Settings size={16} />
+            </button>
+          )}
         </div>
-
-        {/* Display Area */}
-        <div className="space-y-1 mb-3">{renderDisplays()}</div>
-
-        {/* Informações adicionais */}
-        <div className="grid grid-cols-2 gap-2 text-xs">
-          <div className="bg-gray-700 rounded px-2 py-1">
-            <span className="text-gray-400">Freq:</span>
-            <span className="text-white ml-1">
-              {readings.frequency?.toFixed(1) || "---"} Hz
-            </span>
-          </div>
-          <div className="bg-gray-700 rounded px-2 py-1">
-            <span className="text-gray-400">FP:</span>
-            <span className="text-white ml-1">
-              {readings.powerFactor?.toFixed(2) || "---"}
-            </span>
-          </div>
-        </div>
-
-        {/* Indicador de modo de display */}
-        {displayMode === "all" && (
-          <div className="flex justify-center gap-1 mt-3">
-            <div
-              className={`h-1 w-8 rounded ${
-                currentDisplay === 0 ? "bg-green-500" : "bg-gray-600"
-              }`}
-            />
-            <div
-              className={`h-1 w-8 rounded ${
-                currentDisplay === 1 ? "bg-green-500" : "bg-gray-600"
-              }`}
-            />
-            <div
-              className={`h-1 w-8 rounded ${
-                currentDisplay === 2 ? "bg-green-500" : "bg-gray-600"
-              }`}
-            />
-          </div>
-        )}
       </div>
 
-      {/* Pontos de conexão */}
-      <div className="absolute -top-2 left-1/2 transform -translate-x-1/2">
-        <div className="flex gap-2">
-          <div
-            className="w-3 h-3 bg-gray-600 rounded-full border border-gray-400"
-            title="L1"
-          />
-          <div
-            className="w-3 h-3 bg-gray-600 rounded-full border border-gray-400"
-            title="L2"
-          />
-          <div
-            className="w-3 h-3 bg-gray-600 rounded-full border border-gray-400"
-            title="L3"
-          />
-          <div
-            className="w-3 h-3 bg-gray-600 rounded-full border border-gray-400"
-            title="N"
-          />
+      {/* Barra de Navegação */}
+      <div className="flex justify-between items-center mb-2 bg-gray-700 rounded px-2 py-1">
+        <button
+          onClick={handlePrevious}
+          className="text-green-400 hover:text-green-300 transition-colors"
+        >
+          <ChevronLeft size={16} />
+        </button>
+        <span className="text-green-400 text-xs font-mono">
+          {displayModes[currentDisplay].label}
+        </span>
+        <button
+          onClick={handleNext}
+          className="text-green-400 hover:text-green-300 transition-colors"
+        >
+          <ChevronRight size={16} />
+        </button>
+      </div>
+
+      {/* Display Area */}
+      <div className="space-y-1 mb-3">{renderDisplays()}</div>
+
+      {/* Info Bar */}
+      <div className="grid grid-cols-2 gap-2 text-xs mb-2">
+        <div className="bg-gray-700 rounded px-2 py-1">
+          <span className="text-gray-400">Freq:</span>
+          <span className="text-white ml-1">
+            {readings.frequency.toFixed(2)} Hz
+          </span>
         </div>
+        <div className="bg-gray-700 rounded px-2 py-1">
+          <span className="text-gray-400">FP:</span>
+          <span className="text-white ml-1">
+            {readings.powerFactor.toFixed(2)}
+          </span>
+        </div>
+      </div>
+
+      {/* Status Indicators */}
+      <div className="flex justify-center gap-1 mt-3">
+        {[0, 1, 2].map((index) => (
+          <div
+            key={index}
+            className={`h-1 w-6 rounded transition-colors duration-200 ${
+              index === currentDisplay ? "bg-green-500" : "bg-gray-600"
+            }`}
+          />
+        ))}
+      </div>
+
+      <div className="flex justify-center mt-1">
+        <span className="text-xs text-green-400">
+          {manualMode ? "MANUAL" : "AUTO"}
+        </span>
       </div>
     </div>
   );
 };
 
 export default M300Multimeter;
-
-// Demo com múltiplas configurações
-export function M300Demo() {
-  const [config, setConfig] = useState({
-    displayMode: "all" as "voltage" | "current" | "power" | "all",
-    status: "online" as "online" | "offline" | "alarm",
-  });
-
-  // Dados simulados
-  const readings: M300Reading = {
-    voltage: { L1: 220.5, L2: 219.8, L3: 221.2 },
-    current: { L1: 15.2, L2: 14.8, L3: 15.5 },
-    power: { active: 10.5, reactive: 3.2, apparent: 11.0 },
-    frequency: 60.02,
-    powerFactor: 0.95,
-  };
-
-  return (
-    <div className="min-h-screen bg-gray-900 p-8">
-      <h1 className="text-2xl font-bold text-white mb-8">
-        M-300 Multimeter Component
-      </h1>
-
-      {/* Controles */}
-      <div className="mb-8 bg-gray-800 p-4 rounded-lg">
-        <h2 className="text-white font-bold mb-4">Configurações</h2>
-        <div className="flex gap-4">
-          <select
-            className="bg-gray-700 text-white px-3 py-2 rounded"
-            value={config.displayMode}
-            onChange={(e) =>
-              setConfig({
-                ...config,
-                displayMode: e.target.value as
-                  | "voltage"
-                  | "current"
-                  | "power"
-                  | "all",
-              })
-            }
-          >
-            <option value="all">Todos (Rotativo)</option>
-            <option value="voltage">Tensão</option>
-            <option value="current">Corrente</option>
-            <option value="power">Potência</option>
-          </select>
-
-          <select
-            className="bg-gray-700 text-white px-3 py-2 rounded"
-            value={config.status}
-            onChange={(e) =>
-              setConfig({
-                ...config,
-                status: e.target.value as "online" | "offline" | "alarm",
-              })
-            }
-          >
-            <option value="online">Online</option>
-            <option value="offline">Offline</option>
-            <option value="alarm">Alarme</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Demonstração */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-        <div>
-          <h3 className="text-white mb-4">Tamanho Normal</h3>
-          <M300Multimeter
-            id="m300-1"
-            name="M300-01"
-            readings={readings}
-            status={config.status}
-            displayMode={config.displayMode}
-            onConfig={() => alert("Configurar M300-01")}
-          />
-        </div>
-
-        <div>
-          <h3 className="text-white mb-4">Tamanho Reduzido</h3>
-          <M300Multimeter
-            id="m300-2"
-            name="M300-02"
-            readings={readings}
-            status={config.status}
-            displayMode={config.displayMode}
-            scale={0.8}
-          />
-        </div>
-
-        <div>
-          <h3 className="text-white mb-4">Sem Dados</h3>
-          <M300Multimeter
-            id="m300-3"
-            name="M300-03"
-            readings={{
-              voltage: {},
-              current: {},
-              power: {},
-            }}
-            status="offline"
-            displayMode={config.displayMode}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
