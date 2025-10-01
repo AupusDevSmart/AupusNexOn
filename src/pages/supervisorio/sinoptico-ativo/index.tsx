@@ -1331,21 +1331,45 @@ export function SinopticoAtivoPage() {
   });
 
   const [dadosGraficos] = useState(() => {
-    const agora = new Date();
-    return Array.from({ length: 24 }, (_, i) => {
-      const timestamp = new Date(
-        agora.getTime() - (23 - i) * 60 * 60 * 1000
-      ).toISOString();
-      return {
-        timestamp,
-        potencia:
-          1.8 + Math.sin((i / 24) * Math.PI * 2) * 0.7 + Math.random() * 0.2,
-        tensao: 220 + Math.sin((i / 12) * Math.PI) * 3 + Math.random() * 2,
-        corrente:
-          8000 + Math.sin((i / 24) * Math.PI * 2) * 2000 + Math.random() * 500,
-      };
-    });
+  const agora = new Date();
+  return Array.from({ length: 288 }, (_, i) => { // 288 pontos = 24h em intervalos de 5 min
+    const timestamp = new Date(
+      agora.getTime() - (287 - i) * 5 * 60 * 1000 // 5 minutos entre cada ponto
+    ).toISOString();
+    
+    // Simula um dia típico com picos de demanda
+    const hora = i / 12; // Converte índice para hora do dia
+    let potencia = 1800; // Base
+    
+    // Padrão diário: baixa demanda de madrugada, picos nos horários comerciais
+    if (hora >= 6 && hora < 9) {
+      // Manhã: aumento progressivo
+      potencia = 1900 + (hora - 6) * 150 + Math.random() * 100;
+    } else if (hora >= 9 && hora < 12) {
+      // Meio da manhã: demanda alta, alguns picos ultrapassam
+      potencia = 2200 + Math.sin((hora - 9) * Math.PI) * 200 + Math.random() * 150;
+    } else if (hora >= 12 && hora < 14) {
+      // Horário de almoço: pico máximo - ULTRAPASSA OS LIMITES
+      potencia = 2400 + Math.sin((hora - 12) * Math.PI * 2) * 250 + Math.random() * 150;
+    } else if (hora >= 14 && hora < 18) {
+      // Tarde: demanda elevada, próxima ao limite
+      potencia = 2100 + Math.sin((hora - 14) * Math.PI) * 150 + Math.random() * 120;
+    } else if (hora >= 18 && hora < 20) {
+      // Final do expediente: novo pico - PODE ULTRAPASSAR
+      potencia = 2300 + Math.sin((hora - 18) * Math.PI) * 200 + Math.random() * 100;
+    } else {
+      // Madrugada/noite: demanda baixa
+      potencia = 1600 + Math.random() * 100;
+    }
+    
+    return {
+      timestamp,
+      potencia: Math.round(potencia * 10) / 10, // Arredondar para 1 decimal
+      tensao: 220 + Math.sin((i / 288) * Math.PI * 2) * 3 + Math.random() * 2,
+      corrente: 8000 + Math.sin((i / 288) * Math.PI * 2) * 2000 + Math.random() * 500,
+    };
   });
+});
 
   const [indicadores] = useState({
     thd: 3.2,
@@ -2387,6 +2411,8 @@ export function SinopticoAtivoPage() {
                   <SinopticoGraficos
                     dadosPotencia={dadosGraficos}
                     dadosTensao={dadosGraficos}
+                    valorContratado={2300} //simulando valores
+                    percentualAdicional={5} //simulando valores
                   />
                 </div>
 

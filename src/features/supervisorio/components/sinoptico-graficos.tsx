@@ -5,6 +5,7 @@ import { DadosGrafico } from "@/types/dtos/sinoptico-ativo";
 import { Activity, TrendingUp, Zap } from "lucide-react";
 import {
   CartesianGrid,
+  Legend,
   Line,
   LineChart,
   ResponsiveContainer,
@@ -16,6 +17,8 @@ import {
 interface SinopticoGraficosProps {
   dadosPotencia: DadosGrafico[];
   dadosTensao: DadosGrafico[];
+  valorContratado?: number;
+  percentualAdicional?: number;
 }
 
 // Função para formatar dados para o gráfico
@@ -26,6 +29,25 @@ const formatarDadosGrafico = (dados: DadosGrafico[]) => {
       hour: "2-digit",
       minute: "2-digit",
     }),
+  }));
+};
+
+// Função para adicionar linhas de referência (valor contratado e adicional)
+const adicionarLinhasReferencia = (
+  dados: DadosGrafico[],
+  valorContratado: number,
+  percentualAdicional: number
+) => {
+  const valorAdicional = valorContratado * (1 + percentualAdicional / 100);
+  
+  return dados.map((item) => ({
+    ...item,
+    hora: new Date(item.timestamp).toLocaleTimeString("pt-BR", {
+      hour: "2-digit",
+      minute: "2-digit",
+    }),
+    valorContratado: valorContratado,
+    valorAdicional: valorAdicional,
   }));
 };
 
@@ -47,7 +69,7 @@ const CustomTooltip = ({ active, payload, label }: CustomTooltipProps) => {
         <p className="text-sm font-medium">{`Hora: ${label}`}</p>
         {payload.map((entry, index) => (
           <p key={index} className="text-sm" style={{ color: entry.color }}>
-            {`${entry.value.toFixed(2)}`}
+            {`${entry.name}: ${entry.value.toFixed(2)}`}
           </p>
         ))}
       </div>
@@ -59,18 +81,24 @@ const CustomTooltip = ({ active, payload, label }: CustomTooltipProps) => {
 export function SinopticoGraficos({
   dadosPotencia,
   dadosTensao,
+  valorContratado = 2500,
+  percentualAdicional = 5,
 }: SinopticoGraficosProps) {
-  const dadosFormatadosPotencia = formatarDadosGrafico(dadosPotencia);
+  const dadosFormatadosPotencia = adicionarLinhasReferencia(
+    dadosPotencia,
+    valorContratado,
+    percentualAdicional
+  );
   const dadosFormatadosTensao = formatarDadosGrafico(dadosTensao);
 
   return (
     <div className="space-y-4 w-full">
-      {/* Gráfico de Potência */}
+      {/* Gráfico de Demanda */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Zap className="h-5 w-5 text-yellow-500" />
-            Potência Ativa
+            Demanda
             <Badge variant="outline" className="ml-auto">
               Últimas 24h
             </Badge>
@@ -84,53 +112,51 @@ export function SinopticoGraficos({
               <YAxis
                 fontSize={12}
                 label={{
-                  value: "MW",
+                  value: "kW",
                   angle: -90,
                   position: "insideLeft",
                 }}
               />
               <Tooltip content={<CustomTooltip />} />
+              <Legend 
+                wrapperStyle={{ fontSize: '12px' }}
+                iconType="line"
+              />
+              
+              {/* Linha 1: Demanda Real (Potência) */}
               <Line
                 type="monotone"
                 dataKey="potencia"
+                name="Demanda Real"
                 stroke="#eab308"
                 strokeWidth={2}
                 dot={false}
                 activeDot={{ r: 4 }}
               />
+              
+              {/* Linha 2: Valor Contratado */}
+              <Line
+                type="monotone"
+                dataKey="valorContratado"
+                name="Valor Contratado"
+                stroke="#22c55e"
+                strokeWidth={2}
+                strokeDasharray="5 5"
+                dot={false}
+              />
+              
+              {/* Linha 3: Valor Contratado + Adicional */}
+              <Line
+                type="monotone"
+                dataKey="valorAdicional"
+                name={`Contratado + ${percentualAdicional}%`}
+                stroke="#ef4444"
+                strokeWidth={2}
+                strokeDasharray="5 5"
+                dot={false}
+              />
             </LineChart>
           </ResponsiveContainer>
-
-          {/* SEÇÃO REMOVIDA: Indicadores resumo de Potência */}
-          {/* 
-          <div className="grid grid-cols-3 gap-4 mt-4 pt-4 border-t">
-            <div className="text-center">
-              <div className="text-lg font-bold text-yellow-600">
-                {dadosPotencia[dadosPotencia.length - 1]?.potencia.toFixed(2) ||
-                  "0.00"}{" "}
-                MW
-              </div>
-              <div className="text-sm text-muted-foreground">Atual</div>
-            </div>
-            <div className="text-center">
-              <div className="text-lg font-bold text-green-600">
-                {Math.max(...dadosPotencia.map((d) => d.potencia)).toFixed(2)}{" "}
-                MW
-              </div>
-              <div className="text-sm text-muted-foreground">Máximo</div>
-            </div>
-            <div className="text-center">
-              <div className="text-lg font-bold text-blue-600">
-                {(
-                  dadosPotencia.reduce((acc, d) => acc + d.potencia, 0) /
-                  dadosPotencia.length
-                ).toFixed(2)}{" "}
-                MW
-              </div>
-              <div className="text-sm text-muted-foreground">Médio</div>
-            </div>
-          </div>
-          */}
         </CardContent>
       </Card>
 
@@ -170,32 +196,6 @@ export function SinopticoGraficos({
               />
             </LineChart>
           </ResponsiveContainer>
-
-          {/* SEÇÃO REMOVIDA: Indicadores resumo de Tensão */}
-          {/*
-          <div className="grid grid-cols-3 gap-4 mt-4 pt-4 border-t">
-            <div className="text-center">
-              <div className="text-lg font-bold text-blue-600">
-                {dadosTensao[dadosTensao.length - 1]?.tensao.toFixed(1) ||
-                  "0.0"}{" "}
-                V
-              </div>
-              <div className="text-sm text-muted-foreground">Atual</div>
-            </div>
-            <div className="text-center">
-              <div className="text-lg font-bold text-green-600">
-                {Math.max(...dadosTensao.map((d) => d.tensao)).toFixed(1)} V
-              </div>
-              <div className="text-sm text-muted-foreground">Máximo</div>
-            </div>
-            <div className="text-center">
-              <div className="text-lg font-bold text-red-600">
-                {Math.min(...dadosTensao.map((d) => d.tensao)).toFixed(1)} V
-              </div>
-              <div className="text-sm text-muted-foreground">Mínimo</div>
-            </div>
-          </div>
-          */}
         </CardContent>
       </Card>
 
@@ -234,9 +234,6 @@ export function SinopticoGraficos({
               />
             </LineChart>
           </ResponsiveContainer>
-
-          {/* SEÇÃO REMOVIDA: Indicadores resumo de Corrente */}
-          {/* Nota: O gráfico de corrente não tinha indicadores no código original */}
         </CardContent>
       </Card>
     </div>
