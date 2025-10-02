@@ -150,7 +150,7 @@ export function SinopticoGraficos({
                 type="monotone"
                 dataKey="valorAdicional"
                 name={`Contratado + ${percentualAdicional}%`}
-                stroke="#ef4444"
+                stroke="#3b82f6"
                 strokeWidth={2}
                 strokeDasharray="5 5"
                 dot={false}
@@ -199,12 +199,12 @@ export function SinopticoGraficos({
         </CardContent>
       </Card>
 
-      {/* Gráfico de Corrente */}
+      {/* Gráfico de Fator de Potência */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <TrendingUp className="h-5 w-5 text-purple-500" />
-            Corrente
+            Fator de Potência
             <Badge variant="outline" className="ml-auto">
               Últimas 24h
             </Badge>
@@ -217,20 +217,39 @@ export function SinopticoGraficos({
               <XAxis dataKey="hora" fontSize={12} interval="preserveStartEnd" />
               <YAxis
                 fontSize={12}
+                domain={[0.75, 1.0]}
                 label={{
-                  value: "A",
+                  value: "FP",
                   angle: -90,
                   position: "insideLeft",
                 }}
               />
               <Tooltip content={<CustomTooltip />} />
+              <Legend 
+                wrapperStyle={{ fontSize: '12px' }}
+                iconType="line"
+              />
+              
+              {/* Linha roxa: Fator de Potência real */}
               <Line
                 type="monotone"
-                dataKey="corrente"
+                dataKey="fatorPotencia"
+                name="Fator de Potência"
                 stroke="#8b5cf6"
                 strokeWidth={2}
                 dot={false}
                 activeDot={{ r: 4 }}
+              />
+              
+              {/* Linha vermelha tracejada: Limite mínimo 0.92 */}
+              <Line
+                type="monotone"
+                dataKey="limiteMinimo"
+                name="Limite Mínimo (0.92)"
+                stroke="#ef4444"
+                strokeWidth={2}
+                strokeDasharray="5 5"
+                dot={false}
               />
             </LineChart>
           </ResponsiveContainer>

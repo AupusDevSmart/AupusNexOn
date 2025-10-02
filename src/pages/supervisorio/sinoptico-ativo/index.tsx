@@ -95,16 +95,26 @@ const TIPOS_COMPONENTES = [
   { tipo: "DISJUNTOR", icon: Square, label: "Disjuntor", cor: "bg-red-500" },
   { tipo: "MOTOR", icon: Circle, label: "Motor", cor: "bg-purple-500" },
   { tipo: "BOTOEIRA", icon: Circle, label: "Botoeira", cor: "bg-cyan-500" },
-  { tipo: "CHAVE_ABERTA", icon: Square, label: "Chave Aberta", cor: "bg-amber-500" },
-  { tipo: "CHAVE_FECHADA", icon: Square, label: "Chave Fechada", cor: "bg-amber-500" },
-  {tipo: "RELE", icon: Triangle, label: "Relé", cor: "bg-indigo-500" },
+  {
+    tipo: "CHAVE_ABERTA",
+    icon: Square,
+    label: "Chave Aberta",
+    cor: "bg-amber-500",
+  },
+  {
+    tipo: "CHAVE_FECHADA",
+    icon: Square,
+    label: "Chave Fechada",
+    cor: "bg-amber-500",
+  },
+  { tipo: "RELE", icon: Triangle, label: "Relé", cor: "bg-indigo-500" },
   {
     tipo: "CAPACITOR",
     icon: Triangle,
     label: "Capacitor",
     cor: "bg-indigo-500",
   },
-   // Componentes de subestação
+  // Componentes de subestação
   { tipo: "TSA", icon: Square, label: "TSA", cor: "bg-emerald-600" },
   {
     tipo: "RETIFICADOR",
@@ -390,25 +400,73 @@ const ElectricalSymbol = ({
         );
 
       case "CHAVE_ABERTA":
-  return (
-    <svg width="32" height="32" viewBox="0 0 40 40" className="drop-shadow-sm">
-      <circle cx="10" cy="20" r="4" className={`${statusClasses.stroke} fill-background`} strokeWidth="2" />
-      <circle cx="30" cy="20" r="4" className={`${statusClasses.stroke} fill-background`} strokeWidth="2" />
-      {/* Linha diagonal = aberta */}
-      <line x1="10" y1="20" x2="26" y2="8" className="stroke-red-600" strokeWidth="2" />
-    </svg>
-  );
+        return (
+          <svg
+            width="32"
+            height="32"
+            viewBox="0 0 40 40"
+            className="drop-shadow-sm"
+          >
+            <circle
+              cx="10"
+              cy="20"
+              r="4"
+              className={`${statusClasses.stroke} fill-background`}
+              strokeWidth="2"
+            />
+            <circle
+              cx="30"
+              cy="20"
+              r="4"
+              className={`${statusClasses.stroke} fill-background`}
+              strokeWidth="2"
+            />
+            {/* Linha diagonal = aberta */}
+            <line
+              x1="10"
+              y1="20"
+              x2="26"
+              y2="8"
+              className="stroke-red-600"
+              strokeWidth="2"
+            />
+          </svg>
+        );
 
-case "CHAVE_FECHADA":
-  return (
-    <svg width="32" height="32" viewBox="0 0 40 40" className="drop-shadow-sm">
-      <circle cx="10" cy="20" r="4" className={`${statusClasses.stroke} fill-background`} strokeWidth="2" />
-      <circle cx="30" cy="20" r="4" className={`${statusClasses.stroke} fill-background`} strokeWidth="2" />
-      {/* Linha horizontal = fechada */}
-      <line x1="10" y1="20" x2="30" y2="20" className="stroke-green-600" strokeWidth="2" />
-    </svg>
-  );
-  
+      case "CHAVE_FECHADA":
+        return (
+          <svg
+            width="32"
+            height="32"
+            viewBox="0 0 40 40"
+            className="drop-shadow-sm"
+          >
+            <circle
+              cx="10"
+              cy="20"
+              r="4"
+              className={`${statusClasses.stroke} fill-background`}
+              strokeWidth="2"
+            />
+            <circle
+              cx="30"
+              cy="20"
+              r="4"
+              className={`${statusClasses.stroke} fill-background`}
+              strokeWidth="2"
+            />
+            {/* Linha horizontal = fechada */}
+            <line
+              x1="10"
+              y1="20"
+              x2="30"
+              y2="20"
+              className="stroke-green-600"
+              strokeWidth="2"
+            />
+          </svg>
+        );
+
       case "RELE":
         return (
           <svg
@@ -1331,45 +1389,58 @@ export function SinopticoAtivoPage() {
   });
 
   const [dadosGraficos] = useState(() => {
-  const agora = new Date();
-  return Array.from({ length: 288 }, (_, i) => { // 288 pontos = 24h em intervalos de 5 min
-    const timestamp = new Date(
-      agora.getTime() - (287 - i) * 5 * 60 * 1000 // 5 minutos entre cada ponto
-    ).toISOString();
-    
-    // Simula um dia típico com picos de demanda
-    const hora = i / 12; // Converte índice para hora do dia
-    let potencia = 1800; // Base
-    
-    // Padrão diário: baixa demanda de madrugada, picos nos horários comerciais
-    if (hora >= 6 && hora < 9) {
-      // Manhã: aumento progressivo
-      potencia = 1900 + (hora - 6) * 150 + Math.random() * 100;
-    } else if (hora >= 9 && hora < 12) {
-      // Meio da manhã: demanda alta, alguns picos ultrapassam
-      potencia = 2200 + Math.sin((hora - 9) * Math.PI) * 200 + Math.random() * 150;
-    } else if (hora >= 12 && hora < 14) {
-      // Horário de almoço: pico máximo - ULTRAPASSA OS LIMITES
-      potencia = 2400 + Math.sin((hora - 12) * Math.PI * 2) * 250 + Math.random() * 150;
-    } else if (hora >= 14 && hora < 18) {
-      // Tarde: demanda elevada, próxima ao limite
-      potencia = 2100 + Math.sin((hora - 14) * Math.PI) * 150 + Math.random() * 120;
-    } else if (hora >= 18 && hora < 20) {
-      // Final do expediente: novo pico - PODE ULTRAPASSAR
-      potencia = 2300 + Math.sin((hora - 18) * Math.PI) * 200 + Math.random() * 100;
-    } else {
-      // Madrugada/noite: demanda baixa
-      potencia = 1600 + Math.random() * 100;
-    }
-    
-    return {
-      timestamp,
-      potencia: Math.round(potencia * 10) / 10, // Arredondar para 1 decimal
-      tensao: 220 + Math.sin((i / 288) * Math.PI * 2) * 3 + Math.random() * 2,
-      corrente: 8000 + Math.sin((i / 288) * Math.PI * 2) * 2000 + Math.random() * 500,
-    };
+    const agora = new Date();
+    return Array.from({ length: 288 }, (_, i) => {
+      // 288 pontos = 24h em intervalos de 5 min
+      const timestamp = new Date(
+        agora.getTime() - (287 - i) * 5 * 60 * 1000 // 5 minutos entre cada ponto
+      ).toISOString();
+
+      // Simula um dia típico com picos de demanda
+      const hora = i / 12; // Converte índice para hora do dia
+      let potencia = 1800; // Base
+
+      // Padrão diário: baixa demanda de madrugada, picos nos horários comerciais
+      if (hora >= 6 && hora < 9) {
+        // Manhã: aumento progressivo
+        potencia = 1900 + (hora - 6) * 150 + Math.random() * 100;
+      } else if (hora >= 9 && hora < 12) {
+        // Meio da manhã: demanda alta, alguns picos ultrapassam
+        potencia =
+          2200 + Math.sin((hora - 9) * Math.PI) * 200 + Math.random() * 150;
+      } else if (hora >= 12 && hora < 14) {
+        // Horário de almoço: pico máximo - ULTRAPASSA OS LIMITES
+        potencia =
+          2400 +
+          Math.sin((hora - 12) * Math.PI * 2) * 250 +
+          Math.random() * 150;
+      } else if (hora >= 14 && hora < 18) {
+        // Tarde: demanda elevada, próxima ao limite
+        potencia =
+          2100 + Math.sin((hora - 14) * Math.PI) * 150 + Math.random() * 120;
+      } else if (hora >= 18 && hora < 20) {
+        // Final do expediente: novo pico - PODE ULTRAPASSAR
+        potencia =
+          2300 + Math.sin((hora - 18) * Math.PI) * 200 + Math.random() * 100;
+      } else {
+        // Madrugada/noite: demanda baixa
+        potencia = 1600 + Math.random() * 100;
+      }
+
+      return {
+        timestamp,
+        potencia: Math.round(potencia * 10) / 10,
+        tensao: 220 + Math.sin((i / 288) * Math.PI * 2) * 3 + Math.random() * 2,
+        corrente:
+          8000 + Math.sin((i / 288) * Math.PI * 2) * 2000 + Math.random() * 500,
+        fatorPotencia: Math.min(
+          0.92,
+          0.85 + Math.sin((i / 288) * Math.PI * 4) * 0.05 + Math.random() * 0.02
+        ),
+        limiteMinimo: 0.92,
+      };
+    });
   });
-});
 
   const [indicadores] = useState({
     thd: 3.2,
@@ -2204,13 +2275,13 @@ export function SinopticoAtivoPage() {
                         <option value="TRANSFORMADOR">Transformador</option>
                         <option value="INVERSOR">Inversor</option>
                         <option value="DISJUNTOR">Disjuntor</option>
-                        <option value="BOTOEIRA">Botoeira</option>         
-                        <option value="CHAVE_ABERTA">Chave Aberta</option>   
+                        <option value="BOTOEIRA">Botoeira</option>
+                        <option value="CHAVE_ABERTA">Chave Aberta</option>
                         <option value="CHAVE_FECHADA">Chave Fechada</option>
-                        <option value="RELE">Relé</option>                  
+                        <option value="RELE">Relé</option>
                         <option value="MOTOR">Motor</option>
                         <option value="CAPACITOR">Capacitor</option>
-                        <option value="MOTOR">Motor</option>                        
+                        <option value="MOTOR">Motor</option>
                       </optgroup>
                       <optgroup label="Subestação">
                         <option value="TSA">TSA</option>
