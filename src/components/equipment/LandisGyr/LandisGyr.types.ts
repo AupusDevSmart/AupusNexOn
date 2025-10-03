@@ -52,6 +52,10 @@ export interface LandisGyrE750Reading {
     signatureStatus?: "valid" | "invalid" | "pending";
     secondIndex?: number; // Contador de segundos
     batteryBackup?: number; // 7 dias backup
+    cdo?: string; // Código do dispositivo
+    sts?: number; // Status
+    frame?: string; // Frame de dados
+    uptime?: number; // Tempo de funcionamento
   };
   tariff?: {
     currentTariff?: number;

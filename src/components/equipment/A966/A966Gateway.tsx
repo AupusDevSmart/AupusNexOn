@@ -95,7 +95,7 @@ const A966Gateway: React.FC<A966Props> = ({
   scale = 1,
 }) => {
   const [currentDisplay, setCurrentDisplay] = useState(0);
-  const [manualMode, setManualMode] = useState(false);
+  const [manualMode, setManualMode] = useState(true); // Inicia em modo manual
 
   const displayModes = [
     { index: 0, label: "ENTRADAS (1/5)", mode: "inputs" },
@@ -105,15 +105,15 @@ const A966Gateway: React.FC<A966Props> = ({
     { index: 4, label: "IoT (5/5)", mode: "iot" },
   ];
 
-  // Rotação automática do display quando em modo "all" e não manual
-  useEffect(() => {
-    if (displayMode === "all" && !manualMode) {
-      const interval = setInterval(() => {
-        setCurrentDisplay((prev) => (prev + 1) % 5);
-      }, 3000);
-      return () => clearInterval(interval);
-    }
-  }, [displayMode, manualMode]);
+  // Rotação automática DESLIGADA
+  // useEffect(() => {
+  //   if (displayMode === "all" && !manualMode) {
+  //     const interval = setInterval(() => {
+  //       setCurrentDisplay((prev) => (prev + 1) % 5);
+  //     }, 3000);
+  //     return () => clearInterval(interval);
+  //   }
+  // }, [displayMode, manualMode]);
 
   // Navegação manual
   const handlePrevious = () => {
@@ -135,19 +135,19 @@ const A966Gateway: React.FC<A966Props> = ({
       return (
         <>
           <GatewayDisplay
-            value={readings.inputs.modbus ? "MODBUS/RS485" : "---"}
+            value={readings?.inputs?.modbus ? "MODBUS/RS485" : "---"}
             label="Entrada 1"
-            status={readings.inputs.modbus?.status}
+            status={readings?.inputs?.modbus?.status}
           />
           <GatewayDisplay
-            value={readings.inputs.ssu ? "SSU/RS485" : "---"}
+            value={readings?.inputs?.ssu ? "SSU/RS485" : "---"}
             label="Entrada 2"
-            status={readings.inputs.ssu?.status}
+            status={readings?.inputs?.ssu?.status}
           />
           <GatewayDisplay
-            value={readings.inputs.modbus?.devices || 0}
-            unit="devices"
-            label="Dispositivos"
+            value={readings?.inputs?.modbus?.devices || 0}
+            unit=""
+            label="rede"
           />
         </>
       );
@@ -160,15 +160,15 @@ const A966Gateway: React.FC<A966Props> = ({
           <GatewayDisplay
             value="MQTT/WiFi"
             label="Saída 1"
-            status={readings.outputs.mqttWifi?.status}
+            status={readings?.outputs?.mqttWifi?.status}
           />
           <GatewayDisplay
             value="MQTT/ETH"
             label="Saída 2"
-            status={readings.outputs.mqttEthernet?.status}
+            status={readings?.outputs?.mqttEthernet?.status}
           />
           <GatewayDisplay
-            value={readings.iotStatus?.platform || "---"}
+            value={readings?.iotStatus?.platform || "---"}
             label="Plataforma"
           />
         </>
@@ -180,19 +180,20 @@ const A966Gateway: React.FC<A966Props> = ({
       return (
         <>
           <GatewayDisplay
-            value={readings.systemStatus?.cpu}
-            unit="%"
-            label="CPU"
+            value={readings?.systemStatus?.firmwareVersion || "---"}
+            label="ver"
           />
           <GatewayDisplay
-            value={readings.systemStatus?.memory}
-            unit="%"
-            label="Memória"
+            value={readings?.systemStatus?.serialNumber || "---"}
+            label="nserie"
           />
           <GatewayDisplay
-            value={readings.systemStatus?.temperature}
-            unit="°C"
-            label="Temperatura"
+            value={
+              readings?.systemStatus?.uptime
+                ? `${Math.floor(readings.systemStatus.uptime / 3600)}h`
+                : "---"
+            }
+            label="uptime"
           />
         </>
       );
@@ -203,16 +204,17 @@ const A966Gateway: React.FC<A966Props> = ({
       return (
         <>
           <GatewayDisplay
-            value={readings.network.ipAddress || "---"}
-            label="IP Address"
+            value={readings?.systemStatus?.signalStrength || 0}
+            unit="dBm"
+            label="wrssi"
           />
           <GatewayDisplay
-            value={readings.network.ssid || "---"}
-            label="WiFi SSID"
+            value={readings?.network?.ssid || "---"}
+            label="ssid"
           />
           <GatewayDisplay
-            value={readings.network.connectionType?.toUpperCase() || "---"}
-            label="Conexão"
+            value={readings?.network?.ipAddress || "---"}
+            label="ip"
           />
         </>
       );
@@ -223,19 +225,19 @@ const A966Gateway: React.FC<A966Props> = ({
       return (
         <>
           <GatewayDisplay
-            value={readings.iotStatus?.platform || "---"}
+            value={readings?.iotStatus?.platform || "---"}
             label="Plataforma"
           />
           <GatewayDisplay
             value={
-              readings.systemStatus?.uptime
+              readings?.systemStatus?.uptime
                 ? `${Math.floor(readings.systemStatus.uptime / 24)}d`
                 : "---"
             }
             label="Uptime"
           />
           <GatewayDisplay
-            value={readings.iotStatus?.dataPoints || 0}
+            value={readings?.iotStatus?.dataPoints || 0}
             label="Data Points"
           />
         </>

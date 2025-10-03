@@ -28,6 +28,8 @@ export interface A966Reading {
     temperature?: number; // Temperatura interna (°C) - Opera -10°C a 60°C
     uptime?: number; // Tempo de funcionamento (horas)
     signalStrength?: number; // Força do sinal WiFi (%)
+    firmwareVersion?: string; // Versão do firmware
+    serialNumber?: string; // Número de série
   };
   network: {
     ipAddress?: string;

@@ -11,7 +11,7 @@ import {
   TrendingUp,
   Wifi,
 } from "lucide-react";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   LandisGyrE750DisplayInfo,
   LandisGyrE750NavigationState,
@@ -253,154 +253,94 @@ const LandisGyrE750: React.FC<LandisGyrE750Props> = ({
   ];
 
   // Estado da navegação
-  const [navState, setNavState] = useState<LandisGyrE750NavigationState>({
-    currentDisplayIndex: initialDisplayIndex,
-    isManualMode: false,
-    isAutoRotating: displayMode === "all",
-    intervalId: null,
-  });
-
-  // Função para iniciar rotação automática
-  const startAutoRotation = useCallback(() => {
-    if (displayMode !== "all" || navState.isManualMode) return null;
-
-    const intervalId = setInterval(() => {
-      setNavState((prev) => ({
-        ...prev,
-        currentDisplayIndex:
-          (prev.currentDisplayIndex + 1) % displayInfos.length,
-      }));
-    }, autoRotationInterval);
-
-    setNavState((prev) => ({
-      ...prev,
-      intervalId,
-      isAutoRotating: true,
-    }));
-
-    return intervalId;
-  }, [
-    displayMode,
-    navState.isManualMode,
-    autoRotationInterval,
-    displayInfos.length,
-  ]);
+  const [currentDisplayIndex, setCurrentDisplayIndex] = useState(initialDisplayIndex || 0);
+  const [isManualMode, setIsManualMode] = useState(true); // Inicia em modo manual
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Função para parar rotação automática
   const stopAutoRotation = useCallback(() => {
-    if (navState.intervalId) {
-      clearInterval(navState.intervalId);
-      setNavState((prev) => ({
-        ...prev,
-        intervalId: null,
-        isAutoRotating: false,
-      }));
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
     }
-  }, [navState.intervalId]);
+  }, []);
 
   // Função para navegar para o próximo display
   const nextDisplay = useCallback(() => {
-    const newIndex = (navState.currentDisplayIndex + 1) % displayInfos.length;
-    setNavState((prev) => ({
-      ...prev,
-      currentDisplayIndex: newIndex,
-      isManualMode: true,
-      isAutoRotating: false,
-    }));
     stopAutoRotation();
-    navigationCallbacks.onNextDisplay?.(navState.currentDisplayIndex);
-    navigationCallbacks.onDisplayChange?.(
-      newIndex,
-      displayInfos[newIndex].mode
-    );
-    navigationCallbacks.onNavigationModeChange?.(true);
-  }, [
-    navState.currentDisplayIndex,
-    displayInfos,
-    stopAutoRotation,
-    navigationCallbacks,
-  ]);
+    setIsManualMode(true);
+    setCurrentDisplayIndex((prev) => {
+      const newIndex = (prev + 1) % displayInfos.length;
+      navigationCallbacks.onNextDisplay?.(prev);
+      navigationCallbacks.onDisplayChange?.(newIndex, displayInfos[newIndex].mode);
+      navigationCallbacks.onNavigationModeChange?.(true);
+      return newIndex;
+    });
+  }, [displayInfos, stopAutoRotation, navigationCallbacks]);
 
   // Função para navegar para o display anterior
   const previousDisplay = useCallback(() => {
-    const newIndex =
-      navState.currentDisplayIndex === 0
-        ? displayInfos.length - 1
-        : navState.currentDisplayIndex - 1;
-    setNavState((prev) => ({
-      ...prev,
-      currentDisplayIndex: newIndex,
-      isManualMode: true,
-      isAutoRotating: false,
-    }));
     stopAutoRotation();
-    navigationCallbacks.onPreviousDisplay?.(navState.currentDisplayIndex);
-    navigationCallbacks.onDisplayChange?.(
-      newIndex,
-      displayInfos[newIndex].mode
-    );
-    navigationCallbacks.onNavigationModeChange?.(true);
-  }, [
-    navState.currentDisplayIndex,
-    displayInfos,
-    stopAutoRotation,
-    navigationCallbacks,
-  ]);
+    setIsManualMode(true);
+    setCurrentDisplayIndex((prev) => {
+      const newIndex = prev === 0 ? displayInfos.length - 1 : prev - 1;
+      navigationCallbacks.onPreviousDisplay?.(prev);
+      navigationCallbacks.onDisplayChange?.(newIndex, displayInfos[newIndex].mode);
+      navigationCallbacks.onNavigationModeChange?.(true);
+      return newIndex;
+    });
+  }, [displayInfos, stopAutoRotation, navigationCallbacks]);
 
   // Função para alternar modo automático/manual
   const toggleAutoRotation = useCallback(() => {
-    if (navState.isManualMode) {
-      setNavState((prev) => ({ ...prev, isManualMode: false }));
-      startAutoRotation();
-      navigationCallbacks.onNavigationModeChange?.(false);
-    } else {
-      stopAutoRotation();
-      setNavState((prev) => ({ ...prev, isManualMode: true }));
-      navigationCallbacks.onNavigationModeChange?.(true);
-    }
-  }, [
-    navState.isManualMode,
-    startAutoRotation,
-    stopAutoRotation,
-    navigationCallbacks,
-  ]);
-
-  // Efeito para controlar rotação automática
-  useEffect(() => {
-    if (displayMode === "all" && !navState.isManualMode) {
-      startAutoRotation();
-    } else {
-      stopAutoRotation();
-    }
-    return () => {
-      if (navState.intervalId) {
-        clearInterval(navState.intervalId);
+    setIsManualMode((prev) => {
+      const newManualMode = !prev;
+      navigationCallbacks.onNavigationModeChange?.(newManualMode);
+      if (newManualMode) {
+        stopAutoRotation();
       }
-    };
-  }, [displayMode, navState.isManualMode, startAutoRotation, stopAutoRotation]);
+      return newManualMode;
+    });
+  }, [navigationCallbacks, stopAutoRotation]);
+
+  // Efeito para controlar rotação automática - DESLIGADO
+  // useEffect(() => {
+  //   if (displayMode !== "all" || isManualMode) {
+  //     stopAutoRotation();
+  //     return;
+  //   }
+
+  //   intervalRef.current = setInterval(() => {
+  //     setCurrentDisplayIndex((prev) => (prev + 1) % displayInfos.length);
+  //   }, autoRotationInterval);
+
+  //   return () => {
+  //     stopAutoRotation();
+  //   };
+  // }, [displayMode, isManualMode, autoRotationInterval, displayInfos.length, stopAutoRotation]);
 
   // Renderizar displays baseado no modo
   const renderDisplays = () => {
     const currentMode =
       displayMode === "all"
-        ? displayInfos[navState.currentDisplayIndex].mode
+        ? displayInfos[currentDisplayIndex].mode
         : displayMode;
 
     switch (currentMode) {
       case "voltage":
         return (
           <>
-            <DigitalDisplay value={readings.voltage.L1} unit="V" label="L1" />
-            <DigitalDisplay value={readings.voltage.L2} unit="V" label="L2" />
-            <DigitalDisplay value={readings.voltage.L3} unit="V" label="L3" />
+            <DigitalDisplay value={readings.voltage.L1} unit="V" label="Va" />
+            <DigitalDisplay value={readings.voltage.L2} unit="V" label="Vb" />
+            <DigitalDisplay value={readings.voltage.L3} unit="V" label="Vc" />
           </>
         );
       case "current":
         return (
           <>
-            <DigitalDisplay value={readings.current.L1} unit="A" label="L1" />
-            <DigitalDisplay value={readings.current.L2} unit="A" label="L2" />
-            <DigitalDisplay value={readings.current.L3} unit="A" label="L3" />
+            <DigitalDisplay value={readings.current.L1} unit="A" label="Ia" />
+            <DigitalDisplay value={readings.current.L2} unit="A" label="Ib" />
+            <DigitalDisplay value={readings.current.L3} unit="A" label="Ic" />
           </>
         );
       case "energy":
@@ -409,22 +349,20 @@ const LandisGyrE750: React.FC<LandisGyrE750Props> = ({
             <DigitalDisplay
               value={readings.energy.activeImport}
               unit="kWh"
-              label="+A"
-              isImport={true}
-              precision={2}
+              label="phf"
+              precision={3}
             />
             <DigitalDisplay
               value={readings.energy.activeExport}
               unit="kWh"
-              label="-A"
-              isExport={true}
-              precision={2}
+              label="phr"
+              precision={3}
             />
             <DigitalDisplay
               value={readings.energy.reactiveQ1}
               unit="kVArh"
-              label="R1"
-              precision={2}
+              label="qhfi"
+              precision={3}
             />
           </>
         );
@@ -432,21 +370,21 @@ const LandisGyrE750: React.FC<LandisGyrE750Props> = ({
         return (
           <>
             <DigitalDisplay
-              value={readings.power.active}
-              unit="kW"
-              label="P"
+              value={readings.energy.reactiveQ2}
+              unit="kVArh"
+              label="qhri"
               precision={3}
             />
             <DigitalDisplay
-              value={readings.power.reactive}
-              unit="kVAr"
-              label="Q"
+              value={readings.energy.reactiveQ3}
+              unit="kVArh"
+              label="qhfc"
               precision={3}
             />
             <DigitalDisplay
-              value={readings.power.apparent}
-              unit="kVA"
-              label="S"
+              value={readings.energy.reactiveQ4}
+              unit="kVArh"
+              label="qhrc"
               precision={3}
             />
           </>
@@ -485,22 +423,23 @@ const LandisGyrE750: React.FC<LandisGyrE750Props> = ({
         return (
           <>
             <div className="bg-black border border-gray-600 rounded px-2 py-1 mb-1">
-              <div className="text-xs text-blue-400 font-mono">Firmware</div>
-              <div className="text-blue-400 font-mono text-sm">
-                {readings.system?.firmwareVersion || "N/A"}
-              </div>
-            </div>
-            <div className="bg-black border border-gray-600 rounded px-2 py-1 mb-1">
-              <div className="text-xs text-blue-400 font-mono">Module ID</div>
-              <div className="text-blue-400 font-mono text-sm">
-                {readings.system?.moduleId || "N/A"}
+              <div className="text-xs text-blue-400 font-mono">cdo</div>
+              <div className="text-blue-400 font-mono text-lg">
+                {readings.system?.cdo || "---"}
               </div>
             </div>
             <DigitalDisplay
-              value={readings.system?.batteryBackup}
-              unit="dias"
-              label="Backup"
+              value={readings.system?.sts}
+              unit=""
+              label="sts"
+              precision={0}
             />
+            <div className="bg-black border border-gray-600 rounded px-2 py-1 mb-1">
+              <div className="text-xs text-blue-400 font-mono">frame</div>
+              <div className="text-blue-400 font-mono text-xs">
+                {readings.system?.frame || "---"}
+              </div>
+            </div>
           </>
         );
       case "loadProfile":
@@ -531,7 +470,7 @@ const LandisGyrE750: React.FC<LandisGyrE750Props> = ({
     }
   };
 
-  const currentDisplayInfo = displayInfos[navState.currentDisplayIndex];
+  const currentDisplayInfo = displayInfos[currentDisplayIndex];
 
   return (
     <div
@@ -582,10 +521,10 @@ const LandisGyrE750: React.FC<LandisGyrE750Props> = ({
               )}
               {navConfig.showPositionIndicator && (
                 <span className="text-gray-400 text-xs">
-                  ({navState.currentDisplayIndex + 1}/{displayInfos.length})
+                  ({currentDisplayIndex + 1}/{displayInfos.length})
                 </span>
               )}
-              {navConfig.allowAutoRotationToggle && navState.isManualMode && (
+              {navConfig.allowAutoRotationToggle && isManualMode && (
                 <button
                   onClick={toggleAutoRotation}
                   className="text-xs text-blue-400 hover:text-blue-300 transition-colors p-1 rounded hover:bg-gray-600"
@@ -632,7 +571,7 @@ const LandisGyrE750: React.FC<LandisGyrE750Props> = ({
               <div
                 key={index}
                 className={`h-1 w-4 rounded transition-colors duration-200 ${
-                  navState.currentDisplayIndex === index
+                  currentDisplayIndex === index
                     ? "bg-blue-500"
                     : "bg-gray-600"
                 }`}
@@ -642,7 +581,7 @@ const LandisGyrE750: React.FC<LandisGyrE750Props> = ({
         )}
 
         {/* Indicador de modo manual/automático */}
-        {displayMode === "all" && navState.isManualMode && (
+        {displayMode === "all" && isManualMode && (
           <div className="flex justify-center mt-1">
             <span className="text-xs text-blue-400 animate-pulse">MANUAL</span>
           </div>
@@ -650,8 +589,8 @@ const LandisGyrE750: React.FC<LandisGyrE750Props> = ({
 
         {/* Indicador de modo automático ativo */}
         {displayMode === "all" &&
-          navState.isAutoRotating &&
-          !navState.isManualMode && (
+          !isManualMode &&
+          displayMode === "all" && (
             <div className="flex justify-center mt-1">
               <span className="text-xs text-green-400">AUTO SyM2</span>
             </div>

@@ -27,6 +27,12 @@ const LogsEventosPage = lazy(() =>
   }))
 );
 
+const DemoMqttPage = lazy(() =>
+  import("@/pages/supervisorio/demo-mqtt").then((module) => ({
+    default: module.default,
+  }))
+);
+
 const SinopticoPage = lazy(() =>
   import("@/pages/supervisorio/sinoptico-ativo").then((module) => ({
     default: module.SinopticoAtivoPage,
@@ -143,6 +149,16 @@ export const appRoutes = createBrowserRouter([
           <FeatureWrapper feature="supervisorio">
             <Suspense fallback={<div>Carregando...</div>}>
               <SinopticoPage />
+            </Suspense>
+          </FeatureWrapper>
+        ),
+      },
+      {
+        path: "supervisorio/demo-mqtt",
+        element: (
+          <FeatureWrapper feature="supervisorio">
+            <Suspense fallback={<div>Carregando...</div>}>
+              <DemoMqttPage />
             </Suspense>
           </FeatureWrapper>
         ),
