@@ -218,6 +218,26 @@ const ElectricalSymbol = ({
             )}
           </svg>
         );
+        case "BARRAMENTO":
+  return (
+    <svg
+      width="100"
+      height="16"
+      viewBox="0 0 100 16"
+      className="drop-shadow-sm"
+    >
+      <rect
+        x="0"
+        y="4"
+        width="100"
+        height="8"
+        fill="#22c55e"
+        stroke="#16a34a"
+        strokeWidth="2"
+        rx="2"
+      />
+    </svg>
+  );
       case "BOTOEIRA":
        return (
       <svg width="32" height="32" viewBox="0 0 40 40" className="drop-shadow-sm">

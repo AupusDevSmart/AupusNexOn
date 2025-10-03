@@ -68,6 +68,7 @@ interface Connection {
   to: string;
   fromPort: "top" | "bottom" | "left" | "right";
   toPort: "top" | "bottom" | "left" | "right";
+  junctionPoints?: string[];
 }
 
 interface Position {
@@ -80,7 +81,11 @@ interface DiagramState {
   componentes: ComponenteDU[];
   connections: Connection[];
 }
-
+interface JunctionPoint {
+  id: string;
+  position: { x: number; y: number };
+  connectionIds: string[];
+}
 // Tipos de componentes disponíveis - EXPANDIDO
 const TIPOS_COMPONENTES = [
   // Componentes básicos
@@ -1163,6 +1168,8 @@ export function SinopticoAtivoPage() {
   const [componentes, setComponentes] = useState<ComponenteDU[]>([]);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [diagramaCarregado, setDiagramaCarregado] = useState(false);
+  const [junctionPoints, setJunctionPoints] = useState<JunctionPoint[]>([]);
+  const [modoAdicionarJunction, setModoAdicionarJunction] = useState(false);
 
   // Estados para modais
   const [modalAberto, setModalAberto] = useState<string | null>(null);
@@ -1297,9 +1304,14 @@ export function SinopticoAtivoPage() {
 
   // Função auxiliar para atualizar o diagrama
   const updateDiagram = useCallback(
-    (newComponentes?: ComponenteDU[], newConnections?: Connection[]) => {
+    (
+      newComponentes?: ComponenteDU[],
+      newConnections?: Connection[],
+      newJunctionPoints?: JunctionPoint[]
+    ) => {
       if (newComponentes) setComponentes(newComponentes);
       if (newConnections) setConnections(newConnections);
+      if (newJunctionPoints) setJunctionPoints(newJunctionPoints);
     },
     []
   );
@@ -1307,7 +1319,7 @@ export function SinopticoAtivoPage() {
   // CARREGAR DIAGRAMA SALVO
   useEffect(() => {
     const carregarDiagrama = () => {
-      console.log("🚀 Carregando diagrama para ativo:", ativoSelecionado);
+      console.log("Carregando diagrama para ativo:", ativoSelecionado);
 
       try {
         const key = `diagrama_${ativoSelecionado}`;
@@ -1324,14 +1336,18 @@ export function SinopticoAtivoPage() {
           ) {
             setComponentes(data.componentes);
             setConnections(data.connections || []);
+            setJunctionPoints(data.junctionPoints || []);
             console.log(
               "📊 Diagrama restaurado:",
               data.componentes.length,
-              "componentes"
+              "componentes,",
+              (data.junctionPoints || []).length,
+              "junctions"
             );
           } else {
             setComponentes(getDiagramaPadrao());
             setConnections([]);
+            setJunctionPoints([]);
           }
         } else {
           console.log("📋 Usando diagrama padrão");
@@ -1339,9 +1355,10 @@ export function SinopticoAtivoPage() {
           setConnections([]);
         }
       } catch (error) {
-        console.error("❌ Erro ao carregar:", error);
+        console.error("Erro ao carregar:", error);
         setComponentes(getDiagramaPadrao());
         setConnections([]);
+        setJunctionPoints([]);
       }
 
       setDiagramaCarregado(true);
@@ -1360,20 +1377,34 @@ export function SinopticoAtivoPage() {
           ativoId: ativoSelecionado,
           componentes,
           connections,
+          junctionPoints,
           ultimaAtualizacao: new Date().toISOString(),
           versao: "1.0",
         };
 
         const key = `diagrama_${ativoSelecionado}`;
         localStorage.setItem(key, JSON.stringify(diagramaData));
-        console.log("💾 Auto-save:", key, componentes.length, "componentes");
+        console.log(
+          "💾 Auto-save:",
+          key,
+          componentes.length,
+          "componentes",
+          junctionPoints.length,
+          "junctions"
+        );
       } catch (error) {
         console.error("❌ Erro auto-save:", error);
       }
     }, 2000);
 
     return () => clearTimeout(timeoutId);
-  }, [componentes, connections, diagramaCarregado, ativoSelecionado]);
+  }, [
+    componentes,
+    connections,
+    junctionPoints,
+    diagramaCarregado,
+    ativoSelecionado,
+  ]);
 
   // Mock data atualizado com dados realistas
   const [ativoData] = useState({
@@ -2113,6 +2144,32 @@ export function SinopticoAtivoPage() {
     updateDiagram(undefined, []);
     setConnecting(null);
   };
+  const adicionarJunctionPoint = useCallback((junction: JunctionPoint) => {
+    setJunctionPoints((prev) => [...prev, junction]);
+    setModoAdicionarJunction(false);
+    console.log("✅ Junction point adicionado:", junction);
+  }, []);
+
+  const removerJunctionPoint = useCallback((junctionId: string) => {
+    setJunctionPoints((prev) => prev.filter((jp) => jp.id !== junctionId));
+    console.log("🗑️ Junction point removido:", junctionId);
+  }, []);
+
+  const atualizarJunctionPoint = useCallback(
+    (junctionId: string, position: { x: number; y: number }) => {
+      setJunctionPoints((prev) =>
+        prev.map((jp) => (jp.id === junctionId ? { ...jp, position } : jp))
+      );
+    },
+    []
+  );
+
+  const toggleModoAdicionarJunction = () => {
+    setModoAdicionarJunction((prev) => !prev);
+    console.log(
+      modoAdicionarJunction ? "🔵 Modo junction OFF" : "🟢 Modo junction ON"
+    );
+  };
 
   const salvarDiagrama = useCallback(() => {
     console.log("💾 Salvando diagrama para ativo:", ativoSelecionado);
@@ -2122,6 +2179,7 @@ export function SinopticoAtivoPage() {
         ativoId: ativoSelecionado,
         componentes,
         connections,
+        junctionPoints,
         ultimaAtualizacao: new Date().toISOString(),
         versao: "1.0",
       };
@@ -2129,19 +2187,32 @@ export function SinopticoAtivoPage() {
       const key = `diagrama_${ativoSelecionado}`;
       localStorage.setItem(key, JSON.stringify(diagramaData));
 
-      console.log("💾 Salvo:", key, componentes.length, "componentes");
+      console.log(
+        "💾 Salvo:",
+        key,
+        componentes.length,
+        "componentes",
+        junctionPoints.length,
+        "junctions"
+      );
 
       const verificacao = localStorage.getItem(key);
       if (verificacao) {
         alert(
-          `Diagrama salvo!\nAtivo: ${ativoSelecionado}\nComponentes: ${componentes.length}`
+          `Diagrama salvo!\nAtivo: ${ativoSelecionado}\nComponentes: ${componentes.length}\nJunction Points: $(junctionPoints.length)`
         );
       }
     } catch (error) {
       console.error("❌ Erro ao salvar:", error);
       alert("Erro ao salvar diagrama!");
     }
-  }, [ativoSelecionado, componentes, connections]);
+  }, [
+    ativoSelecionado,
+    componentes,
+    connections,
+    junctionPoints,
+    ativoSelecionado,
+  ]);
 
   // LOADING STATE - Não renderizar até carregar
   if (!diagramaCarregado) {
@@ -2347,6 +2418,18 @@ export function SinopticoAtivoPage() {
                       >
                         <X className="h-4 w-4" />
                       </Button>
+                      <Button
+                        variant={modoAdicionarJunction ? "default" : "outline"}
+                        size="sm"
+                        onClick={toggleModoAdicionarJunction}
+                        className="flex items-center gap-2"
+                        title="Adicionar ponto de junção nas linhas"
+                      >
+                        <Circle className="h-4 w-4" />
+                        {modoAdicionarJunction
+                          ? "Clique na linha"
+                          : "Adicionar Junção"}
+                      </Button>
                       {componenteEditando && (
                         <>
                           <Button
@@ -2518,6 +2601,7 @@ export function SinopticoAtivoPage() {
                         componentes={componentes}
                         containerRef={canvasRef}
                         modoEdicao={false}
+                        junctionPoints={junctionPoints}
                         className="z-10"
                       />
 
@@ -2555,6 +2639,7 @@ export function SinopticoAtivoPage() {
                     <div className="text-xs text-muted-foreground flex items-center gap-3">
                       <span>Componentes: {componentes.length}</span>
                       <span>Conexões: {connections.length}</span>
+                      <span>Junções: {junctionPoints.length}</span>
                       <span>Histórico: {canUndo ? "Disponível" : "Vazio"}</span>
                     </div>
                     <Button
@@ -2578,6 +2663,11 @@ export function SinopticoAtivoPage() {
                     modoEdicao={true}
                     connecting={connecting}
                     onRemoverConexao={removerConexao}
+                    junctionPoints={junctionPoints}
+                    onAddJunctionPoint={adicionarJunctionPoint} 
+                    onRemoveJunctionPoint={removerJunctionPoint} 
+                    onUpdateJunctionPoint={atualizarJunctionPoint} 
+                    modoAdicionarJunction={modoAdicionarJunction}
                     className="z-10"
                   />
 

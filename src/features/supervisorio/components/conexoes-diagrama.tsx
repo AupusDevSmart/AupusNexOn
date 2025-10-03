@@ -1,3 +1,4 @@
+// src/features/supervisorio/components/conexoes-diagrama.tsx
 import { useEffect, useState } from "react";
 
 // Interfaces
@@ -16,6 +17,13 @@ interface Connection {
   to: string;
   fromPort: "top" | "bottom" | "left" | "right";
   toPort: "top" | "bottom" | "left" | "right";
+  junctionPoints?: string[];
+}
+
+interface JunctionPoint {
+  id: string;
+  position: { x: number; y: number };
+  connectionId: string;
 }
 
 interface ConexoesDiagramaProps {
@@ -25,16 +33,23 @@ interface ConexoesDiagramaProps {
   modoEdicao?: boolean;
   connecting?: { from: string; port: string } | null;
   onRemoverConexao?: (connectionId: string) => void;
+  junctionPoints?: JunctionPoint[];
+  onAddJunctionPoint?: (junctionPoint: JunctionPoint) => void;
+  onRemoveJunctionPoint?: (junctionId: string) => void;
+  onUpdateJunctionPoint?: (
+    junctionId: string,
+    position: { x: number; y: number }
+  ) => void;
+  modoAdicionarJunction?: boolean;
   className?: string;
 }
 
-// Função para calcular offset da porta baseado no tipo do componente
+// Função para calcular offset da porta
 const getPortOffset = (
   tipo: string,
   port: "top" | "bottom" | "left" | "right"
 ) => {
-  // Offsets baseados no tamanho dos símbolos de cada tipo
-  const componentSizes = {
+  const componentSizes: Record<string, { width: number; height: number }> = {
     MEDIDOR: { width: 32, height: 32 },
     TRANSFORMADOR: { width: 48, height: 32 },
     INVERSOR: { width: 32, height: 32 },
@@ -71,13 +86,12 @@ const getPortOffset = (
   }
 };
 
-// Função para obter classes de estilo baseado no status da conexão
+// Função para obter estilo da conexão
 const getConnectionStyle = (
   fromComponent: ComponenteDU,
   toComponent: ComponenteDU,
   modoEdicao: boolean
 ) => {
-  // Determinar a cor baseada no status dos componentes conectados
   const hasError =
     fromComponent.status === "FALHA" || toComponent.status === "FALHA";
   const hasWarning =
@@ -98,10 +112,37 @@ const getConnectionStyle = (
   } else {
     return {
       stroke: "stroke-blue-600 dark:stroke-blue-400",
-      strokeWidth: modoEdicao ? "2" : "2",
+      strokeWidth: modoEdicao ? "3" : "2",
       opacity: "0.7",
     };
   }
+};
+
+// Calcular ponto mais próximo em uma linha
+const getClosestPointOnLine = (
+  lineStart: { x: number; y: number },
+  lineEnd: { x: number; y: number },
+  point: { x: number; y: number }
+): { x: number; y: number } => {
+  const dx = lineEnd.x - lineStart.x;
+  const dy = lineEnd.y - lineStart.y;
+  const length = Math.sqrt(dx * dx + dy * dy);
+
+  if (length === 0) return lineStart;
+
+  const t = Math.max(
+    0,
+    Math.min(
+      1,
+      ((point.x - lineStart.x) * dx + (point.y - lineStart.y) * dy) /
+        (length * length)
+    )
+  );
+
+  return {
+    x: lineStart.x + t * dx,
+    y: lineStart.y + t * dy,
+  };
 };
 
 export function ConexoesDiagrama({
@@ -111,14 +152,21 @@ export function ConexoesDiagrama({
   modoEdicao = false,
   connecting = null,
   onRemoverConexao,
+  junctionPoints = [],
+  onAddJunctionPoint,
+  onRemoveJunctionPoint,
+  onUpdateJunctionPoint,
+  modoAdicionarJunction = false,
   className = "",
 }: ConexoesDiagramaProps) {
   const [containerRect, setContainerRect] = useState<DOMRect | null>(null);
   const [hoveredConnection, setHoveredConnection] = useState<string | null>(
     null
   );
+  const [hoveredJunction, setHoveredJunction] = useState<string | null>(null);
+  const [draggingJunction, setDraggingJunction] = useState<string | null>(null);
 
-  // Atualizar dimensões do container quando necessário
+  // Atualizar dimensões do container
   useEffect(() => {
     const updateContainerRect = () => {
       if (containerRef.current) {
@@ -127,14 +175,11 @@ export function ConexoesDiagrama({
     };
 
     updateContainerRect();
-
-    // Observar mudanças no container
     const resizeObserver = new ResizeObserver(updateContainerRect);
     if (containerRef.current) {
       resizeObserver.observe(containerRef.current);
     }
 
-    // Listener para resize da janela
     window.addEventListener("resize", updateContainerRect);
 
     return () => {
@@ -143,17 +188,70 @@ export function ConexoesDiagrama({
     };
   }, [containerRef]);
 
-  // Se não há container ou conexões, não renderizar
+  // Handler para clique na linha (adicionar junction point)
+  const handleLineClick = (
+    event: React.MouseEvent<SVGLineElement>,
+    connection: Connection,
+    fromX: number,
+    fromY: number,
+    toX: number,
+    toY: number
+  ) => {
+    if (!modoAdicionarJunction || !onAddJunctionPoint) return;
+
+    event.stopPropagation();
+
+    const svg = (event.target as SVGElement).ownerSVGElement;
+    if (!svg) return;
+
+    const rect = svg.getBoundingClientRect();
+    const clickX = event.clientX - rect.left;
+    const clickY = event.clientY - rect.top;
+
+    // Calcular ponto mais próximo na linha
+    const closestPoint = getClosestPointOnLine(
+      { x: fromX, y: fromY },
+      { x: toX, y: toY },
+      { x: clickX, y: clickY }
+    );
+
+    // Converter para porcentagem
+    const percentX = (closestPoint.x / rect.width) * 100;
+    const percentY = (closestPoint.y / rect.height) * 100;
+
+    const newJunction: JunctionPoint = {
+      id: `junction-${Date.now()}`,
+      position: { x: percentX, y: percentY },
+      connectionId: connection.id,
+    };
+
+    onAddJunctionPoint(newJunction);
+    console.log("✅ Junction adicionado:", newJunction);
+  };
+
+  // Handler para arrastar junction point
+  const handleJunctionMouseMove = (event: React.MouseEvent) => {
+    if (!draggingJunction || !onUpdateJunctionPoint || !containerRect) return;
+
+    const rect = containerRect;
+    const x = ((event.clientX - rect.left) / rect.width) * 100;
+    const y = ((event.clientY - rect.top) / rect.height) * 100;
+
+    onUpdateJunctionPoint(draggingJunction, { x, y });
+  };
+
   if (!containerRect || connections.length === 0) {
     return null;
   }
 
   return (
     <svg
-      className={`absolute inset-0 w-full h-full pointer-events-none z-10 ${className}`}
+      className={`absolute inset-0 w-full h-full z-10 ${className}`}
       style={{ pointerEvents: modoEdicao ? "auto" : "none" }}
+      onMouseMove={handleJunctionMouseMove}
+      onMouseUp={() => setDraggingJunction(null)}
     >
-      {/* Definições para markers e padrões */}
+      {/* Definições de markers */}
       <defs>
         <marker
           id="arrowhead-normal"
@@ -190,16 +288,14 @@ export function ConexoesDiagrama({
         </marker>
       </defs>
 
-      {/* Renderizar todas as conexões */}
+      {/* Renderizar conexões */}
       {connections.map((connection) => {
         const fromComponent = componentes.find((c) => c.id === connection.from);
         const toComponent = componentes.find((c) => c.id === connection.to);
 
-        if (!fromComponent || !toComponent) {
-          return null;
-        }
+        if (!fromComponent || !toComponent) return null;
 
-        // Calcular posições dos componentes
+        // Calcular posições
         const fromCenterX =
           (fromComponent.posicao.x / 100) * containerRect.width;
         const fromCenterY =
@@ -207,150 +303,227 @@ export function ConexoesDiagrama({
         const toCenterX = (toComponent.posicao.x / 100) * containerRect.width;
         const toCenterY = (toComponent.posicao.y / 100) * containerRect.height;
 
-        // Calcular offsets das portas
         const fromOffset = getPortOffset(
           fromComponent.tipo,
           connection.fromPort
         );
         const toOffset = getPortOffset(toComponent.tipo, connection.toPort);
 
-        // Posições finais das conexões
         const fromX = fromCenterX + fromOffset.x;
         const fromY = fromCenterY + fromOffset.y;
         const toX = toCenterX + toOffset.x;
         const toY = toCenterY + toOffset.y;
 
-        // Estilos da conexão
         const connectionStyle = getConnectionStyle(
           fromComponent,
           toComponent,
           modoEdicao
         );
 
-        // Determinar qual marker usar
-        const hasError =
-          fromComponent.status === "FALHA" || toComponent.status === "FALHA";
-        const hasWarning =
-          fromComponent.status === "ALARME" || toComponent.status === "ALARME";
-        const markerEnd = hasError
-          ? "url(#arrowhead-error)"
-          : hasWarning
-          ? "url(#arrowhead-warning)"
-          : "url(#arrowhead-normal)";
-
         const isHovered = hoveredConnection === connection.id;
-        const isConnecting =
-          connecting &&
-          (connecting.from === connection.from ||
-            connecting.from === connection.to);
+
+        // Obter junction points desta conexão
+        const connJunctions = junctionPoints.filter(
+          (jp) => jp.connectionId === connection.id
+        );
+
+        // Ordenar junction points ao longo da linha
+        const sortedJunctions = [...connJunctions].sort((a, b) => {
+          const aX = (a.position.x / 100) * containerRect.width;
+          const aY = (a.position.y / 100) * containerRect.height;
+          const bX = (b.position.x / 100) * containerRect.width;
+          const bY = (b.position.y / 100) * containerRect.height;
+
+          const distA = Math.sqrt(
+            Math.pow(aX - fromX, 2) + Math.pow(aY - fromY, 2)
+          );
+          const distB = Math.sqrt(
+            Math.pow(bX - fromX, 2) + Math.pow(bY - fromY, 2)
+          );
+          return distA - distB;
+        });
+
+        // Criar pontos da linha (incluindo junctions)
+        const linePoints = [
+          { x: fromX, y: fromY },
+          ...sortedJunctions.map((jp) => ({
+            x: (jp.position.x / 100) * containerRect.width,
+            y: (jp.position.y / 100) * containerRect.height,
+          })),
+          { x: toX, y: toY },
+        ];
 
         return (
           <g key={connection.id}>
-            {/* Linha principal da conexão - SEM SETA */}
-            <line
-              x1={fromX}
-              y1={fromY}
-              x2={toX}
-              y2={toY}
-              className={`${connectionStyle.stroke} transition-all duration-200`}
-              strokeWidth={
-                isHovered
-                  ? Number(connectionStyle.strokeWidth) + 1
-                  : connectionStyle.strokeWidth
-              }
-              opacity={
-                isConnecting ? "0.4" : isHovered ? "1" : connectionStyle.opacity
-              }
-              style={{
-                pointerEvents: modoEdicao ? "stroke" : "none",
-                strokeDasharray: isConnecting ? "5,5" : "none",
-              }}
-              onMouseEnter={() =>
-                modoEdicao && setHoveredConnection(connection.id)
-              }
-              onMouseLeave={() => modoEdicao && setHoveredConnection(null)}
-              onClick={(e) => {
-                if (modoEdicao && onRemoverConexao) {
-                  e.stopPropagation();
-                  if (window.confirm("Deseja remover esta conexão?")) {
-                    onRemoverConexao(connection.id);
+            {/* Renderizar segmentos da linha */}
+            {linePoints.slice(0, -1).map((point, index) => (
+              <line
+                key={`${connection.id}-segment-${index}`}
+                x1={point.x}
+                y1={point.y}
+                x2={linePoints[index + 1].x}
+                y2={linePoints[index + 1].y}
+                className={`${connectionStyle.stroke} ${
+                  modoAdicionarJunction ? "cursor-crosshair" : "cursor-pointer"
+                } transition-all`}
+                strokeWidth={isHovered ? "6" : connectionStyle.strokeWidth}
+                opacity={connectionStyle.opacity}
+                style={{ pointerEvents: "stroke" }}
+                onMouseEnter={() => setHoveredConnection(connection.id)}
+                onMouseLeave={() => setHoveredConnection(null)}
+                onClick={(e) => {
+                  if (modoAdicionarJunction) {
+                    handleLineClick(
+                      e,
+                      connection,
+                      point.x,
+                      point.y,
+                      linePoints[index + 1].x,
+                      linePoints[index + 1].y
+                    );
+                  } else if (onRemoverConexao && modoEdicao) {
+                    if (window.confirm("Deseja remover esta conexão?")) {
+                      onRemoverConexao(connection.id);
+                    }
                   }
-                }
-              }}
-            />
+                }}
+              />
+            ))}
 
             {/* Pontos de conexão */}
             <circle
               cx={fromX}
               cy={fromY}
-              r={modoEdicao ? "4" : "3"}
-              className={`${connectionStyle.stroke.replace(
-                "stroke-",
-                "fill-"
-              )} transition-all duration-200`}
-              opacity={isHovered ? "1" : "0.8"}
+              r="4"
+              className="fill-blue-600"
+              opacity="0.8"
             />
             <circle
               cx={toX}
               cy={toY}
-              r={modoEdicao ? "4" : "3"}
-              className={`${connectionStyle.stroke.replace(
-                "stroke-",
-                "fill-"
-              )} transition-all duration-200`}
-              opacity={isHovered ? "1" : "0.8"}
+              r="4"
+              className="fill-blue-600"
+              opacity="0.8"
             />
 
-            {/* Label da conexão no modo edição */}
+            {/* Label quando hover */}
             {modoEdicao && isHovered && (
               <g>
-                {/* Fundo do label */}
                 <rect
-                  x={(fromX + toX) / 2 - 30}
-                  y={(fromY + toY) / 2 - 12}
-                  width="60"
-                  height="24"
+                  x={(fromX + toX) / 2 - 50}
+                  y={(fromY + toY) / 2 - 15}
+                  width="100"
+                  height="30"
                   rx="4"
                   className="fill-background stroke-border"
                   strokeWidth="1"
                 />
-                {/* Texto do label */}
                 <text
                   x={(fromX + toX) / 2}
                   y={(fromY + toY) / 2}
                   textAnchor="middle"
                   dominantBaseline="central"
                   fontSize="10"
-                  fontWeight="500"
                   className="fill-foreground"
                   style={{ pointerEvents: "none" }}
                 >
-                  Clique para remover
+                  {modoAdicionarJunction
+                    ? "Clique para adicionar"
+                    : "Clique para remover"}
                 </text>
               </g>
-            )}
-
-            {/* Indicador de conexão ativa */}
-            {connecting && connecting.from === connection.from && (
-              <circle
-                cx={fromX}
-                cy={fromY}
-                r="8"
-                className="fill-none stroke-amber-400 animate-ping"
-                strokeWidth="2"
-              />
             )}
           </g>
         );
       })}
 
-      {/* Indicador quando está conectando */}
-      {connecting && modoEdicao && (
+      {/* Renderizar Junction Points */}
+      {junctionPoints.map((junction) => {
+        const junctionX = (junction.position.x / 100) * containerRect.width;
+        const junctionY = (junction.position.y / 100) * containerRect.height;
+        const isHovered = hoveredJunction === junction.id;
+
+        return (
+          <g key={junction.id}>
+            {/* Área de hit maior */}
+            <circle
+              cx={junctionX}
+              cy={junctionY}
+              r="15"
+              fill="transparent"
+              className="cursor-move"
+              style={{ pointerEvents: "all" }}
+              onMouseDown={(e) => {
+                e.stopPropagation();
+                setDraggingJunction(junction.id);
+              }}
+              onMouseEnter={() => setHoveredJunction(junction.id)}
+              onMouseLeave={() => setHoveredJunction(null)}
+            />
+
+            {/* Ponto visual */}
+            <circle
+              cx={junctionX}
+              cy={junctionY}
+              r={isHovered ? "8" : "6"}
+              fill="#10b981"
+              stroke="#fff"
+              strokeWidth="2"
+              className="pointer-events-none transition-all"
+            />
+
+            {/* Botão remover */}
+            {isHovered && onRemoveJunctionPoint && (
+              <g
+                className="cursor-pointer"
+                style={{ pointerEvents: "all" }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRemoveJunctionPoint(junction.id);
+                }}
+              >
+                <circle
+                  cx={junctionX + 15}
+                  cy={junctionY - 15}
+                  r="8"
+                  fill="#ef4444"
+                  className="transition-opacity"
+                />
+                <line
+                  x1={junctionX + 12}
+                  y1={junctionY - 15}
+                  x2={junctionX + 18}
+                  y2={junctionY - 15}
+                  stroke="white"
+                  strokeWidth="2"
+                  className="pointer-events-none"
+                />
+              </g>
+            )}
+          </g>
+        );
+      })}
+
+      {/* Indicador quando está no modo adicionar junction */}
+      {modoAdicionarJunction && modoEdicao && (
         <text
           x={containerRect.width / 2}
           y="30"
           textAnchor="middle"
-          dominantBaseline="central"
+          fontSize="14"
+          fontWeight="600"
+          className="fill-green-600 animate-pulse"
+        >
+          Clique em uma linha para adicionar ponto de junção
+        </text>
+      )}
+
+      {/* Indicador quando está conectando */}
+      {connecting && modoEdicao && !modoAdicionarJunction && (
+        <text
+          x={containerRect.width / 2}
+          y="30"
+          textAnchor="middle"
           fontSize="14"
           fontWeight="600"
           className="fill-amber-600 animate-pulse"

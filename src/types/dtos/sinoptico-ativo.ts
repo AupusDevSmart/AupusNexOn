@@ -46,7 +46,8 @@ export interface ComponenteDU {
     | "INVERSOR"
     | "MOTOR"
     | "CAPACITOR"
-    | "DISJUNTOR";
+    | "DISJUNTOR"
+    | "BARRAMENTO";
   nome: string;
   posicao: { x: number; y: number };
   status: "NORMAL" | "ALARME" | "FALHA";
