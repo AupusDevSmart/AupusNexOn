@@ -29,7 +29,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 // Componentes implementados
@@ -40,6 +40,7 @@ import { A966Modal } from "@/features/supervisorio/components/a966-modal";
 import { ConexoesDiagrama } from "@/features/supervisorio/components/conexoes-diagrama";
 import { DisjuntorModal } from "@/features/supervisorio/components/disjuntor-modal";
 import { InversorModal } from "@/features/supervisorio/components/inversor-modal";
+import { LandisGyrModal } from "@/features/supervisorio/components/landisgyr-modal";
 import { M160Modal } from "@/features/supervisorio/components/m160-modal";
 import { M300Modal } from "@/features/supervisorio/components/m300-modal";
 import { MedidorModal } from "@/features/supervisorio/components/medidor-modal";
@@ -47,6 +48,7 @@ import { SinopticoDiagrama } from "@/features/supervisorio/components/sinoptico-
 import { SinopticoGraficos } from "@/features/supervisorio/components/sinoptico-graficos";
 import { SinopticoIndicadores } from "@/features/supervisorio/components/sinoptico-indicadores";
 import { TransformadorModal } from "@/features/supervisorio/components/transformador-modal";
+import { useMqttWebSocket } from "@/hooks/useMqttWebSocket";
 // import { useHistory } from "@/features/supervisorio/hooks/useHistory";
 
 // Tipos - CORRIGIDOS com interfaces locais caso os imports falhem
@@ -1160,7 +1162,35 @@ export function SinopticoAtivoPage() {
     useState<string>("ativo-principal");
 
   // NOVO: Estados principais
-  const [componentes, setComponentes] = useState<ComponenteDU[]>([]);
+  const [componentes, setComponentes] = useState<ComponenteDU[]>([
+    {
+      id: "m160-1",
+      tipo: "M160",
+      nome: "M160 Multimedidor",
+      posicao: { x: 20, y: 50 },
+      status: "NORMAL",
+      tag: "OLI/GO/CHI/CAB/M160-1",
+      dados: {}
+    },
+    {
+      id: "a966-1",
+      tipo: "A966",
+      nome: "A966 Gateway IoT",
+      posicao: { x: 50, y: 50 },
+      status: "NORMAL",
+      tag: "IMS/a966/state",
+      dados: {}
+    },
+    {
+      id: "landis-1",
+      tipo: "LANDIS_E750",
+      nome: "Landis+Gyr E750",
+      posicao: { x: 80, y: 50 },
+      status: "NORMAL",
+      tag: "IMS/a966/LANDIS/state",
+      dados: {}
+    },
+  ]);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [diagramaCarregado, setDiagramaCarregado] = useState(false);
 
@@ -1196,11 +1226,47 @@ export function SinopticoAtivoPage() {
     { id: "ativo-principal", nome: "UFV Solar Goiânia" },
     { id: "ativo-secundario", nome: "UFV Industrial Brasília" },
     { id: "ativo-teste", nome: "Usina Teste" },
+    { id: "mqtt-devices", nome: "Equipamentos MQTT" },
   ];
 
   // Função do diagrama padrão
   const getDiagramaPadrao = useCallback(
-    (): ComponenteDU[] => [
+    (): ComponenteDU[] => {
+      // Diagrama específico para equipamentos MQTT
+      if (ativoSelecionado === "mqtt-devices") {
+        return [
+          {
+            id: "m160-1",
+            tipo: "M160",
+            nome: "M160 Multimedidor",
+            posicao: { x: 20, y: 50 },
+            status: "NORMAL",
+            tag: "OLI/GO/CHI/CAB/M160-1",
+            dados: {}
+          },
+          {
+            id: "a966-1",
+            tipo: "A966",
+            nome: "A966 Gateway IoT",
+            posicao: { x: 50, y: 50 },
+            status: "NORMAL",
+            tag: "IMS/a966/state",
+            dados: {}
+          },
+          {
+            id: "landis-1",
+            tipo: "LANDIS_E750",
+            nome: "Landis+Gyr E750",
+            posicao: { x: 80, y: 50 },
+            status: "NORMAL",
+            tag: "IMS/a966/LANDIS/state",
+            dados: {}
+          },
+        ];
+      }
+
+      // Diagrama padrão para outros ativos
+      return [
       {
         id: "medidor-01",
         tipo: "MEDIDOR",
@@ -1289,8 +1355,9 @@ export function SinopticoAtivoPage() {
         status: "NORMAL",
         dados: {},
       },
-    ],
-    []
+      ];
+    },
+    [ativoSelecionado]
   );
 
   // Estados já definidos acima - remover esta seção completamente
@@ -1388,6 +1455,53 @@ export function SinopticoAtivoPage() {
     ultimaAtualizacao: new Date().toISOString(),
   });
 
+  // Hooks MQTT para equipamentos (apenas quando mqtt-devices está selecionado)
+  const { data: m160Data } = useMqttWebSocket(
+    ativoSelecionado === "mqtt-devices" ? "OLI/GO/CHI/CAB/M160-1" : ""
+  );
+  const { data: a966Data } = useMqttWebSocket(
+    ativoSelecionado === "mqtt-devices" ? "IMS/a966/state" : ""
+  );
+  const { data: landisData } = useMqttWebSocket(
+    ativoSelecionado === "mqtt-devices" ? "IMS/a966/LANDIS/state" : ""
+  );
+
+  // Estado para histórico de dados MQTT (usado nos gráficos)
+  const [historicoMqtt, setHistoricoMqtt] = useState<any[]>([]);
+  const ultimaAtualizacaoRef = useRef<number>(0);
+
+  // Adicionar dados MQTT ao histórico (throttle de 5 segundos)
+  useEffect(() => {
+    if (ativoSelecionado === "mqtt-devices" && m160Data?.payload?.Dados) {
+      const agora = Date.now();
+
+      // Atualizar apenas a cada 5 segundos
+      if (agora - ultimaAtualizacaoRef.current < 5000) {
+        return;
+      }
+
+      ultimaAtualizacaoRef.current = agora;
+
+      const m160Dados = m160Data.payload.Dados;
+      const timestamp = new Date().toISOString();
+
+      const novoPonto = {
+        timestamp,
+        potencia: ((m160Dados.Pa || 0) + (m160Dados.Pb || 0) + (m160Dados.Pc || 0)), // Multiplicado por 10
+        tensao: ((m160Dados.Va || 0)),
+        corrente: ((m160Dados.Ia || 0) + (m160Dados.Ib || 0) + (m160Dados.Ic || 0)),
+        fatorPotencia: (m160Dados.FPA !== 999 && m160Dados.FPA !== 0) ? m160Dados.FPA / 1000 : 1,
+        limiteMinimo: 0.92,
+      };
+
+      setHistoricoMqtt(prev => {
+        const novoHistorico = [...prev, novoPonto];
+        // Manter apenas últimos 100 pontos para reduzir uso de memória
+        return novoHistorico.slice(-100);
+      });
+    }
+  }, [ativoSelecionado, m160Data]);
+
   const [dadosGraficos] = useState(() => {
     const agora = new Date();
     return Array.from({ length: 288 }, (_, i) => {
@@ -1442,16 +1556,52 @@ export function SinopticoAtivoPage() {
     });
   });
 
-  const [indicadores] = useState({
-    thd: 3.2,
-    fp: 0.95,
-    dt: 2.1,
-    frequencia: 60.02,
-    alarmes: 1,
-    falhas: 0,
-    urgencias: 0,
-    osAbertas: 2,
-  });
+  // Calcular indicadores baseados em dados MQTT ou usar valores fixos
+  const indicadores = useMemo(() => {
+    if (ativoSelecionado === "mqtt-devices" && m160Data?.payload?.Dados) {
+      // Extrair dados do M160
+      const m160Dados = m160Data.payload.Dados;
+      const Va = m160Dados.Va || 0;
+      const Vb = m160Dados.Vb || 0;
+      const Vc = m160Dados.Vc || 0;
+      const FPA = m160Dados.FPA || 0;
+
+      // Calcular FP médio (converter de escala 0-999 para 0-1)
+      const fpMedia = FPA !== 999 ? FPA / 1000 : 0.95;
+
+      // Calcular desequilíbrio de tensão (DT)
+      const tensaoMedia = (Va + Vb + Vc) / 3;
+      const maxDesvio = Math.max(
+        Math.abs(Va - tensaoMedia),
+        Math.abs(Vb - tensaoMedia),
+        Math.abs(Vc - tensaoMedia)
+      );
+      const dt = tensaoMedia > 0 ? (maxDesvio / tensaoMedia) * 100 : 2.1;
+
+      return {
+        thd: 3.2,
+        fp: fpMedia,
+        dt: dt,
+        frequencia: 60.0,
+        alarmes: 0,
+        falhas: 0,
+        urgencias: 0,
+        osAbertas: 0,
+      };
+    }
+
+    // Valores padrão para outros ativos
+    return {
+      thd: 3.2,
+      fp: 0.95,
+      dt: 2.1,
+      frequencia: 60.02,
+      alarmes: 1,
+      falhas: 0,
+      urgencias: 0,
+      osAbertas: 2,
+    };
+  }, [ativoSelecionado, m160Data]);
 
   // Sistema de Undo/Redo simples
   const [history, setHistory] = useState<DiagramState[]>([]);
@@ -1682,7 +1832,7 @@ export function SinopticoAtivoPage() {
   // Mock data para modais
   const dadosMedidor = {
     ufer: 0.952,
-    demanda: 2485.5,
+    demanda: 24855.0, // Multiplicado por 10
     energiaConsumida: 15847.2,
     energiaInjetada: 42156.8,
     tensaoFases: { a: 220.1, b: 219.8, c: 220.4 },
@@ -1909,7 +2059,7 @@ export function SinopticoAtivoPage() {
     },
   };
 
-  // Função principal de clique em componente - CORRIGIDO
+  // Função principal de clique em componente - CORRIGIDO + MQTT
   const handleComponenteClick = useCallback(
     (componente: ComponenteDU, event?: React.MouseEvent) => {
       if (modoEdicao) {
@@ -1921,8 +2071,27 @@ export function SinopticoAtivoPage() {
         }
         return;
       }
+
       setComponenteSelecionado(componente);
-      setModalAberto(componente.tipo);
+
+      // ============================================
+      // LÓGICA PARA DETECTAR TÓPICO MQTT E ABRIR MODAL CORRETO
+      // ============================================
+      // Verifica se o componente tem um 'tag' (tópico MQTT)
+      // e abre o modal específico baseado no tópico
+
+      const tag = (componente as any).tag || '';
+
+      if (tag.includes('M160')) {
+        setModalAberto('M160');
+      } else if (tag.includes('a966/state') && !tag.includes('LANDIS')) {
+        setModalAberto('A966');
+      } else if (tag.includes('LANDIS')) {
+        setModalAberto('LANDIS_E750');
+      } else {
+        // Fallback para o tipo original
+        setModalAberto(componente.tipo);
+      }
     },
     [modoEdicao, modoFerramenta]
   );
@@ -2480,8 +2649,16 @@ export function SinopticoAtivoPage() {
                 {/* Gráficos à Esquerda */}
                 <div className="lg:col-span-1 flex">
                   <SinopticoGraficos
-                    dadosPotencia={dadosGraficos}
-                    dadosTensao={dadosGraficos}
+                    dadosPotencia={
+                      ativoSelecionado === "mqtt-devices" && historicoMqtt.length > 0
+                        ? historicoMqtt
+                        : dadosGraficos
+                    }
+                    dadosTensao={
+                      ativoSelecionado === "mqtt-devices" && historicoMqtt.length > 0
+                        ? historicoMqtt
+                        : dadosGraficos
+                    }
                     valorContratado={2300} //simulando valores
                     percentualAdicional={5} //simulando valores
                   />
@@ -2824,13 +3001,13 @@ export function SinopticoAtivoPage() {
         <A966Modal
           open={modalAberto === "A966"}
           onClose={fecharModal}
-          dados={dadosA966}
+          componenteData={componenteSelecionado}
           nomeComponente={componenteSelecionado?.nome || "Gateway A966"}
         />
-        <LandisGyrModalInline
+        <LandisGyrModal
           open={modalAberto === "LANDIS_E750"}
           onClose={fecharModal}
-          dados={dadosLandisGyr}
+          componenteData={componenteSelecionado}
           nomeComponente={
             componenteSelecionado?.nome || "Medidor Landis+Gyr E750"
           }

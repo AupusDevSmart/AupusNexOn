@@ -18,6 +18,7 @@ import {
   Building2,
   Download,
   Edit,
+  Loader2,
   MapPin,
   Plus,
   Save,
@@ -27,16 +28,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { useState } from "react";
-// Comentado temporariamente - verificar se existe
-// import {
-//   Table,
-//   TableBody,
-//   TableCell,
-//   TableHead,
-//   TableHeader,
-//   TableRow,
-// } from "@/components/ui/table";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -45,25 +37,19 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { toast } from "@/components/ui/use-toast";
 
-// Tipos
-interface Unidade {
-  id: string;
-  nome: string;
-  tipo: "UFV" | "Carga" | "Motor" | "Inversor" | "Transformador";
-  localizacao: {
-    estado: string;
-    cidade: string;
-    latitude: number;
-    longitude: number;
-  };
-  potencia: number;
-  status: "ativo" | "inativo";
-  pontosMedicao: string[];
-  dataCadastro: string;
-  ultimaAtualizacao: string;
-}
+// Importar hooks e tipos da API
+import {
+  useUnidades,
+  useUnidadesCRUD,
+  useUnidadesImportExport,
+  TipoUnidadeNexon,
+  StatusUnidadeNexon,
+  CreateUnidadeDto,
+  UpdateUnidadeDto,
+  FilterUnidadeDto,
+  UnidadeNexon,
+} from "@/services";
 
 // Estados brasileiros
 const estados = [
@@ -97,68 +83,29 @@ const estados = [
 ];
 
 export function CadastroUnidadesPage() {
-  const [unidades, setUnidades] = useState<Unidade[]>([
-    {
-      id: "1",
-      nome: "UFV São Paulo - Unidade 1",
-      tipo: "UFV",
-      localizacao: {
-        estado: "SP",
-        cidade: "São Paulo",
-        latitude: -23.5505,
-        longitude: -46.6333,
-      },
-      potencia: 25500,
-      status: "ativo",
-      pontosMedicao: ["Medidor Principal", "Inversor 1", "Inversor 2"],
-      dataCadastro: "2024-01-15",
-      ultimaAtualizacao: "2024-12-20",
-    },
-    {
-      id: "2",
-      nome: "Fábrica ABC - Carga Industrial",
-      tipo: "Carga",
-      localizacao: {
-        estado: "MG",
-        cidade: "Belo Horizonte",
-        latitude: -19.9167,
-        longitude: -43.9345,
-      },
-      potencia: 12300,
-      status: "ativo",
-      pontosMedicao: ["Medidor Entrada", "Quadro Geral"],
-      dataCadastro: "2024-02-10",
-      ultimaAtualizacao: "2024-12-18",
-    },
-    {
-      id: "3",
-      nome: "Motor Bomba d'Água - Estação 2",
-      tipo: "Motor",
-      localizacao: {
-        estado: "RJ",
-        cidade: "Rio de Janeiro",
-        latitude: -22.9068,
-        longitude: -43.1729,
-      },
-      potencia: 500,
-      status: "inativo",
-      pontosMedicao: ["Medidor Motor"],
-      dataCadastro: "2024-03-05",
-      ultimaAtualizacao: "2024-11-30",
-    },
-  ]);
-
+  // Estados locais para filtros e UI
+  const [filtros, setFiltros] = useState<FilterUnidadeDto>({
+    search: "",
+    tipo: undefined,
+    status: undefined,
+    estado: undefined,
+    page: 1,
+    limit: 10,
+  });
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [filterTipo, setFilterTipo] = useState<string>("todos");
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  // Hooks da API
+  const { unidades, loading: loadingList, recarregar } = useUnidades(filtros);
+  const { loading: loadingCRUD, criarUnidade, atualizarUnidade, excluirUnidade } = useUnidadesCRUD();
+  const { loading: loadingImportExport, exportarCSV } = useUnidadesImportExport();
+
   // Estado do formulário
-  const [formData, setFormData] = useState<Partial<Unidade>>({
+  const [formData, setFormData] = useState<CreateUnidadeDto>({
     nome: "",
-    tipo: "UFV",
+    tipo: TipoUnidadeNexon.UFV,
     localizacao: {
       estado: "",
       cidade: "",
@@ -166,17 +113,22 @@ export function CadastroUnidadesPage() {
       longitude: 0,
     },
     potencia: 0,
-    status: "ativo",
+    status: StatusUnidadeNexon.ATIVO,
     pontosMedicao: [],
   });
 
   const [novoPontoMedicao, setNovoPontoMedicao] = useState("");
 
+  // Atualizar dados quando filtros mudam
+  useEffect(() => {
+    recarregar(filtros);
+  }, [filtros, recarregar]);
+
   // Funções auxiliares
   const resetForm = () => {
     setFormData({
       nome: "",
-      tipo: "UFV",
+      tipo: TipoUnidadeNexon.UFV,
       localizacao: {
         estado: "",
         cidade: "",
@@ -184,15 +136,22 @@ export function CadastroUnidadesPage() {
         longitude: 0,
       },
       potencia: 0,
-      status: "ativo",
+      status: StatusUnidadeNexon.ATIVO,
       pontosMedicao: [],
     });
     setEditingId(null);
     setShowForm(false);
   };
 
-  const handleEdit = (unidade: Unidade) => {
-    setFormData(unidade);
+  const handleEdit = (unidade: UnidadeNexon) => {
+    setFormData({
+      nome: unidade.nome,
+      tipo: unidade.tipo,
+      localizacao: unidade.localizacao,
+      potencia: unidade.potencia,
+      status: unidade.status,
+      pontosMedicao: unidade.pontosMedicao,
+    });
     setEditingId(unidade.id);
     setShowForm(true);
   };
@@ -202,64 +161,43 @@ export function CadastroUnidadesPage() {
     setShowDeleteDialog(true);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (deletingId) {
-      setUnidades(unidades.filter((u) => u.id !== deletingId));
-      toast({
-        title: "Unidade excluída",
-        description: "A unidade foi removida com sucesso.",
-      });
+      const success = await excluirUnidade(deletingId);
+      if (success) {
+        recarregar(filtros);
+      }
     }
     setShowDeleteDialog(false);
     setDeletingId(null);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (editingId) {
       // Editar existente
-      setUnidades(
-        unidades.map((u) =>
-          u.id === editingId
-            ? ({
-                ...formData,
-                id: editingId,
-                ultimaAtualizacao: new Date().toISOString().split("T")[0],
-              } as Unidade)
-            : u
-        )
-      );
-      toast({
-        title: "Unidade atualizada",
-        description: "As alterações foram salvas com sucesso.",
-      });
+      const updateData: UpdateUnidadeDto = { ...formData };
+      const result = await atualizarUnidade(editingId, updateData);
+      if (result) {
+        recarregar(filtros);
+        resetForm();
+      }
     } else {
       // Criar nova
-      const novaUnidade: Unidade = {
-        ...formData,
-        id: Date.now().toString(),
-        dataCadastro: new Date().toISOString().split("T")[0],
-        ultimaAtualizacao: new Date().toISOString().split("T")[0],
-      } as Unidade;
-      setUnidades([...unidades, novaUnidade]);
-      toast({
-        title: "Unidade cadastrada",
-        description: "A nova unidade foi adicionada com sucesso.",
-      });
+      const result = await criarUnidade(formData);
+      if (result) {
+        recarregar(filtros);
+        resetForm();
+      }
     }
-
-    resetForm();
   };
 
   const adicionarPontoMedicao = () => {
     if (novoPontoMedicao.trim()) {
       setFormData({
         ...formData,
-        pontosMedicao: [
-          ...(formData.pontosMedicao || []),
-          novoPontoMedicao.trim(),
-        ],
+        pontosMedicao: [...formData.pontosMedicao, novoPontoMedicao.trim()],
       });
       setNovoPontoMedicao("");
     }
@@ -268,31 +206,35 @@ export function CadastroUnidadesPage() {
   const removerPontoMedicao = (index: number) => {
     setFormData({
       ...formData,
-      pontosMedicao:
-        formData.pontosMedicao?.filter((_, i) => i !== index) || [],
+      pontosMedicao: formData.pontosMedicao.filter((_, i) => i !== index),
     });
   };
 
-  // Filtrar unidades
-  const unidadesFiltradas = unidades.filter((unidade) => {
-    const matchSearch =
-      unidade.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      unidade.localizacao.cidade
-        .toLowerCase()
-        .includes(searchTerm.toLowerCase());
-    const matchTipo = filterTipo === "todos" || unidade.tipo === filterTipo;
-    return matchSearch && matchTipo;
-  });
+  const handleFilterChange = (key: keyof FilterUnidadeDto, value: any) => {
+    setFiltros(prev => ({
+      ...prev,
+      [key]: value,
+      page: 1, // Reset para primeira página quando filtrar
+    }));
+  };
 
-  const getTipoIcon = (tipo: string) => {
+  const handlePageChange = (newPage: number) => {
+    setFiltros(prev => ({ ...prev, page: newPage }));
+  };
+
+  const getTipoIcon = (tipo: TipoUnidadeNexon) => {
     switch (tipo) {
-      case "UFV":
+      case TipoUnidadeNexon.UFV:
         return <Zap className="h-4 w-4" />;
-      case "Carga":
+      case TipoUnidadeNexon.Carga:
         return <Building2 className="h-4 w-4" />;
       default:
         return <Zap className="h-4 w-4" />;
     }
+  };
+
+  const handleExportCSV = async () => {
+    await exportarCSV(filtros);
   };
 
   return (
@@ -334,7 +276,7 @@ export function CadastroUnidadesPage() {
                     onValueChange={(value) =>
                       setFormData({
                         ...formData,
-                        tipo: value as Unidade["tipo"],
+                        tipo: value as TipoUnidadeNexon,
                       })
                     }
                   >
@@ -342,13 +284,13 @@ export function CadastroUnidadesPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="UFV">
+                      <SelectItem value={TipoUnidadeNexon.UFV}>
                         UFV - Usina Fotovoltaica
                       </SelectItem>
-                      <SelectItem value="Carga">Carga</SelectItem>
-                      <SelectItem value="Motor">Motor</SelectItem>
-                      <SelectItem value="Inversor">Inversor</SelectItem>
-                      <SelectItem value="Transformador">
+                      <SelectItem value={TipoUnidadeNexon.Carga}>Carga</SelectItem>
+                      <SelectItem value={TipoUnidadeNexon.Motor}>Motor</SelectItem>
+                      <SelectItem value={TipoUnidadeNexon.Inversor}>Inversor</SelectItem>
+                      <SelectItem value={TipoUnidadeNexon.Transformador}>
                         Transformador
                       </SelectItem>
                     </SelectContent>
@@ -377,16 +319,16 @@ export function CadastroUnidadesPage() {
                   <div className="flex items-center space-x-2 mt-2">
                     <Switch
                       id="status"
-                      checked={formData.status === "ativo"}
+                      checked={formData.status === StatusUnidadeNexon.ATIVO}
                       onCheckedChange={(checked) =>
                         setFormData({
                           ...formData,
-                          status: checked ? "ativo" : "inativo",
+                          status: checked ? StatusUnidadeNexon.ATIVO : StatusUnidadeNexon.INATIVO,
                         })
                       }
                     />
                     <Label htmlFor="status" className="cursor-pointer">
-                      {formData.status === "ativo" ? "Ativo" : "Inativo"}
+                      {formData.status === StatusUnidadeNexon.ATIVO ? "Ativo" : "Inativo"}
                     </Label>
                   </div>
                 </div>
@@ -403,7 +345,7 @@ export function CadastroUnidadesPage() {
                         setFormData({
                           ...formData,
                           localizacao: {
-                            ...formData.localizacao!,
+                            ...formData.localizacao,
                             estado: value,
                           },
                         })
@@ -431,7 +373,7 @@ export function CadastroUnidadesPage() {
                         setFormData({
                           ...formData,
                           localizacao: {
-                            ...formData.localizacao!,
+                            ...formData.localizacao,
                             cidade: e.target.value,
                           },
                         })
@@ -452,7 +394,7 @@ export function CadastroUnidadesPage() {
                         setFormData({
                           ...formData,
                           localizacao: {
-                            ...formData.localizacao!,
+                            ...formData.localizacao,
                             latitude: Number(e.target.value),
                           },
                         })
@@ -473,7 +415,7 @@ export function CadastroUnidadesPage() {
                         setFormData({
                           ...formData,
                           localizacao: {
-                            ...formData.localizacao!,
+                            ...formData.localizacao,
                             longitude: Number(e.target.value),
                           },
                         })
@@ -527,7 +469,8 @@ export function CadastroUnidadesPage() {
                 <Button type="button" variant="outline" onClick={resetForm}>
                   Cancelar
                 </Button>
-                <Button type="submit">
+                <Button type="submit" disabled={loadingCRUD}>
+                  {loadingCRUD && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                   <Save className="h-4 w-4 mr-2" />
                   {editingId ? "Salvar Alterações" : "Cadastrar Unidade"}
                 </Button>
@@ -544,31 +487,40 @@ export function CadastroUnidadesPage() {
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
                 <Input
                   placeholder="Buscar por nome ou cidade..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  value={filtros.search || ""}
+                  onChange={(e) => handleFilterChange("search", e.target.value)}
                   className="pl-10"
                 />
               </div>
-              <Select value={filterTipo} onValueChange={setFilterTipo}>
+              <Select
+                value={filtros.tipo || "todos"}
+                onValueChange={(value) => handleFilterChange("tipo", value === "todos" ? undefined : value as TipoUnidadeNexon)}
+              >
                 <SelectTrigger className="w-[180px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="todos">Todos os tipos</SelectItem>
-                  <SelectItem value="UFV">UFV</SelectItem>
-                  <SelectItem value="Carga">Carga</SelectItem>
-                  <SelectItem value="Motor">Motor</SelectItem>
-                  <SelectItem value="Inversor">Inversor</SelectItem>
-                  <SelectItem value="Transformador">Transformador</SelectItem>
+                  <SelectItem value={TipoUnidadeNexon.UFV}>UFV</SelectItem>
+                  <SelectItem value={TipoUnidadeNexon.Carga}>Carga</SelectItem>
+                  <SelectItem value={TipoUnidadeNexon.Motor}>Motor</SelectItem>
+                  <SelectItem value={TipoUnidadeNexon.Inversor}>Inversor</SelectItem>
+                  <SelectItem value={TipoUnidadeNexon.Transformador}>Transformador</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm">
+              <Button variant="outline" size="sm" disabled={loadingImportExport}>
                 <Upload className="h-4 w-4 mr-2" />
                 Importar
               </Button>
-              <Button variant="outline" size="sm">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExportCSV}
+                disabled={loadingImportExport}
+              >
+                {loadingImportExport && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                 <Download className="h-4 w-4 mr-2" />
                 Exportar
               </Button>
@@ -582,79 +534,115 @@ export function CadastroUnidadesPage() {
 
         {/* Tabela de Unidades */}
         <Card className="p-6">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b">
-                  <th className="text-left py-3 px-4">Nome</th>
-                  <th className="text-left py-3 px-4">Tipo</th>
-                  <th className="text-left py-3 px-4">Localização</th>
-                  <th className="text-left py-3 px-4">Potência</th>
-                  <th className="text-left py-3 px-4">Status</th>
-                  <th className="text-left py-3 px-4">Pontos de Medição</th>
-                  <th className="text-left py-3 px-4">Última Atualização</th>
-                  <th className="text-right py-3 px-4">Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {unidadesFiltradas.map((unidade) => (
-                  <tr
-                    key={unidade.id}
-                    className="border-b hover:bg-gray-50 dark:hover:bg-gray-800"
-                  >
-                    <td className="py-3 px-4 font-medium">{unidade.nome}</td>
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-2">
-                        {getTipoIcon(unidade.tipo)}
-                        {unidade.tipo}
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-1">
-                        <MapPin className="h-3 w-3" />
-                        {unidade.localizacao.cidade},{" "}
-                        {unidade.localizacao.estado}
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      {unidade.potencia.toLocaleString()} kW
-                    </td>
-                    <td className="py-3 px-4">
-                      <Badge
-                        variant={
-                          unidade.status === "ativo" ? "default" : "secondary"
-                        }
+          {loadingList ? (
+            <div className="flex justify-center items-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin" />
+              <span className="ml-2">Carregando unidades...</span>
+            </div>
+          ) : (
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left py-3 px-4">Nome</th>
+                      <th className="text-left py-3 px-4">Tipo</th>
+                      <th className="text-left py-3 px-4">Localização</th>
+                      <th className="text-left py-3 px-4">Potência</th>
+                      <th className="text-left py-3 px-4">Status</th>
+                      <th className="text-left py-3 px-4">Pontos de Medição</th>
+                      <th className="text-left py-3 px-4">Última Atualização</th>
+                      <th className="text-right py-3 px-4">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {unidades?.data.map((unidade) => (
+                      <tr
+                        key={unidade.id}
+                        className="border-b hover:bg-gray-50 dark:hover:bg-gray-800"
                       >
-                        {unidade.status}
-                      </Badge>
-                    </td>
-                    <td className="py-3 px-4">
-                      {unidade.pontosMedicao.length}
-                    </td>
-                    <td className="py-3 px-4">{unidade.ultimaAtualizacao}</td>
-                    <td className="py-3 px-4">
-                      <div className="flex justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleEdit(unidade)}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDelete(unidade.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                        <td className="py-3 px-4 font-medium">{unidade.nome}</td>
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-2">
+                            {getTipoIcon(unidade.tipo)}
+                            {unidade.tipo}
+                          </div>
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-1">
+                            <MapPin className="h-3 w-3" />
+                            {unidade.localizacao.cidade}, {unidade.localizacao.estado}
+                          </div>
+                        </td>
+                        <td className="py-3 px-4">
+                          {unidade.potencia.toLocaleString()} kW
+                        </td>
+                        <td className="py-3 px-4">
+                          <Badge
+                            variant={
+                              unidade.status === StatusUnidadeNexon.ATIVO ? "default" : "secondary"
+                            }
+                          >
+                            {unidade.status}
+                          </Badge>
+                        </td>
+                        <td className="py-3 px-4">
+                          {unidade.pontosMedicao.length}
+                        </td>
+                        <td className="py-3 px-4">{unidade.ultimaAtualizacao}</td>
+                        <td className="py-3 px-4">
+                          <div className="flex justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleEdit(unidade)}
+                              disabled={loadingCRUD}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDelete(unidade.id)}
+                              disabled={loadingCRUD}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Paginação */}
+              {unidades && unidades.totalPages > 1 && (
+                <div className="flex justify-center items-center gap-2 mt-4">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePageChange(unidades.page - 1)}
+                    disabled={unidades.page <= 1 || loadingList}
+                  >
+                    Anterior
+                  </Button>
+                  <span className="text-sm text-gray-500">
+                    Página {unidades.page} de {unidades.totalPages}
+                    ({unidades.total} itens)
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePageChange(unidades.page + 1)}
+                    disabled={unidades.page >= unidades.totalPages || loadingList}
+                  >
+                    Próxima
+                  </Button>
+                </div>
+              )}
+            </>
+          )}
         </Card>
 
         {/* Dialog de Confirmação de Exclusão */}
@@ -671,10 +659,16 @@ export function CadastroUnidadesPage() {
               <Button
                 variant="outline"
                 onClick={() => setShowDeleteDialog(false)}
+                disabled={loadingCRUD}
               >
                 Cancelar
               </Button>
-              <Button variant="destructive" onClick={confirmDelete}>
+              <Button
+                variant="destructive"
+                onClick={confirmDelete}
+                disabled={loadingCRUD}
+              >
+                {loadingCRUD && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                 Excluir
               </Button>
             </DialogFooter>

@@ -21,7 +21,9 @@ export interface M160Reading {
     export?: number; // Energia exportada (kWh) - 4 quadrantes
   };
   frequency?: number;
-  powerFactor?: number;
+  powerFactor?: number; // FPA
+  powerFactorB?: number; // FPB
+  powerFactorC?: number; // FPC
   thd?: {
     voltage?: number; // THD de tensão (%)
     current?: number; // THD de corrente (%)

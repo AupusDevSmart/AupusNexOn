@@ -165,9 +165,9 @@ const M160Multimeter: React.FC<M160Props> = ({
 
   // Estado da navegação
   const [navState, setNavState] = useState<M160NavigationState>({
-    currentDisplayIndex: initialDisplayIndex,
-    isManualMode: false,
-    isAutoRotating: displayMode === "all",
+    currentDisplayIndex: initialDisplayIndex || 0,
+    isManualMode: true, // Inicia em modo manual
+    isAutoRotating: false,
     intervalId: null,
   });
 
@@ -292,20 +292,21 @@ const M160Multimeter: React.FC<M160Props> = ({
     navigationCallbacks,
   ]);
 
-  // Efeito para controlar rotação automática
-  useEffect(() => {
-    if (displayMode === "all" && !navState.isManualMode) {
-      startAutoRotation();
-    } else {
-      stopAutoRotation();
-    }
+  // Efeito para controlar rotação automática - DESLIGADO
+  // useEffect(() => {
+  //   if (displayMode === "all" && !navState.isManualMode) {
+  //     startAutoRotation();
+  //   } else {
+  //     stopAutoRotation();
+  //   }
 
-    return () => {
-      if (navState.intervalId) {
-        clearInterval(navState.intervalId);
-      }
-    };
-  }, [displayMode, navState.isManualMode, startAutoRotation, stopAutoRotation]);
+  //   return () => {
+  //     if (navState.intervalId) {
+  //       clearInterval(navState.intervalId);
+  //     }
+  //   };
+  //   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // }, [displayMode, navState.isManualMode]);
 
   // Renderizar displays baseado no modo
   const renderDisplays = () => {
@@ -318,17 +319,17 @@ const M160Multimeter: React.FC<M160Props> = ({
       case "voltage":
         return (
           <>
-            <DigitalDisplay value={readings.voltage.L1} unit="V" label="L1" />
-            <DigitalDisplay value={readings.voltage.L2} unit="V" label="L2" />
-            <DigitalDisplay value={readings.voltage.L3} unit="V" label="L3" />
+            <DigitalDisplay value={readings.voltage.L1} unit="V" label="Va" />
+            <DigitalDisplay value={readings.voltage.L2} unit="V" label="Vb" />
+            <DigitalDisplay value={readings.voltage.L3} unit="V" label="Vc" />
           </>
         );
       case "current":
         return (
           <>
-            <DigitalDisplay value={readings.current.L1} unit="A" label="L1" />
-            <DigitalDisplay value={readings.current.L2} unit="A" label="L2" />
-            <DigitalDisplay value={readings.current.L3} unit="A" label="L3" />
+            <DigitalDisplay value={readings.current.L1} unit="A" label="Ia" />
+            <DigitalDisplay value={readings.current.L2} unit="A" label="Ib" />
+            <DigitalDisplay value={readings.current.L3} unit="A" label="Ic" />
           </>
         );
       case "power":
@@ -336,19 +337,22 @@ const M160Multimeter: React.FC<M160Props> = ({
           <>
             <DigitalDisplay
               value={readings.power.active}
-              unit="kW"
-              label="P"
+              unit="W"
+              label="Pa+Pb+Pc"
               isExport={readings.power.active && readings.power.active < 0}
+              precision={3}
             />
             <DigitalDisplay
               value={readings.power.reactive}
-              unit="kVAr"
-              label="Q"
+              unit="VAr"
+              label="qhfi"
+              precision={3}
             />
             <DigitalDisplay
               value={readings.power.apparent}
-              unit="kVA"
+              unit="VA"
               label="S"
+              precision={3}
             />
           </>
         );
@@ -358,21 +362,21 @@ const M160Multimeter: React.FC<M160Props> = ({
             <DigitalDisplay
               value={readings.energy?.activeImport}
               unit="kWh"
-              label="E+"
-              precision={2}
+              label="phf"
+              precision={3}
             />
             <DigitalDisplay
               value={readings.energy?.activeExport}
               unit="kWh"
-              label="E-"
-              precision={2}
+              label="phr"
+              precision={3}
               isExport={true}
             />
             <DigitalDisplay
               value={readings.energy?.reactiveImport}
               unit="kVArh"
-              label="Er+"
-              precision={2}
+              label="qhfi"
+              precision={3}
             />
           </>
         );
@@ -380,22 +384,22 @@ const M160Multimeter: React.FC<M160Props> = ({
         return (
           <>
             <DigitalDisplay
-              value={readings.thd?.voltage}
-              unit="%"
-              label="THD V"
-              precision={1}
-            />
-            <DigitalDisplay
-              value={readings.thd?.current}
-              unit="%"
-              label="THD I"
-              precision={1}
-            />
-            <DigitalDisplay
               value={readings.powerFactor}
               unit=""
-              label="FP"
-              precision={3}
+              label="FPA"
+              precision={2}
+            />
+            <DigitalDisplay
+              value={readings.powerFactorB}
+              unit=""
+              label="FPB"
+              precision={2}
+            />
+            <DigitalDisplay
+              value={readings.powerFactorC}
+              unit=""
+              label="FPC"
+              precision={2}
             />
           </>
         );
