@@ -2779,7 +2779,7 @@ export function SinopticoAtivoPage() {
                         containerRef={canvasRef}
                         modoEdicao={false}
                         junctionPoints={junctionPoints}
-                        className="z-10"
+                        className="z-30"
                       />
 
                       <SinopticoDiagrama
@@ -2845,7 +2845,7 @@ export function SinopticoAtivoPage() {
                     onRemoveJunctionPoint={removerJunctionPoint} 
                     onUpdateJunctionPoint={atualizarJunctionPoint} 
                     modoAdicionarJunction={modoAdicionarJunction}
-                    className="z-10"
+                    className="z-30"
                   />
 
                   <SinopticoDiagrama
@@ -2857,7 +2857,7 @@ export function SinopticoAtivoPage() {
                   />
 
                   {/* Componentes no Modo Edição */}
-                  <div className="absolute inset-0 z-10">
+                  <div className="absolute inset-0 z-5">
                     {componentes.map((componente) => (
                       <div
                         key={componente.id}
