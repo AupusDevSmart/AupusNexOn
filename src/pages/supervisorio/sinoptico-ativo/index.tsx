@@ -49,6 +49,12 @@ import { SinopticoGraficos } from "@/features/supervisorio/components/sinoptico-
 import { SinopticoIndicadores } from "@/features/supervisorio/components/sinoptico-indicadores";
 import { TransformadorModal } from "@/features/supervisorio/components/transformador-modal";
 import { useMqttWebSocket } from "@/hooks/useMqttWebSocket";
+import {
+  createJunctionNode,
+  splitConnectionWithJunction,
+  calculateJunctionPositionOnLine,
+  detectEdgeClick,
+} from "@/features/supervisorio/utils/junctionHelpers";
 // import { useHistory } from "@/features/supervisorio/hooks/useHistory";
 
 // Tipos - CORRIGIDOS com interfaces locais caso os imports falhem
@@ -70,7 +76,6 @@ interface Connection {
   to: string;
   fromPort: "top" | "bottom" | "left" | "right";
   toPort: "top" | "bottom" | "left" | "right";
-  junctionPoints?: string[];
 }
 
 interface Position {
@@ -82,11 +87,6 @@ interface Position {
 interface DiagramState {
   componentes: ComponenteDU[];
   connections: Connection[];
-}
-interface JunctionPoint {
-  id: string;
-  position: { x: number; y: number };
-  connectionIds: string[];
 }
 // Tipos de componentes disponíveis - EXPANDIDO
 const TIPOS_COMPONENTES = [
@@ -113,6 +113,12 @@ const TIPOS_COMPONENTES = [
     icon: Square,
     label: "Chave Fechada",
     cor: "bg-amber-500",
+  },
+  {
+    tipo: "CHAVE_FUSIVEL",
+    icon: Zap,
+    label: "Chave Fusível",
+    cor: "bg-orange-500",
   },
   { tipo: "RELE", icon: Triangle, label: "Relé", cor: "bg-indigo-500" },
   {
@@ -177,6 +183,7 @@ const TIPOS_COMPONENTES = [
     cor: "bg-purple-600",
   },
   { tipo: "A966", icon: Router, label: "A-966 Gateway", cor: "bg-orange-600" },
+  { tipo: "PONTO", icon: Circle, label: "Ponto", cor: "bg-blue-500" },
 ];
 
 // Função para obter classes de status - CORRIGIDA
@@ -371,6 +378,36 @@ const ElectricalSymbol = ({
             )}
           </svg>
         );
+
+        case "BARRAMENTO":
+            return (
+    <svg
+      width="80"
+      height="13"
+      viewBox="0 0 100 20"
+      className="drop-shadow-sm"
+    >
+      {/* Barra horizontal - mais grossa e simples */}
+      <rect
+        x="5"
+        y="6"
+        width="90"
+        height="8"
+        className={statusClasses.fill}
+        rx="2"
+      />
+      {/* Contorno */}
+      <rect
+        x="5"
+        y="6"
+        width="90"
+        height="8"
+        className={`${statusClasses.stroke} fill-none`}
+        strokeWidth="2"
+        rx="2"
+      />
+    </svg>
+  );
       case "BOTOEIRA":
         return (
           <svg
@@ -473,6 +510,53 @@ const ElectricalSymbol = ({
             />
           </svg>
         );
+
+      case "CHAVE_FUSIVEL":
+        return (
+          <svg width="48" height="32" viewBox="0 0 60 40" className="drop-shadow-sm">
+            <line x1="5" y1="20" x2="22" y2="20" className={statusClasses.stroke} strokeWidth="2.5" />
+            <circle cx="30" cy="20" r="10" className={`${statusClasses.stroke} fill-background`} strokeWidth="2.5" />
+            <path d="M 22 20 A 8 8 0 0 0 38 20" className={statusClasses.stroke} strokeWidth="2" fill="none" />
+            <line x1="38" y1="20" x2="55" y2="20" className={statusClasses.stroke} strokeWidth="2.5" />
+            <circle cx="5" cy="20" r="2.5" className={statusClasses.fill} />
+            <circle cx="55" cy="20" r="2.5" className={statusClasses.fill} />
+            <text x="30" y="20" textAnchor="middle" dominantBaseline="middle" fontSize="7" fontWeight="600" className={statusClasses.fill}>CF</text>
+          </svg>
+        );
+        case "PONTO":
+case "PONTO_JUNCAO":
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 20 20"
+      className="drop-shadow-sm"
+    >
+      {/* Círculo principal - ponto de junção */}
+      <circle
+        cx="10"
+        cy="10"
+        r="6"
+        className={statusClasses.fill}
+      />
+      {/* Contorno */}
+      <circle
+        cx="10"
+        cy="10"
+        r="6"
+        className={`${statusClasses.stroke} fill-none`}
+        strokeWidth="2"
+      />
+      {/* Ponto central menor para dar profundidade */}
+      <circle
+        cx="10"
+        cy="10"
+        r="3"
+        className="fill-background"
+        opacity="0.3"
+      />
+    </svg>
+  );
 
       case "RELE":
         return (
@@ -1198,8 +1282,6 @@ export function SinopticoAtivoPage() {
   ]);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [diagramaCarregado, setDiagramaCarregado] = useState(false);
-  const [junctionPoints, setJunctionPoints] = useState<JunctionPoint[]>([]);
-  const [modoAdicionarJunction, setModoAdicionarJunction] = useState(false);
 
   // Estados para modais
   const [modalAberto, setModalAberto] = useState<string | null>(null);
@@ -1373,66 +1455,61 @@ export function SinopticoAtivoPage() {
   const updateDiagram = useCallback(
     (
       newComponentes?: ComponenteDU[],
-      newConnections?: Connection[],
-      newJunctionPoints?: JunctionPoint[]
+      newConnections?: Connection[]
     ) => {
       if (newComponentes) setComponentes(newComponentes);
       if (newConnections) setConnections(newConnections);
-      if (newJunctionPoints) setJunctionPoints(newJunctionPoints);
     },
     []
   );
 
   // CARREGAR DIAGRAMA SALVO
-  useEffect(() => {
-    const carregarDiagrama = () => {
-      console.log("Carregando diagrama para ativo:", ativoSelecionado);
+useEffect(() => {
+  const carregarDiagrama = () => {
+    console.log("📂 === CARREGAMENTO INICIADO ===");
+    console.log("🎯 Ativo selecionado:", ativoSelecionado);
 
-      try {
-        const key = `diagrama_${ativoSelecionado}`;
-        const diagramaSalvo = localStorage.getItem(key);
+    try {
+      const key = `diagrama_${ativoSelecionado}`;
+      console.log("🔑 Buscando key:", key);
+      
+      const diagramaSalvo = localStorage.getItem(key);
+      console.log("📦 Dados encontrados?", diagramaSalvo ? "SIM" : "NÃO");
 
-        if (diagramaSalvo) {
-          const data = JSON.parse(diagramaSalvo);
-          console.log("✅ Dados encontrados:", data);
+      if (diagramaSalvo) {
+        const data = JSON.parse(diagramaSalvo);
+        console.log("✅ Dados parseados:", {
+          componentes: data.componentes?.length || 0,
+          connections: data.connections?.length || 0,
+          ultimaAtualizacao: data.ultimaAtualizacao
+        });
 
-          if (
-            data.componentes &&
-            Array.isArray(data.componentes) &&
-            data.componentes.length > 0
-          ) {
-            setComponentes(data.componentes);
-            setConnections(data.connections || []);
-            setJunctionPoints(data.junctionPoints || []);
-            console.log(
-              "📊 Diagrama restaurado:",
-              data.componentes.length,
-              "componentes,",
-              (data.junctionPoints || []).length,
-              "junctions"
-            );
-          } else {
-            setComponentes(getDiagramaPadrao());
-            setConnections([]);
-            setJunctionPoints([]);
-          }
+        if (data.componentes && Array.isArray(data.componentes) && data.componentes.length > 0) {
+          setComponentes(data.componentes);
+          setConnections(data.connections || []);
+          console.log("📊 Diagrama restaurado com sucesso!");
         } else {
-          console.log("📋 Usando diagrama padrão");
+          console.log("⚠️ Dados inválidos, usando diagrama padrão");
           setComponentes(getDiagramaPadrao());
           setConnections([]);
         }
-      } catch (error) {
-        console.error("Erro ao carregar:", error);
+      } else {
+        console.log("📋 Nenhum dado salvo, usando diagrama padrão");
         setComponentes(getDiagramaPadrao());
         setConnections([]);
-        setJunctionPoints([]);
       }
+    } catch (error) {
+      console.error("❌ Erro ao carregar:", error);
+      setComponentes(getDiagramaPadrao());
+      setConnections([]);
+    }
 
-      setDiagramaCarregado(true);
-    };
+    setDiagramaCarregado(true);
+    console.log("✅ Carregamento finalizado");
+  };
 
-    carregarDiagrama();
-  }, [ativoSelecionado, getDiagramaPadrao]);
+  carregarDiagrama();
+}, [ativoSelecionado, getDiagramaPadrao]); 
 
   // AUTO-SAVE quando houver mudanças
   useEffect(() => {
@@ -1444,7 +1521,6 @@ export function SinopticoAtivoPage() {
           ativoId: ativoSelecionado,
           componentes,
           connections,
-          junctionPoints,
           ultimaAtualizacao: new Date().toISOString(),
           versao: "1.0",
         };
@@ -1455,9 +1531,7 @@ export function SinopticoAtivoPage() {
           "💾 Auto-save:",
           key,
           componentes.length,
-          "componentes",
-          junctionPoints.length,
-          "junctions"
+          "componentes"
         );
       } catch (error) {
         console.error("❌ Erro auto-save:", error);
@@ -1468,7 +1542,6 @@ export function SinopticoAtivoPage() {
   }, [
     componentes,
     connections,
-    junctionPoints,
     diagramaCarregado,
     ativoSelecionado,
   ]);
@@ -2313,76 +2386,104 @@ export function SinopticoAtivoPage() {
     updateDiagram(undefined, []);
     setConnecting(null);
   };
-  const adicionarJunctionPoint = useCallback((junction: JunctionPoint) => {
-    setJunctionPoints((prev) => [...prev, junction]);
-    setModoAdicionarJunction(false);
-    console.log("✅ Junction point adicionado:", junction);
-  }, []);
 
-  const removerJunctionPoint = useCallback((junctionId: string) => {
-    setJunctionPoints((prev) => prev.filter((jp) => jp.id !== junctionId));
-    console.log("🗑️ Junction point removido:", junctionId);
-  }, []);
+  // Função para criar junction node INVISÍVEL ao clicar em uma edge
+  const handleEdgeClick = useCallback(
+    (event: React.MouseEvent, connection: Connection) => {
+      if (!modoEdicao || !canvasRef.current) return;
 
-  const atualizarJunctionPoint = useCallback(
-    (junctionId: string, position: { x: number; y: number }) => {
-      setJunctionPoints((prev) =>
-        prev.map((jp) => (jp.id === junctionId ? { ...jp, position } : jp))
-      );
-    },
-    []
-  );
-
-  const toggleModoAdicionarJunction = () => {
-    setModoAdicionarJunction((prev) => !prev);
-    console.log(
-      modoAdicionarJunction ? "🔵 Modo junction OFF" : "🟢 Modo junction ON"
-    );
-  };
-
-  const salvarDiagrama = useCallback(() => {
-    console.log("💾 Salvando diagrama para ativo:", ativoSelecionado);
-
-    try {
-      const diagramaData = {
-        ativoId: ativoSelecionado,
-        componentes,
-        connections,
-        junctionPoints,
-        ultimaAtualizacao: new Date().toISOString(),
-        versao: "1.0",
+      const rect = canvasRef.current.getBoundingClientRect();
+      const clickPoint = {
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top,
       };
 
-      const key = `diagrama_${ativoSelecionado}`;
-      localStorage.setItem(key, JSON.stringify(diagramaData));
-
-      console.log(
-        "💾 Salvo:",
-        key,
-        componentes.length,
-        "componentes",
-        junctionPoints.length,
-        "junctions"
+      // Detectar se o clique foi próximo à linha
+      const isNearEdge = detectEdgeClick(
+        clickPoint,
+        connection,
+        componentes,
+        rect,
+        10 // threshold de 10 pixels
       );
 
-      const verificacao = localStorage.getItem(key);
-      if (verificacao) {
-        alert(
-          `Diagrama salvo!\nAtivo: ${ativoSelecionado}\nComponentes: ${componentes.length}\nJunction Points: $(junctionPoints.length)`
+      if (isNearEdge) {
+        // Calcular posição do junction na linha
+        const junctionPosition = calculateJunctionPositionOnLine(
+          clickPoint,
+          connection,
+          componentes,
+          rect
         );
-      }
-    } catch (error) {
-      console.error("❌ Erro ao salvar:", error);
-      alert("Erro ao salvar diagrama!");
-    }
-  }, [
-    ativoSelecionado,
-    componentes,
-    connections,
-    junctionPoints,
-    ativoSelecionado,
-  ]);
 
+        if (junctionPosition) {
+          // Criar o junction node INVISÍVEL
+          const junctionNode = createJunctionNode(junctionPosition, componentes);
+
+          // Dividir a conexão original em duas
+          const { connection1, connection2 } = splitConnectionWithJunction(
+            connection,
+            junctionNode.id
+          );
+
+          // Atualizar o diagrama
+          const newConnections = connections
+            .filter((c) => c.id !== connection.id) // Remove conexão original
+            .concat([connection1, connection2]); // Adiciona as duas novas
+
+          updateDiagram([...componentes, junctionNode], newConnections);
+
+          console.log("✅ Junction invisível criado:", junctionNode.id);
+        }
+      }
+    },
+    [modoEdicao, componentes, connections, updateDiagram]
+  );
+
+  const salvarDiagrama = useCallback(() => {
+  console.log("💾 === SALVAMENTO MANUAL INICIADO ===");
+  console.log("📊 Ativo:", ativoSelecionado);
+  console.log("📦 Componentes:", componentes.length);
+  console.log("🔗 Conexões:", connections.length);
+  console.log("📋 Componentes:", componentes.map(c => ({ id: c.id, tipo: c.tipo, nome: c.nome })));
+
+  try {
+    const diagramaData = {
+      ativoId: ativoSelecionado,
+      componentes,
+      connections,
+      ultimaAtualizacao: new Date().toISOString(),
+      versao: "1.0",
+    };
+
+    const key = `diagrama_${ativoSelecionado}`;
+    const dataString = JSON.stringify(diagramaData);
+    
+    console.log("🔑 Key:", key);
+    console.log("📏 Tamanho dos dados:", dataString.length, "caracteres");
+
+    localStorage.setItem(key, dataString);
+    console.log("✅ Dados salvos no localStorage");
+
+    // Verificação imediata
+    const verificacao = localStorage.getItem(key);
+    if (verificacao) {
+      const dadosVerificados = JSON.parse(verificacao);
+      console.log("✅ VERIFICAÇÃO: Dados recuperados com sucesso!");
+      console.log("📦 Componentes verificados:", dadosVerificados.componentes.length);
+      console.log("🔗 Conexões verificadas:", dadosVerificados.connections.length);
+      
+      alert(`✅ Diagrama salvo com sucesso!\n\nAtivo: ${ativoSelecionado}\nComponentes: ${componentes.length}\nConexões: ${connections.length}`);
+    } else {
+      console.error("❌ ERRO: Dados não encontrados após salvar!");
+      alert("❌ Erro: Não foi possível verificar o salvamento!");
+    }
+  } catch (error) {
+    console.error("❌ ERRO ao salvar:", error);
+    alert(`❌ Erro ao salvar diagrama: ${error}`);
+  }
+}, [ativoSelecionado, componentes, connections]); 
+    
   // LOADING STATE - Não renderizar até carregar
   if (!diagramaCarregado) {
     return (
@@ -2511,6 +2612,7 @@ export function SinopticoAtivoPage() {
                         Selecione um componente
                       </option>
                       <optgroup label="Componentes Básicos">
+                        <option value="PONTO">Ponto (Junção)</option>
                         <option value="MEDIDOR">Medidor</option>
                         <option value="TRANSFORMADOR">Transformador</option>
                         <option value="INVERSOR">Inversor</option>
@@ -2518,10 +2620,10 @@ export function SinopticoAtivoPage() {
                         <option value="BOTOEIRA">Botoeira</option>
                         <option value="CHAVE_ABERTA">Chave Aberta</option>
                         <option value="CHAVE_FECHADA">Chave Fechada</option>
+                        <option value="CHAVE_FUSIVEL">Chave Fusível</option>
                         <option value="RELE">Relé</option>
                         <option value="MOTOR">Motor</option>
                         <option value="CAPACITOR">Capacitor</option>
-                        <option value="MOTOR">Motor</option>
                       </optgroup>
                       <optgroup label="Subestação">
                         <option value="TSA">TSA</option>
@@ -2586,18 +2688,6 @@ export function SinopticoAtivoPage() {
                         title="Limpar conexões"
                       >
                         <X className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant={modoAdicionarJunction ? "default" : "outline"}
-                        size="sm"
-                        onClick={toggleModoAdicionarJunction}
-                        className="flex items-center gap-2"
-                        title="Adicionar ponto de junção nas linhas"
-                      >
-                        <Circle className="h-4 w-4" />
-                        {modoAdicionarJunction
-                          ? "Clique na linha"
-                          : "Adicionar Junção"}
                       </Button>
                       {componenteEditando && (
                         <>
@@ -2778,7 +2868,7 @@ export function SinopticoAtivoPage() {
                         componentes={componentes}
                         containerRef={canvasRef}
                         modoEdicao={false}
-                        junctionPoints={junctionPoints}
+                        onEdgeClick={handleEdgeClick}
                         className="z-30"
                       />
 
@@ -2816,7 +2906,6 @@ export function SinopticoAtivoPage() {
                     <div className="text-xs text-muted-foreground flex items-center gap-3">
                       <span>Componentes: {componentes.length}</span>
                       <span>Conexões: {connections.length}</span>
-                      <span>Junções: {junctionPoints.length}</span>
                       <span>Histórico: {canUndo ? "Disponível" : "Vazio"}</span>
                     </div>
                     <Button
@@ -2840,11 +2929,7 @@ export function SinopticoAtivoPage() {
                     modoEdicao={true}
                     connecting={connecting}
                     onRemoverConexao={removerConexao}
-                    junctionPoints={junctionPoints}
-                    onAddJunctionPoint={adicionarJunctionPoint} 
-                    onRemoveJunctionPoint={removerJunctionPoint} 
-                    onUpdateJunctionPoint={atualizarJunctionPoint} 
-                    modoAdicionarJunction={modoAdicionarJunction}
+                    onEdgeClick={handleEdgeClick}
                     className="z-30"
                   />
 
@@ -2873,15 +2958,18 @@ export function SinopticoAtivoPage() {
                           status={componente.status}
                           onClick={() => handleComponenteClick(componente)}
                         />
-                        <div className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs font-medium text-muted-foreground bg-background/90 px-2 py-1 rounded whitespace-nowrap border">
-                          {componente.nome}
-                        </div>
+                        {/* Não mostrar nome para junction nodes e pontos */}
+                        {componente.tipo !== "JUNCTION" && componente.tipo !== "PONTO" && (
+                          <div className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs font-medium text-muted-foreground bg-background/90 px-2 py-1 rounded whitespace-nowrap border">
+                            {componente.nome}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
 
                   {/* Overlay de Edição */}
-                  <div className="absolute inset-0 z-20 pointer-events-none">
+                  <div className="absolute inset-0 z-40 pointer-events-none">
                     {componentes.map((componente) => (
                       <div
                         key={`overlay-${componente.id}`}
@@ -2933,7 +3021,7 @@ export function SinopticoAtivoPage() {
                             ].map(({ port, style }) => (
                               <div
                                 key={port}
-                                className={`absolute w-5 h-5 rounded-full border-2 border-background cursor-pointer transition-all duration-200 pointer-events-auto z-30 hover:scale-110 shadow-lg ${
+                                className={`absolute w-6 h-6 rounded-full border-2 border-background cursor-pointer transition-all duration-200 pointer-events-auto z-50 hover:scale-110 shadow-lg ${
                                   connecting &&
                                   connecting.from === componente.id &&
                                   connecting.port === port
@@ -2948,6 +3036,12 @@ export function SinopticoAtivoPage() {
                                 }`}
                                 style={style as React.CSSProperties}
                                 onClick={(e) => {
+                                  console.log('PORTA CLICADA:', {
+                                    componente: componente.id,
+                                    port,
+                                    connecting,
+                                    modoFerramenta
+                                  });
                                   e.preventDefault();
                                   e.stopPropagation();
                                   startConnection(
@@ -2985,7 +3079,11 @@ export function SinopticoAtivoPage() {
 
                         {/* Área de Interação - CORRIGIDO */}
                         <div
-                          className="absolute inset-0 pointer-events-auto"
+                          className={`absolute inset-0 ${
+                            modoFerramenta === "conectar"
+                              ? "pointer-events-none"
+                              : "pointer-events-auto"
+                          }`}
                           style={{
                             cursor:
                               modoFerramenta === "selecionar"

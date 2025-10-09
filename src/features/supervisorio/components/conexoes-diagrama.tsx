@@ -17,13 +17,6 @@ interface Connection {
   to: string;
   fromPort: "top" | "bottom" | "left" | "right";
   toPort: "top" | "bottom" | "left" | "right";
-  junctionPoints?: string[];
-}
-
-interface JunctionPoint {
-  id: string;
-  position: { x: number; y: number };
-  connectionId: string;
 }
 
 interface ConexoesDiagramaProps {
@@ -33,14 +26,7 @@ interface ConexoesDiagramaProps {
   modoEdicao?: boolean;
   connecting?: { from: string; port: string } | null;
   onRemoverConexao?: (connectionId: string) => void;
-  junctionPoints?: JunctionPoint[];
-  onAddJunctionPoint?: (junctionPoint: JunctionPoint) => void;
-  onRemoveJunctionPoint?: (junctionId: string) => void;
-  onUpdateJunctionPoint?: (
-    junctionId: string,
-    position: { x: number; y: number }
-  ) => void;
-  modoAdicionarJunction?: boolean;
+  onEdgeClick?: (event: React.MouseEvent, connection: Connection) => void;
   className?: string;
 }
 
@@ -54,8 +40,10 @@ const getPortOffset = (
     TRANSFORMADOR: { width: 48, height: 32 },
     INVERSOR: { width: 32, height: 32 },
     DISJUNTOR: { width: 32, height: 16 },
+    PONTO: { width: 12, height: 12 },
     MOTOR: { width: 32, height: 32 },
     CAPACITOR: { width: 32, height: 32 },
+    CHAVE_FUSIVEL: { width: 48, height: 32 },
     TSA: { width: 48, height: 40 },
     RETIFICADOR: { width: 32, height: 24 },
     BANCO_BATERIAS: { width: 40, height: 24 },
@@ -66,6 +54,7 @@ const getPortOffset = (
     CFTV: { width: 28, height: 28 },
     TELECOM: { width: 28, height: 28 },
     BARRAMENTO: { width: 40, height: 12 },
+    JUNCTION: { width: 10, height: 10 }, // Junction node - muito pequeno
   };
 
   const size = componentSizes[tipo] || { width: 32, height: 32 };
@@ -118,33 +107,6 @@ const getConnectionStyle = (
   }
 };
 
-// Calcular ponto mais próximo em uma linha
-const getClosestPointOnLine = (
-  lineStart: { x: number; y: number },
-  lineEnd: { x: number; y: number },
-  point: { x: number; y: number }
-): { x: number; y: number } => {
-  const dx = lineEnd.x - lineStart.x;
-  const dy = lineEnd.y - lineStart.y;
-  const length = Math.sqrt(dx * dx + dy * dy);
-
-  if (length === 0) return lineStart;
-
-  const t = Math.max(
-    0,
-    Math.min(
-      1,
-      ((point.x - lineStart.x) * dx + (point.y - lineStart.y) * dy) /
-        (length * length)
-    )
-  );
-
-  return {
-    x: lineStart.x + t * dx,
-    y: lineStart.y + t * dy,
-  };
-};
-
 export function ConexoesDiagrama({
   connections,
   componentes,
@@ -152,19 +114,13 @@ export function ConexoesDiagrama({
   modoEdicao = false,
   connecting = null,
   onRemoverConexao,
-  junctionPoints = [],
-  onAddJunctionPoint,
-  onRemoveJunctionPoint,
-  onUpdateJunctionPoint,
-  modoAdicionarJunction = false,
+  onEdgeClick,
   className = "",
 }: ConexoesDiagramaProps) {
   const [containerRect, setContainerRect] = useState<DOMRect | null>(null);
   const [hoveredConnection, setHoveredConnection] = useState<string | null>(
     null
   );
-  const [hoveredJunction, setHoveredJunction] = useState<string | null>(null);
-  const [draggingJunction, setDraggingJunction] = useState<string | null>(null);
 
   // Atualizar dimensões do container
   useEffect(() => {
@@ -188,59 +144,7 @@ export function ConexoesDiagrama({
     };
   }, [containerRef]);
 
-  // Handler para clique na linha (adicionar junction point)
-  const handleLineClick = (
-    event: React.MouseEvent<SVGLineElement>,
-    connection: Connection,
-    fromX: number,
-    fromY: number,
-    toX: number,
-    toY: number
-  ) => {
-    if (!modoAdicionarJunction || !onAddJunctionPoint) return;
-
-    event.stopPropagation();
-
-    const svg = (event.target as SVGElement).ownerSVGElement;
-    if (!svg) return;
-
-    const rect = svg.getBoundingClientRect();
-    const clickX = event.clientX - rect.left;
-    const clickY = event.clientY - rect.top;
-
-    // Calcular ponto mais próximo na linha
-    const closestPoint = getClosestPointOnLine(
-      { x: fromX, y: fromY },
-      { x: toX, y: toY },
-      { x: clickX, y: clickY }
-    );
-
-    // Converter para porcentagem
-    const percentX = (closestPoint.x / rect.width) * 100;
-    const percentY = (closestPoint.y / rect.height) * 100;
-
-    const newJunction: JunctionPoint = {
-      id: `junction-${Date.now()}`,
-      position: { x: percentX, y: percentY },
-      connectionId: connection.id,
-    };
-
-    onAddJunctionPoint(newJunction);
-    console.log("✅ Junction adicionado:", newJunction);
-  };
-
-  // Handler para arrastar junction point
-  const handleJunctionMouseMove = (event: React.MouseEvent) => {
-    if (!draggingJunction || !onUpdateJunctionPoint || !containerRect) return;
-
-    const rect = containerRect;
-    const x = ((event.clientX - rect.left) / rect.width) * 100;
-    const y = ((event.clientY - rect.top) / rect.height) * 100;
-
-    onUpdateJunctionPoint(draggingJunction, { x, y });
-  };
-
-  if (!containerRect || connections.length === 0) {
+  if (!containerRect) {
     return null;
   }
 
@@ -248,8 +152,6 @@ export function ConexoesDiagrama({
     <svg
       className={`absolute inset-0 w-full h-full z-10 ${className}`}
       style={{ pointerEvents: modoEdicao ? "auto" : "none" }}
-      onMouseMove={handleJunctionMouseMove}
-      onMouseUp={() => setDraggingJunction(null)}
     >
       {/* Definições de markers */}
       <defs>
@@ -322,73 +224,36 @@ export function ConexoesDiagrama({
 
         const isHovered = hoveredConnection === connection.id;
 
-        // Obter junction points desta conexão
-        const connJunctions = junctionPoints.filter(
-          (jp) => jp.connectionId === connection.id
-        );
-
-        // Ordenar junction points ao longo da linha
-        const sortedJunctions = [...connJunctions].sort((a, b) => {
-          const aX = (a.position.x / 100) * containerRect.width;
-          const aY = (a.position.y / 100) * containerRect.height;
-          const bX = (b.position.x / 100) * containerRect.width;
-          const bY = (b.position.y / 100) * containerRect.height;
-
-          const distA = Math.sqrt(
-            Math.pow(aX - fromX, 2) + Math.pow(aY - fromY, 2)
-          );
-          const distB = Math.sqrt(
-            Math.pow(bX - fromX, 2) + Math.pow(bY - fromY, 2)
-          );
-          return distA - distB;
-        });
-
-        // Criar pontos da linha (incluindo junctions)
-        const linePoints = [
-          { x: fromX, y: fromY },
-          ...sortedJunctions.map((jp) => ({
-            x: (jp.position.x / 100) * containerRect.width,
-            y: (jp.position.y / 100) * containerRect.height,
-          })),
-          { x: toX, y: toY },
-        ];
-
         return (
           <g key={connection.id}>
-            {/* Renderizar segmentos da linha */}
-            {linePoints.slice(0, -1).map((point, index) => (
-              <line
-                key={`${connection.id}-segment-${index}`}
-                x1={point.x}
-                y1={point.y}
-                x2={linePoints[index + 1].x}
-                y2={linePoints[index + 1].y}
-                className={`${connectionStyle.stroke} ${
-                  modoAdicionarJunction ? "cursor-crosshair" : "cursor-pointer"
-                } transition-all`}
-                strokeWidth={isHovered ? "6" : connectionStyle.strokeWidth}
-                opacity={connectionStyle.opacity}
-                style={{ pointerEvents: "stroke" }}
-                onMouseEnter={() => setHoveredConnection(connection.id)}
-                onMouseLeave={() => setHoveredConnection(null)}
-                onClick={(e) => {
-                  if (modoAdicionarJunction) {
-                    handleLineClick(
-                      e,
-                      connection,
-                      point.x,
-                      point.y,
-                      linePoints[index + 1].x,
-                      linePoints[index + 1].y
-                    );
-                  } else if (onRemoverConexao && modoEdicao) {
-                    if (window.confirm("Deseja remover esta conexão?")) {
-                      onRemoverConexao(connection.id);
-                    }
+            {/* Linha de conexão */}
+            <line
+              x1={fromX}
+              y1={fromY}
+              x2={toX}
+              y2={toY}
+              className={`${connectionStyle.stroke} cursor-pointer transition-all`}
+              strokeWidth={isHovered ? "6" : connectionStyle.strokeWidth}
+              opacity={connectionStyle.opacity}
+              style={{ pointerEvents: "stroke" }}
+              onMouseEnter={() => setHoveredConnection(connection.id)}
+              onMouseLeave={() => setHoveredConnection(null)}
+              onClick={(e) => {
+                if (!modoEdicao) return;
+
+                // Ctrl + Click = Criar junction invisível
+                if (e.ctrlKey && onEdgeClick) {
+                  e.stopPropagation();
+                  onEdgeClick(e, connection);
+                }
+                // Click normal = Remover conexão
+                else if (onRemoverConexao) {
+                  if (window.confirm("Deseja remover esta conexão?")) {
+                    onRemoverConexao(connection.id);
                   }
-                }}
-              />
-            ))}
+                }
+              }}
+            />
 
             {/* Pontos de conexão */}
             <circle
@@ -410,26 +275,35 @@ export function ConexoesDiagrama({
             {modoEdicao && isHovered && (
               <g>
                 <rect
-                  x={(fromX + toX) / 2 - 50}
-                  y={(fromY + toY) / 2 - 15}
-                  width="100"
-                  height="30"
+                  x={(fromX + toX) / 2 - 70}
+                  y={(fromY + toY) / 2 - 20}
+                  width="140"
+                  height="40"
                   rx="4"
                   className="fill-background stroke-border"
                   strokeWidth="1"
                 />
                 <text
                   x={(fromX + toX) / 2}
-                  y={(fromY + toY) / 2}
+                  y={(fromY + toY) / 2 - 5}
                   textAnchor="middle"
                   dominantBaseline="central"
-                  fontSize="10"
+                  fontSize="9"
                   className="fill-foreground"
                   style={{ pointerEvents: "none" }}
                 >
-                  {modoAdicionarJunction
-                    ? "Clique para adicionar"
-                    : "Clique para remover"}
+                  Clique para remover
+                </text>
+                <text
+                  x={(fromX + toX) / 2}
+                  y={(fromY + toY) / 2 + 8}
+                  textAnchor="middle"
+                  dominantBaseline="central"
+                  fontSize="8"
+                  className="fill-muted-foreground"
+                  style={{ pointerEvents: "none" }}
+                >
+                  Ctrl+Click = Junção
                 </text>
               </g>
             )}
@@ -437,89 +311,8 @@ export function ConexoesDiagrama({
         );
       })}
 
-      {/* Renderizar Junction Points */}
-      {junctionPoints.map((junction) => {
-        const junctionX = (junction.position.x / 100) * containerRect.width;
-        const junctionY = (junction.position.y / 100) * containerRect.height;
-        const isHovered = hoveredJunction === junction.id;
-
-        return (
-          <g key={junction.id}>
-            {/* Área de hit maior */}
-            <circle
-              cx={junctionX}
-              cy={junctionY}
-              r="15"
-              fill="transparent"
-              className="cursor-move"
-              style={{ pointerEvents: "all" }}
-              onMouseDown={(e) => {
-                e.stopPropagation();
-                setDraggingJunction(junction.id);
-              }}
-              onMouseEnter={() => setHoveredJunction(junction.id)}
-              onMouseLeave={() => setHoveredJunction(null)}
-            />
-
-            {/* Ponto visual */}
-            <circle
-              cx={junctionX}
-              cy={junctionY}
-              r={isHovered ? "8" : "6"}
-              fill="#10b981"
-              stroke="#fff"
-              strokeWidth="2"
-              className="pointer-events-none transition-all"
-            />
-
-            {/* Botão remover */}
-            {isHovered && onRemoveJunctionPoint && (
-              <g
-                className="cursor-pointer"
-                style={{ pointerEvents: "all" }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onRemoveJunctionPoint(junction.id);
-                }}
-              >
-                <circle
-                  cx={junctionX + 15}
-                  cy={junctionY - 15}
-                  r="8"
-                  fill="#ef4444"
-                  className="transition-opacity"
-                />
-                <line
-                  x1={junctionX + 12}
-                  y1={junctionY - 15}
-                  x2={junctionX + 18}
-                  y2={junctionY - 15}
-                  stroke="white"
-                  strokeWidth="2"
-                  className="pointer-events-none"
-                />
-              </g>
-            )}
-          </g>
-        );
-      })}
-
-      {/* Indicador quando está no modo adicionar junction */}
-      {modoAdicionarJunction && modoEdicao && (
-        <text
-          x={containerRect.width / 2}
-          y="30"
-          textAnchor="middle"
-          fontSize="14"
-          fontWeight="600"
-          className="fill-green-600 animate-pulse"
-        >
-          Clique em uma linha para adicionar ponto de junção
-        </text>
-      )}
-
       {/* Indicador quando está conectando */}
-      {connecting && modoEdicao && !modoAdicionarJunction && (
+      {connecting && modoEdicao && (
         <text
           x={containerRect.width / 2}
           y="30"

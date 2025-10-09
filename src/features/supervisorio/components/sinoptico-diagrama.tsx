@@ -219,25 +219,35 @@ const ElectricalSymbol = ({
           </svg>
         );
         case "BARRAMENTO":
-  return (
+            return (
     <svg
-      width="100"
-      height="16"
-      viewBox="0 0 100 16"
+      width="80"
+      height="13"
+      viewBox="0 0 100 20"
       className="drop-shadow-sm"
     >
+      {/* Barra horizontal - mais grossa e simples */}
       <rect
-        x="0"
-        y="4"
-        width="100"
+        x="5"
+        y="6"
+        width="90"
         height="8"
-        fill="#22c55e"
-        stroke="#16a34a"
+        className={statusClasses.fill}
+        rx="2"
+      />
+      {/* Contorno */}
+      <rect
+        x="5"
+        y="6"
+        width="90"
+        height="8"
+        className={`${statusClasses.stroke} fill-none`}
         strokeWidth="2"
         rx="2"
       />
     </svg>
   );
+  
       case "BOTOEIRA":
        return (
       <svg width="32" height="32" viewBox="0 0 40 40" className="drop-shadow-sm">
@@ -265,6 +275,24 @@ case "CHAVE_FECHADA":
       <circle cx="30" cy="20" r="4" className={`${statusClasses.stroke} fill-background`} strokeWidth="2" />
       {/* Linha horizontal = fechada */}
       <line x1="10" y1="20" x2="30" y2="20" className="stroke-green-600" strokeWidth="2" />
+    </svg>
+  );
+  case "CHAVE_FUSIVEL":
+        return (
+          <svg width="48" height="32" viewBox="0 0 60 40" className="drop-shadow-sm">
+            <line x1="5" y1="20" x2="22" y2="20" className={statusClasses.stroke} strokeWidth="2.5" />
+            <circle cx="30" cy="20" r="10" className={`${statusClasses.stroke} fill-background`} strokeWidth="2.5" />
+            <path d="M 22 20 A 8 8 0 0 0 38 20" className={statusClasses.stroke} strokeWidth="2" fill="none" />
+            <line x1="38" y1="20" x2="55" y2="20" className={statusClasses.stroke} strokeWidth="2.5" />
+            <circle cx="5" cy="20" r="2.5" className={statusClasses.fill} />
+            <circle cx="55" cy="20" r="2.5" className={statusClasses.fill} />
+            <text x="30" y="20" textAnchor="middle" dominantBaseline="middle" fontSize="7" fontWeight="600" className={statusClasses.fill}>CF</text>
+          </svg>
+        );
+        case "PONTO":
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" className="drop-shadow-sm">
+      <circle cx="6" cy="6" r="5" className={statusClasses.fill} />
     </svg>
   );
 
@@ -1163,6 +1191,24 @@ case "RELE":
           </svg>
         );
 
+      case "JUNCTION":
+        // Junction node - apenas um pequeno ponto azul
+        return (
+          <svg
+            width="6"
+            height="6"
+            viewBox="0 0 6 6"
+            style={{ overflow: "visible" }}
+          >
+            <circle
+              cx="3"
+              cy="3"
+              r="2.5"
+              className="fill-blue-600 dark:fill-blue-400"
+            />
+          </svg>
+        );
+
       default:
         return (
           <svg
@@ -1266,16 +1312,18 @@ export function SinopticoDiagrama({
                 status={componente.status}
               />
 
-              {/* Label do componente */}
-              <div
-                className={`absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs font-medium text-muted-foreground bg-background/90 px-2 py-1 rounded whitespace-nowrap border transition-opacity ${
-                  hoveredComponent === componente.id
-                    ? "opacity-100"
-                    : "opacity-80"
-                }`}
-              >
-                {componente.nome}
-              </div>
+           {/* Label do componente - NÃO mostrar para PONTO, PONTO_JUNCAO ou JUNCTION */}
+{componente.tipo !== "PONTO" && componente.tipo !== "PONTO_JUNCAO" && componente.tipo !== "JUNCTION" && (
+  <div
+    className={`absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs font-medium text-muted-foreground bg-background/90 px-2 py-1 rounded whitespace-nowrap border transition-opacity ${
+      hoveredComponent === componente.id
+        ? "opacity-100"
+        : "opacity-80"
+    }`}
+  >
+    {componente.nome}
+  </div>
+)}
 
               {/* Highlight no hover */}
               {hoveredComponent === componente.id && (

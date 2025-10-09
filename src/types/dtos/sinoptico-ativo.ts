@@ -47,6 +47,7 @@ export interface ComponenteDU {
     | "MOTOR"
     | "CAPACITOR"
     | "DISJUNTOR"
+    | "CHAVE_FUSIVEL"
     | "BARRAMENTO";
   nome: string;
   posicao: { x: number; y: number };
