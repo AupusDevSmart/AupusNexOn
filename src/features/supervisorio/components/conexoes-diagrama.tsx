@@ -216,6 +216,58 @@ export function ConexoesDiagrama({
         const toX = toCenterX + toOffset.x;
         const toY = toCenterY + toOffset.y;
 
+        // ===== CALCULAR CAMINHO ORTOGONAL =====
+        const calculateOrthogonalPath = () => {
+          const path: string[] = [];
+
+          // Começar no ponto de origem
+          path.push(`M ${fromX} ${fromY}`);
+
+          // Determinar direção baseado nas portas
+          const fromPort = connection.fromPort;
+          const toPort = connection.toPort;
+
+          // Vertical (top/bottom)
+          if ((fromPort === 'top' || fromPort === 'bottom') &&
+              (toPort === 'top' || toPort === 'bottom')) {
+            const midY = (fromY + toY) / 2;
+            path.push(`L ${fromX} ${midY}`); // Linha vertical até meio
+            path.push(`L ${toX} ${midY}`);   // Linha horizontal
+            path.push(`L ${toX} ${toY}`);    // Linha vertical até destino
+          }
+          // Horizontal (left/right)
+          else if ((fromPort === 'left' || fromPort === 'right') &&
+                   (toPort === 'left' || toPort === 'right')) {
+            const midX = (fromX + toX) / 2;
+            path.push(`L ${midX} ${fromY}`); // Linha horizontal até meio
+            path.push(`L ${midX} ${toY}`);   // Linha vertical
+            path.push(`L ${toX} ${toY}`);    // Linha horizontal até destino
+          }
+          // Misto (perpendicular)
+          else {
+            // Calcula ponto intermediário baseado nas portas
+            if (fromPort === 'right' || fromPort === 'left') {
+              const midX = fromPort === 'right' ?
+                Math.max(fromX, toX) + 20 :
+                Math.min(fromX, toX) - 20;
+              path.push(`L ${midX} ${fromY}`);
+              path.push(`L ${midX} ${toY}`);
+            } else {
+              const midY = fromPort === 'bottom' ?
+                Math.max(fromY, toY) + 20 :
+                Math.min(fromY, toY) - 20;
+              path.push(`L ${fromX} ${midY}`);
+              path.push(`L ${toX} ${midY}`);
+            }
+            path.push(`L ${toX} ${toY}`);
+          }
+
+          return path.join(' ');
+        };
+
+        const pathData = calculateOrthogonalPath();
+        // ========================================
+
         const connectionStyle = getConnectionStyle(
           fromComponent,
           toComponent,
@@ -226,15 +278,13 @@ export function ConexoesDiagrama({
 
         return (
           <g key={connection.id}>
-            {/* Linha de conexão */}
-            <line
-              x1={fromX}
-              y1={fromY}
-              x2={toX}
-              y2={toY}
+            {/* Linha de conexão ORTOGONAL */}
+            <path
+              d={pathData}
               className={`${connectionStyle.stroke} cursor-pointer transition-all`}
               strokeWidth={isHovered ? "6" : connectionStyle.strokeWidth}
               opacity={connectionStyle.opacity}
+              fill="none"
               style={{ pointerEvents: "stroke" }}
               onMouseEnter={() => setHoveredConnection(connection.id)}
               onMouseLeave={() => setHoveredConnection(null)}

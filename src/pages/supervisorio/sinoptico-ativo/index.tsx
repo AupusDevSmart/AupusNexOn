@@ -2245,30 +2245,36 @@ useEffect(() => {
   );
 
   const handleMouseMove = useCallback(
-    (e: MouseEvent) => {
-      if (!isDragging || !componenteDragId || !canvasRef.current) return;
+  (e: MouseEvent) => {
+    if (!isDragging || !componenteDragId || !canvasRef.current) return;
 
-      const canvasRect = canvasRef.current.getBoundingClientRect();
-      const mouseX = e.clientX - canvasRect.left - dragOffset.x;
-      const mouseY = e.clientY - canvasRect.top - dragOffset.y;
+    const canvasRect = canvasRef.current.getBoundingClientRect();
+    const mouseX = e.clientX - canvasRect.left - dragOffset.x;
+    const mouseY = e.clientY - canvasRect.top - dragOffset.y;
 
-      let newX = (mouseX / canvasRect.width) * 100;
-      let newY = (mouseY / canvasRect.height) * 100;
+    let newX = (mouseX / canvasRect.width) * 100;
+    let newY = (mouseY / canvasRect.height) * 100;
 
-      // Aplicar limites
-      newX = Math.max(2, Math.min(98, newX));
-      newY = Math.max(2, Math.min(98, newY));
+    // ===== SNAP TO GRID (5%) =====
+    const gridSize = 5; // 5% da tela
+    newX = Math.round(newX / gridSize) * gridSize;
+    newY = Math.round(newY / gridSize) * gridSize;
+    // =============================
 
-      const newComponentes = componentes.map((comp) =>
-        comp.id === componenteDragId
-          ? { ...comp, posicao: { x: newX, y: newY } }
-          : comp
-      );
+    // Aplicar limites
+    newX = Math.max(2, Math.min(98, newX));
+    newY = Math.max(2, Math.min(98, newY));
 
-      setComponentes(newComponentes);
-    },
-    [isDragging, componenteDragId, dragOffset, componentes]
-  );
+    const newComponentes = componentes.map((comp) =>
+      comp.id === componenteDragId
+        ? { ...comp, posicao: { x: newX, y: newY } }
+        : comp
+    );
+
+    setComponentes(newComponentes);
+  },
+  [isDragging, componenteDragId, dragOffset, componentes]
+);
 
   const handleMouseUp = useCallback(() => {
     if (!isDragging) return;
