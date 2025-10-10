@@ -106,6 +106,8 @@ const ElectricalSymbol = ({
             height="32"
             viewBox="0 0 60 40"
             className="drop-shadow-sm"
+            transform="rotate(90)"
+            style={{ transformOrigin: "center" }}
           >
             <circle
               cx="15"
@@ -198,26 +200,83 @@ const ElectricalSymbol = ({
               y="2"
               width="36"
               height="16"
-              className={`${statusClasses.stroke} fill-background`}
+              className="fill-gray-600 dark:fill-gray-500"
               strokeWidth="2"
               rx="2"
             />
-            {status === "FALHA" ? (
-              <path
-                d="M8,10 L16,4 M24,16 L32,10"
-                className={statusClasses.stroke}
-                strokeWidth="2"
-              />
-            ) : (
-              <path
-                d="M8,10 L16,6 L24,14 L32,10"
-                className={statusClasses.stroke}
-                strokeWidth="2"
-                fill="none"
-              />
-            )}
-          </svg>
-        );
+             <rect
+        x="2"
+        y="2"
+        width="36"
+        height="16"
+        className={statusClasses.stroke}
+        strokeWidth="2"
+        rx="2"
+        fill="none"
+      />
+    </svg>
+  );
+  case "DISJUNTOR_FECHADO":
+  return (
+    <svg
+      width="32"
+      height="16"
+      viewBox="0 0 40 20"
+      className="drop-shadow-sm"
+    >
+      {/* Caixa vermelha preenchida - FECHADO/ENERGIZADO */}
+      <rect
+        x="2"
+        y="2"
+        width="36"
+        height="16"
+        className="fill-red-600 dark:fill-red-500"
+        rx="2"
+      />
+      {/* Contorno */}
+      <rect
+        x="2"
+        y="2"
+        width="36"
+        height="16"
+        className="stroke-red-800 dark:stroke-red-700"
+        strokeWidth="2"
+        rx="2"
+        fill="none"
+      />
+    </svg>
+  );
+
+case "DISJUNTOR_ABERTO":
+  return (
+    <svg
+      width="32"
+      height="16"
+      viewBox="0 0 40 20"
+      className="drop-shadow-sm"
+    >
+      {/* Caixa verde preenchida - ABERTO/DESENERGIZADO */}
+      <rect
+        x="2"
+        y="2"
+        width="36"
+        height="16"
+        className="fill-green-600 dark:fill-green-500"
+        rx="2"
+      />
+      {/* Contorno */}
+      <rect
+        x="2"
+        y="2"
+        width="36"
+        height="16"
+        className="stroke-green-800 dark:stroke-green-700"
+        strokeWidth="2"
+        rx="2"
+        fill="none"
+      />
+    </svg>
+  );
         case "BARRAMENTO":
             return (
     <svg

@@ -99,7 +99,9 @@ const TIPOS_COMPONENTES = [
     cor: "bg-green-500",
   },
   { tipo: "INVERSOR", icon: Zap, label: "Inversor", cor: "bg-yellow-500" },
-  { tipo: "DISJUNTOR", icon: Square, label: "Disjuntor", cor: "bg-red-500" },
+  { tipo: "DISJUNTOR", icon: Square, label: "Disjuntor (Sem Supervisão)", cor: "bg-red-500" },
+  { tipo: "DISJUNTOR_FECHADO", icon: Square, label: "Disjuntor Fechado", cor: "bg-red-500" },
+  { tipo: "DISJUNTOR_ABERTO", icon: Square, label: "Disjuntor Aberto", cor: "bg-red-500" },
   { tipo: "MOTOR", icon: Circle, label: "Motor", cor: "bg-purple-500" },
   { tipo: "BOTOEIRA", icon: Circle, label: "Botoeira", cor: "bg-cyan-500" },
   {
@@ -266,6 +268,8 @@ const ElectricalSymbol = ({
             height="32"
             viewBox="0 0 60 40"
             className="drop-shadow-sm"
+            transform="rotate(90)"
+            style={{ transformOrigin: "center" }}
           >
             <circle
               cx="15"
@@ -346,38 +350,96 @@ const ElectricalSymbol = ({
         );
 
       case "DISJUNTOR":
-        return (
-          <svg
-            width="32"
-            height="16"
-            viewBox="0 0 40 20"
-            className="drop-shadow-sm"
-          >
-            <rect
-              x="2"
-              y="2"
-              width="36"
-              height="16"
-              className={`${statusClasses.stroke} fill-background`}
-              strokeWidth="2"
-              rx="2"
-            />
-            {status === "FALHA" ? (
-              <path
-                d="M8,10 L16,4 M24,16 L32,10"
-                className={statusClasses.stroke}
-                strokeWidth="2"
-              />
-            ) : (
-              <path
-                d="M8,10 L16,6 L24,14 L32,10"
-                className={statusClasses.stroke}
-                strokeWidth="2"
-                fill="none"
-              />
-            )}
-          </svg>
-        );
+  return (
+    <svg
+      width="32"
+      height="16"
+      viewBox="0 0 40 20"
+      className="drop-shadow-sm"
+    >
+      {/* Caixa cinza preenchida */}
+      <rect
+        x="2"
+        y="2"
+        width="36"
+        height="16"
+        className="fill-gray-600 dark:fill-gray-500"
+        rx="2"
+      />
+      {/* Contorno */}
+      <rect
+        x="2"
+        y="2"
+        width="36"
+        height="16"
+        className={statusClasses.stroke}
+        strokeWidth="2"
+        rx="2"
+        fill="none"
+      />
+    </svg>
+  );
+  case "DISJUNTOR_FECHADO":
+  return (
+    <svg
+      width="32"
+      height="16"
+      viewBox="0 0 40 20"
+      className="drop-shadow-sm"
+    >
+      {/* Caixa vermelha preenchida - FECHADO/ENERGIZADO */}
+      <rect
+        x="2"
+        y="2"
+        width="36"
+        height="16"
+        className="fill-red-600 dark:fill-red-500"
+        rx="2"
+      />
+      {/* Contorno */}
+      <rect
+        x="2"
+        y="2"
+        width="36"
+        height="16"
+        className="stroke-red-800 dark:stroke-red-700"
+        strokeWidth="2"
+        rx="2"
+        fill="none"
+      />
+    </svg>
+  );
+
+case "DISJUNTOR_ABERTO":
+  return (
+    <svg
+      width="32"
+      height="16"
+      viewBox="0 0 40 20"
+      className="drop-shadow-sm"
+    >
+      {/* Caixa verde preenchida - ABERTO/DESENERGIZADO */}
+      <rect
+        x="2"
+        y="2"
+        width="36"
+        height="16"
+        className="fill-green-600 dark:fill-green-500"
+        rx="2"
+      />
+      {/* Contorno */}
+      <rect
+        x="2"
+        y="2"
+        width="36"
+        height="16"
+        className="stroke-green-800 dark:stroke-green-700"
+        strokeWidth="2"
+        rx="2"
+        fill="none"
+      />
+    </svg>
+  );
 
         case "BARRAMENTO":
             return (
@@ -2256,7 +2318,8 @@ useEffect(() => {
     let newY = (mouseY / canvasRect.height) * 100;
 
     // ===== SNAP TO GRID (5%) =====
-    const gridSize = 5; // 5% da tela
+    
+    const gridSize = 1; 
     newX = Math.round(newX / gridSize) * gridSize;
     newY = Math.round(newY / gridSize) * gridSize;
     // =============================
@@ -2622,7 +2685,9 @@ useEffect(() => {
                         <option value="MEDIDOR">Medidor</option>
                         <option value="TRANSFORMADOR">Transformador</option>
                         <option value="INVERSOR">Inversor</option>
-                        <option value="DISJUNTOR">Disjuntor</option>
+                        <option value="DISJUNTOR">Disjuntor (Sem Supervisão)</option>         
+                        <option value="DISJUNTOR_FECHADO">Disjuntor Fechado (Vermelho)</option> 
+                        <option value="DISJUNTOR_ABERTO">Disjuntor Aberto (Verde)</option>     
                         <option value="BOTOEIRA">Botoeira</option>
                         <option value="CHAVE_ABERTA">Chave Aberta</option>
                         <option value="CHAVE_FECHADA">Chave Fechada</option>

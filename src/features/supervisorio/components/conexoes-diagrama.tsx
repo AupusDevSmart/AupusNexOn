@@ -40,6 +40,8 @@ const getPortOffset = (
     TRANSFORMADOR: { width: 48, height: 32 },
     INVERSOR: { width: 32, height: 32 },
     DISJUNTOR: { width: 32, height: 16 },
+    DISJUNTOR_FECHADO: { width: 32, height: 16 },
+    DISJUNTOR_ABERTO: { width: 32, height: 16 },
     PONTO: { width: 12, height: 12 },
     MOTOR: { width: 32, height: 32 },
     CAPACITOR: { width: 32, height: 32 },
@@ -216,54 +218,77 @@ export function ConexoesDiagrama({
         const toX = toCenterX + toOffset.x;
         const toY = toCenterY + toOffset.y;
 
-        // ===== CALCULAR CAMINHO ORTOGONAL =====
-        const calculateOrthogonalPath = () => {
-          const path: string[] = [];
+        // ===== CALCULAR CAMINHO ORTOGONAL MELHORADO =====
+const calculateOrthogonalPath = () => {
+  const path: string[] = [];
 
-          // Começar no ponto de origem
-          path.push(`M ${fromX} ${fromY}`);
+  // Começar no ponto de origem
+  path.push(`M ${fromX} ${fromY}`);
 
-          // Determinar direção baseado nas portas
-          const fromPort = connection.fromPort;
-          const toPort = connection.toPort;
+  // Determinar direção baseado nas portas
+  const fromPort = connection.fromPort;
+  const toPort = connection.toPort;
 
-          // Vertical (top/bottom)
-          if ((fromPort === 'top' || fromPort === 'bottom') &&
-              (toPort === 'top' || toPort === 'bottom')) {
-            const midY = (fromY + toY) / 2;
-            path.push(`L ${fromX} ${midY}`); // Linha vertical até meio
-            path.push(`L ${toX} ${midY}`);   // Linha horizontal
-            path.push(`L ${toX} ${toY}`);    // Linha vertical até destino
-          }
-          // Horizontal (left/right)
-          else if ((fromPort === 'left' || fromPort === 'right') &&
-                   (toPort === 'left' || toPort === 'right')) {
-            const midX = (fromX + toX) / 2;
-            path.push(`L ${midX} ${fromY}`); // Linha horizontal até meio
-            path.push(`L ${midX} ${toY}`);   // Linha vertical
-            path.push(`L ${toX} ${toY}`);    // Linha horizontal até destino
-          }
-          // Misto (perpendicular)
-          else {
-            // Calcula ponto intermediário baseado nas portas
-            if (fromPort === 'right' || fromPort === 'left') {
-              const midX = fromPort === 'right' ?
-                Math.max(fromX, toX) + 20 :
-                Math.min(fromX, toX) - 20;
-              path.push(`L ${midX} ${fromY}`);
-              path.push(`L ${midX} ${toY}`);
-            } else {
-              const midY = fromPort === 'bottom' ?
-                Math.max(fromY, toY) + 20 :
-                Math.min(fromY, toY) - 20;
-              path.push(`L ${fromX} ${midY}`);
-              path.push(`L ${toX} ${midY}`);
-            }
-            path.push(`L ${toX} ${toY}`);
-          }
+  // Calcular diferenças
+  const deltaX = Math.abs(toX - fromX);
+  const deltaY = Math.abs(toY - fromY);
 
-          return path.join(' ');
-        };
+  // SE COMPONENTES ESTÃO QUASE ALINHADOS VERTICALMENTE (diferença X < 10px)
+  if (deltaX < 10 && (fromPort === 'top' || fromPort === 'bottom') && 
+      (toPort === 'top' || toPort === 'bottom')) {
+    // LINHA RETA VERTICAL - usa o X médio para garantir alinhamento perfeito
+    const avgX = (fromX + toX) / 2;
+    path.push(`L ${avgX} ${fromY}`);
+    path.push(`L ${avgX} ${toY}`);
+    path.push(`L ${toX} ${toY}`);
+  }
+  // SE COMPONENTES ESTÃO QUASE ALINHADOS HORIZONTALMENTE (diferença Y < 10px)
+  else if (deltaY < 10 && (fromPort === 'left' || fromPort === 'right') && 
+           (toPort === 'left' || toPort === 'right')) {
+    // LINHA RETA HORIZONTAL - usa o Y médio para garantir alinhamento perfeito
+    const avgY = (fromY + toY) / 2;
+    path.push(`L ${fromX} ${avgY}`);
+    path.push(`L ${toX} ${avgY}`);
+    path.push(`L ${toX} ${toY}`);
+  }
+  // Vertical (top/bottom) - conexão em sequência vertical
+  else if ((fromPort === 'top' || fromPort === 'bottom') && 
+      (toPort === 'top' || toPort === 'bottom')) {
+    const midY = (fromY + toY) / 2;
+    path.push(`L ${fromX} ${midY}`); // Linha vertical até meio
+    path.push(`L ${toX} ${midY}`);   // Linha horizontal
+    path.push(`L ${toX} ${toY}`);    // Linha vertical até destino
+  }
+  // Horizontal (left/right) - conexão em sequência horizontal
+  else if ((fromPort === 'left' || fromPort === 'right') && 
+           (toPort === 'left' || toPort === 'right')) {
+    const midX = (fromX + toX) / 2;
+    path.push(`L ${midX} ${fromY}`); // Linha horizontal até meio
+    path.push(`L ${midX} ${toY}`);   // Linha vertical
+    path.push(`L ${toX} ${toY}`);    // Linha horizontal até destino
+  }
+  // Misto (perpendicular)
+  else {
+    // Calcula ponto intermediário baseado nas portas
+    if (fromPort === 'right' || fromPort === 'left') {
+      const midX = fromPort === 'right' ? 
+        Math.max(fromX, toX) + 20 : 
+        Math.min(fromX, toX) - 20;
+      path.push(`L ${midX} ${fromY}`);
+      path.push(`L ${midX} ${toY}`);
+    } else {
+      const midY = fromPort === 'bottom' ? 
+        Math.max(fromY, toY) + 20 : 
+        Math.min(fromY, toY) - 20;
+      path.push(`L ${fromX} ${midY}`);
+      path.push(`L ${toX} ${midY}`);
+    }
+    path.push(`L ${toX} ${toY}`);
+  }
+
+  return path.join(' ');
+};
+// ================================================
 
         const pathData = calculateOrthogonalPath();
         // ========================================
