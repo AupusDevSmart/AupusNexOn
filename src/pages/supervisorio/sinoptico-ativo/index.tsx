@@ -3,12 +3,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
   Activity,
   ArrowLeft,
   Circle,
@@ -18,6 +12,7 @@ import {
   HardDrive,
   Link,
   Maximize,
+  Minimize,
   Move,
   Network,
   Redo,
@@ -1247,9 +1242,12 @@ case "PONTO_JUNCAO":
       onClick={onClick}
     >
       {renderSymbol()}
-      <div
-        className={`absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-background shadow-lg ${statusClasses.bg}`}
-      />
+      {/* Não mostrar indicador de status para PONTO e JUNCTION */}
+      {tipo !== "PONTO" && tipo !== "PONTO_JUNCAO" && tipo !== "JUNCTION" && (
+        <div
+          className={`absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-background shadow-lg ${statusClasses.bg}`}
+        />
+      )}
     </div>
   );
 };
@@ -1367,6 +1365,42 @@ export function SinopticoAtivoPage() {
   const [dragOffset, setDragOffset] = useState<Position>({ x: 0, y: 0 });
   const [componenteDragId, setComponenteDragId] = useState<string | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
+  const canvasFullscreenRef = useRef<HTMLDivElement>(null);
+  const diagramCardRef = useRef<HTMLDivElement>(null);
+
+  // Helper para pegar o canvas correto baseado no contexto
+  const getActiveCanvasRef = useCallback(() => {
+    return diagramaFullscreen ? canvasFullscreenRef : canvasRef;
+  }, [diagramaFullscreen]);
+
+  // Funções para gerenciar fullscreen nativo
+  const toggleFullscreen = useCallback(async () => {
+    if (!diagramCardRef.current) return;
+
+    try {
+      if (!document.fullscreenElement) {
+        await diagramCardRef.current.requestFullscreen();
+        setDiagramaFullscreen(true);
+      } else {
+        await document.exitFullscreen();
+        setDiagramaFullscreen(false);
+      }
+    } catch (error) {
+      console.error("Erro ao alternar fullscreen:", error);
+    }
+  }, []);
+
+  // Listener para mudanças no fullscreen (ESC, etc)
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setDiagramaFullscreen(!!document.fullscreenElement);
+    };
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+    };
+  }, []);
 
   // Estados para conexões
   const [connecting, setConnecting] = useState<{
@@ -2290,13 +2324,14 @@ useEffect(() => {
       e.stopPropagation();
 
       const component = componentes.find((c) => c.id === componentId);
-      if (!component || !canvasRef.current) return;
+      const activeCanvas = getActiveCanvasRef();
+      if (!component || !activeCanvas.current) return;
 
       setComponenteEditando(componentId);
       setComponenteDragId(componentId);
       setIsDragging(true);
 
-      const canvasRect = canvasRef.current.getBoundingClientRect();
+      const canvasRect = activeCanvas.current.getBoundingClientRect();
       const componentX = (component.posicao.x / 100) * canvasRect.width;
       const componentY = (component.posicao.y / 100) * canvasRect.height;
 
@@ -2305,14 +2340,15 @@ useEffect(() => {
         y: e.clientY - canvasRect.top - componentY,
       });
     },
-    [modoFerramenta, modoEdicao, componentes]
+    [modoFerramenta, modoEdicao, componentes, getActiveCanvasRef]
   );
 
   const handleMouseMove = useCallback(
   (e: MouseEvent) => {
-    if (!isDragging || !componenteDragId || !canvasRef.current) return;
+    const activeCanvas = getActiveCanvasRef();
+    if (!isDragging || !componenteDragId || !activeCanvas.current) return;
 
-    const canvasRect = canvasRef.current.getBoundingClientRect();
+    const canvasRect = activeCanvas.current.getBoundingClientRect();
     const mouseX = e.clientX - canvasRect.left - dragOffset.x;
     const mouseY = e.clientY - canvasRect.top - dragOffset.y;
 
@@ -2320,8 +2356,8 @@ useEffect(() => {
     let newY = (mouseY / canvasRect.height) * 100;
 
     // ===== SNAP TO GRID (5%) =====
-    
-    const gridSize = 1; 
+
+    const gridSize = 1;
     newX = Math.round(newX / gridSize) * gridSize;
     newY = Math.round(newY / gridSize) * gridSize;
     // =============================
@@ -2338,7 +2374,7 @@ useEffect(() => {
 
     setComponentes(newComponentes);
   },
-  [isDragging, componenteDragId, dragOffset, componentes]
+  [isDragging, componenteDragId, dragOffset, componentes, getActiveCanvasRef]
 );
 
   const handleMouseUp = useCallback(() => {
@@ -2461,9 +2497,10 @@ useEffect(() => {
   // Função para criar junction node INVISÍVEL ao clicar em uma edge
   const handleEdgeClick = useCallback(
     (event: React.MouseEvent, connection: Connection) => {
-      if (!modoEdicao || !canvasRef.current) return;
+      const activeCanvas = getActiveCanvasRef();
+      if (!modoEdicao || !activeCanvas.current) return;
 
-      const rect = canvasRef.current.getBoundingClientRect();
+      const rect = activeCanvas.current.getBoundingClientRect();
       const clickPoint = {
         x: event.clientX - rect.left,
         y: event.clientY - rect.top,
@@ -2508,7 +2545,7 @@ useEffect(() => {
         }
       }
     },
-    [modoEdicao, componentes, connections, updateDiagram]
+    [modoEdicao, componentes, connections, updateDiagram, getActiveCanvasRef]
   );
 
   const salvarDiagrama = useCallback(() => {
@@ -2873,13 +2910,7 @@ useEffect(() => {
                             ).length
                           }
                         </span>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setComponenteEditando(null)}
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
+                        
                       </div>
                     </div>
                   </div>
@@ -2912,36 +2943,56 @@ useEffect(() => {
 
                 {/* Diagrama Unifilar - MODO VISUALIZAÇÃO */}
                 <div className="lg:col-span-2 flex">
-                  <Card className="flex flex-col w-full min-h-[900px]">
-                    <div className="flex items-center justify-between p-4 pb-2 border-b flex-shrink-0">
+                  <Card
+                    ref={diagramCardRef}
+                    className={`flex flex-col w-full min-h-[900px] ${
+                      diagramaFullscreen
+                        ? 'fixed inset-0 z-50 m-0 rounded-none border-0 bg-background'
+                        : ''
+                    }`}
+                  >
+                    <div className="flex items-center justify-between p-4 pb-2 border-b flex-shrink-0 bg-background">
                       <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
                         <Network className="h-5 w-5" />
-                        Diagrama Unifilar
+                        Diagrama Unifilar {diagramaFullscreen && '- Tela Cheia'}
                       </h3>
                       <div className="flex items-center gap-2">
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => setDiagramaFullscreen(true)}
+                          onClick={toggleFullscreen}
                           className="flex items-center gap-2"
                         >
-                          <Maximize className="h-4 w-4" />
-                          Tela Cheia
+                          {diagramaFullscreen ? (
+                            <>
+                              <Minimize className="h-4 w-4" />
+                              Sair
+                            </>
+                          ) : (
+                            <>
+                              <Maximize className="h-4 w-4" />
+                              Tela Cheia
+                            </>
+                          )}
                         </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={toggleModoEdicao}
-                          className="flex items-center gap-2"
-                        >
-                          <Edit3 className="h-4 w-4" />
-                          Editar
-                        </Button>
+                        {!diagramaFullscreen && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={toggleModoEdicao}
+                            className="flex items-center gap-2"
+                          >
+                            <Edit3 className="h-4 w-4" />
+                            Editar
+                          </Button>
+                        )}
                       </div>
                     </div>
 
                     <div
-                      className="flex-1 min-h-[580px] relative"
+                      className={`flex-1 relative bg-background ${
+                        diagramaFullscreen ? 'h-[calc(100vh-73px)]' : 'min-h-[580px]'
+                      }`}
                       ref={canvasRef}
                     >
                       {/* COMPONENTE DE CONEXÕES PARA MODO VISUALIZAÇÃO */}
@@ -3025,45 +3076,174 @@ useEffect(() => {
 
                   {/* Componentes no Modo Edição */}
                   <div className="absolute inset-0 z-5">
-                    {componentes.map((componente) => (
-                      <div
-                        key={componente.id}
-                        className="absolute"
-                        style={{
-                          left: `${componente.posicao.x}%`,
-                          top: `${componente.posicao.y}%`,
-                          transform: "translate(-50%, -50%)",
-                        }}
-                      >
-                        <ElectricalSymbol
-                          tipo={componente.tipo}
-                          status={componente.status}
-                          onClick={() => handleComponenteClick(componente)}
-                        />
-                        {/* Não mostrar nome para junction nodes e pontos */}
-                        {componente.tipo !== "JUNCTION" && componente.tipo !== "PONTO" && (
-                          <div className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs font-medium text-muted-foreground bg-background/90 px-2 py-1 rounded whitespace-nowrap border">
-                            {componente.nome}
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                    {componentes
+                      .filter(comp => comp.tipo !== "PONTO" && comp.tipo !== "JUNCTION")
+                      .map((componente) => (
+                        <div
+                          key={componente.id}
+                          className="absolute"
+                          style={{
+                            left: `${componente.posicao.x}%`,
+                            top: `${componente.posicao.y}%`,
+                            transform: "translate(-50%, -50%)",
+                          }}
+                        >
+                          <ElectricalSymbol
+                            tipo={componente.tipo}
+                            status={componente.status}
+                            onClick={() => handleComponenteClick(componente)}
+                          />
+                          {/* Não mostrar nome para junction nodes e pontos */}
+                          {componente.tipo !== "JUNCTION" && componente.tipo !== "PONTO" && (
+                            <div className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs font-medium text-muted-foreground bg-background/90 px-2 py-1 rounded whitespace-nowrap border">
+                              {componente.nome}
+                            </div>
+                          )}
+                        </div>
+                      ))
+                    }
                   </div>
 
-                  {/* Overlay de Edição */}
+                  {/* Overlay de Edição - Junction Points e Pontos */}
                   <div className="absolute inset-0 z-40 pointer-events-none">
-                    {componentes.map((componente) => (
-                      <div
-                        key={`overlay-${componente.id}`}
-                        className="absolute"
-                        style={{
-                          left: `${componente.posicao.x}%`,
-                          top: `${componente.posicao.y}%`,
-                          transform: "translate(-50%, -50%)",
-                          width: "60px",
-                          height: "60px",
-                        }}
-                      >
+                    {componentes
+                      .filter(comp => comp.tipo === "PONTO" || comp.tipo === "JUNCTION")
+                      .map((componente) => (
+                        <div
+                          key={`overlay-junction-${componente.id}`}
+                          className="absolute"
+                          style={{
+                            left: `${componente.posicao.x}%`,
+                            top: `${componente.posicao.y}%`,
+                            transform: "translate(-50%, -50%)",
+                            width: "30px",
+                            height: "30px",
+                          }}
+                        >
+                          {/* Símbolo do Junction Point - CENTRALIZADO */}
+                          <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none">
+                            <ElectricalSymbol
+                              tipo={componente.tipo}
+                              status={componente.status}
+                            />
+                          </div>
+
+                          {/* Highlight quando selecionado */}
+                          {componenteEditando === componente.id && (
+                            <div className="absolute inset-0 ring-2 ring-blue-500 ring-offset-2 rounded-lg pointer-events-none" />
+                          )}
+
+                          {/* Indicador de Conexão Ativa */}
+                          {connecting && connecting.from === componente.id && (
+                            <div className="absolute inset-0 ring-2 ring-amber-400 ring-offset-2 rounded-lg pointer-events-none animate-pulse">
+                              <div className="absolute -top-10 left-1/2 transform -translate-x-1/2 bg-amber-400 text-amber-900 text-xs px-3 py-1 rounded-full whitespace-nowrap font-medium">
+                                Clique em outro componente
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Portas de Conexão para Junction Points */}
+                          {modoFerramenta === "conectar" && (
+                            <>
+                              {[
+                                {
+                                  port: "top",
+                                  style: {
+                                    left: "50%",
+                                    top: "-10px",
+                                    transform: "translateX(-50%)",
+                                  },
+                                },
+                                {
+                                  port: "bottom",
+                                  style: {
+                                    left: "50%",
+                                    bottom: "-10px",
+                                    transform: "translateX(-50%)",
+                                  },
+                                },
+                                {
+                                  port: "left",
+                                  style: {
+                                    left: "-10px",
+                                    top: "50%",
+                                    transform: "translateY(-50%)",
+                                  },
+                                },
+                                {
+                                  port: "right",
+                                  style: {
+                                    right: "-10px",
+                                    top: "50%",
+                                    transform: "translateY(-50%)",
+                                  },
+                                },
+                              ].map(({ port, style }) => (
+                                <button
+                                  key={port}
+                                  className="absolute w-4 h-4 bg-blue-500 hover:bg-blue-600 border-2 border-white rounded-full pointer-events-auto transition-all hover:scale-125 shadow-md z-50"
+                                  style={style}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handlePortaClick(componente.id, port);
+                                  }}
+                                  title={`Conectar ${port}`}
+                                />
+                              ))}
+                            </>
+                          )}
+
+                          {/* Área de Interação */}
+                          <div
+                            className={`absolute inset-0 ${
+                              modoFerramenta === "conectar"
+                                ? "pointer-events-none"
+                                : "pointer-events-auto"
+                            }`}
+                            style={{
+                              cursor:
+                                modoFerramenta === "selecionar"
+                                  ? isDragging &&
+                                    componenteDragId === componente.id
+                                    ? "grabbing"
+                                    : "grab"
+                                  : modoFerramenta === "conectar"
+                                  ? "crosshair"
+                                  : "pointer",
+                            }}
+                            onMouseDown={(e) => {
+                              if (modoFerramenta === "selecionar") {
+                                handleMouseDown(e, componente.id);
+                              }
+                            }}
+                            onClick={(e) => {
+                              if (modoFerramenta !== "selecionar") {
+                                e.stopPropagation();
+                                handleComponenteClick(componente, e);
+                              }
+                            }}
+                          />
+                        </div>
+                      ))
+                    }
+                  </div>
+
+                  {/* Overlay de Edição - Componentes Normais */}
+                  <div className="absolute inset-0 z-40 pointer-events-none">
+                    {componentes
+                      .filter(comp => comp.tipo !== "PONTO" && comp.tipo !== "JUNCTION")
+                      .map((componente) => (
+                        <div
+                          key={`overlay-${componente.id}`}
+                          className="absolute"
+                          style={{
+                            left: `${componente.posicao.x}%`,
+                            top: `${componente.posicao.y}%`,
+                            transform: "translate(-50%, -50%)",
+                            width: "60px",
+                            height: "60px",
+                          }}
+                        >
                         {/* Portas de Conexão */}
                         {modoFerramenta === "conectar" && (
                           <>
@@ -3304,56 +3484,6 @@ useEffect(() => {
           nomeComponente={componenteSelecionado?.nome || ""}
         />
 
-        {/* Modal Fullscreen do Diagrama */}
-        <Dialog open={diagramaFullscreen} onOpenChange={setDiagramaFullscreen}>
-          <DialogContent className="max-w-[100vw] max-h-[100vh] w-full h-full p-0 m-0">
-            <div className="flex flex-col h-full">
-              {/* Header do Modal */}
-              <DialogHeader className="border-b p-4 flex-shrink-0">
-                <div className="flex items-center justify-between">
-                  <DialogTitle className="flex items-center gap-2">
-                    <Network className="h-5 w-5" />
-                    Diagrama Unifilar - Tela Cheia
-                  </DialogTitle>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setDiagramaFullscreen(false)}
-                    className="flex items-center gap-2"
-                  >
-                    <X className="h-4 w-4" />
-                    Fechar
-                  </Button>
-                </div>
-              </DialogHeader>
-
-              {/* Conteúdo do Diagrama */}
-              <div className="flex-1 relative overflow-hidden">
-                <div className="absolute inset-0" ref={canvasRef}>
-                  {/* Componente de Conexões */}
-                  <ConexoesDiagrama
-                    connections={connections}
-                    componentes={componentes}
-                    containerRef={canvasRef}
-                    modoEdicao={false}
-                    onEdgeClick={handleEdgeClick}
-                    className="z-30"
-                  />
-
-                  {/* Componente do Diagrama */}
-                  <SinopticoDiagrama
-                    componentes={componentes}
-                    onComponenteClick={handleComponenteClick}
-                    modoEdicao={false}
-                    componenteEditando={null}
-                    connecting={null}
-                    mostrarGrid={true}
-                  />
-                </div>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
       </Layout.Main>
     </Layout>
   );

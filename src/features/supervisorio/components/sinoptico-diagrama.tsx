@@ -1306,9 +1306,12 @@ case "RELE":
       onClick={onClick}
     >
       {renderSymbol()}
-      <div
-        className={`absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-background shadow-lg ${statusClasses.bg}`}
-      />
+      {/* Não mostrar indicador de status para PONTO e JUNCTION */}
+      {tipo !== "PONTO" && tipo !== "JUNCTION" && (
+        <div
+          className={`absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-background shadow-lg ${statusClasses.bg}`}
+        />
+      )}
     </div>
   );
 };
@@ -1350,10 +1353,10 @@ export function SinopticoDiagrama({
         </svg>
       )}
 
-      {/* CONDIÇÃO ADICIONADA: Só renderiza componentes se NÃO estiver no modo edição */}
+      {/* Renderiza componentes - NO MODO EDIÇÃO NÃO RENDERIZA NADA (overlays fazem isso) */}
       {!modoEdicao && (
-        <div className="absolute inset-0">
-          {componentes.map((componente) => (
+      <div className="absolute inset-0">
+        {componentes.map((componente) => (
             <div
               key={componente.id}
               className="absolute"
@@ -1390,7 +1393,7 @@ export function SinopticoDiagrama({
               )}
             </div>
           ))}
-        </div>
+      </div>
       )}
 
       {/* Indicador quando não há componentes */}

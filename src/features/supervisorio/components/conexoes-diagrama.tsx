@@ -128,11 +128,15 @@ export function ConexoesDiagrama({
   useEffect(() => {
     const updateContainerRect = () => {
       if (containerRef.current) {
-        setContainerRect(containerRef.current.getBoundingClientRect());
+        const rect = containerRef.current.getBoundingClientRect();
+        setContainerRect(rect);
       }
     };
 
+    // Delay inicial para garantir que o DOM está completamente renderizado
+    const timeoutId = setTimeout(updateContainerRect, 50);
     updateContainerRect();
+
     const resizeObserver = new ResizeObserver(updateContainerRect);
     if (containerRef.current) {
       resizeObserver.observe(containerRef.current);
@@ -141,10 +145,25 @@ export function ConexoesDiagrama({
     window.addEventListener("resize", updateContainerRect);
 
     return () => {
+      clearTimeout(timeoutId);
       resizeObserver.disconnect();
       window.removeEventListener("resize", updateContainerRect);
     };
   }, [containerRef]);
+
+  // Forçar atualização quando componentes ou conexões mudam
+  useEffect(() => {
+    const updateContainerRect = () => {
+      if (containerRef.current) {
+        setContainerRect(containerRef.current.getBoundingClientRect());
+      }
+    };
+
+    // Pequeno delay para garantir que o layout foi atualizado
+    const timeoutId = setTimeout(updateContainerRect, 100);
+
+    return () => clearTimeout(timeoutId);
+  }, [componentes.length, connections.length, containerRef]);
 
   if (!containerRect) {
     return null;
@@ -154,6 +173,7 @@ export function ConexoesDiagrama({
     <svg
       className={`absolute inset-0 w-full h-full z-10 ${className}`}
       style={{ pointerEvents: modoEdicao ? "auto" : "none" }}
+      preserveAspectRatio="xMidYMid meet"
     >
       {/* Definições de markers */}
       <defs>
