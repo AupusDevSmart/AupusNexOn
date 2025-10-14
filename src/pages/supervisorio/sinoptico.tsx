@@ -321,4 +321,5 @@ const TransformadorModal = ({ isOpen, onClose, dados }: { isOpen: boolean; onClo
             </div>
             <div className="p-3 bg-green-50 rounded-lg">
               <div className="text-lg font-bold text-green-600">{dados.potenciaAtual} kVA</div>
-              <div className="text-sm text-green-700">Atual
+              <div className="text-sm text-green-700">Atual</div>
+            </div>

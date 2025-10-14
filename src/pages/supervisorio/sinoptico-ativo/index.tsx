@@ -17,6 +17,7 @@ import {
   Gauge,
   HardDrive,
   Link,
+  Maximize,
   Move,
   Network,
   Redo,
@@ -1349,6 +1350,7 @@ export function SinopticoAtivoPage() {
   const [modalAberto, setModalAberto] = useState<string | null>(null);
   const [componenteSelecionado, setComponenteSelecionado] =
     useState<ComponenteDU | null>(null);
+  const [diagramaFullscreen, setDiagramaFullscreen] = useState(false);
 
   // Estados para o modo de edição
   const [modoEdicao, setModoEdicao] = useState(false);
@@ -2920,6 +2922,15 @@ useEffect(() => {
                         <Button
                           variant="outline"
                           size="sm"
+                          onClick={() => setDiagramaFullscreen(true)}
+                          className="flex items-center gap-2"
+                        >
+                          <Maximize className="h-4 w-4" />
+                          Tela Cheia
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
                           onClick={toggleModoEdicao}
                           className="flex items-center gap-2"
                         >
@@ -3292,6 +3303,57 @@ useEffect(() => {
           dados={dadosTransformador}
           nomeComponente={componenteSelecionado?.nome || ""}
         />
+
+        {/* Modal Fullscreen do Diagrama */}
+        <Dialog open={diagramaFullscreen} onOpenChange={setDiagramaFullscreen}>
+          <DialogContent className="max-w-[100vw] max-h-[100vh] w-full h-full p-0 m-0">
+            <div className="flex flex-col h-full">
+              {/* Header do Modal */}
+              <DialogHeader className="border-b p-4 flex-shrink-0">
+                <div className="flex items-center justify-between">
+                  <DialogTitle className="flex items-center gap-2">
+                    <Network className="h-5 w-5" />
+                    Diagrama Unifilar - Tela Cheia
+                  </DialogTitle>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setDiagramaFullscreen(false)}
+                    className="flex items-center gap-2"
+                  >
+                    <X className="h-4 w-4" />
+                    Fechar
+                  </Button>
+                </div>
+              </DialogHeader>
+
+              {/* Conteúdo do Diagrama */}
+              <div className="flex-1 relative overflow-hidden">
+                <div className="absolute inset-0" ref={canvasRef}>
+                  {/* Componente de Conexões */}
+                  <ConexoesDiagrama
+                    connections={connections}
+                    componentes={componentes}
+                    containerRef={canvasRef}
+                    modoEdicao={false}
+                    onEdgeClick={handleEdgeClick}
+                    className="z-30"
+                  />
+
+                  {/* Componente do Diagrama */}
+                  <SinopticoDiagrama
+                    componentes={componentes}
+                    onComponenteClick={handleComponenteClick}
+                    modoEdicao={false}
+                    componenteEditando={null}
+                    connecting={null}
+                    mostrarGrid={true}
+                  />
+                </div>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </Layout.Main>
     </Layout>
   );
