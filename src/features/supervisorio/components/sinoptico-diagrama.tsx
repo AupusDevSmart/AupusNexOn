@@ -1355,7 +1355,7 @@ export function SinopticoDiagrama({
 
       {/* Renderiza componentes - NO MODO EDIÇÃO NÃO RENDERIZA NADA (overlays fazem isso) */}
       {!modoEdicao && (
-      <div className="absolute inset-0">
+      <div className="absolute inset-0" style={{ zIndex: 30 }}>
         {componentes.map((componente) => (
             <div
               key={componente.id}

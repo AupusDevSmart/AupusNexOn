@@ -1365,13 +1365,12 @@ export function SinopticoAtivoPage() {
   const [dragOffset, setDragOffset] = useState<Position>({ x: 0, y: 0 });
   const [componenteDragId, setComponenteDragId] = useState<string | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
-  const canvasFullscreenRef = useRef<HTMLDivElement>(null);
   const diagramCardRef = useRef<HTMLDivElement>(null);
 
   // Helper para pegar o canvas correto baseado no contexto
   const getActiveCanvasRef = useCallback(() => {
-    return diagramaFullscreen ? canvasFullscreenRef : canvasRef;
-  }, [diagramaFullscreen]);
+    return canvasRef;
+  }, []);
 
   // Funções para gerenciar fullscreen nativo
   const toggleFullscreen = useCallback(async () => {
@@ -2945,13 +2944,13 @@ useEffect(() => {
                 <div className="lg:col-span-2 flex">
                   <Card
                     ref={diagramCardRef}
-                    className={`flex flex-col w-full min-h-[900px] ${
+                    className={`flex flex-col w-full min-h-[900px] !bg-black ${
                       diagramaFullscreen
-                        ? 'fixed inset-0 z-50 m-0 rounded-none border-0 bg-background'
+                        ? 'fixed inset-0 z-50 m-0 rounded-none border-0'
                         : ''
                     }`}
                   >
-                    <div className="flex items-center justify-between p-4 pb-2 border-b flex-shrink-0 bg-background">
+                    <div className="flex items-center justify-between p-4 pb-2 border-b flex-shrink-0 !bg-black">
                       <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
                         <Network className="h-5 w-5" />
                         Diagrama Unifilar {diagramaFullscreen && '- Tela Cheia'}
@@ -2990,7 +2989,7 @@ useEffect(() => {
                     </div>
 
                     <div
-                      className={`flex-1 relative bg-background ${
+                      className={`flex-1 relative bg-black ${
                         diagramaFullscreen ? 'h-[calc(100vh-73px)]' : 'min-h-[580px]'
                       }`}
                       ref={canvasRef}
@@ -3002,7 +3001,7 @@ useEffect(() => {
                         containerRef={canvasRef}
                         modoEdicao={false}
                         onEdgeClick={handleEdgeClick}
-                        className="z-30"
+                        className=""
                       />
 
                       <SinopticoDiagrama
@@ -3020,8 +3019,8 @@ useEffect(() => {
 
             {/* Modo Edição - Tela Cheia */}
             {modoEdicao && (
-              <Card className="flex flex-col min-h-[900px]">
-                <div className="flex items-center justify-between p-4 pb-2 border-b flex-shrink-0">
+              <Card className="flex flex-col min-h-[900px] !bg-black">
+                <div className="flex items-center justify-between p-4 pb-2 border-b flex-shrink-0 !bg-black">
                   <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
                     <Network className="h-5 w-5" />
                     Diagrama Unifilar
@@ -3053,7 +3052,7 @@ useEffect(() => {
                   </div>
                 </div>
 
-                <div className="relative flex-1 min-h-[580px]" ref={canvasRef}>
+                <div className="relative flex-1 min-h-[580px] bg-black" ref={canvasRef}>
                   {/* COMPONENTE DE CONEXÕES PARA MODO EDIÇÃO */}
                   <ConexoesDiagrama
                     connections={connections}
@@ -3063,7 +3062,7 @@ useEffect(() => {
                     connecting={connecting}
                     onRemoverConexao={removerConexao}
                     onEdgeClick={handleEdgeClick}
-                    className="z-30"
+                    className=""
                   />
 
                   <SinopticoDiagrama
@@ -3075,7 +3074,7 @@ useEffect(() => {
                   />
 
                   {/* Componentes no Modo Edição */}
-                  <div className="absolute inset-0 z-5">
+                  <div className="absolute inset-0" style={{ zIndex: 40 }}>
                     {componentes
                       .filter(comp => comp.tipo !== "PONTO" && comp.tipo !== "JUNCTION")
                       .map((componente) => (

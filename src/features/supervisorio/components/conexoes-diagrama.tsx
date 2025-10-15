@@ -165,14 +165,48 @@ export function ConexoesDiagrama({
     return () => clearTimeout(timeoutId);
   }, [componentes.length, connections.length, containerRef]);
 
+  // Listener para detectar mudanças de fullscreen e recalcular dimensões
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      if (containerRef.current) {
+        // Delay para garantir que o layout de fullscreen foi aplicado
+        setTimeout(() => {
+          setContainerRect(containerRef.current!.getBoundingClientRect());
+        }, 100);
+      }
+    };
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+    };
+  }, [containerRef]);
+
   if (!containerRect) {
+    console.log("⚠️ CONEXÕES: containerRect é NULL - aguardando...");
     return null;
   }
 
+  console.log("✅ CONEXÕES RENDERIZANDO:", {
+    connections: connections.length,
+    componentes: componentes.length,
+    containerRect: {
+      width: containerRect.width,
+      height: containerRect.height,
+      x: containerRect.x,
+      y: containerRect.y
+    },
+    modoEdicao
+  });
+
   return (
     <svg
-      className={`absolute inset-0 w-full h-full z-10 ${className}`}
-      style={{ pointerEvents: modoEdicao ? "auto" : "none" }}
+      className={`absolute inset-0 w-full h-full ${className}`}
+      style={{
+        pointerEvents: modoEdicao ? "auto" : "none",
+        zIndex: 20,
+        border: "3px solid red" // DEBUG: verificar se SVG está visível
+      }}
       preserveAspectRatio="xMidYMid meet"
     >
       {/* Definições de markers */}
@@ -212,12 +246,60 @@ export function ConexoesDiagrama({
         </marker>
       </defs>
 
+      {/* ELEMENTOS DE TESTE - DEBUG */}
+      <circle
+        cx={containerRect.width / 2}
+        cy={containerRect.height / 2}
+        r="20"
+        fill="red"
+        opacity="0.8"
+      />
+      <text
+        x={containerRect.width / 2}
+        y={containerRect.height / 2}
+        textAnchor="middle"
+        dominantBaseline="middle"
+        fill="white"
+        fontSize="12"
+        fontWeight="bold"
+      >
+        SVG OK
+      </text>
+      {/* LINHA DE TESTE - diagonal do canto superior esquerdo ao inferior direito */}
+      <line
+        x1="0"
+        y1="0"
+        x2={containerRect.width}
+        y2={containerRect.height}
+        stroke="yellow"
+        strokeWidth="5"
+        opacity="0.8"
+      />
+      {/* LINHA DE TESTE - horizontal no meio */}
+      <line
+        x1="0"
+        y1={containerRect.height / 2}
+        x2={containerRect.width}
+        y2={containerRect.height / 2}
+        stroke="cyan"
+        strokeWidth="3"
+        opacity="0.8"
+      />
+
       {/* Renderizar conexões */}
       {connections.map((connection) => {
         const fromComponent = componentes.find((c) => c.id === connection.from);
         const toComponent = componentes.find((c) => c.id === connection.to);
 
-        if (!fromComponent || !toComponent) return null;
+        if (!fromComponent || !toComponent) {
+          console.log(`⚠️ Conexão ${connection.id} - componente não encontrado:`, {
+            from: connection.from,
+            to: connection.to,
+            fromFound: !!fromComponent,
+            toFound: !!toComponent
+          });
+          return null;
+        }
 
         // Calcular posições
         const fromCenterX =
@@ -237,6 +319,18 @@ export function ConexoesDiagrama({
         const fromY = fromCenterY + fromOffset.y;
         const toX = toCenterX + toOffset.x;
         const toY = toCenterY + toOffset.y;
+
+        console.log(`🔗 Conexão ${connection.id}:`, {
+          from: fromComponent.nome,
+          to: toComponent.nome,
+          fromPos: fromComponent.posicao,
+          toPos: toComponent.posicao,
+          fromX,
+          fromY,
+          toX,
+          toY,
+          ports: { from: connection.fromPort, to: connection.toPort }
+        });
 
         // ===== CALCULAR CAMINHO ORTOGONAL MELHORADO =====
 const calculateOrthogonalPath = () => {
@@ -311,6 +405,7 @@ const calculateOrthogonalPath = () => {
 // ================================================
 
         const pathData = calculateOrthogonalPath();
+        console.log(`📍 Path gerado para ${connection.id}:`, pathData);
         // ========================================
 
         const connectionStyle = getConnectionStyle(
