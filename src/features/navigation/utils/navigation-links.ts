@@ -13,6 +13,9 @@ import {
   ScrollText,
   SquareActivity,
   Zap,
+  Users,
+  Factory,
+  Database,
 } from "lucide-react";
 
 export type NavigationLink = {
@@ -119,6 +122,41 @@ export const navigationLinks: Array<NavigationLink> = [
         icon: Magnet,
         label: "Centros de Custo",
         hint: "Centros de Custo",
+      },
+    ],
+  },
+  // Cadastros
+  {
+    key: "cadastros",
+    featureKey: "Usuarios", // Usando Usuarios como feature principal
+    path: "/cadastros",
+    icon: Database,
+    label: "Cadastros",
+    hint: "Gestão de Cadastros",
+    links: [
+      {
+        key: "cadastros-usuarios",
+        featureKey: "Usuarios",
+        path: "/cadastros/usuarios",
+        icon: Users,
+        label: "Usuários",
+        hint: "Gerenciar Usuários",
+      },
+      {
+        key: "cadastros-plantas",
+        featureKey: "Plantas",
+        path: "/cadastros/plantas",
+        icon: Factory,
+        label: "Plantas",
+        hint: "Gerenciar Plantas",
+      },
+      {
+        key: "cadastros-unidades",
+        featureKey: "UnidadesConsumidoras",
+        path: "/cadastros/unidades",
+        icon: Building2,
+        label: "Unidades",
+        hint: "Gerenciar Unidades Consumidoras",
       },
     ],
   },
