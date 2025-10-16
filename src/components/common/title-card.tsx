@@ -3,11 +3,10 @@ import React from 'react';
 interface TitleCardProps {
   title: string;
   description?: string;
-  setUcIds?: React.Dispatch<React.SetStateAction<string[]>>;
   children?: React.ReactNode;
 }
 
-export function TitleCard({ title, description, setUcIds, children }: TitleCardProps) {
+export function TitleCard({ title, description, children }: TitleCardProps) {
   return (
     <div className="w-full mb-8">
       <h1 className="text-2xl font-bold text-foreground">{title}</h1>

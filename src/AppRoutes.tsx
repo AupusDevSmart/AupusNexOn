@@ -39,6 +39,19 @@ const SinopticoPage = lazy(() =>
   }))
 );
 
+// ✅ Lazy load para Cadastros
+const CadastroUsuariosPage = lazy(() =>
+  import("@/pages/cadastros/usuarios")
+);
+
+const CadastroPlantasPage = lazy(() =>
+  import("@/pages/cadastros/plantas")
+);
+
+const CadastroUnidadesPageWrapper = lazy(() =>
+  import("@/pages/cadastros/unidades")
+);
+
 export const appRoutes = createBrowserRouter([
   {
     path: "/",
@@ -159,6 +172,37 @@ export const appRoutes = createBrowserRouter([
           <FeatureWrapper feature="supervisorio">
             <Suspense fallback={<div>Carregando...</div>}>
               <DemoMqttPage />
+            </Suspense>
+          </FeatureWrapper>
+        ),
+      },
+      // ✅ Rotas de Cadastros
+      {
+        path: "cadastros/usuarios",
+        element: (
+          <FeatureWrapper feature="Usuarios">
+            <Suspense fallback={<div>Carregando...</div>}>
+              <CadastroUsuariosPage />
+            </Suspense>
+          </FeatureWrapper>
+        ),
+      },
+      {
+        path: "cadastros/plantas",
+        element: (
+          <FeatureWrapper feature="Plantas">
+            <Suspense fallback={<div>Carregando...</div>}>
+              <CadastroPlantasPage />
+            </Suspense>
+          </FeatureWrapper>
+        ),
+      },
+      {
+        path: "cadastros/unidades",
+        element: (
+          <FeatureWrapper feature="UnidadesConsumidoras">
+            <Suspense fallback={<div>Carregando...</div>}>
+              <CadastroUnidadesPageWrapper />
             </Suspense>
           </FeatureWrapper>
         ),

@@ -6,7 +6,7 @@ import qs from 'qs';
 const { clearUser } = useUserStore.getState();
 
 export const api = axios.create({
-  baseURL: env.VITE_API_URL,
+  baseURL: "http://localhost:3000/api/v1",
   withCredentials: true,
   withXSRFToken: true,
 

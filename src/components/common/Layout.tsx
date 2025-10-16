@@ -1,7 +1,7 @@
 import React from 'react';
 import ErrorBoundary from './ErrorBoundary';
 
-export function Layout({ children, className = '', asidePosition = 'left' }) {
+export function Layout({ children, className = '', asidePosition = 'left' }: { children: React.ReactNode, className?: string, asidePosition?: 'left' | 'right' }) {
   const hasAside = React.Children.toArray(children).some(
     (child) => React.isValidElement(child) && child.type === Layout.Aside
   );
@@ -18,7 +18,7 @@ export function Layout({ children, className = '', asidePosition = 'left' }) {
 }
 
 
-Layout.Header = function Header({ children, className = '' }) {
+Layout.Header = function Header({ children, className = '' }: { children: React.ReactNode, className?: string }) {
   return (
     <ErrorBoundary>
       <header
@@ -30,7 +30,7 @@ Layout.Header = function Header({ children, className = '' }) {
   );
 };
 
-Layout.Aside = function Aside({ children, className = '' }) {
+Layout.Aside = function Aside({ children, className = '' }: { children: React.ReactNode, className?: string }) {
   return (
     <ErrorBoundary>
       <aside
@@ -42,7 +42,7 @@ Layout.Aside = function Aside({ children, className = '' }) {
   );
 };
 
-Layout.Main = function Main({ children, className = '', withSidebar = false }) {
+Layout.Main = function Main({ children, className = '', withSidebar = false }: { children: React.ReactNode, className?: string, withSidebar?: boolean }) {
   return (
     <ErrorBoundary>
       <main
@@ -54,7 +54,7 @@ Layout.Main = function Main({ children, className = '', withSidebar = false }) {
   );
 };
 
-Layout.Footer = function Footer({ children, className = '' }) {
+Layout.Footer = function Footer({ children, className = '' }: { children: React.ReactNode, className?: string }) {
   return (
     <ErrorBoundary>
       <footer
