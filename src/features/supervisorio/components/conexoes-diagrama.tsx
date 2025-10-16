@@ -167,45 +167,68 @@ export function ConexoesDiagrama({
 
   // Listener para detectar mudanças de fullscreen e recalcular dimensões
   useEffect(() => {
-    const handleFullscreenChange = () => {
-      if (containerRef.current) {
-        // Delay para garantir que o layout de fullscreen foi aplicado
-        setTimeout(() => {
-          setContainerRect(containerRef.current!.getBoundingClientRect());
-        }, 100);
-      }
-    };
+  const handleFullscreenChange = () => {
+    if (containerRef.current) {
+      const recalculate = () => {
+        setContainerRect(containerRef.current!.getBoundingClientRect());
+      };
+      
+      recalculate();
+      setTimeout(recalculate, 50);
+      setTimeout(recalculate, 150);
+      setTimeout(recalculate, 300);
+    }
+  };
 
-    document.addEventListener("fullscreenchange", handleFullscreenChange);
-    return () => {
-      document.removeEventListener("fullscreenchange", handleFullscreenChange);
-    };
-  }, [containerRef]);
+  document.addEventListener("fullscreenchange", handleFullscreenChange);
+  document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
+  document.addEventListener("mozfullscreenchange", handleFullscreenChange);
+  
+  return () => {
+    document.removeEventListener("fullscreenchange", handleFullscreenChange);
+    document.removeEventListener("webkitfullscreenchange", handleFullscreenChange);
+    document.removeEventListener("mozfullscreenchange", handleFullscreenChange);
+  };
+}, [containerRef]);
 
   if (!containerRect) {
-    console.log("⚠️ CONEXÕES: containerRect é NULL - aguardando...");
+    console.log('❌ ConexoesDiagrama: containerRect é NULL');
     return null;
   }
 
-  console.log("✅ CONEXÕES RENDERIZANDO:", {
-    connections: connections.length,
-    componentes: componentes.length,
-    containerRect: {
-      width: containerRect.width,
-      height: containerRect.height,
-      x: containerRect.x,
-      y: containerRect.y
-    },
-    modoEdicao
-  });
+  console.log('✅ ConexoesDiagrama RENDERIZANDO:');
+  console.log('   - Número de conexões:', connections.length);
+  console.log('   - Número de componentes:', componentes.length);
+  console.log('   - Container Width:', containerRect.width);
+  console.log('   - Container Height:', containerRect.height);
+  console.log('   - Modo Edição:', modoEdicao);
+
+  // Log de debug para cada conexão
+connections.forEach((conn, index) => {
+  const fromComp = componentes.find(c => c.id === conn.from);
+  const toComp = componentes.find(c => c.id === conn.to);
+  
+  if (fromComp && toComp) {
+    const fromX = (fromComp.posicao.x / 100) * containerRect.width;
+    const fromY = (fromComp.posicao.y / 100) * containerRect.height;
+    const toX = (toComp.posicao.x / 100) * containerRect.width;
+    const toY = (toComp.posicao.y / 100) * containerRect.height;
+    
+    console.log(`   📍 Conexão ${index + 1}:`, {
+      from: fromComp.nome,
+      to: toComp.nome,
+      fromPos: `(${fromX.toFixed(0)}, ${fromY.toFixed(0)})`,
+      toPos: `(${toX.toFixed(0)}, ${toY.toFixed(0)})`
+    });
+  }
+});
+
 
   return (
     <svg
-      className={`absolute inset-0 w-full h-full ${className}`}
+      className={`absolute inset-0 w-full h-full z-20 ${className}`}
       style={{
         pointerEvents: modoEdicao ? "auto" : "none",
-        zIndex: 20,
-        border: "3px solid red" // DEBUG: verificar se SVG está visível
       }}
       preserveAspectRatio="xMidYMid meet"
     >
@@ -246,58 +269,12 @@ export function ConexoesDiagrama({
         </marker>
       </defs>
 
-      {/* ELEMENTOS DE TESTE - DEBUG */}
-      <circle
-        cx={containerRect.width / 2}
-        cy={containerRect.height / 2}
-        r="20"
-        fill="red"
-        opacity="0.8"
-      />
-      <text
-        x={containerRect.width / 2}
-        y={containerRect.height / 2}
-        textAnchor="middle"
-        dominantBaseline="middle"
-        fill="white"
-        fontSize="12"
-        fontWeight="bold"
-      >
-        SVG OK
-      </text>
-      {/* LINHA DE TESTE - diagonal do canto superior esquerdo ao inferior direito */}
-      <line
-        x1="0"
-        y1="0"
-        x2={containerRect.width}
-        y2={containerRect.height}
-        stroke="yellow"
-        strokeWidth="5"
-        opacity="0.8"
-      />
-      {/* LINHA DE TESTE - horizontal no meio */}
-      <line
-        x1="0"
-        y1={containerRect.height / 2}
-        x2={containerRect.width}
-        y2={containerRect.height / 2}
-        stroke="cyan"
-        strokeWidth="3"
-        opacity="0.8"
-      />
-
       {/* Renderizar conexões */}
       {connections.map((connection) => {
         const fromComponent = componentes.find((c) => c.id === connection.from);
         const toComponent = componentes.find((c) => c.id === connection.to);
 
         if (!fromComponent || !toComponent) {
-          console.log(`⚠️ Conexão ${connection.id} - componente não encontrado:`, {
-            from: connection.from,
-            to: connection.to,
-            fromFound: !!fromComponent,
-            toFound: !!toComponent
-          });
           return null;
         }
 
@@ -319,18 +296,6 @@ export function ConexoesDiagrama({
         const fromY = fromCenterY + fromOffset.y;
         const toX = toCenterX + toOffset.x;
         const toY = toCenterY + toOffset.y;
-
-        console.log(`🔗 Conexão ${connection.id}:`, {
-          from: fromComponent.nome,
-          to: toComponent.nome,
-          fromPos: fromComponent.posicao,
-          toPos: toComponent.posicao,
-          fromX,
-          fromY,
-          toX,
-          toY,
-          ports: { from: connection.fromPort, to: connection.toPort }
-        });
 
         // ===== CALCULAR CAMINHO ORTOGONAL MELHORADO =====
 const calculateOrthogonalPath = () => {
@@ -405,8 +370,6 @@ const calculateOrthogonalPath = () => {
 // ================================================
 
         const pathData = calculateOrthogonalPath();
-        console.log(`📍 Path gerado para ${connection.id}:`, pathData);
-        // ========================================
 
         const connectionStyle = getConnectionStyle(
           fromComponent,

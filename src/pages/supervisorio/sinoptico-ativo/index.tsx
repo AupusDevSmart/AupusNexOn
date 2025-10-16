@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   Circle,
   Copy,
+  Droplets,
   Edit3,
   Gauge,
   HardDrive,
@@ -34,6 +35,7 @@ import type { LandisGyrE750Reading } from "@/components/equipment/LandisGyr/Land
 import type { M300Reading } from "@/components/equipment/M300/M300.types"; // Hook para histórico undo/redo - REMOVIDO
 import { A966Modal } from "@/features/supervisorio/components/a966-modal";
 import { ConexoesDiagrama } from "@/features/supervisorio/components/conexoes-diagrama";
+import { DiagramaFullscreen } from "@/features/supervisorio/components/diagrama-fullscreen";
 import { DisjuntorModal } from "@/features/supervisorio/components/disjuntor-modal";
 import { InversorModal } from "@/features/supervisorio/components/inversor-modal";
 import { LandisGyrModal } from "@/features/supervisorio/components/landisgyr-modal";
@@ -98,6 +100,8 @@ const TIPOS_COMPONENTES = [
   { tipo: "DISJUNTOR", icon: Square, label: "Disjuntor (Sem Supervisão)", cor: "bg-red-500" },
   { tipo: "DISJUNTOR_FECHADO", icon: Square, label: "Disjuntor Fechado", cor: "bg-red-500" },
   { tipo: "DISJUNTOR_ABERTO", icon: Square, label: "Disjuntor Aberto", cor: "bg-red-500" },
+  { tipo: "PIVO_ABERTO", icon: Droplets, label: "Pivô Aberto", cor: "bg-green-500" },
+  { tipo: "PIVO_FECHADO", çabel: Droplets, label: "Pivô Fechado", cor: "bg-red-500" },
   { tipo: "MOTOR", icon: Circle, label: "Motor", cor: "bg-purple-500" },
   { tipo: "BOTOEIRA", icon: Circle, label: "Botoeira", cor: "bg-cyan-500" },
   {
@@ -437,6 +441,28 @@ case "DISJUNTOR_ABERTO":
     </svg>
   );
 
+  case "PIVO_ABERTO":
+  return (
+    <PivoSymbol
+      status={status as "NORMAL" | "ALARME" | "FALHA" | "DESLIGADO"}
+      rotacao={0}
+      operando={status === "NORMAL"}
+      estado="ABERTO" // ✅ ABERTO = Verde
+      onClick={onClick}
+    />
+  );
+
+case "PIVO_FECHADO":
+  return (
+    <PivoSymbol
+      status="FALHA" // ✅ Força status vermelho
+      rotacao={0}
+      operando={false} // ✅ Nunca opera quando fechado
+      estado="FECHADO" // ✅ FECHADO = Vermelho
+      onClick={onClick}
+    />
+  );
+  
         case "BARRAMENTO":
             return (
     <svg
@@ -1343,12 +1369,13 @@ export function SinopticoAtivoPage() {
   ]);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [diagramaCarregado, setDiagramaCarregado] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Estados para modais
   const [modalAberto, setModalAberto] = useState<string | null>(null);
   const [componenteSelecionado, setComponenteSelecionado] =
     useState<ComponenteDU | null>(null);
-  const [diagramaFullscreen, setDiagramaFullscreen] = useState(false);
+  
 
   // Estados para o modo de edição
   const [modoEdicao, setModoEdicao] = useState(false);
@@ -1365,41 +1392,13 @@ export function SinopticoAtivoPage() {
   const [dragOffset, setDragOffset] = useState<Position>({ x: 0, y: 0 });
   const [componenteDragId, setComponenteDragId] = useState<string | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
-  const diagramCardRef = useRef<HTMLDivElement>(null);
+  
 
   // Helper para pegar o canvas correto baseado no contexto
   const getActiveCanvasRef = useCallback(() => {
     return canvasRef;
   }, []);
 
-  // Funções para gerenciar fullscreen nativo
-  const toggleFullscreen = useCallback(async () => {
-    if (!diagramCardRef.current) return;
-
-    try {
-      if (!document.fullscreenElement) {
-        await diagramCardRef.current.requestFullscreen();
-        setDiagramaFullscreen(true);
-      } else {
-        await document.exitFullscreen();
-        setDiagramaFullscreen(false);
-      }
-    } catch (error) {
-      console.error("Erro ao alternar fullscreen:", error);
-    }
-  }, []);
-
-  // Listener para mudanças no fullscreen (ESC, etc)
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      setDiagramaFullscreen(!!document.fullscreenElement);
-    };
-
-    document.addEventListener("fullscreenchange", handleFullscreenChange);
-    return () => {
-      document.removeEventListener("fullscreenchange", handleFullscreenChange);
-    };
-  }, []);
 
   // Estados para conexões
   const [connecting, setConnecting] = useState<{
@@ -2289,7 +2288,10 @@ useEffect(() => {
         setModalAberto('A966');
       } else if (tag.includes('LANDIS')) {
         setModalAberto('LANDIS_E750');
-      } else {
+      } else if (componente.tipo === 'PIVO_ABERTO' || componente.tipo === 'PIVO_FECHADO') {
+        setModalAberto('PIVO');
+      }
+      else {
         // Fallback para o tipo original
         setModalAberto(componente.tipo);
       }
@@ -2539,8 +2541,6 @@ useEffect(() => {
             .concat([connection1, connection2]); // Adiciona as duas novas
 
           updateDiagram([...componentes, junctionNode], newConnections);
-
-          console.log("✅ Junction invisível criado:", junctionNode.id);
         }
       }
     },
@@ -2942,56 +2942,37 @@ useEffect(() => {
 
                 {/* Diagrama Unifilar - MODO VISUALIZAÇÃO */}
                 <div className="lg:col-span-2 flex">
-                  <Card
-                    ref={diagramCardRef}
-                    className={`flex flex-col w-full min-h-[900px] !bg-black ${
-                      diagramaFullscreen
-                        ? 'fixed inset-0 z-50 m-0 rounded-none border-0'
-                        : ''
-                    }`}
-                  >
+                  <Card className="flex flex-col w-full min-h-[900px] !bg-black">
                     <div className="flex items-center justify-between p-4 pb-2 border-b flex-shrink-0 !bg-black">
                       <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
                         <Network className="h-5 w-5" />
-                        Diagrama Unifilar {diagramaFullscreen && '- Tela Cheia'}
+                        Diagrama Unifilar
                       </h3>
                       <div className="flex items-center gap-2">
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={toggleFullscreen}
+                          onClick={() => setIsFullscreen(true)}
                           className="flex items-center gap-2"
                         >
-                          {diagramaFullscreen ? (
-                            <>
-                              <Minimize className="h-4 w-4" />
-                              Sair
-                            </>
-                          ) : (
-                            <>
-                              <Maximize className="h-4 w-4" />
-                              Tela Cheia
-                            </>
-                          )}
+                          <Maximize className="h-4 w-4" />
+                          Tela Cheia
                         </Button>
-                        {!diagramaFullscreen && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={toggleModoEdicao}
-                            className="flex items-center gap-2"
-                          >
-                            <Edit3 className="h-4 w-4" />
-                            Editar
-                          </Button>
-                        )}
+
+                        <Button
+  variant="outline"
+  size="sm"
+  onClick={toggleModoEdicao}
+  className="flex items-center gap-2"
+>
+  <Edit3 className="h-4 w-4" />
+  Editar
+</Button>
                       </div>
                     </div>
 
                     <div
-                      className={`flex-1 relative bg-black ${
-                        diagramaFullscreen ? 'h-[calc(100vh-73px)]' : 'min-h-[580px]'
-                      }`}
+                      className="flex-1 relative bg-black min-h-[580px]"
                       ref={canvasRef}
                     >
                       {/* COMPONENTE DE CONEXÕES PARA MODO VISUALIZAÇÃO */}
@@ -3482,6 +3463,32 @@ useEffect(() => {
           dados={dadosTransformador}
           nomeComponente={componenteSelecionado?.nome || ""}
         />
+        {/* Fullscreen Modal */}
+      {/* Fullscreen Modal */}
+<DiagramaFullscreen
+  isOpen={isFullscreen}
+  onClose={() => setIsFullscreen(false)}
+  titulo="Diagrama Unifilar"
+>
+  <div className="relative w-full h-full bg-black" ref={canvasRef}>
+    <ConexoesDiagrama
+      connections={connections}
+      componentes={componentes}
+      containerRef={canvasRef}
+      modoEdicao={false}
+      onEdgeClick={handleEdgeClick}
+      className=""
+    />
+
+    <SinopticoDiagrama
+      componentes={componentes}
+      onComponenteClick={handleComponenteClick}
+      modoEdicao={false}
+      componenteEditando={null}
+      connecting={null}
+    />
+  </div>
+</DiagramaFullscreen>
 
       </Layout.Main>
     </Layout>
