@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { PivoSymbol } from "./pivo";
 
 // Interface do componente
 interface ComponenteDU {
@@ -277,6 +278,27 @@ case "DISJUNTOR_ABERTO":
       />
     </svg>
   );
+  case "PIVO_ABERTO":
+    return (
+      <PivoSymbol
+        status={status as "NORMAL" | "ALARME" | "FALHA" | "DESLIGADO"}
+        rotacao={0}
+        operando={status === "NORMAL"}
+        estado="ABERTO" // ✅ ABERTO = Verde
+        onClick={onClick}
+      />
+    );
+  
+  case "PIVO_FECHADO":
+    return (
+      <PivoSymbol
+        status="FALHA" // ✅ Força status vermelho
+        rotacao={0}
+        operando={false} // ✅ Nunca opera quando fechado
+        estado="FECHADO" // ✅ FECHADO = Vermelho
+        onClick={onClick}
+      />
+    );
         case "BARRAMENTO":
             return (
     <svg
@@ -319,7 +341,7 @@ case "DISJUNTOR_ABERTO":
 
 case "CHAVE_ABERTA":
   return (
-    <svg width="32" height="32" viewBox="0 0 40 40" className="drop-shadow-sm">
+    <svg width="32" height="32" viewBox="0 0 40 40" className="drop-shadow-sm" style={{ transform: 'rotate(-90deg)', transformOrigin: 'center' }}>
       <circle cx="10" cy="20" r="4" className={`${statusClasses.stroke} fill-background`} strokeWidth="2" />
       <circle cx="30" cy="20" r="4" className={`${statusClasses.stroke} fill-background`} strokeWidth="2" />
       {/* Linha diagonal = aberta */}
@@ -329,7 +351,7 @@ case "CHAVE_ABERTA":
 
 case "CHAVE_FECHADA":
   return (
-    <svg width="32" height="32" viewBox="0 0 40 40" className="drop-shadow-sm">
+    <svg width="32" height="32" viewBox="0 0 40 40" className="drop-shadow-sm" style={{ transform: 'rotate(-90deg)', transformOrigin: 'center' }}>
       <circle cx="10" cy="20" r="4" className={`${statusClasses.stroke} fill-background`} strokeWidth="2" />
       <circle cx="30" cy="20" r="4" className={`${statusClasses.stroke} fill-background`} strokeWidth="2" />
       {/* Linha horizontal = fechada */}
@@ -338,7 +360,7 @@ case "CHAVE_FECHADA":
   );
   case "CHAVE_FUSIVEL":
         return (
-          <svg width="48" height="32" viewBox="0 0 60 40" className="drop-shadow-sm">
+          <svg width="48" height="32" viewBox="0 0 60 40" className="drop-shadow-sm" style={{ transform: 'rotate(-90deg)', transformOrigin: 'center' }}>
             <line x1="5" y1="20" x2="22" y2="20" className={statusClasses.stroke} strokeWidth="2.5" />
             <circle cx="30" cy="20" r="10" className={`${statusClasses.stroke} fill-background`} strokeWidth="2.5" />
             <path d="M 22 20 A 8 8 0 0 0 38 20" className={statusClasses.stroke} strokeWidth="2" fill="none" />

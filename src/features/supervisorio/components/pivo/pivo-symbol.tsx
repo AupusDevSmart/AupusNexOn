@@ -3,7 +3,7 @@ interface PivoSymbolProps {
   rotacao?: number;
   operando?: boolean;
   onClick?: () => void;
-  estado?: "ABERTO" | "FECHADO"; // ✅ NOVA PROPRIEDADE
+  estado?: "ABERTO" | "FECHADO";
 }
 
 export function PivoSymbol({
@@ -11,9 +11,9 @@ export function PivoSymbol({
   rotacao = 0,
   operando = false,
   onClick,
-  estado = "ABERTO", // ✅ Padrão é ABERTO
+  estado = "ABERTO",
 }: PivoSymbolProps) {
-  // ✅ NOVA LÓGICA: Sobrescrever cor baseado no estado
+  // Lógica de cores baseada no estado
   const getStatusClasses = () => {
     // Se está fechado, sempre vermelho independente do status
     if (estado === "FECHADO") {
@@ -69,7 +69,7 @@ export function PivoSymbol({
         className={`${currentClasses.stroke} fill-none`}
         strokeWidth="2"
         strokeDasharray="4,2"
-        opacity={estado === "FECHADO" ? "0.3" : "0.6"} // ✅ Mais opaco quando fechado
+        opacity={estado === "FECHADO" ? "0.6" : "0.3"}
       />
 
       {/* Círculo intermediário */}
@@ -79,7 +79,7 @@ export function PivoSymbol({
         r="18"
         className={`${currentClasses.stroke} fill-none`}
         strokeWidth="1"
-        opacity={estado === "FECHADO" ? "0.2" : "0.3"}
+        opacity={estado === "FECHADO" ? "0.3" : "0.2"}
       />
 
       {/* Ponto central - torre fixa */}
@@ -94,46 +94,9 @@ export function PivoSymbol({
         strokeWidth="1.5"
       />
 
-      {/* ✅ VISUAL DIFERENTE PARA FECHADO */}
+      {/*  VISUAL INVERTIDO: FECHADO = ANIMADO, ABERTO = ESTÁTICO */}
       {estado === "FECHADO" ? (
-        // Pivô Fechado: Braço com X indicando bloqueio
-        <g>
-          {/* Braço do pivô (opaco) */}
-          <line
-            x1="30"
-            y1="30"
-            x2="54"
-            y2="30"
-            className={currentClasses.stroke}
-            strokeWidth="3"
-            strokeLinecap="round"
-            opacity="0.5"
-          />
-          
-          {/* X indicando fechado/bloqueado */}
-          <g transform="translate(44, 30)">
-            <line
-              x1="-6"
-              y1="-6"
-              x2="6"
-              y2="6"
-              className="stroke-red-600"
-              strokeWidth="3"
-              strokeLinecap="round"
-            />
-            <line
-              x1="6"
-              y1="-6"
-              x2="-6"
-              y2="6"
-              className="stroke-red-600"
-              strokeWidth="3"
-              strokeLinecap="round"
-            />
-          </g>
-        </g>
-      ) : (
-        // Pivô Aberto: Braço rotacionável com gotas
+        // Pivô Fechado: Braço COM animação e gotas (operando)
         <g transform={`rotate(${rotacao} 30 30)`}>
           {/* Braço do pivô */}
           <line
@@ -146,59 +109,81 @@ export function PivoSymbol({
             strokeLinecap="round"
           />
 
-          {/* Setas indicando rotação (quando operando) */}
-          {operando && (
-            <path
-              d="M 50 26 L 54 30 L 50 34"
-              className={currentClasses.stroke}
-              strokeWidth="2"
-              fill="none"
-              strokeLinecap="round"
-            >
-              <animateTransform
-                attributeName="transform"
-                type="rotate"
-                from="0 54 30"
-                to="360 54 30"
-                dur="2s"
+          {/* Seta rotativa - SEMPRE ANIMADA quando fechado */}
+          <path
+            d="M 50 26 L 54 30 L 50 34"
+            className={currentClasses.stroke}
+            strokeWidth="2"
+            fill="none"
+            strokeLinecap="round"
+          >
+            <animateTransform
+              attributeName="transform"
+              type="rotate"
+              from="0 54 30"
+              to="360 54 30"
+              dur="2s"
+              repeatCount="indefinite"
+            />
+          </path>
+
+          {/* Gotas de água - SEMPRE ANIMADAS quando fechado */}
+          <>
+            <circle cx="38" cy="30" r="1.5" className="fill-blue-400">
+              <animate
+                attributeName="opacity"
+                values="1;0.3;1"
+                dur="1s"
                 repeatCount="indefinite"
               />
-            </path>
-          )}
+            </circle>
+            <circle cx="44" cy="30" r="1.5" className="fill-blue-400">
+              <animate
+                attributeName="opacity"
+                values="0.3;1;0.3"
+                dur="1s"
+                repeatCount="indefinite"
+              />
+            </circle>
+            <circle cx="50" cy="30" r="1.5" className="fill-blue-400">
+              <animate
+                attributeName="opacity"
+                values="1;0.3;1"
+                dur="1s"
+                repeatCount="indefinite"
+              />
+            </circle>
+          </>
 
-          {/* Gotas de água (quando operando) */}
-          {operando && (
-            <>
-              <circle cx="38" cy="30" r="1.5" className="fill-blue-400">
-                <animate
-                  attributeName="opacity"
-                  values="1;0.3;1"
-                  dur="1s"
-                  repeatCount="indefinite"
-                />
-              </circle>
-              <circle cx="44" cy="30" r="1.5" className="fill-blue-400">
-                <animate
-                  attributeName="opacity"
-                  values="0.3;1;0.3"
-                  dur="1s"
-                  repeatCount="indefinite"
-                />
-              </circle>
-              <circle cx="50" cy="30" r="1.5" className="fill-blue-400">
-                <animate
-                  attributeName="opacity"
-                  values="1;0.3;1"
-                  dur="1s"
-                  repeatCount="indefinite"
-                />
-              </circle>
-            </>
-          )}
+        </g>
+      ) : (
+        // Pivô Aberto: Braço SEM animação (estático/parado)
+        <g>
+          {/* Braço do pivô ESTÁTICO */}
+          <line
+            x1="30"
+            y1="30"
+            x2="54"
+            y2="30"
+            className={currentClasses.stroke}
+            strokeWidth="3"
+            strokeLinecap="round"
+          />
+
+          {/* Seta estática (sem animação) */}
+          <path
+            d="M 50 26 L 54 30 L 50 34"
+            className={currentClasses.stroke}
+            strokeWidth="2"
+            fill="none"
+            strokeLinecap="round"
+          />
+
+          {/* SEM gotas quando aberto */}
         </g>
       )}
 
-      {/* LED de status */}
+      {/* LED de status - PISCA APENAS QUANDO FECHADO */}
       <circle 
         cx="52" 
         cy="8" 
@@ -206,7 +191,7 @@ export function PivoSymbol({
         className={currentClasses.fill} 
         opacity="0.9"
       >
-        {operando && estado === "ABERTO" && (
+        {estado === "FECHADO" && (
           <animate
             attributeName="opacity"
             values="0.9;0.4;0.9"
@@ -227,7 +212,7 @@ export function PivoSymbol({
         className="fill-background"
         style={{ pointerEvents: "none" }}
       >
-        {estado === "FECHADO" ? "PF" : "PV"} {/* ✅ PF = Pivô Fechado, PV = Pivô aberto */}
+        {estado === "FECHADO" ? "PF" : "PV"}
       </text>
     </svg>
   );

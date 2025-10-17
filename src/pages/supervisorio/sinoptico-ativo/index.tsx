@@ -42,6 +42,7 @@ import { LandisGyrModal } from "@/features/supervisorio/components/landisgyr-mod
 import { M160Modal } from "@/features/supervisorio/components/m160-modal";
 import { M300Modal } from "@/features/supervisorio/components/m300-modal";
 import { MedidorModal } from "@/features/supervisorio/components/medidor-modal";
+import { PivoSymbol, PivoModal, type DadosPivo } from "@/features/supervisorio/components/pivo";
 import { SinopticoDiagrama } from "@/features/supervisorio/components/sinoptico-diagrama";
 import { SinopticoGraficos } from "@/features/supervisorio/components/sinoptico-graficos";
 import { SinopticoIndicadores } from "@/features/supervisorio/components/sinoptico-indicadores";
@@ -57,6 +58,8 @@ import {
 
 // Tipos - CORRIGIDOS com interfaces locais caso os imports falhem
 import type { ComponenteDU } from "@/types/dtos/sinoptico-ativo";
+import { PlannedVsCompletedChart } from '../../../features/dashboard/components/planned-vs-completed-chart';
+
 
 // Interfaces de backup caso os imports não funcionem
 interface ComponenteDUBackup {
@@ -100,8 +103,8 @@ const TIPOS_COMPONENTES = [
   { tipo: "DISJUNTOR", icon: Square, label: "Disjuntor (Sem Supervisão)", cor: "bg-red-500" },
   { tipo: "DISJUNTOR_FECHADO", icon: Square, label: "Disjuntor Fechado", cor: "bg-red-500" },
   { tipo: "DISJUNTOR_ABERTO", icon: Square, label: "Disjuntor Aberto", cor: "bg-red-500" },
-  { tipo: "PIVO_ABERTO", icon: Droplets, label: "Pivô Aberto", cor: "bg-green-500" },
-  { tipo: "PIVO_FECHADO", çabel: Droplets, label: "Pivô Fechado", cor: "bg-red-500" },
+  { tipo: "PIVO_ABERTO", icon: Droplets, label: "Pivô Aberto", cor: "bg-red-500" },
+  { tipo: "PIVO_FECHADO", icon: Droplets, label: "Pivô Fechado", cor: "bg-green-500" },
   { tipo: "MOTOR", icon: Circle, label: "Motor", cor: "bg-purple-500" },
   { tipo: "BOTOEIRA", icon: Circle, label: "Botoeira", cor: "bg-cyan-500" },
   {
@@ -1333,6 +1336,11 @@ export function SinopticoAtivoPage() {
   const { ativoId } = useParams<{ ativoId: string }>();
   const navigate = useNavigate();
 
+  // Função para voltar à página anterior
+  const handleVoltar = useCallback(() => {
+    navigate(-1);
+  }, [navigate]);
+
   // NOVO: Ativo selecionado (substitui ativoId)
   const [ativoSelecionado, setAtivoSelecionado] =
     useState<string>("ativo-principal");
@@ -2081,6 +2089,19 @@ useEffect(() => {
     temperatura: 65.8,
     carregamento: 85.2,
   };
+  const dadosPivo = useState<DadosPivo>({
+    status: "NORMAL",
+    operando: true,
+    velocidadeRotacao: 2.5,
+    pressaoAgua: 4.2,
+    vazaoAgua: 180,
+    areaIrrigada: 125,
+    tempoOperacao: "18h35min",
+    setorAtual: 145,
+    unidadeSolo: 68,
+    modoOperacao: "AUTOMATICO",
+    ultimaManutencao: "15/10/2025",
+  })
 
   const dadosM160: M160Reading = {
     voltage: {
@@ -2616,17 +2637,20 @@ useEffect(() => {
     <Layout>
       <Layout.Main>
         <div className="w-full max-w-full space-y-3">
-          {/* Header */}
+        {/* Header - Ocultar no modo de edição */}
+        {!modoEdicao && (
           <div className="flex items-center gap-3 p-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => navigate(-1)}
-              className="flex items-center gap-2"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Voltar
-            </Button>
+            {!isFullscreen && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleVoltar}
+                className="flex items-center gap-2"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Voltar
+              </Button>
+            )}
 
             <div className="flex items-center gap-4">
               <h1 className="text-2xl font-bold text-foreground">
@@ -2645,17 +2669,19 @@ useEffect(() => {
                   </option>
                 ))}
               </select>
-            </div>
 
-            {/* Debug info */}
-            <div className="text-xs text-muted-foreground">
-              Componentes: {componentes.length} | LocalStorage: diagrama_
-              {ativoSelecionado}
+              {/* Debug info */}
+              <span className="text-xs text-muted-foreground">
+                Componentes: {componentes.length} | LocalStorage: diagrama_{ativoSelecionado}
+              </span>
             </div>
           </div>
+        )}
 
-          {/* Indicadores */}
+        {/* Indicadores - Ocultar no modo edição */}
+        {!modoEdicao && (
           <SinopticoIndicadores indicadores={indicadores} />
+        )}
 
           {/* Barra de Ferramentas - SÓ APARECE NO MODO EDIÇÃO */}
           {modoEdicao && (
@@ -2733,6 +2759,8 @@ useEffect(() => {
                         <option value="RELE">Relé</option>
                         <option value="MOTOR">Motor</option>
                         <option value="CAPACITOR">Capacitor</option>
+                        <option value="PIVO_ABERTO">Pivô Aberto</option>
+                        <option value="PIVO_FECHADO">Pivô Fechado</option>
                       </optgroup>
                       <optgroup label="Subestação">
                         <option value="TSA">TSA</option>
@@ -3457,6 +3485,13 @@ useEffect(() => {
           nomeComponente={componenteSelecionado?.nome || ""}
         />
 
+        <PivoModal
+        open={modalAberto === "PIVO"}
+        onClose={fecharModal}
+        dados={dadosPivo}
+        nomeComponente={componenteSelecionado?.nome || ""}
+        />
+
         <TransformadorModal
           open={modalAberto === "TRANSFORMADOR"}
           onClose={fecharModal}
@@ -3464,11 +3499,10 @@ useEffect(() => {
           nomeComponente={componenteSelecionado?.nome || ""}
         />
         {/* Fullscreen Modal */}
-      {/* Fullscreen Modal */}
 <DiagramaFullscreen
   isOpen={isFullscreen}
   onClose={() => setIsFullscreen(false)}
-  titulo="Diagrama Unifilar"
+  titulo={`Sinóptico do Ativo - ${ativoData.nome}`}
 >
   <div className="relative w-full h-full bg-black" ref={canvasRef}>
     <ConexoesDiagrama
