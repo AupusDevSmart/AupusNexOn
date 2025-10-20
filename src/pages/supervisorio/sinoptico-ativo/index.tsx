@@ -1632,13 +1632,13 @@ useEffect(() => {
         const key = `diagrama_${ativoSelecionado}`;
         localStorage.setItem(key, JSON.stringify(diagramaData));
         console.log(
-          "💾 Auto-save:",
+          "Auto-save:",
           key,
           componentes.length,
           "componentes"
         );
       } catch (error) {
-        console.error("❌ Erro auto-save:", error);
+        console.error("Erro auto-save:", error);
       }
     }, 2000);
 
@@ -1957,85 +1957,6 @@ useEffect(() => {
     updateDiagram(newComponents);
   }, [componentes, updateDiagram]);
 
-  const alignHorizontal = useCallback(() => {
-    if (componentes.length < 2) return;
-
-    // Calcular Y médio
-    const avgY =
-      componentes.reduce((sum, comp) => sum + comp.posicao.y, 0) /
-      componentes.length;
-
-    // Ordenar por posição X para manter ordem
-    const sortedComponents = [...componentes].sort(
-      (a, b) => a.posicao.x - b.posicao.x
-    );
-
-    const aligned: ComponenteDU[] = [];
-    let currentX = 10; // Começar em 10%
-
-    sortedComponents.forEach((comp) => {
-      aligned.push({
-        ...comp,
-        posicao: {
-          x: currentX,
-          y: avgY,
-        },
-      });
-
-      currentX += MIN_SPACING; // Próximo componente com espaçamento
-      if (currentX > 85) currentX = 85; // Limitar à tela
-    });
-
-    updateDiagram(aligned);
-  }, [componentes, updateDiagram]);
-
-  const alignVertical = useCallback(() => {
-    if (componentes.length < 2) return;
-
-    // Calcular X médio
-    const avgX =
-      componentes.reduce((sum, comp) => sum + comp.posicao.x, 0) /
-      componentes.length;
-
-    // Ordenar por posição Y para manter ordem
-    const sortedComponents = [...componentes].sort(
-      (a, b) => a.posicao.y - b.posicao.y
-    );
-
-    const aligned: ComponenteDU[] = [];
-
-    // Calcular espaçamento disponível
-    const startY = 10;
-    const endY = 85;
-    const availableSpace = endY - startY;
-    const numComponents = sortedComponents.length;
-
-    if (numComponents === 1) {
-      // Se só há 1 componente, centralizar
-      aligned.push({
-        ...sortedComponents[0],
-        posicao: {
-          x: avgX,
-          y: 50, // Centro da tela
-        },
-      });
-    } else {
-      // Se há múltiplos componentes, distribuir uniformemente
-      const spacing = availableSpace / (numComponents - 1);
-
-      sortedComponents.forEach((comp, index) => {
-        aligned.push({
-          ...comp,
-          posicao: {
-            x: avgX,
-            y: startY + index * spacing,
-          },
-        });
-      });
-    }
-
-    updateDiagram(aligned);
-  }, [componentes, updateDiagram]);
 
   // Mock data para modais
   const dadosMedidor = {
@@ -2601,7 +2522,7 @@ useEffect(() => {
       console.log("📦 Componentes verificados:", dadosVerificados.componentes.length);
       console.log("🔗 Conexões verificadas:", dadosVerificados.connections.length);
       
-      alert(`✅ Diagrama salvo com sucesso!\n\nAtivo: ${ativoSelecionado}\nComponentes: ${componentes.length}\nConexões: ${connections.length}`);
+      alert(`Diagrama salvo com sucesso!\n\nAtivo: ${ativoSelecionado}\nComponentes: ${componentes.length}\nConexões: ${connections.length}`);
     } else {
       console.error("❌ ERRO: Dados não encontrados após salvar!");
       alert("❌ Erro: Não foi possível verificar o salvamento!");
@@ -2854,36 +2775,6 @@ useEffect(() => {
                     </div>
                   </div>
 
-                  {/* Ferramentas de Layout */}
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">Layout:</span>
-                    <div className="flex gap-1">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={autoArrangeComponents}
-                        title="Organizar automaticamente"
-                      >
-                        Auto
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={alignHorizontal}
-                        title="Alinhar horizontalmente"
-                      >
-                        ═══
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={alignVertical}
-                        title="Alinhar verticalmente"
-                      >
-                        |||
-                      </Button>
-                    </div>
-                  </div>
                 </div>
 
                 {/* Info do Componente Selecionado */}
