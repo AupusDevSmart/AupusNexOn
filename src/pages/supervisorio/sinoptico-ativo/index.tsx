@@ -1570,19 +1570,19 @@ export function SinopticoAtivoPage() {
   // CARREGAR DIAGRAMA SALVO
 useEffect(() => {
   const carregarDiagrama = () => {
-    console.log("📂 === CARREGAMENTO INICIADO ===");
-    console.log("🎯 Ativo selecionado:", ativoSelecionado);
+    console.log("=== CARREGAMENTO INICIADO ===");
+    console.log("Ativo selecionado:", ativoSelecionado);
 
     try {
       const key = `diagrama_${ativoSelecionado}`;
-      console.log("🔑 Buscando key:", key);
+      console.log("Buscando key:", key);
       
       const diagramaSalvo = localStorage.getItem(key);
-      console.log("📦 Dados encontrados?", diagramaSalvo ? "SIM" : "NÃO");
+      console.log("Dados encontrados?", diagramaSalvo ? "SIM" : "NÃO");
 
       if (diagramaSalvo) {
         const data = JSON.parse(diagramaSalvo);
-        console.log("✅ Dados parseados:", {
+        console.log("Dados parseados:", {
           componentes: data.componentes?.length || 0,
           connections: data.connections?.length || 0,
           ultimaAtualizacao: data.ultimaAtualizacao
@@ -1591,25 +1591,25 @@ useEffect(() => {
         if (data.componentes && Array.isArray(data.componentes) && data.componentes.length > 0) {
           setComponentes(data.componentes);
           setConnections(data.connections || []);
-          console.log("📊 Diagrama restaurado com sucesso!");
+          console.log("Diagrama restaurado com sucesso!");
         } else {
-          console.log("⚠️ Dados inválidos, usando diagrama padrão");
+          console.log("Dados inválidos, usando diagrama padrão");
           setComponentes(getDiagramaPadrao());
           setConnections([]);
         }
       } else {
-        console.log("📋 Nenhum dado salvo, usando diagrama padrão");
+        console.log("Nenhum dado salvo, usando diagrama padrão");
         setComponentes(getDiagramaPadrao());
         setConnections([]);
       }
     } catch (error) {
-      console.error("❌ Erro ao carregar:", error);
+      console.error("Erro ao carregar:", error);
       setComponentes(getDiagramaPadrao());
       setConnections([]);
     }
 
     setDiagramaCarregado(true);
-    console.log("✅ Carregamento finalizado");
+    console.log("Carregamento finalizado");
   };
 
   carregarDiagrama();
@@ -2490,11 +2490,11 @@ useEffect(() => {
   );
 
   const salvarDiagrama = useCallback(() => {
-  console.log("💾 === SALVAMENTO MANUAL INICIADO ===");
-  console.log("📊 Ativo:", ativoSelecionado);
-  console.log("📦 Componentes:", componentes.length);
-  console.log("🔗 Conexões:", connections.length);
-  console.log("📋 Componentes:", componentes.map(c => ({ id: c.id, tipo: c.tipo, nome: c.nome })));
+  console.log("=== SALVAMENTO MANUAL INICIADO ===");
+  console.log("Ativo:", ativoSelecionado);
+  console.log("Componentes:", componentes.length);
+  console.log("Conexões:", connections.length);
+  console.log("Componentes:", componentes.map(c => ({ id: c.id, tipo: c.tipo, nome: c.nome })));
 
   try {
     const diagramaData = {
@@ -2508,28 +2508,28 @@ useEffect(() => {
     const key = `diagrama_${ativoSelecionado}`;
     const dataString = JSON.stringify(diagramaData);
     
-    console.log("🔑 Key:", key);
-    console.log("📏 Tamanho dos dados:", dataString.length, "caracteres");
+    console.log("Key:", key);
+    console.log("Tamanho dos dados:", dataString.length, "caracteres");
 
     localStorage.setItem(key, dataString);
-    console.log("✅ Dados salvos no localStorage");
+    console.log("Dados salvos no localStorage");
 
     // Verificação imediata
     const verificacao = localStorage.getItem(key);
     if (verificacao) {
       const dadosVerificados = JSON.parse(verificacao);
-      console.log("✅ VERIFICAÇÃO: Dados recuperados com sucesso!");
-      console.log("📦 Componentes verificados:", dadosVerificados.componentes.length);
-      console.log("🔗 Conexões verificadas:", dadosVerificados.connections.length);
+      console.log("VERIFICAÇÃO: Dados recuperados com sucesso!");
+      console.log("Componentes verificados:", dadosVerificados.componentes.length);
+      console.log("Conexões verificadas:", dadosVerificados.connections.length);
       
       alert(`Diagrama salvo com sucesso!\n\nAtivo: ${ativoSelecionado}\nComponentes: ${componentes.length}\nConexões: ${connections.length}`);
     } else {
-      console.error("❌ ERRO: Dados não encontrados após salvar!");
-      alert("❌ Erro: Não foi possível verificar o salvamento!");
+      console.error("ERRO: Dados não encontrados após salvar!");
+      alert("Erro: Não foi possível verificar o salvamento!");
     }
   } catch (error) {
-    console.error("❌ ERRO ao salvar:", error);
-    alert(`❌ Erro ao salvar diagrama: ${error}`);
+    console.error("ERRO ao salvar:", error);
+    alert(`Erro ao salvar diagrama: ${error}`);
   }
 }, [ativoSelecionado, componentes, connections]); 
     
