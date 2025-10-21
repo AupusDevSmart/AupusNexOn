@@ -1329,11 +1329,7 @@ case "RELE":
     >
       {renderSymbol()}
       {/* Não mostrar indicador de status para PONTO e JUNCTION */}
-      {tipo !== "PONTO" && tipo !== "JUNCTION" && (
-        <div
-          className={`absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-background shadow-lg ${statusClasses.bg}`}
-        />
-      )}
+      
     </div>
   );
 };
