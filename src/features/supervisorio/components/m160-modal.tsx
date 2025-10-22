@@ -21,9 +21,12 @@ export function M160Modal({ isOpen, onClose, componenteData }: M160ModalProps) {
   // ============================================
   // INTEGRAÇÃO WEBSOCKET MQTT EM TEMPO REAL
   // ============================================
-  // Conecta ao WebSocket e recebe dados do tópico MQTT
-  const topic = componenteData?.tag || 'OLI/GO/CHI/CAB/M160-1';
-  const { data: mqttData, isConnected, error } = useMqttWebSocket(topic);
+  // TEMPORÁRIO: Desabilitado para evitar erros de conexão enquanto backend não está configurado
+  // const topic = componenteData?.tag || 'OLI/GO/CHI/CAB/M160-1';
+  // const { data: mqttData, isConnected, error } = useMqttWebSocket(topic);
+  const mqttData = null;
+  const isConnected = false;
+  const error = 'Backend MQTT não configurado (modo teste)';
 
   // Converter dados MQTT para formato M160Reading
   const dadosM160: M160Reading = useMemo(() => {

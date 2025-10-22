@@ -167,6 +167,26 @@ export const appRoutes = createBrowserRouter([
         ),
       },
       {
+        path: "supervisorio/sinoptico-ativo",
+        element: (
+          <FeatureWrapper feature="supervisorio">
+            <Suspense fallback={<div>Carregando...</div>}>
+              <SinopticoPage />
+            </Suspense>
+          </FeatureWrapper>
+        ),
+      },
+      {
+        path: "supervisorio/sinoptico-ativo/:ativoId",
+        element: (
+          <FeatureWrapper feature="supervisorio">
+            <Suspense fallback={<div>Carregando...</div>}>
+              <SinopticoPage />
+            </Suspense>
+          </FeatureWrapper>
+        ),
+      },
+      {
         path: "supervisorio/demo-mqtt",
         element: (
           <FeatureWrapper feature="supervisorio">

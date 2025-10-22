@@ -78,20 +78,18 @@ class PlantasServiceClass {
       if (params.orderBy) queryParams.append('orderBy', params.orderBy);
       if (params.orderDirection) queryParams.append('orderDirection', params.orderDirection);
 
-      console.log('📡 [PlantasService] GET /plantas with params:', queryParams.toString());
-
       const response = await api.get(`/plantas?${queryParams.toString()}`);
 
-      // Normalize response
-      const data = response.data?.data || response.data || [];
-      const pagination = response.data?.pagination || {
+      // Normalize response - handle nested data structure from backend
+      // Backend returns: { success: true, data: { data: [...plantas], pagination: {...} } }
+      const responseData = response.data?.data || response.data;
+      const data = responseData?.data || responseData || [];
+      const pagination = responseData?.pagination || response.data?.pagination || {
         page: params.page || 1,
         limit: params.limit || 10,
         total: Array.isArray(data) ? data.length : 0,
         totalPages: Math.ceil((Array.isArray(data) ? data.length : 0) / (params.limit || 10)),
       };
-
-      console.log('✅ [PlantasService] Fetched', data.length, 'plantas');
 
       return {
         data: Array.isArray(data) ? data : [],

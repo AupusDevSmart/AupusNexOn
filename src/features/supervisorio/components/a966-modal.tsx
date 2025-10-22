@@ -27,8 +27,12 @@ export function A966Modal({
   // ============================================
   // INTEGRAÇÃO WEBSOCKET MQTT EM TEMPO REAL
   // ============================================
-  const topic = componenteData?.tag || 'IMS/a966/state';
-  const { data: mqttData, isConnected, error } = useMqttWebSocket(topic);
+  // TEMPORÁRIO: Desabilitado para evitar erros de conexão enquanto backend não está configurado
+  // const topic = componenteData?.tag || 'IMS/a966/state';
+  // const { data: mqttData, isConnected, error } = useMqttWebSocket(topic);
+  const mqttData = null;
+  const isConnected = false;
+  const error = 'Backend MQTT não configurado (modo teste)';
 
   // Converter dados MQTT para formato A966Reading
   const dados: A966Reading = useMemo(() => {

@@ -5,9 +5,9 @@ import { Card } from "@/components/ui/card";
 import {
   Activity,
   ArrowLeft,
+  Building,
   Circle,
   Copy,
-  Droplets,
   Edit3,
   Gauge,
   HardDrive,
@@ -35,19 +35,18 @@ import type { LandisGyrE750Reading } from "@/components/equipment/LandisGyr/Land
 import type { M300Reading } from "@/components/equipment/M300/M300.types"; // Hook para histórico undo/redo - REMOVIDO
 import { A966Modal } from "@/features/supervisorio/components/a966-modal";
 import { ConexoesDiagrama } from "@/features/supervisorio/components/conexoes-diagrama";
-import { DiagramaFullscreen } from "@/features/supervisorio/components/diagrama-fullscreen";
 import { DisjuntorModal } from "@/features/supervisorio/components/disjuntor-modal";
 import { InversorModal } from "@/features/supervisorio/components/inversor-modal";
 import { LandisGyrModal } from "@/features/supervisorio/components/landisgyr-modal";
 import { M160Modal } from "@/features/supervisorio/components/m160-modal";
 import { M300Modal } from "@/features/supervisorio/components/m300-modal";
 import { MedidorModal } from "@/features/supervisorio/components/medidor-modal";
-import { PivoSymbol, PivoModal, type DadosPivo } from "@/features/supervisorio/components/pivo";
 import { SinopticoDiagrama } from "@/features/supervisorio/components/sinoptico-diagrama";
 import { SinopticoGraficos } from "@/features/supervisorio/components/sinoptico-graficos";
 import { SinopticoIndicadores } from "@/features/supervisorio/components/sinoptico-indicadores";
 import { TransformadorModal } from "@/features/supervisorio/components/transformador-modal";
-import { useMqttWebSocket } from "@/hooks/useMqttWebSocket";
+// TEMPORÁRIO: MQTT comentado - implementar depois
+// import { useMqttWebSocket } from "@/hooks/useMqttWebSocket";
 import {
   createJunctionNode,
   splitConnectionWithJunction,
@@ -56,10 +55,15 @@ import {
 } from "@/features/supervisorio/utils/junctionHelpers";
 // import { useHistory } from "@/features/supervisorio/hooks/useHistory";
 
+// NOVO: Imports para integração com backend
+// TEMPORÁRIO: Hook comentado - implementar carregamento depois
+// import { useDiagramaUnidade } from '@/hooks/useDiagramaUnidade';
+import { ModalSelecionarUnidade } from '@/components/supervisorio/ModalSelecionarUnidade';
+import type { PlantaResponse } from '@/services/plantas.services';
+import type { Unidade } from '@/services/unidades.services';
+
 // Tipos - CORRIGIDOS com interfaces locais caso os imports falhem
 import type { ComponenteDU } from "@/types/dtos/sinoptico-ativo";
-import { PlannedVsCompletedChart } from '../../../features/dashboard/components/planned-vs-completed-chart';
-
 
 // Interfaces de backup caso os imports não funcionem
 interface ComponenteDUBackup {
@@ -103,8 +107,6 @@ const TIPOS_COMPONENTES = [
   { tipo: "DISJUNTOR", icon: Square, label: "Disjuntor (Sem Supervisão)", cor: "bg-red-500" },
   { tipo: "DISJUNTOR_FECHADO", icon: Square, label: "Disjuntor Fechado", cor: "bg-red-500" },
   { tipo: "DISJUNTOR_ABERTO", icon: Square, label: "Disjuntor Aberto", cor: "bg-red-500" },
-  { tipo: "PIVO_ABERTO", icon: Droplets, label: "Pivô Aberto", cor: "bg-red-500" },
-  { tipo: "PIVO_FECHADO", icon: Droplets, label: "Pivô Fechado", cor: "bg-green-500" },
   { tipo: "MOTOR", icon: Circle, label: "Motor", cor: "bg-purple-500" },
   { tipo: "BOTOEIRA", icon: Circle, label: "Botoeira", cor: "bg-cyan-500" },
   {
@@ -444,28 +446,6 @@ case "DISJUNTOR_ABERTO":
     </svg>
   );
 
-  case "PIVO_ABERTO":
-  return (
-    <PivoSymbol
-      status={status as "NORMAL" | "ALARME" | "FALHA" | "DESLIGADO"}
-      rotacao={0}
-      operando={status === "NORMAL"}
-      estado="ABERTO" // ✅ ABERTO = Verde
-      onClick={onClick}
-    />
-  );
-
-case "PIVO_FECHADO":
-  return (
-    <PivoSymbol
-      status="FALHA" // ✅ Força status vermelho
-      rotacao={0}
-      operando={false} // ✅ Nunca opera quando fechado
-      estado="FECHADO" // ✅ FECHADO = Vermelho
-      onClick={onClick}
-    />
-  );
-  
         case "BARRAMENTO":
             return (
     <svg
@@ -1333,57 +1313,189 @@ function LandisGyrModalInline({
   );
 }
 export function SinopticoAtivoPage() {
-  const { ativoId } = useParams<{ ativoId: string }>();
+  const { ativoId: ativoIdRaw } = useParams<{ ativoId?: string }>();
   const navigate = useNavigate();
 
-  // Função para voltar à página anterior
-  const handleVoltar = useCallback(() => {
-    navigate(-1);
-  }, [navigate]);
+  // Limpar espaços em branco do ID da URL
+  const ativoId = ativoIdRaw?.trim();
 
-  // NOVO: Ativo selecionado (substitui ativoId)
-  const [ativoSelecionado, setAtivoSelecionado] =
-    useState<string>("ativo-principal");
+  // NOVO: Estados para integração com backend
+  const [unidadeId, setUnidadeId] = useState<string | undefined>(ativoId);
+  const [plantaAtual, setPlantaAtual] = useState<PlantaResponse | null>(null);
+  const [unidadeAtual, setUnidadeAtual] = useState<Unidade | null>(null);
+  // Abrir modal automaticamente se não tiver unidade selecionada
+  const [modalSelecionarUnidade, setModalSelecionarUnidade] = useState(!ativoId);
 
-  // NOVO: Estados principais
-  const [componentes, setComponentes] = useState<ComponenteDU[]>([
-    {
-      id: "m160-1",
-      tipo: "M160",
-      nome: "M160 Multimedidor",
-      posicao: { x: 20, y: 50 },
-      status: "NORMAL",
-      tag: "OLI/GO/CHI/CAB/M160-1",
-      dados: {}
-    },
-    {
-      id: "a966-1",
-      tipo: "A966",
-      nome: "A966 Gateway IoT",
-      posicao: { x: 50, y: 50 },
-      status: "NORMAL",
-      tag: "IMS/a966/state",
-      dados: {}
-    },
-    {
-      id: "landis-1",
-      tipo: "LANDIS_E750",
-      nome: "Landis+Gyr E750",
-      posicao: { x: 80, y: 50 },
-      status: "NORMAL",
-      tag: "IMS/a966/LANDIS/state",
-      dados: {}
-    },
-  ]);
+  // TEMPORÁRIO: Hook comentado para evitar loop infinito - implementar carregamento depois
+  // const {
+  //   unidade,
+  //   diagrama,
+  //   equipamentos,
+  //   componentes: componentesCarregados,
+  //   loading: loadingDiagrama,
+  //   error: errorDiagrama,
+  //   reloadDiagrama,
+  //   saveDiagrama,
+  // } = useDiagramaUnidade(unidadeId);
+
+  const [loadingDiagrama, setLoadingDiagrama] = useState(false);
+  const [errorDiagrama, setErrorDiagrama] = useState<string | null>(null);
+  const [equipamentos, setEquipamentos] = useState<any[]>([]);
+
+  const reloadDiagrama = useCallback(async () => {
+    if (!unidadeId) return;
+    console.log('🔄 Recarregando diagrama da unidade:', unidadeId);
+    await loadDiagramaFromBackend();
+  }, [unidadeId]);
+
+  // Estado local dos componentes (para edição)
+  const [componentes, setComponentes] = useState<ComponenteDU[]>([]);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [diagramaCarregado, setDiagramaCarregado] = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // Função para carregar diagrama do backend
+  const loadDiagramaFromBackend = useCallback(async () => {
+    if (!unidadeId) return;
+
+    console.log('📡 Carregando diagrama e equipamentos do backend para unidade:', unidadeId);
+    setLoadingDiagrama(true);
+    setErrorDiagrama(null);
+
+    try {
+      // Carregar equipamentos da unidade
+      const { EquipamentosService } = await import('@/services/equipamentos.services');
+      const equipamentosResponse = await EquipamentosService.getEquipamentosByUnidade(unidadeId, { limit: 100 });
+      const equipamentosData = equipamentosResponse.data || [];
+      console.log('✅ Equipamentos carregados:', equipamentosData.length);
+      setEquipamentos(equipamentosData);
+
+      // Carregar diagrama ativo da unidade
+      const { DiagramasService } = await import('@/services/diagramas.services');
+      let diagramaAtivo = null;
+      try {
+        diagramaAtivo = await DiagramasService.getActiveDiagrama(unidadeId);
+      } catch (err) {
+        console.log('ℹ️ Nenhum diagrama ativo encontrado, criando diagrama vazio');
+      }
+
+      if (diagramaAtivo) {
+        console.log('📊 Diagrama ativo encontrado:', diagramaAtivo.id);
+
+        // Buscar diagrama completo com equipamentos e conexões
+        try {
+          const diagramaCompleto = await DiagramasService.getDiagrama(diagramaAtivo.id);
+          console.log('✅ Diagrama completo carregado:', diagramaCompleto);
+
+          // Converter equipamentos do backend para componentes do frontend
+          console.log('🔍 Estrutura do primeiro equipamento do backend:', diagramaCompleto.equipamentos?.[0]);
+          const componentesCarregados = (diagramaCompleto.equipamentos || []).map((eq: any) => {
+            const equipamentoId = (eq.id || '').trim();
+            // Para BARRAMENTO/PONTO, usar tipo_equipamento direto. Para outros, usar tipo.codigo
+            const tipoComponente = eq.tipo_equipamento || eq.tipo?.codigo || 'MEDIDOR';
+
+            // Log de debug para verificar tipos
+            if (eq.nome?.includes('PONTO') || eq.nome?.includes('BARRAMENTO')) {
+              console.log(`🔍 DEBUG TIPO - ${eq.nome}:`, {
+                tipo_equipamento: eq.tipo_equipamento,
+                'tipo.codigo': eq.tipo?.codigo,
+                tipoComponente,
+                equipamento: eq
+              });
+            }
+
+            return {
+              id: `eq-${equipamentoId}`,
+              tipo: tipoComponente,
+              nome: eq.nome,
+              tag: eq.tag,
+              posicao: {
+                x: eq.posicao?.x || 0,
+                y: eq.posicao?.y || 0,
+              },
+              rotacao: eq.rotacao || 0,
+              status: eq.status || 'NORMAL',
+              dados: {
+                equipamento_id: equipamentoId,
+                fabricante: eq.fabricante,
+                modelo: eq.modelo,
+                ...eq.propriedades,
+              },
+            };
+          });
+
+          // TODOS os componentes agora são equipamentos (incluindo BARRAMENTO/PONTO virtuais)
+          console.log('✅ Componentes carregados:', componentesCarregados.map(c => ({ id: c.id, tipo: c.tipo, posicao: c.posicao })));
+
+          // Converter TODAS as conexões do backend (incluindo virtuais)
+          console.log('🔍 Estrutura da primeira conexão do backend:', diagramaCompleto.conexoes?.[0]);
+          const conexoesCarregadas = (diagramaCompleto.conexoes || []).map((conn: any) => {
+            const origemId = (conn.origem?.equipamentoId || '').trim();
+            const destinoId = (conn.destino?.equipamentoId || '').trim();
+
+            const fromId = `eq-${origemId}`;
+            const toId = `eq-${destinoId}`;
+
+            return {
+              id: conn.id,
+              from: fromId,
+              to: toId,
+              fromPort: conn.origem?.porta,
+              toPort: conn.destino?.porta,
+              source: fromId,
+              target: toId,
+              sourceHandle: conn.origem?.porta,
+              targetHandle: conn.destino?.porta,
+              style: {
+                stroke: conn.visual?.cor || '#22c55e',
+                strokeWidth: conn.visual?.espessura || 2,
+              },
+            };
+          });
+
+          setComponentes(componentesCarregados);
+          setConnections(conexoesCarregadas);
+          console.log('✅ Diagrama carregado:', componentesCarregados.length, 'componentes,', conexoesCarregadas.length, 'conexões');
+        } catch (err) {
+          console.error('❌ Erro ao carregar diagrama completo:', err);
+          setComponentes([]);
+          setConnections([]);
+        }
+      } else {
+        console.log('ℹ️ Diagrama vazio, iniciando com componentes vazios');
+        setComponentes([]);
+        setConnections([]);
+      }
+
+      setDiagramaCarregado(true);
+    } catch (error: any) {
+      console.error('❌ Erro ao carregar diagrama:', error);
+      setErrorDiagrama(error.message || 'Erro ao carregar diagrama');
+      setComponentes([]);
+      setConnections([]);
+      setDiagramaCarregado(false);
+    } finally {
+      setLoadingDiagrama(false);
+    }
+  }, [unidadeId]);
+
+  // Carregar diagrama quando selecionar uma unidade
+  useEffect(() => {
+    if (unidadeId) {
+      loadDiagramaFromBackend();
+    } else {
+      // Limpar componentes se não houver unidade
+      setComponentes([]);
+      setConnections([]);
+      setEquipamentos([]);
+      setDiagramaCarregado(false);
+    }
+  }, [unidadeId, loadDiagramaFromBackend]);
 
   // Estados para modais
   const [modalAberto, setModalAberto] = useState<string | null>(null);
   const [componenteSelecionado, setComponenteSelecionado] =
     useState<ComponenteDU | null>(null);
-  
+  const [diagramaFullscreen, setDiagramaFullscreen] = useState(false);
 
   // Estados para o modo de edição
   const [modoEdicao, setModoEdicao] = useState(false);
@@ -1400,160 +1512,47 @@ export function SinopticoAtivoPage() {
   const [dragOffset, setDragOffset] = useState<Position>({ x: 0, y: 0 });
   const [componenteDragId, setComponenteDragId] = useState<string | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
-  
+  const diagramCardRef = useRef<HTMLDivElement>(null);
 
   // Helper para pegar o canvas correto baseado no contexto
   const getActiveCanvasRef = useCallback(() => {
     return canvasRef;
   }, []);
 
+  // Funções para gerenciar fullscreen nativo
+  const toggleFullscreen = useCallback(async () => {
+    if (!diagramCardRef.current) return;
+
+    try {
+      if (!document.fullscreenElement) {
+        await diagramCardRef.current.requestFullscreen();
+        setDiagramaFullscreen(true);
+      } else {
+        await document.exitFullscreen();
+        setDiagramaFullscreen(false);
+      }
+    } catch (error) {
+      console.error("Erro ao alternar fullscreen:", error);
+    }
+  }, []);
+
+  // Listener para mudanças no fullscreen (ESC, etc)
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setDiagramaFullscreen(!!document.fullscreenElement);
+    };
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+    };
+  }, []);
 
   // Estados para conexões
   const [connecting, setConnecting] = useState<{
     from: string;
     port: "top" | "bottom" | "left" | "right";
   } | null>(null);
-
-  // Lista de ativos disponíveis
-  const ativosDisponiveis = [
-    { id: "ativo-principal", nome: "UFV Solar Goiânia" },
-    { id: "ativo-secundario", nome: "UFV Industrial Brasília" },
-    { id: "ativo-teste", nome: "Usina Teste" },
-    { id: "mqtt-devices", nome: "Equipamentos MQTT" },
-  ];
-
-  // Função do diagrama padrão
-  const getDiagramaPadrao = useCallback(
-    (): ComponenteDU[] => {
-      // Diagrama específico para equipamentos MQTT
-      if (ativoSelecionado === "mqtt-devices") {
-        return [
-          {
-            id: "m160-1",
-            tipo: "M160",
-            nome: "M160 Multimedidor",
-            posicao: { x: 20, y: 50 },
-            status: "NORMAL",
-            tag: "OLI/GO/CHI/CAB/M160-1",
-            dados: {}
-          },
-          {
-            id: "a966-1",
-            tipo: "A966",
-            nome: "A966 Gateway IoT",
-            posicao: { x: 50, y: 50 },
-            status: "NORMAL",
-            tag: "IMS/a966/state",
-            dados: {}
-          },
-          {
-            id: "landis-1",
-            tipo: "LANDIS_E750",
-            nome: "Landis+Gyr E750",
-            posicao: { x: 80, y: 50 },
-            status: "NORMAL",
-            tag: "IMS/a966/LANDIS/state",
-            dados: {}
-          },
-        ];
-      }
-
-      // Diagrama padrão para outros ativos
-      return [
-      {
-        id: "medidor-01",
-        tipo: "MEDIDOR",
-        nome: "Medidor Principal",
-        posicao: { x: 20, y: 30 },
-        status: "NORMAL",
-        dados: {},
-      },
-      {
-        id: "transformador-01",
-        tipo: "TRANSFORMADOR",
-        nome: "Trafo 13.8kV/380V",
-        posicao: { x: 35, y: 70 },
-        status: "NORMAL",
-        dados: {},
-      },
-      {
-        id: "inversor-01",
-        tipo: "INVERSOR",
-        nome: "Inversor Solar 1",
-        posicao: { x: 50, y: 30 },
-        status: "NORMAL",
-        dados: {},
-      },
-      {
-        id: "inversor-02",
-        tipo: "INVERSOR",
-        nome: "Inversor Solar 2",
-        posicao: { x: 65, y: 70 },
-        status: "ALARME",
-        dados: {},
-      },
-      {
-        id: "disjuntor-01",
-        tipo: "DISJUNTOR",
-        nome: "Disjuntor Principal",
-        posicao: { x: 80, y: 30 },
-        status: "NORMAL",
-        dados: {},
-      },
-      {
-        id: "tsa-01",
-        tipo: "TSA",
-        nome: "TSA Principal",
-        posicao: { x: 25, y: 50 },
-        status: "NORMAL",
-        dados: {},
-      },
-      {
-        id: "retificador-01",
-        tipo: "RETIFICADOR",
-        nome: "Retificador 24V",
-        posicao: { x: 55, y: 50 },
-        status: "NORMAL",
-        dados: {},
-      },
-      {
-        id: "baterias-01",
-        tipo: "BANCO_BATERIAS",
-        nome: "Banco Baterias",
-        posicao: { x: 75, y: 50 },
-        status: "NORMAL",
-        dados: {},
-      },
-      {
-        id: "m300-01",
-        tipo: "M300",
-        nome: "M300-01",
-        posicao: { x: 60, y: 30 },
-        status: "NORMAL",
-        dados: {},
-      },
-      {
-        id: "a966-01",
-        tipo: "A966",
-        nome: "Gateway Principal",
-        posicao: { x: 45, y: 50 },
-        status: "NORMAL",
-        dados: {},
-      },
-      {
-        id: "landisgyr-01",
-        tipo: "LANDIS_E750",
-        nome: "Medidor Principal",
-        posicao: { x: 70, y: 40 },
-        status: "NORMAL",
-        dados: {},
-      },
-      ];
-    },
-    [ativoSelecionado]
-  );
-
-  // Estados já definidos acima - remover esta seção completamente
 
   // Função auxiliar para atualizar o diagrama
   const updateDiagram = useCallback(
@@ -1567,88 +1566,8 @@ export function SinopticoAtivoPage() {
     []
   );
 
-  // CARREGAR DIAGRAMA SALVO
-useEffect(() => {
-  const carregarDiagrama = () => {
-    console.log("=== CARREGAMENTO INICIADO ===");
-    console.log("Ativo selecionado:", ativoSelecionado);
-
-    try {
-      const key = `diagrama_${ativoSelecionado}`;
-      console.log("Buscando key:", key);
-      
-      const diagramaSalvo = localStorage.getItem(key);
-      console.log("Dados encontrados?", diagramaSalvo ? "SIM" : "NÃO");
-
-      if (diagramaSalvo) {
-        const data = JSON.parse(diagramaSalvo);
-        console.log("Dados parseados:", {
-          componentes: data.componentes?.length || 0,
-          connections: data.connections?.length || 0,
-          ultimaAtualizacao: data.ultimaAtualizacao
-        });
-
-        if (data.componentes && Array.isArray(data.componentes) && data.componentes.length > 0) {
-          setComponentes(data.componentes);
-          setConnections(data.connections || []);
-          console.log("Diagrama restaurado com sucesso!");
-        } else {
-          console.log("Dados inválidos, usando diagrama padrão");
-          setComponentes(getDiagramaPadrao());
-          setConnections([]);
-        }
-      } else {
-        console.log("Nenhum dado salvo, usando diagrama padrão");
-        setComponentes(getDiagramaPadrao());
-        setConnections([]);
-      }
-    } catch (error) {
-      console.error("Erro ao carregar:", error);
-      setComponentes(getDiagramaPadrao());
-      setConnections([]);
-    }
-
-    setDiagramaCarregado(true);
-    console.log("Carregamento finalizado");
-  };
-
-  carregarDiagrama();
-}, [ativoSelecionado, getDiagramaPadrao]); 
-
-  // AUTO-SAVE quando houver mudanças
-  useEffect(() => {
-    if (!diagramaCarregado || componentes.length === 0) return;
-
-    const timeoutId = setTimeout(() => {
-      try {
-        const diagramaData = {
-          ativoId: ativoSelecionado,
-          componentes,
-          connections,
-          ultimaAtualizacao: new Date().toISOString(),
-          versao: "1.0",
-        };
-
-        const key = `diagrama_${ativoSelecionado}`;
-        localStorage.setItem(key, JSON.stringify(diagramaData));
-        console.log(
-          "Auto-save:",
-          key,
-          componentes.length,
-          "componentes"
-        );
-      } catch (error) {
-        console.error("Erro auto-save:", error);
-      }
-    }, 2000);
-
-    return () => clearTimeout(timeoutId);
-  }, [
-    componentes,
-    connections,
-    diagramaCarregado,
-    ativoSelecionado,
-  ]);
+  // REMOVIDO: useEffect de carregamento - agora usa hook useDiagramaUnidade
+  // REMOVIDO: useEffect de auto-save - salvamento manual via botão
 
   // Mock data atualizado com dados realistas
   const [ativoData] = useState({
@@ -1663,52 +1582,39 @@ useEffect(() => {
     ultimaAtualizacao: new Date().toISOString(),
   });
 
-  // Hooks MQTT para equipamentos (apenas quando mqtt-devices está selecionado)
-  const { data: m160Data } = useMqttWebSocket(
-    ativoSelecionado === "mqtt-devices" ? "OLI/GO/CHI/CAB/M160-1" : ""
-  );
-  const { data: a966Data } = useMqttWebSocket(
-    ativoSelecionado === "mqtt-devices" ? "IMS/a966/state" : ""
-  );
-  const { data: landisData } = useMqttWebSocket(
-    ativoSelecionado === "mqtt-devices" ? "IMS/a966/LANDIS/state" : ""
-  );
+  // TEMPORÁRIO: MQTT desabilitado - implementar depois de salvar diagrama funcionar
+  // const { data: m160Data } = useMqttWebSocket("");
+  // const { data: a966Data } = useMqttWebSocket("");
+  // const { data: landisData } = useMqttWebSocket("");
+  const m160Data = null;
 
   // Estado para histórico de dados MQTT (usado nos gráficos)
   const [historicoMqtt, setHistoricoMqtt] = useState<any[]>([]);
-  const ultimaAtualizacaoRef = useRef<number>(0);
 
-  // Adicionar dados MQTT ao histórico (throttle de 5 segundos)
-  useEffect(() => {
-    if (ativoSelecionado === "mqtt-devices" && m160Data?.payload?.Dados) {
-      const agora = Date.now();
-
-      // Atualizar apenas a cada 5 segundos
-      if (agora - ultimaAtualizacaoRef.current < 5000) {
-        return;
-      }
-
-      ultimaAtualizacaoRef.current = agora;
-
-      const m160Dados = m160Data.payload.Dados;
-      const timestamp = new Date().toISOString();
-
-      const novoPonto = {
-        timestamp,
-        potencia: ((m160Dados.Pa || 0) + (m160Dados.Pb || 0) + (m160Dados.Pc || 0)), // Multiplicado por 10
-        tensao: ((m160Dados.Va || 0)),
-        corrente: ((m160Dados.Ia || 0) + (m160Dados.Ib || 0) + (m160Dados.Ic || 0)),
-        fatorPotencia: (m160Dados.FPA !== 999 && m160Dados.FPA !== 0) ? m160Dados.FPA / 1000 : 1,
-        limiteMinimo: 0.92,
-      };
-
-      setHistoricoMqtt(prev => {
-        const novoHistorico = [...prev, novoPonto];
-        // Manter apenas últimos 100 pontos para reduzir uso de memória
-        return novoHistorico.slice(-100);
-      });
-    }
-  }, [ativoSelecionado, m160Data]);
+  // TEMPORÁRIO: useEffect MQTT comentado
+  // useEffect(() => {
+  //   if (m160Data?.payload?.Dados) {
+  //     const agora = Date.now();
+  //     if (agora - ultimaAtualizacaoRef.current < 5000) {
+  //       return;
+  //     }
+  //     ultimaAtualizacaoRef.current = agora;
+  //     const m160Dados = m160Data.payload.Dados;
+  //     const timestamp = new Date().toISOString();
+  //     const novoPonto = {
+  //       timestamp,
+  //       potencia: ((m160Dados.Pa || 0) + (m160Dados.Pb || 0) + (m160Dados.Pc || 0)),
+  //       tensao: ((m160Dados.Va || 0)),
+  //       corrente: ((m160Dados.Ia || 0) + (m160Dados.Ib || 0) + (m160Dados.Ic || 0)),
+  //       fatorPotencia: (m160Dados.FPA !== 999 && m160Dados.FPA !== 0) ? m160Dados.FPA / 1000 : 1,
+  //       limiteMinimo: 0.92,
+  //     };
+  //     setHistoricoMqtt(prev => {
+  //       const novoHistorico = [...prev, novoPonto];
+  //       return novoHistorico.slice(-100);
+  //     });
+  //   }
+  // }, [m160Data]);
 
   const [dadosGraficos] = useState(() => {
     const agora = new Date();
@@ -1766,7 +1672,7 @@ useEffect(() => {
 
   // Calcular indicadores baseados em dados MQTT ou usar valores fixos
   const indicadores = useMemo(() => {
-    if (ativoSelecionado === "mqtt-devices" && m160Data?.payload?.Dados) {
+    if (m160Data?.payload?.Dados) {
       // Extrair dados do M160
       const m160Dados = m160Data.payload.Dados;
       const Va = m160Dados.Va || 0;
@@ -1798,7 +1704,7 @@ useEffect(() => {
       };
     }
 
-    // Valores padrão para outros ativos
+    // Valores padrão quando não há dados MQTT
     return {
       thd: 3.2,
       fp: 0.95,
@@ -1809,7 +1715,7 @@ useEffect(() => {
       urgencias: 0,
       osAbertas: 2,
     };
-  }, [ativoSelecionado, m160Data]);
+  }, [m160Data]);
 
   // Sistema de Undo/Redo simples
   const [history, setHistory] = useState<DiagramState[]>([]);
@@ -1957,6 +1863,85 @@ useEffect(() => {
     updateDiagram(newComponents);
   }, [componentes, updateDiagram]);
 
+  const alignHorizontal = useCallback(() => {
+    if (componentes.length < 2) return;
+
+    // Calcular Y médio
+    const avgY =
+      componentes.reduce((sum, comp) => sum + comp.posicao.y, 0) /
+      componentes.length;
+
+    // Ordenar por posição X para manter ordem
+    const sortedComponents = [...componentes].sort(
+      (a, b) => a.posicao.x - b.posicao.x
+    );
+
+    const aligned: ComponenteDU[] = [];
+    let currentX = 10; // Começar em 10%
+
+    sortedComponents.forEach((comp) => {
+      aligned.push({
+        ...comp,
+        posicao: {
+          x: currentX,
+          y: avgY,
+        },
+      });
+
+      currentX += MIN_SPACING; // Próximo componente com espaçamento
+      if (currentX > 85) currentX = 85; // Limitar à tela
+    });
+
+    updateDiagram(aligned);
+  }, [componentes, updateDiagram]);
+
+  const alignVertical = useCallback(() => {
+    if (componentes.length < 2) return;
+
+    // Calcular X médio
+    const avgX =
+      componentes.reduce((sum, comp) => sum + comp.posicao.x, 0) /
+      componentes.length;
+
+    // Ordenar por posição Y para manter ordem
+    const sortedComponents = [...componentes].sort(
+      (a, b) => a.posicao.y - b.posicao.y
+    );
+
+    const aligned: ComponenteDU[] = [];
+
+    // Calcular espaçamento disponível
+    const startY = 10;
+    const endY = 85;
+    const availableSpace = endY - startY;
+    const numComponents = sortedComponents.length;
+
+    if (numComponents === 1) {
+      // Se só há 1 componente, centralizar
+      aligned.push({
+        ...sortedComponents[0],
+        posicao: {
+          x: avgX,
+          y: 50, // Centro da tela
+        },
+      });
+    } else {
+      // Se há múltiplos componentes, distribuir uniformemente
+      const spacing = availableSpace / (numComponents - 1);
+
+      sortedComponents.forEach((comp, index) => {
+        aligned.push({
+          ...comp,
+          posicao: {
+            x: avgX,
+            y: startY + index * spacing,
+          },
+        });
+      });
+    }
+
+    updateDiagram(aligned);
+  }, [componentes, updateDiagram]);
 
   // Mock data para modais
   const dadosMedidor = {
@@ -2010,19 +1995,6 @@ useEffect(() => {
     temperatura: 65.8,
     carregamento: 85.2,
   };
-  const dadosPivo = useState<DadosPivo>({
-    status: "NORMAL",
-    operando: true,
-    velocidadeRotacao: 2.5,
-    pressaoAgua: 4.2,
-    vazaoAgua: 180,
-    areaIrrigada: 125,
-    tempoOperacao: "18h35min",
-    setorAtual: 145,
-    unidadeSolo: 68,
-    modoOperacao: "AUTOMATICO",
-    ultimaManutencao: "15/10/2025",
-  })
 
   const dadosM160: M160Reading = {
     voltage: {
@@ -2230,10 +2202,7 @@ useEffect(() => {
         setModalAberto('A966');
       } else if (tag.includes('LANDIS')) {
         setModalAberto('LANDIS_E750');
-      } else if (componente.tipo === 'PIVO_ABERTO' || componente.tipo === 'PIVO_FECHADO') {
-        setModalAberto('PIVO');
-      }
-      else {
+      } else {
         // Fallback para o tipo original
         setModalAberto(componente.tipo);
       }
@@ -2375,6 +2344,26 @@ useEffect(() => {
     setComponenteSelecionado(null);
   };
 
+  // NOVO: Handler para selecionar unidade
+  const handleUnidadeSelect = useCallback((
+    novaUnidadeId: string,
+    planta: PlantaResponse,
+    unidade: Unidade
+  ) => {
+    // Limpar espaços em branco do ID (pode vir do banco de dados com espaços)
+    const unidadeIdLimpo = novaUnidadeId.trim();
+
+    setUnidadeId(unidadeIdLimpo);
+    setPlantaAtual(planta);
+    setUnidadeAtual(unidade);
+
+    // Fechar modal após seleção
+    setModalSelecionarUnidade(false);
+
+    // Atualizar URL com ID limpo
+    navigate(`/supervisorio/sinoptico-ativo/${unidadeIdLimpo}`, { replace: true });
+  }, [navigate]);
+
   const toggleModoEdicao = () => {
     setModoEdicao(!modoEdicao);
     if (modoEdicao) {
@@ -2394,17 +2383,88 @@ useEffect(() => {
   };
 
   // Funções de edição de componentes
-  const adicionarComponente = (tipo: string) => {
-    const novoId = `${tipo.toLowerCase()}-${Date.now()}`;
-    const novoComponente: ComponenteDU = {
-      id: novoId,
-      tipo: tipo,
-      nome: `${tipo} ${componentes.length + 1}`,
-      posicao: { x: 40, y: 40 },
-      status: "NORMAL",
-      dados: {},
-    };
-    updateDiagram([...componentes, novoComponente]);
+  const adicionarComponente = async (tipo: string) => {
+    // Verificar se é um equipamento da unidade
+    if (tipo.startsWith('EQUIPAMENTO:')) {
+      const equipamentoId = tipo.replace('EQUIPAMENTO:', '').trim();
+      const equipamento = equipamentos.find(eq => eq.id.trim() === equipamentoId);
+
+      if (equipamento) {
+        const novoComponente: ComponenteDU = {
+          id: `eq-${equipamentoId}`,
+          tipo: equipamento.tipoEquipamento?.codigo || 'MEDIDOR',
+          nome: equipamento.nome,
+          tag: equipamento.tag,
+          posicao: { x: 40, y: 40 },
+          rotacao: equipamento.rotacao || 0,
+          status: equipamento.status || 'NORMAL',
+          dados: {
+            equipamento_id: equipamento.id.trim(),
+            fabricante: equipamento.fabricante,
+            modelo: equipamento.modelo,
+            numero_serie: equipamento.numero_serie,
+            mqtt_topico: equipamento.topico_mqtt,
+            mqtt_habilitado: equipamento.mqtt_habilitado,
+          },
+        };
+        updateDiagram([...componentes, novoComponente]);
+        console.log('✅ Equipamento adicionado ao diagrama:', equipamento.nome);
+      }
+    } else if (tipo === 'BARRAMENTO' || tipo === 'PONTO') {
+      // Componentes visuais: criar no backend primeiro
+      try {
+        console.log('🔧 Criando componente virtual:', { tipo, unidadeId });
+        const { EquipamentosService } = await import('@/services/equipamentos.services');
+        const equipamentoVirtual = await EquipamentosService.criarComponenteVisual(
+          unidadeId,
+          tipo,
+          `${tipo} ${componentes.filter(c => c.tipo === tipo).length + 1}`
+        );
+
+        console.log('📦 Resposta do backend:', equipamentoVirtual);
+
+        // A resposta vem como { success: true, data: { id, nome, ... }, meta: {...} }
+        const equipamentoData = equipamentoVirtual?.data;
+
+        // IMPORTANTE: Fazer trim do ID porque o backend pode retornar com espaços extras
+        const equipamentoId = equipamentoData?.id?.trim();
+
+        if (!equipamentoData || !equipamentoId) {
+          throw new Error('Backend não retornou ID válido para o componente virtual');
+        }
+
+        const novoComponente: ComponenteDU = {
+          id: `eq-${equipamentoId}`,
+          tipo: equipamentoData.tipo_equipamento?.trim() || tipo,
+          nome: equipamentoData.nome?.trim() || `${tipo} ${componentes.length + 1}`,
+          posicao: { x: 40, y: 40 },
+          rotacao: 0,
+          status: 'NORMAL',
+          dados: {
+            equipamento_id: equipamentoId,
+          },
+        };
+
+        console.log('✅ Componente virtual criado:', novoComponente);
+        updateDiagram([...componentes, novoComponente]);
+      } catch (err: any) {
+        console.error('❌ Erro ao criar componente virtual:', err);
+        console.error('Stack:', err.stack);
+        alert(`Erro ao criar ${tipo}: ${err.message}`);
+      }
+    } else {
+      // Componente genérico (JUNCTION, etc)
+      const novoId = `${tipo.toLowerCase()}-${Date.now()}`;
+      const novoComponente: ComponenteDU = {
+        id: novoId,
+        tipo: tipo,
+        nome: `${tipo} ${componentes.length + 1}`,
+        posicao: { x: 40, y: 40 },
+        status: "NORMAL",
+        dados: {},
+      };
+      updateDiagram([...componentes, novoComponente]);
+    }
   };
 
   const removerComponente = (id: string) => {
@@ -2483,126 +2543,295 @@ useEffect(() => {
             .concat([connection1, connection2]); // Adiciona as duas novas
 
           updateDiagram([...componentes, junctionNode], newConnections);
+
+          console.log("✅ Junction invisível criado:", junctionNode.id);
         }
       }
     },
     [modoEdicao, componentes, connections, updateDiagram, getActiveCanvasRef]
   );
 
-  const salvarDiagrama = useCallback(() => {
-  console.log("=== SALVAMENTO MANUAL INICIADO ===");
-  console.log("Ativo:", ativoSelecionado);
-  console.log("Componentes:", componentes.length);
-  console.log("Conexões:", connections.length);
-  console.log("Componentes:", componentes.map(c => ({ id: c.id, tipo: c.tipo, nome: c.nome })));
-
-  try {
-    const diagramaData = {
-      ativoId: ativoSelecionado,
-      componentes,
-      connections,
-      ultimaAtualizacao: new Date().toISOString(),
-      versao: "1.0",
-    };
-
-    const key = `diagrama_${ativoSelecionado}`;
-    const dataString = JSON.stringify(diagramaData);
-    
-    console.log("Key:", key);
-    console.log("Tamanho dos dados:", dataString.length, "caracteres");
-
-    localStorage.setItem(key, dataString);
-    console.log("Dados salvos no localStorage");
-
-    // Verificação imediata
-    const verificacao = localStorage.getItem(key);
-    if (verificacao) {
-      const dadosVerificados = JSON.parse(verificacao);
-      console.log("VERIFICAÇÃO: Dados recuperados com sucesso!");
-      console.log("Componentes verificados:", dadosVerificados.componentes.length);
-      console.log("Conexões verificadas:", dadosVerificados.connections.length);
-      
-      alert(`Diagrama salvo com sucesso!\n\nAtivo: ${ativoSelecionado}\nComponentes: ${componentes.length}\nConexões: ${connections.length}`);
-    } else {
-      console.error("ERRO: Dados não encontrados após salvar!");
-      alert("Erro: Não foi possível verificar o salvamento!");
+  const salvarDiagrama = useCallback(async () => {
+    if (!unidadeId) {
+      alert('❌ Nenhuma unidade selecionada. Use o botão "Selecionar Unidade" primeiro.');
+      return;
     }
-  } catch (error) {
-    console.error("ERRO ao salvar:", error);
-    alert(`Erro ao salvar diagrama: ${error}`);
-  }
-}, [ativoSelecionado, componentes, connections]); 
+
+    try {
+      console.log('💾 Salvando diagrama no backend...');
+      console.log('📊 Componentes:', componentes.length);
+      console.log('🔗 Conexões:', connections.length);
+
+      if (componentes.length === 0) {
+        alert('⚠️ Nenhum componente para salvar!');
+        return;
+      }
+
+      // Importar o serviço dinamicamente
+      const { DiagramasService } = await import('@/services/diagramas.services');
+
+      let diagramaId: string;
+
+      // Buscar diagrama ativo existente para esta unidade
+      console.log('🔍 Buscando diagrama ativo para a unidade...');
+      const diagramaAtivo = await DiagramasService.getActiveDiagrama(unidadeId);
+
+      if (diagramaAtivo) {
+        console.log('✅ Diagrama ativo encontrado:', diagramaAtivo.id);
+        console.log('🗑️ Para limpar conexões duplicadas, use: DELETE FROM equipamentos_conexoes WHERE diagrama_id = \'' + diagramaAtivo.id + '\';');
+        diagramaId = diagramaAtivo.id.trim();
+
+        // Limpar equipamentos e conexões existentes antes de salvar os novos
+        console.log('🧹 Limpando equipamentos e conexões antigas do diagrama...');
+        // Como não temos endpoint de limpar tudo, vamos reutilizar o diagrama existente
+        // O backend deve ter lógica para substituir ou atualizar
+      } else {
+        // Criar novo diagrama apenas se não existir nenhum ativo
+        console.log('🆕 Nenhum diagrama ativo encontrado. Criando novo diagrama...');
+        const novoDiagrama = await DiagramasService.createDiagrama({
+          unidadeId: unidadeId,
+          nome: `Diagrama - ${unidadeAtual?.nome || 'Unidade'}`,
+          ativo: true,
+        });
+        console.log('✅ Novo diagrama criado:', novoDiagrama);
+        diagramaId = novoDiagrama?.id?.trim() || '';
+
+        if (!diagramaId) {
+          throw new Error('Diagrama ID não foi retornado pelo backend');
+        }
+      }
+
+      // TODOS os componentes agora têm equipamento_id (incluindo BARRAMENTO/PONTO)
+      const equipamentosParaSalvar = componentes
+        .filter(comp => comp.dados?.equipamento_id) // Só salvar componentes com equipamento_id
+        .map(comp => ({
+          equipamentoId: comp.dados.equipamento_id,
+          posicao: {
+            x: comp.posicao?.x || 0,
+            y: comp.posicao?.y || 0,
+          },
+          rotacao: comp.rotacao || 0,
+        }));
+
+      console.log(`📦 Salvando ${equipamentosParaSalvar.length} equipamentos (incluindo virtuais) no diagrama ${diagramaId}...`);
+      console.log('📤 Enviando equipamentos para o backend:', equipamentosParaSalvar);
+
+      // 1. Salvar TODOS os equipamentos (reais + virtuais)
+      if (equipamentosParaSalvar.length > 0) {
+        try {
+          const resultadoEquipamentos = await DiagramasService.addEquipamentosBulk(
+            diagramaId,
+            equipamentosParaSalvar
+          );
+          console.log('✅ Equipamentos salvos:', resultadoEquipamentos);
+        } catch (err: any) {
+          console.error('❌ Erro ao salvar equipamentos:', err);
+          throw new Error(`Erro ao salvar equipamentos: ${err.message}`);
+        }
+      }
+
+      // 2. Salvar TODAS as conexões (entre equipamentos reais e virtuais)
+      // IMPORTANTE: Primeiro limpar todas as conexões antigas para evitar duplicatas
+      console.log('🧹 Removendo todas as conexões antigas do diagrama...');
+      try {
+        await DiagramasService.removeAllConnections(diagramaId);
+        console.log('✅ Conexões antigas removidas');
+      } catch (err: any) {
+        console.warn('⚠️ Erro ao remover conexões antigas (pode ser que não existam):', err.message);
+      }
+
+      if (connections.length > 0) {
+        console.log(`🔗 Salvando ${connections.length} conexões novas...`);
+
+        // Helper function para converter ID visual para ID real do equipamento
+        const getEquipamentoIdReal = (visualId: string | undefined): string | null => {
+          if (!visualId) {
+            console.warn('⚠️ visualId is undefined');
+            return null;
+          }
+
+          const comp = componentes.find(c => c.id === visualId);
+          if (comp?.dados?.equipamento_id) {
+            return comp.dados.equipamento_id;
+          }
+
+          // Se não encontrou o componente, tenta extrair do ID visual
+          if (visualId.startsWith('eq-')) {
+            return visualId.replace('eq-', '').trim();
+          }
+
+          // Se não tem prefixo 'eq-', retorna null (não é equipamento)
+          return null;
+        };
+
+        // Filtrar conexões válidas (que têm equipamento_id válido em ambos os lados)
+        const conexoesValidas = connections.filter(conn => {
+          const sourceId = getEquipamentoIdReal(conn.source || conn.from);
+          const targetId = getEquipamentoIdReal(conn.target || conn.to);
+
+          if (!sourceId || !targetId) {
+            console.warn('⚠️ Conexão ignorada (sem equipamento_id em um dos lados):', {
+              from: conn.from || conn.source,
+              to: conn.to || conn.target
+            });
+            return false;
+          }
+
+          return true;
+        });
+
+        console.log(`✅ ${conexoesValidas.length} conexões válidas de ${connections.length} totais`);
+
+        const conexoesParaSalvar = conexoesValidas.map(conn => ({
+          origem: {
+            equipamentoId: getEquipamentoIdReal(conn.source || conn.from)!,
+            porta: ((conn.sourceHandle || conn.fromPort) || 'right') as 'top' | 'bottom' | 'left' | 'right',
+          },
+          destino: {
+            equipamentoId: getEquipamentoIdReal(conn.target || conn.to)!,
+            porta: ((conn.targetHandle || conn.toPort) || 'left') as 'top' | 'bottom' | 'left' | 'right',
+          },
+          visual: {
+            tipoLinha: 'solida' as const,
+            cor: conn.style?.stroke || '#22c55e',
+            espessura: 2,
+          },
+        }));
+
+        console.log('📤 Enviando conexões para o backend:', conexoesParaSalvar);
+
+        if (conexoesParaSalvar.length > 0) {
+          try {
+            const resultadoConexoes = await DiagramasService.createConexoesBulk(
+              diagramaId,
+              conexoesParaSalvar
+            );
+            console.log('✅ Conexões salvas:', resultadoConexoes);
+          } catch (err: any) {
+            console.error('❌ Erro ao salvar conexões:', err);
+            throw new Error(`Erro ao salvar conexões: ${err.message}`);
+          }
+        } else {
+          console.warn('⚠️ Nenhuma conexão válida para salvar');
+        }
+      }
+
+      // Backup no localStorage
+      const diagramaData = {
+        componentes,
+        connections,
+        timestamp: new Date().toISOString(),
+      };
+      localStorage.setItem(`diagrama_${unidadeId}`, JSON.stringify(diagramaData));
+
+      alert(`✅ Diagrama salvo com sucesso!\n\nDiagrama ID: ${diagramaId}\nComponentes: ${componentes.length}\nConexões: ${connections.length}`);
+    } catch (error: any) {
+      console.error('❌ Erro ao salvar diagrama:', error);
+      alert(`❌ Erro ao salvar diagrama: ${error.message || 'Erro desconhecido'}`);
+    }
+  }, [unidadeId, componentes, connections, unidadeAtual]); 
     
-  // LOADING STATE - Não renderizar até carregar
-  if (!diagramaCarregado) {
+  // LOADING STATE - Não renderizar até selecionar unidade e carregar
+  if (!diagramaCarregado || !unidadeId) {
     return (
       <Layout>
         <Layout.Main>
-          <div className="flex items-center justify-center min-h-[400px]">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-              <p className="text-muted-foreground">Carregando diagrama...</p>
-              <p className="text-xs text-muted-foreground mt-2">
-                Ativo: {ativoSelecionado}
-              </p>
-            </div>
+          <div className="flex flex-col items-center justify-center min-h-[600px] gap-6">
+            {!unidadeId ? (
+              // Mensagem para selecionar unidade
+              <div className="text-center max-w-md">
+                <Building className="h-16 w-16 text-blue-500 mx-auto mb-4" />
+                <h2 className="text-2xl font-semibold text-gray-900 mb-2">
+                  Selecione uma Unidade
+                </h2>
+                <p className="text-gray-600 mb-6">
+                  Para visualizar o diagrama sinóptico, primeiro escolha uma planta e depois uma unidade.
+                </p>
+                <button
+                  onClick={() => setModalSelecionarUnidade(true)}
+                  className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-lg hover:shadow-xl"
+                >
+                  Selecionar Planta e Unidade
+                </button>
+              </div>
+            ) : (
+              // Loading de diagrama
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                <p className="text-lg text-gray-700">Carregando diagrama...</p>
+                <p className="text-sm text-gray-500 mt-2">
+                  Unidade: {unidadeAtual?.nome || unidadeId}
+                </p>
+              </div>
+            )}
           </div>
         </Layout.Main>
+
+        {/* Modal de seleção */}
+        <ModalSelecionarUnidade
+          isOpen={modalSelecionarUnidade}
+          onClose={() => {
+            // Não permitir fechar se não tiver unidade selecionada
+            if (unidadeId) {
+              setModalSelecionarUnidade(false);
+            }
+          }}
+          onSelect={handleUnidadeSelect}
+          currentPlantaId={plantaAtual?.id}
+          currentUnidadeId={unidadeId}
+        />
       </Layout>
     );
   }
-
-  const ativoAtual = ativosDisponiveis.find((a) => a.id === ativoSelecionado);
 
   return (
     <Layout>
       <Layout.Main>
         <div className="w-full max-w-full space-y-3">
-        {/* Header - Ocultar no modo de edição */}
-        {!modoEdicao && (
+          {/* Header */}
           <div className="flex items-center gap-3 p-2">
-            {!isFullscreen && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate(-1)}
+              className="flex items-center gap-2"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Voltar
+            </Button>
+
+            <div className="flex items-center gap-4 flex-1">
+              <h1 className="text-2xl font-bold text-foreground">
+                Sinóptico - {unidadeAtual ? `${plantaAtual?.nome} → ${unidadeAtual.nome}` : 'Selecione uma Unidade'}
+              </h1>
+
+              {/* NOVO: Botão para selecionar unidade */}
               <Button
                 variant="outline"
                 size="sm"
-                onClick={handleVoltar}
+                onClick={() => setModalSelecionarUnidade(true)}
                 className="flex items-center gap-2"
               >
-                <ArrowLeft className="h-4 w-4" />
-                Voltar
+                <Building className="h-4 w-4" />
+                {unidadeAtual ? 'Trocar Unidade' : 'Selecionar Unidade'}
               </Button>
-            )}
 
-            <div className="flex items-center gap-4">
-              <h1 className="text-2xl font-bold text-foreground">
-                Sinóptico - {ativoAtual?.nome}
-              </h1>
+              {loadingDiagrama && (
+                <div className="flex items-center gap-2 text-sm text-blue-600">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                  Carregando...
+                </div>
+              )}
+            </div>
 
-              {/* Seletor de Ativo */}
-              <select
-                value={ativoSelecionado}
-                onChange={(e) => setAtivoSelecionado(e.target.value)}
-                className="h-8 px-3 py-1 text-sm border border-input bg-background rounded-md"
-              >
-                {ativosDisponiveis.map((ativo) => (
-                  <option key={ativo.id} value={ativo.id}>
-                    {ativo.nome}
-                  </option>
-                ))}
-              </select>
-
-              {/* Debug info */}
-              <span className="text-xs text-muted-foreground">
-                Componentes: {componentes.length} | LocalStorage: diagrama_{ativoSelecionado}
-              </span>
+            {/* Debug info */}
+            <div className="text-xs text-muted-foreground">
+              Componentes: {componentes.length} | Equipamentos: {equipamentos.length}
             </div>
           </div>
-        )}
 
-        {/* Indicadores - Ocultar no modo edição */}
-        {!modoEdicao && (
+          {/* Indicadores */}
           <SinopticoIndicadores indicadores={indicadores} />
-        )}
 
           {/* Barra de Ferramentas - SÓ APARECE NO MODO EDIÇÃO */}
           {modoEdicao && (
@@ -2653,7 +2882,7 @@ useEffect(() => {
                   <div className="flex items-center gap-2 border-r pr-4">
                     <span className="text-sm font-medium">Adicionar:</span>
                     <select
-                      className="h-8 px-3 py-1 text-sm border border-input bg-background rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 min-w-[180px]"
+                      className="h-8 px-3 py-1 text-sm border border-input bg-background rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 min-w-[280px]"
                       onChange={(e) => {
                         if (e.target.value) {
                           adicionarComponente(e.target.value);
@@ -2663,47 +2892,36 @@ useEffect(() => {
                       defaultValue=""
                     >
                       <option value="" disabled>
-                        Selecione um componente
+                        Selecione um equipamento
                       </option>
-                      <optgroup label="Componentes Básicos">
-                        <option value="PONTO">Ponto (Junção)</option>
-                        <option value="MEDIDOR">Medidor</option>
-                        <option value="TRANSFORMADOR">Transformador</option>
-                        <option value="INVERSOR">Inversor</option>
-                        <option value="DISJUNTOR">Disjuntor (Sem Supervisão)</option>         
-                        <option value="DISJUNTOR_FECHADO">Disjuntor Fechado (Vermelho)</option> 
-                        <option value="DISJUNTOR_ABERTO">Disjuntor Aberto (Verde)</option>     
-                        <option value="BOTOEIRA">Botoeira</option>
-                        <option value="CHAVE_ABERTA">Chave Aberta</option>
-                        <option value="CHAVE_FECHADA">Chave Fechada</option>
-                        <option value="CHAVE_FUSIVEL">Chave Fusível</option>
-                        <option value="RELE">Relé</option>
-                        <option value="MOTOR">Motor</option>
-                        <option value="CAPACITOR">Capacitor</option>
-                        <option value="PIVO_ABERTO">Pivô Aberto</option>
-                        <option value="PIVO_FECHADO">Pivô Fechado</option>
-                      </optgroup>
-                      <optgroup label="Subestação">
-                        <option value="TSA">TSA</option>
-                        <option value="RETIFICADOR">Retificador</option>
-                        <option value="BANCO_BATERIAS">Banco Baterias</option>
-                        <option value="BARRAMENTO">Barramento</option>
-                      </optgroup>
-                      <optgroup label="Painéis e Sistemas">
-                        <option value="PAINEL_PMT">Painel PMT</option>
-                        <option value="SKID">SKID</option>
-                        <option value="SALA_COMANDO">Sala Comando</option>
-                      </optgroup>
-                      <optgroup label="Controle">
-                        <option value="SCADA">SCADA</option>
-                        <option value="CFTV">CFTV</option>
-                        <option value="TELECOM">Telecom</option>
-                      </optgroup>
-                      <optgroup label="Equipamentos SCADA">
-                        <option value="M160">M160 Multimedidor</option>
-                        <option value="M300">M300 Multimeter</option>
-                        <option value="LANDIS_E750">Landis+Gyr E750</option>
-                        <option value="A966">A-966 Gateway</option>
+
+                      {/* Equipamentos UC da Unidade (apenas equipamentos principais) */}
+                      {equipamentos.filter(eq => eq.classificacao === 'UC').length > 0 ? (
+                        <optgroup label="📦 Equipamentos da Unidade (UC)">
+                          {equipamentos
+                            .filter(eq => eq.classificacao === 'UC' && !componentes.some(comp => comp.dados?.equipamento_id === eq.id))
+                            .map(equipamento => (
+                              <option key={equipamento.id} value={`EQUIPAMENTO:${equipamento.id}`}>
+                                {equipamento.nome}
+                                {equipamento.tag && ` [${equipamento.tag}]`}
+                                {equipamento.fabricante && ` - ${equipamento.fabricante}`}
+                              </option>
+                            ))
+                          }
+                          {equipamentos.filter(eq => eq.classificacao === 'UC' && !componentes.some(comp => comp.dados?.equipamento_id === eq.id)).length === 0 && (
+                            <option value="" disabled>Todos equipamentos já adicionados</option>
+                          )}
+                        </optgroup>
+                      ) : (
+                        <optgroup label="📦 Equipamentos da Unidade">
+                          <option value="" disabled>Nenhum equipamento UC cadastrado</option>
+                        </optgroup>
+                      )}
+
+                      {/* Componentes auxiliares para o diagrama */}
+                      <optgroup label="⚡ Componentes Auxiliares">
+                        <option value="PONTO">• Ponto de Junção</option>
+                        <option value="BARRAMENTO">• Barramento</option>
                       </optgroup>
                     </select>
                   </div>
@@ -2775,6 +2993,36 @@ useEffect(() => {
                     </div>
                   </div>
 
+                  {/* Ferramentas de Layout */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">Layout:</span>
+                    <div className="flex gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={autoArrangeComponents}
+                        title="Organizar automaticamente"
+                      >
+                        Auto
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={alignHorizontal}
+                        title="Alinhar horizontalmente"
+                      >
+                        ═══
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={alignVertical}
+                        title="Alinhar verticalmente"
+                      >
+                        |||
+                      </Button>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Info do Componente Selecionado */}
@@ -2845,12 +3093,12 @@ useEffect(() => {
                 <div className="lg:col-span-1 flex">
                   <SinopticoGraficos
                     dadosPotencia={
-                      ativoSelecionado === "mqtt-devices" && historicoMqtt.length > 0
+                      historicoMqtt.length > 0
                         ? historicoMqtt
                         : dadosGraficos
                     }
                     dadosTensao={
-                      ativoSelecionado === "mqtt-devices" && historicoMqtt.length > 0
+                      historicoMqtt.length > 0
                         ? historicoMqtt
                         : dadosGraficos
                     }
@@ -2861,37 +3109,56 @@ useEffect(() => {
 
                 {/* Diagrama Unifilar - MODO VISUALIZAÇÃO */}
                 <div className="lg:col-span-2 flex">
-                  <Card className="flex flex-col w-full min-h-[900px] !bg-black">
+                  <Card
+                    ref={diagramCardRef}
+                    className={`flex flex-col w-full min-h-[900px] !bg-black ${
+                      diagramaFullscreen
+                        ? 'fixed inset-0 z-50 m-0 rounded-none border-0'
+                        : ''
+                    }`}
+                  >
                     <div className="flex items-center justify-between p-4 pb-2 border-b flex-shrink-0 !bg-black">
                       <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
                         <Network className="h-5 w-5" />
-                        Diagrama Unifilar
+                        Diagrama Unifilar {diagramaFullscreen && '- Tela Cheia'}
                       </h3>
                       <div className="flex items-center gap-2">
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => setIsFullscreen(true)}
+                          onClick={toggleFullscreen}
                           className="flex items-center gap-2"
                         >
-                          <Maximize className="h-4 w-4" />
-                          Tela Cheia
+                          {diagramaFullscreen ? (
+                            <>
+                              <Minimize className="h-4 w-4" />
+                              Sair
+                            </>
+                          ) : (
+                            <>
+                              <Maximize className="h-4 w-4" />
+                              Tela Cheia
+                            </>
+                          )}
                         </Button>
-
-                        <Button
-  variant="outline"
-  size="sm"
-  onClick={toggleModoEdicao}
-  className="flex items-center gap-2"
->
-  <Edit3 className="h-4 w-4" />
-  Editar
-</Button>
+                        {!diagramaFullscreen && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={toggleModoEdicao}
+                            className="flex items-center gap-2"
+                          >
+                            <Edit3 className="h-4 w-4" />
+                            Editar
+                          </Button>
+                        )}
                       </div>
                     </div>
 
                     <div
-                      className="flex-1 relative bg-black min-h-[580px]"
+                      className={`flex-1 relative bg-black ${
+                        diagramaFullscreen ? 'h-[calc(100vh-73px)]' : 'min-h-[580px]'
+                      }`}
                       ref={canvasRef}
                     >
                       {/* COMPONENTE DE CONEXÕES PARA MODO VISUALIZAÇÃO */}
@@ -2977,6 +3244,7 @@ useEffect(() => {
                   <div className="absolute inset-0" style={{ zIndex: 40 }}>
                     {componentes
                       .filter(comp => comp.tipo !== "PONTO" && comp.tipo !== "JUNCTION")
+                      .filter(comp => comp.posicao && typeof comp.posicao.x === 'number' && typeof comp.posicao.y === 'number')
                       .map((componente) => (
                         <div
                           key={componente.id}
@@ -3007,6 +3275,7 @@ useEffect(() => {
                   <div className="absolute inset-0 z-40 pointer-events-none">
                     {componentes
                       .filter(comp => comp.tipo === "PONTO" || comp.tipo === "JUNCTION")
+                      .filter(comp => comp.posicao && typeof comp.posicao.x === 'number' && typeof comp.posicao.y === 'number')
                       .map((componente) => (
                         <div
                           key={`overlay-junction-${componente.id}`}
@@ -3131,6 +3400,7 @@ useEffect(() => {
                   <div className="absolute inset-0 z-40 pointer-events-none">
                     {componentes
                       .filter(comp => comp.tipo !== "PONTO" && comp.tipo !== "JUNCTION")
+                      .filter(comp => comp.posicao && typeof comp.posicao.x === 'number' && typeof comp.posicao.y === 'number')
                       .map((componente) => (
                         <div
                           key={`overlay-${componente.id}`}
@@ -3376,44 +3646,26 @@ useEffect(() => {
           nomeComponente={componenteSelecionado?.nome || ""}
         />
 
-        <PivoModal
-        open={modalAberto === "PIVO"}
-        onClose={fecharModal}
-        dados={dadosPivo}
-        nomeComponente={componenteSelecionado?.nome || ""}
-        />
-
         <TransformadorModal
           open={modalAberto === "TRANSFORMADOR"}
           onClose={fecharModal}
           dados={dadosTransformador}
           nomeComponente={componenteSelecionado?.nome || ""}
         />
-        {/* Fullscreen Modal */}
-<DiagramaFullscreen
-  isOpen={isFullscreen}
-  onClose={() => setIsFullscreen(false)}
-  titulo={`Sinóptico do Ativo - ${ativoData.nome}`}
->
-  <div className="relative w-full h-full bg-black" ref={canvasRef}>
-    <ConexoesDiagrama
-      connections={connections}
-      componentes={componentes}
-      containerRef={canvasRef}
-      modoEdicao={false}
-      onEdgeClick={handleEdgeClick}
-      className=""
-    />
 
-    <SinopticoDiagrama
-      componentes={componentes}
-      onComponenteClick={handleComponenteClick}
-      modoEdicao={false}
-      componenteEditando={null}
-      connecting={null}
-    />
-  </div>
-</DiagramaFullscreen>
+        {/* Modal de seleção de unidade - disponível sempre */}
+        <ModalSelecionarUnidade
+          isOpen={modalSelecionarUnidade}
+          onClose={() => {
+            // Só permitir fechar se já tiver unidade selecionada
+            if (unidadeId) {
+              setModalSelecionarUnidade(false);
+            }
+          }}
+          onSelect={handleUnidadeSelect}
+          currentPlantaId={plantaAtual?.id}
+          currentUnidadeId={unidadeId}
+        />
 
       </Layout.Main>
     </Layout>
