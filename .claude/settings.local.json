@@ -5,7 +5,16 @@
       "Bash(git log:*)",
       "Bash(git checkout:*)",
       "Bash(netstat:*)",
-      "Bash(findstr:*)"
+      "Bash(findstr:*)",
+      "Bash(npm run type-check)",
+      "Bash(npm run)",
+      "Bash(npx tsc --noEmit)",
+      "Bash(taskkill //F //PID 7344)",
+      "Bash(taskkill //F //PID 16848)",
+      "Bash(taskkill //F //IM node.exe)",
+      "Bash(npm run dev:client:*)",
+      "Bash(taskkill //F //PID 22500)",
+      "Bash(taskkill //F //PID 9676)"
     ],
     "deny": [],
     "ask": []

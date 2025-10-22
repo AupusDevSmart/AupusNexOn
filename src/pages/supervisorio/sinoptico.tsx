@@ -323,3 +323,21 @@ const TransformadorModal = ({ isOpen, onClose, dados }: { isOpen: boolean; onClo
               <div className="text-lg font-bold text-green-600">{dados.potenciaAtual} kVA</div>
               <div className="text-sm text-green-700">Atual</div>
             </div>
+          </div>
+        </div>
+      </div>
+    </DialogContent>
+  </Dialog>
+);
+
+// Componente principal
+export default function SinopticoPage() {
+  return (
+    <Layout>
+      <div className="p-6">
+        <h1 className="text-2xl font-bold">Sinóptico em Desenvolvimento</h1>
+        <p className="text-muted-foreground mt-2">Esta página está em construção.</p>
+      </div>
+    </Layout>
+  );
+}

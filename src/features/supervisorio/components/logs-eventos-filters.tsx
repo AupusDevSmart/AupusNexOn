@@ -16,6 +16,7 @@ import type {
   AtivoOption,
   FiltrosLogsEventos,
 } from "@/types/dtos/logs-eventos";
+import { LogsAuditoriaFilter } from "@/features/supervisorio/components/logs-auditoria-filter";
 import { CalendarIcon, FilterIcon, RefreshCwIcon } from "lucide-react";
 
 interface LogsEventosFiltersProps {
@@ -41,7 +42,7 @@ export function LogsEventosFilters({
           Filtros
         </CardTitle>
       </CardHeader>
-      <CardContent className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+      <CardContent className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
         <div className="space-y-1">
           <Label htmlFor="dataInicial" className="text-xs font-medium">
             Data/Hora Inicial
@@ -142,6 +143,13 @@ export function LogsEventosFilters({
             </SelectContent>
           </Select>
         </div>
+
+        <LogsAuditoriaFilter
+          value={filtros.categoriaAuditoria || "all"}
+          onChange={(value) =>
+            onFiltrosChange({ ...filtros, categoriaAuditoria: value })
+          }
+        />
 
         <div className="flex items-center justify-center">
           <div className="flex flex-col items-center space-y-2">

@@ -202,6 +202,36 @@ export function EventoDetalhesModal({
             )}
           </div>
 
+          {/* Informações de Auditoria */}
+          {(evento.categoriaAuditoria || evento.ip) && (
+            <>
+              <Separator />
+              <div className="space-y-3">
+                <h4 className="font-medium">Informações de Auditoria</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {evento.categoriaAuditoria && (
+                    <div>
+                      <p className="text-sm font-medium text-muted-foreground">
+                        Categoria
+                      </p>
+                      <Badge variant="outline" className="mt-1">
+                        {evento.categoriaAuditoria}
+                      </Badge>
+                    </div>
+                  )}
+                  {evento.ip && (
+                    <div>
+                      <p className="text-sm font-medium text-muted-foreground">
+                        Endereço IP
+                      </p>
+                      <p className="text-sm mt-1 font-mono">{evento.ip}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+
           {/* Detalhes Adicionais */}
           {evento.detalhes && (
             <>

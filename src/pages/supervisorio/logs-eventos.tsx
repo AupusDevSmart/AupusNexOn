@@ -50,6 +50,12 @@ interface Evento {
   usuario: string;
   status: "aberto" | "reconhecido" | "resolvido";
   osAssociada?: string;
+  detalhes?: string;
+  localizacao?: string;
+  equipamento?: string;
+  categoriaAuditoria?: "LOGIN" | "LOGOUT" | "COMANDO" | "CONFIGURACAO" | "DIAGRAMA" | "USUARIO" | "SISTEMA" | "RELATORIO";
+  ip?: string;
+  sessaoId?: string;
 }
 
 // Dados mockados
@@ -134,6 +140,169 @@ const eventosMock: Evento[] = [
     severidade: "media",
     usuario: "Sistema",
     status: "reconhecido",
+  },
+  // Eventos de Auditoria
+  {
+    id: "9",
+    dataHora: "2025-01-15 14:25:00",
+    ativo: "Sistema NexON",
+    tipoEvento: "sistema",
+    mensagem: "Usuário realizou login no sistema",
+    severidade: "baixa",
+    usuario: "ops.supervisor",
+    status: "reconhecido",
+    localizacao: "Centro de Controle - Goiânia",
+    detalhes: "Login realizado com sucesso. IP: 192.168.1.45. Navegador: Chrome 120.0. Horário: 14:25:00.",
+    categoriaAuditoria: "LOGIN",
+    ip: "192.168.1.45",
+  },
+  {
+    id: "10",
+    dataHora: "2025-01-15 13:50:00",
+    ativo: "Carga Industrial Anápolis",
+    tipoEvento: "sistema",
+    mensagem: "Disjuntor DJ-001 desligado manualmente",
+    severidade: "media",
+    usuario: "ops.supervisor",
+    status: "reconhecido",
+    localizacao: "Anápolis - GO",
+    equipamento: "Disjuntor DJ-001",
+    detalhes: "Comando de abertura executado pelo usuário ops.supervisor às 13:50:00. Motivo: Manutenção preventiva programada. Estado anterior: Ligado. Estado atual: Desligado.",
+    categoriaAuditoria: "COMANDO",
+  },
+  {
+    id: "11",
+    dataHora: "2025-01-15 13:15:00",
+    ativo: "UFV Solar Goiânia",
+    tipoEvento: "sistema",
+    mensagem: "Diagrama unifilar alterado",
+    severidade: "media",
+    usuario: "engenharia.joao",
+    status: "reconhecido",
+    localizacao: "Goiânia - GO",
+    detalhes: "Modificações realizadas no diagrama unifilar da UFV Solar Goiânia. Alterações: Adicionado novo transformador TR-003, atualizado posicionamento de inversores INV-004 a INV-006. Versão anterior: v2.3. Nova versão: v2.4. Aprovação: Pendente.",
+    categoriaAuditoria: "DIAGRAMA",
+  },
+  {
+    id: "12",
+    dataHora: "2025-01-15 12:40:00",
+    ativo: "Sistema NexON",
+    tipoEvento: "sistema",
+    mensagem: "Configuração de alarmes modificada",
+    severidade: "media",
+    usuario: "admin.sistema",
+    status: "reconhecido",
+    localizacao: "Centro de Controle - Goiânia",
+    detalhes: "Parâmetros de alarme atualizados. Ativo: Carga Industrial Anápolis. Alterações: Limite de tensão máxima alterado de 240V para 245V, timeout de reconhecimento alterado de 30min para 45min. Justificativa: Ajuste conforme características da carga.",
+    categoriaAuditoria: "CONFIGURACAO",
+  },
+  {
+    id: "13",
+    dataHora: "2025-01-15 11:50:00",
+    ativo: "Transformador Brasília",
+    tipoEvento: "sistema",
+    mensagem: "Setpoint de temperatura ajustado",
+    severidade: "baixa",
+    usuario: "ops.supervisor",
+    status: "reconhecido",
+    localizacao: "Brasília - DF",
+    equipamento: "Transformador TR-001",
+    detalhes: "Setpoint de temperatura do transformador TR-001 ajustado remotamente. Valor anterior: 75°C. Novo valor: 70°C. Temperatura atual: 65°C. Comando executado via interface web.",
+    categoriaAuditoria: "COMANDO",
+  },
+  {
+    id: "14",
+    dataHora: "2025-01-15 11:20:00",
+    ativo: "Sistema NexON",
+    tipoEvento: "sistema",
+    mensagem: "Relatório mensal gerado",
+    severidade: "baixa",
+    usuario: "Sistema",
+    status: "reconhecido",
+    localizacao: "Sistema",
+    detalhes: "Relatório automático mensal de desempenho gerado com sucesso. Período: 01/12/2024 a 31/12/2024. Ativos incluídos: Todos. Formato: PDF. Tamanho: 2.4MB. Destinatários: 5 usuários notificados.",
+    categoriaAuditoria: "RELATORIO",
+  },
+  {
+    id: "15",
+    dataHora: "2025-01-15 10:45:00",
+    ativo: "Motor Bomba Caldas Novas",
+    tipoEvento: "sistema",
+    mensagem: "Banco de capacitores acionado manualmente",
+    severidade: "baixa",
+    usuario: "ops.eletricista",
+    status: "reconhecido",
+    localizacao: "Caldas Novas - GO",
+    equipamento: "Banco de Capacitores BC-001",
+    detalhes: "Banco de capacitores BC-001 acionado para correção de fator de potência. FP antes: 0.87. FP esperado: 0.95. Comando executado por ops.eletricista via painel local.",
+    categoriaAuditoria: "COMANDO",
+  },
+  {
+    id: "16",
+    dataHora: "2025-01-15 10:10:00",
+    ativo: "Sistema NexON",
+    tipoEvento: "sistema",
+    mensagem: "Novo usuário cadastrado no sistema",
+    severidade: "baixa",
+    usuario: "admin.sistema",
+    status: "reconhecido",
+    localizacao: "Sistema",
+    detalhes: "Novo usuário criado: manutencao.carlos. Perfil: Técnico de Manutenção. Permissões: Leitura de todos os ativos, escrita em ordens de serviço. Status: Ativo. Criado por: admin.sistema.",
+    categoriaAuditoria: "USUARIO",
+  },
+  {
+    id: "17",
+    dataHora: "2025-01-15 09:35:00",
+    ativo: "UFV Solar Goiânia",
+    tipoEvento: "sistema",
+    mensagem: "Inversor reiniciado remotamente",
+    severidade: "baixa",
+    usuario: "ops.supervisor",
+    status: "reconhecido",
+    localizacao: "Goiânia - GO",
+    equipamento: "Inversor INV-002",
+    detalhes: "Comando de reset executado no inversor INV-002. Motivo: Limpeza de erro intermitente. Downtime: 45 segundos. Produção retomada normalmente às 09:36.",
+    categoriaAuditoria: "COMANDO",
+  },
+  {
+    id: "18",
+    dataHora: "2025-01-15 09:00:00",
+    ativo: "Sistema NexON",
+    tipoEvento: "sistema",
+    mensagem: "Backup automático do sistema concluído",
+    severidade: "baixa",
+    usuario: "Sistema",
+    status: "reconhecido",
+    localizacao: "Sistema",
+    detalhes: "Backup automático diário concluído com sucesso. Dados incluídos: Configurações, logs, históricos de medições. Tamanho total: 1.2GB. Armazenamento: Cloud Storage. Tempo de execução: 8 minutos.",
+    categoriaAuditoria: "SISTEMA",
+  },
+  {
+    id: "19",
+    dataHora: "2025-01-15 08:30:00",
+    ativo: "Carga Industrial Anápolis",
+    tipoEvento: "sistema",
+    mensagem: "Modo de operação alterado",
+    severidade: "media",
+    usuario: "ops.supervisor",
+    status: "reconhecido",
+    localizacao: "Anápolis - GO",
+    detalhes: "Modo de operação alterado de 'Automático' para 'Manual'. Justificativa: Testes de performance programados. Duração prevista: 2 horas. Alterado por: ops.supervisor às 08:30.",
+    categoriaAuditoria: "CONFIGURACAO",
+  },
+  {
+    id: "20",
+    dataHora: "2025-01-15 08:00:00",
+    ativo: "Sistema NexON",
+    tipoEvento: "sistema",
+    mensagem: "Usuário realizou logout do sistema",
+    severidade: "baixa",
+    usuario: "ops.turno.noite",
+    status: "reconhecido",
+    localizacao: "Centro de Controle - Goiânia",
+    detalhes: "Logout realizado. Duração da sessão: 8h 15min. Ações realizadas: 23 comandos executados, 15 eventos reconhecidos. IP: 192.168.1.42.",
+    categoriaAuditoria: "LOGOUT",
+    ip: "192.168.1.42",
   },
 ];
 
@@ -671,6 +840,56 @@ export function LogsEventosPage() {
                         {eventoSelecionado.usuario}
                       </p>
                     </div>
+                    {eventoSelecionado.localizacao && (
+                      <div>
+                        <p className="text-sm font-medium text-gray-500">
+                          Localização
+                        </p>
+                        <p className="text-sm mt-1">
+                          {eventoSelecionado.localizacao}
+                        </p>
+                      </div>
+                    )}
+                    {eventoSelecionado.equipamento && (
+                      <div>
+                        <p className="text-sm font-medium text-gray-500">
+                          Equipamento
+                        </p>
+                        <p className="text-sm mt-1">
+                          {eventoSelecionado.equipamento}
+                        </p>
+                      </div>
+                    )}
+                    {eventoSelecionado.detalhes && (
+                      <div>
+                        <p className="text-sm font-medium text-gray-500">
+                          Detalhes
+                        </p>
+                        <p className="text-sm mt-1 text-gray-700 dark:text-gray-300">
+                          {eventoSelecionado.detalhes}
+                        </p>
+                      </div>
+                    )}
+                    {eventoSelecionado.categoriaAuditoria && (
+                      <div>
+                        <p className="text-sm font-medium text-gray-500">
+                          Categoria de Auditoria
+                        </p>
+                        <Badge variant="outline" className="mt-1">
+                          {eventoSelecionado.categoriaAuditoria}
+                        </Badge>
+                      </div>
+                    )}
+                    {eventoSelecionado.ip && (
+                      <div>
+                        <p className="text-sm font-medium text-gray-500">
+                          Endereço IP
+                        </p>
+                        <p className="text-sm mt-1 font-mono text-gray-700 dark:text-gray-300">
+                          {eventoSelecionado.ip}
+                        </p>
+                      </div>
+                    )}
                     {eventoSelecionado.osAssociada && (
                       <div>
                         <p className="text-sm font-medium text-gray-500">
