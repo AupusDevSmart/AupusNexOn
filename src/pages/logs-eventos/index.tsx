@@ -4,16 +4,16 @@ import { Layout } from "@/components/common/Layout";
 import { Button } from "@/components/ui/button";
 import { EventoDetalhesModal } from "@/features/supervisorio/components/evento-detalhes-modal";
 import { LogsEventosFilters } from "@/features/supervisorio/components/logs-eventos-filters";
-import { LogsEventosSummary } from "@/features/supervisorio/components/logs-eventos-summary";
 import { LogsEventosTable } from "@/features/supervisorio/components/logs-eventos-table";
 import type {
   AtivoOption,
   FiltrosLogsEventos,
   LogEvento,
-  ResumoEventos,
 } from "@/types/dtos/logs-eventos";
-import { Download, FileSpreadsheet } from "lucide-react";
+import { Download, FileSpreadsheet, Filter, X } from "lucide-react";
 import { useMemo, useState } from "react";
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
 // Dados mockados para demonstração
 const mockEventos: LogEvento[] = [
@@ -275,10 +275,8 @@ const mockAtivos: AtivoOption[] = [
 
 export function LogsEventosPage() {
   const [filtros, setFiltros] = useState<FiltrosLogsEventos>({
-    dataInicial: new Date(Date.now() - 24 * 60 * 60 * 1000)
-      .toISOString()
-      .slice(0, 16),
-    dataFinal: new Date().toISOString().slice(0, 16),
+    dataInicial: "",
+    dataFinal: "",
     tipoEvento: "all",
     ativo: "all",
     severidade: "all",
@@ -286,13 +284,42 @@ export function LogsEventosPage() {
     categoriaAuditoria: "all",
   });
 
+  const [eventos, setEventos] = useState<LogEvento[]>(mockEventos);
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [eventoDetalhes, setEventoDetalhes] = useState<LogEvento | null>(null);
   const [modalDetalhesOpen, setModalDetalhesOpen] = useState(false);
 
   // Filtrar eventos baseado nos filtros
   const eventosFiltrados = useMemo(() => {
-    return mockEventos.filter((evento) => {
+    return eventos.filter((evento) => {
+      // Filtro por data inicial
+      if (filtros.dataInicial) {
+        try {
+          const dataEvento = new Date(evento.dataHora);
+          const dataInicial = new Date(filtros.dataInicial);
+
+          if (dataEvento < dataInicial) {
+            return false;
+          }
+        } catch (error) {
+          console.warn('Erro ao comparar data inicial:', error);
+        }
+      }
+
+      // Filtro por data final
+      if (filtros.dataFinal) {
+        try {
+          const dataEvento = new Date(evento.dataHora);
+          const dataFinal = new Date(filtros.dataFinal);
+
+          if (dataEvento > dataFinal) {
+            return false;
+          }
+        } catch (error) {
+          console.warn('Erro ao comparar data final:', error);
+        }
+      }
+
       // Filtro por tipo de evento
       if (
         filtros.tipoEvento !== "all" &&
@@ -336,26 +363,12 @@ export function LogsEventosPage() {
 
       return true;
     });
-  }, [filtros]);
-
-  // Calcular resumo
-  const resumo: ResumoEventos = useMemo(() => {
-    return {
-      totalEventos: eventosFiltrados.length,
-      eventosCriticos: eventosFiltrados.filter(
-        (e) => e.severidade === "CRITICA"
-      ).length,
-      eventosEmAberto: eventosFiltrados.filter((e) => !e.reconhecido).length,
-      eventosReconhecidos: eventosFiltrados.filter((e) => e.reconhecido).length,
-    };
-  }, [eventosFiltrados]);
+  }, [filtros, eventos]);
 
   const handleLimparFiltros = () => {
     setFiltros({
-      dataInicial: new Date(Date.now() - 24 * 60 * 60 * 1000)
-        .toISOString()
-        .slice(0, 16),
-      dataFinal: new Date().toISOString().slice(0, 16),
+      dataInicial: "",
+      dataFinal: "",
       tipoEvento: "all",
       ativo: "all",
       severidade: "all",
@@ -388,16 +401,18 @@ export function LogsEventosPage() {
   };
 
   const handleMarcarReconhecido = (evento: LogEvento) => {
-    console.log("Marcar como reconhecido:", evento.id);
-    // Implementar lógica para marcar como reconhecido
-    alert(`Evento ${evento.id} marcado como reconhecido!`);
+    setEventos((prevEventos) =>
+      prevEventos.map((e) =>
+        e.id === evento.id ? { ...e, reconhecido: true } : e
+      )
+    );
   };
 
   const handleReconhecimentoMassa = (ids: string[]) => {
-    console.log("Reconhecimento em massa:", ids);
-    // Implementar lógica para reconhecimento em massa
-    alert(
-      `${ids.length} eventos selecionados serão marcados como reconhecidos!`
+    setEventos((prevEventos) =>
+      prevEventos.map((e) =>
+        ids.includes(e.id) ? { ...e, reconhecido: true } : e
+      )
     );
     setSelectedItems([]);
   };
@@ -416,6 +431,68 @@ export function LogsEventosPage() {
     );
   };
 
+  const handleRemoverFiltro = (filtroKey: keyof FiltrosLogsEventos) => {
+    const novosFiltros = { ...filtros };
+
+    if (filtroKey === 'dataInicial' || filtroKey === 'dataFinal') {
+      novosFiltros[filtroKey] = '';
+    } else if (filtroKey === 'reconhecido') {
+      novosFiltros[filtroKey] = null;
+    } else {
+      (novosFiltros[filtroKey] as any) = 'all';
+    }
+
+    setFiltros(novosFiltros);
+  };
+
+  // Verificar se há filtros ativos
+  const temFiltrosAtivos =
+    filtros.tipoEvento !== 'all' ||
+    filtros.ativo !== 'all' ||
+    filtros.severidade !== 'all' ||
+    filtros.reconhecido !== null ||
+    (filtros.categoriaAuditoria && filtros.categoriaAuditoria !== 'all');
+
+  // Labels amigáveis para os filtros
+  const getLabel = (key: string, value: any): string => {
+    const labels: Record<string, Record<string, string>> = {
+      tipoEvento: {
+        ALARME: 'Alarme',
+        TRIP: 'Trip',
+        URGENCIA: 'Urgência',
+        INFORMATIVO: 'Informativo',
+        MANUTENCAO: 'Manutenção',
+      },
+      severidade: {
+        BAIXA: 'Baixa',
+        MEDIA: 'Média',
+        ALTA: 'Alta',
+        CRITICA: 'Crítica',
+      },
+      reconhecido: {
+        true: 'Reconhecidos',
+        false: 'Não reconhecidos',
+      },
+      categoriaAuditoria: {
+        LOGIN: 'Login',
+        LOGOUT: 'Logout',
+        COMANDO: 'Comando',
+        CONFIGURACAO: 'Configuração',
+        DIAGRAMA: 'Diagrama',
+        USUARIO: 'Usuário',
+        SISTEMA: 'Sistema',
+        RELATORIO: 'Relatório',
+      },
+    };
+
+    if (key === 'ativo') {
+      const ativoEncontrado = mockAtivos.find(a => a.value === value);
+      return ativoEncontrado ? ativoEncontrado.label : value;
+    }
+
+    return labels[key]?.[String(value)] || String(value);
+  };
+
   return (
     <Layout>
       <Layout.Main>
@@ -429,19 +506,105 @@ export function LogsEventosPage() {
                 </h1>
               </div>
 
-              {/* Resumo - Cards de Indicadores */}
-              <LogsEventosSummary resumo={resumo} />
-
               {/* Filtros compactos */}
               <LogsEventosFilters
                 filtros={filtros}
                 onFiltrosChange={setFiltros}
                 ativos={mockAtivos}
                 onLimparFiltros={handleLimparFiltros}
-                onAplicarFiltros={() =>
-                  console.log("Filtros aplicados:", filtros)
-                }
               />
+
+              {/* Resumo Visual de Filtros Ativos */}
+              {temFiltrosAtivos && (
+                <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <Filter className="h-4 w-4 text-blue-700 dark:text-blue-400" />
+                      <span className="font-semibold text-sm text-blue-900 dark:text-blue-300">
+                        Filtros Ativos
+                      </span>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleLimparFiltros}
+                      className="h-7 text-xs text-blue-700 hover:text-blue-900 hover:bg-blue-100 dark:text-blue-400 dark:hover:text-blue-300"
+                    >
+                      Limpar todos
+                    </Button>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {filtros.tipoEvento !== 'all' && (
+                      <div className="inline-flex items-center gap-1.5 bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-200 px-2.5 py-1 rounded-md text-xs">
+                        <span className="font-medium">Tipo:</span>
+                        <span>{getLabel('tipoEvento', filtros.tipoEvento)}</span>
+                        <button
+                          onClick={() => handleRemoverFiltro('tipoEvento')}
+                          className="ml-1 hover:bg-blue-200 dark:hover:bg-blue-800 rounded-full p-0.5 transition-colors"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    )}
+
+                    {filtros.ativo !== 'all' && (
+                      <div className="inline-flex items-center gap-1.5 bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-200 px-2.5 py-1 rounded-md text-xs">
+                        <span className="font-medium">Ativo:</span>
+                        <span>{getLabel('ativo', filtros.ativo)}</span>
+                        <button
+                          onClick={() => handleRemoverFiltro('ativo')}
+                          className="ml-1 hover:bg-blue-200 dark:hover:bg-blue-800 rounded-full p-0.5 transition-colors"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    )}
+
+                    {filtros.severidade !== 'all' && (
+                      <div className="inline-flex items-center gap-1.5 bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-200 px-2.5 py-1 rounded-md text-xs">
+                        <span className="font-medium">Severidade:</span>
+                        <span>{getLabel('severidade', filtros.severidade)}</span>
+                        <button
+                          onClick={() => handleRemoverFiltro('severidade')}
+                          className="ml-1 hover:bg-blue-200 dark:hover:bg-blue-800 rounded-full p-0.5 transition-colors"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    )}
+
+                    {filtros.reconhecido !== null && (
+                      <div className="inline-flex items-center gap-1.5 bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-200 px-2.5 py-1 rounded-md text-xs">
+                        <span className="font-medium">Status:</span>
+                        <span>{getLabel('reconhecido', filtros.reconhecido)}</span>
+                        <button
+                          onClick={() => handleRemoverFiltro('reconhecido')}
+                          className="ml-1 hover:bg-blue-200 dark:hover:bg-blue-800 rounded-full p-0.5 transition-colors"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    )}
+
+                    {filtros.categoriaAuditoria &&
+                      filtros.categoriaAuditoria !== 'all' && (
+                        <div className="inline-flex items-center gap-1.5 bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-200 px-2.5 py-1 rounded-md text-xs">
+                          <span className="font-medium">Categoria:</span>
+                          <span>
+                            {getLabel('categoriaAuditoria', filtros.categoriaAuditoria)}
+                          </span>
+                          <button
+                            onClick={() => handleRemoverFiltro('categoriaAuditoria')}
+                            className="ml-1 hover:bg-blue-200 dark:hover:bg-blue-800 rounded-full p-0.5 transition-colors"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      )}
+                  </div>
+                </div>
+              )}
 
               {/* Ações */}
               <div className="flex items-center justify-between">

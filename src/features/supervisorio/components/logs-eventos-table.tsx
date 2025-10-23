@@ -5,12 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
   Table,
   TableBody,
   TableCell,
@@ -19,7 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { LogEvento } from "@/types/dtos/logs-eventos";
-import { CheckSquare, Eye, FileText, MoreHorizontal } from "lucide-react";
+import { CheckSquare } from "lucide-react";
 
 interface LogsEventosTableProps {
   eventos: LogEvento[];
@@ -42,21 +36,6 @@ export function LogsEventosTable({
   onMarcarReconhecido,
   onReconhecimentoMassa,
 }: LogsEventosTableProps) {
-  const getSeveridadeColor = (severidade: string) => {
-    switch (severidade) {
-      case "CRITICA":
-        return "bg-red-100 text-red-800";
-      case "ALTA":
-        return "bg-orange-100 text-orange-800";
-      case "MEDIA":
-        return "bg-yellow-100 text-yellow-800";
-      case "BAIXA":
-        return "bg-blue-100 text-blue-800";
-      default:
-        return "bg-gray-100 text-gray-800";
-    }
-  };
-
   const getTipoEventoColor = (tipo: string) => {
     switch (tipo) {
       case "TRIP":
@@ -113,17 +92,15 @@ export function LogsEventosTable({
                 <TableHead>Ativo</TableHead>
                 <TableHead>Tipo</TableHead>
                 <TableHead>Mensagem</TableHead>
-                <TableHead>Severidade</TableHead>
                 <TableHead>Usuário</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="w-24">Ações</TableHead>
+                <TableHead className="w-32 text-center">Ação</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {eventos.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={9}
+                    colSpan={7}
                     className="text-center py-8 text-muted-foreground"
                   >
                     Nenhum evento encontrado com os filtros aplicados.
@@ -152,72 +129,26 @@ export function LogsEventosTable({
                     <TableCell className="max-w-md truncate">
                       {evento.mensagem}
                     </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant="outline"
-                        className={getSeveridadeColor(evento.severidade)}
-                      >
-                        {evento.severidade}
-                      </Badge>
-                    </TableCell>
                     <TableCell>{evento.usuario}</TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {evento.reconhecido ? (
-                          <Badge
-                            variant="outline"
-                            className="bg-green-100 text-green-800"
-                          >
-                            Reconhecido
-                          </Badge>
-                        ) : (
-                          <Badge
-                            variant="outline"
-                            className="bg-yellow-100 text-yellow-800"
-                          >
-                            Pendente
-                          </Badge>
-                        )}
-                        {evento.osAssociada && (
-                          <Badge
-                            variant="outline"
-                            className="bg-blue-100 text-blue-800"
-                          >
-                            OS: {evento.osAssociada}
-                          </Badge>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" className="h-8 w-8 p-0">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onClick={() => onVerDetalhes(evento)}
-                          >
-                            <Eye className="mr-2 h-4 w-4" />
-                            Ver Detalhes
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => onAssociarOS(evento)}
-                          >
-                            <FileText className="mr-2 h-4 w-4" />
-                            Associar OS
-                          </DropdownMenuItem>
-                          {!evento.reconhecido && (
-                            <DropdownMenuItem
-                              onClick={() => onMarcarReconhecido(evento)}
-                            >
-                              <CheckSquare className="mr-2 h-4 w-4" />
-                              Marcar como Reconhecido
-                            </DropdownMenuItem>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                    <TableCell className="text-center">
+                      {!evento.reconhecido ? (
+                        <Button
+                          onClick={() => onMarcarReconhecido(evento)}
+                          variant="outline"
+                          size="sm"
+                          className="h-8"
+                        >
+                          <CheckSquare className="mr-1.5 h-3.5 w-3.5" />
+                          Reconhecer
+                        </Button>
+                      ) : (
+                        <Badge
+                          variant="outline"
+                          className="bg-green-100 text-green-800 border-green-300"
+                        >
+                          Reconhecido
+                        </Badge>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))

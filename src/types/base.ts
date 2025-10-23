@@ -30,7 +30,7 @@ export interface FormFieldProps {
 export interface FormField {
   key: string;
   label: string;
-  type: 'text' | 'email' | 'number' | 'select' | 'checkbox' | 'textarea' | 'custom' | 'password' | 'date';
+  type: 'text' | 'email' | 'number' | 'select' | 'checkbox' | 'textarea' | 'custom' | 'password' | 'date' | 'time' | 'datetime-local';
   required?: boolean;
   placeholder?: string;
   defaultValue?: any;
@@ -41,6 +41,10 @@ export interface FormField {
   dependencies?: string[];
   help?: string;
   disabled?: boolean;
+  min?: string | number;
+  max?: string | number;
+  component?: any;
+  componentProps?: any;
 }
 
 /**
@@ -113,3 +117,8 @@ export interface ModalState<T = any> {
   mode: ModalMode;
   entity?: T;
 }
+
+/**
+ * Modal entity type
+ */
+export type ModalEntity<T> = T;

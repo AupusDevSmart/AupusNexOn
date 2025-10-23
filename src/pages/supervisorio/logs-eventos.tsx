@@ -12,7 +12,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -21,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { DateTimeRangePicker } from "@/components/ui/datetime-range-picker";
 import { useSidebar } from "@/components/ui/sidebar";
 import { toast } from "@/components/ui/use-toast";
 import {
@@ -38,6 +38,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useState } from "react";
+import { parse, format } from "date-fns";
 
 // Tipos
 interface Evento {
@@ -548,30 +549,36 @@ export function LogsEventosPage() {
                   </Button>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="dataInicial">Data/Hora Inicial</Label>
-                    <Input
-                      id="dataInicial"
-                      type="datetime-local"
-                      value={filtros.dataInicial}
-                      onChange={(e) =>
-                        setFiltros({ ...filtros, dataInicial: e.target.value })
+                <div className="grid grid-cols-1 gap-4">
+                  <div className="lg:col-span-full">
+                    <DateTimeRangePicker
+                      startDate={
+                        filtros.dataInicial
+                          ? parse(filtros.dataInicial, "yyyy-MM-dd'T'HH:mm", new Date())
+                          : undefined
+                      }
+                      endDate={
+                        filtros.dataFinal
+                          ? parse(filtros.dataFinal, "yyyy-MM-dd'T'HH:mm", new Date())
+                          : undefined
+                      }
+                      onStartDateChange={(date) =>
+                        setFiltros({
+                          ...filtros,
+                          dataInicial: date ? format(date, "yyyy-MM-dd'T'HH:mm") : "",
+                        })
+                      }
+                      onEndDateChange={(date) =>
+                        setFiltros({
+                          ...filtros,
+                          dataFinal: date ? format(date, "yyyy-MM-dd'T'HH:mm") : "",
+                        })
                       }
                     />
                   </div>
+                </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="dataFinal">Data/Hora Final</Label>
-                    <Input
-                      id="dataFinal"
-                      type="datetime-local"
-                      value={filtros.dataFinal}
-                      onChange={(e) =>
-                        setFiltros({ ...filtros, dataFinal: e.target.value })
-                      }
-                    />
-                  </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
 
                   <div className="space-y-2">
                     <Label htmlFor="tipoEvento">Tipo de Evento</Label>

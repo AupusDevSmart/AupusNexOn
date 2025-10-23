@@ -2,18 +2,20 @@
 import React, { useCallback, useRef, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
+import { DateTimePicker } from '@/components/ui/datetime-picker';
 import { cn } from '@/lib/utils';
 import { FormField, ModalMode, BaseEntity, ModalEntity } from '@/types/base';
+import { parse, format, isValid } from 'date-fns';
 
 interface FormFieldProps {
   value: any;
@@ -424,24 +426,25 @@ export function BaseForm({
 
       case 'datetime-local':
         return (
-          <input
-            type="datetime-local"
-            id={field.key}
-            value={String(value || '')}
-            onChange={(e) => handleFieldChange(field.key, e.target.value)}
-            disabled={fieldDisabled}
-            className={cn(
-              "w-full px-3 py-2 border rounded-md transition-colors",
-              "bg-background text-foreground",
-              "border-input hover:border-ring",
-              "focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent",
-              "disabled:opacity-50 disabled:cursor-not-allowed",
-              error && "border-destructive focus:ring-destructive"
-            )}
-            required={field.required}
-            min={field.min ? String(field.min) : undefined}
-            max={field.max ? String(field.max) : undefined}
-            placeholder={field.placeholder}
+          <DateTimePicker
+            date={
+              value
+                ? (() => {
+                    try {
+                      const dateStr = String(value);
+                      const parsedDate = parse(dateStr, "yyyy-MM-dd'T'HH:mm", new Date());
+                      return isValid(parsedDate) ? parsedDate : undefined;
+                    } catch {
+                      return undefined;
+                    }
+                  })()
+                : undefined
+            }
+            setDate={(date) =>
+              handleFieldChange(field.key, date ? format(date, "yyyy-MM-dd'T'HH:mm") : "")
+            }
+            placeholder={field.placeholder || "Selecione data e hora"}
+            className={cn(error && "[&>button]:border-destructive")}
           />
         );
 

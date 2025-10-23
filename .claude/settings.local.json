@@ -14,7 +14,9 @@
       "Bash(taskkill //F //IM node.exe)",
       "Bash(npm run dev:client:*)",
       "Bash(taskkill //F //PID 22500)",
-      "Bash(taskkill //F //PID 9676)"
+      "Bash(taskkill //F //PID 9676)",
+      "Bash(npx shadcn@latest add:*)",
+      "Bash(npm install:*)"
     ],
     "deny": [],
     "ask": []
