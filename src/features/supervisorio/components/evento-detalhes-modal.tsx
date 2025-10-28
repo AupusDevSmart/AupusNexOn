@@ -20,6 +20,7 @@ import {
   Settings,
   User,
 } from "lucide-react";
+import { formatarDataHoraBR } from "@/lib/utils/date-formatters";
 
 interface EventoDetalhesModalProps {
   evento: LogEvento | null;
@@ -37,13 +38,6 @@ export function EventoDetalhesModal({
   onMarcarReconhecido,
 }: EventoDetalhesModalProps) {
   if (!evento) return null;
-
-  const formatarDataHora = (dataHora: string) => {
-    return new Date(dataHora).toLocaleString("pt-BR", {
-      dateStyle: "full",
-      timeStyle: "medium",
-    });
-  };
 
   const getSeveridadeColor = (severidade: string) => {
     switch (severidade) {
@@ -113,9 +107,9 @@ export function EventoDetalhesModal({
               <div className="flex items-center gap-2">
                 <Calendar className="h-4 w-4 text-muted-foreground" />
                 <div>
-                  <p className="text-sm font-medium">Data/Hora</p>
-                  <p className="text-sm text-muted-foreground">
-                    {formatarDataHora(evento.dataHora)}
+                  <p className="text-sm font-medium">DATA/HORA</p>
+                  <p className="text-sm text-muted-foreground font-mono">
+                    {formatarDataHoraBR(evento.dataHora)}
                   </p>
                 </div>
               </div>

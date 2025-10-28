@@ -19,6 +19,7 @@ import {
   Shield,
   Zap,
 } from "lucide-react";
+import { formatarDataHoraBR } from "@/lib/utils/date-formatters";
 
 interface DisjuntorModalProps {
   open: boolean;
@@ -218,10 +219,10 @@ export function DisjuntorModal({
                 <div className="space-y-3">
                   <div className="flex justify-between">
                     <span className="text-sm text-muted-foreground">
-                      Data/Hora:
+                      DATA/HORA:
                     </span>
-                    <span className="font-medium">
-                      {new Date(dados.ultimaOperacao).toLocaleString("pt-BR")}
+                    <span className="font-medium font-mono">
+                      {formatarDataHoraBR(dados.ultimaOperacao)}
                     </span>
                   </div>
                   <div className="flex justify-between">

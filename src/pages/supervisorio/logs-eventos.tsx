@@ -540,8 +540,7 @@ export function LogsEventosPage() {
             <Card className="p-4">
               <div className="flex flex-col gap-4">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold flex items-center gap-2">
-                    <Filter className="h-5 w-5" />
+                  <h3 className="text-lg font-semibold">
                     Filtros
                   </h3>
                   <Button variant="outline" size="sm">
@@ -702,14 +701,14 @@ export function LogsEventosPage() {
                           onCheckedChange={toggleSelecionarTodos}
                         />
                       </th>
-                      <th className="text-left py-3 px-2">Data/Hora</th>
-                      <th className="text-left py-3 px-2">Ativo</th>
-                      <th className="text-left py-3 px-2">Tipo</th>
-                      <th className="text-left py-3 px-2">Mensagem</th>
-                      <th className="text-center py-3 px-2">Severidade</th>
-                      <th className="text-left py-3 px-2">Usuário</th>
-                      <th className="text-center py-3 px-2">Status</th>
-                      <th className="text-right py-3 px-2">Ações</th>
+                      <th className="text-left py-3 px-2">DATA/HORA</th>
+                      <th className="text-left py-3 px-2">ATIVO</th>
+                      <th className="text-left py-3 px-2">TIPO</th>
+                      <th className="text-left py-3 px-2">MENSAGEM</th>
+                      <th className="text-center py-3 px-2">SEVERIDADE</th>
+                      <th className="text-left py-3 px-2">USUÁRIO</th>
+                      <th className="text-center py-3 px-2">STATUS</th>
+                      <th className="text-right py-3 px-2">AÇÕES</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -797,19 +796,19 @@ export function LogsEventosPage() {
                       </div>
                       <div>
                         <p className="text-sm font-medium text-gray-500">
-                          Data/Hora
+                          DATA/HORA
                         </p>
                         <p className="text-sm">{eventoSelecionado.dataHora}</p>
                       </div>
                       <div>
                         <p className="text-sm font-medium text-gray-500">
-                          Ativo
+                          ATIVO
                         </p>
                         <p className="text-sm">{eventoSelecionado.ativo}</p>
                       </div>
                       <div>
                         <p className="text-sm font-medium text-gray-500">
-                          Tipo de Evento
+                          TIPO DE EVENTO
                         </p>
                         <div className="flex items-center gap-2">
                           {getTipoEventoIcon(eventoSelecionado.tipoEvento)}
@@ -833,7 +832,7 @@ export function LogsEventosPage() {
                     </div>
                     <div>
                       <p className="text-sm font-medium text-gray-500">
-                        Mensagem
+                        MENSAGEM
                       </p>
                       <p className="text-sm mt-1">
                         {eventoSelecionado.mensagem}
@@ -850,7 +849,7 @@ export function LogsEventosPage() {
                     {eventoSelecionado.localizacao && (
                       <div>
                         <p className="text-sm font-medium text-gray-500">
-                          Localização
+                          LOCALIZAÇÃO
                         </p>
                         <p className="text-sm mt-1">
                           {eventoSelecionado.localizacao}
@@ -860,7 +859,7 @@ export function LogsEventosPage() {
                     {eventoSelecionado.equipamento && (
                       <div>
                         <p className="text-sm font-medium text-gray-500">
-                          Equipamento
+                          EQUIPAMENTO
                         </p>
                         <p className="text-sm mt-1">
                           {eventoSelecionado.equipamento}
@@ -870,7 +869,7 @@ export function LogsEventosPage() {
                     {eventoSelecionado.detalhes && (
                       <div>
                         <p className="text-sm font-medium text-gray-500">
-                          Detalhes
+                          DETALHES
                         </p>
                         <p className="text-sm mt-1 text-gray-700 dark:text-gray-300">
                           {eventoSelecionado.detalhes}
@@ -880,7 +879,7 @@ export function LogsEventosPage() {
                     {eventoSelecionado.categoriaAuditoria && (
                       <div>
                         <p className="text-sm font-medium text-gray-500">
-                          Categoria de Auditoria
+                          CATEGORIA DE AUDITORIA
                         </p>
                         <Badge variant="outline" className="mt-1">
                           {eventoSelecionado.categoriaAuditoria}

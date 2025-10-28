@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/table";
 import type { LogEvento } from "@/types/dtos/logs-eventos";
 import { CheckSquare } from "lucide-react";
+import { formatarDataHoraBR } from "@/lib/utils/date-formatters";
 
 interface LogsEventosTableProps {
   eventos: LogEvento[];
@@ -53,10 +54,6 @@ export function LogsEventosTable({
     }
   };
 
-  const formatarDataHora = (dataHora: string) => {
-    return new Date(dataHora).toLocaleString("pt-BR");
-  };
-
   return (
     <Card>
       <CardHeader>
@@ -88,12 +85,12 @@ export function LogsEventosTable({
                     onCheckedChange={onSelectAll}
                   />
                 </TableHead>
-                <TableHead>Data/Hora</TableHead>
-                <TableHead>Ativo</TableHead>
-                <TableHead>Tipo</TableHead>
-                <TableHead>Mensagem</TableHead>
-                <TableHead>Usuário</TableHead>
-                <TableHead className="w-32 text-center">Ação</TableHead>
+                <TableHead>DATA/HORA</TableHead>
+                <TableHead>ATIVO</TableHead>
+                <TableHead>TIPO</TableHead>
+                <TableHead>MENSAGEM</TableHead>
+                <TableHead>USUÁRIO</TableHead>
+                <TableHead className="w-32 text-center">AÇÃO</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -116,7 +113,7 @@ export function LogsEventosTable({
                       />
                     </TableCell>
                     <TableCell className="font-mono text-sm">
-                      {formatarDataHora(evento.dataHora)}
+                      {formatarDataHoraBR(evento.dataHora)}
                     </TableCell>
                     <TableCell className="font-medium">
                       {evento.ativo}

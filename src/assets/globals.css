@@ -400,4 +400,49 @@
   :-ms-fullscreen .bg-card {
     background: hsl(var(--card)) !important;
   }
+
+  /* ========================================
+     CALENDÁRIO: Layout setas + mês/ano
+     ======================================== */
+
+  /* Ocultar dias de outros meses */
+  .rdp-day_outside,
+  [data-outside="true"],
+  button[data-outside="true"] {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  /* Caption e Nav na mesma linha */
+  .rdp-caption {
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    position: relative !important;
+    width: 100% !important;
+    min-height: 2rem !important;
+  }
+
+  /* Nav absolutamente posicionado para ficar com caption */
+  .rdp-nav {
+    position: absolute !important;
+    width: 100% !important;
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    pointer-events: none !important;
+  }
+
+  /* Botões de navegação */
+  .rdp-button_previous,
+  .rdp-button_next {
+    pointer-events: auto !important;
+    z-index: 10 !important;
+  }
+
+  /* Label centralizado */
+  .rdp-caption_label {
+    z-index: 5 !important;
+    position: relative !important;
+  }
 }
