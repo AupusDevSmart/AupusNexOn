@@ -311,6 +311,22 @@ export class EquipamentosApiService {
   }
 
   // ============================================================================
+  // COMPONENTES VISUAIS (BARRAMENTO/PONTO)
+  // ============================================================================
+
+  async criarComponenteVisual(
+    unidadeId: string,
+    tipo: 'BARRAMENTO' | 'PONTO',
+    nome?: string
+  ): Promise<{ success: boolean; data: EquipamentoApiResponse; meta?: any }> {
+    const response = await api.post<{ success: boolean; data: EquipamentoApiResponse; meta?: any }>(
+      `${this.baseEndpoint}/virtual/${unidadeId}/${tipo}`,
+      nome ? { nome } : {}
+    );
+    return response.data;
+  }
+
+  // ============================================================================
   // OPERAÇÕES POR UNIDADE
   // ============================================================================
 

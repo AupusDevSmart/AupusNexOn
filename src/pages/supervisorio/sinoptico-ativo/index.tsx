@@ -2425,8 +2425,8 @@ export function SinopticoAtivoPage() {
       // Componentes visuais: criar no backend primeiro
       try {
         console.log('🔧 Criando componente virtual:', { tipo, unidadeId });
-        const { EquipamentosService } = await import('@/services/equipamentos.services');
-        const equipamentoVirtual = await EquipamentosService.criarComponenteVisual(
+        const { equipamentosApi } = await import('@/services/equipamentos.services');
+        const equipamentoVirtual = await equipamentosApi.criarComponenteVisual(
           unidadeId,
           tipo,
           `${tipo} ${componentes.filter(c => c.tipo === tipo).length + 1}`
@@ -3391,7 +3391,7 @@ export function SinopticoAtivoPage() {
                                   style={style}
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    handlePortaClick(componente.id, port);
+                                    startConnection(componente.id, port as "top" | "bottom" | "left" | "right");
                                   }}
                                   title={`Conectar ${port}`}
                                 />
