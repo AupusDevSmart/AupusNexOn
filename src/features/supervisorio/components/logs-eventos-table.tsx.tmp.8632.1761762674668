@@ -72,8 +72,8 @@ export function LogsEventosTable({
         </div>
       </CardHeader>
       <CardContent>
-        <div className="rounded-md border overflow-x-auto">
-          <Table className="table-fixed w-full min-w-[1100px]">
+        <div className="rounded-md border">
+          <Table>
             <TableHeader>
               <TableRow>
                 <TableHead className="w-12 px-4">

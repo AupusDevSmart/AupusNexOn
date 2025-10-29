@@ -413,36 +413,114 @@
     visibility: hidden !important;
   }
 
-  /* Caption e Nav na mesma linha */
-  .rdp-caption {
-    display: flex !important;
-    justify-content: center !important;
+  /* Caption com Grid para layout: seta-esquerda | mês | seta-direita */
+  .nexon-calendar-wrapper .rdp-caption {
+    display: grid !important;
+    grid-template-columns: auto 1fr auto !important;
+    gap: 0.5rem !important;
     align-items: center !important;
-    position: relative !important;
+    justify-items: center !important;
     width: 100% !important;
     min-height: 2rem !important;
   }
 
-  /* Nav absolutamente posicionado para ficar com caption */
-  .rdp-nav {
-    position: absolute !important;
+  /* Label do mês na coluna central */
+  .nexon-calendar-wrapper .rdp-caption_label {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+  }
+
+  /* Nav/botões na mesma linha do mês */
+  .nexon-calendar-wrapper .rdp-nav {
+    display: contents !important;
+  }
+
+  /* Seta anterior na primeira coluna */
+  .nexon-calendar-wrapper button[name="previous-month"],
+  .nexon-calendar-wrapper .rdp-nav button:first-child {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+  }
+
+  /* Seta próxima na terceira coluna */
+  .nexon-calendar-wrapper button[name="next-month"],
+  .nexon-calendar-wrapper .rdp-nav button:last-child {
+    grid-column: 3 !important;
+    grid-row: 1 !important;
+  }
+
+  /* ========================================
+     CALENDÁRIO: Cabeçalho dias da semana
+     APENAS DENTRO DO .nexon-calendar-wrapper
+     ======================================== */
+
+  /* Forçar thead também ter display flex */
+  .nexon-calendar-wrapper thead {
+    display: block !important;
     width: 100% !important;
+  }
+
+  /* Linha dos dias da semana - HORIZONTAL */
+  .nexon-calendar-wrapper .rdp-weekdays,
+  .nexon-calendar-wrapper .rdp-head_row,
+  .nexon-calendar-wrapper thead tr {
     display: flex !important;
-    justify-content: space-between !important;
+    flex-direction: row !important;
+    width: 100% !important;
+    margin-bottom: 0 !important;
+    margin-top: 0.5rem !important;
+  }
+
+  /* Cada célula do cabeçalho */
+  .nexon-calendar-wrapper .rdp-weekday,
+  .nexon-calendar-wrapper .rdp-head_cell,
+  .nexon-calendar-wrapper thead th {
+    width: 2.25rem !important;
+    min-width: 2.25rem !important;
+    max-width: 2.25rem !important;
+    height: 2.25rem !important;
+    font-size: 0.75rem !important;
+    color: hsl(var(--muted-foreground)) !important;
+    font-weight: 400 !important;
+    text-align: center !important;
+    display: flex !important;
     align-items: center !important;
-    pointer-events: none !important;
+    justify-content: center !important;
+    text-transform: lowercase !important;
   }
 
-  /* Botões de navegação */
-  .rdp-button_previous,
-  .rdp-button_next {
-    pointer-events: auto !important;
-    z-index: 10 !important;
+  /* Garantir que as linhas dos dias também tenham flex */
+  .nexon-calendar-wrapper .rdp-row,
+  .nexon-calendar-wrapper .rdp-week,
+  .nexon-calendar-wrapper tbody tr {
+    display: flex !important;
+    width: 100% !important;
+    margin-top: 0.25rem !important;
   }
 
-  /* Label centralizado */
-  .rdp-caption_label {
-    z-index: 5 !important;
-    position: relative !important;
+  /* Primeira linha de dias sem espaçamento extra */
+  .nexon-calendar-wrapper tbody tr:first-child {
+    margin-top: 0 !important;
+  }
+
+  /* Garantir que as células dos dias tenham mesma largura */
+  .nexon-calendar-wrapper .rdp-cell,
+  .nexon-calendar-wrapper td[role="gridcell"],
+  .nexon-calendar-wrapper tbody td {
+    width: 2.25rem !important;
+    min-width: 2.25rem !important;
+    max-width: 2.25rem !important;
+    height: 2.25rem !important;
+    text-align: center !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
+  /* Tema dark */
+  .dark .nexon-calendar-wrapper .rdp-weekday,
+  .dark .nexon-calendar-wrapper .rdp-head_cell,
+  .dark .nexon-calendar-wrapper thead th {
+    color: hsl(var(--muted-foreground)) !important;
   }
 }
