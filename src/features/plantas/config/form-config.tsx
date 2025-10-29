@@ -7,7 +7,8 @@ import { CNPJInput, CNPJUtils } from '@/components/ui/cnpj-input'; // ✅ Import
 import { Factory, Settings, ExternalLink } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { ProprietarioSelector } from '../components/ProprietarioSelector';
-import { useEstadosIBGE, useCidadesIBGE, useViaCEP, formatarCEP, validarCEP } from '@/hooks/useEstadosIBGE';
+import { useEstadosIBGE, useCidadesIBGE, formatarCEP, validarCEP } from '@/hooks/useEstadosIBGE';
+import { useViaCEP } from '@/hooks/useViaCEP';
 
 // ✅ COMPONENTE: CNPJ com máscara personalizada
 const CNPJFieldComponent = ({ value, onChange, disabled, hasError }: FormFieldProps) => {
@@ -68,7 +69,10 @@ const EnderecoCompleto = ({ onChange, disabled, entity }: FormFieldProps & { ent
   const [lastCEP, setLastCEP] = React.useState('');
   
   const { estados, loading: loadingEstados } = useEstadosIBGE();
-  const { cidades, loading: loadingCidades } = useCidadesIBGE(selectedUF);
+  // useCidadesIBGE espera um ID numérico, mas selectedUF é string (sigla UF)
+  // Precisamos encontrar o ID do estado pela sigla
+  const estadoSelecionado = estados.find(e => e.sigla === selectedUF);
+  const { cidades, loading: loadingCidades } = useCidadesIBGE(estadoSelecionado?.id || null);
   const { buscarCEP, loading: loadingCEP, error: errorCEP } = useViaCEP();
 
   // Inicializar apenas uma vez com dados existentes
@@ -122,7 +126,7 @@ const EnderecoCompleto = ({ onChange, disabled, entity }: FormFieldProps & { ent
     if (endereco) {
       setLogradouro(endereco.logradouro);
       setBairro(endereco.bairro);
-      setSelectedCidade(endereco.cidade);
+      setSelectedCidade(endereco.localidade); // ViaCEP retorna "localidade" (nome da cidade)
       setSelectedUF(endereco.uf);
     }
   };
@@ -226,8 +230,8 @@ const EnderecoCompleto = ({ onChange, disabled, entity }: FormFieldProps & { ent
               {loadingEstados ? "Carregando estados..." : "Selecione um estado"}
             </option>
             {estados.map((estado) => (
-              <option key={estado.value} value={estado.value}>
-                {estado.label}
+              <option key={estado.id} value={estado.sigla}>
+                {estado.sigla} - {estado.nome}
               </option>
             ))}
           </select>
@@ -252,8 +256,8 @@ const EnderecoCompleto = ({ onChange, disabled, entity }: FormFieldProps & { ent
               }
             </option>
             {cidades.map((cidade) => (
-              <option key={cidade.value} value={cidade.value}>
-                {cidade.label}
+              <option key={cidade.id} value={cidade.nome}>
+                {cidade.nome}
               </option>
             ))}
           </select>

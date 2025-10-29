@@ -1,6 +1,6 @@
 // Exportar todos os services
 export { default as api } from './api';
-export { default as unidadesService } from './unidadesService';
+export { default as unidadesService } from './unidades.services';
 
 // Re-exportar hooks relacionados
 export {

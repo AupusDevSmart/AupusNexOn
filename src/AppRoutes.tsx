@@ -52,6 +52,12 @@ const CadastroUnidadesPageWrapper = lazy(() =>
   import("@/pages/cadastros/unidades")
 );
 
+const CadastroEquipamentosPage = lazy(() =>
+  import("@/features/equipamentos").then((module) => ({
+    default: module.EquipamentosPage,
+  }))
+);
+
 export const appRoutes = createBrowserRouter([
   {
     path: "/",
@@ -223,6 +229,16 @@ export const appRoutes = createBrowserRouter([
           <FeatureWrapper feature="UnidadesConsumidoras">
             <Suspense fallback={<div>Carregando...</div>}>
               <CadastroUnidadesPageWrapper />
+            </Suspense>
+          </FeatureWrapper>
+        ),
+      },
+      {
+        path: "cadastros/equipamentos",
+        element: (
+          <FeatureWrapper feature="Equipamentos">
+            <Suspense fallback={<div>Carregando...</div>}>
+              <CadastroEquipamentosPage />
             </Suspense>
           </FeatureWrapper>
         ),

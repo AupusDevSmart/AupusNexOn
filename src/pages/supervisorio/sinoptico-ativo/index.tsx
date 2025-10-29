@@ -1341,6 +1341,7 @@ export function SinopticoAtivoPage() {
   const [loadingDiagrama, setLoadingDiagrama] = useState(false);
   const [errorDiagrama, setErrorDiagrama] = useState<string | null>(null);
   const [equipamentos, setEquipamentos] = useState<any[]>([]);
+  const [diagramaIdAtual, setDiagramaIdAtual] = useState<string | null>(null);
 
   const reloadDiagrama = useCallback(async () => {
     if (!unidadeId) return;
@@ -1363,10 +1364,19 @@ export function SinopticoAtivoPage() {
 
     try {
       // Carregar equipamentos da unidade
-      const { EquipamentosService } = await import('@/services/equipamentos.services');
-      const equipamentosResponse = await EquipamentosService.getEquipamentosByUnidade(unidadeId, { limit: 100 });
-      const equipamentosData = equipamentosResponse.data || [];
-      console.log('✅ Equipamentos carregados:', equipamentosData.length);
+      const { equipamentosApi } = await import('@/services/equipamentos.services');
+      console.log('🔍 Buscando equipamentos para unidade:', unidadeId);
+      const equipamentosResponse = await equipamentosApi.findByUnidade(unidadeId, { limit: 100 });
+      console.log('📦 Resposta da API:', equipamentosResponse);
+      // A resposta tem estrutura: { data: { data: [...], pagination: {...} } }
+      const equipamentosData = Array.isArray(equipamentosResponse?.data?.data)
+        ? equipamentosResponse.data.data
+        : Array.isArray(equipamentosResponse?.data)
+          ? equipamentosResponse.data
+          : Array.isArray(equipamentosResponse)
+            ? equipamentosResponse
+            : [];
+      console.log('✅ Equipamentos carregados:', equipamentosData.length, equipamentosData);
       setEquipamentos(equipamentosData);
 
       // Carregar diagrama ativo da unidade
@@ -1380,6 +1390,7 @@ export function SinopticoAtivoPage() {
 
       if (diagramaAtivo) {
         console.log('📊 Diagrama ativo encontrado:', diagramaAtivo.id);
+        setDiagramaIdAtual(diagramaAtivo.id.trim());
 
         // Buscar diagrama completo com equipamentos e conexões
         try {
@@ -2387,7 +2398,7 @@ export function SinopticoAtivoPage() {
     // Verificar se é um equipamento da unidade
     if (tipo.startsWith('EQUIPAMENTO:')) {
       const equipamentoId = tipo.replace('EQUIPAMENTO:', '').trim();
-      const equipamento = equipamentos.find(eq => eq.id.trim() === equipamentoId);
+      const equipamento = Array.isArray(equipamentos) ? equipamentos.find(eq => eq.id.trim() === equipamentoId) : null;
 
       if (equipamento) {
         const novoComponente: ComponenteDU = {
@@ -2467,13 +2478,29 @@ export function SinopticoAtivoPage() {
     }
   };
 
-  const removerComponente = (id: string) => {
+  const removerComponente = async (id: string) => {
+    const componente = componentes.find((c) => c.id === id);
+
+    // Remover do estado local imediatamente
     const newComponentes = componentes.filter((c) => c.id !== id);
     const newConnections = connections.filter(
       (conn) => conn.from !== id && conn.to !== id
     );
     updateDiagram(newComponentes, newConnections);
     setComponenteEditando(null);
+
+    // Remover do backend se tiver diagrama ativo e equipamento_id
+    if (diagramaIdAtual && componente?.dados?.equipamento_id) {
+      try {
+        const { DiagramasService } = await import('@/services/diagramas.services');
+        await DiagramasService.removeEquipamento(diagramaIdAtual, componente.dados.equipamento_id);
+        console.log('✅ Equipamento removido do diagrama no backend:', componente.dados.equipamento_id);
+      } catch (err: any) {
+        console.error('❌ Erro ao remover equipamento do backend:', err);
+        // Não reverter a remoção local, apenas avisar
+        console.warn('⚠️ Equipamento removido localmente mas falha no backend. Salve novamente para sincronizar.');
+      }
+    }
   };
 
   const duplicarComponente = (id: string) => {
@@ -2562,9 +2589,9 @@ export function SinopticoAtivoPage() {
       console.log('📊 Componentes:', componentes.length);
       console.log('🔗 Conexões:', connections.length);
 
+      // Permitir salvar diagrama vazio
       if (componentes.length === 0) {
-        alert('⚠️ Nenhum componente para salvar!');
-        return;
+        console.log('ℹ️ Salvando diagrama vazio (sem componentes)');
       }
 
       // Importar o serviço dinamicamente
@@ -2616,18 +2643,29 @@ export function SinopticoAtivoPage() {
       console.log(`📦 Salvando ${equipamentosParaSalvar.length} equipamentos (incluindo virtuais) no diagrama ${diagramaId}...`);
       console.log('📤 Enviando equipamentos para o backend:', equipamentosParaSalvar);
 
-      // 1. Salvar TODOS os equipamentos (reais + virtuais)
+      // 1. PRIMEIRO: Remover TODOS os equipamentos antigos (IMMUTABILITY PATTERN - Replace)
+      console.log('🧹 [IMMUTABILITY] Removendo TODOS os equipamentos antigos do diagrama (1 requisição)...');
+      try {
+        const resultado = await DiagramasService.removeAllEquipamentos(diagramaId);
+        console.log(`✅ [IMMUTABILITY] ${resultado.data?.totalRemovidos || 0} equipamentos removidos em uma operação`);
+      } catch (err: any) {
+        console.warn('⚠️ Erro ao remover equipamentos antigos (pode ser que não existam):', err.message);
+      }
+
+      // 2. DEPOIS: Adicionar APENAS os novos equipamentos (IMMUTABILITY PATTERN - Replace)
       if (equipamentosParaSalvar.length > 0) {
         try {
           const resultadoEquipamentos = await DiagramasService.addEquipamentosBulk(
             diagramaId,
             equipamentosParaSalvar
           );
-          console.log('✅ Equipamentos salvos:', resultadoEquipamentos);
+          console.log('✅ [IMMUTABILITY] Equipamentos salvos:', resultadoEquipamentos);
         } catch (err: any) {
           console.error('❌ Erro ao salvar equipamentos:', err);
           throw new Error(`Erro ao salvar equipamentos: ${err.message}`);
         }
+      } else {
+        console.log('ℹ️ [IMMUTABILITY] Diagrama vazio salvo (nenhum equipamento)');
       }
 
       // 2. Salvar TODAS as conexões (entre equipamentos reais e virtuais)
@@ -2826,7 +2864,7 @@ export function SinopticoAtivoPage() {
 
             {/* Debug info */}
             <div className="text-xs text-muted-foreground">
-              Componentes: {componentes.length} | Equipamentos: {equipamentos.length}
+              Componentes: {componentes.length} | Equipamentos: {Array.isArray(equipamentos) ? equipamentos.length : 0}
             </div>
           </div>
 
@@ -2896,7 +2934,7 @@ export function SinopticoAtivoPage() {
                       </option>
 
                       {/* Equipamentos UC da Unidade (apenas equipamentos principais) */}
-                      {equipamentos.filter(eq => eq.classificacao === 'UC').length > 0 ? (
+                      {Array.isArray(equipamentos) && equipamentos.filter(eq => eq.classificacao === 'UC').length > 0 ? (
                         <optgroup label="📦 Equipamentos da Unidade (UC)">
                           {equipamentos
                             .filter(eq => eq.classificacao === 'UC' && !componentes.some(comp => comp.dados?.equipamento_id === eq.id))
@@ -2908,7 +2946,7 @@ export function SinopticoAtivoPage() {
                               </option>
                             ))
                           }
-                          {equipamentos.filter(eq => eq.classificacao === 'UC' && !componentes.some(comp => comp.dados?.equipamento_id === eq.id)).length === 0 && (
+                          {Array.isArray(equipamentos) && equipamentos.filter(eq => eq.classificacao === 'UC' && !componentes.some(comp => comp.dados?.equipamento_id === eq.id)).length === 0 && (
                             <option value="" disabled>Todos equipamentos já adicionados</option>
                           )}
                         </optgroup>

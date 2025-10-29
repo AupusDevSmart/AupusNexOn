@@ -33,30 +33,40 @@ export function useViaCEP(): UseViaCEPReturn {
   }, []);
 
   const formatarCEP = (cep: string): string => {
+    // Validação defensiva
+    if (!cep || typeof cep !== 'string') {
+      throw new Error('CEP inválido');
+    }
+
     // Remove tudo que não for número
     const numerosCEP = cep.replace(/\D/g, '');
-    
+
     // Verifica se tem 8 dígitos
     if (numerosCEP.length !== 8) {
       throw new Error('CEP deve ter 8 dígitos');
     }
-    
+
     return numerosCEP;
   };
 
   const validarCEP = (cep: string): boolean => {
+    // Validação defensiva
+    if (!cep || typeof cep !== 'string') {
+      return false;
+    }
+
     const numerosCEP = cep.replace(/\D/g, '');
-    
+
     // Verifica se tem 8 dígitos
     if (numerosCEP.length !== 8) {
       return false;
     }
-    
+
     // Verifica se não são todos números iguais (ex: 00000000, 11111111)
     if (/^(\d)\1{7}$/.test(numerosCEP)) {
       return false;
     }
-    
+
     return true;
   };
 
@@ -124,13 +134,18 @@ export function useBuscarCEP() {
       setLoading(true);
       setError(null);
 
+      // Validação defensiva
+      if (!cep || typeof cep !== 'string') {
+        throw new Error('CEP inválido');
+      }
+
       // Validar CEP
       const numerosCEP = cep.replace(/\D/g, '');
-      
+
       if (numerosCEP.length !== 8) {
         throw new Error('CEP deve ter 8 dígitos');
       }
-      
+
       if (/^(\d)\1{7}$/.test(numerosCEP)) {
         throw new Error('CEP inválido');
       }

@@ -14,16 +14,25 @@ export const useProprietarios = () => {
     try {
       setLoading(true);
       setError(null);
-      
+
       console.log('🔍 [USE PROPRIETARIOS] Carregando proprietários...');
       const data = await PlantasService.getProprietarios();
-      
-      console.log('✅ [USE PROPRIETARIOS] Proprietários carregados:', data.length);
-      setProprietarios(data);
-      
+
+      console.log('✅ [USE PROPRIETARIOS] Proprietários carregados:', {
+        isArray: Array.isArray(data),
+        length: Array.isArray(data) ? data.length : 'não é array',
+        data
+      });
+
+      // Garantir que sempre seja um array
+      const proprietariosArray = Array.isArray(data) ? data : [];
+      setProprietarios(proprietariosArray);
+
     } catch (err: any) {
       console.error('❌ [USE PROPRIETARIOS] Erro:', err);
       setError(err.message || 'Erro ao carregar proprietários');
+      // Em caso de erro, garantir array vazio
+      setProprietarios([]);
     } finally {
       setLoading(false);
     }
@@ -46,6 +55,12 @@ export const generateProprietarioOptions = (proprietarios: ProprietarioBasico[])
   const options = [
     { value: 'all', label: 'Todos os proprietários' }
   ];
+
+  // Garantir que proprietarios é um array válido
+  if (!Array.isArray(proprietarios)) {
+    console.warn('⚠️ [generateProprietarioOptions] proprietarios não é um array:', proprietarios);
+    return options;
+  }
 
   proprietarios.forEach((proprietario) => {
     const temCpfCnpj = proprietario.cpf_cnpj && !proprietario.cpf_cnpj.includes('não informado');

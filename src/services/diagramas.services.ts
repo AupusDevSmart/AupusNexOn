@@ -343,6 +343,22 @@ class DiagramasServiceClass {
       throw new Error(error.response?.data?.message || 'Erro ao remover todas as conexões');
     }
   }
+
+  /**
+   * Remove all equipamentos from diagrama (IMMUTABILITY - Replace pattern)
+   * This implements the "replace instead of modify" pattern
+   */
+  async removeAllEquipamentos(diagramaId: string): Promise<any> {
+    try {
+      console.log(`📡 [DiagramasService] DELETE /diagramas/${diagramaId}/equipamentos (REMOVE ALL - Immutability Pattern)`);
+      const response = await api.delete(`/diagramas/${diagramaId}/equipamentos`);
+      console.log('✅ [DiagramasService] All equipamentos removed:', response.data);
+      return response.data;
+    } catch (error: any) {
+      console.error(`❌ [DiagramasService] Error removing all equipamentos:`, error);
+      throw new Error(error.response?.data?.message || 'Erro ao remover todos os equipamentos');
+    }
+  }
 }
 
 // ===== EXPORT SINGLETON =====
