@@ -126,6 +126,13 @@ export function useViaCEP(cep: string, autoFetch: boolean = true) {
   useEffect(() => {
     if (!autoFetch) return;
 
+    // Validação defensiva: garantir que cep é uma string
+    if (!cep || typeof cep !== 'string') {
+      setData(null);
+      setLoading(false);
+      return;
+    }
+
     const cleanCEP = cep.replace(/\D/g, '');
 
     if (cleanCEP.length !== 8) {
@@ -175,6 +182,7 @@ export function useViaCEP(cep: string, autoFetch: boolean = true) {
  * Format CEP string (12345678 -> 12345-678)
  */
 export function formatarCEP(cep: string): string {
+  if (!cep || typeof cep !== 'string') return '';
   const numbers = cep.replace(/\D/g, '');
   if (numbers.length !== 8) return cep;
   return `${numbers.slice(0, 5)}-${numbers.slice(5)}`;
@@ -184,6 +192,7 @@ export function formatarCEP(cep: string): string {
  * Validate CEP format
  */
 export function validarCEP(cep: string): boolean {
+  if (!cep || typeof cep !== 'string') return false;
   const numbers = cep.replace(/\D/g, '');
   return numbers.length === 8 && /^\d+$/.test(numbers);
 }
@@ -192,5 +201,6 @@ export function validarCEP(cep: string): boolean {
  * Remove CEP mask
  */
 export function limparCEP(cep: string): string {
+  if (!cep || typeof cep !== 'string') return '';
   return cep.replace(/\D/g, '');
 }

@@ -44,8 +44,8 @@ const transformFormDataToAPI = (data: any) => {
   const transformedData = {
     nome: (data.nome || '').trim(),
     cnpj: cnpjFormatted, // Enviar formatado como a API espera
-    proprietarioId: data.proprietarioId,
-    horarioFuncionamento: (data.horarioFuncionamento || '').trim(),
+    proprietarioId: data.proprietarioId, // ✅ API espera camelCase (DTO usa camelCase)
+    horarioFuncionamento: (data.horarioFuncionamento || '').trim(), // ✅ API espera camelCase (DTO usa camelCase)
     localizacao: (data.localizacao || '').trim(),
     endereco: {
       logradouro: (endereco.logradouro || '').trim(),

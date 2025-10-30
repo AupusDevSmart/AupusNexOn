@@ -1,158 +1,244 @@
-// src/services/unidades.services.ts
-
 import { api } from '@/config/api';
-import type { ApiResponse } from '@/types/base';
+import {
+  UnidadeNexon,
+  CreateUnidadeDto,
+  UpdateUnidadeDto,
+  FilterUnidadeDto,
+  PaginatedUnidadeResponse,
+  UnidadeStats,
+  ImportResult,
+} from '../types/unidades';
 
-export interface Unidade {
-  id: string;
-  plantaId: string;
-  nome: string;
-  tipo: string;
-  potencia: number;
-  status: string;
-  estado: string;
-  cidade: string;
-  latitude: number;
-  longitude: number;
-  pontosMedicao?: string[];
-  planta?: {
-    id: string;
-    nome: string;
-    localizacao?: string;
-  };
-  createdAt: string;
-  updatedAt: string;
-  // Optional fields
-  descricao?: string;
-  bairro?: string;
-  logradouro?: string;
-  numero?: string;
-  complemento?: string;
-  cep?: string;
-}
+class UnidadesService {
+  private readonly baseUrl = '/unidades';
 
-export interface UnidadeFilters {
-  search?: string;
-  plantaId?: string;
-  tipo?: string;
-  status?: string;
-  page?: number;
-  limit?: number;
-  orderBy?: string;
-  orderDirection?: 'asc' | 'desc';
-}
+  // Listar unidades com filtros e paginação
+  async listarUnidades(filtros?: FilterUnidadeDto): Promise<PaginatedUnidadeResponse> {
+    try {
+      const params = new URLSearchParams();
 
-export interface CreateUnidadeDto {
-  planta_id: string;
-  nome: string;
-  tipo: string;
-  potencia: number;
-  status: string;
-  estado: string;
-  cidade: string;
-  latitude: number;
-  longitude: number;
-  pontos_medicao?: string[];
-  descricao?: string;
-  bairro?: string;
-  logradouro?: string;
-  numero?: string;
-  complemento?: string;
-  cep?: string;
-}
+      if (filtros?.search) params.append('search', filtros.search);
+      if (filtros?.tipo) params.append('tipo', filtros.tipo);
+      if (filtros?.status) params.append('status', filtros.status);
+      if (filtros?.estado) params.append('estado', filtros.estado);
+      if (filtros?.page) params.append('page', filtros.page.toString());
+      if (filtros?.limit) params.append('limit', filtros.limit.toString());
 
-export interface UpdateUnidadeDto extends Partial<CreateUnidadeDto> {}
+      const response = await api.get(`${this.baseUrl}?${params.toString()}`);
 
-/**
- * Get all unidades with filters
- */
-export async function getAllUnidades(filters: UnidadeFilters): Promise<ApiResponse<Unidade>> {
-  try {
-    const params = new URLSearchParams();
+      console.log('📨 [UnidadesService] Resposta da API:', {
+        status: response.status,
+        hasData: !!response.data,
+        hasNestedData: !!response.data?.data,
+        dataKeys: response.data ? Object.keys(response.data) : []
+      });
 
-    if (filters.search) params.append('search', filters.search);
-    if (filters.plantaId) params.append('plantaId', filters.plantaId);
-    if (filters.tipo) params.append('tipo', filters.tipo);
-    if (filters.status) params.append('status', filters.status);
-    if (filters.page) params.append('page', filters.page.toString());
-    if (filters.limit) params.append('limit', filters.limit.toString());
-    if (filters.orderBy) params.append('orderBy', filters.orderBy);
-    if (filters.orderDirection) params.append('orderDirection', filters.orderDirection);
+      // A API retorna { success: true, data: { data: [], pagination: {} } }
+      return response.data.data || response.data;
+    } catch (error) {
+      console.error('❌ [UnidadesService] Erro ao listar unidades:', error);
+      throw error;
+    }
+  }
 
-    console.log('📡 [UnidadesService] GET /unidades with params:', params.toString());
+  // Buscar unidade por ID
+  async buscarUnidade(id: string): Promise<UnidadeNexon> {
+    try {
+      const response = await api.get(`${this.baseUrl}/${id}`);
+      // Busca por ID retorna o objeto diretamente dentro de data
+      return response.data.data || response.data;
+    } catch (error) {
+      console.error('❌ [UnidadesService] Erro ao buscar unidade:', error);
+      throw error;
+    }
+  }
 
-    const response = await api.get(`/unidades?${params.toString()}`);
+  // Criar nova unidade
+  async criarUnidade(dados: CreateUnidadeDto): Promise<UnidadeNexon> {
+    try {
+      const response = await api.post(this.baseUrl, dados);
 
-    // Normalize response
-    const data = response.data?.data || response.data || [];
-    const pagination = response.data?.pagination || {
-      page: filters.page || 1,
-      limit: filters.limit || 10,
-      total: Array.isArray(data) ? data.length : 0,
-      totalPages: Math.ceil((Array.isArray(data) ? data.length : 0) / (filters.limit || 10)),
-    };
+      // Exibir sucesso
+      alert('Unidade cadastrada com sucesso!');
 
-    return {
-      data: Array.isArray(data) ? data : [],
-      pagination,
-    };
-  } catch (error: any) {
-    console.error('❌ [UnidadesService] Error fetching unidades:', error);
-    throw new Error(error.response?.data?.message || 'Erro ao buscar unidades');
+      return response.data.data || response.data;
+    } catch (error) {
+      console.error('❌ [UnidadesService] Erro ao criar unidade:', error);
+      throw error;
+    }
+  }
+
+  // Atualizar unidade
+  async atualizarUnidade(id: string, dados: UpdateUnidadeDto): Promise<UnidadeNexon> {
+    try {
+      const response = await api.patch(`${this.baseUrl}/${id}`, dados);
+
+      // Exibir sucesso
+      alert('Unidade atualizada com sucesso!');
+
+      return response.data.data || response.data;
+    } catch (error) {
+      console.error('❌ [UnidadesService] Erro ao atualizar unidade:', error);
+      throw error;
+    }
+  }
+
+  // Excluir unidade
+  async excluirUnidade(id: string): Promise<void> {
+    try {
+      await api.delete(`${this.baseUrl}/${id}`);
+
+      // Exibir sucesso
+      alert('Unidade excluída com sucesso!');
+    } catch (error) {
+      console.error('Erro ao excluir unidade:', error);
+      throw error;
+    }
+  }
+
+  // Obter estatísticas
+  async obterEstatisticas(): Promise<UnidadeStats> {
+    try {
+      const response = await api.get(`${this.baseUrl}/stats`);
+      return response.data.data || response.data;
+    } catch (error) {
+      console.error('❌ [UnidadesService] Erro ao obter estatísticas:', error);
+      throw error;
+    }
+  }
+
+  // Importar unidades em lote
+  async importarUnidades(unidades: CreateUnidadeDto[]): Promise<ImportResult> {
+    try {
+      const response = await api.post(`${this.baseUrl}/import`, unidades);
+
+      const result = (response.data.data || response.data) as ImportResult;
+
+      // Exibir resultado da importação
+      const message = `Importação concluída!\n` +
+        `Total processado: ${result.totalProcessed}\n` +
+        `Sucessos: ${result.successful}\n` +
+        `Falhas: ${result.failed}`;
+
+      alert(message);
+
+      return result;
+    } catch (error) {
+      console.error('❌ [UnidadesService] Erro ao importar unidades:', error);
+      throw error;
+    }
+  }
+
+  // Exportar unidades (CSV)
+  async exportarCSV(filtros?: FilterUnidadeDto): Promise<void> {
+    try {
+      const params = new URLSearchParams();
+
+      if (filtros?.search) params.append('search', filtros.search);
+      if (filtros?.tipo) params.append('tipo', filtros.tipo);
+      if (filtros?.status) params.append('status', filtros.status);
+      if (filtros?.estado) params.append('estado', filtros.estado);
+
+      const response = await api.get(`${this.baseUrl}/export/csv?${params.toString()}`, {
+        responseType: 'blob',
+      });
+
+      // Criar download do arquivo
+      const blob = new Blob([response.data], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `unidades_${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      alert('Arquivo CSV baixado com sucesso!');
+    } catch (error) {
+      console.error('Erro ao exportar CSV:', error);
+      throw error;
+    }
+  }
+
+  // Validar dados antes de enviar
+  private validarDados(dados: CreateUnidadeDto | UpdateUnidadeDto): boolean {
+    if ('nome' in dados && dados.nome && dados.nome.trim().length === 0) {
+      alert('Nome da unidade é obrigatório.');
+      return false;
+    }
+
+    if ('potencia' in dados && dados.potencia !== undefined && dados.potencia < 0) {
+      alert('Potência deve ser um valor positivo.');
+      return false;
+    }
+
+    if ('localizacao' in dados && dados.localizacao) {
+      const { latitude, longitude } = dados.localizacao;
+      if (latitude < -90 || latitude > 90) {
+        alert('Latitude deve estar entre -90 e 90.');
+        return false;
+      }
+      if (longitude < -180 || longitude > 180) {
+        alert('Longitude deve estar entre -180 e 180.');
+        return false;
+      }
+    }
+
+    if ('pontosMedicao' in dados && dados.pontosMedicao && dados.pontosMedicao.length === 0) {
+      alert('Pelo menos um ponto de medição é obrigatório.');
+      return false;
+    }
+
+    return true;
+  }
+
+  // Método público para validação
+  validarDadosUnidade(dados: CreateUnidadeDto | UpdateUnidadeDto): boolean {
+    return this.validarDados(dados);
+  }
+
+  // Buscar unidades por planta
+  async buscarUnidadesPorPlanta(plantaId: string): Promise<UnidadeNexon[]> {
+    try {
+      // Limpar o plantaId de espaços extras
+      const cleanPlantaId = plantaId?.trim();
+      console.log(`📡 [UnidadesService] Buscando unidades da planta ${cleanPlantaId}`);
+
+      // Tentar endpoint específico primeiro
+      try {
+        const response = await api.get(`${this.baseUrl}/planta/${cleanPlantaId}`);
+        const data = response.data.data || response.data;
+        return Array.isArray(data) ? data : [];
+      } catch (err) {
+        // Fallback: usar endpoint geral com filtro
+        console.log('⚠️ [UnidadesService] Endpoint /planta não disponível, usando filtro');
+        const response = await api.get(`${this.baseUrl}?plantaId=${cleanPlantaId}&limit=100`);
+
+        const responseData = response.data.data || response.data;
+        const data = responseData.data || responseData || [];
+
+        return Array.isArray(data) ? data : [];
+      }
+    } catch (error: any) {
+      console.error(`❌ [UnidadesService] Erro ao buscar unidades por planta ${cleanPlantaId}:`, error);
+      // Retornar array vazio em vez de throw para não quebrar o UI
+      return [];
+    }
   }
 }
 
-/**
- * Get unidade by ID
- */
-export async function getUnidadeById(id: string): Promise<Unidade> {
-  try {
-    console.log(`📡 [UnidadesService] GET /unidades/${id}`);
-    const response = await api.get(`/unidades/${id}`);
-    return response.data;
-  } catch (error: any) {
-    console.error(`❌ [UnidadesService] Error fetching unidade ${id}:`, error);
-    throw new Error(error.response?.data?.message || 'Erro ao buscar unidade');
-  }
-}
+// Exportar instância única (singleton)
+export const unidadesService = new UnidadesService();
+export default unidadesService;
 
-/**
- * Create new unidade
- */
-export async function createUnidade(dto: CreateUnidadeDto): Promise<Unidade> {
-  try {
-    console.log('📡 [UnidadesService] POST /unidades', dto);
-    const response = await api.post('/unidades', dto);
-    return response.data;
-  } catch (error: any) {
-    console.error('❌ [UnidadesService] Error creating unidade:', error);
-    throw new Error(error.response?.data?.message || 'Erro ao criar unidade');
-  }
-}
+// ✅ EXPORTS NOMEADOS PARA COMPATIBILIDADE COM IMPORTS FUNCTION-BASED
+export const getAllUnidades = (filters: FilterUnidadeDto) => unidadesService.listarUnidades(filters);
+export const getUnidadeById = (id: string) => unidadesService.buscarUnidade(id);
+export const createUnidade = (dados: CreateUnidadeDto) => unidadesService.criarUnidade(dados);
+export const updateUnidade = (id: string, dados: UpdateUnidadeDto) => unidadesService.atualizarUnidade(id, dados);
+export const deleteUnidade = (id: string) => unidadesService.excluirUnidade(id);
+export const getUnidadesByPlanta = (plantaId: string) => unidadesService.buscarUnidadesPorPlanta(plantaId);
 
-/**
- * Update unidade
- */
-export async function updateUnidade(id: string, dto: UpdateUnidadeDto): Promise<Unidade> {
-  try {
-    console.log(`📡 [UnidadesService] PATCH /unidades/${id}`, dto);
-    const response = await api.patch(`/unidades/${id}`, dto);
-    return response.data;
-  } catch (error: any) {
-    console.error(`❌ [UnidadesService] Error updating unidade ${id}:`, error);
-    throw new Error(error.response?.data?.message || 'Erro ao atualizar unidade');
-  }
-}
-
-/**
- * Delete unidade
- */
-export async function deleteUnidade(id: string): Promise<void> {
-  try {
-    console.log(`📡 [UnidadesService] DELETE /unidades/${id}`);
-    await api.delete(`/unidades/${id}`);
-  } catch (error: any) {
-    console.error(`❌ [UnidadesService] Error deleting unidade ${id}:`, error);
-    throw new Error(error.response?.data?.message || 'Erro ao excluir unidade');
-  }
-}
+// ✅ TIPOS RE-EXPORTADOS
+export type { UnidadeNexon as Unidade, FilterUnidadeDto as UnidadeFilters };

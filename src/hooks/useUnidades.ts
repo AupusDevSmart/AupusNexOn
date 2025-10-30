@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import unidadesService from '../services/unidadesService';
+import unidadesService from '../services/unidades.services';
 import {
   UnidadeNexon,
   CreateUnidadeDto,

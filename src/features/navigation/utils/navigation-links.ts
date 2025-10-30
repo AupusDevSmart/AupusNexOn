@@ -16,6 +16,7 @@ import {
   Users,
   Factory,
   Database,
+  Boxes,
 } from "lucide-react";
 
 export type NavigationLink = {
@@ -59,9 +60,9 @@ export const navigationLinks: Array<NavigationLink> = [
     label: "Supervisório",
     hint: "Sistema de Supervisão NexON",
     links: [
-     
+
       {
-        key: "supervisorio",
+        key: "supervisorio-cadastro-unidades",
         featureKey: "supervisorio",
         path: "/supervisorio/cadastro-unidades",
         icon: Building2,
@@ -69,7 +70,7 @@ export const navigationLinks: Array<NavigationLink> = [
         hint: "Gerenciar unidades monitoradas",
       },
       {
-        key: "supervisorio",
+        key: "supervisorio-logs-eventos",
         featureKey: "supervisorio",
         path: "/supervisorio/logs-eventos",
         icon: ScrollText,
@@ -77,7 +78,7 @@ export const navigationLinks: Array<NavigationLink> = [
         hint: "Histórico de eventos e alarmes",
       },
       {
-        key: "supervisorio",
+        key: "supervisorio-sinoptico",
         featureKey: "supervisorio",
         path: "/supervisorio/sinoptico",
         icon: Cpu,
@@ -97,7 +98,7 @@ export const navigationLinks: Array<NavigationLink> = [
     hint: "Financeiro",
     links: [
       {
-        key: "financeiro",
+        key: "financeiro-contas-a-pagar",
         featureKey: "Financeiro",
         path: "/financeiro/contas-a-pagar",
         icon: ChartColumnBig,
@@ -105,7 +106,7 @@ export const navigationLinks: Array<NavigationLink> = [
         hint: "Contas a Pagar",
       },
       {
-        key: "financeiro",
+        key: "financeiro-contas-a-receber",
         featureKey: "Financeiro",
         path: "/financeiro/contas-a-receber",
         icon: SquareActivity,
@@ -113,7 +114,7 @@ export const navigationLinks: Array<NavigationLink> = [
         hint: "Contas a Receber",
       },
       {
-        key: "financeiro",
+        key: "financeiro-fluxo-caixa",
         featureKey: "Financeiro",
         path: "/financeiro/fluxo-caixa",
         icon: BookUser,
@@ -121,7 +122,7 @@ export const navigationLinks: Array<NavigationLink> = [
         hint: "Fluxo de Caixa",
       },
       {
-        key: "financeiro",
+        key: "financeiro-centros-custo",
         featureKey: "Financeiro",
         path: "/financeiro/centros-custo",
         icon: Magnet,
@@ -163,6 +164,14 @@ export const navigationLinks: Array<NavigationLink> = [
         icon: Building2,
         label: "Unidades",
         hint: "Gerenciar Unidades Consumidoras",
+      },
+      {
+        key: "cadastros-equipamentos",
+        featureKey: "Equipamentos",
+        path: "/cadastros/equipamentos",
+        icon: Boxes,
+        label: "Equipamentos",
+        hint: "Gerenciar Equipamentos",
       },
     ],
   },

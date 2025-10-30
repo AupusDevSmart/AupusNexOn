@@ -100,16 +100,17 @@ export function ProprietarioSelector({ value, onChange, disabled }: Proprietario
         value={value || ''} // ✅ Usar string vazia como fallback
         onChange={handleChange}
         disabled={disabled || proprietarios.length === 0}
-        className="w-full px-3 py-2 border border-input bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
+        className="w-full px-3 py-2 border border-input bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent max-h-[200px] overflow-y-auto"
         required
+        size={1}
       >
         <option value="">
-          {proprietarios.length === 0 
-            ? "Nenhum proprietário encontrado" 
+          {proprietarios.length === 0
+            ? "Nenhum proprietário encontrado"
             : "Selecione um proprietário"
           }
         </option>
-        
+
         {proprietarios.map((proprietario) => (
           <option key={proprietario.id} value={proprietario.id}>
             {proprietario.nome} - {proprietario.cpf_cnpj}

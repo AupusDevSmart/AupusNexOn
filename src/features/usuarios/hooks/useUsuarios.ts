@@ -58,28 +58,26 @@ class UsuariosApiService {
     });
     
     const data = response.data;
+
+    console.log(data)
     
-    // ✅ MAPEAR DADOS PARA COMPATIBILIDADE COM FRONTEND
-    // Para listagem, enriquecer dados com permissões para os primeiros usuários
+    // ✅ CORRIGIDO: Extrair dados do caminho correto baseado na estrutura real da API
+    // A API retorna: { success: true, data: { data: [...usuarios], pagination: {...} }, meta: {...} }
+    const usuariosArray = data?.data?.data || data?.data || [];
+    const paginationData = data?.data?.pagination || data?.pagination || { page: 1, limit: 10, total: 0, totalPages: 0 };
+
+    console.log('🔍 [UsuariosApiService] Estrutura dos dados extraídos:', {
+      usuariosCount: usuariosArray.length,
+      pagination: paginationData,
+      firstUsuario: usuariosArray[0]
+    });
+
+    // Mapear usuários (sem buscar dados completos para evitar sobrecarga)
     const mappedData = {
-      ...data,
-      data: await Promise.all(
-        data.data.map(async (usuario: any, index: number) => {
-          // Para os primeiros 5 usuários da primeira página, buscar dados completos
-          if (index < 5 && filters.page === 1) {
-            try {
-              const usuarioCompleto = await api.get(`/usuarios/${usuario.id}`);
-              return this.mapApiResponseToUsuario(usuarioCompleto.data);
-            } catch (error) {
-              console.warn(`Erro ao buscar dados completos do usuário ${usuario.id}:`, error);
-              return this.mapApiResponseToUsuario(usuario);
-            }
-          }
-          return this.mapApiResponseToUsuario(usuario);
-        })
-      )
+      data: usuariosArray.map((usuario: any) => this.mapApiResponseToUsuario(usuario)),
+      pagination: paginationData
     };
-    
+
     return mappedData;
   }
 
@@ -174,7 +172,13 @@ class UsuariosApiService {
       endereco: apiResponse.endereco,
       cep: apiResponse.cep,
       manager_id: apiResponse.manager_id,
-      
+
+      // ✅ CORREÇÃO: Adicionar campos obrigatórios de BaseEntity (strings ISO)
+      created_at: new Date(apiResponse.created_at),
+      updated_at: new Date(apiResponse.updated_at),
+      createdAt: apiResponse.created_at, // string ISO
+      updatedAt: apiResponse.updated_at, // string ISO
+
       // ✅ CORREÇÃO: Mapear all_permissions da estrutura real da API
       all_permissions: (() => {
         // A API retorna all_permissions como array de objetos ou strings
@@ -226,10 +230,7 @@ class UsuariosApiService {
         name: apiResponse.role_details.name || apiResponse.role_details,
         description: apiResponse.role_details.description || apiResponse.role_details.name || apiResponse.role_details
       } : undefined,
-      
-      created_at: new Date(apiResponse.created_at),
-      updated_at: new Date(apiResponse.updated_at),
-      
+
       // ✅ CAMPOS DE COMPATIBILIDADE COM FRONTEND EXISTENTE
       tipo: (() => {
         const primaryRole = apiResponse.role_details?.name || apiResponse.role || 
@@ -646,13 +647,14 @@ export function useUsuarios() {
 
   // ✅ ESTATÍSTICAS RÁPIDAS
   const statistics = {
-    totalUsuarios: pagination.total,
+    totalUsuarios: pagination?.total || 0,  // ✅ CORRIGIDO: verificação de segurança
     usuariosAtivos: usuarios.filter(u => u.status === UsuarioStatus.ATIVO).length,
     usuariosInativos: usuarios.filter(u => u.status === UsuarioStatus.INATIVO).length,
-    gerentes: usuarios.filter(u => u.roles?.some(r => r.name === UsuarioRole.GERENTE)).length,
-    administradores: usuarios.filter(u => u.roles?.some(r => r.name === UsuarioRole.ADMIN)).length,
-    vendedores: usuarios.filter(u => u.roles?.some(r => r.name === UsuarioRole.VENDEDOR)).length,
-    consultores: usuarios.filter(u => u.roles?.some(r => r.name === UsuarioRole.CONSULTOR)).length,
+    // ✅ CORRIGIDO: roles é array de strings, não objetos
+    gerentes: usuarios.filter(u => u.roles?.some(r => typeof r === 'string' ? r.toLowerCase() === 'gerente' : r === UsuarioRole.GERENTE)).length,
+    administradores: usuarios.filter(u => u.roles?.some(r => typeof r === 'string' ? r.toLowerCase() === 'admin' : r === UsuarioRole.ADMIN)).length,
+    vendedores: usuarios.filter(u => u.roles?.some(r => typeof r === 'string' ? r.toLowerCase() === 'vendedor' : r === UsuarioRole.VENDEDOR)).length,
+    consultores: usuarios.filter(u => u.roles?.some(r => typeof r === 'string' ? r.toLowerCase() === 'consultor' : r === UsuarioRole.CONSULTOR)).length,
   };
 
   return {

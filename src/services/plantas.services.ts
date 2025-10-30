@@ -107,9 +107,13 @@ class PlantasServiceClass {
   async getPlanta(id: string): Promise<PlantaResponse> {
     try {
       console.log(`📡 [PlantasService] GET /plantas/${id}`);
-      const response = await api.get(`/plantas/${id}`);
-      console.log('✅ [PlantasService] Planta fetched:', response.data?.nome);
-      return response.data;
+      const response = await api.get<{ success: boolean; data: PlantaResponse; meta?: any }>(`/plantas/${id}`);
+
+      // ✅ CORRIGIDO: A API retorna { success, data, meta }, extrair apenas o "data"
+      const planta = response.data.data || response.data;
+      console.log('✅ [PlantasService] Planta fetched:', planta?.nome);
+
+      return planta;
     } catch (error: any) {
       console.error(`❌ [PlantasService] Error fetching planta ${id}:`, error);
       throw new Error(error.response?.data?.message || 'Erro ao buscar planta');
@@ -122,9 +126,13 @@ class PlantasServiceClass {
   async createPlanta(dto: CreatePlantaDto): Promise<PlantaResponse> {
     try {
       console.log('📡 [PlantasService] POST /plantas', dto);
-      const response = await api.post('/plantas', dto);
-      console.log('✅ [PlantasService] Planta created:', response.data?.id);
-      return response.data;
+      const response = await api.post<{ success: boolean; data: PlantaResponse; meta?: any }>('/plantas', dto);
+
+      // ✅ CORRIGIDO: Extrair dados do caminho correto
+      const planta = response.data.data || response.data;
+      console.log('✅ [PlantasService] Planta created:', planta?.id);
+
+      return planta;
     } catch (error: any) {
       console.error('❌ [PlantasService] Error creating planta:', error);
       throw new Error(error.response?.data?.message || 'Erro ao criar planta');
@@ -137,9 +145,13 @@ class PlantasServiceClass {
   async updatePlanta(id: string, dto: UpdatePlantaDto): Promise<PlantaResponse> {
     try {
       console.log(`📡 [PlantasService] PATCH /plantas/${id}`, dto);
-      const response = await api.patch(`/plantas/${id}`, dto);
-      console.log('✅ [PlantasService] Planta updated:', response.data?.id);
-      return response.data;
+      const response = await api.patch<{ success: boolean; data: PlantaResponse; meta?: any }>(`/plantas/${id}`, dto);
+
+      // ✅ CORRIGIDO: Extrair dados do caminho correto
+      const planta = response.data.data || response.data;
+      console.log('✅ [PlantasService] Planta updated:', planta?.id);
+
+      return planta;
     } catch (error: any) {
       console.error(`❌ [PlantasService] Error updating planta ${id}:`, error);
       throw new Error(error.response?.data?.message || 'Erro ao atualizar planta');
@@ -165,19 +177,9 @@ class PlantasServiceClass {
    */
   async getProprietarios(): Promise<ProprietarioBasico[]> {
     try {
-      console.log('📡 [PlantasService] GET /usuarios (proprietarios)');
+      console.log('📡 [PlantasService] GET /usuarios (proprietarios) - buscando TODOS os usuarios');
 
-      // Try multiple endpoints to get proprietarios
-      // First try the plantas/proprietarios endpoint
-      try {
-        const response = await api.get('/plantas/proprietarios');
-        console.log('✅ [PlantasService] Proprietarios fetched from /plantas/proprietarios:', response.data?.length || 0);
-        return Array.isArray(response.data) ? response.data : [];
-      } catch (err) {
-        console.log('⚠️ [PlantasService] /plantas/proprietarios not available, trying /usuarios');
-      }
-
-      // Fallback: try to get users with specific roles
+      // Buscar TODOS os usuários com roles válidas (não apenas os que têm plantas)
       const response = await api.get('/usuarios', {
         params: {
           roles: ['admin', 'gerente', 'proprietario'].join(','),
@@ -185,7 +187,16 @@ class PlantasServiceClass {
         }
       });
 
-      const usuarios = response.data?.data || response.data || [];
+      // A API retorna { success: true, data: { data: [...usuarios], pagination: {} } }
+      const usuariosData = response.data.data || response.data;
+      const usuarios = usuariosData.data || usuariosData || [];
+
+      console.log('🔍 [PlantasService] Response structure:', {
+        hasData: !!response.data,
+        hasDataData: !!response.data?.data,
+        hasDataDataData: !!response.data?.data?.data,
+        usuariosLength: Array.isArray(usuarios) ? usuarios.length : 0
+      });
 
       // Transform to ProprietarioBasico format
       const proprietarios: ProprietarioBasico[] = usuarios.map((user: any) => ({

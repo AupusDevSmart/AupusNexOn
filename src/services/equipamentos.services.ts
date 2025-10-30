@@ -1,317 +1,343 @@
 // src/services/equipamentos.services.ts
-
 import { api } from '@/config/api';
-import type { ApiResponse } from '@/types/base';
 
-// ===== INTERFACES =====
+// ============================================================================
+// TIPOS DA API (baseados nos DTOs do backend)
+// ============================================================================
 
-export interface TipoEquipamento {
-  id: string;
-  codigo: string;
+export interface CreateEquipamentoApiData {
   nome: string;
-  categoria: 'GERACAO' | 'DISTRIBUICAO' | 'PROTECAO' | 'MEDICAO' | 'CONTROLE';
-  larguraPadrao: number;
-  alturaPadrao: number;
-  iconeSvg?: string;
-  propriedadesSchema?: any;
-  createdAt: string;
-}
-
-export interface Equipamento {
-  id: string;
-  nome: string;
-  tag?: string;
   classificacao: 'UC' | 'UAR';
-  unidade_id?: string;
   planta_id?: string;
+  proprietario_id?: string;
   equipamento_pai_id?: string;
-  tipo_equipamento_id?: string;
-  status?: 'NORMAL' | 'ALARME' | 'FALHA' | 'MANUTENCAO';
   fabricante?: string;
   modelo?: string;
   numero_serie?: string;
-  criticidade?: string;
+  criticidade: '1' | '2' | '3' | '4' | '5';
+  tipo_equipamento?: string;
+  em_operacao?: 'sim' | 'nao';
+  tipo_depreciacao?: 'linear' | 'uso';
+  data_imobilizacao?: string;
+  data_instalacao?: string;
+  valor_imobilizado?: number;
+  valor_depreciacao?: number;
+  valor_contabil?: number;
+  vida_util?: number;
+  fornecedor?: string;
+  centro_custo?: string;
+  plano_manutencao?: string;
   localizacao?: string;
-  posicao_x?: number;
-  posicao_y?: number;
-  rotacao?: number;
-  largura_customizada?: number;
-  altura_customizada?: number;
-  propriedades?: any;
-  mqtt_habilitado?: boolean;
-  topico_mqtt?: string;
-  noDiagrama?: boolean;
-  diagramaId?: string | null;
-  tipoEquipamento?: TipoEquipamento;
-  unidade?: {
+  localizacao_especifica?: string;
+  observacoes?: string;
+  mcpse?: boolean;
+  tuc?: string;
+  a1?: string;
+  a2?: string;
+  a3?: string;
+  a4?: string;
+  a5?: string;
+  a6?: string;
+  dados_tecnicos?: {
+    campo: string;
+    valor: string;
+    tipo: string;
+    unidade?: string;
+  }[];
+}
+
+export interface UpdateEquipamentoApiData extends Partial<CreateEquipamentoApiData> {}
+
+export interface EquipamentoApiResponse {
+  id: string;
+  nome: string;
+  classificacao: 'UC' | 'UAR';
+  planta_id?: string;
+  proprietario_id?: string;
+  equipamento_pai_id?: string;
+  fabricante?: string;
+  modelo?: string;
+  numero_serie?: string;
+  criticidade: '1' | '2' | '3' | '4' | '5';
+  tipo_equipamento?: string;
+  em_operacao?: string;
+  tipo_depreciacao?: string;
+  data_imobilizacao?: Date;
+  data_instalacao?: Date;
+  valor_imobilizado?: number;
+  valor_depreciacao?: number;
+  valor_contabil?: number;
+  vida_util?: number;
+  fornecedor?: string;
+  centro_custo?: string;
+  plano_manutencao?: string;
+  localizacao?: string;
+  localizacao_especifica?: string;
+  observacoes?: string;
+  mcpse?: boolean;
+  tuc?: string;
+  a1?: string;
+  a2?: string;
+  a3?: string;
+  a4?: string;
+  a5?: string;
+  a6?: string;
+  created_at: Date;
+  updated_at: Date;
+  deleted_at?: Date;
+  
+  // Relacionamentos
+  planta?: {
     id: string;
     nome: string;
+  };
+  proprietario?: {
+    id: string;
+    nome: string;
+    cpf_cnpj: string;
+  };
+  equipamento_pai?: {
+    id: string;
+    nome: string;
+    classificacao: string;
+    criticidade: string;
+  };
+  componentes_uar?: {
+    id: string;
+    nome: string;
+    classificacao: string;
+  }[];
+  dados_tecnicos?: {
+    id: string;
+    campo: string;
+    valor: string;
+    tipo: string;
+    unidade?: string;
+  }[];
+  totalComponentes?: number;
+}
+
+export interface EquipamentosQueryParams {
+  page?: number;
+  limit?: number;
+  search?: string;
+  unidade_id?: string;
+  planta_id?: string;
+  classificacao?: 'UC' | 'UAR';
+  criticidade?: '1' | '2' | '3' | '4' | '5';
+  equipamento_pai_id?: string;
+  orderBy?: 'nome' | 'criticidade' | 'created_at' | 'fabricante' | 'valor_contabil';
+  orderDirection?: 'asc' | 'desc';
+}
+
+export interface EquipamentosListApiResponse {
+  data: EquipamentoApiResponse[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    pages: number;
+  };
+}
+
+export interface PlantaEquipamentosResponse extends EquipamentosListApiResponse {
+  planta: {
+    id: string;
+    nome: string;
+    localizacao: string;
+  };
+}
+
+export interface EstatisticasPlantaResponse {
+  planta: {
+    id: string;
+    nome: string;
+    localizacao: string;
+  };
+  totais: {
+    equipamentos: number;
+    equipamentosUC: number;
+    componentesUAR: number;
+  };
+  porCriticidade: Record<string, number>;
+  financeiro: {
+    valorTotalContabil: number;
+  };
+}
+
+export interface ComponentesGerenciamentoResponse {
+  equipamentoUC: {
+    id: string;
+    nome: string;
+    fabricante?: string;
+    modelo?: string;
     planta?: {
       id: string;
       nome: string;
     };
+    proprietario?: {
+      id: string;
+      nome: string;
+    };
   };
-  totalComponentes?: number;
-  created_at: string;
-  updated_at: string;
+  componentes: EquipamentoApiResponse[];
 }
 
-export interface EquipamentoFilters {
-  search?: string;
-  unidade_id?: string;
-  classificacao?: 'UC' | 'UAR';
-  criticidade?: string;
-  equipamento_pai_id?: string;
-  semDiagrama?: boolean;
-  tipo?: string;
-  page?: number;
-  limit?: number;
-  orderBy?: string;
-  orderDirection?: 'asc' | 'desc';
-}
+// ============================================================================
+// SERVIÇO DE API
+// ============================================================================
 
-export interface CreateEquipamentoDto {
-  nome: string;
-  tag?: string;
-  classificacao: 'UC' | 'UAR';
-  unidade_id?: string;
-  planta_id?: string;
-  equipamento_pai_id?: string;
-  tipo_equipamento_id?: string;
-  status?: string;
-  fabricante?: string;
-  modelo?: string;
-  numero_serie?: string;
-  criticidade?: string;
-  localizacao?: string;
-  propriedades?: any;
-}
+export class EquipamentosApiService {
+  private readonly baseEndpoint = '/equipamentos';
 
-export interface UpdateEquipamentoDto extends Partial<CreateEquipamentoDto> {}
+  // ============================================================================
+  // CRUD BÁSICO
+  // ============================================================================
 
-export interface ConfigurarMqttDto {
-  topico_mqtt: string;
-  mqtt_habilitado: boolean;
-}
-
-// ===== SERVICE CLASS =====
-
-class EquipamentosServiceClass {
-  /**
-   * Get all equipamentos with filters
-   */
-  async getAllEquipamentos(filters: EquipamentoFilters = {}): Promise<ApiResponse<Equipamento>> {
-    try {
-      const params = new URLSearchParams();
-
-      if (filters.search) params.append('search', filters.search);
-      if (filters.unidade_id) params.append('unidade_id', filters.unidade_id);
-      if (filters.classificacao) params.append('classificacao', filters.classificacao);
-      if (filters.criticidade) params.append('criticidade', filters.criticidade);
-      if (filters.equipamento_pai_id) params.append('equipamento_pai_id', filters.equipamento_pai_id);
-      if (filters.semDiagrama !== undefined) params.append('semDiagrama', String(filters.semDiagrama));
-      if (filters.tipo) params.append('tipo', filters.tipo);
-      if (filters.page) params.append('page', filters.page.toString());
-      if (filters.limit) params.append('limit', filters.limit.toString());
-      if (filters.orderBy) params.append('orderBy', filters.orderBy);
-      if (filters.orderDirection) params.append('orderDirection', filters.orderDirection);
-
-      console.log('📡 [EquipamentosService] GET /equipamentos with params:', params.toString());
-
-      const response = await api.get(`/equipamentos?${params.toString()}`);
-
-      // Normalize response
-      const data = response.data?.data || response.data || [];
-      const pagination = response.data?.pagination || {
-        page: filters.page || 1,
-        limit: filters.limit || 10,
-        total: Array.isArray(data) ? data.length : 0,
-        totalPages: Math.ceil((Array.isArray(data) ? data.length : 0) / (filters.limit || 10)),
-      };
-
-      console.log('✅ [EquipamentosService] Fetched', data.length, 'equipamentos');
-
-      return {
-        data: Array.isArray(data) ? data : [],
-        pagination,
-        meta: response.data?.meta,
-      };
-    } catch (error: any) {
-      console.error('❌ [EquipamentosService] Error fetching equipamentos:', error);
-      throw new Error(error.response?.data?.message || 'Erro ao buscar equipamentos');
-    }
-  }
-
-  /**
-   * Get equipamentos by unidade ID
-   */
-  async getEquipamentosByUnidade(unidadeId: string, filters: Omit<EquipamentoFilters, 'unidade_id'> = {}): Promise<ApiResponse<Equipamento>> {
-    try {
-      console.log(`📡 [EquipamentosService] GET /unidades/${unidadeId}/equipamentos`);
-      console.log(`   📋 Filters:`, filters);
-
-      const params = new URLSearchParams();
-      if (filters.search) params.append('search', filters.search);
-      if (filters.classificacao) params.append('classificacao', filters.classificacao);
-      if (filters.semDiagrama !== undefined) params.append('semDiagrama', String(filters.semDiagrama));
-      if (filters.tipo) params.append('tipo', filters.tipo);
-      if (filters.page) params.append('page', filters.page.toString());
-      if (filters.limit) params.append('limit', filters.limit.toString());
-
-      console.log(`   🔗 URL: /unidades/${unidadeId}/equipamentos?${params.toString()}`);
-
-      const response = await api.get(`/unidades/${unidadeId}/equipamentos?${params.toString()}`);
-
-      console.log(`   📦 Response structure:`, {
-        hasData: !!response.data,
-        hasDataData: !!response.data?.data,
-        hasPagination: !!response.data?.pagination,
-        hasMeta: !!response.data?.meta,
-      });
-
-      const data = response.data?.data?.data || response.data?.data || response.data || [];
-      const pagination = response.data?.data?.pagination || response.data?.pagination || {
-        page: filters.page || 1,
-        limit: filters.limit || 10,
-        total: Array.isArray(data) ? data.length : 0,
-        totalPages: Math.ceil((Array.isArray(data) ? data.length : 0) / (filters.limit || 10)),
-      };
-
-      console.log('✅ [EquipamentosService] Fetched', data.length, 'equipamentos for unidade');
-      console.log('   📊 Pagination:', pagination);
-
-      // Log detalhado dos equipamentos UC
-      const equipamentosUC = data.filter((e: Equipamento) => e.classificacao === 'UC');
-      console.log('   🔧 Equipamentos UC:', equipamentosUC.length);
-      equipamentosUC.forEach((eq: Equipamento, idx: number) => {
-        console.log(`      [${idx + 1}] ${eq.nome}`);
-        console.log(`          - Tipo: ${eq.tipoEquipamento?.codigo || 'SEM TIPO'}`);
-        console.log(`          - ID: ${eq.id}`);
-      });
-
-      return {
-        data: Array.isArray(data) ? data : [],
-        pagination,
-        meta: response.data?.data?.meta || response.data?.meta,
-      };
-    } catch (error: any) {
-      console.error(`❌ [EquipamentosService] Error fetching equipamentos for unidade ${unidadeId}:`, error);
-      throw new Error(error.response?.data?.message || 'Erro ao buscar equipamentos');
-    }
-  }
-
-  /**
-   * Get equipamento by ID
-   */
-  async getEquipamento(id: string): Promise<Equipamento> {
-    try {
-      console.log(`📡 [EquipamentosService] GET /equipamentos/${id}`);
-      const response = await api.get(`/equipamentos/${id}`);
-      console.log('✅ [EquipamentosService] Equipamento fetched:', response.data?.nome);
-      return response.data;
-    } catch (error: any) {
-      console.error(`❌ [EquipamentosService] Error fetching equipamento ${id}:`, error);
-      throw new Error(error.response?.data?.message || 'Erro ao buscar equipamento');
-    }
-  }
-
-  /**
-   * Create new equipamento
-   */
-  async createEquipamento(dto: CreateEquipamentoDto): Promise<Equipamento> {
-    try {
-      console.log('📡 [EquipamentosService] POST /equipamentos', dto);
-      const response = await api.post('/equipamentos', dto);
-      console.log('✅ [EquipamentosService] Equipamento created:', response.data?.id);
-      return response.data;
-    } catch (error: any) {
-      console.error('❌ [EquipamentosService] Error creating equipamento:', error);
-      throw new Error(error.response?.data?.message || 'Erro ao criar equipamento');
-    }
-  }
-
-  /**
-   * Update equipamento
-   */
-  async updateEquipamento(id: string, dto: UpdateEquipamentoDto): Promise<Equipamento> {
-    try {
-      console.log(`📡 [EquipamentosService] PATCH /equipamentos/${id}`, dto);
-      const response = await api.patch(`/equipamentos/${id}`, dto);
-      console.log('✅ [EquipamentosService] Equipamento updated:', response.data?.id);
-      return response.data;
-    } catch (error: any) {
-      console.error(`❌ [EquipamentosService] Error updating equipamento ${id}:`, error);
-      throw new Error(error.response?.data?.message || 'Erro ao atualizar equipamento');
-    }
-  }
-
-  /**
-   * Delete equipamento
-   */
-  async deleteEquipamento(id: string): Promise<void> {
-    try {
-      console.log(`📡 [EquipamentosService] DELETE /equipamentos/${id}`);
-      await api.delete(`/equipamentos/${id}`);
-      console.log('✅ [EquipamentosService] Equipamento deleted:', id);
-    } catch (error: any) {
-      console.error(`❌ [EquipamentosService] Error deleting equipamento ${id}:`, error);
-      throw new Error(error.response?.data?.message || 'Erro ao excluir equipamento');
-    }
-  }
-
-  /**
-   * Configure MQTT for equipamento
-   */
-  async configurarMqtt(id: string, dto: ConfigurarMqttDto): Promise<Equipamento> {
-    try {
-      console.log(`📡 [EquipamentosService] POST /equipamentos/${id}/mqtt`, dto);
-      const response = await api.post(`/equipamentos/${id}/mqtt`, dto);
-      console.log('✅ [EquipamentosService] MQTT configured for equipamento');
-      return response.data;
-    } catch (error: any) {
-      console.error(`❌ [EquipamentosService] Error configuring MQTT:`, error);
-      throw new Error(error.response?.data?.message || 'Erro ao configurar MQTT');
-    }
-  }
-
-  /**
-   * Create visual component (BARRAMENTO or PONTO) for diagrams
-   */
-  async criarComponenteVisual(unidadeId: string, tipo: 'BARRAMENTO' | 'PONTO', nome?: string): Promise<{ id: string; nome: string; tipo_equipamento: string }> {
-    try {
-      console.log(`📡 [EquipamentosService] POST /equipamentos/virtual/${unidadeId}/${tipo}`, { nome });
-      const response = await api.post(`/equipamentos/virtual/${unidadeId}/${tipo}`, { nome });
-      console.log('✅ [EquipamentosService] Componente visual criado:', response.data);
-      return response.data;
-    } catch (error: any) {
-      console.error(`❌ [EquipamentosService] Error creating componente visual:`, error);
-      throw new Error(error.response?.data?.message || 'Erro ao criar componente visual');
-    }
-  }
-
-  /**
-   * Get tipos de equipamentos
-   */
-  async getTiposEquipamentos(categoria?: string, search?: string): Promise<TipoEquipamento[]> {
-    try {
-      const params = new URLSearchParams();
-      if (categoria) params.append('categoria', categoria);
-      if (search) params.append('search', search);
-
-      console.log('📡 [EquipamentosService] GET /tipos-equipamentos');
-      const response = await api.get(`/tipos-equipamentos?${params.toString()}`);
-
-      const data = response.data?.data || response.data || [];
-      console.log('✅ [EquipamentosService] Fetched', data.length, 'tipos de equipamentos');
-
-      return Array.isArray(data) ? data : [];
-    } catch (error: any) {
-      console.error('❌ [EquipamentosService] Error fetching tipos de equipamentos:', error);
-      throw new Error(error.response?.data?.message || 'Erro ao buscar tipos de equipamentos');
-    }
+  async create(data: CreateEquipamentoApiData): Promise<EquipamentoApiResponse> {
+  // console.log('🚀 API SERVICE: create iniciado');
+  // console.log('🚀 API SERVICE: Dados para enviar:', JSON.stringify(data, null, 2));
+  
+  try {
+    const response = await api.post<EquipamentoApiResponse>(this.baseEndpoint, data);
+    // console.log('✅ API SERVICE: Resposta recebida:', response.data);
+    return response.data;
+  } catch (error: any) {
+    // console.log('💥 API SERVICE: Erro capturado:', error);
+    // console.log('💥 API SERVICE: Mensagem específica da API:', error.response?.data?.message);
+    // console.log('💥 API SERVICE: Data completo:', JSON.stringify(error.response?.data, null, 2));
+    throw error;
   }
 }
 
-// ===== EXPORT SINGLETON =====
+  async findAll(params?: EquipamentosQueryParams): Promise<EquipamentosListApiResponse> {
+    const response = await api.get<EquipamentosListApiResponse>(this.baseEndpoint, {
+      params: {
+        page: params?.page || 1,
+        limit: params?.limit || 10,
+        ...params
+      }
+    });
+    return response.data;
+  }
 
-export const EquipamentosService = new EquipamentosServiceClass();
+  async findOne(id: string): Promise<EquipamentoApiResponse> {
+    console.log('🌐 [API SERVICE] findOne chamado para ID:', id);
+    const response = await api.get<{ success: boolean; data: EquipamentoApiResponse; meta?: any }>(`${this.baseEndpoint}/${id}`);
+    console.log('🌐 [API SERVICE] Resposta completa (response):', response);
+    console.log('🌐 [API SERVICE] response.data:', response.data);
+    console.log('🌐 [API SERVICE] response.data.data (os dados reais):', response.data.data);
+
+    // ✅ CORRIGIDO: A API retorna { success, data, meta }, precisamos retornar apenas o "data" interno
+    const equipamento = response.data.data || response.data;
+    console.log('✅ [API SERVICE] Equipamento extraído:', equipamento);
+    console.log('✅ [API SERVICE] equipamento.id:', equipamento?.id);
+    console.log('✅ [API SERVICE] equipamento.nome:', equipamento?.nome);
+    console.log('✅ [API SERVICE] equipamento.tipo_equipamento:', equipamento?.tipo_equipamento);
+    console.log('✅ [API SERVICE] equipamento.dados_tecnicos:', equipamento?.dados_tecnicos);
+
+    return equipamento;
+  }
+
+  async update(id: string, data: UpdateEquipamentoApiData): Promise<EquipamentoApiResponse> {
+    const response = await api.patch<EquipamentoApiResponse>(`${this.baseEndpoint}/${id}`, data);
+    return response.data;
+  }
+
+  async remove(id: string): Promise<void> {
+    await api.delete(`${this.baseEndpoint}/${id}`);
+  }
+
+  // ============================================================================
+  // OPERAÇÕES ESPECÍFICAS PARA COMPONENTES
+  // ============================================================================
+
+  async findComponentesByEquipamento(equipamentoId: string): Promise<EquipamentoApiResponse[]> {
+    const response = await api.get<EquipamentoApiResponse[]>(`${this.baseEndpoint}/${equipamentoId}/componentes`);
+    return response.data;
+  }
+
+  async findEquipamentosUC(): Promise<{
+    id: string;
+    nome: string;
+    fabricante?: string;
+    modelo?: string;
+    planta?: { id: string; nome: string };
+  }[]> {
+    const response = await api.get(`${this.baseEndpoint}/ucs-disponiveis`);
+    return response.data;
+  }
+
+  async findUARDetalhes(uarId: string): Promise<EquipamentoApiResponse> {
+    const response = await api.get<EquipamentoApiResponse>(`${this.baseEndpoint}/uar/${uarId}/detalhes`);
+    return response.data;
+  }
+
+  async findComponentesParaGerenciar(ucId: string): Promise<ComponentesGerenciamentoResponse> {
+    const response = await api.get<ComponentesGerenciamentoResponse>(`${this.baseEndpoint}/${ucId}/componentes/gerenciar`);
+    return response.data;
+  }
+
+  async salvarComponentesUARLote(
+    ucId: string, 
+    componentes: Partial<CreateEquipamentoApiData & { id?: string }>[]
+  ): Promise<{
+    message: string;
+    componentes: EquipamentoApiResponse[];
+  }> {
+    const response = await api.put(`${this.baseEndpoint}/${ucId}/componentes/batch`, {
+      componentes
+    });
+    return response.data;
+  }
+
+  // ============================================================================
+  // OPERAÇÕES POR PLANTA
+  // ============================================================================
+
+  async findByPlanta(plantaId: string, params?: EquipamentosQueryParams): Promise<PlantaEquipamentosResponse> {
+    const response = await api.get<PlantaEquipamentosResponse>(
+      `${this.baseEndpoint}/planta/${plantaId}/equipamentos`,
+      { params }
+    );
+    return response.data;
+  }
+
+  async getEstatisticasPlanta(plantaId: string): Promise<EstatisticasPlantaResponse> {
+    const response = await api.get<EstatisticasPlantaResponse>(
+      `${this.baseEndpoint}/plantas/${plantaId}/estatisticas`
+    );
+    return response.data;
+  }
+
+  // ============================================================================
+  // COMPONENTES VISUAIS (BARRAMENTO/PONTO)
+  // ============================================================================
+
+  async criarComponenteVisual(
+    unidadeId: string,
+    tipo: 'BARRAMENTO' | 'PONTO',
+    nome?: string
+  ): Promise<{ success: boolean; data: EquipamentoApiResponse; meta?: any }> {
+    const response = await api.post<{ success: boolean; data: EquipamentoApiResponse; meta?: any }>(
+      `${this.baseEndpoint}/virtual/${unidadeId}/${tipo}`,
+      nome ? { nome } : {}
+    );
+    return response.data;
+  }
+
+  // ============================================================================
+  // OPERAÇÕES POR UNIDADE
+  // ============================================================================
+
+  async findByUnidade(unidadeId: string, params?: EquipamentosQueryParams): Promise<EquipamentosListApiResponse> {
+    const response = await api.get<EquipamentosListApiResponse>(
+      `${this.baseEndpoint}/unidade/${unidadeId}/equipamentos`,
+      { params }
+    );
+    return response.data;
+  }
+}
+
+// Instância única do serviço
+export const equipamentosApi = new EquipamentosApiService();
