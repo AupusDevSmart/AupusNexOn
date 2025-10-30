@@ -108,7 +108,7 @@ export function EventoDetalhesModal({
                 <Calendar className="h-4 w-4 text-muted-foreground" />
                 <div>
                   <p className="text-sm font-medium">DATA/HORA</p>
-                  <p className="text-sm text-muted-foreground font-mono">
+                  <p className="text-sm text-muted-foreground">
                     {formatarDataHoraBR(evento.dataHora)}
                   </p>
                 </div>
@@ -218,7 +218,7 @@ export function EventoDetalhesModal({
                       <p className="text-sm font-medium text-muted-foreground">
                         Endereço IP
                       </p>
-                      <p className="text-sm mt-1 font-mono">{evento.ip}</p>
+                      <p className="text-sm mt-1">{evento.ip}</p>
                     </div>
                   )}
                 </div>

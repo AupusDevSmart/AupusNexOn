@@ -1,7 +1,7 @@
 // src/lib/utils/date-formatters.ts
 
 /**
- * Formata uma data para o padrão brasileiro DD/MM/YYYY HH:mm:ss
+ * Formata uma data para o padrão brasileiro DD/MM/YYYY HH:mm
  * @param dataHora - String de data no formato ISO ou objeto Date
  * @returns String formatada no padrão brasileiro
  */
@@ -19,9 +19,8 @@ export function formatarDataHoraBR(dataHora: string | Date): string {
 
   const horas = String(data.getHours()).padStart(2, '0');
   const minutos = String(data.getMinutes()).padStart(2, '0');
-  const segundos = String(data.getSeconds()).padStart(2, '0');
 
-  return `${dia}/${mes}/${ano} ${horas}:${minutos}:${segundos}`;
+  return `${dia}/${mes}/${ano} ${horas}:${minutos}`;
 }
 
 /**

@@ -10,10 +10,28 @@ import type {
   FiltrosLogsEventos,
   LogEvento,
 } from "@/types/dtos/logs-eventos";
-import { Download, FileSpreadsheet, Filter, X } from "lucide-react";
+import { X } from "lucide-react";
 import { useMemo, useState } from "react";
-import { format } from "date-fns";
-import { ptBR } from "date-fns/locale";
+
+// Ícone de filtro customizado (3 linhas decrescentes)
+const FilterIcon = ({ className }: { className?: string }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="20"
+    height="20"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+  >
+    <line x1="3" y1="6" x2="21" y2="6"/>
+    <line x1="6" y1="12" x2="18" y2="12"/>
+    <line x1="9" y1="18" x2="15" y2="18"/>
+  </svg>
+);
 
 // Dados mockados para demonstração
 const mockEventos: LogEvento[] = [
@@ -285,7 +303,6 @@ export function LogsEventosPage() {
   });
 
   const [eventos, setEventos] = useState<LogEvento[]>(mockEventos);
-  const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [eventoDetalhes, setEventoDetalhes] = useState<LogEvento | null>(null);
   const [modalDetalhesOpen, setModalDetalhesOpen] = useState(false);
 
@@ -377,16 +394,6 @@ export function LogsEventosPage() {
     });
   };
 
-  const handleSelectItem = (id: string) => {
-    setSelectedItems((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
-    );
-  };
-
-  const handleSelectAll = (checked: boolean) => {
-    setSelectedItems(checked ? eventosFiltrados.map((e) => e.id) : []);
-  };
-
   const handleVerDetalhes = (evento: LogEvento) => {
     setEventoDetalhes(evento);
     setModalDetalhesOpen(true);
@@ -405,29 +412,6 @@ export function LogsEventosPage() {
       prevEventos.map((e) =>
         e.id === evento.id ? { ...e, reconhecido: true } : e
       )
-    );
-  };
-
-  const handleReconhecimentoMassa = (ids: string[]) => {
-    setEventos((prevEventos) =>
-      prevEventos.map((e) =>
-        ids.includes(e.id) ? { ...e, reconhecido: true } : e
-      )
-    );
-    setSelectedItems([]);
-  };
-
-  const handleExportarPDF = () => {
-    console.log("Exportar para PDF");
-    // Implementar exportação PDF
-    alert("Funcionalidade de exportação para PDF precisa ser implementada!");
-  };
-
-  const handleExportarExcel = () => {
-    console.log("Exportar para Excel");
-    // Implementar exportação Excel
-    alert(
-      "Funcionalidade de exportação para Excel precisa ser implementada!"
     );
   };
 
@@ -519,7 +503,7 @@ export function LogsEventosPage() {
                 <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
-                      <Filter className="h-4 w-4 text-blue-700 dark:text-blue-400" />
+                      <FilterIcon className="h-4 w-4 text-blue-700 dark:text-blue-400" />
                       <span className="font-semibold text-sm text-blue-900 dark:text-blue-300">
                         Filtros Ativos
                       </span>
@@ -611,37 +595,12 @@ export function LogsEventosPage() {
                 <div className="text-sm text-muted-foreground">
                   {eventosFiltrados.length} eventos encontrados
                 </div>
-
-                <div className="flex gap-2">
-                  <Button
-                    onClick={handleExportarPDF}
-                    variant="outline"
-                    size="sm"
-                  >
-                    <Download className="mr-2 h-4 w-4" />
-                    Exportar PDF
-                  </Button>
-                  <Button
-                    onClick={handleExportarExcel}
-                    variant="outline"
-                    size="sm"
-                  >
-                    <FileSpreadsheet className="mr-2 h-4 w-4" />
-                    Exportar Excel
-                  </Button>
-                </div>
               </div>
 
               {/* Tabela de eventos */}
               <LogsEventosTable
                 eventos={eventosFiltrados}
-                selectedItems={selectedItems}
-                onSelectItem={handleSelectItem}
-                onSelectAll={handleSelectAll}
-                onVerDetalhes={handleVerDetalhes}
-                onAssociarOS={handleAssociarOS}
                 onMarcarReconhecido={handleMarcarReconhecido}
-                onReconhecimentoMassa={handleReconhecimentoMassa}
               />
             </div>
           </div>

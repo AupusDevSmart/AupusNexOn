@@ -1,6 +1,7 @@
 import { ChartColumnBig } from "@/components/icons/ChartColumnBig";
 import { ChartNoAxesColumn } from "@/components/icons/ChartNoAxesColumn";
 import { Permissao } from "@/types/dtos/usuarios-dto";
+import { featureFlags, type FeatureFlags } from "@/config/feature-flags";
 import {
   type LucideIcon,
   Activity,
@@ -8,7 +9,6 @@ import {
   Building2,
   Cpu,
   Magnet,
-  Map,
   Monitor,
   ScrollText,
   SquareActivity,
@@ -22,6 +22,7 @@ export type NavigationLink = {
   key: string;
   path: string;
   featureKey?: Permissao;
+  featureFlag?: keyof FeatureFlags;
   icon: LucideIcon | React.FC<React.SVGProps<SVGSVGElement>>;
   label: string;
   hint?: string;
@@ -32,6 +33,7 @@ export const navigationLinks: Array<NavigationLink> = [
   {
     key: "admin",
     featureKey: "Dashboard",
+    featureFlag: "enableCOA",
     path: "/dashboard",
     icon: ChartNoAxesColumn,
     label: "COA - Centro de Operações de Ativos",
@@ -41,6 +43,7 @@ export const navigationLinks: Array<NavigationLink> = [
   {
     key: "scada",
     featureKey: "SCADA",
+    featureFlag: "enableScada",
     path: "/scada",
     icon: Activity,
     label: "SCADA",
@@ -50,6 +53,7 @@ export const navigationLinks: Array<NavigationLink> = [
   {
     key: "supervisorio",
     featureKey: "supervisorio",
+    featureFlag: "enableSupervisorio",
     path: "/supervisorio",
     icon: Monitor,
     label: "Supervisório",
@@ -86,6 +90,7 @@ export const navigationLinks: Array<NavigationLink> = [
   {
     key: "financeiro",
     featureKey: "Financeiro", // Corrigido para maiúscula
+    featureFlag: "enableFinanceiro",
     path: "/financeiro",
     icon: Zap,
     label: "Financeiro",
@@ -129,6 +134,7 @@ export const navigationLinks: Array<NavigationLink> = [
   {
     key: "cadastros",
     featureKey: "Usuarios", // Usando Usuarios como feature principal
+    featureFlag: "enableCadastros",
     path: "/cadastros",
     icon: Database,
     label: "Cadastros",
@@ -275,3 +281,31 @@ export const navigationLinks: Array<NavigationLink> = [
   //   ]
   // }
 ];
+
+/**
+ * Filtra os links de navegação baseado nas feature flags
+ * Links com featureFlag definida serão mostrados apenas se a flag estiver habilitada
+ */
+export function getFilteredNavigationLinks(): NavigationLink[] {
+  return navigationLinks.filter((link) => {
+    // Se não tem feature flag definida, sempre mostra
+    if (!link.featureFlag) {
+      return true;
+    }
+
+    // Verifica se a feature flag está habilitada
+    const isEnabled = featureFlags[link.featureFlag];
+
+    // Se o link tem sublinks, filtra os sublinks também
+    if (isEnabled && link.links) {
+      link.links = link.links.filter((sublink) => {
+        if (!sublink.featureFlag) {
+          return true;
+        }
+        return featureFlags[sublink.featureFlag];
+      });
+    }
+
+    return isEnabled;
+  });
+}

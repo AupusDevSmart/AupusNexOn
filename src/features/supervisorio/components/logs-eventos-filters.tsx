@@ -16,8 +16,27 @@ import type {
   FiltrosLogsEventos,
 } from "@/types/dtos/logs-eventos";
 import { LogsAuditoriaFilter } from "@/features/supervisorio/components/logs-auditoria-filter";
-import { FilterIcon } from "lucide-react";
 import { parse, format } from "date-fns";
+
+// Ícone de filtro customizado (3 linhas decrescentes)
+const FilterIcon = ({ className }: { className?: string }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="20"
+    height="20"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+  >
+    <line x1="3" y1="6" x2="21" y2="6"/>
+    <line x1="6" y1="12" x2="18" y2="12"/>
+    <line x1="9" y1="18" x2="15" y2="18"/>
+  </svg>
+);
 
 interface LogsEventosFiltersProps {
   filtros: FiltrosLogsEventos;

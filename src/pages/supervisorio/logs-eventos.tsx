@@ -4,7 +4,6 @@ import { TitleCard } from "@/components/common/title-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -319,7 +318,6 @@ export function LogsEventosPage() {
     ativo: "todos",
     severidade: "todas",
   });
-  const [eventosSelecionados, setEventosSelecionados] = useState<string[]>([]);
   const [showDetalhes, setShowDetalhes] = useState(false);
   const [eventoSelecionado, setEventoSelecionado] = useState<Evento | null>(
     null
@@ -430,7 +428,6 @@ export function LogsEventosPage() {
       title: "Eventos reconhecidos",
       description: `${ids.length} evento(s) foram marcados como reconhecidos.`,
     });
-    setEventosSelecionados([]);
   };
 
   const handleExportar = (formato: "pdf" | "excel") => {
@@ -440,21 +437,6 @@ export function LogsEventosPage() {
     });
   };
 
-  const toggleSelecionarEvento = (id: string) => {
-    setEventosSelecionados((prev) =>
-      prev.includes(id)
-        ? prev.filter((eventoId) => eventoId !== id)
-        : [...prev, id]
-    );
-  };
-
-  const toggleSelecionarTodos = () => {
-    if (eventosSelecionados.length === eventos.length) {
-      setEventosSelecionados([]);
-    } else {
-      setEventosSelecionados(eventos.map((e) => e.id));
-    }
-  };
 
   // Filtrar eventos
   const eventosFiltrados = eventos.filter((evento) => {
@@ -650,24 +632,7 @@ export function LogsEventosPage() {
 
             {/* Ações e Tabela */}
             <Card className="p-4">
-              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
-                <div className="flex items-center gap-2">
-                  {eventosSelecionados.length > 0 && (
-                    <>
-                      <span className="text-sm text-gray-500">
-                        {eventosSelecionados.length} selecionado(s)
-                      </span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleReconhecer(eventosSelecionados)}
-                      >
-                        <CheckSquare className="h-4 w-4 mr-2" />
-                        Reconhecer em Massa
-                      </Button>
-                    </>
-                  )}
-                </div>
+              <div className="flex flex-col md:flex-row justify-end items-start md:items-center gap-4 mb-4">
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
@@ -693,14 +658,6 @@ export function LogsEventosPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b">
-                      <th className="text-left py-3 px-2">
-                        <Checkbox
-                          checked={
-                            eventosSelecionados.length === eventos.length
-                          }
-                          onCheckedChange={toggleSelecionarTodos}
-                        />
-                      </th>
                       <th className="text-left py-3 px-2">DATA/HORA</th>
                       <th className="text-left py-3 px-2">ATIVO</th>
                       <th className="text-left py-3 px-2">TIPO</th>
@@ -717,14 +674,6 @@ export function LogsEventosPage() {
                         key={evento.id}
                         className="border-b hover:bg-gray-50 dark:hover:bg-gray-800"
                       >
-                        <td className="py-3 px-2">
-                          <Checkbox
-                            checked={eventosSelecionados.includes(evento.id)}
-                            onCheckedChange={() =>
-                              toggleSelecionarEvento(evento.id)
-                            }
-                          />
-                        </td>
                         <td className="py-3 px-2 whitespace-nowrap">
                           {evento.dataHora}
                         </td>
@@ -891,7 +840,7 @@ export function LogsEventosPage() {
                         <p className="text-sm font-medium text-gray-500">
                           Endereço IP
                         </p>
-                        <p className="text-sm mt-1 font-mono text-gray-700 dark:text-gray-300">
+                        <p className="text-sm mt-1 text-gray-700 dark:text-gray-300">
                           {eventoSelecionado.ip}
                         </p>
                       </div>

@@ -3,7 +3,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -18,24 +17,12 @@ import { formatarDataHoraBR } from "@/lib/utils/date-formatters";
 
 interface LogsEventosTableProps {
   eventos: LogEvento[];
-  selectedItems: string[];
-  onSelectItem: (id: string) => void;
-  onSelectAll: (checked: boolean) => void;
-  onVerDetalhes: (evento: LogEvento) => void;
-  onAssociarOS: (evento: LogEvento) => void;
   onMarcarReconhecido: (evento: LogEvento) => void;
-  onReconhecimentoMassa: (ids: string[]) => void;
 }
 
 export function LogsEventosTable({
   eventos,
-  selectedItems,
-  onSelectItem,
-  onSelectAll,
-  onVerDetalhes,
-  onAssociarOS,
   onMarcarReconhecido,
-  onReconhecimentoMassa,
 }: LogsEventosTableProps) {
   const getTipoEventoColor = (tipo: string) => {
     switch (tipo) {
@@ -57,34 +44,13 @@ export function LogsEventosTable({
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle>Eventos Registrados</CardTitle>
-          {selectedItems.length > 0 && (
-            <Button
-              onClick={() => onReconhecimentoMassa(selectedItems)}
-              variant="outline"
-              size="sm"
-            >
-              <CheckSquare className="mr-2 h-4 w-4" />
-              Reconhecer Selecionados ({selectedItems.length})
-            </Button>
-          )}
-        </div>
+        <CardTitle>Eventos Registrados</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="rounded-md border overflow-x-auto">
           <Table className="table-fixed w-full min-w-[1100px]">
             <TableHeader>
               <TableRow>
-                <TableHead className="w-12 px-4">
-                  <Checkbox
-                    checked={
-                      selectedItems.length === eventos.length &&
-                      eventos.length > 0
-                    }
-                    onCheckedChange={onSelectAll}
-                  />
-                </TableHead>
                 <TableHead className="w-[150px] px-4">DATA/HORA</TableHead>
                 <TableHead className="w-[120px] px-4">ATIVO</TableHead>
                 <TableHead className="w-[100px] px-4">TIPO</TableHead>
@@ -97,7 +63,7 @@ export function LogsEventosTable({
               {eventos.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={7}
+                    colSpan={6}
                     className="text-center py-8 text-muted-foreground"
                   >
                     Nenhum evento encontrado com os filtros aplicados.
@@ -106,16 +72,10 @@ export function LogsEventosTable({
               ) : (
                 eventos.map((evento) => (
                   <TableRow key={evento.id}>
-                    <TableCell className="w-12 px-4">
-                      <Checkbox
-                        checked={selectedItems.includes(evento.id)}
-                        onCheckedChange={() => onSelectItem(evento.id)}
-                      />
-                    </TableCell>
-                    <TableCell className="w-[150px] px-4 font-mono text-sm whitespace-nowrap">
+                    <TableCell className="w-[150px] px-4 text-sm whitespace-nowrap">
                       {formatarDataHoraBR(evento.dataHora)}
                     </TableCell>
-                    <TableCell className="w-[120px] px-4 font-medium truncate">
+                    <TableCell className="w-[120px] px-4 font-bold truncate">
                       {evento.ativo}
                     </TableCell>
                     <TableCell className="w-[100px] px-4">
