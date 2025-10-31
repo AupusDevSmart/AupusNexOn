@@ -22,6 +22,9 @@ export interface FeatureFlags {
 
   /** Habilita o COA (Centro de Operação de Ativos) */
   enableCOA: boolean;
+
+  /** Habilita a página Cadastro de Unidades do Supervisório */
+  enableCadastroUnidadesSupervisorio: boolean;
 }
 
 /**
@@ -34,6 +37,7 @@ export const featureFlags: FeatureFlags = {
   enableCadastros: true,       // Cadastros está habilitado
   enableSupervisorio: true,    // Supervisório está habilitado
   enableCOA: true,             // COA está habilitado
+  enableCadastroUnidadesSupervisorio: false,  // Cadastro de Unidades (Supervisório) está desabilitado
 };
 
 /**
