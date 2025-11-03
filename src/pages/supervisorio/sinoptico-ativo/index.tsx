@@ -3194,10 +3194,11 @@ export function SinopticoAtivoPage() {
                     </div>
 
                     <div
-                      className={`flex-1 relative bg-black ${
+                      className={`flex-1 relative bg-black overflow-visible ${
                         diagramaFullscreen ? 'h-[calc(100vh-73px)]' : 'min-h-[580px]'
                       }`}
                       ref={canvasRef}
+                      style={{ minHeight: '580px', minWidth: '100%' }}
                     >
                       {/* COMPONENTE DE CONEXÕES PARA MODO VISUALIZAÇÃO */}
                       <ConexoesDiagrama
@@ -3206,7 +3207,7 @@ export function SinopticoAtivoPage() {
                         containerRef={canvasRef}
                         modoEdicao={false}
                         onEdgeClick={handleEdgeClick}
-                        className=""
+                        className="diagram-svg"
                       />
 
                       <SinopticoDiagrama
@@ -3257,7 +3258,7 @@ export function SinopticoAtivoPage() {
                   </div>
                 </div>
 
-                <div className="relative flex-1 min-h-[580px] bg-black" ref={canvasRef}>
+                <div className="relative flex-1 min-h-[580px] bg-black overflow-visible" ref={canvasRef} style={{ minHeight: '580px', minWidth: '100%' }}>
                   {/* COMPONENTE DE CONEXÕES PARA MODO EDIÇÃO */}
                   <ConexoesDiagrama
                     connections={connections}
@@ -3267,7 +3268,7 @@ export function SinopticoAtivoPage() {
                     connecting={connecting}
                     onRemoverConexao={removerConexao}
                     onEdgeClick={handleEdgeClick}
-                    className=""
+                    className="diagram-svg"
                   />
 
                   <SinopticoDiagrama
@@ -3279,7 +3280,7 @@ export function SinopticoAtivoPage() {
                   />
 
                   {/* Componentes no Modo Edição */}
-                  <div className="absolute inset-0" style={{ zIndex: 40 }}>
+                  <div className="absolute inset-0" style={{ zIndex: 10 }}>
                     {componentes
                       .filter(comp => comp.tipo !== "PONTO" && comp.tipo !== "JUNCTION")
                       .filter(comp => comp.posicao && typeof comp.posicao.x === 'number' && typeof comp.posicao.y === 'number')
