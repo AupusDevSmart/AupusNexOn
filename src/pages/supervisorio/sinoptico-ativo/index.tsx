@@ -45,6 +45,7 @@ import { SinopticoDiagrama } from "@/features/supervisorio/components/sinoptico-
 import { SinopticoGraficos } from "@/features/supervisorio/components/sinoptico-graficos";
 import { SinopticoIndicadores } from "@/features/supervisorio/components/sinoptico-indicadores";
 import { TransformadorModal } from "@/features/supervisorio/components/transformador-modal";
+import { DiagramaFullscreen } from "@/features/supervisorio/components/diagrama-fullscreen";
 // TEMPORÁRIO: MQTT comentado - implementar depois
 // import { useMqttWebSocket } from "@/hooks/useMqttWebSocket";
 import {
@@ -1325,6 +1326,7 @@ export function SinopticoAtivoPage() {
   const [unidadeAtual, setUnidadeAtual] = useState<Unidade | null>(null);
   // Abrir modal automaticamente se não tiver unidade selecionada
   const [modalSelecionarUnidade, setModalSelecionarUnidade] = useState(!ativoId);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // TEMPORÁRIO: Hook comentado para evitar loop infinito - implementar carregamento depois
   // const {
@@ -1506,7 +1508,7 @@ export function SinopticoAtivoPage() {
   const [modalAberto, setModalAberto] = useState<string | null>(null);
   const [componenteSelecionado, setComponenteSelecionado] =
     useState<ComponenteDU | null>(null);
-  const [diagramaFullscreen, setDiagramaFullscreen] = useState(false);
+
 
   // Estados para o modo de edição
   const [modoEdicao, setModoEdicao] = useState(false);
@@ -1523,41 +1525,13 @@ export function SinopticoAtivoPage() {
   const [dragOffset, setDragOffset] = useState<Position>({ x: 0, y: 0 });
   const [componenteDragId, setComponenteDragId] = useState<string | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
-  const diagramCardRef = useRef<HTMLDivElement>(null);
+  
 
   // Helper para pegar o canvas correto baseado no contexto
   const getActiveCanvasRef = useCallback(() => {
     return canvasRef;
   }, []);
 
-  // Funções para gerenciar fullscreen nativo
-  const toggleFullscreen = useCallback(async () => {
-    if (!diagramCardRef.current) return;
-
-    try {
-      if (!document.fullscreenElement) {
-        await diagramCardRef.current.requestFullscreen();
-        setDiagramaFullscreen(true);
-      } else {
-        await document.exitFullscreen();
-        setDiagramaFullscreen(false);
-      }
-    } catch (error) {
-      console.error("Erro ao alternar fullscreen:", error);
-    }
-  }, []);
-
-  // Listener para mudanças no fullscreen (ESC, etc)
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      setDiagramaFullscreen(!!document.fullscreenElement);
-    };
-
-    document.addEventListener("fullscreenchange", handleFullscreenChange);
-    return () => {
-      document.removeEventListener("fullscreenchange", handleFullscreenChange);
-    };
-  }, []);
 
   // Estados para conexões
   const [connecting, setConnecting] = useState<{
@@ -3147,56 +3121,36 @@ export function SinopticoAtivoPage() {
 
                 {/* Diagrama Unifilar - MODO VISUALIZAÇÃO */}
                 <div className="lg:col-span-2 flex">
-                  <Card
-                    ref={diagramCardRef}
-                    className={`flex flex-col w-full min-h-[900px] !bg-black ${
-                      diagramaFullscreen
-                        ? 'fixed inset-0 z-50 m-0 rounded-none border-0'
-                        : ''
-                    }`}
-                  >
+                  <Card className="flex flex-col w-full min-h-[900px] !bg-black">
                     <div className="flex items-center justify-between p-4 pb-2 border-b flex-shrink-0 !bg-black">
                       <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
                         <Network className="h-5 w-5" />
-                        Diagrama Unifilar {diagramaFullscreen && '- Tela Cheia'}
+                        Diagrama Unifilar 
                       </h3>
                       <div className="flex items-center gap-2">
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={toggleFullscreen}
+                          onClick={() => setIsFullscreen(true)}
                           className="flex items-center gap-2"
                         >
-                          {diagramaFullscreen ? (
-                            <>
-                              <Minimize className="h-4 w-4" />
-                              Sair
-                            </>
-                          ) : (
-                            <>
-                              <Maximize className="h-4 w-4" />
-                              Tela Cheia
-                            </>
-                          )}
+                          <Maximize className="h-4 w-4" />
+                          Tela Cheia
                         </Button>
-                        {!diagramaFullscreen && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={toggleModoEdicao}
-                            className="flex items-center gap-2"
-                          >
-                            <Edit3 className="h-4 w-4" />
-                            Editar
-                          </Button>
-                        )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={toggleModoEdicao}
+                          className="flex items-center gap-2"
+                        >
+                          <Edit3 className="h-4 w-4" />
+                          Editar
+                        </Button>
                       </div>
                     </div>
 
                     <div
-                      className={`flex-1 relative bg-black overflow-visible ${
-                        diagramaFullscreen ? 'h-[calc(100vh-73px)]' : 'min-h-[580px]'
-                      }`}
+                      className="flex-1 relative bg-black min-h-[580px]"
                       ref={canvasRef}
                       style={{ minHeight: '580px', minWidth: '100%' }}
                     >
@@ -3705,6 +3659,31 @@ export function SinopticoAtivoPage() {
           currentPlantaId={plantaAtual?.id}
           currentUnidadeId={unidadeId}
         />
+        {/* Fullscreen Modal */}
+      <DiagramaFullscreen
+        isOpen={isFullscreen}
+        onClose={() => setIsFullscreen(false)}
+        titulo="Diagrama Unifilar"
+      >
+        <div className="relative w-full h-full bg-black" ref={canvasRef}>
+          <ConexoesDiagrama
+            connections={connections}
+            componentes={componentes}
+            containerRef={canvasRef}
+            modoEdicao={false}
+            onEdgeClick={handleEdgeClick}
+            className=""
+          />
+
+          <SinopticoDiagrama
+            componentes={componentes}
+            onComponenteClick={handleComponenteClick}
+            modoEdicao={false}
+            componenteEditando={null}
+            connecting={null}
+          />
+        </div>
+      </DiagramaFullscreen>
 
       </Layout.Main>
     </Layout>
