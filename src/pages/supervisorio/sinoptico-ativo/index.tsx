@@ -1525,7 +1525,27 @@ export function SinopticoAtivoPage() {
   const [dragOffset, setDragOffset] = useState<Position>({ x: 0, y: 0 });
   const [componenteDragId, setComponenteDragId] = useState<string | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
-  
+
+  // ADICIONE esta função logo após a declaração do canvasRef
+  const handleToggleFullscreen = useCallback((isOpen: boolean) => {
+    setIsFullscreen(isOpen);
+
+    // Forçar recálculo das dimensões após transição
+    setTimeout(() => {
+      if (canvasRef.current) {
+        // Disparar evento de resize para forçar recálculo
+        window.dispatchEvent(new Event('resize'));
+
+        // Log para debug
+        const rect = canvasRef.current.getBoundingClientRect();
+        console.log('📏 Canvas após toggle fullscreen:', {
+          width: rect.width,
+          height: rect.height,
+          isFullscreen: isOpen
+        });
+      }
+    }, 100);
+  }, []);
 
   // Helper para pegar o canvas correto baseado no contexto
   const getActiveCanvasRef = useCallback(() => {
@@ -3131,7 +3151,7 @@ export function SinopticoAtivoPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => setIsFullscreen(true)}
+                          onClick={() => handleToggleFullscreen(true)}
                           className="flex items-center gap-2"
                         >
                           <Maximize className="h-4 w-4" />
@@ -3150,12 +3170,14 @@ export function SinopticoAtivoPage() {
                     </div>
 
                     <div
+                      key="canvas-normal"
                       className="flex-1 relative bg-black min-h-[580px]"
                       ref={canvasRef}
                       style={{ minHeight: '580px', minWidth: '100%' }}
                     >
                       {/* COMPONENTE DE CONEXÕES PARA MODO VISUALIZAÇÃO */}
                       <ConexoesDiagrama
+                        key="conexoes-normal"
                         connections={connections}
                         componentes={componentes}
                         containerRef={canvasRef}
@@ -3662,11 +3684,16 @@ export function SinopticoAtivoPage() {
         {/* Fullscreen Modal */}
       <DiagramaFullscreen
         isOpen={isFullscreen}
-        onClose={() => setIsFullscreen(false)}
+        onClose={() => handleToggleFullscreen(false)}
         titulo="Diagrama Unifilar"
       >
-        <div className="relative w-full h-full bg-black" ref={canvasRef}>
+        <div
+          key="canvas-fullscreen"
+          className="relative w-full h-full bg-black"
+          ref={canvasRef}
+        >
           <ConexoesDiagrama
+            key="conexoes-fullscreen"
             connections={connections}
             componentes={componentes}
             containerRef={canvasRef}

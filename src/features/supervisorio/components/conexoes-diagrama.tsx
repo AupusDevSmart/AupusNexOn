@@ -1,5 +1,5 @@
 // src/features/supervisorio/components/conexoes-diagrama.tsx
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 // Interfaces
 interface ComponenteDU {
@@ -119,97 +119,36 @@ export function ConexoesDiagrama({
   onEdgeClick,
   className = "",
 }: ConexoesDiagramaProps) {
-  const [containerRect, setContainerRect] = useState<DOMRect | null>(null);
   const [hoveredConnection, setHoveredConnection] = useState<string | null>(
     null
   );
 
-  // Atualizar dimensões do container
-  useEffect(() => {
-    const updateContainerRect = () => {
-      if (containerRef.current) {
-        const rect = containerRef.current.getBoundingClientRect();
-        console.log('📏 Container rect:', { width: rect.width, height: rect.height });
-        setContainerRect(rect);
-      } else {
-        console.warn('⚠️ containerRef.current is NULL');
-      }
-    };
-
-    // Delay inicial para garantir que o DOM está completamente renderizado
-    const timeoutId = setTimeout(updateContainerRect, 200);
-    updateContainerRect();
-
-    const resizeObserver = new ResizeObserver(updateContainerRect);
-    if (containerRef.current) {
-      resizeObserver.observe(containerRef.current);
-    }
-
-    window.addEventListener("resize", updateContainerRect);
-
-    return () => {
-      clearTimeout(timeoutId);
-      resizeObserver.disconnect();
-      window.removeEventListener("resize", updateContainerRect);
-    };
-  }, [containerRef]);
-
-  // Forçar atualização quando componentes ou conexões mudam
-  useEffect(() => {
-    const updateContainerRect = () => {
-      if (containerRef.current) {
-        setContainerRect(containerRef.current.getBoundingClientRect());
-      }
-    };
-
-    // Pequeno delay para garantir que o layout foi atualizado
-    const timeoutId = setTimeout(updateContainerRect, 100);
-
-    return () => clearTimeout(timeoutId);
-  }, [componentes.length, connections.length, containerRef]);
-
-  // Listener para detectar mudanças de fullscreen e recalcular dimensões
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      if (containerRef.current) {
-        const recalculate = () => {
-          setContainerRect(containerRef.current!.getBoundingClientRect());
-        };
-
-        recalculate();
-        setTimeout(recalculate, 50);
-        setTimeout(recalculate, 150);
-        setTimeout(recalculate, 300);
-      }
-    };
-
-    document.addEventListener("fullscreenchange", handleFullscreenChange);
-    document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
-    document.addEventListener("mozfullscreenchange", handleFullscreenChange);
-
-    return () => {
-      document.removeEventListener("fullscreenchange", handleFullscreenChange);
-      document.removeEventListener(
-        "webkitfullscreenchange",
-        handleFullscreenChange
-      );
-      document.removeEventListener(
-        "mozfullscreenchange",
-        handleFullscreenChange
-      );
-    };
-  }, [containerRef]);
-
-  if (!containerRect) {
+  // Calcular containerRect diretamente no render
+  if (!containerRef.current) {
     return null;
   }
 
+  const containerRect = containerRef.current.getBoundingClientRect();
+
+  console.log('🎨 RENDERIZANDO SVG:', {
+  connections: connections.length,
+  componentes: componentes.length,
+  containerWidth: containerRect.width,
+  containerHeight: containerRect.height,
+  modoEdicao,
+});
+
   return (
     <svg
-      className={`absolute inset-0 w-full h-full z-20 ${className}`}
-      style={{
-        pointerEvents: modoEdicao ? "auto" : "none",
-      }}
+  key={`svg-${containerRect.width}-${containerRect.height}`}
+  className={`absolute inset-0 w-full h-full ${className}`}
+  style={{
+    pointerEvents: modoEdicao ? "auto" : "none",
+    zIndex: 999,  // ✅ FORÇA Z-INDEX ALTO
+    background: 'none',
+    opacity: 1,
+    visibility: 'visible',
+  }}
       preserveAspectRatio="xMidYMid meet"
     >
       {/* Definições de markers */}
@@ -253,6 +192,21 @@ export function ConexoesDiagrama({
       {connections.map((connection) => {
         const fromComponent = componentes.find((c) => c.id === connection.from);
         const toComponent = componentes.find((c) => c.id === connection.to);
+
+        console.log('🔗 Renderizando conexão:', {
+          id: connection.id,
+          from: connection.from,
+          to: connection.to,
+          fromComponent: fromComponent?.nome,
+          toComponent: toComponent?.nome,
+          hasFromComponent: !!fromComponent,
+          hasToComponent: !!toComponent,
+        });
+
+        if (!fromComponent || !toComponent) {
+          console.warn('⚠️ Conexão ignorada (componente não encontrado):', connection);
+          return null;
+        }
 
         if (!fromComponent || !toComponent) {
           return null;
@@ -381,7 +335,12 @@ export function ConexoesDiagrama({
               strokeWidth={isHovered ? "6" : connectionStyle.strokeWidth}
               opacity={connectionStyle.opacity}
               fill="none"
-              style={{ pointerEvents: "stroke" }}
+              style={{
+                pointerEvents: "stroke",
+                opacity: 1,
+                visibility: 'visible',
+                display: 'block',
+               }}
               onMouseEnter={() => setHoveredConnection(connection.id)}
               onMouseLeave={() => setHoveredConnection(null)}
               onClick={(e) => {
