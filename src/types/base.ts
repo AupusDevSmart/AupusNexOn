@@ -21,6 +21,7 @@ export interface FormFieldProps {
   disabled?: boolean;
   mode?: 'create' | 'edit' | 'view';
   onMultipleChange?: (values: Record<string, any>) => void;
+  formData?: any; // Current form data for conditional logic
   [key: string]: any; // Allow additional props like estadoId, etc.
 }
 
@@ -35,7 +36,7 @@ export interface FormField {
   placeholder?: string;
   defaultValue?: any;
   options?: Array<{ value: string | number; label: string }>;
-  validation?: (value: any) => string | null;
+  validation?: (value: any, formData?: any) => string | null;
   render?: (props: FormFieldProps) => ReactNode;
   group?: string;
   dependencies?: string[];
@@ -45,6 +46,8 @@ export interface FormField {
   max?: string | number;
   component?: any;
   componentProps?: any;
+  conditionalRender?: (formData: any) => boolean; // Show/hide field based on form data
+  getOptions?: (formData: any) => Array<{ value: string | number; label: string }>; // Dynamic options
 }
 
 /**

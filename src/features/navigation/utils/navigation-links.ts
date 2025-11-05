@@ -173,6 +173,14 @@ export const navigationLinks: Array<NavigationLink> = [
         label: "Equipamentos",
         hint: "Gerenciar Equipamentos",
       },
+      {
+        key: "cadastros-concessionarias",
+        featureKey: "Concessionarias",
+        path: "/cadastros/concessionarias",
+        icon: Zap,
+        label: "Concessionárias",
+        hint: "Gerenciar Concessionárias de Energia",
+      },
     ],
   },
   // {

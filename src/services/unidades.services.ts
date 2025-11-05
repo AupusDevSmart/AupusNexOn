@@ -1,8 +1,10 @@
 import { api } from '@/config/api';
 import {
-  UnidadeNexon,
   CreateUnidadeDto,
   UpdateUnidadeDto,
+} from '../features/unidades/types';
+import {
+  UnidadeNexon,
   FilterUnidadeDto,
   PaginatedUnidadeResponse,
   UnidadeStats,
@@ -56,12 +58,26 @@ class UnidadesService {
   // Criar nova unidade
   async criarUnidade(dados: CreateUnidadeDto): Promise<UnidadeNexon> {
     try {
+      // 🔍 LOG DETALHADO - Dados antes de enviar
+      console.log('🏁 [FRONTEND SERVICE - CREATE] ===== INÍCIO =====');
+      console.log('📦 [FRONTEND SERVICE - CREATE] DTO completo:', JSON.stringify(dados, null, 2));
+      console.log('🔑 [FRONTEND SERVICE - CREATE] concessionaria_id:', dados.concessionaria_id);
+      console.log('🔍 [FRONTEND SERVICE - CREATE] Tipo:', typeof dados.concessionaria_id);
+      console.log('📝 [FRONTEND SERVICE - CREATE] É undefined?', dados.concessionaria_id === undefined);
+      console.log('📝 [FRONTEND SERVICE - CREATE] É null?', dados.concessionaria_id === null);
+      console.log('📝 [FRONTEND SERVICE - CREATE] É string vazia?', dados.concessionaria_id === '');
+
       const response = await api.post(this.baseUrl, dados);
+
+      console.log('✅ [FRONTEND SERVICE - CREATE] Resposta recebida');
+      const result = response.data.data || response.data;
+      console.log('🔑 [FRONTEND SERVICE - CREATE] concessionariaId na resposta:', result.concessionariaId);
+      console.log('🏁 [FRONTEND SERVICE - CREATE] ===== FIM =====');
 
       // Exibir sucesso
       alert('Unidade cadastrada com sucesso!');
 
-      return response.data.data || response.data;
+      return result;
     } catch (error) {
       console.error('❌ [UnidadesService] Erro ao criar unidade:', error);
       throw error;
@@ -71,7 +87,7 @@ class UnidadesService {
   // Atualizar unidade
   async atualizarUnidade(id: string, dados: UpdateUnidadeDto): Promise<UnidadeNexon> {
     try {
-      const response = await api.patch(`${this.baseUrl}/${id}`, dados);
+      const response = await api.put(`${this.baseUrl}/${id}`, dados);
 
       // Exibir sucesso
       alert('Unidade atualizada com sucesso!');
@@ -173,21 +189,18 @@ class UnidadesService {
       return false;
     }
 
-    if ('localizacao' in dados && dados.localizacao) {
-      const { latitude, longitude } = dados.localizacao;
-      if (latitude < -90 || latitude > 90) {
+    if ('latitude' in dados && dados.latitude !== undefined) {
+      if (dados.latitude < -90 || dados.latitude > 90) {
         alert('Latitude deve estar entre -90 e 90.');
-        return false;
-      }
-      if (longitude < -180 || longitude > 180) {
-        alert('Longitude deve estar entre -180 e 180.');
         return false;
       }
     }
 
-    if ('pontosMedicao' in dados && dados.pontosMedicao && dados.pontosMedicao.length === 0) {
-      alert('Pelo menos um ponto de medição é obrigatório.');
-      return false;
+    if ('longitude' in dados && dados.longitude !== undefined) {
+      if (dados.longitude < -180 || dados.longitude > 180) {
+        alert('Longitude deve estar entre -180 e 180.');
+        return false;
+      }
     }
 
     return true;
@@ -221,7 +234,7 @@ class UnidadesService {
         return Array.isArray(data) ? data : [];
       }
     } catch (error: any) {
-      console.error(`❌ [UnidadesService] Erro ao buscar unidades por planta ${cleanPlantaId}:`, error);
+      console.error(`❌ [UnidadesService] Erro ao buscar unidades por planta ${plantaId}:`, error);
       // Retornar array vazio em vez de throw para não quebrar o UI
       return [];
     }

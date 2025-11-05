@@ -64,4 +64,7 @@ export type Permissao =
   | "MinhasUsinas"
   | "Dashboard"
   | "SCADA"
-  | "supervisorio";
+  | "supervisorio"
+  | "Plantas"
+  | "Equipamentos"
+  | "Concessionarias";
