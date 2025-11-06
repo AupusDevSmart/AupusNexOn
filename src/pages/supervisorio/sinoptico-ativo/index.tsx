@@ -37,6 +37,7 @@ import { A966Modal } from "@/features/supervisorio/components/a966-modal";
 import { ConexoesDiagrama } from "@/features/supervisorio/components/conexoes-diagrama";
 import { DisjuntorModal } from "@/features/supervisorio/components/disjuntor-modal";
 import { InversorModal } from "@/features/supervisorio/components/inversor-modal";
+import { InversorMqttDataModal } from "@/features/equipamentos/components/InversorMqttDataModal";
 import { LandisGyrModal } from "@/features/supervisorio/components/landisgyr-modal";
 import { M160Modal } from "@/features/supervisorio/components/m160-modal";
 import { M300Modal } from "@/features/supervisorio/components/m300-modal";
@@ -1429,6 +1430,8 @@ export function SinopticoAtivoPage() {
                 equipamento_id: equipamentoId,
                 fabricante: eq.fabricante,
                 modelo: eq.modelo,
+                mqtt_topico: eq.topico_mqtt,
+                mqtt_habilitado: eq.mqtt_habilitado,
                 ...eq.propriedades,
               },
             };
@@ -1507,6 +1510,10 @@ export function SinopticoAtivoPage() {
   const [componenteSelecionado, setComponenteSelecionado] =
     useState<ComponenteDU | null>(null);
   const [diagramaFullscreen, setDiagramaFullscreen] = useState(false);
+
+  // Estados para modal MQTT do inversor
+  const [inversorMqttModalOpen, setInversorMqttModalOpen] = useState(false);
+  const [selectedInversorMqttId, setSelectedInversorMqttId] = useState<string | null>(null);
 
   // Estados para o modo de edição
   const [modoEdicao, setModoEdicao] = useState(false);
@@ -2187,7 +2194,17 @@ export function SinopticoAtivoPage() {
   // Função principal de clique em componente - CORRIGIDO + MQTT
   const handleComponenteClick = useCallback(
     (componente: ComponenteDU, event?: React.MouseEvent) => {
+      console.log('🖱️ ========================================');
+      console.log('🖱️ CLIQUE NO COMPONENTE DETECTADO!');
+      console.log('🖱️ ========================================');
+      console.log('📦 Componente completo:', componente);
+      console.log('📋 Nome:', componente.nome);
+      console.log('🏷️ Tipo:', componente.tipo);
+      console.log('💾 Dados:', componente.dados);
+      console.log('🆔 ID:', componente.id);
+
       if (modoEdicao) {
+        console.log('✏️ Modo edição ativo - ignorando lógica de modal');
         if (modoFerramenta === "selecionar") {
           setComponenteEditando(componente.id);
         } else if (modoFerramenta === "conectar" && event) {
@@ -2200,20 +2217,65 @@ export function SinopticoAtivoPage() {
       setComponenteSelecionado(componente);
 
       // ============================================
+      // NOVA LÓGICA: Detectar Inversor com MQTT Habilitado
+      // ============================================
+      console.log('🔍 ========================================');
+      console.log('🔍 VERIFICANDO SE É INVERSOR COM MQTT');
+      console.log('🔍 ========================================');
+      console.log('❓ É INVERSOR?', componente.tipo === 'INVERSOR');
+      console.log('❓ Tem dados?', !!componente.dados);
+      console.log('❓ MQTT habilitado?', componente.dados?.mqtt_habilitado);
+      console.log('❓ Tem equipamento_id?', componente.dados?.equipamento_id);
+      console.log('❓ Tópico MQTT:', componente.dados?.mqtt_topico);
+
+      // Se for um inversor E tiver MQTT habilitado, abre o modal de dados MQTT
+      if (componente.tipo === 'INVERSOR' &&
+          componente.dados?.mqtt_habilitado === true &&
+          componente.dados?.equipamento_id) {
+        console.log('✅ ========================================');
+        console.log('✅ CONDIÇÕES ATENDIDAS! ABRINDO MODAL MQTT');
+        console.log('✅ ========================================');
+        console.log('🔌 Equipamento ID:', componente.dados.equipamento_id);
+        console.log('📡 Tópico MQTT:', componente.dados.mqtt_topico);
+
+        setSelectedInversorMqttId(componente.dados.equipamento_id);
+        setInversorMqttModalOpen(true);
+
+        console.log('✅ Estado atualizado - modal MQTT deve abrir agora!');
+        return; // Não abre o modal padrão
+      } else {
+        console.log('❌ ========================================');
+        console.log('❌ CONDIÇÕES NÃO ATENDIDAS - MODAL PADRÃO');
+        console.log('❌ ========================================');
+        if (componente.tipo !== 'INVERSOR') {
+          console.log('❌ Razão: Não é um inversor (tipo:', componente.tipo + ')');
+        } else if (!componente.dados?.mqtt_habilitado) {
+          console.log('❌ Razão: MQTT não está habilitado');
+        } else if (!componente.dados?.equipamento_id) {
+          console.log('❌ Razão: Não tem equipamento_id');
+        }
+      }
+
+      // ============================================
       // LÓGICA PARA DETECTAR TÓPICO MQTT E ABRIR MODAL CORRETO
       // ============================================
       // Verifica se o componente tem um 'tag' (tópico MQTT)
       // e abre o modal específico baseado no tópico
 
       const tag = (componente as any).tag || '';
+      console.log('🏷️ Tag do componente:', tag);
 
       if (tag.includes('M160')) {
+        console.log('📂 Abrindo modal M160');
         setModalAberto('M160');
       } else if (tag.includes('a966/state') && !tag.includes('LANDIS')) {
+        console.log('📂 Abrindo modal A966');
         setModalAberto('A966');
       } else if (tag.includes('LANDIS')) {
+        console.log('📂 Abrindo modal LANDIS_E750');
         setModalAberto('LANDIS_E750');
       } else {
+        console.log('📂 Abrindo modal do tipo:', componente.tipo);
         // Fallback para o tipo original
         setModalAberto(componente.tipo);
       }
@@ -3626,6 +3688,13 @@ export function SinopticoAtivoPage() {
           onClose={fecharModal}
           dados={dadosInversor}
           nomeComponente={componenteSelecionado?.nome || ""}
+        />
+
+        {/* Modal MQTT de Dados do Inversor (Real-time) */}
+        <InversorMqttDataModal
+          equipamentoId={selectedInversorMqttId}
+          open={inversorMqttModalOpen}
+          onOpenChange={setInversorMqttModalOpen}
         />
 
         <DisjuntorModal

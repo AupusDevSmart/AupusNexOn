@@ -192,36 +192,36 @@ export function ConexoesDiagrama({
 }, [containerRef]);
 
   if (!containerRect) {
-    console.log('❌ ConexoesDiagrama: containerRect é NULL');
+    // console.log('❌ ConexoesDiagrama: containerRect é NULL');
     return null;
   }
 
-  console.log('✅ ConexoesDiagrama RENDERIZANDO:');
-  console.log('   - Número de conexões:', connections.length);
-  console.log('   - Número de componentes:', componentes.length);
-  console.log('   - Container Width:', containerRect.width);
-  console.log('   - Container Height:', containerRect.height);
-  console.log('   - Modo Edição:', modoEdicao);
+  // console.log('✅ ConexoesDiagrama RENDERIZANDO:');
+  // console.log('   - Número de conexões:', connections.length);
+  // console.log('   - Número de componentes:', componentes.length);
+  // console.log('   - Container Width:', containerRect.width);
+  // console.log('   - Container Height:', containerRect.height);
+  // console.log('   - Modo Edição:', modoEdicao);
 
   // Log de debug para cada conexão
-connections.forEach((conn, index) => {
-  const fromComp = componentes.find(c => c.id === conn.from);
-  const toComp = componentes.find(c => c.id === conn.to);
-  
-  if (fromComp && toComp) {
-    const fromX = (fromComp.posicao.x / 100) * containerRect.width;
-    const fromY = (fromComp.posicao.y / 100) * containerRect.height;
-    const toX = (toComp.posicao.x / 100) * containerRect.width;
-    const toY = (toComp.posicao.y / 100) * containerRect.height;
-    
-    console.log(`   📍 Conexão ${index + 1}:`, {
-      from: fromComp.nome,
-      to: toComp.nome,
-      fromPos: `(${fromX.toFixed(0)}, ${fromY.toFixed(0)})`,
-      toPos: `(${toX.toFixed(0)}, ${toY.toFixed(0)})`
-    });
-  }
-});
+// connections.forEach((conn, index) => {
+//   const fromComp = componentes.find(c => c.id === conn.from);
+//   const toComp = componentes.find(c => c.id === conn.to);
+
+//   if (fromComp && toComp) {
+//     const fromX = (fromComp.posicao.x / 100) * containerRect.width;
+//     const fromY = (fromComp.posicao.y / 100) * containerRect.height;
+//     const toX = (toComp.posicao.x / 100) * containerRect.width;
+//     const toY = (toComp.posicao.y / 100) * containerRect.height;
+
+//     console.log(`   📍 Conexão ${index + 1}:`, {
+//       from: fromComp.nome,
+//       to: toComp.nome,
+//       fromPos: `(${fromX.toFixed(0)}, ${fromY.toFixed(0)})`,
+//       toPos: `(${toX.toFixed(0)}, ${toY.toFixed(0)})`
+//     });
+//   }
+// });
 
 
   return (
