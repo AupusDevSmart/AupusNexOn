@@ -1240,6 +1240,58 @@ case "RELE":
           </svg>
         );
 
+      case "PAINEL_SOLAR":
+      case "placa_solar":
+        // Módulo Fotovoltaico
+        return (
+          <svg
+            width="40"
+            height="36"
+            viewBox="0 0 200 180"
+            className="drop-shadow-sm"
+          >
+            {/* Retângulo externo (módulo fotovoltaico) */}
+            <rect
+              x="20"
+              y="20"
+              width="160"
+              height="120"
+              className={`${statusClasses.stroke} fill-background`}
+              strokeWidth="2.5"
+            />
+
+            {/* Triângulo invertido (estilo envelope - ponta no meio) */}
+            <polygon
+              points="20,20 100,80 180,20"
+              className={statusClasses.stroke}
+              strokeWidth="2.5"
+              fill="none"
+            />
+
+            {/* Linha vertical de conexão */}
+            <line
+              x1="100"
+              y1="140"
+              x2="100"
+              y2="170"
+              className={statusClasses.stroke}
+              strokeWidth="2.5"
+            />
+
+            {/* Texto "PV" */}
+            <text
+              x="100"
+              y="130"
+              textAnchor="middle"
+              fontSize="12"
+              fontWeight="bold"
+              className={statusClasses.fill}
+            >
+              PV
+            </text>
+          </svg>
+        );
+
       default:
         return (
           <svg
