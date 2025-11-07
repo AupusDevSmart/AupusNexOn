@@ -152,14 +152,25 @@ export function BaseForm({
       return field.defaultValue;
     }
 
-    if (typeof value === 'string') {
-      return value;
+    // For text inputs, return empty string; for selects/other types, return actual value or undefined
+    if (field?.type === 'text' || field?.type === 'email' || field?.type === 'number' || field?.type === 'password' || field?.type === 'textarea') {
+      return value !== undefined && value !== null ? value : '';
     }
 
-    return value !== undefined && value !== null ? value : '';
+    return value !== undefined && value !== null ? value : undefined;
   };
 
   const visibleFields = fields.filter((field) => {
+    // Check conditionalRender (new property for dynamic visibility)
+    if ((field as any).conditionalRender) {
+      try {
+        return (field as any).conditionalRender(data);
+      } catch (error) {
+        console.warn('Erro ao avaliar conditionalRender:', field.key, error);
+        return false;
+      }
+    }
+
     if ((field as any).showOnlyOnMode && mode) {
       const showOnlyOnMode = Array.isArray((field as any).showOnlyOnMode)
         ? (field as any).showOnlyOnMode
@@ -269,6 +280,7 @@ export function BaseForm({
       error,
       mode,
       entity,
+      formData: data, // Add formData for conditional logic
       geral: getValue('geral'),
       recorrente: getValue('recorrente'),
       ...((field as any).dependencies && {
@@ -345,10 +357,21 @@ export function BaseForm({
         );
       
       case 'select':
+        // Get options dynamically if getOptions is defined, otherwise use static options
+        const selectOptions = (field as any).getOptions
+          ? (field as any).getOptions(data)
+          : field.options || [];
+
+        // Ensure value is always defined (undefined or string) to keep Select controlled
+        // Convert empty strings to undefined to prevent controlled/uncontrolled warnings
+        const selectValue = value !== undefined && value !== null && value !== '' && String(value).trim() !== ''
+          ? String(value)
+          : undefined;
+
         return (
           <Select
-            key={`${field.key}-${entity?.id || 'new'}-${value}`}
-            value={String(value || '')}
+            key={`${field.key}-${entity?.id || 'new'}-${selectValue || 'empty'}`}
+            value={selectValue}
             onValueChange={(newValue) => {
               handleFieldChange(field.key, newValue);
             }}
@@ -358,7 +381,7 @@ export function BaseForm({
               <SelectValue placeholder={field.placeholder || `Selecione ${field.label}`} />
             </SelectTrigger>
             <SelectContent>
-              {field.options?.map((option) => (
+              {selectOptions.map((option: any) => (
                 <SelectItem key={String(option.value)} value={String(option.value)}>
                   {option.label}
                 </SelectItem>

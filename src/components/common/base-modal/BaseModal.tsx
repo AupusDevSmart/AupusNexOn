@@ -93,13 +93,39 @@ export function BaseModal<T extends BaseEntity>({
     return initialData;
   }, [formFields]);
 
+  // Helper para normalizar dados da entity - converte strings vazias em undefined para Selects
+  const normalizeEntityData = useCallback((data: any) => {
+    const normalized: any = {};
+
+    Object.keys(data).forEach(key => {
+      const value = data[key];
+
+      // Se é string vazia, converter para undefined
+      if (value === '' || value === null) {
+        normalized[key] = undefined;
+      }
+      // Se é objeto, normalizar recursivamente
+      else if (typeof value === 'object' && !Array.isArray(value) && value !== null) {
+        normalized[key] = normalizeEntityData(value);
+      }
+      // Caso contrário, manter o valor
+      else {
+        normalized[key] = value;
+      }
+    });
+
+    return normalized;
+  }, []);
+
   // ✅ CORREÇÃO PRINCIPAL: useEffect simplificado que não reseta dados
   useEffect(() => {
-    // console.log('🔄 BaseModal: useEffect triggered - isOpen:', isOpen, 'initialized:', isInitializedRef.current);
+    console.log('🔄 BaseModal: useEffect triggered - isOpen:', isOpen, 'initialized:', isInitializedRef.current);
+    console.log('🔄 BaseModal: entity recebida:', entity);
+    console.log('🔄 BaseModal: mode:', mode);
 
     if (!isOpen) {
       // Modal fechado - limpar estado completamente
-      // console.log('🧹 BaseModal: Modal fechado, limpando estado');
+      console.log('🧹 BaseModal: Modal fechado, limpando estado');
       setFormData({});
       initialDataRef.current = {};
       setErrors({});
@@ -108,35 +134,51 @@ export function BaseModal<T extends BaseEntity>({
       return;
     }
 
-    // ✅ CORREÇÃO: Só inicializar uma vez por abertura do modal
-    if (isInitializedRef.current) {
-      // console.log('🔄 BaseModal: Já inicializado, ignorando');
+    // ✅ CORREÇÃO: Só inicializar uma vez por abertura do modal OU quando entity mudar
+    // Se estamos no modo edit/view e a entity mudou, precisamos reinicializar
+    const currentEntityId = entity && typeof entity === 'object' && 'id' in entity ? entity.id : null;
+    const shouldReinitialize = currentEntityId && initialDataRef.current.id !== currentEntityId;
+
+    if (isInitializedRef.current && !shouldReinitialize) {
+      console.log('🔄 BaseModal: Já inicializado e entity não mudou, ignorando');
       return;
+    }
+
+    if (shouldReinitialize) {
+      console.log('🔄 BaseModal: Entity mudou, reinicializando dados');
     }
 
     // Modal aberto - processar dados APENAS uma vez
     let initialData: any = {};
 
     if (entity && (isViewMode || isEditMode)) {
-      // console.log('📖 BaseModal: Modo view/edit, carregando entity:', entity);
-      initialData = { ...entity };
+      console.log('📖 BaseModal: Modo view/edit, carregando entity:', entity);
+      console.log('🔑 BaseModal: entity.concessionariaId ANTES normalização:', entity.concessionariaId);
+      // ✅ CORREÇÃO: Normalizar entity para converter strings vazias em undefined
+      initialData = normalizeEntityData(entity);
+      console.log('✨ BaseModal: Entity normalizada:', initialData);
+      console.log('🔑 BaseModal: initialData.concessionariaId APÓS normalização:', initialData.concessionariaId);
     } else if (entity && isCreateMode) {
-      // console.log('🆕 BaseModal: Modo create com entity inicial:', entity);
+      console.log('🆕 BaseModal: Modo create com entity inicial:', entity);
       const baseData = createInitialData();
-      initialData = { ...baseData, ...entity };
+      // ✅ CORREÇÃO: Normalizar entity antes de mesclar
+      const normalizedEntity = normalizeEntityData(entity);
+      initialData = { ...baseData, ...normalizedEntity };
+      console.log('✨ BaseModal: Entity normalizada (create):', initialData);
     } else if (isCreateMode) {
-      // console.log('🆕 BaseModal: Modo create vazio');
+      console.log('🆕 BaseModal: Modo create vazio');
       initialData = createInitialData();
     }
 
-    // console.log('📝 BaseModal: Definindo formData inicial para:', initialData);
+    console.log('📝 BaseModal: Definindo formData inicial para:', initialData);
+    console.log('🔑 BaseModal: formData.concessionariaId que será setado:', initialData.concessionariaId);
     setFormData(initialData);
     initialDataRef.current = initialData;
     setErrors({});
     setHasUnsavedChanges(false);
     isInitializedRef.current = true; // ← MARCAR como inicializado
 
-  }, [isOpen]); // ✅ CORREÇÃO: Só depende de isOpen, não de entity/mode
+  }, [isOpen, entity, mode, isViewMode, isEditMode, isCreateMode, createInitialData]); // ✅ CORREÇÃO: Incluir entity e mode nas dependências
 
   // ✅ CORREÇÃO: useEffect separado para detectar mudanças
   useEffect(() => {
@@ -161,11 +203,11 @@ export function BaseModal<T extends BaseEntity>({
       }
       
       if (field.validation) {
-        const value = field.key.includes('.') 
+        const value = field.key.includes('.')
           ? data[field.key.split('.')[0]]?.[field.key.split('.')[1]]
           : data[field.key];
-        
-        const error = field.validation(value);
+
+        const error = field.validation(value, data); // Pass formData as second parameter
         if (error) {
           newErrors[field.key] = error;
         }
@@ -177,19 +219,30 @@ export function BaseModal<T extends BaseEntity>({
 
   const handleSubmit = useCallback(async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    
+
     if (isLoading) {
-      // console.log('⏳ [BASE MODAL] Já está processando, ignorando submissão');
+      console.log('⏳ [BASE MODAL] Já está processando, ignorando submissão');
       return;
     }
 
-    // console.log('🚀 [BASE MODAL] Iniciando submissão:', formData);
+    console.log('🚀 [BASE MODAL] Iniciando submissão:', formData);
+    console.log('🚀 [BASE MODAL] Mode:', mode);
 
     const validationErrors = validateFields(formData);
     if (Object.keys(validationErrors).length > 0) {
-      // console.log('❌ [BASE MODAL] Erros de validação:', validationErrors);
+      console.log('❌ [BASE MODAL] Erros de validação:', validationErrors);
       setErrors(validationErrors);
       onValidationError?.(validationErrors);
+
+      // Mostrar toast com o primeiro erro
+      const firstError = Object.values(validationErrors)[0];
+      const { toast } = await import('@/hooks/use-toast');
+      toast({
+        title: "Erro de validação",
+        description: firstError,
+        variant: "destructive",
+      });
+
       return;
     }
 
@@ -197,11 +250,11 @@ export function BaseModal<T extends BaseEntity>({
       try {
         const canProceed = await onBeforeSubmit(formData);
         if (!canProceed) {
-          // console.log('🛑 [BASE MODAL] Submissão cancelada por onBeforeSubmit');
+          console.log('🛑 [BASE MODAL] Submissão cancelada por onBeforeSubmit');
           return;
         }
       } catch (error) {
-        // console.error('❌ [BASE MODAL] Erro em onBeforeSubmit:', error);
+        console.error('❌ [BASE MODAL] Erro em onBeforeSubmit:', error);
         return;
       }
     }
@@ -221,21 +274,22 @@ export function BaseModal<T extends BaseEntity>({
         delete filteredData.frequencia_personalizada;
       }
 
-      // console.log('📤 [BASE MODAL] Dados filtrados para envio:', filteredData);
-      // console.log('🚫 [BASE MODAL] Campos excluídos:', fieldsToExclude);
+      console.log('📤 [BASE MODAL] Dados filtrados para envio:', filteredData);
+      console.log('🚫 [BASE MODAL] Campos excluídos:', fieldsToExclude);
+      console.log('📞 [BASE MODAL] Chamando onSubmit...');
 
       await onSubmit(filteredData);
-      // console.log('✅ [BASE MODAL] Submissão concluída com sucesso');
-      
+      console.log('✅ [BASE MODAL] Submissão concluída com sucesso');
+
       onAfterSubmit?.(formData);
       setHasUnsavedChanges(false);
-      
+
     } catch (error) {
-      // console.error('❌ [BASE MODAL] Erro na submissão:', error);
+      console.error('❌ [BASE MODAL] Erro na submissão:', error);
     } finally {
       setIsSubmitting(false);
     }
-  }, [formData, isLoading, validateFields, onBeforeSubmit, onSubmit, onAfterSubmit, onValidationError, formFields]);
+  }, [formData, isLoading, validateFields, onBeforeSubmit, onSubmit, onAfterSubmit, onValidationError, formFields, mode]);
 
   const handleClose = useCallback(() => {
     if (isLoading) {
@@ -276,9 +330,12 @@ export function BaseModal<T extends BaseEntity>({
   const handleFormDataChange = useCallback((newData: any) => {
     // console.log('📝 BaseModal: FormData alterado:', newData);
     // console.log('🔍 BaseModal: Origem atual:', newData.origem);
-    
+    console.log('🔄 BaseModal: handleFormDataChange chamado');
+    console.log('🔑 BaseModal: concessionariaId no newData:', newData.concessionariaId);
+    console.log('🔍 BaseModal: Tipo:', typeof newData.concessionariaId);
+
     setFormData(newData);
-    
+
     // Limpar erros dos campos que foram alterados
     setErrors(prev => {
       const updatedErrors = { ...prev };

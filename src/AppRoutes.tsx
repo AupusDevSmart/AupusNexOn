@@ -58,6 +58,10 @@ const CadastroEquipamentosPage = lazy(() =>
   }))
 );
 
+const CadastroConcessionariasPage = lazy(() =>
+  import("@/pages/cadastros/concessionarias")
+);
+
 export const appRoutes = createBrowserRouter([
   {
     path: "/",
@@ -239,6 +243,16 @@ export const appRoutes = createBrowserRouter([
           <FeatureWrapper feature="Equipamentos">
             <Suspense fallback={<div>Carregando...</div>}>
               <CadastroEquipamentosPage />
+            </Suspense>
+          </FeatureWrapper>
+        ),
+      },
+      {
+        path: "cadastros/concessionarias",
+        element: (
+          <FeatureWrapper feature="Concessionarias">
+            <Suspense fallback={<div>Carregando...</div>}>
+              <CadastroConcessionariasPage />
             </Suspense>
           </FeatureWrapper>
         ),

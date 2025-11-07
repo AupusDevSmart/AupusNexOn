@@ -34,7 +34,8 @@ import type { A966Reading } from "@/components/equipment/A966/A966.types";
 import type { LandisGyrE750Reading } from "@/components/equipment/LandisGyr/LandisGyr.types";
 import type { M300Reading } from "@/components/equipment/M300/M300.types"; // Hook para histórico undo/redo - REMOVIDO
 import { A966Modal } from "@/features/supervisorio/components/a966-modal";
-import { ConexoesDiagrama } from "@/features/supervisorio/components/conexoes-diagrama";
+import { DomAnchoredConnectionsOverlay } from "@/features/supervisorio/components/DomAnchoredConnectionsOverlay";
+import "@/features/supervisorio/components/DomAnchoredConnectionsOverlay.css";
 import { DisjuntorModal } from "@/features/supervisorio/components/disjuntor-modal";
 import { InversorModal } from "@/features/supervisorio/components/inversor-modal";
 import { LandisGyrModal } from "@/features/supervisorio/components/landisgyr-modal";
@@ -45,7 +46,6 @@ import { SinopticoDiagrama } from "@/features/supervisorio/components/sinoptico-
 import { SinopticoGraficos } from "@/features/supervisorio/components/sinoptico-graficos";
 import { SinopticoIndicadores } from "@/features/supervisorio/components/sinoptico-indicadores";
 import { TransformadorModal } from "@/features/supervisorio/components/transformador-modal";
-import { DiagramaFullscreen } from "@/features/supervisorio/components/diagrama-fullscreen";
 // TEMPORÁRIO: MQTT comentado - implementar depois
 // import { useMqttWebSocket } from "@/hooks/useMqttWebSocket";
 import {
@@ -1326,7 +1326,6 @@ export function SinopticoAtivoPage() {
   const [unidadeAtual, setUnidadeAtual] = useState<Unidade | null>(null);
   // Abrir modal automaticamente se não tiver unidade selecionada
   const [modalSelecionarUnidade, setModalSelecionarUnidade] = useState(!ativoId);
-  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // TEMPORÁRIO: Hook comentado para evitar loop infinito - implementar carregamento depois
   // const {
@@ -1468,6 +1467,8 @@ export function SinopticoAtivoPage() {
           setComponentes(componentesCarregados);
           setConnections(conexoesCarregadas);
           console.log('✅ Diagrama carregado:', componentesCarregados.length, 'componentes,', conexoesCarregadas.length, 'conexões');
+          console.log('📊 [DEBUG] Componentes:', componentesCarregados);
+          console.log('🔗 [DEBUG] Conexões:', conexoesCarregadas);
         } catch (err) {
           console.error('❌ Erro ao carregar diagrama completo:', err);
           setComponentes([]);
@@ -1508,7 +1509,7 @@ export function SinopticoAtivoPage() {
   const [modalAberto, setModalAberto] = useState<string | null>(null);
   const [componenteSelecionado, setComponenteSelecionado] =
     useState<ComponenteDU | null>(null);
-
+  const [diagramaFullscreen, setDiagramaFullscreen] = useState(false);
 
   // Estados para o modo de edição
   const [modoEdicao, setModoEdicao] = useState(false);
@@ -1525,33 +1526,61 @@ export function SinopticoAtivoPage() {
   const [dragOffset, setDragOffset] = useState<Position>({ x: 0, y: 0 });
   const [componenteDragId, setComponenteDragId] = useState<string | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
-
-  // ADICIONE esta função logo após a declaração do canvasRef
-  const handleToggleFullscreen = useCallback((isOpen: boolean) => {
-    setIsFullscreen(isOpen);
-
-    // Forçar recálculo das dimensões após transição
-    setTimeout(() => {
-      if (canvasRef.current) {
-        // Disparar evento de resize para forçar recálculo
-        window.dispatchEvent(new Event('resize'));
-
-        // Log para debug
-        const rect = canvasRef.current.getBoundingClientRect();
-        console.log('📏 Canvas após toggle fullscreen:', {
-          width: rect.width,
-          height: rect.height,
-          isFullscreen: isOpen
-        });
-      }
-    }, 100);
-  }, []);
+  const diagramCardRef = useRef<HTMLDivElement>(null);
 
   // Helper para pegar o canvas correto baseado no contexto
   const getActiveCanvasRef = useCallback(() => {
     return canvasRef;
   }, []);
 
+  // Funções para gerenciar fullscreen nativo
+  const toggleFullscreen = useCallback(async () => {
+    if (!diagramCardRef.current) return;
+
+    try {
+      if (!document.fullscreenElement) {
+        console.log('🟢 [FULLSCREEN] Entrando em fullscreen...', {
+          diagramCardRef: !!diagramCardRef.current,
+          canvasRef: !!canvasRef.current,
+          conexoes: connections.length,
+          componentes: componentes.length
+        });
+        await diagramCardRef.current.requestFullscreen();
+        setDiagramaFullscreen(true);
+        console.log('🟢 [FULLSCREEN] Fullscreen ativado!');
+      } else {
+        console.log('🔴 [FULLSCREEN] Saindo do fullscreen...');
+        await document.exitFullscreen();
+        setDiagramaFullscreen(false);
+        console.log('🔴 [FULLSCREEN] Fullscreen desativado!');
+      }
+    } catch (error) {
+      console.error("❌ [FULLSCREEN] Erro ao alternar fullscreen:", error);
+    }
+  }, [connections.length, componentes.length]);
+
+  // Listener para mudanças no fullscreen (ESC, etc)
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const isFullscreen = !!document.fullscreenElement;
+      console.log('📺 [FULLSCREEN CHANGE EVENT]', {
+        isFullscreen,
+        fullscreenElement: document.fullscreenElement?.tagName,
+        canvasRef: !!canvasRef.current,
+        canvasDimensions: canvasRef.current ? {
+          width: canvasRef.current.offsetWidth,
+          height: canvasRef.current.offsetHeight,
+          boundingRect: canvasRef.current.getBoundingClientRect()
+        } : null
+      });
+      setDiagramaFullscreen(isFullscreen);
+    };
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+    };
+  }, []);
 
   // Estados para conexões
   const [connecting, setConnecting] = useState<{
@@ -3141,49 +3170,77 @@ export function SinopticoAtivoPage() {
 
                 {/* Diagrama Unifilar - MODO VISUALIZAÇÃO */}
                 <div className="lg:col-span-2 flex">
-                  <Card className="flex flex-col w-full min-h-[900px] !bg-black">
+                  <Card
+                    ref={diagramCardRef}
+                    className={`flex flex-col w-full min-h-[900px] !bg-black overflow-visible ${
+                      diagramaFullscreen
+                        ? 'fixed inset-0 z-50 m-0 rounded-none border-0'
+                        : ''
+                    }`}
+                  >
                     <div className="flex items-center justify-between p-4 pb-2 border-b flex-shrink-0 !bg-black">
                       <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
                         <Network className="h-5 w-5" />
-                        Diagrama Unifilar 
+                        Diagrama Unifilar {diagramaFullscreen && '- Tela Cheia'}
                       </h3>
                       <div className="flex items-center gap-2">
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => handleToggleFullscreen(true)}
+                          onClick={toggleFullscreen}
                           className="flex items-center gap-2"
                         >
-                          <Maximize className="h-4 w-4" />
-                          Tela Cheia
+                          {diagramaFullscreen ? (
+                            <>
+                              <Minimize className="h-4 w-4" />
+                              Sair
+                            </>
+                          ) : (
+                            <>
+                              <Maximize className="h-4 w-4" />
+                              Tela Cheia
+                            </>
+                          )}
                         </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={toggleModoEdicao}
-                          className="flex items-center gap-2"
-                        >
-                          <Edit3 className="h-4 w-4" />
-                          Editar
-                        </Button>
+                        {!diagramaFullscreen && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={toggleModoEdicao}
+                            className="flex items-center gap-2"
+                          >
+                            <Edit3 className="h-4 w-4" />
+                            Editar
+                          </Button>
+                        )}
                       </div>
                     </div>
 
                     <div
-                      key="canvas-normal"
-                      className="flex-1 relative bg-black min-h-[580px]"
+                      className={`flex-1 relative bg-black overflow-visible ${
+                        diagramaFullscreen ? 'h-[calc(100vh-73px)]' : 'min-h-[580px]'
+                      }`}
                       ref={canvasRef}
-                      style={{ minHeight: '580px', minWidth: '100%' }}
                     >
+                      {(() => {
+                        console.log('🚀 [INDEX] RENDERIZANDO DIAGRAMA VISUALIZAÇÃO:', {
+                          componentes: componentes.length,
+                          connections: connections.length,
+                          modoEdicao,
+                          diagramaFullscreen,
+                          canvasRef: !!canvasRef.current
+                        });
+                        return null;
+                      })()}
+
                       {/* COMPONENTE DE CONEXÕES PARA MODO VISUALIZAÇÃO */}
-                      <ConexoesDiagrama
-                        key="conexoes-normal"
+                      <DomAnchoredConnectionsOverlay
                         connections={connections}
                         componentes={componentes}
                         containerRef={canvasRef}
                         modoEdicao={false}
                         onEdgeClick={handleEdgeClick}
-                        className="diagram-svg"
+                        isFullscreen={diagramaFullscreen}
                       />
 
                       <SinopticoDiagrama
@@ -3234,9 +3291,9 @@ export function SinopticoAtivoPage() {
                   </div>
                 </div>
 
-                <div className="relative flex-1 min-h-[580px] bg-black overflow-visible" ref={canvasRef} style={{ minHeight: '580px', minWidth: '100%' }}>
+                <div className="relative flex-1 min-h-[580px] bg-black overflow-visible" ref={canvasRef}>
                   {/* COMPONENTE DE CONEXÕES PARA MODO EDIÇÃO */}
-                  <ConexoesDiagrama
+                  <DomAnchoredConnectionsOverlay
                     connections={connections}
                     componentes={componentes}
                     containerRef={canvasRef}
@@ -3244,7 +3301,6 @@ export function SinopticoAtivoPage() {
                     connecting={connecting}
                     onRemoverConexao={removerConexao}
                     onEdgeClick={handleEdgeClick}
-                    className="diagram-svg"
                   />
 
                   <SinopticoDiagrama
@@ -3256,13 +3312,14 @@ export function SinopticoAtivoPage() {
                   />
 
                   {/* Componentes no Modo Edição */}
-                  <div className="absolute inset-0" style={{ zIndex: 10 }}>
+                  <div className="absolute inset-0" style={{ zIndex: 40 }}>
                     {componentes
                       .filter(comp => comp.tipo !== "PONTO" && comp.tipo !== "JUNCTION")
                       .filter(comp => comp.posicao && typeof comp.posicao.x === 'number' && typeof comp.posicao.y === 'number')
                       .map((componente) => (
                         <div
                           key={componente.id}
+                          data-node-id={componente.id}
                           className="absolute"
                           style={{
                             left: `${componente.posicao.x}%`,
@@ -3294,6 +3351,7 @@ export function SinopticoAtivoPage() {
                       .map((componente) => (
                         <div
                           key={`overlay-junction-${componente.id}`}
+                          data-node-id={componente.id}
                           className="absolute"
                           style={{
                             left: `${componente.posicao.x}%`,
@@ -3681,36 +3739,6 @@ export function SinopticoAtivoPage() {
           currentPlantaId={plantaAtual?.id}
           currentUnidadeId={unidadeId}
         />
-        {/* Fullscreen Modal */}
-      <DiagramaFullscreen
-        isOpen={isFullscreen}
-        onClose={() => handleToggleFullscreen(false)}
-        titulo="Diagrama Unifilar"
-      >
-        <div
-          key="canvas-fullscreen"
-          className="relative w-full h-full bg-black"
-          ref={canvasRef}
-        >
-          <ConexoesDiagrama
-            key="conexoes-fullscreen"
-            connections={connections}
-            componentes={componentes}
-            containerRef={canvasRef}
-            modoEdicao={false}
-            onEdgeClick={handleEdgeClick}
-            className=""
-          />
-
-          <SinopticoDiagrama
-            componentes={componentes}
-            onComponenteClick={handleComponenteClick}
-            modoEdicao={false}
-            componenteEditando={null}
-            connecting={null}
-          />
-        </div>
-      </DiagramaFullscreen>
 
       </Layout.Main>
     </Layout>

@@ -22,11 +22,10 @@ export const unidadesTableColumns: TableColumn<Unidade>[] = [
             {unidade.nome}
           </span>
         </div>
-        {unidade.descricao && (
-          <div className="text-xs text-muted-foreground truncate max-w-48" title={unidade.descricao}>
-            {unidade.descricao}
-          </div>
-        )}
+        <div className="text-xs text-muted-foreground">
+          {unidade.tipo}
+          {unidade.potencia && ` • ${unidade.potencia} kW`}
+        </div>
       </div>
     )
   },
@@ -70,11 +69,9 @@ export const unidadesTableColumns: TableColumn<Unidade>[] = [
                 {unidade.cidade}/{unidade.estado}
               </span>
             </div>
-            {unidade.bairro && (
-              <div className="text-xs text-muted-foreground">
-                {unidade.bairro}
-              </div>
-            )}
+            <div className="text-xs text-muted-foreground">
+              Lat: {unidade.latitude.toFixed(4)}, Lng: {unidade.longitude.toFixed(4)}
+            </div>
           </>
         ) : (
           <span className="text-sm text-muted-foreground">
@@ -85,26 +82,51 @@ export const unidadesTableColumns: TableColumn<Unidade>[] = [
     )
   },
   {
-    key: 'endereco',
-    label: 'Endereço',
+    key: 'energia',
+    label: 'Energia',
     hideOnMobile: true,
     render: (unidade) => (
       <div className="space-y-1">
-        {unidade.logradouro ? (
-          <>
-            <div className="text-sm truncate max-w-48" title={`${unidade.logradouro}${unidade.numero ? `, ${unidade.numero}` : ''}`}>
-              {unidade.logradouro}{unidade.numero ? `, ${unidade.numero}` : ''}
-            </div>
-            {unidade.cep && (
-              <div className="text-xs text-muted-foreground">
-                CEP: {unidade.cep}
-              </div>
-            )}
-          </>
-        ) : (
-          <span className="text-sm text-muted-foreground">
-            Endereço não informado
-          </span>
+        {unidade.tipoUnidade && (
+          <div className="text-sm font-medium">
+            {unidade.tipoUnidade}
+          </div>
+        )}
+        {unidade.demandaCarga && (
+          <div className="text-xs text-muted-foreground">
+            Carga: {unidade.demandaCarga} kW
+          </div>
+        )}
+        {unidade.demandaGeracao && (
+          <div className="text-xs text-muted-foreground">
+            Geração: {unidade.demandaGeracao} kW
+          </div>
+        )}
+        {unidade.grupo && (
+          <div className="text-xs text-muted-foreground">
+            Grupo {unidade.grupo} {unidade.subgrupo && `- ${unidade.subgrupo}`}
+          </div>
+        )}
+      </div>
+    )
+  },
+  {
+    key: 'status',
+    label: 'Status',
+    hideOnMobile: true,
+    render: (unidade) => (
+      <div className="space-y-1">
+        <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+          unidade.status === 'ativo'
+            ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+            : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+        }`}>
+          {unidade.status === 'ativo' ? '✓ Ativo' : '✗ Inativo'}
+        </div>
+        {unidade.irrigante && (
+          <div className="text-xs text-blue-600">
+            💧 Irrigante
+          </div>
         )}
       </div>
     )

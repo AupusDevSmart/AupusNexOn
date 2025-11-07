@@ -1,0 +1,193 @@
+/**
+ * DomAnchoredConnectionsOverlay.css
+ *
+ * Regras CSS permanentes para o componente de conexões.
+ * Aplicadas em TODOS os modos (normal, fullscreen, pan, zoom).
+ *
+ * ⚠️ SEM !important - Mantém previsibilidade e facilita override se necessário.
+ */
+
+/* ========================================
+   SVG OVERLAY PRINCIPAL
+   ======================================== */
+
+.nexon-connections-overlay {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 40 !important;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Z-index mais alto em fullscreen para ficar acima de todos os elementos */
+.nexon-connections-overlay[data-fullscreen="true"],
+:fullscreen .nexon-connections-overlay,
+:-webkit-full-screen .nexon-connections-overlay,
+:-moz-full-screen .nexon-connections-overlay,
+:-ms-fullscreen .nexon-connections-overlay {
+  z-index: 60 !important;
+}
+
+/* ========================================
+   PATHS (LINHAS)
+   ======================================== */
+
+.nexon-connection-path {
+  stroke: #3b82f6 !important;
+  stroke-width: 3px !important;
+  fill: none !important;
+  vector-effect: non-scaling-stroke !important;
+  opacity: 1 !important;
+  display: block !important;
+  visibility: visible !important;
+  pointer-events: stroke;
+  cursor: pointer;
+  transition: stroke-width 0.2s ease-in-out, opacity 0.2s ease-in-out;
+}
+
+.nexon-connection-path:hover {
+  stroke-width: 5px;
+  opacity: 1;
+}
+
+/* ========================================
+   DARK MODE
+   ======================================== */
+
+html.dark .nexon-connection-path {
+  stroke: #60a5fa;
+}
+
+/* ========================================
+   CÍRCULOS DE CONEXÃO
+   ======================================== */
+
+.nexon-connection-point {
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+  opacity: 0.8;
+  transition: r 0.2s ease-in-out, opacity 0.2s ease-in-out;
+}
+
+/* ========================================
+   LABELS DE HOVER
+   ======================================== */
+
+.nexon-connection-label {
+  pointer-events: none;
+  font-family: system-ui, -apple-system, sans-serif;
+  text-rendering: optimizeLegibility;
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+}
+
+/* ========================================
+   ESTADOS DE CONEXÃO (POR COR)
+   ======================================== */
+
+/* Alerta (laranja) */
+.nexon-connection-path[stroke="#f59e0b"] {
+  animation: pulse-warning 2s ease-in-out infinite;
+}
+
+/* Erro (vermelho) */
+.nexon-connection-path[stroke="#ef4444"] {
+  animation: pulse-error 1.5s ease-in-out infinite;
+}
+
+/* ========================================
+   ANIMAÇÕES
+   ======================================== */
+
+@keyframes pulse-warning {
+  0%, 100% { opacity: 0.9; }
+  50% { opacity: 1; }
+}
+
+@keyframes pulse-error {
+  0%, 100% { opacity: 0.9; }
+  50% { opacity: 1; }
+}
+
+/* ========================================
+   MODO EDIÇÃO
+   ======================================== */
+
+.nexon-connections-overlay[data-edit-mode="true"] .nexon-connection-path {
+  pointer-events: stroke;
+}
+
+.nexon-connections-overlay[data-edit-mode="false"] {
+  pointer-events: none;
+}
+
+/* ========================================
+   DARK MODE - LABELS
+   ======================================== */
+
+@media (prefers-color-scheme: dark) {
+  .nexon-connection-label rect {
+    fill: rgba(0, 0, 0, 0.95);
+  }
+}
+
+html.dark .nexon-connection-label rect {
+  fill: rgba(0, 0, 0, 0.95);
+}
+
+/* ========================================
+   RESPONSIVIDADE
+   ======================================== */
+
+@media (max-width: 768px) {
+  .nexon-connection-path {
+    stroke-width: 4px;
+  }
+
+  .nexon-connection-path:hover {
+    stroke-width: 6px;
+  }
+
+  .nexon-connection-point {
+    r: 5;
+  }
+}
+
+/* ========================================
+   ACESSIBILIDADE
+   ======================================== */
+
+@media (prefers-contrast: high) {
+  .nexon-connection-path {
+    stroke-width: 4px;
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nexon-connection-path,
+  .nexon-connection-point {
+    transition: none;
+    animation: none;
+  }
+}
+
+/* ========================================
+   IMPRESSÃO
+   ======================================== */
+
+@media print {
+  .nexon-connections-overlay {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .nexon-connection-label {
+    display: none;
+  }
+}

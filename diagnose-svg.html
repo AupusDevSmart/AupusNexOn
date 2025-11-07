@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Diagnóstico SVG - Copie e cole no console</title>
+    <style>
+        body {
+            font-family: monospace;
+            background: #1a1a1a;
+            color: #00ff00;
+            padding: 20px;
+        }
+        pre {
+            background: #000;
+            padding: 15px;
+            border: 1px solid #00ff00;
+            overflow-x: auto;
+        }
+        button {
+            background: #0066cc;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            margin: 10px;
+        }
+        button:hover {
+            background: #0052a3;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 Diagnóstico SVG - Fullscreen</h1>
+    <p>Copie o código abaixo e cole no console ENQUANTO ESTIVER EM FULLSCREEN:</p>
+
+    <button onclick="navigator.clipboard.writeText(document.getElementById('diagnostic-code').textContent)">
+        📋 Copiar Código
+    </button>
+
+    <pre id="diagnostic-code">
+const svg = document.querySelector('.nexon-connections-overlay');
+const svgRect = svg?.getBoundingClientRect();
+const container = svg?.parentElement;
+const containerRect = container?.getBoundingClientRect();
+const paths = svg?.querySelectorAll('path');
+const firstPath = paths?.[0];
+
+console.clear();
+console.log('📊 ========== DIAGNÓSTICO FULLSCREEN SVG ==========\n');
+
+console.log('1️⃣ SVG ELEMENT:', {
+  existe: !!svg,
+  tagName: svg?.tagName,
+  className: svg?.className,
+  'data-edit-mode': svg?.getAttribute('data-edit-mode'),
+  viewBox: svg?.getAttribute('viewBox')
+});
+
+console.log('\n2️⃣ SVG COMPUTED STYLE:', {
+  position: svg ? window.getComputedStyle(svg).position : null,
+  display: svg ? window.getComputedStyle(svg).display : null,
+  visibility: svg ? window.getComputedStyle(svg).visibility : null,
+  opacity: svg ? window.getComputedStyle(svg).opacity : null,
+  zIndex: svg ? window.getComputedStyle(svg).zIndex : null,
+  pointerEvents: svg ? window.getComputedStyle(svg).pointerEvents : null
+});
+
+console.log('\n3️⃣ SVG BOUNDING RECT:', {
+  x: svgRect?.x.toFixed(1),
+  y: svgRect?.y.toFixed(1),
+  width: svgRect?.width.toFixed(1),
+  height: svgRect?.height.toFixed(1),
+  top: svgRect?.top.toFixed(1),
+  left: svgRect?.left.toFixed(1)
+});
+
+console.log('\n4️⃣ CONTAINER:', {
+  existe: !!container,
+  tagName: container?.tagName,
+  className: container?.className,
+  x: containerRect?.x.toFixed(1),
+  y: containerRect?.y.toFixed(1),
+  width: containerRect?.width.toFixed(1),
+  height: containerRect?.height.toFixed(1)
+});
+
+console.log('\n5️⃣ PATHS:', {
+  quantidade: paths?.length || 0,
+  primeiroPath: {
+    existe: !!firstPath,
+    d: firstPath?.getAttribute('d')?.substring(0, 80) + '...',
+    className: firstPath?.className?.baseVal || firstPath?.className
+  }
+});
+
+if (firstPath) {
+  const pathStyle = window.getComputedStyle(firstPath);
+  console.log('\n6️⃣ PRIMEIRO PATH - COMPUTED STYLE:', {
+    stroke: pathStyle.stroke,
+    strokeWidth: pathStyle.strokeWidth,
+    fill: pathStyle.fill,
+    opacity: pathStyle.opacity,
+    display: pathStyle.display,
+    visibility: pathStyle.visibility,
+    pointerEvents: pathStyle.pointerEvents
+  });
+
+  const pathRect = firstPath.getBoundingClientRect();
+  console.log('\n7️⃣ PRIMEIRO PATH - BOUNDING RECT:', {
+    x: pathRect.x.toFixed(1),
+    y: pathRect.y.toFixed(1),
+    width: pathRect.width.toFixed(1),
+    height: pathRect.height.toFixed(1)
+  });
+}
+
+console.log('\n8️⃣ FULLSCREEN STATUS:', {
+  isFullscreen: !!document.fullscreenElement,
+  fullscreenElement: document.fullscreenElement?.tagName,
+  fullscreenElementClass: document.fullscreenElement?.className
+});
+
+console.log('\n9️⃣ VERIFICAÇÕES CRÍTICAS:');
+const checks = {
+  '✅ SVG existe': !!svg,
+  '✅ SVG tem dimensões': svgRect && svgRect.width > 0 && svgRect.height > 0,
+  '✅ SVG está visível': svg && window.getComputedStyle(svg).display !== 'none' && window.getComputedStyle(svg).visibility !== 'hidden',
+  '✅ SVG tem opacity > 0': svg && parseFloat(window.getComputedStyle(svg).opacity) > 0,
+  '✅ Paths existem': paths && paths.length > 0,
+  '✅ Path tem stroke': firstPath && window.getComputedStyle(firstPath).stroke !== 'none',
+  '✅ Path está visível': firstPath && window.getComputedStyle(firstPath).display !== 'none' && window.getComputedStyle(firstPath).visibility !== 'hidden',
+  '✅ Path tem opacity > 0': firstPath && parseFloat(window.getComputedStyle(firstPath).opacity) > 0,
+  '✅ Path tem strokeWidth > 0': firstPath && parseFloat(window.getComputedStyle(firstPath).strokeWidth) > 0
+};
+
+Object.entries(checks).forEach(([check, passed]) => {
+  console.log(`${passed ? '✅' : '❌'} ${check.substring(2)}`);
+});
+
+const allPassed = Object.values(checks).every(v => v);
+if (allPassed) {
+  console.log('\n🎉 TODOS OS CHECKS PASSARAM!');
+  console.log('💡 Se as linhas não aparecem, pode ser problema de z-index ou posicionamento');
+} else {
+  console.log('\n❌ ALGUNS CHECKS FALHARAM!');
+  console.log('💡 Veja acima quais checks falharam para identificar o problema');
+}
+
+console.log('\n========== FIM DO DIAGNÓSTICO ==========');
+    </pre>
+
+    <h2>📋 Como usar:</h2>
+    <ol>
+        <li>Clique no botão "📋 Copiar Código" acima</li>
+        <li>Abra a página do diagrama</li>
+        <li>Entre em FULLSCREEN</li>
+        <li>Pressione F12 para abrir o console</li>
+        <li>Cole o código (Ctrl+V) e pressione Enter</li>
+        <li>Tire uma screenshot do resultado e envie</li>
+    </ol>
+</body>
+</html>

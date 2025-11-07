@@ -164,66 +164,30 @@ export const DiagramCanvas: React.FC<DiagramCanvasProps> = ({
 
   return (
     <div
-    ref={canvasRef}
-    className="relative w-full h-full bg-gray-900 overflow-hidden"
-    style={{
-      backgroundImage:
-        "radial-gradient(circle, #374151 1px, transparent 1px)",
-      backgroundSize: "20px 20px",
-    }}
-  >
-    {/* SVG para linhas de conexão - RENDERIZAR PRIMEIRO (fica atrás) */}
-    <svg
-      className="absolute inset-0 w-full h-full pointer-events-none"
-      style={{ zIndex: 0 }}
+      ref={canvasRef}
+      className="relative w-full h-full bg-gray-900 overflow-hidden"
+      style={{
+        backgroundImage:
+          "radial-gradient(circle, #374151 1px, transparent 1px)",
+        backgroundSize: "20px 20px",
+      }}
     >
-      {/* Renderizar linhas de conexão entre equipamentos */}
-      {equipment.map((eq) => 
-        eq.connections?.map((conn, idx) => {
-          const targetEq = equipment.find(e => e.id === conn.to);
-          if (!targetEq) return null;
-
-          return (
-            <line
-              key={`${eq.id}-${conn.to}-${idx}`}
-              x1={eq.position.x + 50} // +50 para centralizar (ajuste conforme tamanho do componente)
-              y1={eq.position.y + 50}
-              x2={targetEq.position.x + 50}
-              y2={targetEq.position.y + 50}
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              className="connection-line"
-              style={{
-                stroke: conn.type === 'power' ? '#3b82f6' : 
-                        conn.type === 'signal' ? '#10b981' : 
-                        '#6b7280',
-                strokeWidth: '2px',
-              }}
-            />
-          );
-        })
-      )}
-    </svg>
-
-    {/* Equipamentos - RENDERIZAR DEPOIS (fica na frente) */}
-    {equipment.map((eq) => (
-      <div
-        key={eq.id}
-        className={`absolute cursor-move ${
-          selectedId === eq.id ? "ring-2 ring-blue-500" : ""
-        }`}
-        style={{
-          left: `${eq.position.x}px`,
-          top: `${eq.position.y}px`,
-          userSelect: "none",
-          zIndex: 10, // Garante que fica acima do SVG
-        }}
-        onMouseDown={(e) => handleMouseDown(e, eq.id)}
-      >
-        {renderEquipment(eq)}
-      </div>
-    ))}
-  </div>
-);
+      {equipment.map((eq) => (
+        <div
+          key={eq.id}
+          className={`absolute cursor-move ${
+            selectedId === eq.id ? "ring-2 ring-blue-500" : ""
+          }`}
+          style={{
+            left: `${eq.position.x}px`,
+            top: `${eq.position.y}px`,
+            userSelect: "none",
+          }}
+          onMouseDown={(e) => handleMouseDown(e, eq.id)}
+        >
+          {renderEquipment(eq)}
+        </div>
+      ))}
+    </div>
+  );
 };

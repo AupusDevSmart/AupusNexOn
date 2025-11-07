@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug - Conexões Diagrama</title>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            background: #1a1a1a;
+            color: #00ff00;
+            padding: 20px;
+            margin: 0;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #00ffff;
+            border-bottom: 2px solid #00ffff;
+            padding-bottom: 10px;
+        }
+        .section {
+            background: #2a2a2a;
+            border: 1px solid #444;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .section h2 {
+            color: #ffff00;
+            margin-top: 0;
+        }
+        button {
+            background: #0066cc;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0052a3;
+        }
+        button.success {
+            background: #00aa00;
+        }
+        button.danger {
+            background: #cc0000;
+        }
+        .output {
+            background: #000;
+            border: 1px solid #00ff00;
+            border-radius: 4px;
+            padding: 15px;
+            margin-top: 10px;
+            max-height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            font-size: 12px;
+        }
+        .status {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        .status.ok {
+            background: #00aa00;
+            color: white;
+        }
+        .status.error {
+            background: #cc0000;
+            color: white;
+        }
+        .status.warning {
+            background: #ff8800;
+            color: white;
+        }
+        .instructions {
+            background: #003366;
+            border-left: 4px solid #00ffff;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .instructions h3 {
+            margin-top: 0;
+            color: #00ffff;
+        }
+        .instructions ol {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        .instructions li {
+            margin: 8px 0;
+            color: #ffffff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Debug - Linhas de Conexão do Diagrama Unifilar</h1>
+
+        <div class="instructions">
+            <h3>📋 Instruções:</h3>
+            <ol>
+                <li>Abra a página do diagrama unifilar (<strong>sinoptico-ativo</strong>)</li>
+                <li>Abra o console do navegador (F12)</li>
+                <li>Cole esta URL na barra de endereços desta aba: <code style="background:#000;padding:2px 6px;border-radius:3px;">javascript:(function(){window.open('http://localhost:5173/cadastros/supervisorio/sinoptico-ativo/1');})();</code></li>
+                <li>Volte para esta aba e clique nos botões abaixo para diagnosticar</li>
+            </ol>
+        </div>
+
+        <div class="section">
+            <h2>1️⃣ Verificar Componentes</h2>
+            <button onclick="verificarComponentes()">Verificar Componentes Renderizados</button>
+            <div id="output1" class="output"></div>
+        </div>
+
+        <div class="section">
+            <h2>2️⃣ Verificar SVG Overlay</h2>
+            <button onclick="verificarSVG()">Verificar SVG de Conexões</button>
+            <div id="output2" class="output"></div>
+        </div>
+
+        <div class="section">
+            <h2>3️⃣ Testar Fullscreen</h2>
+            <button onclick="testarFullscreen()">Simular Fullscreen</button>
+            <button class="danger" onclick="forcarRecalculo()">Forçar Recálculo</button>
+            <div id="output3" class="output"></div>
+        </div>
+
+        <div class="section">
+            <h2>4️⃣ Diagnóstico Completo</h2>
+            <button class="success" onclick="diagnosticoCompleto()">Executar Diagnóstico Completo</button>
+            <button onclick="copiarResultado()">Copiar Resultado</button>
+            <div id="output4" class="output"></div>
+        </div>
+
+        <div class="section">
+            <h2>5️⃣ Monitorar Logs em Tempo Real</h2>
+            <button onclick="iniciarMonitoramento()">Iniciar Monitoramento</button>
+            <button class="danger" onclick="pararMonitoramento()">Parar</button>
+            <div id="output5" class="output"></div>
+        </div>
+    </div>
+
+    <script>
+        let monitoramentoAtivo = false;
+        let intervalId = null;
+
+        function log(outputId, message, type = 'info') {
+            const output = document.getElementById(outputId);
+            const timestamp = new Date().toLocaleTimeString();
+            const prefix = {
+                'info': '✅',
+                'error': '❌',
+                'warning': '⚠️',
+                'success': '🎉'
+            }[type] || 'ℹ️';
+
+            output.innerHTML += `[${timestamp}] ${prefix} ${message}\n`;
+            output.scrollTop = output.scrollHeight;
+        }
+
+        function verificarComponentes() {
+            const output = document.getElementById('output1');
+            output.innerHTML = 'Verificando componentes...\n\n';
+
+            try {
+                // Verificar DomAnchoredConnectionsOverlay
+                const overlay = window.parent.document.querySelector('.nexon-connections-overlay');
+                log('output1', `DomAnchoredConnectionsOverlay: ${overlay ? '✅ ENCONTRADO' : '❌ NÃO ENCONTRADO'}`, overlay ? 'success' : 'error');
+
+                // Verificar ConexoesDiagrama (componente antigo)
+                const svgAntigo = window.parent.document.querySelector('svg[class*="z-20"]');
+                log('output1', `ConexoesDiagrama (antigo): ${svgAntigo ? '⚠️ ENCONTRADO (pode estar conflitando)' : '✅ NÃO ENCONTRADO'}`, svgAntigo ? 'warning' : 'success');
+
+                // Verificar nós
+                const nodes = window.parent.document.querySelectorAll('[data-node-id]');
+                log('output1', `Nós com data-node-id: ${nodes.length}`, nodes.length > 0 ? 'success' : 'warning');
+
+                // Verificar paths
+                const paths = window.parent.document.querySelectorAll('path');
+                log('output1', `Total de paths (linhas): ${paths.length}`, paths.length > 0 ? 'success' : 'warning');
+
+            } catch (error) {
+                log('output1', `ERRO: ${error.message}`, 'error');
+                log('output1', 'Certifique-se de que a página do diagrama está aberta!', 'warning');
+            }
+        }
+
+        function verificarSVG() {
+            const output = document.getElementById('output2');
+            output.innerHTML = 'Verificando SVG overlay...\n\n';
+
+            try {
+                const svg = window.parent.document.querySelector('.nexon-connections-overlay');
+
+                if (!svg) {
+                    log('output2', 'SVG overlay não encontrado!', 'error');
+                    return;
+                }
+
+                const rect = svg.getBoundingClientRect();
+                const computed = window.parent.getComputedStyle(svg);
+
+                log('output2', `Dimensões: ${rect.width}x${rect.height}`, rect.width > 0 && rect.height > 0 ? 'success' : 'error');
+                log('output2', `ViewBox: ${svg.getAttribute('viewBox')}`, 'info');
+                log('output2', `Display: ${computed.display}`, computed.display !== 'none' ? 'success' : 'error');
+                log('output2', `Visibility: ${computed.visibility}`, computed.visibility !== 'hidden' ? 'success' : 'error');
+                log('output2', `Opacity: ${computed.opacity}`, parseFloat(computed.opacity) > 0 ? 'success' : 'error');
+
+                const paths = svg.querySelectorAll('.nexon-connection-path');
+                log('output2', `Paths encontrados: ${paths.length}`, paths.length > 0 ? 'success' : 'warning');
+
+                if (paths.length > 0) {
+                    const firstPath = paths[0];
+                    const pathStyle = window.parent.getComputedStyle(firstPath);
+                    log('output2', `\nPrimeiro Path:`, 'info');
+                    log('output2', `  - stroke: ${pathStyle.stroke}`, 'info');
+                    log('output2', `  - strokeWidth: ${pathStyle.strokeWidth}`, 'info');
+                    log('output2', `  - opacity: ${pathStyle.opacity}`, 'info');
+                    log('output2', `  - d: ${firstPath.getAttribute('d')?.substring(0, 50)}...`, 'info');
+                }
+
+            } catch (error) {
+                log('output2', `ERRO: ${error.message}`, 'error');
+            }
+        }
+
+        function testarFullscreen() {
+            const output = document.getElementById('output3');
+            output.innerHTML = 'Simulando fullscreen...\n\n';
+
+            try {
+                const isFullscreen = !!window.parent.document.fullscreenElement;
+                log('output3', `Fullscreen ativo: ${isFullscreen ? 'SIM' : 'NÃO'}`, 'info');
+
+                // Disparar evento de fullscreen
+                window.parent.document.dispatchEvent(new Event('fullscreenchange'));
+                log('output3', 'Evento fullscreenchange disparado!', 'success');
+
+                setTimeout(() => {
+                    log('output3', '\nVerificando após evento...', 'info');
+                    const paths = window.parent.document.querySelectorAll('.nexon-connection-path');
+                    log('output3', `Paths encontrados: ${paths.length}`, paths.length > 0 ? 'success' : 'warning');
+                }, 200);
+
+            } catch (error) {
+                log('output3', `ERRO: ${error.message}`, 'error');
+            }
+        }
+
+        function forcarRecalculo() {
+            try {
+                log('output3', '\n🔄 Forçando recálculo...', 'info');
+                window.parent.document.dispatchEvent(new Event('fullscreenchange'));
+                window.parent.document.dispatchEvent(new Event('resize'));
+                log('output3', 'Eventos disparados com sucesso!', 'success');
+            } catch (error) {
+                log('output3', `ERRO: ${error.message}`, 'error');
+            }
+        }
+
+        function diagnosticoCompleto() {
+            const output = document.getElementById('output4');
+            output.innerHTML = '🔍 Executando diagnóstico completo...\n\n';
+
+            try {
+                const doc = window.parent.document;
+
+                // 1. Container
+                const canvas = doc.querySelector('.bg-black.overflow-visible');
+                log('output4', '📦 CANVAS:', 'info');
+                log('output4', `  - Encontrado: ${!!canvas}`, canvas ? 'success' : 'error');
+                if (canvas) {
+                    log('output4', `  - Width: ${canvas.offsetWidth}px`, 'info');
+                    log('output4', `  - Height: ${canvas.offsetHeight}px`, 'info');
+                }
+
+                // 2. SVG
+                const svg = doc.querySelector('.nexon-connections-overlay');
+                log('output4', '\n🎨 SVG OVERLAY:', 'info');
+                log('output4', `  - Encontrado: ${!!svg}`, svg ? 'success' : 'error');
+                if (svg) {
+                    log('output4', `  - Width: ${svg.clientWidth}px`, 'info');
+                    log('output4', `  - Height: ${svg.clientHeight}px`, 'info');
+                    log('output4', `  - ViewBox: ${svg.getAttribute('viewBox')}`, 'info');
+                }
+
+                // 3. Paths
+                const paths = doc.querySelectorAll('.nexon-connection-path');
+                log('output4', '\n🔗 PATHS:', 'info');
+                log('output4', `  - Quantidade: ${paths.length}`, paths.length > 0 ? 'success' : 'warning');
+
+                // 4. Nós
+                const nodes = doc.querySelectorAll('[data-node-id]');
+                log('output4', '\n🎯 NÓS:', 'info');
+                log('output4', `  - Quantidade: ${nodes.length}`, nodes.length > 0 ? 'success' : 'warning');
+
+                // 5. Fullscreen
+                const isFullscreen = !!doc.fullscreenElement;
+                log('output4', '\n🖥️ FULLSCREEN:', 'info');
+                log('output4', `  - Ativo: ${isFullscreen ? 'SIM' : 'NÃO'}`, 'info');
+
+                // Conclusão
+                log('output4', '\n📊 CONCLUSÃO:', 'info');
+                if (!svg) {
+                    log('output4', '❌ PROBLEMA: SVG overlay não está sendo renderizado!', 'error');
+                } else if (paths.length === 0) {
+                    log('output4', '⚠️ PROBLEMA: SVG existe mas não há paths (linhas de conexão)!', 'warning');
+                } else {
+                    log('output4', '✅ Tudo parece OK! Se as linhas não aparecem, pode ser problema de CSS.', 'success');
+                }
+
+            } catch (error) {
+                log('output4', `\n❌ ERRO: ${error.message}`, 'error');
+                log('output4', '💡 Certifique-se de que a página do diagrama está aberta na mesma janela!', 'warning');
+            }
+        }
+
+        function copiarResultado() {
+            const output = document.getElementById('output4');
+            navigator.clipboard.writeText(output.innerText).then(() => {
+                alert('✅ Resultado copiado para a área de transferência!');
+            });
+        }
+
+        function iniciarMonitoramento() {
+            if (monitoramentoAtivo) {
+                log('output5', '⚠️ Monitoramento já está ativo!', 'warning');
+                return;
+            }
+
+            const output = document.getElementById('output5');
+            output.innerHTML = '🔄 Iniciando monitoramento...\n\n';
+            monitoramentoAtivo = true;
+
+            intervalId = setInterval(() => {
+                try {
+                    const doc = window.parent.document;
+                    const paths = doc.querySelectorAll('.nexon-connection-path');
+                    const isFullscreen = !!doc.fullscreenElement;
+                    const canvas = doc.querySelector('.bg-black.overflow-visible');
+
+                    log('output5', `Paths: ${paths.length} | Fullscreen: ${isFullscreen ? 'SIM' : 'NÃO'} | Canvas: ${canvas ? canvas.offsetWidth + 'x' + canvas.offsetHeight : 'N/A'}`, 'info');
+                } catch (error) {
+                    log('output5', `Erro: ${error.message}`, 'error');
+                }
+            }, 1000);
+
+            log('output5', '✅ Monitoramento iniciado! Atualizando a cada 1 segundo...', 'success');
+        }
+
+        function pararMonitoramento() {
+            if (!monitoramentoAtivo) {
+                log('output5', '⚠️ Monitoramento não está ativo!', 'warning');
+                return;
+            }
+
+            clearInterval(intervalId);
+            monitoramentoAtivo = false;
+            log('output5', '\n🛑 Monitoramento parado!', 'info');
+        }
+
+        // Auto-verificar ao carregar
+        window.addEventListener('load', () => {
+            console.log('✅ Debug de Conexões carregado!');
+            console.log('💡 Use os botões na interface para diagnosticar o problema.');
+        });
+    </script>
+</body>
+</html>

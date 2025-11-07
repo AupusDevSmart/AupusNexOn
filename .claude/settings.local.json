@@ -18,7 +18,11 @@
       "Bash(npx shadcn@latest add:*)",
       "Bash(npm install:*)",
       "Bash(npx tsc:*)",
-      "Bash(git restore:*)"
+      "Bash(git restore:*)",
+      "Bash(dir:*)",
+      "Bash(timeout:*)",
+      "Bash(git stash:*)",
+      "Bash(git pull:*)"
     ],
     "deny": [],
     "ask": []

@@ -348,11 +348,7 @@
     flex-shrink: 0;
   }
 
-  /* ========================================
-     FULLSCREEN - TEMA NEXON
-     ======================================== */
-
-  /* Estilos base para fullscreen - preserva tema */
+  /* Estilos para Fullscreen - preserva tema NexON */
   :fullscreen {
     background: hsl(var(--background)) !important;
     color: hsl(var(--foreground)) !important;
@@ -374,44 +370,22 @@
   }
 
   /* Garante que elementos internos herdam o tema em fullscreen */
-  :fullscreen * {
+  /* EXCETO o overlay de conexões que precisa manter background transparente */
+  :fullscreen *:not(.nexon-connections-overlay):not(.nexon-connection-path):not(.nexon-connection-point):not(.nexon-connection-label) {
     background: inherit;
   }
 
-  :-webkit-full-screen * {
+  :-webkit-full-screen *:not(.nexon-connections-overlay):not(.nexon-connection-path):not(.nexon-connection-point):not(.nexon-connection-label) {
     background: inherit;
   }
 
-  :-moz-full-screen * {
+  :-moz-full-screen *:not(.nexon-connections-overlay):not(.nexon-connection-path):not(.nexon-connection-point):not(.nexon-connection-label) {
     background: inherit;
   }
 
-  :-ms-fullscreen * {
+  :-ms-fullscreen *:not(.nexon-connections-overlay):not(.nexon-connection-path):not(.nexon-connection-point):not(.nexon-connection-label) {
     background: inherit;
   }
-
-  /* ========================================
-     CORREÇÃO SVG NO FULLSCREEN
-     FIX: Linhas de conexão não apareciam
-     Data: 2025-11-03
-     ======================================== */
-
-  /* EXCEÇÃO CRÍTICA: Elementos SVG NÃO devem herdar background */
-  /* Elementos SVG usam fill e stroke, não background */
-  :fullscreen svg,
-  :fullscreen svg *,
-  :-webkit-full-screen svg,
-  :-webkit-full-screen svg *,
-  :-moz-full-screen svg,
-  :-moz-full-screen svg *,
-  :-ms-fullscreen svg,
-  :-ms-fullscreen svg * {
-    background: none !important;
-  }
-
-  /* ========================================
-     EXCEÇÕES DE BACKGROUND ESPECÍFICAS
-     ======================================== */
 
   /* Exceções para elementos que precisam de backgrounds específicos */
   :fullscreen .bg-background,
@@ -426,76 +400,6 @@
   :-moz-full-screen .bg-card,
   :-ms-fullscreen .bg-card {
     background: hsl(var(--card)) !important;
-  }
-
-  /* ========================================
-     GARANTIAS DE VISIBILIDADE SVG
-     ======================================== */
-
-  /* Garantir visibilidade das linhas em todos os modos */
-  .connection-line {
-    opacity: 1 !important;
-    visibility: visible !important;
-  }
-
-  /* Linhas SVG - estilo base */
-  .diagram-svg line,
-  .diagram-svg path {
-    stroke: hsl(var(--foreground)) !important;
-    stroke-width: 2px !important;
-    opacity: 1 !important;
-    visibility: visible !important;
-  }
-
-  /* Linhas SVG em fullscreen - stroke mais grosso para melhor visibilidade */
-  :fullscreen .diagram-svg line,
-  :fullscreen .diagram-svg path,
-  :fullscreen svg line,
-  :fullscreen svg path[stroke],
-  :-webkit-full-screen .diagram-svg line,
-  :-webkit-full-screen .diagram-svg path,
-  :-webkit-full-screen svg line,
-  :-webkit-full-screen svg path[stroke],
-  :-moz-full-screen .diagram-svg line,
-  :-moz-full-screen .diagram-svg path,
-  :-moz-full-screen svg line,
-  :-moz-full-screen svg path[stroke],
-  :-ms-fullscreen .diagram-svg line,
-  :-ms-fullscreen .diagram-svg path,
-  :-ms-fullscreen svg line,
-  :-ms-fullscreen svg path[stroke] {
-    stroke: hsl(var(--foreground)) !important;
-    stroke-width: 3px !important;
-    opacity: 1 !important;
-    visibility: visible !important;
-    display: block !important;
-  }
-
-  /* Garantir que o SVG não interfira com cliques nos componentes */
-  :fullscreen svg,
-  :-webkit-full-screen svg,
-  :-moz-full-screen svg,
-  :-ms-fullscreen svg {
-    pointer-events: none !important;
-  }
-
-  /* Garantir que as camadas de conexão sejam visíveis */
-  :fullscreen .connections-layer,
-  :-webkit-full-screen .connections-layer,
-  :-moz-full-screen .connections-layer,
-  :-ms-fullscreen .connections-layer {
-    display: block !important;
-    visibility: visible !important;
-    opacity: 1 !important;
-  }
-
-  /* Z-index das camadas */
-  .connections-layer {
-    z-index: 1 !important;
-  }
-
-  .components-layer {
-    z-index: 10 !important;
   }
 
   /* ========================================

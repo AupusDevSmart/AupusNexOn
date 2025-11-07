@@ -299,7 +299,7 @@ case "DISJUNTOR_ABERTO":
         onClick={onClick}
       />
     );
-        case "BARRAMENTO":
+       case "BARRAMENTO":
             return (
     <svg
       width="80"
@@ -982,57 +982,7 @@ case "RELE":
           </svg>
         );
 
-      case "BARRAMENTO":
-        return (
-          <svg
-            width="40"
-            height="12"
-            viewBox="0 0 50 15"
-            className="drop-shadow-sm"
-          >
-            <rect
-              x="2"
-              y="4"
-              width="46"
-              height="7"
-              className={`${statusClasses.stroke} fill-background`}
-              strokeWidth="2"
-              rx="1"
-            />
-            <line
-              x1="12"
-              y1="4"
-              x2="12"
-              y2="11"
-              className={statusClasses.stroke}
-              strokeWidth="1"
-            />
-            <line
-              x1="22"
-              y1="4"
-              x2="22"
-              y2="11"
-              className={statusClasses.stroke}
-              strokeWidth="1"
-            />
-            <line
-              x1="32"
-              y1="4"
-              x2="32"
-              y2="11"
-              className={statusClasses.stroke}
-              strokeWidth="1"
-            />
-            <line
-              x1="42"
-              y1="4"
-              x2="42"
-              y2="11"
-              className={statusClasses.stroke}
-              strokeWidth="1"
-            />
-          </svg>
-        );
+      
       case "M160":
         return (
           <svg
@@ -1346,6 +1296,13 @@ export function SinopticoDiagrama({
 }: SinopticoDiagramaProps) {
   const [hoveredComponent, setHoveredComponent] = useState<string | null>(null);
 
+  console.log('🎨 [SinopticoDiagrama] RENDER:', {
+    componentes: componentes.length,
+    modoEdicao,
+    componenteEditando,
+    connecting
+  });
+
   return (
     <div className={`relative w-full h-full min-h-[400px] ${className}`}>
       {/* Grid de visualização */}
@@ -1374,9 +1331,18 @@ export function SinopticoDiagrama({
       {/* Renderiza componentes - NO MODO EDIÇÃO NÃO RENDERIZA NADA (overlays fazem isso) */}
       {!modoEdicao && (
       <div className="absolute inset-0" style={{ zIndex: 30 }}>
-        {componentes.filter(c => c.posicao && typeof c.posicao.x === 'number' && typeof c.posicao.y === 'number').map((componente) => (
+        {(() => {
+          const componentesFiltrados = componentes.filter(c => c.posicao && typeof c.posicao.x === 'number' && typeof c.posicao.y === 'number');
+          console.log('📍 [SinopticoDiagrama] Renderizando nós:', {
+            total: componentes.length,
+            filtrados: componentesFiltrados.length,
+            modoEdicao
+          });
+          return componentesFiltrados;
+        })().map((componente) => (
             <div
               key={componente.id}
+              data-node-id={componente.id}
               className="absolute"
               style={{
                 left: `${componente.posicao.x}%`,

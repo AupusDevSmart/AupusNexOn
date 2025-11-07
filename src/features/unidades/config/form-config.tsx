@@ -3,10 +3,11 @@
 import React, { useState } from 'react';
 import { FormField, FormFieldProps } from '@/types/base';
 import { usePlantas } from '../hooks/usePlantas';
-import { TipoUnidade, StatusUnidade, ESTADOS_BRASIL } from '../types';
+import { TipoUnidade, StatusUnidade, ESTADOS_BRASIL, GrupoUnidade, SubgrupoUnidade, TipoUnidadeEnergia } from '../types';
 import { X, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { ConcessionariaSelectField } from '../components/ConcessionariaSelectField';
 
 /**
  * Componente para seleção de Planta
@@ -302,5 +303,117 @@ export const unidadesFormFields: FormField[] = [
     type: 'custom',
     required: false,
     render: PontosMedicaoManager,
+  },
+  {
+    key: 'irrigante',
+    label: 'É Irrigante?',
+    type: 'checkbox',
+    required: false,
+    defaultValue: false,
+  },
+  {
+    key: 'grupo',
+    label: 'Grupo Tarifário',
+    type: 'select',
+    required: false,
+    options: [
+      { value: GrupoUnidade.A, label: 'Grupo A' },
+      { value: GrupoUnidade.B, label: 'Grupo B' },
+    ],
+  },
+  {
+    key: 'subgrupo',
+    label: 'Subgrupo Tarifário',
+    type: 'select',
+    required: false,
+    options: [], // Será preenchido dinamicamente
+    conditionalRender: (formData: any) => {
+      return !!formData.grupo; // Só mostrar se grupo foi selecionado
+    },
+    getOptions: (formData: any) => {
+      if (formData.grupo === GrupoUnidade.B) {
+        return [
+          { value: SubgrupoUnidade.B, label: 'Subgrupo B' },
+        ];
+      } else if (formData.grupo === GrupoUnidade.A) {
+        return [
+          { value: SubgrupoUnidade.A4_VERDE, label: 'A4 Verde' },
+          { value: SubgrupoUnidade.A3a_VERDE, label: 'A3a Verde' },
+        ];
+      }
+      return [];
+    },
+  },
+  {
+    key: 'tipoUnidade',
+    label: 'Tipo de Unidade de Energia',
+    type: 'select',
+    required: false,
+    options: [
+      { value: TipoUnidadeEnergia.CARGA, label: 'Carga' },
+      { value: TipoUnidadeEnergia.GERACAO, label: 'Geração' },
+    ],
+  },
+  {
+    key: 'demandaCarga',
+    label: 'Demanda de Carga (kW)',
+    type: 'number',
+    required: false,
+    placeholder: 'Ex: 150.5',
+    conditionalRender: (formData: any) => {
+      return formData.tipoUnidade === TipoUnidadeEnergia.CARGA;
+    },
+    validation: (value, formData: any) => {
+      if (formData?.tipoUnidade === TipoUnidadeEnergia.CARGA) {
+        if (!value) return 'Demanda de carga é obrigatória quando tipo é Carga';
+        const num = parseFloat(value as string);
+        if (isNaN(num) || num < 0) return 'Demanda de carga deve ser maior ou igual a zero';
+      }
+      return null;
+    },
+  },
+  {
+    key: 'demandaGeracao',
+    label: 'Demanda de Geração (kW)',
+    type: 'number',
+    required: false,
+    placeholder: 'Ex: 200.0',
+    conditionalRender: (formData: any) => {
+      return formData.tipoUnidade === TipoUnidadeEnergia.GERACAO;
+    },
+    validation: (value, formData: any) => {
+      if (formData?.tipoUnidade === TipoUnidadeEnergia.GERACAO) {
+        if (!value) return 'Demanda de geração é obrigatória quando tipo é Geração';
+        const num = parseFloat(value as string);
+        if (isNaN(num) || num < 0) return 'Demanda de geração deve ser maior ou igual a zero';
+      }
+      return null;
+    },
+  },
+  {
+    key: 'concessionariaId',
+    label: 'Concessionária de Energia',
+    type: 'custom',
+    required: false,
+    render: (props: FormFieldProps) => {
+      const { value, onChange, disabled, mode, formData } = props;
+
+      if (mode === 'view' && !value) {
+        return (
+          <div className="w-full px-3 py-2 border border-border bg-muted rounded-md text-muted-foreground italic">
+            Nenhuma concessionária vinculada
+          </div>
+        );
+      }
+
+      return (
+        <ConcessionariaSelectField
+          value={value as string}
+          onChange={onChange}
+          disabled={disabled || mode === 'view'}
+          estado={formData?.estado}
+        />
+      );
+    },
   },
 ];

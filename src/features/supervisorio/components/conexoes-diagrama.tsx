@@ -1,5 +1,5 @@
 // src/features/supervisorio/components/conexoes-diagrama.tsx
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 // Interfaces
 interface ComponenteDU {
@@ -90,21 +90,21 @@ const getConnectionStyle = (
 
   if (hasError) {
     return {
-      stroke: "#ef4444", // red-500 - COR SÓLIDA
+      stroke: "stroke-red-500",
       strokeWidth: modoEdicao ? "3" : "2",
       opacity: "0.8",
     };
   } else if (hasWarning) {
     return {
-      stroke: "#f59e0b", // amber-500 - COR SÓLIDA
+      stroke: "stroke-amber-500",
       strokeWidth: modoEdicao ? "3" : "2",
       opacity: "0.8",
     };
   } else {
     return {
-      stroke: "#3b82f6", // blue-600 - COR SÓLIDA AZUL
+      stroke: "stroke-blue-600 dark:stroke-blue-400",
       strokeWidth: modoEdicao ? "3" : "2",
-      opacity: "0.9",
+      opacity: "0.7",
     };
   }
 };
@@ -119,36 +119,117 @@ export function ConexoesDiagrama({
   onEdgeClick,
   className = "",
 }: ConexoesDiagramaProps) {
+  const [containerRect, setContainerRect] = useState<DOMRect | null>(null);
   const [hoveredConnection, setHoveredConnection] = useState<string | null>(
     null
   );
 
-  // Calcular containerRect diretamente no render
-  if (!containerRef.current) {
+  // Atualizar dimensões do container
+  useEffect(() => {
+    const updateContainerRect = () => {
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        setContainerRect(rect);
+      }
+    };
+
+    // Delay inicial para garantir que o DOM está completamente renderizado
+    const timeoutId = setTimeout(updateContainerRect, 50);
+    updateContainerRect();
+
+    const resizeObserver = new ResizeObserver(updateContainerRect);
+    if (containerRef.current) {
+      resizeObserver.observe(containerRef.current);
+    }
+
+    window.addEventListener("resize", updateContainerRect);
+
+    return () => {
+      clearTimeout(timeoutId);
+      resizeObserver.disconnect();
+      window.removeEventListener("resize", updateContainerRect);
+    };
+  }, [containerRef]);
+
+  // Forçar atualização quando componentes ou conexões mudam
+  useEffect(() => {
+    const updateContainerRect = () => {
+      if (containerRef.current) {
+        setContainerRect(containerRef.current.getBoundingClientRect());
+      }
+    };
+
+    // Pequeno delay para garantir que o layout foi atualizado
+    const timeoutId = setTimeout(updateContainerRect, 100);
+
+    return () => clearTimeout(timeoutId);
+  }, [componentes.length, connections.length, containerRef]);
+
+  // Listener para detectar mudanças de fullscreen e recalcular dimensões
+  useEffect(() => {
+  const handleFullscreenChange = () => {
+    if (containerRef.current) {
+      const recalculate = () => {
+        setContainerRect(containerRef.current!.getBoundingClientRect());
+      };
+      
+      recalculate();
+      setTimeout(recalculate, 50);
+      setTimeout(recalculate, 150);
+      setTimeout(recalculate, 300);
+    }
+  };
+
+  document.addEventListener("fullscreenchange", handleFullscreenChange);
+  document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
+  document.addEventListener("mozfullscreenchange", handleFullscreenChange);
+  
+  return () => {
+    document.removeEventListener("fullscreenchange", handleFullscreenChange);
+    document.removeEventListener("webkitfullscreenchange", handleFullscreenChange);
+    document.removeEventListener("mozfullscreenchange", handleFullscreenChange);
+  };
+}, [containerRef]);
+
+  if (!containerRect) {
+    console.log('❌ ConexoesDiagrama: containerRect é NULL');
     return null;
   }
 
-  const containerRect = containerRef.current.getBoundingClientRect();
+  console.log('✅ ConexoesDiagrama RENDERIZANDO:');
+  console.log('   - Número de conexões:', connections.length);
+  console.log('   - Número de componentes:', componentes.length);
+  console.log('   - Container Width:', containerRect.width);
+  console.log('   - Container Height:', containerRect.height);
+  console.log('   - Modo Edição:', modoEdicao);
 
-  console.log('🎨 RENDERIZANDO SVG:', {
-  connections: connections.length,
-  componentes: componentes.length,
-  containerWidth: containerRect.width,
-  containerHeight: containerRect.height,
-  modoEdicao,
+  // Log de debug para cada conexão
+connections.forEach((conn, index) => {
+  const fromComp = componentes.find(c => c.id === conn.from);
+  const toComp = componentes.find(c => c.id === conn.to);
+  
+  if (fromComp && toComp) {
+    const fromX = (fromComp.posicao.x / 100) * containerRect.width;
+    const fromY = (fromComp.posicao.y / 100) * containerRect.height;
+    const toX = (toComp.posicao.x / 100) * containerRect.width;
+    const toY = (toComp.posicao.y / 100) * containerRect.height;
+    
+    console.log(`   📍 Conexão ${index + 1}:`, {
+      from: fromComp.nome,
+      to: toComp.nome,
+      fromPos: `(${fromX.toFixed(0)}, ${fromY.toFixed(0)})`,
+      toPos: `(${toX.toFixed(0)}, ${toY.toFixed(0)})`
+    });
+  }
 });
+
 
   return (
     <svg
-  key={`svg-${containerRect.width}-${containerRect.height}`}
-  className={`absolute inset-0 w-full h-full ${className}`}
-  style={{
-    pointerEvents: modoEdicao ? "auto" : "none",
-    zIndex: 999,  // ✅ FORÇA Z-INDEX ALTO
-    background: 'none',
-    opacity: 1,
-    visibility: 'visible',
-  }}
+      className={`absolute inset-0 w-full h-full z-20 ${className}`}
+      style={{
+        pointerEvents: modoEdicao ? "auto" : "none",
+      }}
       preserveAspectRatio="xMidYMid meet"
     >
       {/* Definições de markers */}
@@ -163,7 +244,7 @@ export function ConexoesDiagrama({
         >
           <polygon
             points="0 0, 10 3.5, 0 7"
-            fill="#3b82f6"
+            className="fill-blue-600 dark:fill-blue-400"
           />
         </marker>
         <marker
@@ -174,7 +255,7 @@ export function ConexoesDiagrama({
           refY="3.5"
           orient="auto"
         >
-          <polygon points="0 0, 10 3.5, 0 7" fill="#f59e0b" />
+          <polygon points="0 0, 10 3.5, 0 7" className="fill-amber-500" />
         </marker>
         <marker
           id="arrowhead-error"
@@ -184,7 +265,7 @@ export function ConexoesDiagrama({
           refY="3.5"
           orient="auto"
         >
-          <polygon points="0 0, 10 3.5, 0 7" fill="#ef4444" />
+          <polygon points="0 0, 10 3.5, 0 7" className="fill-red-500" />
         </marker>
       </defs>
 
@@ -192,21 +273,6 @@ export function ConexoesDiagrama({
       {connections.map((connection) => {
         const fromComponent = componentes.find((c) => c.id === connection.from);
         const toComponent = componentes.find((c) => c.id === connection.to);
-
-        console.log('🔗 Renderizando conexão:', {
-          id: connection.id,
-          from: connection.from,
-          to: connection.to,
-          fromComponent: fromComponent?.nome,
-          toComponent: toComponent?.nome,
-          hasFromComponent: !!fromComponent,
-          hasToComponent: !!toComponent,
-        });
-
-        if (!fromComponent || !toComponent) {
-          console.warn('⚠️ Conexão ignorada (componente não encontrado):', connection);
-          return null;
-        }
 
         if (!fromComponent || !toComponent) {
           return null;
@@ -232,88 +298,76 @@ export function ConexoesDiagrama({
         const toY = toCenterY + toOffset.y;
 
         // ===== CALCULAR CAMINHO ORTOGONAL MELHORADO =====
-        const calculateOrthogonalPath = () => {
-          const path: string[] = [];
+const calculateOrthogonalPath = () => {
+  const path: string[] = [];
 
-          // Começar no ponto de origem
-          path.push(`M ${fromX} ${fromY}`);
+  // Começar no ponto de origem
+  path.push(`M ${fromX} ${fromY}`);
 
-          // Determinar direção baseado nas portas
-          const fromPort = connection.fromPort;
-          const toPort = connection.toPort;
+  // Determinar direção baseado nas portas
+  const fromPort = connection.fromPort;
+  const toPort = connection.toPort;
 
-          // Calcular diferenças
-          const deltaX = Math.abs(toX - fromX);
-          const deltaY = Math.abs(toY - fromY);
+  // Calcular diferenças
+  const deltaX = Math.abs(toX - fromX);
+  const deltaY = Math.abs(toY - fromY);
 
-          // SE COMPONENTES ESTÃO QUASE ALINHADOS VERTICALMENTE (diferença X < 10px)
-          if (
-            deltaX < 10 &&
-            (fromPort === "top" || fromPort === "bottom") &&
-            (toPort === "top" || toPort === "bottom")
-          ) {
-            // LINHA RETA VERTICAL - usa o X médio para garantir alinhamento perfeito
-            const avgX = (fromX + toX) / 2;
-            path.push(`L ${avgX} ${fromY}`);
-            path.push(`L ${avgX} ${toY}`);
-            path.push(`L ${toX} ${toY}`);
-          }
-          // SE COMPONENTES ESTÃO QUASE ALINHADOS HORIZONTALMENTE (diferença Y < 10px)
-          else if (
-            deltaY < 10 &&
-            (fromPort === "left" || fromPort === "right") &&
-            (toPort === "left" || toPort === "right")
-          ) {
-            // LINHA RETA HORIZONTAL - usa o Y médio para garantir alinhamento perfeito
-            const avgY = (fromY + toY) / 2;
-            path.push(`L ${fromX} ${avgY}`);
-            path.push(`L ${toX} ${avgY}`);
-            path.push(`L ${toX} ${toY}`);
-          }
-          // Vertical (top/bottom) - conexão em sequência vertical
-          else if (
-            (fromPort === "top" || fromPort === "bottom") &&
-            (toPort === "top" || toPort === "bottom")
-          ) {
-            const midY = (fromY + toY) / 2;
-            path.push(`L ${fromX} ${midY}`); // Linha vertical até meio
-            path.push(`L ${toX} ${midY}`); // Linha horizontal
-            path.push(`L ${toX} ${toY}`); // Linha vertical até destino
-          }
-          // Horizontal (left/right) - conexão em sequência horizontal
-          else if (
-            (fromPort === "left" || fromPort === "right") &&
-            (toPort === "left" || toPort === "right")
-          ) {
-            const midX = (fromX + toX) / 2;
-            path.push(`L ${midX} ${fromY}`); // Linha horizontal até meio
-            path.push(`L ${midX} ${toY}`); // Linha vertical
-            path.push(`L ${toX} ${toY}`); // Linha horizontal até destino
-          }
-          // Misto (perpendicular)
-          else {
-            // Calcula ponto intermediário baseado nas portas
-            if (fromPort === "right" || fromPort === "left") {
-              const midX =
-                fromPort === "right"
-                  ? Math.max(fromX, toX) + 20
-                  : Math.min(fromX, toX) - 20;
-              path.push(`L ${midX} ${fromY}`);
-              path.push(`L ${midX} ${toY}`);
-            } else {
-              const midY =
-                fromPort === "bottom"
-                  ? Math.max(fromY, toY) + 20
-                  : Math.min(fromY, toY) - 20;
-              path.push(`L ${fromX} ${midY}`);
-              path.push(`L ${toX} ${midY}`);
-            }
-            path.push(`L ${toX} ${toY}`);
-          }
+  // SE COMPONENTES ESTÃO QUASE ALINHADOS VERTICALMENTE (diferença X < 10px)
+  if (deltaX < 10 && (fromPort === 'top' || fromPort === 'bottom') && 
+      (toPort === 'top' || toPort === 'bottom')) {
+    // LINHA RETA VERTICAL - usa o X médio para garantir alinhamento perfeito
+    const avgX = (fromX + toX) / 2;
+    path.push(`L ${avgX} ${fromY}`);
+    path.push(`L ${avgX} ${toY}`);
+    path.push(`L ${toX} ${toY}`);
+  }
+  // SE COMPONENTES ESTÃO QUASE ALINHADOS HORIZONTALMENTE (diferença Y < 10px)
+  else if (deltaY < 10 && (fromPort === 'left' || fromPort === 'right') && 
+           (toPort === 'left' || toPort === 'right')) {
+    // LINHA RETA HORIZONTAL - usa o Y médio para garantir alinhamento perfeito
+    const avgY = (fromY + toY) / 2;
+    path.push(`L ${fromX} ${avgY}`);
+    path.push(`L ${toX} ${avgY}`);
+    path.push(`L ${toX} ${toY}`);
+  }
+  // Vertical (top/bottom) - conexão em sequência vertical
+  else if ((fromPort === 'top' || fromPort === 'bottom') && 
+      (toPort === 'top' || toPort === 'bottom')) {
+    const midY = (fromY + toY) / 2;
+    path.push(`L ${fromX} ${midY}`); // Linha vertical até meio
+    path.push(`L ${toX} ${midY}`);   // Linha horizontal
+    path.push(`L ${toX} ${toY}`);    // Linha vertical até destino
+  }
+  // Horizontal (left/right) - conexão em sequência horizontal
+  else if ((fromPort === 'left' || fromPort === 'right') && 
+           (toPort === 'left' || toPort === 'right')) {
+    const midX = (fromX + toX) / 2;
+    path.push(`L ${midX} ${fromY}`); // Linha horizontal até meio
+    path.push(`L ${midX} ${toY}`);   // Linha vertical
+    path.push(`L ${toX} ${toY}`);    // Linha horizontal até destino
+  }
+  // Misto (perpendicular)
+  else {
+    // Calcula ponto intermediário baseado nas portas
+    if (fromPort === 'right' || fromPort === 'left') {
+      const midX = fromPort === 'right' ? 
+        Math.max(fromX, toX) + 20 : 
+        Math.min(fromX, toX) - 20;
+      path.push(`L ${midX} ${fromY}`);
+      path.push(`L ${midX} ${toY}`);
+    } else {
+      const midY = fromPort === 'bottom' ? 
+        Math.max(fromY, toY) + 20 : 
+        Math.min(fromY, toY) - 20;
+      path.push(`L ${fromX} ${midY}`);
+      path.push(`L ${toX} ${midY}`);
+    }
+    path.push(`L ${toX} ${toY}`);
+  }
 
-          return path.join(" ");
-        };
-        // ================================================
+  return path.join(' ');
+};
+// ================================================
 
         const pathData = calculateOrthogonalPath();
 
@@ -330,17 +384,11 @@ export function ConexoesDiagrama({
             {/* Linha de conexão ORTOGONAL */}
             <path
               d={pathData}
-              stroke={connectionStyle.stroke}
-              className="cursor-pointer transition-all"
+              className={`${connectionStyle.stroke} cursor-pointer transition-all`}
               strokeWidth={isHovered ? "6" : connectionStyle.strokeWidth}
               opacity={connectionStyle.opacity}
               fill="none"
-              style={{
-                pointerEvents: "stroke",
-                opacity: 1,
-                visibility: 'visible',
-                display: 'block',
-               }}
+              style={{ pointerEvents: "stroke" }}
               onMouseEnter={() => setHoveredConnection(connection.id)}
               onMouseLeave={() => setHoveredConnection(null)}
               onClick={(e) => {
@@ -365,14 +413,14 @@ export function ConexoesDiagrama({
               cx={fromX}
               cy={fromY}
               r="4"
-              fill="#3b82f6"
+              className="fill-blue-600"
               opacity="0.8"
             />
             <circle
               cx={toX}
               cy={toY}
               r="4"
-              fill="#3b82f6"
+              className="fill-blue-600"
               opacity="0.8"
             />
 
@@ -385,8 +433,7 @@ export function ConexoesDiagrama({
                   width="140"
                   height="40"
                   rx="4"
-                  fill="hsl(var(--background))"
-                  stroke="hsl(var(--border))"
+                  className="fill-background stroke-border"
                   strokeWidth="1"
                 />
                 <text
@@ -395,7 +442,7 @@ export function ConexoesDiagrama({
                   textAnchor="middle"
                   dominantBaseline="central"
                   fontSize="9"
-                  fill="hsl(var(--foreground))"
+                  className="fill-foreground"
                   style={{ pointerEvents: "none" }}
                 >
                   Clique para remover
@@ -406,7 +453,7 @@ export function ConexoesDiagrama({
                   textAnchor="middle"
                   dominantBaseline="central"
                   fontSize="8"
-                  fill="hsl(var(--muted-foreground))"
+                  className="fill-muted-foreground"
                   style={{ pointerEvents: "none" }}
                 >
                   Ctrl+Click = Junção
@@ -425,8 +472,7 @@ export function ConexoesDiagrama({
           textAnchor="middle"
           fontSize="14"
           fontWeight="600"
-          fill="#d97706"
-          className="animate-pulse"
+          className="fill-amber-600 animate-pulse"
         >
           Clique em outro componente para completar a conexão
         </text>

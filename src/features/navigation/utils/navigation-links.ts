@@ -64,7 +64,6 @@ export const navigationLinks: Array<NavigationLink> = [
       {
         key: "supervisorio-cadastro-unidades",
         featureKey: "supervisorio",
-        featureFlag: "enableCadastroUnidadesSupervisorio",
         path: "/supervisorio/cadastro-unidades",
         icon: Building2,
         label: "Cadastro de Unidades",
@@ -173,6 +172,14 @@ export const navigationLinks: Array<NavigationLink> = [
         icon: Boxes,
         label: "Equipamentos",
         hint: "Gerenciar Equipamentos",
+      },
+      {
+        key: "cadastros-concessionarias",
+        featureKey: "Concessionarias",
+        path: "/cadastros/concessionarias",
+        icon: Zap,
+        label: "Concessionárias",
+        hint: "Gerenciar Concessionárias de Energia",
       },
     ],
   },
