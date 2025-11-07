@@ -50,7 +50,7 @@ import "./DomAnchoredConnectionsOverlay.css";
  * Flag de debug - Desabilita logs em produção
  * Pode ser ativado manualmente no console: window.NEXON_DEBUG = true
  */
-const DEBUG = true; // TEMPORARIAMENTE ATIVADO PARA DEBUG
+const DEBUG = false;
 
 /**
  * Helper para logs condicionais
