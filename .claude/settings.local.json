@@ -22,7 +22,8 @@
       "Bash(dir:*)",
       "Bash(timeout:*)",
       "Bash(git stash:*)",
-      "Bash(git pull:*)"
+      "Bash(git pull:*)",
+      "Bash(git push)"
     ],
     "deny": [],
     "ask": []
