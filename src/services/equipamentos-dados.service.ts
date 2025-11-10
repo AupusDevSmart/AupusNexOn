@@ -138,7 +138,9 @@ export interface EquipamentoDadosStats {
 
 class EquipamentosDadosService {
   async getLatest(equipamentoId: string): Promise<EquipamentoDadoLatest> {
-    const response = await api.get(`/equipamentos/${equipamentoId}/dados/atual`);
+    // Limpar espaços em branco do ID
+    const cleanId = equipamentoId.trim();
+    const response = await api.get(`/equipamentos/${cleanId}/dados/atual`);
     return response.data;
   }
 
@@ -153,6 +155,9 @@ class EquipamentosDadosService {
       qualidade?: string;
     }
   ): Promise<EquipamentoDadosHistory> {
+    // Limpar espaços em branco do ID
+    const cleanId = equipamentoId.trim();
+
     // Mapear parâmetros do frontend para o backend
     const params: any = {};
     if (filters?.startDate) params.inicio = filters.startDate;
@@ -162,14 +167,31 @@ class EquipamentosDadosService {
     if (filters?.fonte) params.fonte = filters.fonte;
     if (filters?.qualidade) params.qualidade = filters.qualidade;
 
-    const response = await api.get(`/equipamentos/${equipamentoId}/dados/historico`, {
+    const response = await api.get(`/equipamentos/${cleanId}/dados/historico`, {
       params,
     });
     return response.data;
   }
 
   async getStats(equipamentoId: string): Promise<EquipamentoDadosStats> {
-    const response = await api.get(`/equipamentos/${equipamentoId}/dados/stats`);
+    // Limpar espaços em branco do ID
+    const cleanId = equipamentoId.trim();
+    const response = await api.get(`/equipamentos/${cleanId}/dados/stats`);
+    return response.data;
+  }
+
+  async getCustosEnergia(
+    equipamentoId: string,
+    params: {
+      periodo: 'dia' | 'mes';
+      data?: string;
+    }
+  ) {
+    // Limpar espaços em branco do ID
+    const cleanId = equipamentoId.trim();
+    const response = await api.get(`/equipamentos-dados/${cleanId}/custos-energia`, {
+      params,
+    });
     return response.data;
   }
 }

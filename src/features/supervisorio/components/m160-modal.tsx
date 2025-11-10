@@ -1,15 +1,27 @@
-import type { M160Reading } from "@/components/equipment/M160/M160.types";
-import M160Multimeter from "@/components/equipment/M160/M160Multimeter";
-import { Badge } from "@/components/ui/badge";
+import { useState, useMemo } from 'react';
+import type { M160Reading } from '@/components/equipment/M160/M160.types';
+import M160Multimeter from '@/components/equipment/M160/M160Multimeter';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Gauge, WifiOff, Loader2 } from "lucide-react";
-import { useMqttWebSocket } from "@/hooks/useMqttWebSocket";
-import { useMemo } from "react";
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Gauge, WifiOff, Loader2, DollarSign, Activity, Calendar } from 'lucide-react';
+import { useEquipamentoMqttData } from '@/hooks/useEquipamentoMqttData';
+import { useCustosEnergia } from '@/hooks/useCustosEnergia';
+import type { PeriodoTipo } from '@/types/dtos/custos-energia-dto';
+import { CardCusto, CardResumoTotal, IndicadorIrrigante } from './custos-energia';
 
 interface M160ModalProps {
   isOpen: boolean;
@@ -18,15 +30,41 @@ interface M160ModalProps {
 }
 
 export function M160Modal({ isOpen, onClose, componenteData }: M160ModalProps) {
+  // Estado da aba ativa
+  const [activeTab, setActiveTab] = useState<'leitura' | 'custos'>('leitura');
+
+  // Estado dos filtros de custos
+  const [periodoCustos, setPeriodoCustos] = useState<PeriodoTipo>('dia');
+
   // ============================================
-  // INTEGRAÇÃO WEBSOCKET MQTT EM TEMPO REAL
+  // INTEGRAÇÃO MQTT EM TEMPO REAL
   // ============================================
-  // TEMPORÁRIO: Desabilitado para evitar erros de conexão enquanto backend não está configurado
-  // const topic = componenteData?.tag || 'OLI/GO/CHI/CAB/M160-1';
-  // const { data: mqttData, isConnected, error } = useMqttWebSocket(topic);
-  const mqttData = null;
-  const isConnected = false;
-  const error = 'Backend MQTT não configurado (modo teste)';
+  const equipamentoId = (componenteData?.dados?.equipamento_id || componenteData?.id)?.trim();
+  const { data: mqttResponse, loading, error, lastUpdate } = useEquipamentoMqttData(equipamentoId);
+
+  const mqttData = useMemo(() => {
+    if (!mqttResponse?.dado?.dados) return null;
+    return {
+      payload: mqttResponse.dado.dados,
+      timestamp: new Date(mqttResponse.dado.timestamp_dados).getTime(),
+    };
+  }, [mqttResponse]);
+
+  const isConnected = !!mqttData && !loading;
+
+  // ============================================
+  // DADOS DE CUSTOS
+  // ============================================
+  const {
+    data: custosData,
+    loading: custosLoading,
+    error: custosError,
+    refetch: refetchCustos,
+  } = useCustosEnergia({
+    equipamentoId,
+    periodo: periodoCustos,
+    enabled: activeTab === 'custos' && !!equipamentoId,
+  });
 
   // Converter dados MQTT para formato M160Reading
   const dadosM160: M160Reading = useMemo(() => {
@@ -95,14 +133,18 @@ export function M160Modal({ isOpen, onClose, componenteData }: M160ModalProps) {
     };
   }, [mqttData]);
 
+  // Determinar se unidade é Grupo A (tem diferenciação de horários)
+  const isGrupoA = custosData?.unidade?.grupo === 'A';
+  const isIrrigante = custosData?.unidade?.irrigante === true;
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-md max-h-[90vh] overflow-auto">
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 justify-between">
             <div className="flex items-center gap-2">
               <Gauge className="h-5 w-5 text-green-500" />
-              {componenteData?.nome || "M160"} - Multimedidor 4Q
+              {componenteData?.nome || 'M160'} - Multimedidor 4Q
             </div>
             {/* Indicador de Status de Conexão */}
             {isConnected ? (
@@ -118,69 +160,225 @@ export function M160Modal({ isOpen, onClose, componenteData }: M160ModalProps) {
           </DialogTitle>
         </DialogHeader>
 
-        {/* Mostrar erro se houver */}
-        {error && (
-          <div className="bg-red-500/10 border border-red-500/50 rounded-md p-3 mb-4">
-            <p className="text-sm text-red-500">⚠️ Erro de conexão: {error}</p>
-            <p className="text-xs text-red-400 mt-1">Verifique se o backend está rodando em http://localhost:3000</p>
-          </div>
-        )}
+        {/* Tabs de Navegação */}
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="leitura" className="flex items-center gap-2">
+              <Activity className="h-4 w-4" />
+              Leitura em Tempo Real
+            </TabsTrigger>
+            <TabsTrigger value="custos" className="flex items-center gap-2">
+              <DollarSign className="h-4 w-4" />
+              Custos de Energia
+            </TabsTrigger>
+          </TabsList>
 
-        <div className="flex justify-center items-center py-6">
-          <div className="bg-gray-900 p-8 rounded-lg shadow-lg">
-            <M160Multimeter
-              id="m160-modal"
-              name={componenteData?.nome || "M160"}
-              readings={dadosM160}
-              status={isConnected ? "online" : "offline"}
-              displayMode="all"
-              scale={1.0}
-              navigation={{
-                enableManualNavigation: true,
-                showDisplayLabel: true,
-                showPositionIndicator: true,
-                allowAutoRotationToggle: false,
-              }}
-              onConfig={() => console.log("Configurar M160")}
-            />
+          {/* ABA: Leitura em Tempo Real */}
+          <TabsContent value="leitura" className="space-y-4">
+            {/* Mostrar erro se houver */}
+            {error && (
+              <div className="bg-red-500/10 border border-red-500/50 rounded-md p-3">
+                <p className="text-sm text-red-500">⚠️ Erro de conexão: {error}</p>
+                <p className="text-xs text-red-400 mt-1">
+                  Verifique se o backend está rodando em http://localhost:3000
+                </p>
+              </div>
+            )}
 
-            <div className="mt-6 text-center space-y-2">
-              <Badge variant="outline" className="text-xs">
-                Display Interativo com Navegação
-              </Badge>
-              {mqttData && (
-                <div className="text-xs text-gray-400 mt-2">
-                  Última atualização: {new Date(mqttData.timestamp).toLocaleTimeString('pt-BR')}
+            <div className="flex justify-center items-center py-6">
+              <div className="bg-gray-900 p-8 rounded-lg shadow-lg">
+                <M160Multimeter
+                  id="m160-modal"
+                  name={componenteData?.nome || 'M160'}
+                  readings={dadosM160}
+                  status={isConnected ? 'online' : 'offline'}
+                  displayMode="all"
+                  scale={1.0}
+                  navigation={{
+                    enableManualNavigation: true,
+                    showDisplayLabel: true,
+                    showPositionIndicator: true,
+                    allowAutoRotationToggle: false,
+                  }}
+                  onConfig={() => console.log('Configurar M160')}
+                />
+
+                <div className="mt-6 text-center space-y-2">
+                  <Badge variant="outline" className="text-xs">
+                    Display Interativo com Navegação
+                  </Badge>
+                  {mqttData && (
+                    <div className="text-xs text-gray-400 mt-2">
+                      Última atualização: {new Date(mqttData.timestamp).toLocaleTimeString('pt-BR')}
+                    </div>
+                  )}
                 </div>
-              )}
-
-              {/* Debug: Mostrar JSON completo */}
-              {/* {mqttData && (
-                <div className="mt-4 p-3 bg-gray-800 rounded text-left">
-                  <div className="font-bold text-white mb-2">📊 JSON MQTT Completo:</div>
-                  <pre className="text-xs text-green-400 overflow-auto max-h-64 bg-black p-2 rounded">
-                    {JSON.stringify(mqttData, null, 2)}
-                  </pre>
-                </div>
-              )} */}
-
-              {/* Debug: Mostrar valores recebidos */}
-              {/* {mqttData?.payload?.Dados && (
-                <div className="mt-4 p-3 bg-gray-800 rounded text-left text-xs">
-                  <div className="font-bold text-white mb-2">📊 Dados Extraídos:</div>
-                  <div className="grid grid-cols-2 gap-2 text-gray-300">
-                    <div>Tensões: Va={mqttData.payload.Dados.Va}V, Vb={mqttData.payload.Dados.Vb}V, Vc={mqttData.payload.Dados.Vc}V</div>
-                    <div>Correntes: Ia={mqttData.payload.Dados.Ia}A, Ib={mqttData.payload.Dados.Ib}A, Ic={mqttData.payload.Dados.Ic}A</div>
-                    <div>Potências: Pa={mqttData.payload.Dados.Pa}W, Pb={mqttData.payload.Dados.Pb}W, Pc={mqttData.payload.Dados.Pc}W</div>
-                    <div>Energia: phf={mqttData.payload.Dados.phf}, phr={mqttData.payload.Dados.phr}</div>
-                    <div>Reativa: qhfi={mqttData.payload.Dados.qhfi}, qhri={mqttData.payload.Dados.qhri}</div>
-                    <div>FP: FPA={mqttData.payload.Dados.FPA}, FPB={mqttData.payload.Dados.FPB}, FPC={mqttData.payload.Dados.FPC}</div>
-                  </div>
-                </div>
-              )} */}
+              </div>
             </div>
-          </div>
-        </div>
+          </TabsContent>
+
+          {/* ABA: Custos de Energia */}
+          <TabsContent value="custos" className="space-y-4">
+            {/* Filtros */}
+            <div className="flex items-center justify-between gap-4 p-4 bg-muted/30 rounded-lg">
+              <div className="flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-medium">Período:</span>
+              </div>
+              <Select value={periodoCustos} onValueChange={(v) => setPeriodoCustos(v as PeriodoTipo)}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Selecione o período" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="dia">Dia Atual</SelectItem>
+                  <SelectItem value="mes">Mês Atual</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button size="sm" variant="outline" onClick={refetchCustos} disabled={custosLoading}>
+                {custosLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Atualizar'}
+              </Button>
+            </div>
+
+            {/* Loading */}
+            {custosLoading && (
+              <div className="flex justify-center items-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            )}
+
+            {/* Erro */}
+            {custosError && !custosLoading && (
+              <div className="bg-red-500/10 border border-red-500/50 rounded-md p-4">
+                <p className="text-sm text-red-500">⚠️ Erro ao carregar custos: {custosError}</p>
+              </div>
+            )}
+
+            {/* Conteúdo de Custos */}
+            {custosData && !custosLoading && (
+              <div className="space-y-6">
+                {/* Informações da Unidade */}
+                <div className="flex items-center gap-2 text-sm">
+                  <Badge variant="outline">{custosData.unidade.grupo} - {custosData.unidade.subgrupo}</Badge>
+                  {isIrrigante && (
+                    <Badge variant="outline" className="bg-green-500/10 text-green-500 border-green-500/50">
+                      Irrigante
+                    </Badge>
+                  )}
+                  <span className="text-muted-foreground">•</span>
+                  <span className="text-muted-foreground">{custosData.unidade.nome}</span>
+                </div>
+
+                {/* Grid de Cards de Custos - Layout adaptativo baseado no grupo */}
+                {isGrupoA ? (
+                  // GRUPO A: Grid 2x2 + Resumo + Irrigante (se aplicável)
+                  <div className="grid gap-4">
+                    {/* Linha 1: Ponta e Fora Ponta */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <CardCusto
+                        tipo="PONTA"
+                        energia_kwh={custosData.consumo.energia_ponta_kwh}
+                        custo={custosData.custos.custo_ponta}
+                        tarifa={
+                          custosData.tarifas_aplicadas.find((t) => t.tipo_horario === 'PONTA')?.tarifa_total || undefined
+                        }
+                        horario_inicio="17:00"
+                        horario_fim="20:00"
+                      />
+                      <CardCusto
+                        tipo="FORA_PONTA"
+                        energia_kwh={custosData.consumo.energia_fora_ponta_kwh}
+                        custo={custosData.custos.custo_fora_ponta}
+                        tarifa={
+                          custosData.tarifas_aplicadas.find((t) => t.tipo_horario === 'FORA_PONTA')?.tarifa_total ||
+                          undefined
+                        }
+                      />
+                    </div>
+
+                    {/* Linha 2: Reservado e Demanda */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <CardCusto
+                        tipo="RESERVADO"
+                        energia_kwh={custosData.consumo.energia_reservado_kwh}
+                        custo={custosData.custos.custo_reservado}
+                        tarifa={
+                          custosData.tarifas_aplicadas.find((t) => t.tipo_horario === 'RESERVADO')?.tarifa_total ||
+                          undefined
+                        }
+                        observacao="Na tarifa Verde: HR = FP"
+                      />
+                      <CardCusto
+                        tipo="DEMANDA"
+                        energia_kwh={custosData.consumo.demanda_contratada_kw || 0}
+                        custo={custosData.custos.custo_demanda}
+                        tarifa={
+                          custosData.tarifas_aplicadas.find((t) => t.tipo_horario === 'DEMANDA')?.tarifa_total ||
+                          undefined
+                        }
+                      />
+                    </div>
+
+                    {/* Irrigante (se aplicável) */}
+                    {isIrrigante && custosData.irrigante && (
+                      <IndicadorIrrigante irrigante={custosData.irrigante} />
+                    )}
+
+                    {/* Resumo Total */}
+                    <CardResumoTotal
+                      energia_total_kwh={custosData.consumo.energia_total_kwh}
+                      custo_total={custosData.custos.custo_total}
+                      custo_medio_kwh={custosData.custos.custo_medio_kwh}
+                      demanda_maxima_kw={custosData.consumo.demanda_maxima_kw}
+                      demanda_contratada_kw={custosData.consumo.demanda_contratada_kw}
+                    />
+                  </div>
+                ) : (
+                  // GRUPO B: Layout simplificado
+                  <div className="grid gap-4">
+                    <CardCusto
+                      tipo="FORA_PONTA"
+                      energia_kwh={
+                        custosData.consumo.energia_total_kwh - custosData.consumo.energia_irrigante_kwh
+                      }
+                      custo={custosData.custos.custo_fora_ponta}
+                      tarifa={
+                        custosData.tarifas_aplicadas.find((t) => t.tipo_horario === 'FORA_PONTA')?.tarifa_total ||
+                        undefined
+                      }
+                    />
+
+                    {/* Irrigante (se aplicável) */}
+                    {isIrrigante && custosData.irrigante && custosData.consumo.energia_irrigante_kwh > 0 && (
+                      <>
+                        <CardCusto
+                          tipo="IRRIGANTE"
+                          energia_kwh={custosData.consumo.energia_irrigante_kwh}
+                          custo={custosData.custos.custo_irrigante}
+                        />
+                        <IndicadorIrrigante irrigante={custosData.irrigante} />
+                      </>
+                    )}
+
+                    {/* Resumo Total */}
+                    <CardResumoTotal
+                      energia_total_kwh={custosData.consumo.energia_total_kwh}
+                      custo_total={custosData.custos.custo_total}
+                      custo_medio_kwh={custosData.custos.custo_medio_kwh}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Estado vazio */}
+            {!custosData && !custosLoading && !custosError && (
+              <div className="text-center py-12 text-muted-foreground">
+                <DollarSign className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p>Selecione um período para visualizar os custos</p>
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
       </DialogContent>
     </Dialog>
   );

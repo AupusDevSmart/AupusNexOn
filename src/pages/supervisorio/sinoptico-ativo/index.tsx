@@ -2081,17 +2081,7 @@ export function SinopticoAtivoPage() {
   // Função principal de clique em componente - CORRIGIDO + MQTT
   const handleComponenteClick = useCallback(
     (componente: ComponenteDU, event?: React.MouseEvent) => {
-      console.log('🖱️ ========================================');
-      console.log('🖱️ CLIQUE NO COMPONENTE DETECTADO!');
-      console.log('🖱️ ========================================');
-      console.log('📦 Componente completo:', componente);
-      console.log('📋 Nome:', componente.nome);
-      console.log('🏷️ Tipo:', componente.tipo);
-      console.log('💾 Dados:', componente.dados);
-      console.log('🆔 ID:', componente.id);
-
       if (modoEdicao) {
-        console.log('✏️ Modo edição ativo - ignorando lógica de modal');
         if (modoFerramenta === "selecionar") {
           setComponenteEditando(componente.id);
         } else if (modoFerramenta === "conectar" && event) {
@@ -2103,67 +2093,25 @@ export function SinopticoAtivoPage() {
 
       setComponenteSelecionado(componente);
 
-      // ============================================
-      // NOVA LÓGICA: Detectar Inversor com MQTT Habilitado
-      // ============================================
-      console.log('🔍 ========================================');
-      console.log('🔍 VERIFICANDO SE É INVERSOR COM MQTT');
-      console.log('🔍 ========================================');
-      console.log('❓ É INVERSOR?', componente.tipo === 'INVERSOR');
-      console.log('❓ Tem dados?', !!componente.dados);
-      console.log('❓ MQTT habilitado?', componente.dados?.mqtt_habilitado);
-      console.log('❓ Tem equipamento_id?', componente.dados?.equipamento_id);
-      console.log('❓ Tópico MQTT:', componente.dados?.mqtt_topico);
-
-      // Se for um inversor E tiver MQTT habilitado, abre o modal de dados MQTT
+      // Detectar Inversor com MQTT Habilitado
       if (componente.tipo === 'INVERSOR' &&
           componente.dados?.mqtt_habilitado === true &&
           componente.dados?.equipamento_id) {
-        console.log('✅ ========================================');
-        console.log('✅ CONDIÇÕES ATENDIDAS! ABRINDO MODAL MQTT');
-        console.log('✅ ========================================');
-        console.log('🔌 Equipamento ID:', componente.dados.equipamento_id);
-        console.log('📡 Tópico MQTT:', componente.dados.mqtt_topico);
-
         setSelectedInversorMqttId(componente.dados.equipamento_id);
         setInversorMqttModalOpen(true);
-
-        console.log('✅ Estado atualizado - modal MQTT deve abrir agora!');
-        return; // Não abre o modal padrão
-      } else {
-        console.log('❌ ========================================');
-        console.log('❌ CONDIÇÕES NÃO ATENDIDAS - MODAL PADRÃO');
-        console.log('❌ ========================================');
-        if (componente.tipo !== 'INVERSOR') {
-          console.log('❌ Razão: Não é um inversor (tipo:', componente.tipo + ')');
-        } else if (!componente.dados?.mqtt_habilitado) {
-          console.log('❌ Razão: MQTT não está habilitado');
-        } else if (!componente.dados?.equipamento_id) {
-          console.log('❌ Razão: Não tem equipamento_id');
-        }
+        return;
       }
 
-      // ============================================
-      // LÓGICA PARA DETECTAR TÓPICO MQTT E ABRIR MODAL CORRETO
-      // ============================================
-      // Verifica se o componente tem um 'tag' (tópico MQTT)
-      // e abre o modal específico baseado no tópico
-
+      // Detectar tópico MQTT e abrir modal correto
       const tag = (componente as any).tag || '';
-      console.log('🏷️ Tag do componente:', tag);
 
       if (tag.includes('M160')) {
-        console.log('📂 Abrindo modal M160');
         setModalAberto('M160');
       } else if (tag.includes('a966/state') && !tag.includes('LANDIS')) {
-        console.log('📂 Abrindo modal A966');
         setModalAberto('A966');
       } else if (tag.includes('LANDIS')) {
-        console.log('📂 Abrindo modal LANDIS_E750');
         setModalAberto('LANDIS_E750');
       } else {
-        console.log('📂 Abrindo modal do tipo:', componente.tipo);
-        // Fallback para o tipo original
         setModalAberto(componente.tipo);
       }
     },

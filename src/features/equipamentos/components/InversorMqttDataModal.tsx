@@ -29,13 +29,16 @@ export function InversorMqttDataModal({ equipamentoId, open, onOpenChange }: Inv
   console.log('🔵 ========================================');
   console.log('📋 Props recebidas:', { equipamentoId, open, onOpenChange: !!onOpenChange });
 
-  const { data, loading, error, lastUpdate } = useEquipamentoMqttData(equipamentoId);
-  const { data: powerHistory, loading: powerLoading } = useEquipamentoPowerHistory(equipamentoId);
+  // Limpar espaços em branco do ID
+  const cleanId = equipamentoId?.trim() || null;
+
+  const { data, loading, error, lastUpdate } = useEquipamentoMqttData(cleanId);
+  const { data: powerHistory, loading: powerLoading } = useEquipamentoPowerHistory(cleanId);
 
   // Hooks para os 3 gráficos
-  const graficoDia = useGraficoDia(equipamentoId);
-  const graficoMes = useGraficoMes(equipamentoId);
-  const graficoAno = useGraficoAno(equipamentoId);
+  const graficoDia = useGraficoDia(cleanId);
+  const graficoMes = useGraficoMes(cleanId);
+  const graficoAno = useGraficoAno(cleanId);
 
   console.log('📊 Estado do hook:', {
     hasData: !!data,

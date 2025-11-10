@@ -18,12 +18,19 @@ export function useEquipamentoMqttData(equipamentoId: string | null) {
       return;
     }
 
+    // Limpar espaços em branco do ID e remover prefixo "eq-" duplicado se existir
+    let cleanId = equipamentoId.trim();
+    // Se o ID começa com "eq-eq-", remover o primeiro "eq-"
+    if (cleanId.startsWith('eq-eq-')) {
+      cleanId = cleanId.substring(3);
+    }
+
     setLoading(true);
     setError(null);
 
     try {
-      console.log(`🔄 [useEquipamentoMqttData] Buscando dados para equipamento ${equipamentoId}`);
-      const response = await equipamentosDadosService.getLatest(equipamentoId);
+      console.log(`🔄 [useEquipamentoMqttData] Buscando dados para equipamento ${cleanId}`);
+      const response = await equipamentosDadosService.getLatest(cleanId);
       console.log('✅ [useEquipamentoMqttData] Resposta completa:', response);
       console.log('✅ [useEquipamentoMqttData] Dados extraídos:', response.data);
       setData(response.data || response);
@@ -46,6 +53,13 @@ export function useEquipamentoMqttData(equipamentoId: string | null) {
       return () => {
         console.log('🧹 [useEquipamentoMqttData] Cleanup (sem conexão)');
       };
+    }
+
+    // Limpar espaços em branco do ID e remover prefixo "eq-" duplicado se existir
+    let cleanId = equipamentoId.trim();
+    // Se o ID começa com "eq-eq-", remover o primeiro "eq-"
+    if (cleanId.startsWith('eq-eq-')) {
+      cleanId = cleanId.substring(3);
     }
 
     // Conectar ao WebSocket
@@ -81,10 +95,10 @@ export function useEquipamentoMqttData(equipamentoId: string | null) {
       console.log('🔌 [WebSocket] Conectado com sucesso!');
       console.log('🔌 [WebSocket] Socket ID:', socket.id);
       console.log('🔌 [WebSocket] Connected:', socket.connected);
-      console.log('📤 [WebSocket] Enviando subscribe_equipamento para:', equipamentoId);
+      console.log('📤 [WebSocket] Enviando subscribe_equipamento para:', cleanId);
 
       // Se inscrever para receber atualizações deste equipamento
-      socket.emit('subscribe_equipamento', { equipamentoId });
+      socket.emit('subscribe_equipamento', { equipamentoId: cleanId });
       console.log('✅ [WebSocket] subscribe_equipamento enviado');
     });
 
@@ -95,10 +109,10 @@ export function useEquipamentoMqttData(equipamentoId: string | null) {
     socket.on('equipamento_dados', (event: any) => {
       console.log('📡 [WebSocket] Evento recebido:', event);
       console.log('📡 [WebSocket] EquipamentoId do evento:', event.equipamentoId);
-      console.log('📡 [WebSocket] EquipamentoId esperado:', equipamentoId);
-      console.log('📡 [WebSocket] Match?', event.equipamentoId === equipamentoId);
+      console.log('📡 [WebSocket] EquipamentoId esperado:', cleanId);
+      console.log('📡 [WebSocket] Match?', event.equipamentoId === cleanId);
 
-      if (event.equipamentoId === equipamentoId) {
+      if (event.equipamentoId === cleanId) {
         const now = new Date();
         console.log('✅ [WebSocket] Match confirmado! Atualizando dados...');
         console.log('✅ [WebSocket] Timestamp do evento:', event.timestamp);
@@ -146,7 +160,7 @@ export function useEquipamentoMqttData(equipamentoId: string | null) {
     return () => {
       console.log('🧹 [useEquipamentoMqttData] Cleanup - desconectando WebSocket');
       if (socketRef.current) {
-        socketRef.current.emit('unsubscribe_equipamento', { equipamentoId });
+        socketRef.current.emit('unsubscribe_equipamento', { equipamentoId: cleanId });
         socketRef.current.disconnect();
         socketRef.current = null;
         console.log('✅ [WebSocket] Desconectado e cleanup completo');

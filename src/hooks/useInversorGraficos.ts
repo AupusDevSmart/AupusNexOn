@@ -64,7 +64,9 @@ export function useGraficoDia(equipamentoId: string | null, data?: string) {
           `${API_URL}/equipamentos-dados/${equipamentoId}/grafico-dia`,
           { params }
         );
-        setGraficoDia(response.data);
+        console.log('📊 [GRAFICO DIA] Response completa:', response.data);
+        // API retorna { success, data, meta } - extrair apenas data
+        setGraficoDia(response.data.data || response.data);
       } catch (err: any) {
         console.error('Erro ao buscar gráfico do dia:', err);
         setError(err.response?.data?.message || 'Erro ao carregar gráfico do dia');
@@ -100,7 +102,9 @@ export function useGraficoMes(equipamentoId: string | null, mes?: string) {
           `${API_URL}/equipamentos-dados/${equipamentoId}/grafico-mes`,
           { params }
         );
-        setGraficoMes(response.data);
+        console.log('📊 [GRAFICO MES] Response completa:', response.data);
+        // API retorna { success, data, meta } - extrair apenas data
+        setGraficoMes(response.data.data || response.data);
       } catch (err: any) {
         console.error('Erro ao buscar gráfico do mês:', err);
         setError(err.response?.data?.message || 'Erro ao carregar gráfico do mês');
@@ -136,7 +140,9 @@ export function useGraficoAno(equipamentoId: string | null, ano?: string) {
           `${API_URL}/equipamentos-dados/${equipamentoId}/grafico-ano`,
           { params }
         );
-        setGraficoAno(response.data);
+        console.log('📊 [GRAFICO ANO] Response completa:', response.data);
+        // API retorna { success, data, meta } - extrair apenas data
+        setGraficoAno(response.data.data || response.data);
       } catch (err: any) {
         console.error('Erro ao buscar gráfico do ano:', err);
         setError(err.response?.data?.message || 'Erro ao carregar gráfico do ano');
