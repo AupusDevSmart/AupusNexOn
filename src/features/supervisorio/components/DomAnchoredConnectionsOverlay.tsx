@@ -936,57 +936,28 @@ export function DomAnchoredConnectionsOverlay({
               }}
             />
 
-            {/* CÍRCULOS DE CONEXÃO */}
-            <circle
-              className="nexon-connection-point"
-              cx={coords.fromX}
-              cy={coords.fromY}
-              r="4"
-              fill={style.stroke}
-            />
-            <circle
-              className="nexon-connection-point"
-              cx={coords.toX}
-              cy={coords.toY}
-              r="4"
-              fill={style.stroke}
-            />
-
-            {/* LABEL DE HOVER (MODO EDIÇÃO) */}
-            {modoEdicao && isHovered && (
-              <g className="nexon-connection-label">
-                <rect
-                  x={(coords.fromX + coords.toX) / 2 - 70}
-                  y={(coords.fromY + coords.toY) / 2 - 20}
-                  width="140"
-                  height="40"
-                  rx="4"
-                  fill="rgba(0, 0, 0, 0.9)"
-                  stroke="#3b82f6"
-                  strokeWidth="1"
+            {/* CÍRCULOS DE CONEXÃO - Apenas no modo de edição */}
+            {modoEdicao && (
+              <>
+                <circle
+                  className="nexon-connection-point"
+                  cx={coords.fromX}
+                  cy={coords.fromY}
+                  r="4"
+                  fill={style.stroke}
+                  style={{ pointerEvents: 'none' }}
                 />
-                <text
-                  x={(coords.fromX + coords.toX) / 2}
-                  y={(coords.fromY + coords.toY) / 2 - 5}
-                  textAnchor="middle"
-                  dominantBaseline="central"
-                  fontSize="10"
-                  fill="white"
-                >
-                  Clique para remover
-                </text>
-                <text
-                  x={(coords.fromX + coords.toX) / 2}
-                  y={(coords.fromY + coords.toY) / 2 + 8}
-                  textAnchor="middle"
-                  dominantBaseline="central"
-                  fontSize="8"
-                  fill="#94a3b8"
-                >
-                  Ctrl+Click = Junção
-                </text>
-              </g>
+                <circle
+                  className="nexon-connection-point"
+                  cx={coords.toX}
+                  cy={coords.toY}
+                  r="4"
+                  fill={style.stroke}
+                  style={{ pointerEvents: 'none' }}
+                />
+              </>
             )}
+
           </g>
         );
       })}

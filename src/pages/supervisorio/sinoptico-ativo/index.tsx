@@ -1356,6 +1356,15 @@ export function SinopticoAtivoPage() {
   const [connections, setConnections] = useState<Connection[]>([]);
   const [diagramaCarregado, setDiagramaCarregado] = useState(false);
 
+  // Log sempre que connections mudar
+  useEffect(() => {
+    console.log('🔄 [STATE CHANGE] connections mudou:', {
+      total: connections.length,
+      ids: connections.map(c => c.id),
+      stackTrace: new Error().stack
+    });
+  }, [connections]);
+
   // Função para carregar diagrama do backend
   const loadDiagramaFromBackend = useCallback(async () => {
     if (!unidadeId) return;
@@ -1467,6 +1476,7 @@ export function SinopticoAtivoPage() {
             };
           });
 
+          console.log('📦 [loadDiagramaFromBackend] Chamando setComponentes e setConnections...');
           setComponentes(componentesCarregados);
           setConnections(conexoesCarregadas);
           console.log('✅ Diagrama carregado:', componentesCarregados.length, 'componentes,', conexoesCarregadas.length, 'conexões');
@@ -1837,152 +1847,6 @@ export function SinopticoAtivoPage() {
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [undo, redo]);
-
-  // FUNÇÕES DE LAYOUT COM PREVENÇÃO DE SOBREPOSIÇÃO
-  const MIN_SPACING = 15; // Espaçamento mínimo entre componentes em %
-
-  const autoArrangeComponents = useCallback(() => {
-    const arranged = [...componentes];
-    const categories = {
-      MEDIDOR: { row: 1, order: 1 },
-      TRANSFORMADOR: { row: 2, order: 1 },
-      INVERSOR: { row: 3, order: 1 },
-      DISJUNTOR: { row: 1, order: 2 },
-      TSA: { row: 2, order: 2 },
-      RETIFICADOR: { row: 3, order: 2 },
-      BANCO_BATERIAS: { row: 4, order: 1 },
-      MOTOR: { row: 4, order: 2 },
-      CAPACITOR: { row: 4, order: 3 },
-    };
-
-    const grouped = arranged.reduce((acc, comp) => {
-      const category = categories[comp.tipo] || { row: 5, order: 1 };
-      const key = `${category.row}-${category.order}`;
-      if (!acc[key]) acc[key] = [];
-      acc[key].push(comp);
-      return acc;
-    }, {} as Record<string, ComponenteDU[]>);
-
-    const newComponents: ComponenteDU[] = [];
-
-    Object.entries(grouped).forEach(([key, components]) => {
-      const [row, order] = key.split("-").map(Number);
-      const baseY = 15 + (row - 1) * 20; // 15%, 35%, 55%, 75%
-      const baseX = 10 + (order - 1) * 30; // 10%, 40%, 70%
-
-      // Distribuição horizontal inteligente para cada grupo
-      const startX = baseX;
-      const maxX = baseX + 25; // Máximo 25% de largura por coluna
-      const numInGroup = components.length;
-
-      if (numInGroup === 1) {
-        // Se só há 1 componente no grupo, usar posição base
-        newComponents.push({
-          ...components[0],
-          posicao: {
-            x: startX,
-            y: baseY,
-          },
-        });
-      } else {
-        // Se há múltiplos componentes, distribuir uniformemente
-        const availableWidth = maxX - startX;
-        const spacing = availableWidth / (numInGroup - 1);
-
-        components.forEach((comp, index) => {
-          newComponents.push({
-            ...comp,
-            posicao: {
-              x: Math.min(startX + index * spacing, 85),
-              y: baseY,
-            },
-          });
-        });
-      }
-    });
-
-    updateDiagram(newComponents);
-  }, [componentes, updateDiagram]);
-
-  const alignHorizontal = useCallback(() => {
-    if (componentes.length < 2) return;
-
-    // Calcular Y médio
-    const avgY =
-      componentes.reduce((sum, comp) => sum + comp.posicao.y, 0) /
-      componentes.length;
-
-    // Ordenar por posição X para manter ordem
-    const sortedComponents = [...componentes].sort(
-      (a, b) => a.posicao.x - b.posicao.x
-    );
-
-    const aligned: ComponenteDU[] = [];
-    let currentX = 10; // Começar em 10%
-
-    sortedComponents.forEach((comp) => {
-      aligned.push({
-        ...comp,
-        posicao: {
-          x: currentX,
-          y: avgY,
-        },
-      });
-
-      currentX += MIN_SPACING; // Próximo componente com espaçamento
-      if (currentX > 85) currentX = 85; // Limitar à tela
-    });
-
-    updateDiagram(aligned);
-  }, [componentes, updateDiagram]);
-
-  const alignVertical = useCallback(() => {
-    if (componentes.length < 2) return;
-
-    // Calcular X médio
-    const avgX =
-      componentes.reduce((sum, comp) => sum + comp.posicao.x, 0) /
-      componentes.length;
-
-    // Ordenar por posição Y para manter ordem
-    const sortedComponents = [...componentes].sort(
-      (a, b) => a.posicao.y - b.posicao.y
-    );
-
-    const aligned: ComponenteDU[] = [];
-
-    // Calcular espaçamento disponível
-    const startY = 10;
-    const endY = 85;
-    const availableSpace = endY - startY;
-    const numComponents = sortedComponents.length;
-
-    if (numComponents === 1) {
-      // Se só há 1 componente, centralizar
-      aligned.push({
-        ...sortedComponents[0],
-        posicao: {
-          x: avgX,
-          y: 50, // Centro da tela
-        },
-      });
-    } else {
-      // Se há múltiplos componentes, distribuir uniformemente
-      const spacing = availableSpace / (numComponents - 1);
-
-      sortedComponents.forEach((comp, index) => {
-        aligned.push({
-          ...comp,
-          posicao: {
-            x: avgX,
-            y: startY + index * spacing,
-          },
-        });
-      });
-    }
-
-    updateDiagram(aligned);
-  }, [componentes, updateDiagram]);
 
   // Mock data para modais
   const dadosMedidor = {
@@ -2472,10 +2336,36 @@ export function SinopticoAtivoPage() {
 
   // Função para remover conexão
   const removerConexao = (connectionId: string) => {
-    updateDiagram(
-      undefined,
-      connections.filter((conn) => conn.id !== connectionId)
-    );
+    console.log('═══════════════════════════════════════════════════');
+    console.log('🗑️ [removerConexao] INICIANDO REMOÇÃO');
+    console.log('═══════════════════════════════════════════════════');
+    console.log('Connection ID a remover:', connectionId);
+    console.log('Total de conexões ANTES:', connections.length);
+    console.log('IDs das conexões ANTES:', connections.map(c => c.id));
+
+    const novasConexoes = connections.filter((conn) => {
+      const manter = conn.id !== connectionId;
+      if (!manter) {
+        console.log('❌ Removendo conexão:', conn.id);
+      }
+      return manter;
+    });
+
+    console.log('Total de conexões DEPOIS do filtro:', novasConexoes.length);
+    console.log('IDs das conexões DEPOIS:', novasConexoes.map(c => c.id));
+    console.log('Conexões removidas:', connections.length - novasConexoes.length);
+
+    console.log('📝 Chamando setConnections com', novasConexoes.length, 'conexões...');
+    setConnections(novasConexoes);
+    console.log('✅ setConnections CHAMADO!');
+
+    // Verificar após 100ms se o estado realmente mudou
+    setTimeout(() => {
+      console.log('⏱️ [Verificação após 100ms] Total de conexões:', connections.length);
+    }, 100);
+
+    console.log('⚠️ NÃO ESQUEÇA DE SALVAR O DIAGRAMA!');
+    console.log('═══════════════════════════════════════════════════');
   };
 
   // Funções de edição de componentes
@@ -2666,6 +2556,19 @@ export function SinopticoAtivoPage() {
   const salvarDiagrama = useCallback(async () => {
     if (!unidadeId) {
       alert('❌ Nenhuma unidade selecionada. Use o botão "Selecionar Unidade" primeiro.');
+      return;
+    }
+
+    // Confirmação antes de salvar
+    const confirmar = window.confirm(
+      `🔄 Deseja salvar o diagrama?\n\n` +
+      `📊 Componentes: ${componentes.length}\n` +
+      `🔗 Conexões: ${connections.length}\n\n` +
+      `Esta ação irá sobrescrever o diagrama existente no servidor.`
+    );
+
+    if (!confirmar) {
+      console.log('❌ Salvamento cancelado pelo usuário');
       return;
     }
 
@@ -3113,37 +3016,6 @@ export function SinopticoAtivoPage() {
                           </Button>
                         </>
                       )}
-                    </div>
-                  </div>
-
-                  {/* Ferramentas de Layout */}
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">Layout:</span>
-                    <div className="flex gap-1">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={autoArrangeComponents}
-                        title="Organizar automaticamente"
-                      >
-                        Auto
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={alignHorizontal}
-                        title="Alinhar horizontalmente"
-                      >
-                        ═══
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={alignVertical}
-                        title="Alinhar verticalmente"
-                      >
-                        |||
-                      </Button>
                     </div>
                   </div>
                 </div>

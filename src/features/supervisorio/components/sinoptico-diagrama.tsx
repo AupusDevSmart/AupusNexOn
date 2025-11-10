@@ -1221,7 +1221,7 @@ case "RELE":
             </text>
           </svg>
         );
-
+      
       case "JUNCTION":
         // Junction node - apenas um pequeno ponto azul
         return (
@@ -1332,11 +1332,24 @@ export function SinopticoDiagrama({
       {!modoEdicao && (
       <div className="absolute inset-0" style={{ zIndex: 30 }}>
         {(() => {
-          const componentesFiltrados = componentes.filter(c => c.posicao && typeof c.posicao.x === 'number' && typeof c.posicao.y === 'number');
+          const componentesFiltrados = componentes.filter(c => {
+            // Validação de posição
+            if (!c.posicao || typeof c.posicao.x !== 'number' || typeof c.posicao.y !== 'number') {
+              return false;
+            }
+
+            // Filtrar JUNCTION no modo de visualização/fullscreen (quando modoEdicao = false)
+            if (c.tipo === 'JUNCTION' && !modoEdicao) {
+              return false;
+            }
+
+            return true;
+          });
           console.log('📍 [SinopticoDiagrama] Renderizando nós:', {
             total: componentes.length,
             filtrados: componentesFiltrados.length,
-            modoEdicao
+            modoEdicao,
+            junctionsFiltrados: componentes.filter(c => c.tipo === 'JUNCTION').length
           });
           return componentesFiltrados;
         })().map((componente) => (
