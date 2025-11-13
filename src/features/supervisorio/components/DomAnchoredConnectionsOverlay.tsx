@@ -325,14 +325,6 @@ export function DomAnchoredConnectionsOverlay({
   onEdgeClick,
   isFullscreen = false,
 }: DomAnchoredConnectionsOverlayProps) {
-  // ========== DEBUG INICIAL ==========
-  console.log('🔵 DomAnchoredConnectionsOverlay MONTADO:', {
-    connections: connections.length,
-    componentes: componentes.length,
-    modoEdicao,
-    containerRef: !!containerRef.current
-  });
-
   // ========== STATE ==========
   const [paths, setPaths] = useState<Map<string, PathCoordinates>>(new Map());
   const [hoveredConnection, setHoveredConnection] = useState<string | null>(null);
@@ -359,13 +351,6 @@ export function DomAnchoredConnectionsOverlay({
 
   // ========== CALCULAR PATHS ==========
   const calculatePaths = useCallback(() => {
-    console.log('🎯 [CALCULATE PATHS] Iniciando cálculo...', {
-      hasContainer: !!containerRef.current,
-      isFullscreen: !!document.fullscreenElement,
-      connections: connections.length,
-      componentes: componentes.length
-    });
-
     if (!containerRef.current) {
       debugLog.warn('⚠️ DomAnchoredConnectionsOverlay: containerRef.current is null');
       return;
@@ -373,14 +358,6 @@ export function DomAnchoredConnectionsOverlay({
 
     // Atualizar dimensões do container
     const rect = containerRef.current.getBoundingClientRect();
-
-    console.log('📐 [CALCULATE PATHS] Dimensões do container:', {
-      width: rect.width,
-      height: rect.height,
-      x: rect.x,
-      y: rect.y,
-      isFullscreen: !!document.fullscreenElement
-    });
 
     // 🛡️ HARDENING: Não renderizar SVG com dimensões inválidas
     if (rect.width <= 0 || rect.height <= 0) {
@@ -447,9 +424,6 @@ export function DomAnchoredConnectionsOverlay({
 
     const newPaths = new Map<string, PathCoordinates>();
 
-    // 🔍 DIAGNÓSTICO: Coletar coordenadas de todos os nós (throttled)
-    const nodeCoordinates: Record<string, any> = {};
-
     connections.forEach((connection) => {
       const fromComponent = componentes.find((c) => c.id === connection.from);
       const toComponent = componentes.find((c) => c.id === connection.to);
@@ -482,26 +456,6 @@ export function DomAnchoredConnectionsOverlay({
         return;
       }
 
-      // 🔍 Armazenar coordenadas para log
-      if (!nodeCoordinates[connection.from]) {
-        nodeCoordinates[connection.from] = {
-          id: connection.from,
-          centerX: fromRect.centerX.toFixed(1),
-          centerY: fromRect.centerY.toFixed(1),
-          width: fromRect.width.toFixed(1),
-          height: fromRect.height.toFixed(1),
-        };
-      }
-      if (!nodeCoordinates[connection.to]) {
-        nodeCoordinates[connection.to] = {
-          id: connection.to,
-          centerX: toRect.centerX.toFixed(1),
-          centerY: toRect.centerY.toFixed(1),
-          width: toRect.width.toFixed(1),
-          height: toRect.height.toFixed(1),
-        };
-      }
-
       // Calcular posições das portas
       const fromPos = getPortOffset(fromRect, connection.fromPort);
       const toPos = getPortOffset(toRect, connection.toPort);
@@ -525,39 +479,12 @@ export function DomAnchoredConnectionsOverlay({
       });
     });
 
-    // 🔍 LOG DE COORDENADAS (throttled a 1x por segundo)
-    if (now - lastDiagnosticLogRef.current > 1000 && Object.keys(nodeCoordinates).length > 0) {
-      debugLog.log('\n📊 Coordenadas dos Nós em Tempo Real:');
-      debugLog.table(nodeCoordinates);
-
-      // Log adicional de contexto
-      debugLog.log('📐 Container Dimensions:', {
-        width: rect.width.toFixed(1),
-        height: rect.height.toFixed(1),
-      });
-      debugLog.log('📺 Fullscreen:', !!document.fullscreenElement);
-    }
-
-    console.log('✅ [CALCULATE PATHS] Paths calculados:', {
-      totalPaths: newPaths.size,
-      connections: connections.length,
-      isFullscreen: !!document.fullscreenElement,
-      paths: Array.from(newPaths.entries()).map(([id, path]) => ({
-        id,
-        fromX: path.fromX.toFixed(1),
-        fromY: path.fromY.toFixed(1),
-        toX: path.toX.toFixed(1),
-        toY: path.toY.toFixed(1)
-      }))
-    });
-
     setPaths(newPaths);
   }, [connections, componentes, containerRef]);
 
   // ========== FORCE RECALC WHEN CONTAINER REF CHANGES ==========
   useEffect(() => {
     if (containerRef.current) {
-      console.log('🔄 [CONEXÕES] containerRef mudou, forçando recálculo...');
       calculatePaths();
     }
   }, [containerRef.current, calculatePaths]);
@@ -629,21 +556,7 @@ export function DomAnchoredConnectionsOverlay({
   // ========== FULLSCREEN LISTENER ==========
   useEffect(() => {
     const handleFullscreenChange = () => {
-      const isFullscreen = !!document.fullscreenElement;
-      console.log('🔄 [CONEXÕES] Fullscreen mudou, recalculando paths...', {
-        isFullscreen,
-        containerRef: !!containerRef.current,
-        connections: connections.length,
-        componentes: componentes.length,
-        containerDimensions: containerRef.current ? {
-          width: containerRef.current.offsetWidth,
-          height: containerRef.current.offsetHeight,
-          scrollWidth: containerRef.current.scrollWidth,
-          scrollHeight: containerRef.current.scrollHeight
-        } : null
-      });
       setTimeout(() => {
-        console.log('⏰ [CONEXÕES] Executando calculatePaths após 100ms...');
         calculatePaths();
       }, 100);
     };
@@ -773,74 +686,12 @@ export function DomAnchoredConnectionsOverlay({
     return () => clearTimeout(timeout);
   }, [paths, connections, componentes]);
 
-  // ========== MONITORAR SVG APÓS RENDER ==========
-  useEffect(() => {
-    if (svgRef.current && paths.size > 0) {
-      const timeout = setTimeout(() => {
-        const pathElements = svgRef.current?.querySelectorAll('.nexon-connection-path');
-        const svgRect = svgRef.current?.getBoundingClientRect();
-
-        console.log('🔍 [SVG RENDERIZADO] Status após render:', {
-          svgElement: !!svgRef.current,
-          svgClasses: svgRef.current?.className,
-          pathsNoState: paths.size,
-          pathsNoDom: pathElements?.length || 0,
-          isFullscreen: !!document.fullscreenElement,
-          svgDimensions: svgRect ? {
-            width: svgRect.width,
-            height: svgRect.height,
-            x: svgRect.x,
-            y: svgRect.y
-          } : null,
-          svgViewBox: svgRef.current?.getAttribute('viewBox'),
-          firstPathD: pathElements?.[0]?.getAttribute('d')?.substring(0, 50) + '...'
-        });
-
-        if (pathElements && pathElements.length > 0) {
-          const firstPath = pathElements[0];
-          const computedStyle = window.getComputedStyle(firstPath);
-          console.log('🎨 [PRIMEIRO PATH] Estilos computados:', {
-            stroke: computedStyle.stroke,
-            strokeWidth: computedStyle.strokeWidth,
-            opacity: computedStyle.opacity,
-            display: computedStyle.display,
-            visibility: computedStyle.visibility,
-            fill: computedStyle.fill
-          });
-        }
-      }, 100);
-
-      return () => clearTimeout(timeout);
-    }
-  }, [paths, paths.size]);
 
   // ========== RENDER ==========
   // Não renderizar se não houver dimensões válidas E não houver paths calculados
   if ((containerDimensions.width === 0 || containerDimensions.height === 0) && paths.size === 0) {
-    console.log('⚠️ DomAnchoredConnectionsOverlay NÃO RENDERIZANDO (aguardando dimensões):', {
-      hasContainer: !!containerRef.current,
-      width: containerDimensions.width,
-      height: containerDimensions.height,
-      pathsCalculados: paths.size,
-      isFullscreen: !!document.fullscreenElement
-    });
     return null;
   }
-
-  // Se já temos paths mas o container sumiu temporariamente, continue renderizando
-  if (!containerRef.current && paths.size > 0) {
-    console.log('⚠️ Container temporariamente indisponível, mantendo render com paths existentes');
-  }
-
-  console.log('🎨 [RENDER SVG] DomAnchoredConnectionsOverlay RENDERIZANDO:', {
-    width: containerDimensions.width,
-    height: containerDimensions.height,
-    paths: paths.size,
-    connections: connections.length,
-    isFullscreen: !!document.fullscreenElement,
-    containerElement: containerRef.current?.tagName || 'N/A',
-    containerClasses: containerRef.current?.className || 'N/A'
-  });
 
   // Usar dimensões calculadas ou mínimas se não houver
   const svgWidth = containerDimensions.width || 1920;
@@ -891,18 +742,7 @@ export function DomAnchoredConnectionsOverlay({
 
       {/* ========== CONEXÕES ========== */}
       <g data-layer="connections">
-        {(() => {
-          const pathsArray = Array.from(paths.entries());
-          console.log('🎨 [RENDER] Renderizando paths:', {
-            totalPaths: pathsArray.length,
-            isFullscreen,
-            primeiroPatch: pathsArray[0] ? {
-              id: pathsArray[0][0],
-              pathData: pathsArray[0][1].pathData.substring(0, 50)
-            } : null
-          });
-          return pathsArray;
-        })().map(([connectionId, coords]) => {
+        {Array.from(paths.entries()).map(([connectionId, coords]) => {
         const connection = connections.find((c) => c.id === connectionId);
         if (!connection) return null;
 

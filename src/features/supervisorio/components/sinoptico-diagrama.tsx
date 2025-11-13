@@ -1348,13 +1348,6 @@ export function SinopticoDiagrama({
 }: SinopticoDiagramaProps) {
   const [hoveredComponent, setHoveredComponent] = useState<string | null>(null);
 
-  console.log('🎨 [SinopticoDiagrama] RENDER:', {
-    componentes: componentes.length,
-    modoEdicao,
-    componenteEditando,
-    connecting
-  });
-
   return (
     <div className={`relative w-full h-full min-h-[400px] ${className}`}>
       {/* Grid de visualização */}
@@ -1383,8 +1376,8 @@ export function SinopticoDiagrama({
       {/* Renderiza componentes - NO MODO EDIÇÃO NÃO RENDERIZA NADA (overlays fazem isso) */}
       {!modoEdicao && (
       <div className="absolute inset-0" style={{ zIndex: 30 }}>
-        {(() => {
-          const componentesFiltrados = componentes.filter(c => {
+        {componentes
+          .filter(c => {
             // Validação de posição
             if (!c.posicao || typeof c.posicao.x !== 'number' || typeof c.posicao.y !== 'number') {
               return false;
@@ -1396,15 +1389,8 @@ export function SinopticoDiagrama({
             }
 
             return true;
-          });
-          console.log('📍 [SinopticoDiagrama] Renderizando nós:', {
-            total: componentes.length,
-            filtrados: componentesFiltrados.length,
-            modoEdicao,
-            junctionsFiltrados: componentes.filter(c => c.tipo === 'JUNCTION').length
-          });
-          return componentesFiltrados;
-        })().map((componente) => (
+          })
+          .map((componente) => (
             <div
               key={componente.id}
               data-node-id={componente.id}
