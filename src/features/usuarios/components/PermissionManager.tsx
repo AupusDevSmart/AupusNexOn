@@ -1,35 +1,15 @@
 // src/features/usuarios/components/PermissionManager.tsx
-import React, { useState, useEffect } from 'react';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
-} from '@/components/ui/select';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { 
-  Shield, 
-  ShieldCheck, 
-  Users, 
-  AlertCircle, 
-  CheckCircle2,
-  Info,
-  Settings,
-  Eye,
-  EyeOff,
-  Save,
+import {
+  Shield,
+  Users,
+  AlertCircle,
   RefreshCw
 } from 'lucide-react';
 
 import { useUserPermissions, useAvailableRolesAndPermissions } from '@/hooks/useUserPermissions';
-import { UserRole, UserPermission } from '@/services/user-permissions.service';
 import { Usuario } from '../types';
 
 interface PermissionManagerProps {
@@ -39,142 +19,33 @@ interface PermissionManagerProps {
   compact?: boolean;
 }
 
-export function PermissionManager({ 
-  usuario, 
-  onUpdate, 
-  readonly = false, 
-  compact = false 
+/**
+ * Componente simplificado para exibição de Roles e Permissões
+ * Versão read-only focada em visualização
+ */
+export function PermissionManager({
+  usuario,
+  compact = false
 }: PermissionManagerProps) {
-  const [selectedRoleId, setSelectedRoleId] = useState<number | null>(null);
-  const [selectedPermissions, setSelectedPermissions] = useState<number[]>([]);
-  const [hasChanges, setHasChanges] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [showDetails, setShowDetails] = useState(!compact);
-
-  // Hooks para dados do usuário
+  // Buscar permissões e roles do usuário
   const {
     permissions,
-    summary,
-    categorized,
+    roles,
     loading: permissionsLoading,
     error: permissionsError,
-    loadPermissions,
-    loadCategorized,
-    assignRole,
-    syncPermissions
-  } = useUserPermissions({ 
-    userId: usuario.id,
-    autoLoad: true 
-  });
+  } = useUserPermissions(usuario.id, true);
 
-  // Hook para dados auxiliares
+  // Buscar roles e permissões disponíveis no sistema
   const {
-    roles,
-    groupedPermissions,
     loading: auxiliarLoading,
     error: auxiliarError
   } = useAvailableRolesAndPermissions();
 
-  // Inicializar estado quando dados carregarem
-  useEffect(() => {
-    if (permissions?.role) {
-      setSelectedRoleId(permissions.role.id);
-    }
-    
-    if (permissions?.permissions) {
-      // Pegar apenas permissões diretas (source = 'direct')
-      const directPermissions = permissions.permissions
-        .filter(p => p.source === 'direct')
-        .map(p => p.id);
-      setSelectedPermissions(directPermissions);
-    }
-    
-    setHasChanges(false);
-  }, [permissions]);
-
-  // Detectar mudanças
-  useEffect(() => {
-    const roleChanged = selectedRoleId !== permissions?.role?.id;
-    const currentDirectPermissions = permissions?.permissions
-      .filter(p => p.source === 'direct')
-      .map(p => p.id) || [];
-    const permissionsChanged = !arrayEquals(selectedPermissions, currentDirectPermissions);
-    
-    setHasChanges(roleChanged || permissionsChanged);
-  }, [selectedRoleId, selectedPermissions, permissions]);
-
-  // Utilitário para comparar arrays
-  const arrayEquals = (a: number[], b: number[]): boolean => {
-    return a.length === b.length && a.sort().every((val, i) => val === b.sort()[i]);
-  };
-
-  // Handler para mudança de role
-  const handleRoleChange = (roleId: string) => {
-    setSelectedRoleId(parseInt(roleId));
-  };
-
-  // Handler para mudança de permissão
-  const handlePermissionToggle = (permissionId: number) => {
-    if (readonly) return;
-    
-    setSelectedPermissions(prev => {
-      const isSelected = prev.includes(permissionId);
-      return isSelected 
-        ? prev.filter(id => id !== permissionId)
-        : [...prev, permissionId];
-    });
-  };
-
-  // Salvar mudanças
-  const handleSave = async () => {
-    if (!hasChanges) return;
-
-    try {
-      setSaving(true);
-
-      // 1. Atribuir role se mudou
-      if (selectedRoleId && selectedRoleId !== permissions?.role?.id) {
-        await assignRole(selectedRoleId);
-      }
-
-      // 2. Sincronizar permissões diretas
-      await syncPermissions(selectedPermissions);
-
-      setHasChanges(false);
-      onUpdate?.();
-    } catch (error) {
-      console.error('Erro ao salvar permissões:', error);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // Resetar mudanças
-  const handleReset = () => {
-    setSelectedRoleId(permissions?.role?.id || null);
-    setSelectedPermissions(
-      permissions?.permissions
-        .filter(p => p.source === 'direct')
-        .map(p => p.id) || []
-    );
-    setHasChanges(false);
-  };
-
-  // Verificar se permissão está ativa (via role ou direta)
-  const isPermissionActive = (permissionId: number): boolean => {
-    return permissions?.permissions?.some(p => p.id === permissionId) ?? false;
-  };
-
-  // Verificar se permissão vem do role
-  const isFromRole = (permissionId: number): boolean => {
-    return permissions?.permissions?.some(p => p.id === permissionId && p.source === 'role') ?? false;
-  };
-
   if (permissionsLoading || auxiliarLoading) {
     return (
-      <div className="flex items-center justify-center p-8">
-        <RefreshCw className="h-6 w-6 animate-spin mr-2" />
-        <span>Carregando permissões...</span>
+      <div className="flex items-center justify-center p-4 md:p-8">
+        <RefreshCw className="h-4 w-4 md:h-6 md:w-6 animate-spin mr-2" />
+        <span className="text-sm md:text-base">Carregando permissões...</span>
       </div>
     );
   }
@@ -182,225 +53,133 @@ export function PermissionManager({
   if (permissionsError || auxiliarError) {
     return (
       <Alert variant="destructive">
-        <AlertCircle className="h-4 w-4" />
-        <AlertDescription>
+        <AlertCircle className="h-3 w-3 md:h-4 md:w-4" />
+        <AlertDescription className="text-xs md:text-sm">
           Erro ao carregar permissões: {permissionsError || auxiliarError}
         </AlertDescription>
       </Alert>
     );
   }
 
+  // Agrupar permissões por source
+  const rolePermissions = permissions.filter(p => p.source === 'role');
+  const directPermissions = permissions.filter(p => p.source === 'direct');
+  const totalPermissions = permissions.length;
+
   return (
-    <div className="space-y-6">
-      {/* Header com resumo */}
-      {summary && (
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Shield className="h-5 w-5 text-blue-600" />
-                <CardTitle className="text-lg">Permissões do Usuário</CardTitle>
-              </div>
-              {!compact && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowDetails(!showDetails)}
-                >
-                  {showDetails ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  {showDetails ? 'Ocultar' : 'Mostrar'} Detalhes
-                </Button>
-              )}
+    <div className="space-y-3 md:space-y-6">
+      {/* Card de Resumo - Responsivo */}
+      <Card>
+        <CardHeader className="pb-2 md:pb-3 p-3 md:p-6">
+          <div className="flex items-center gap-2">
+            <Shield className="h-4 w-4 md:h-5 md:w-5 text-blue-600" />
+            <CardTitle className="text-base md:text-lg">Permissões do Usuário</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent className="p-3 md:p-6 pt-0">
+          <div className="flex flex-wrap gap-2 md:gap-4 text-xs md:text-sm text-muted-foreground">
+            <div className="flex items-center gap-1">
+              <Badge variant="secondary" className="text-xs md:text-sm">
+                {totalPermissions} permissões totais
+              </Badge>
             </div>
+            <div>
+              <span className="font-medium text-blue-600">{rolePermissions.length}</span> do role
+            </div>
+            <div>
+              <span className="font-medium text-green-600">{directPermissions.length}</span> diretas
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Roles do Usuário - Responsivo */}
+      {roles && roles.length > 0 && (
+        <Card>
+          <CardHeader className="p-3 md:p-6 pb-2 md:pb-6">
+            <CardTitle className="flex items-center gap-2 text-sm md:text-base">
+              <Users className="h-3 w-3 md:h-4 md:w-4" />
+              Roles Atribuídos
+            </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-              <div className="flex items-center gap-1">
-                <Badge variant="secondary">
-                  {summary.totalPermissions} permissões
+          <CardContent className="p-3 md:p-6 pt-0">
+            <div className="flex flex-wrap gap-1.5 md:gap-2">
+              {roles.map((role) => (
+                <Badge key={role.id} variant="default" className="text-xs md:text-sm">
+                  {role.display_name || role.name}
                 </Badge>
-              </div>
-              <div>
-                <span className="font-medium text-blue-600">{summary.rolePermissions}</span> do role
-              </div>
-              <div>
-                <span className="font-medium text-green-600">{summary.directPermissions}</span> diretas
-              </div>
-              {summary.role && (
-                <div className="flex items-center gap-1">
-                  <Users className="h-3 w-3" />
-                  <span>Role: <strong>{summary.role}</strong></span>
+              ))}
+            </div>
+            {roles[0]?.description && (
+              <p className="text-xs md:text-sm text-muted-foreground mt-2 md:mt-3">
+                {roles[0].description}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Permissões do Role - Responsivo */}
+      {!compact && rolePermissions.length > 0 && (
+        <Card>
+          <CardHeader className="p-3 md:p-6 pb-2 md:pb-6">
+            <CardTitle className="text-sm md:text-base flex items-center gap-2">
+              <Shield className="h-3 w-3 md:h-4 md:w-4 text-blue-600" />
+              Permissões do Role ({rolePermissions.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-3 md:p-6 pt-0">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5 md:gap-2">
+              {rolePermissions.map((permission) => (
+                <div
+                  key={permission.id}
+                  className="flex items-center gap-1.5 md:gap-2 p-1.5 md:p-2 bg-blue-50 dark:bg-blue-950 rounded border border-blue-200 dark:border-blue-800"
+                >
+                  <div className="w-1.5 h-1.5 md:w-2 md:h-2 bg-blue-500 rounded-full shrink-0"></div>
+                  <span className="text-[10px] md:text-xs font-mono truncate">
+                    {permission.display_name || permission.name}
+                  </span>
                 </div>
-              )}
+              ))}
             </div>
           </CardContent>
         </Card>
       )}
 
-      {showDetails && (
-        <Tabs defaultValue="role" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="role">Role Principal</TabsTrigger>
-            <TabsTrigger value="permissions">Permissões Extras</TabsTrigger>
-          </TabsList>
-
-          {/* Tab: Role */}
-          <TabsContent value="role">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Users className="h-4 w-4" />
-                  Role do Usuário
-                </CardTitle>
-                <CardDescription>
-                  O role define o conjunto base de permissões. Mudanças afetam todas as permissões automáticas.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {!readonly && (
-                  <Select
-                    value={selectedRoleId?.toString() || ''}
-                    onValueChange={handleRoleChange}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecionar role..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {roles.map(role => (
-                        <SelectItem key={role.id} value={role.id.toString()}>
-                          <div className="flex items-center justify-between w-full">
-                            <span>{role.name}</span>
-                            <Badge variant="outline" className="ml-2">
-                              {role.permissions?.length || 0} permissões
-                            </Badge>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-
-                {/* Mostrar permissões do role selecionado */}
-                {selectedRoleId && (
-                  <div>
-                    <h4 className="font-medium mb-2 flex items-center gap-2">
-                      <ShieldCheck className="h-4 w-4 text-blue-600" />
-                      Permissões do Role
-                    </h4>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                      {roles
-                        .find(r => r.id === selectedRoleId)
-                        ?.permissions?.map(permission => (
-                          <Badge key={permission.id} variant="secondary" className="text-xs">
-                            {permission.name}
-                          </Badge>
-                        ))}
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Tab: Permissões */}
-          <TabsContent value="permissions">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Settings className="h-4 w-4" />
-                  Permissões Extras
-                </CardTitle>
-                <CardDescription>
-                  Permissões adicionais que complementam ou sobrescrevem as do role.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {groupedPermissions && Object.entries(groupedPermissions).map(([category, permissions]) => (
-                  <div key={category} className="space-y-3 mb-6">
-                    <h4 className="font-medium text-sm border-b pb-1">
-                      {category}
-                    </h4>
-                    <div className="grid gap-2">
-                      {permissions.map(permission => {
-                        const isActive = isPermissionActive(permission.id);
-                        const fromRole = isFromRole(permission.id);
-                        const isDirect = selectedPermissions.includes(permission.id);
-
-                        return (
-                          <div
-                            key={permission.id}
-                            className="flex items-center justify-between p-2 rounded border"
-                          >
-                            <div className="flex items-center space-x-2">
-                              <Checkbox
-                                id={permission.id.toString()}
-                                checked={isDirect}
-                                onCheckedChange={() => handlePermissionToggle(permission.id)}
-                                disabled={readonly}
-                              />
-                              <label
-                                htmlFor={permission.id.toString()}
-                                className="text-sm cursor-pointer"
-                              >
-                                {permission.name}
-                              </label>
-                            </div>
-                            
-                            <div className="flex items-center gap-1">
-                              {fromRole && (
-                                <Badge variant="outline" className="text-xs">
-                                  Role
-                                </Badge>
-                              )}
-                              {isDirect && (
-                                <Badge variant="default" className="text-xs">
-                                  Extra
-                                </Badge>
-                              )}
-                              {isActive && (
-                                <CheckCircle2 className="h-3 w-3 text-green-600" />
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+      {/* Permissões Diretas - Responsivo */}
+      {!compact && directPermissions.length > 0 && (
+        <Card>
+          <CardHeader className="p-3 md:p-6 pb-2 md:pb-6">
+            <CardTitle className="text-sm md:text-base flex items-center gap-2">
+              <Shield className="h-3 w-3 md:h-4 md:w-4 text-green-600" />
+              Permissões Extras ({directPermissions.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-3 md:p-6 pt-0">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5 md:gap-2">
+              {directPermissions.map((permission) => (
+                <div
+                  key={permission.id}
+                  className="flex items-center gap-1.5 md:gap-2 p-1.5 md:p-2 bg-green-50 dark:bg-green-950 rounded border border-green-200 dark:border-green-800"
+                >
+                  <div className="w-1.5 h-1.5 md:w-2 md:h-2 bg-green-500 rounded-full shrink-0"></div>
+                  <span className="text-[10px] md:text-xs font-mono truncate">
+                    {permission.display_name || permission.name}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       )}
 
-      {/* Actions */}
-      {!readonly && hasChanges && (
-        <Card className="bg-blue-50 border-blue-200 dark:bg-blue-950 dark:border-blue-800">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-blue-700 dark:text-blue-300">
-                <Info className="h-4 w-4" />
-                <span className="text-sm font-medium">Há alterações não salvas</span>
-              </div>
-              <div className="flex gap-2">
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={handleReset}
-                  disabled={saving}
-                >
-                  Cancelar
-                </Button>
-                <Button 
-                  size="sm" 
-                  onClick={handleSave}
-                  disabled={saving}
-                >
-                  {saving && <RefreshCw className="h-3 w-3 animate-spin mr-1" />}
-                  <Save className="h-3 w-3 mr-1" />
-                  Salvar
-                </Button>
-              </div>
+      {/* Caso não tenha permissões - Responsivo */}
+      {totalPermissions === 0 && (
+        <Card>
+          <CardContent className="pt-4 md:pt-6 p-3 md:p-6">
+            <div className="text-center p-4 md:p-8 text-muted-foreground">
+              <AlertCircle className="h-6 w-6 md:h-8 md:w-8 mx-auto mb-2" />
+              <p className="text-xs md:text-sm">Nenhuma permissão atribuída a este usuário</p>
             </div>
           </CardContent>
         </Card>

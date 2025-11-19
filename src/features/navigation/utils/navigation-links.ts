@@ -60,15 +60,15 @@ export const navigationLinks: Array<NavigationLink> = [
     label: "Supervisório",
     hint: "Sistema de Supervisão NexON",
     links: [
-
-      {
-        key: "supervisorio-cadastro-unidades",
-        featureKey: "supervisorio",
-        path: "/supervisorio/cadastro-unidades",
-        icon: Building2,
-        label: "Cadastro de Unidades",
-        hint: "Gerenciar unidades monitoradas",
-      },
+      // Cadastro de Unidades - OCULTO (usar Cadastros > Unidades)
+      // {
+      //   key: "supervisorio-cadastro-unidades",
+      //   featureKey: "supervisorio",
+      //   path: "/supervisorio/cadastro-unidades",
+      //   icon: Building2,
+      //   label: "Cadastro de Unidades",
+      //   hint: "Gerenciar unidades monitoradas",
+      // },
       {
         key: "supervisorio-logs-eventos",
         featureKey: "supervisorio",
@@ -87,50 +87,50 @@ export const navigationLinks: Array<NavigationLink> = [
       },
     ],
   },
-  // Financeiro
-  {
-    key: "financeiro",
-    featureKey: "Financeiro", // Corrigido para maiúscula
-    featureFlag: "enableFinanceiro",
-    path: "/financeiro",
-    icon: Zap,
-    label: "Financeiro",
-    hint: "Financeiro",
-    links: [
-      {
-        key: "financeiro-contas-a-pagar",
-        featureKey: "Financeiro",
-        path: "/financeiro/contas-a-pagar",
-        icon: ChartColumnBig,
-        label: "Contas a Pagar",
-        hint: "Contas a Pagar",
-      },
-      {
-        key: "financeiro-contas-a-receber",
-        featureKey: "Financeiro",
-        path: "/financeiro/contas-a-receber",
-        icon: SquareActivity,
-        label: "Contas a Receber",
-        hint: "Contas a Receber",
-      },
-      {
-        key: "financeiro-fluxo-caixa",
-        featureKey: "Financeiro",
-        path: "/financeiro/fluxo-caixa",
-        icon: BookUser,
-        label: "Fluxo de Caixa",
-        hint: "Fluxo de Caixa",
-      },
-      {
-        key: "financeiro-centros-custo",
-        featureKey: "Financeiro",
-        path: "/financeiro/centros-custo",
-        icon: Magnet,
-        label: "Centros de Custo",
-        hint: "Centros de Custo",
-      },
-    ],
-  },
+  // Financeiro - OCULTO
+  // {
+  //   key: "financeiro",
+  //   featureKey: "Financeiro", // Corrigido para maiúscula
+  //   featureFlag: "enableFinanceiro",
+  //   path: "/financeiro",
+  //   icon: Zap,
+  //   label: "Financeiro",
+  //   hint: "Financeiro",
+  //   links: [
+  //     {
+  //       key: "financeiro-contas-a-pagar",
+  //       featureKey: "Financeiro",
+  //       path: "/financeiro/contas-a-pagar",
+  //       icon: ChartColumnBig,
+  //       label: "Contas a Pagar",
+  //       hint: "Contas a Pagar",
+  //     },
+  //     {
+  //       key: "financeiro-contas-a-receber",
+  //       featureKey: "Financeiro",
+  //       path: "/financeiro/contas-a-receber",
+  //       icon: SquareActivity,
+  //       label: "Contas a Receber",
+  //       hint: "Contas a Receber",
+  //     },
+  //     {
+  //       key: "financeiro-fluxo-caixa",
+  //       featureKey: "Financeiro",
+  //       path: "/financeiro/fluxo-caixa",
+  //       icon: BookUser,
+  //       label: "Fluxo de Caixa",
+  //       hint: "Fluxo de Caixa",
+  //     },
+  //     {
+  //       key: "financeiro-centros-custo",
+  //       featureKey: "Financeiro",
+  //       path: "/financeiro/centros-custo",
+  //       icon: Magnet,
+  //       label: "Centros de Custo",
+  //       hint: "Centros de Custo",
+  //     },
+  //   ],
+  // },
   // Cadastros
   {
     key: "cadastros",

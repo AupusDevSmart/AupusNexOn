@@ -3,7 +3,7 @@
  * Endpoint: /api/v1/equipamentos-dados/:id/custos-energia
  */
 
-export type PeriodoTipo = 'dia' | 'mes';
+export type PeriodoTipo = 'dia' | 'mes' | 'custom'; // ✅ NOVO: período customizado
 
 export type TipoHorario = 'PONTA' | 'FORA_PONTA' | 'RESERVADO' | 'IRRIGANTE' | 'DEMANDA';
 
@@ -75,6 +75,8 @@ export interface CustosEnergiaResponseDto {
 }
 
 export interface CustosEnergiaQueryParams {
-  periodo: PeriodoTipo;
-  data?: string; // formato ISO 8601 (YYYY-MM-DD)
+  periodo?: PeriodoTipo;
+  data?: string; // formato ISO 8601 (YYYY-MM-DD) - usado com periodo=dia ou periodo=mes
+  timestamp_inicio?: string; // formato ISO 8601 completo - usado com periodo=custom
+  timestamp_fim?: string; // formato ISO 8601 completo - usado com periodo=custom
 }

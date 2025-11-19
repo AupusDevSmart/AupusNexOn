@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 // import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 
 import { Toaster } from "./components/ui/toaster";
+import { Toaster as SonnerToaster } from "sonner";
 import { TooltipProvider } from "./components/ui/tooltip";
 
 import { appRoutes } from "./AppRoutes";
@@ -44,6 +45,7 @@ export default function App() {
           <TooltipProvider>
             <RouterProvider router={appRoutes} />
             <Toaster />
+            <SonnerToaster richColors position="top-right" />
           </TooltipProvider>
         </QueryClientProvider>
       </ThemeProvider>

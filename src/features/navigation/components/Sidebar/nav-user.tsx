@@ -1,13 +1,15 @@
-import { 
-  LogOut, 
-  Sun, 
-  Moon, 
+import {
+  LogOut,
+  Sun,
+  Moon,
   Laptop2,
   UserCog
 } from "lucide-react"
+import { useEffect } from "react"
 import {
   Avatar,
   AvatarFallback,
+  AvatarImage,
 } from "@/components/ui/avatar"
 import {
   DropdownMenu,
@@ -25,9 +27,12 @@ import {
 } from "@/components/ui/sidebar"
 import { useUserStore } from "@/store/useUserStore"
 import { getInitials } from "@/lib/getInitials"
+import { getAvatarUrl } from "@/lib/getAvatarUrl"
 import {  useTheme } from "@/components/theme-provider"
 import { useNavigate } from "react-router-dom"
 import clsx from "clsx" // Para manipulação condicional de classes
+import { AuthService } from "@/services/auth.service"
+import { toast } from "sonner"
 
 export function NavUser() {
   const { isMobile } = useSidebar()
@@ -35,9 +40,55 @@ export function NavUser() {
   const { theme, setTheme } = useTheme()
   const navigate = useNavigate()
 
-  const logout = () => {
-    clearUser();
-    navigate('/login');
+  // Usa a função utilitária para obter a URL completa do avatar
+  const avatarUrl = getAvatarUrl(user?.avatar_url)
+
+  // Debug: verificar URLs e testar acessibilidade
+  useEffect(() => {
+    if (user) {
+      console.log('👤 [NAV-USER] Dados do usuário:', user)
+      console.log('🖼️ [NAV-USER] avatar_url original:', user.avatar_url)
+      console.log('🖼️ [NAV-USER] avatar URL completa:', avatarUrl)
+
+      // Testar se a imagem está acessível
+      if (avatarUrl) {
+        fetch(avatarUrl, { method: 'HEAD' })
+          .then(response => {
+            if (response.ok) {
+              console.log('✅ [NAV-USER] Imagem acessível:', avatarUrl)
+              console.log('Content-Type:', response.headers.get('content-type'))
+            } else {
+              console.error('❌ [NAV-USER] Imagem não acessível:', response.status, response.statusText)
+            }
+          })
+          .catch(error => {
+            console.error('❌ [NAV-USER] Erro ao acessar imagem:', error)
+          })
+      }
+    }
+  }, [user, avatarUrl])
+
+  const logout = async () => {
+    try {
+      // Chama o serviço de logout
+      await AuthService.logout();
+
+      // Limpa o store
+      clearUser();
+
+      // Exibe mensagem de sucesso
+      toast.success('Logout realizado com sucesso');
+
+      // Redireciona para login
+      navigate('/login', { replace: true });
+    } catch (error) {
+      console.error('Erro ao fazer logout:', error);
+
+      // Mesmo com erro, limpa localmente
+      clearUser();
+      AuthService.clearTokens();
+      navigate('/login', { replace: true });
+    }
   }
 
   const editProfile = () => {
@@ -54,11 +105,26 @@ export function NavUser() {
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
               <Avatar className="h-8 w-8 rounded-lg">
-                <AvatarFallback className="rounded-lg">{getInitials('Nicolas Santana')}</AvatarFallback>
+                {avatarUrl && (
+                  <AvatarImage
+                    src={avatarUrl}
+                    alt={user?.nome || 'Usuário'}
+                    className="object-cover"
+                    onError={(e) => {
+                      console.error('❌ [NAV-USER] Erro ao carregar imagem:', avatarUrl);
+                      console.error('Erro detalhado:', e);
+                      // Remove src em caso de erro para mostrar o fallback
+                      (e.target as HTMLImageElement).style.display = 'none';
+                    }}
+                  />
+                )}
+                <AvatarFallback className="rounded-lg">
+                  {getInitials(user?.nome || 'Usuário')}
+                </AvatarFallback>
               </Avatar>
               <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-semibold">{"Nicolas Santana"}</span>
-                <span className="truncate text-xs">{'nicolassantanakruger@gmail.com'}</span>
+                <span className="truncate font-semibold">{user?.nome || 'Usuário'}</span>
+                <span className="truncate text-xs">{user?.email || 'email@exemplo.com'}</span>
               </div>
             </SidebarMenuButton>
           </DropdownMenuTrigger>
@@ -71,11 +137,26 @@ export function NavUser() {
             <DropdownMenuLabel className="p-0 font-normal">
               <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                 <Avatar className="h-8 w-8 rounded-lg">
-                  <AvatarFallback className="rounded-lg">{getInitials("Nicolas Santana")}</AvatarFallback>
+                  {avatarUrl && (
+                    <AvatarImage
+                      src={avatarUrl}
+                      alt={user?.nome || 'Usuário'}
+                      className="object-cover"
+                      onError={(e) => {
+                        console.error('❌ [NAV-USER DROPDOWN] Erro ao carregar imagem:', avatarUrl);
+                        console.error('Erro detalhado:', e);
+                        // Remove src em caso de erro para mostrar o fallback
+                        (e.target as HTMLImageElement).style.display = 'none';
+                      }}
+                    />
+                  )}
+                  <AvatarFallback className="rounded-lg">
+                    {getInitials(user?.nome || 'Usuário')}
+                  </AvatarFallback>
                 </Avatar>
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold">{"Nicolas Santana"}</span>
-                  <span className="truncate text-xs">{'nicolassantanakruger@gmail.com'}</span>
+                  <span className="truncate font-semibold">{user?.nome || 'Usuário'}</span>
+                  <span className="truncate text-xs">{user?.email || 'email@exemplo.com'}</span>
                 </div>
               </div>
             </DropdownMenuLabel>

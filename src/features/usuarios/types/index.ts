@@ -1,6 +1,6 @@
 // src/features/usuarios/types/index.ts - CORRIGIDO PARA BACKEND HÍBRIDO
 import { BaseEntity, type BaseFilters as BaseFiltersType, ModalMode } from '@/types/base';
-import { concatenateAddress } from '@/utils/address.utils';
+import { type Permission } from '@/types/permissions';
 
 // ============================================================================
 // ENUMS E TYPES DO SISTEMA
@@ -19,72 +19,8 @@ export enum UsuarioRole {
   VENDEDOR = 'vendedor',
 }
 
-// ✅ PERMISSÕES REAIS DO BANCO DE DADOS
-export type Permissao =
-  // Painel Geral
-  | 'PainelGeral'
-  | 'PainelGeralOrganizacoes'
-  | 'PainelGeralCativos'
-  | 'PainelGeralClube'
-  // Monitoramento
-  | 'MonitoramentoOrganizacoes'
-  | 'Monitoramento'
-  | 'MonitoramentoConsumo'
-  // Sistemas
-  | 'NET'
-  | 'CRM'
-  | 'Oportunidades'
-  // Administração
-  | 'Usuarios'
-  | 'Organizacoes'
-  | 'UnidadesConsumidoras'
-  | 'Configuracoes'
-  | 'Arquivos'
-  // Cadastros
-  | 'Cadastros'
-  | 'CadastroOrganizacoes'
-  | 'CadastroUsuarios'
-  | 'CadastroUnidadesConsumidoras'
-  | 'CadastroConcessionarias'
-  // Financeiro
-  | 'FinanceiroAdmin'
-  | 'Financeiro'
-  | 'FinanceiroConsultor'
-  // Super Admin
-  | 'SuperAdmin'
-  // Geração e Energia
-  | 'GeracaoEnergia'
-  | 'Reclamacoes'
-  // Áreas Específicas
-  | 'Associados'
-  | 'Documentos'
-  | 'Prospeccao'
-  | 'AreaDoAssociado'
-  | 'AreaDoProprietario'
-  | 'MinhasUsinas'
-  // Novas Permissões
-  | 'dashboard.view'
-  | 'prospec.view'
-  | 'prospec.create'
-  | 'prospec.edit'
-  | 'prospec.delete'
-  | 'controle.view'
-  | 'controle.manage'
-  | 'ugs.view'
-  | 'ugs.create'
-  | 'ugs.edit'
-  | 'configuracoes.view'
-  | 'configuracoes.edit'
-  | 'relatorios.view'
-  | 'relatorios.export'
-  | 'equipe.view'
-  | 'equipe.create'
-  // Permissões da API que faltavam
-  | 'Dashboard'
-  | 'GestaoOportunidades'
-  | 'Proprietarios'
-  | 'Equipamentos'
-  | 'Plantas';
+// ✅ TIPO DE PERMISSÃO - IMPORTADO DO ARQUIVO CENTRALIZADO
+export type Permissao = Permission;
 
 export interface Role {
   id: string;
@@ -145,9 +81,7 @@ export interface Usuario extends BaseEntity {
   cidade?: string;
   estado?: string;
   endereco?: string;
-  complemento?: string;
   cep?: string;
-  bairro?: string;
   endereco_completo?: string;
   manager_id?: string;
   
@@ -183,8 +117,6 @@ export interface UsuarioFormData {
   cidade?: string;
   estado?: string;
   endereco?: string;
-  complemento?: string;
-  bairro?: string;
   cep?: string;
   concessionariaAtualId?: string;
   organizacaoAtualId?: string;
@@ -338,8 +270,6 @@ export const mapUsuarioToFormData = (usuario: Usuario): UsuarioFormData => {
     cidade: usuario.cidade,
     estado: usuario.estado,
     endereco: usuario.endereco,
-    complemento: usuario.complemento,
-    bairro: usuario.bairro,
     cep: usuario.cep,
     concessionariaAtualId: usuario.concessionaria_atual_id,
     organizacaoAtualId: usuario.organizacao_atual,
@@ -406,22 +336,8 @@ export const mapFormDataToCreateDto = (formData: UsuarioFormData) => {
   if (formData.cpfCnpj) dto.cpfCnpj = formData.cpfCnpj;
   if (formData.cidade) dto.cidade = formData.cidade;
   if (formData.estado) dto.estado = formData.estado;
-  if (formData.bairro) dto.bairro = formData.bairro;
-  if (formData.complemento) dto.complemento = formData.complemento;
   if (formData.cep) dto.cep = formData.cep;
-  
-  // Concatenar endereço apenas se os campos estão preenchidos
-  if (formData.endereco || formData.complemento || formData.bairro) {
-    const enderecoCompleto = concatenateAddress({
-      endereco: formData.endereco,
-      complemento: formData.complemento,
-      bairro: formData.bairro,
-      cidade: formData.cidade,
-      estado: formData.estado,
-      cep: formData.cep
-    });
-    dto.endereco = enderecoCompleto;
-  }
+  if (formData.endereco) dto.endereco = formData.endereco;
   
   if (formData.concessionariaAtualId) dto.concessionariaAtualId = formData.concessionariaAtualId;
   if (formData.organizacaoAtualId) dto.organizacaoAtualId = formData.organizacaoAtualId;

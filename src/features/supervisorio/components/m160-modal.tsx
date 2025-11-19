@@ -17,7 +17,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Gauge, WifiOff, Loader2, DollarSign, Activity, Calendar } from 'lucide-react';
+import { DateTimeInput } from '@/components/ui/datetime-input';
+import { Gauge, WifiOff, Loader2, DollarSign, Activity, Calendar, RefreshCw } from 'lucide-react';
 import { useEquipamentoMqttData } from '@/hooks/useEquipamentoMqttData';
 import { useCustosEnergia } from '@/hooks/useCustosEnergia';
 import type { PeriodoTipo } from '@/types/dtos/custos-energia-dto';
@@ -36,11 +37,25 @@ export function M160Modal({ isOpen, onClose, componenteData }: M160ModalProps) {
   // Estado dos filtros de custos
   const [periodoCustos, setPeriodoCustos] = useState<PeriodoTipo>('dia');
 
+  // Estados para período customizado
+  const [timestampInicio, setTimestampInicio] = useState<string>(() => {
+    const now = new Date();
+    now.setDate(now.getDate() - 7);
+    now.setHours(0, 0, 0, 0);
+    return now.toISOString();
+  });
+
+  const [timestampFim, setTimestampFim] = useState<string>(() => {
+    const now = new Date();
+    now.setHours(23, 59, 59, 999);
+    return now.toISOString();
+  });
+
   // ============================================
   // INTEGRAÇÃO MQTT EM TEMPO REAL
   // ============================================
   const equipamentoId = (componenteData?.dados?.equipamento_id || componenteData?.id)?.trim();
-  const { data: mqttResponse, loading, error, lastUpdate } = useEquipamentoMqttData(equipamentoId);
+  const { data: mqttResponse, loading, error, lastUpdate, refetch: refetchMqtt } = useEquipamentoMqttData(equipamentoId);
 
   const mqttData = useMemo(() => {
     if (!mqttResponse?.dado?.dados) return null;
@@ -63,6 +78,8 @@ export function M160Modal({ isOpen, onClose, componenteData }: M160ModalProps) {
   } = useCustosEnergia({
     equipamentoId,
     periodo: periodoCustos,
+    timestamp_inicio: periodoCustos === 'custom' ? timestampInicio : undefined,
+    timestamp_fim: periodoCustos === 'custom' ? timestampFim : undefined,
     enabled: activeTab === 'custos' && !!equipamentoId,
   });
 
@@ -175,6 +192,27 @@ export function M160Modal({ isOpen, onClose, componenteData }: M160ModalProps) {
 
           {/* ABA: Leitura em Tempo Real */}
           <TabsContent value="leitura" className="space-y-4">
+            {/* Barra de Controles */}
+            <div className="flex items-center justify-between gap-4 p-4 bg-muted/30 rounded-lg">
+              <div className="flex items-center gap-2">
+                <Activity className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-medium">Dados em Tempo Real</span>
+                {lastUpdate && (
+                  <span className="text-xs text-muted-foreground">
+                    • Atualizado às {lastUpdate.toLocaleTimeString('pt-BR')}
+                  </span>
+                )}
+              </div>
+              <Button size="sm" variant="outline" onClick={refetchMqtt} disabled={loading}>
+                {loading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
+                )}
+                <span className="ml-2">Atualizar</span>
+              </Button>
+            </div>
+
             {/* Mostrar erro se houver */}
             {error && (
               <div className="bg-red-500/10 border border-red-500/50 rounded-md p-3">
@@ -203,15 +241,10 @@ export function M160Modal({ isOpen, onClose, componenteData }: M160ModalProps) {
                   onConfig={() => console.log('Configurar M160')}
                 />
 
-                <div className="mt-6 text-center space-y-2">
+                <div className="mt-6 text-center">
                   <Badge variant="outline" className="text-xs">
                     Display Interativo com Navegação
                   </Badge>
-                  {mqttData && (
-                    <div className="text-xs text-gray-400 mt-2">
-                      Última atualização: {new Date(mqttData.timestamp).toLocaleTimeString('pt-BR')}
-                    </div>
-                  )}
                 </div>
               </div>
             </div>
@@ -220,23 +253,44 @@ export function M160Modal({ isOpen, onClose, componenteData }: M160ModalProps) {
           {/* ABA: Custos de Energia */}
           <TabsContent value="custos" className="space-y-4">
             {/* Filtros */}
-            <div className="flex items-center justify-between gap-4 p-4 bg-muted/30 rounded-lg">
-              <div className="flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm font-medium">Período:</span>
+            <div className="space-y-4 p-4 bg-muted/30 rounded-lg">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">Período:</span>
+                </div>
+                <Select value={periodoCustos} onValueChange={(v) => setPeriodoCustos(v as PeriodoTipo)}>
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Selecione o período" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="dia">Dia Atual</SelectItem>
+                    <SelectItem value="mes">Mês Atual</SelectItem>
+                    <SelectItem value="custom">Período Customizado</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button size="sm" variant="outline" onClick={refetchCustos} disabled={custosLoading}>
+                  {custosLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Atualizar'}
+                </Button>
               </div>
-              <Select value={periodoCustos} onValueChange={(v) => setPeriodoCustos(v as PeriodoTipo)}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Selecione o período" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="dia">Dia Atual</SelectItem>
-                  <SelectItem value="mes">Mês Atual</SelectItem>
-                </SelectContent>
-              </Select>
-              <Button size="sm" variant="outline" onClick={refetchCustos} disabled={custosLoading}>
-                {custosLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Atualizar'}
-              </Button>
+
+              {/* DateTimePickers para período customizado */}
+              {periodoCustos === 'custom' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <DateTimeInput
+                    label="Data/Hora Início"
+                    value={timestampInicio}
+                    onChange={setTimestampInicio}
+                    max={timestampFim}
+                  />
+                  <DateTimeInput
+                    label="Data/Hora Fim"
+                    value={timestampFim}
+                    onChange={setTimestampFim}
+                    min={timestampInicio}
+                  />
+                </div>
+              )}
             </div>
 
             {/* Loading */}
@@ -281,8 +335,12 @@ export function M160Modal({ isOpen, onClose, componenteData }: M160ModalProps) {
                         tarifa={
                           custosData.tarifas_aplicadas.find((t) => t.tipo_horario === 'PONTA')?.tarifa_total || undefined
                         }
-                        horario_inicio="17:00"
-                        horario_fim="20:00"
+                        horario_inicio={
+                          custosData.tarifas_aplicadas.find((t) => t.tipo_horario === 'PONTA')?.horario_inicio || '18:00'
+                        }
+                        horario_fim={
+                          custosData.tarifas_aplicadas.find((t) => t.tipo_horario === 'PONTA')?.horario_fim || '21:00'
+                        }
                       />
                       <CardCusto
                         tipo="FORA_PONTA"

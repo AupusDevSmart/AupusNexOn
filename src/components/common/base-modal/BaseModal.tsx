@@ -363,26 +363,32 @@ export function BaseModal<T extends BaseEntity>({
       />
       
       <div className="fixed inset-0 z-50 pointer-events-none">
-        <div 
+        <div
           ref={modalRef}
           className={cn(
-            "absolute top-0 right-0 h-full bg-background shadow-2xl pointer-events-auto",
+            "absolute bg-background shadow-2xl pointer-events-auto",
             "transform transition-all duration-300 ease-in-out",
             isOpen ? "translate-x-0 opacity-100" : "translate-x-full opacity-0",
-            "border-l border-border overflow-hidden flex flex-col",
-            width
+            "overflow-hidden flex flex-col",
+            // Mobile: fullscreen
+            "top-0 left-0 right-0 bottom-0 w-full h-full",
+            // Tablet e Desktop: sidebar direita com largura configurável
+            "md:top-0 md:right-0 md:left-auto md:bottom-0 md:h-full md:border-l md:border-border",
+            // Aplicar largura customizada apenas em telas maiores
+            width.replace('w-', 'md:w-')
           )}
         >
           <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b px-6 py-4 shrink-0">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                {icon}
-                <div>
-                  <h2 className="text-lg font-semibold">{title}</h2>
+                <div className="hidden md:block shrink-0">{icon}</div>
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-base md:text-lg font-semibold truncate">{title}</h2>
                   {hasUnsavedChanges && !isViewMode && (
                     <p className="text-xs text-muted-foreground flex items-center gap-1">
                       <AlertCircle className="h-3 w-3" />
-                      Alterações não salvas
+                      <span className="hidden sm:inline">Alterações não salvas</span>
+                      <span className="sm:hidden">Não salvo</span>
                     </p>
                   )}
                 </div>
@@ -401,8 +407,8 @@ export function BaseModal<T extends BaseEntity>({
           </div>
 
           <div className="flex-1 overflow-y-auto">
-            <div className="p-6">
-              <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="p-4 md:p-6">
+              <form onSubmit={handleSubmit} className="space-y-4 md:space-y-6">
                 <BaseForm
                   fields={formFields}
                   data={formData}
@@ -420,7 +426,7 @@ export function BaseModal<T extends BaseEntity>({
           </div>
 
           {showFooter && (
-            <div className="sticky bottom-0 bg-background/95 backdrop-blur-sm border-t px-6 py-4 shrink-0">
+            <div className="sticky bottom-0 bg-background/95 backdrop-blur-sm border-t px-4 py-3 md:px-6 md:py-4 shrink-0">
               <div className="flex flex-col gap-2">
                 {!isViewMode && (
                   <Button 

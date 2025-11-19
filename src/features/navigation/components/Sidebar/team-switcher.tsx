@@ -18,7 +18,7 @@ export function TeamSwitcher() {
     navigate('/');
   };
 
-  const logoSrc = theme === 'dark' ? 'logoaupus.png' : 'logoaupus-blue.jpg';
+  const logoSrc = theme === 'dark' ? '/logoaupus.png' : '/logoaupus-blue.jpg';
   const textColorClass = theme === 'dark' ? 'text-white' : 'text-black';
 
   return (
@@ -30,10 +30,15 @@ export function TeamSwitcher() {
           onClick={handleNavigateHome}
         >
           <div className="flex items-center text-center w-full gap-5">
-            <img 
-              src={logoSrc} 
-              alt="Logo AUPUS" 
-              className="h-6 w-auto" 
+            <img
+              src={logoSrc}
+              alt="Logo AUPUS"
+              className="h-6 w-auto object-contain"
+              onError={(e) => {
+                console.error('Erro ao carregar logo:', logoSrc);
+                // Fallback: tenta carregar a logo padrão SVG
+                (e.target as HTMLImageElement).src = '/logoaupus.svg';
+              }}
             />
             <span className={`font-semibold text-sm md:text-base ${textColorClass}`}>
               Aupus Energia

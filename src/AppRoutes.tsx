@@ -8,11 +8,28 @@ import { ContasAReceberPage } from "@/pages/contas-a-receber";
 import { FluxoDeCaixaPage } from "@/pages/fluxo-de-caixa";
 import ScadaPage from "@/pages/scada";
 import { Settings } from "@/pages/settings";
-import { createBrowserRouter } from "react-router-dom";
+import { createBrowserRouter, Navigate } from "react-router-dom";
 import { DashboardPage } from "./pages/dashboard";
+import { LoginPage } from "@/pages/login/LoginPage";
+import { useUserStore } from "@/store/useUserStore";
 
 // Lazy load para evitar problemas de import
 import { lazy, Suspense } from "react";
+
+/**
+ * Componente de rota protegida
+ * Verifica se o usuário está autenticado antes de renderizar
+ */
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { user } = useUserStore();
+
+  if (!user?.id) {
+    const currentPath = window.location.pathname;
+    return <Navigate to={`/login?redirectTo=${currentPath}`} replace />;
+  }
+
+  return <>{children}</>;
+}
 
 const CadastroUnidadesPage = lazy(() =>
   import("@/pages/supervisorio/cadastro-unidades").then((module) => ({
@@ -63,10 +80,25 @@ const CadastroConcessionariasPage = lazy(() =>
 );
 
 export const appRoutes = createBrowserRouter([
+  // ✅ Rota pública de login
+  {
+    path: "/login",
+    element: <LoginPage />,
+  },
+
+  // ✅ Rotas protegidas
   {
     path: "/",
-    element: <AppTemplate />,
+    element: (
+      <ProtectedRoute>
+        <AppTemplate />
+      </ProtectedRoute>
+    ),
     children: [
+      {
+        index: true,
+        element: <Navigate to="/dashboard" replace />,
+      },
       {
         path: "dashboard",
         element: (
@@ -259,5 +291,11 @@ export const appRoutes = createBrowserRouter([
       },
       // ✅ CORRIGIDO: Rota para Editor de Diagrama com lazy loading correto
     ],
+  },
+
+  // ✅ Rota 404 - Redireciona para login
+  {
+    path: "*",
+    element: <Navigate to="/login" replace />,
   },
 ]);

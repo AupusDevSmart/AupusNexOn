@@ -12,9 +12,8 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
-import { toast } from '@/components/ui/use-toast'
-import { ImagePlus, User, Eye, EyeOff } from 'lucide-react'
-import { useState } from 'react'
+import { ImagePlus, User, Eye, EyeOff, Loader2 } from 'lucide-react'
+import { useState, useEffect } from 'react'
 import {
   Card,
   CardContent,
@@ -22,6 +21,9 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { useUserStore } from '@/store/useUserStore'
+import { useUpdateProfile } from './hooks/useUpdateProfile'
+import { getAvatarUrl } from '@/lib/getAvatarUrl'
 
 const profileFormSchema = z.object({
   name: z
@@ -95,44 +97,97 @@ const profileFormSchema = z.object({
 
 type ProfileFormValues = z.infer<typeof profileFormSchema>
 
-// Dados iniciais (podem vir do banco de dados ou API)
-const defaultValues: Partial<ProfileFormValues> = {
-  name: 'João Silva',
-  cpf: '123.456.789-00',
-  email: 'joao.silva@email.com',
-  phone: '(11) 98765-4321',
-}
-
 export function AccountForm() {
+  const { user } = useUserStore()
+  const { updateProfile, changePassword, uploadProfileImage, isUpdating, isChangingPassword, isUploadingImage } = useUpdateProfile()
+
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [showPassword, setShowPassword] = useState(false)
   const [showNewPassword, setShowNewPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null)
+
+  // Valores padrão carregados do usuário logado
+  const defaultValues: Partial<ProfileFormValues> = {
+    name: user?.nome || '',
+    cpf: user?.cpf_cnpj || '',
+    email: user?.email || '',
+    phone: user?.telefone || '',
+  }
 
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileFormSchema),
     defaultValues,
   })
 
-  function onSubmit(data: ProfileFormValues) {
-    // Ação mockada
-    toast({
-      title: 'Você enviou os seguintes valores:',
-      description: (
-        <pre className='mt-2 w-[340px] rounded-md bg-slate-950 p-4'>
-          <code className='text-white'>
-            {JSON.stringify({
-              name: data.name,
-              cpf: data.cpf,
-              email: data.email,
-              phone: data.phone,
-              passwordChanged: !!data.newPassword,
-              image: data.image ? data.image.name : null
-            }, null, 2)}
-          </code>
-        </pre>
-      ),
-    })
+  // Atualizar formulário quando usuário carregar
+  useEffect(() => {
+    if (user) {
+      form.reset({
+        name: user.nome || '',
+        cpf: user.cpf_cnpj || '',
+        email: user.email || '',
+        phone: user.telefone || '',
+      })
+
+      // Carregar avatar existente do usuário usando a função utilitária
+      if (user.avatar_url && !previewUrl) {
+        const url = getAvatarUrl(user.avatar_url);
+        console.log('🎨 [ACCOUNT-FORM] Avatar URL original:', user.avatar_url);
+        console.log('🎨 [ACCOUNT-FORM] Avatar URL completa:', url);
+        if (url) {
+          setPreviewUrl(url);
+        }
+      }
+    }
+  }, [user, form])
+
+  async function onSubmit(data: ProfileFormValues) {
+    if (!user?.id) return
+
+    // 1. Upload de imagem primeiro (se houver)
+    if (uploadedFile) {
+      const uploadResult = await uploadProfileImage(uploadedFile)
+      if (!uploadResult.success) {
+        // Se o upload falhar, ainda continua com os outros dados
+        console.error('Erro ao fazer upload da imagem:', uploadResult.error)
+      } else {
+        setUploadedFile(null)
+        // Atualiza o preview com a nova URL retornada
+        if (uploadResult.imageUrl) {
+          const fullUrl = getAvatarUrl(uploadResult.imageUrl)
+          if (fullUrl) {
+            setPreviewUrl(fullUrl)
+          }
+        }
+      }
+    }
+
+    // 2. Atualizar dados do perfil
+    const profileData = {
+      nome: data.name,
+      cpfCnpj: data.cpf,
+      email: data.email,
+      telefone: data.phone,
+    }
+
+    const profileResult = await updateProfile(profileData)
+    if (!profileResult.success) return
+
+    // 3. Alterar senha se fornecida
+    if (data.password && data.newPassword) {
+      const passwordResult = await changePassword({
+        senhaAtual: data.password,
+        novaSenha: data.newPassword,
+      })
+
+      if (passwordResult.success) {
+        // Limpar campos de senha após sucesso
+        form.setValue('password', '')
+        form.setValue('newPassword', '')
+        form.setValue('confirmPassword', '')
+      }
+    }
   }
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -140,6 +195,7 @@ export function AccountForm() {
     if (file) {
       const url = URL.createObjectURL(file)
       setPreviewUrl(url)
+      setUploadedFile(file)
       //@ts-ignore
       form.setValue('image', e.target.files as FileList)
     }
@@ -414,7 +470,20 @@ export function AccountForm() {
           </div>
 
 
-          <Button type='submit' className="w-auto rounded-sm bg-card-foreground text-card">Atualizar perfil</Button>
+          <Button
+            type='submit'
+            className="w-auto rounded-sm bg-card-foreground text-card"
+            disabled={isUpdating || isChangingPassword || isUploadingImage}
+          >
+            {(isUpdating || isChangingPassword || isUploadingImage) ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Salvando...
+              </>
+            ) : (
+              'Atualizar perfil'
+            )}
+          </Button>
         </div>
       </form>
     </Form>

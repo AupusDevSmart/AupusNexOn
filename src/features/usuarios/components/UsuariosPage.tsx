@@ -86,31 +86,33 @@ export function UsuariosPage() {
             title="Usuários"
             description="Gerencie os usuários cadastrados no sistema"
           />
-          
+
           {/* DEBUG: Mostrar status atual */}
           {(loading || error || usuarios.length === 0) && (
-            <div className="mb-4 p-4 border rounded-lg bg-yellow-50 border-yellow-200">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h4 className="font-medium text-yellow-800">Status Debug:</h4>
-                  <p className="text-sm text-yellow-700">
-                    Loading: {loading ? '✅' : '❌'} | 
-                    Error: {error || 'Nenhum'} | 
+            <div className="mb-4 p-3 md:p-4 border rounded-lg bg-yellow-50 border-yellow-200 dark:bg-yellow-950 dark:border-yellow-800">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="min-w-0">
+                  <h4 className="font-medium text-yellow-800 dark:text-yellow-200 text-sm md:text-base">Status Debug:</h4>
+                  <p className="text-xs md:text-sm text-yellow-700 dark:text-yellow-300 break-words">
+                    Loading: {loading ? '✅' : '❌'} |
+                    Error: {error || 'Nenhum'} |
                     Usuários: {usuarios.length}
                   </p>
                 </div>
-                <div className="flex gap-2">
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={testApiConnection}
+                    className="flex-1 sm:flex-none text-xs md:text-sm"
                   >
                     Testar API
                   </Button>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={refetch}
+                    className="flex-1 sm:flex-none text-xs md:text-sm"
                   >
                     Forçar Reload
                   </Button>
@@ -120,24 +122,24 @@ export function UsuariosPage() {
           )}
 
           {/* Filtros e Botão de Cadastrar */}
-          <div className="flex flex-col lg:flex-row gap-4 mb-6">
-            <div className="flex-1">
-              <UsuariosFilters 
+          <div className="flex flex-col gap-3 md:gap-4 mb-4 md:mb-6">
+            <div className="w-full">
+              <UsuariosFilters
                 filters={filters}
                 onFilterChange={handleFilterChange}
               />
             </div>
-            <Button 
+            <Button
               onClick={() => handleOpenModal('create')}
-              className="bg-primary hover:bg-primary/90 shrink-0"
+              className="bg-primary hover:bg-primary/90 w-full sm:w-auto sm:self-end"
             >
               <Plus className="mr-2 h-4 w-4" />
-              Novo Usuário
+              <span>Novo Usuário</span>
             </Button>
           </div>
 
           {/* Tabela */}
-          <div className="flex-1 min-h-0">
+          <div className="flex-1 min-h-0 overflow-hidden">
             <UsuariosTable
               usuarios={usuarios}
               loading={loading}

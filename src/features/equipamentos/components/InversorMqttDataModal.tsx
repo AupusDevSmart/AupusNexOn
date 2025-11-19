@@ -1,15 +1,14 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useEquipamentoMqttData } from '@/hooks/useEquipamentoMqttData';
-import { useEquipamentoPowerHistory } from '@/hooks/useEquipamentoPowerHistory';
 import { useGraficoDia, useGraficoMes, useGraficoAno } from '@/hooks/useInversorGraficos';
-import { InversorPowerChart } from './InversorPowerChart';
 import { InversorGraficoDia } from './InversorGraficoDia';
 import { InversorGraficoMes } from './InversorGraficoMes';
 import { InversorGraficoAno } from './InversorGraficoAno';
-import { Loader2, Zap, Thermometer, Activity, Shield, Clock, AlertTriangle, TrendingUp, BarChart3, Calendar } from 'lucide-react';
+import { Loader2, Zap, Thermometer, Activity, Shield, Clock, AlertTriangle, BarChart3, Calendar, RefreshCw, TrendingUp } from 'lucide-react';
 
 interface InversorMqttDataModalProps {
   equipamentoId: string | null;
@@ -32,8 +31,7 @@ export function InversorMqttDataModal({ equipamentoId, open, onOpenChange }: Inv
   // Limpar espaços em branco do ID
   const cleanId = equipamentoId?.trim() || null;
 
-  const { data, loading, error, lastUpdate } = useEquipamentoMqttData(cleanId);
-  const { data: powerHistory, loading: powerLoading } = useEquipamentoPowerHistory(cleanId);
+  const { data, loading, error, lastUpdate, refetch } = useEquipamentoMqttData(cleanId);
 
   // Hooks para os 3 gráficos
   const graficoDia = useGraficoDia(cleanId);
@@ -47,7 +45,6 @@ export function InversorMqttDataModal({ equipamentoId, open, onOpenChange }: Inv
     lastUpdate,
     dataEquipamento: data?.equipamento?.nome,
     hasDado: !!data?.dado,
-    powerHistoryPoints: powerHistory.length
   });
 
   if (loading && !data) {
@@ -127,12 +124,22 @@ export function InversorMqttDataModal({ equipamentoId, open, onOpenChange }: Inv
               <Zap className="h-5 w-5 text-yellow-500" />
               {data.equipamento.nome} - Dados em Tempo Real
             </div>
-            {lastUpdate && (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground font-normal">
-                <Clock className="h-4 w-4" />
-                Atualizado às {lastUpdate.toLocaleTimeString('pt-BR')}
-              </div>
-            )}
+            <div className="flex items-center gap-3">
+              {lastUpdate && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground font-normal">
+                  <Clock className="h-4 w-4" />
+                  Atualizado às {lastUpdate.toLocaleTimeString('pt-BR')}
+                </div>
+              )}
+              <Button size="sm" variant="outline" onClick={refetch} disabled={loading}>
+                {loading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
+                )}
+                <span className="ml-2">Atualizar</span>
+              </Button>
+            </div>
           </DialogTitle>
         </DialogHeader>
 
@@ -187,26 +194,6 @@ export function InversorMqttDataModal({ equipamentoId, open, onOpenChange }: Inv
               </CardContent>
             </Card>
           </div>
-
-          {/* Gráfico de Potência - Últimas 24h */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <TrendingUp className="h-5 w-5 text-blue-500" />
-                Potência Ativa - Últimas 24 Horas
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {powerLoading && powerHistory.length === 0 ? (
-                <div className="flex items-center justify-center h-[300px]">
-                  <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
-                  <span className="ml-2 text-muted-foreground">Carregando histórico...</span>
-                </div>
-              ) : (
-                <InversorPowerChart data={powerHistory} height={300} />
-              )}
-            </CardContent>
-          </Card>
 
           {/* Gráficos de Geração - Dia, Mês e Ano */}
           <Card>

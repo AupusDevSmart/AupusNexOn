@@ -7,8 +7,10 @@ import type {
 
 interface UseCustosEnergiaParams {
   equipamentoId: string | null;
-  periodo: PeriodoTipo;
-  data?: string; // ISO 8601 format (YYYY-MM-DD)
+  periodo?: PeriodoTipo;
+  data?: string; // ISO 8601 format (YYYY-MM-DD) - usado com periodo=dia ou periodo=mes
+  timestamp_inicio?: string; // ISO 8601 completo - usado com periodo=custom
+  timestamp_fim?: string; // ISO 8601 completo - usado com periodo=custom
   enabled?: boolean; // Se false, não faz a busca automática
 }
 
@@ -22,7 +24,10 @@ interface UseCustosEnergiaReturn {
 /**
  * Hook para buscar dados de custos de energia de um equipamento M160
  *
+ * ✅ ATUALIZADO: Suporta 3 modos de filtro
+ *
  * @example
+ * // Modo 1: Dia específico
  * ```tsx
  * const { data, loading, error, refetch } = useCustosEnergia({
  *   equipamentoId: 'cmhnk06ka009l2fbkd1o2tyua',
@@ -30,11 +35,34 @@ interface UseCustosEnergiaReturn {
  *   data: '2025-11-07',
  * });
  * ```
+ *
+ * @example
+ * // Modo 2: Mês específico
+ * ```tsx
+ * const { data, loading, error, refetch } = useCustosEnergia({
+ *   equipamentoId: 'cmhnk06ka009l2fbkd1o2tyua',
+ *   periodo: 'mes',
+ *   data: '2025-11',
+ * });
+ * ```
+ *
+ * @example
+ * // Modo 3: Período customizado
+ * ```tsx
+ * const { data, loading, error, refetch } = useCustosEnergia({
+ *   equipamentoId: 'cmhnk06ka009l2fbkd1o2tyua',
+ *   periodo: 'custom',
+ *   timestamp_inicio: '2025-11-01T00:00:00Z',
+ *   timestamp_fim: '2025-11-15T23:59:59Z',
+ * });
+ * ```
  */
 export function useCustosEnergia({
   equipamentoId,
   periodo,
   data,
+  timestamp_inicio,
+  timestamp_fim,
   enabled = true,
 }: UseCustosEnergiaParams): UseCustosEnergiaReturn {
   const [custos, setCustos] = useState<CustosEnergiaResponseDto | null>(null);
@@ -54,12 +82,14 @@ export function useCustosEnergia({
     try {
       console.log(
         `💰 [useCustosEnergia] Buscando custos para equipamento ${equipamentoId}`,
-        { periodo, data }
+        { periodo, data, timestamp_inicio, timestamp_fim }
       );
 
       const response = await equipamentosDadosService.getCustosEnergia(equipamentoId, {
         periodo,
         data,
+        timestamp_inicio,
+        timestamp_fim,
       });
 
       console.log('✅ [useCustosEnergia] Resposta recebida:', response);
@@ -88,7 +118,7 @@ export function useCustosEnergia({
     } finally {
       setLoading(false);
     }
-  }, [equipamentoId, periodo, data, enabled]);
+  }, [equipamentoId, periodo, data, timestamp_inicio, timestamp_fim, enabled]);
 
   useEffect(() => {
     fetchCustos();

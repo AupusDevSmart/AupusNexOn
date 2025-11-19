@@ -183,8 +183,10 @@ class EquipamentosDadosService {
   async getCustosEnergia(
     equipamentoId: string,
     params: {
-      periodo: 'dia' | 'mes';
+      periodo?: 'dia' | 'mes' | 'custom';
       data?: string;
+      timestamp_inicio?: string;
+      timestamp_fim?: string;
     }
   ) {
     // Limpar espaços em branco do ID

@@ -143,7 +143,7 @@ const PermissoesSelector = ({ value, onChange, disabled }: any) => {
                 <Checkbox
                   id={permissao.value}
                   checked={permissoesSelecionadas.includes(permissao.value)}
-                  onCheckedChange={(checked) => handlePermissaoChange(permissao.value, !!checked)}
+                  onCheckedChange={(checked) => handlePermissaoChange(permissao.value as Permissao, !!checked)}
                   disabled={disabled}
                 />
                 <label 
@@ -204,11 +204,16 @@ const CidadeSelector = ({ value, onChange, disabled, estadoId }: any) => {
 // Componente para CEP com busca automática
 const CEPSelector = ({ value, onChange, disabled, onMultipleChange }: any) => {
   const handleEnderecoChange = (endereco: any) => {
-    // Atualizar outros campos do formulário quando CEP for encontrado
-    if (onMultipleChange) {
+    // Atualizar campo de endereço completo quando CEP for encontrado
+    if (onMultipleChange && endereco) {
+      // Concatenar endereço e bairro em um único campo
+      const enderecoCompleto = [
+        endereco.endereco,
+        endereco.bairro
+      ].filter(Boolean).join(' - ');
+
       onMultipleChange({
-        endereco: endereco.endereco,
-        bairro: endereco.bairro,
+        endereco: enderecoCompleto || endereco.endereco,
         // Nota: cidade e estado ficam nos selects IBGE separados
       });
     }
@@ -338,24 +343,11 @@ export const usuariosFormFields: FormField[] = [
   },
   {
     key: 'endereco',
-    label: 'Endereço',
+    label: 'Endereço Completo',
     type: 'text',
-    placeholder: 'Rua das Flores, 123',
-    group: 'localizacao'
-  },
-  {
-    key: 'bairro',
-    label: 'Bairro',
-    type: 'text',
-    placeholder: 'Centro',
-    group: 'localizacao'
-  },
-  {
-    key: 'complemento',
-    label: 'Complemento',
-    type: 'text',
-    placeholder: 'Apto 101, Bloco A',
-    group: 'localizacao'
+    placeholder: 'Rua das Flores, 123 - Centro - Apto 101',
+    group: 'localizacao',
+    help: 'Inclua rua, número, bairro e complemento'
   },
   
   // ✅ CONFIGURAÇÕES DO SISTEMA

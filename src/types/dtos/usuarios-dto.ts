@@ -8,22 +8,39 @@ export interface UsuarioDTO {
   concessionarias?: ConcessionariaDTO[];
   concessionaria_atual_id?: string;
   concessionaria_atual?: ConcessionariaDTO;
-  organizacao_atual: OrganizacaoDTO;
+  organizacao_atual?: OrganizacaoDTO | string;
 
   nome: string;
   email: string;
+  telefone?: string;
+  instagram?: string;
+  cpf_cnpj?: string;
+  cidade?: string;
+  estado?: string;
+  endereco?: string;
+  cep?: string;
+  manager_id?: string;
+  organizacao_atual_id?: string;
+  avatar_url?: string;
 
-  all_permissions: Permissao[];
+  all_permissions?: Permissao[] | any[];
 
-  roles: Role[];
+  roles?: Role[] | string[];
+  role_details?: {
+    id: number;
+    name: string;
+    guard_name: string;
+  };
 
-  created_at: Date;
-  updated_at: Date;
+  created_at?: Date | string;
+  updated_at?: Date | string;
 }
 
 export enum UsuarioStatus {
   ATIVO = "Ativo",
   INATIVO = "Inativo",
+  PENDENTE = "Pendente",
+  BLOQUEADO = "Bloqueado",
 }
 
 export enum UsuarioRole {
@@ -68,3 +85,29 @@ export type Permissao =
   | "Plantas"
   | "Equipamentos"
   | "Concessionarias";
+
+// DTOs para atualização de perfil
+export interface UpdateUsuarioDto {
+  nome?: string;
+  email?: string;
+  telefone?: string;
+  instagram?: string;
+  cpfCnpj?: string;
+  cidade?: string;
+  estado?: string;
+  endereco?: string;
+  cep?: string;
+  status?: UsuarioStatus;
+  managerId?: string;
+  concessionariaAtualId?: string;
+  organizacaoAtualId?: string;
+  roleId?: number;
+  permissionIds?: number[];
+  clearDirectPermissions?: boolean;
+  clearRole?: boolean;
+}
+
+export interface ChangePasswordDto {
+  senhaAtual: string;
+  novaSenha: string;
+}
