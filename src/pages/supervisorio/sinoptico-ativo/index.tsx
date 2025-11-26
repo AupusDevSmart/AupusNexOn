@@ -232,10 +232,12 @@ const ElectricalSymbol = ({
   tipo,
   status = "NORMAL",
   onClick,
+  dados,
 }: {
   tipo: string;
   status: string;
   onClick?: () => void;
+  dados?: any;
 }) => {
   const statusClasses = getStatusClasses(status);
 
