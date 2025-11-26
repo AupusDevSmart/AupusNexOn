@@ -524,4 +524,18 @@
   .dark .nexon-calendar-wrapper thead th {
     color: hsl(var(--muted-foreground)) !important;
   }
+
+  /* Animação de rotação lenta para o PIVO */
+  @keyframes spin-slow {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .animate-spin-slow {
+    animation: spin-slow 20s linear infinite;
+  }
 }

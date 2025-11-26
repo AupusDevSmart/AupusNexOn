@@ -1,7 +1,6 @@
 // src/features/usuarios/hooks/useUsuarios.ts - COMPATÍVEL COM DTO
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/config/api';
-console.log('🔧 [useUsuarios] API importada:', { baseURL: api.defaults.baseURL });
 import { 
   Usuario, 
   UsuariosFilters, 
@@ -24,8 +23,6 @@ import {
 class UsuariosApiService {
 
   async findAll(filters: UsuariosFilters): Promise<UsuariosResponse> {
-    console.log('🔍 [UsuariosApiService] Iniciando findAll com filtros:', filters);
-    
     const params = new URLSearchParams();
     
     if (filters.page) params.append('page', filters.page.toString());
@@ -43,34 +40,13 @@ class UsuariosApiService {
     }
 
     const url = `/usuarios?${params}`;
-    console.log('📡 [UsuariosApiService] Fazendo chamada GET para:', url);
-    
     const response = await api.get(url, {
       timeout: 10000, // 10 segundos timeout
     });
-    console.log('📨 [UsuariosApiService] Resposta raw da API:', {
-      status: response.status,
-      statusText: response.statusText,
-      dataType: typeof response.data,
-      hasData: !!response.data,
-      dataKeys: response.data ? Object.keys(response.data) : [],
-      dataPreview: response.data
-    });
-    
-    const data = response.data;
 
-    console.log(data)
-    
-    // ✅ CORRIGIDO: Extrair dados do caminho correto baseado na estrutura real da API
-    // A API retorna: { success: true, data: { data: [...usuarios], pagination: {...} }, meta: {...} }
+    const data = response.data;
     const usuariosArray = data?.data?.data || data?.data || [];
     const paginationData = data?.data?.pagination || data?.pagination || { page: 1, limit: 10, total: 0, totalPages: 0 };
-
-    console.log('🔍 [UsuariosApiService] Estrutura dos dados extraídos:', {
-      usuariosCount: usuariosArray.length,
-      pagination: paginationData,
-      firstUsuario: usuariosArray[0]
-    });
 
     // Mapear usuários (sem buscar dados completos para evitar sobrecarga)
     const mappedData = {
@@ -82,26 +58,8 @@ class UsuariosApiService {
   }
 
   async findOne(id: string): Promise<Usuario> {
-    try {
-      console.log(`🔍 [FIND ONE] Buscando usuário ${id} com dados completos...`);
-      
-      // Primeiro tentar buscar dados completos
-      const response = await api.get(`/usuarios/${id}`);
-      const data = response.data;
-      
-      console.log(`📋 [FIND ONE] Dados do usuário recebidos:`, {
-        id: data.id,
-        nome: data.nome,
-        role_details: data.role_details,
-        roles: data.roles,
-        all_permissions: data.all_permissions?.length || 0
-      });
-      
-      return this.mapApiResponseToUsuario(data);
-    } catch (error) {
-      console.error(`❌ [FIND ONE] Erro ao buscar usuário ${id}:`, error);
-      throw error;
-    }
+    const response = await api.get(`/usuarios/${id}`);
+    return this.mapApiResponseToUsuario(response.data);
   }
 
   async create(data: UsuarioFormData): Promise<Usuario> {
@@ -114,18 +72,9 @@ class UsuariosApiService {
   }
 
   async update(id: string, data: Partial<UsuarioFormData>): Promise<Usuario> {
-    // ✅ CONVERTER FORM DATA PARA DTO DA API
     const updateDto = mapFormDataToCreateDto(data as UsuarioFormData);
-    
-    console.log('🔍 DEBUG - Dados enviados para API:', {
-      id,
-      originalData: data,
-      updateDto
-    });
-
     const response = await api.patch(`/usuarios/${id}`, updateDto);
-    const result = response.data;
-    return this.mapApiResponseToUsuario(result);
+    return this.mapApiResponseToUsuario(response.data);
   }
 
   async remove(id: string): Promise<{ message: string }> {
@@ -145,17 +94,6 @@ class UsuariosApiService {
 
   // ✅ MAPEAR RESPOSTA DA API PARA FORMATO DO FRONTEND
   private mapApiResponseToUsuario(apiResponse: any): Usuario {
-    console.log('🔄 [USUARIOS HOOK] Mapeando resposta da API:', {
-      id: apiResponse.id,
-      nome: apiResponse.nome,
-      role: apiResponse.role,
-      role_details: apiResponse.role_details,
-      roles: apiResponse.roles,
-      all_permissions: apiResponse.all_permissions,
-      permissions: apiResponse.permissions,
-      rawResponse: apiResponse
-    });
-    
     const mappedUser = {
       id: apiResponse.id,
       status: apiResponse.status,
@@ -201,49 +139,12 @@ class UsuariosApiService {
         }).filter(Boolean); // Remove valores vazios
       })(),
       
-      // ✅ CORREÇÃO: Mapear roles da estrutura real da API
-      roles: (() => {
-        // Se tem role_details (dados completos), usar ele
-        if (apiResponse.role_details && apiResponse.role_details.name) {
-          return [apiResponse.role_details.name];
-        }
-        
-        // Se tem roles array (dados completos), usar ele
-        if (apiResponse.roles && Array.isArray(apiResponse.roles) && apiResponse.roles.length > 0) {
-          return apiResponse.roles.map((role: any) => 
-            typeof role === 'string' ? role : (role.name || String(role))
-          );
-        }
-        
-        // Se não tem dados Spatie, mas tem role na coluna legacy (versão otimizada)
-        if (apiResponse.role && typeof apiResponse.role === 'string') {
-          return [apiResponse.role];
-        }
-        
-        // Fallback baseado na API: se não tem role definida, é vendedor por padrão
-        return ['vendedor'];
-      })(),
-      
-      // ✅ ADICIONAR role_details se existir
-      role_details: apiResponse.role_details ? {
-        id: apiResponse.role_details.id || '0',
-        name: apiResponse.role_details.name || apiResponse.role_details,
-        description: apiResponse.role_details.description || apiResponse.role_details.name || apiResponse.role_details
-      } : undefined,
+      // ✅ SIMPLIFICADO: API já retorna roles como array de strings
+      roles: apiResponse.roles || [],
 
-      // ✅ CAMPOS DE COMPATIBILIDADE COM FRONTEND EXISTENTE
-      tipo: (() => {
-        const primaryRole = apiResponse.role_details?.name || apiResponse.role || 
-                           (apiResponse.roles && apiResponse.roles[0]?.name) || 
-                           (apiResponse.roles && apiResponse.roles[0]) || 'vendedor';
-        return this.mapRoleToTipo(primaryRole);
-      })(),
-      perfil: (() => {
-        const primaryRole = apiResponse.role_details?.name || apiResponse.role || 
-                           (apiResponse.roles && apiResponse.roles[0]?.name) || 
-                           (apiResponse.roles && apiResponse.roles[0]) || 'vendedor';
-        return this.mapRoleToTipo(primaryRole);
-      })(),
+      // ✅ SIMPLIFICADO: Usar apenas roles[0] para tipo
+      tipo: this.mapRoleToTipo(apiResponse.roles?.[0] || 'vendedor'),
+      perfil: this.mapRoleToTipo(apiResponse.roles?.[0] || 'vendedor'),
       permissao: (() => {
         const perms = apiResponse.all_permissions || apiResponse.permissions || [];
         if (Array.isArray(perms)) {
@@ -264,18 +165,7 @@ class UsuariosApiService {
       primeiroAcesso: apiResponse.primeiroAcesso,
       plantas: apiResponse.plantas || 0,
     };
-    
-    console.log('✅ [USUARIOS HOOK] Usuário mapeado:', {
-      id: mappedUser.id,
-      nome: mappedUser.nome,
-      tipo: mappedUser.tipo,
-      perfil: mappedUser.perfil,
-      roles: mappedUser.roles,
-      role_details: mappedUser.role_details,
-      all_permissions_count: mappedUser.all_permissions?.length || 0,
-      permissao_count: mappedUser.permissao?.length || 0
-    });
-    
+
     return mappedUser;
   }
 
@@ -410,44 +300,24 @@ export function useUsuarios() {
 
   // ✅ FUNÇÃO PARA CARREGAR USUÁRIOS DA API
   const loadUsuarios = useCallback(async (currentFilters: UsuariosFilters) => {
-    console.log('🔄 [useUsuarios] Iniciando carregamento de usuários com filtros:', currentFilters);
-    
     try {
       setLoading(true);
       setError(null);
-      
-      console.log('📡 [useUsuarios] Fazendo chamada para API...');
+
       const response = await usuariosService.findAll(currentFilters);
-      console.log('✅ [useUsuarios] Resposta da API recebida:', {
-        totalUsuarios: response.data?.length,
-        pagination: response.pagination,
-        firstUser: response.data?.[0]
-      });
-      
       setUsuarios(response.data);
       setPagination(response.pagination);
-      
-      console.log('✅ [useUsuarios] Estado atualizado com sucesso');
     } catch (err) {
-      console.error('❌ [useUsuarios] Erro ao carregar usuários:', err);
-      console.error('❌ [useUsuarios] Detalhes do erro:', {
-        message: err instanceof Error ? err.message : 'Erro desconhecido',
-        stack: err instanceof Error ? err.stack : undefined,
-        response: (err as any)?.response?.data
-      });
+      console.error('Erro ao carregar usuários:', err);
       setError(err instanceof Error ? err.message : 'Erro ao carregar usuários');
       setUsuarios([]);
     } finally {
       setLoading(false);
-      console.log('🏁 [useUsuarios] Carregamento finalizado');
     }
   }, []);
 
   // ✅ CARREGAR DADOS INICIAL E QUANDO FILTROS MUDAREM
   useEffect(() => {
-    console.log('🎯 [useUsuarios] useEffect triggered with filters:', filters);
-    console.log('🔗 [useUsuarios] API baseURL:', api.defaults.baseURL);
-    console.log('🔑 [useUsuarios] API headers:', api.defaults.headers);
     loadUsuarios(filters);
   }, [filters, loadUsuarios]);
 

@@ -31,8 +31,18 @@ interface InversorGraficoMesProps {
 }
 
 export function InversorGraficoMes({ data, loading, height = 400 }: InversorGraficoMesProps) {
+  console.log('🔵 [InversorGraficoMes] Renderizando com:', {
+    hasData: !!data,
+    loading,
+    dadosLength: data?.dados?.length,
+    data
+  });
+
   const chartData = useMemo(() => {
-    if (!data?.dados) return [];
+    if (!data?.dados) {
+      console.log('⚠️ [InversorGraficoMes] Sem dados para processar');
+      return [];
+    }
 
     return data.dados.map((point) => ({
       dia: `${point.dia}`,

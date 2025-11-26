@@ -297,75 +297,161 @@ export function ConexoesDiagrama({
         const toX = toCenterX + toOffset.x;
         const toY = toCenterY + toOffset.y;
 
-        // ===== CALCULAR CAMINHO ORTOGONAL MELHORADO =====
+        // ===== CALCULAR CAMINHO ORTOGONAL - SEMPRE PERPENDICULAR =====
 const calculateOrthogonalPath = () => {
+  // DEBUG: Log dos valores para entender o problema (comentado)
+  // console.log('🔍 DEBUG Conexão:', {
+  //   from: fromComponent.nome,
+  //   to: toComponent.nome,
+  //   fromPort: connection.fromPort,
+  //   toPort: connection.toPort,
+  //   centers: {
+  //     fromCenter: { x: fromCenterX, y: fromCenterY },
+  //     toCenter: { x: toCenterX, y: toCenterY }
+  //   },
+  //   ports: {
+  //     fromPort: { x: fromX, y: fromY },
+  //     toPort: { x: toX, y: toY }
+  //   },
+  //   offsets: {
+  //     fromOffset,
+  //     toOffset
+  //   },
+  //   deltas: {
+  //     'toX - toCenterX': (toX - toCenterX).toFixed(2),
+  //     'toY - toCenterY': (toY - toCenterY).toFixed(2)
+  //   }
+  // });
+
   const path: string[] = [];
+  const fromPort = connection.fromPort;
+  const toPort = connection.toPort;
 
   // Começar no ponto de origem
   path.push(`M ${fromX} ${fromY}`);
 
-  // Determinar direção baseado nas portas
-  const fromPort = connection.fromPort;
-  const toPort = connection.toPort;
+  // Distância mínima de afastamento dos componentes (em pixels)
+  const OFFSET = 20;
 
-  // Calcular diferenças
-  const deltaX = Math.abs(toX - fromX);
-  const deltaY = Math.abs(toY - fromY);
+  // ✅ REGRA PRINCIPAL: Linha SEMPRE chega perpendicular à porta de destino
+  // E deve parar EXATAMENTE acima/abaixo/ao lado do centro do equipamento
 
-  // SE COMPONENTES ESTÃO QUASE ALINHADOS VERTICALMENTE (diferença X < 10px)
-  if (deltaX < 10 && (fromPort === 'top' || fromPort === 'bottom') && 
+  // Caso 1: Ambas as portas são verticais (top/bottom)
+  if ((fromPort === 'top' || fromPort === 'bottom') &&
       (toPort === 'top' || toPort === 'bottom')) {
-    // LINHA RETA VERTICAL - usa o X médio para garantir alinhamento perfeito
-    const avgX = (fromX + toX) / 2;
-    path.push(`L ${avgX} ${fromY}`);
-    path.push(`L ${avgX} ${toY}`);
-    path.push(`L ${toX} ${toY}`);
-  }
-  // SE COMPONENTES ESTÃO QUASE ALINHADOS HORIZONTALMENTE (diferença Y < 10px)
-  else if (deltaY < 10 && (fromPort === 'left' || fromPort === 'right') && 
-           (toPort === 'left' || toPort === 'right')) {
-    // LINHA RETA HORIZONTAL - usa o Y médio para garantir alinhamento perfeito
-    const avgY = (fromY + toY) / 2;
-    path.push(`L ${fromX} ${avgY}`);
-    path.push(`L ${toX} ${avgY}`);
-    path.push(`L ${toX} ${toY}`);
-  }
-  // Vertical (top/bottom) - conexão em sequência vertical
-  else if ((fromPort === 'top' || fromPort === 'bottom') && 
-      (toPort === 'top' || toPort === 'bottom')) {
-    const midY = (fromY + toY) / 2;
-    path.push(`L ${fromX} ${midY}`); // Linha vertical até meio
-    path.push(`L ${toX} ${midY}`);   // Linha horizontal
-    path.push(`L ${toX} ${toY}`);    // Linha vertical até destino
-  }
-  // Horizontal (left/right) - conexão em sequência horizontal
-  else if ((fromPort === 'left' || fromPort === 'right') && 
-           (toPort === 'left' || toPort === 'right')) {
-    const midX = (fromX + toX) / 2;
-    path.push(`L ${midX} ${fromY}`); // Linha horizontal até meio
-    path.push(`L ${midX} ${toY}`);   // Linha vertical
-    path.push(`L ${toX} ${toY}`);    // Linha horizontal até destino
-  }
-  // Misto (perpendicular)
-  else {
-    // Calcula ponto intermediário baseado nas portas
-    if (fromPort === 'right' || fromPort === 'left') {
-      const midX = fromPort === 'right' ? 
-        Math.max(fromX, toX) + 20 : 
-        Math.min(fromX, toX) - 20;
-      path.push(`L ${midX} ${fromY}`);
-      path.push(`L ${midX} ${toY}`);
+
+    // ✅ USAR toCenterX (centro real) ao invés de toX (porta com offset)!
+
+    // Se estão perfeitamente alinhados verticalmente
+    if (Math.abs(fromX - toCenterX) < 5) {
+      // Linha reta vertical passando pelo centro
+      // console.log('  📐 V->V alinhados: linha reta');
+      path.push(`L ${toCenterX} ${toY}`);
     } else {
-      const midY = fromPort === 'bottom' ? 
-        Math.max(fromY, toY) + 20 : 
-        Math.min(fromY, toY) - 20;
-      path.push(`L ${fromX} ${midY}`);
-      path.push(`L ${toX} ${midY}`);
+      // Determinar onde fazer a dobra baseado nas portas
+      if (fromPort === 'bottom' && toPort === 'top') {
+        // Saindo por baixo, entrando por cima
+        const dobra = Math.min(fromY + OFFSET, toY - OFFSET);
+        // console.log(`  📐 V->V (bottom->top): dobra=${dobra}, toCenterX=${toCenterX}, toX=${toX}`);
+        path.push(`L ${fromX} ${dobra}`);       // Desce um pouco
+        path.push(`L ${toCenterX} ${dobra}`);   // Vai para o CENTRO X real do equipamento
+        path.push(`L ${toCenterX} ${toY}`);     // Desce reto pelo centro até a porta
+      }
+      else if (fromPort === 'top' && toPort === 'bottom') {
+        // Saindo por cima, entrando por baixo
+        const dobra = Math.max(fromY - OFFSET, toY + OFFSET);
+        path.push(`L ${fromX} ${dobra}`);       // Sobe um pouco
+        path.push(`L ${toCenterX} ${dobra}`);   // Vai para o CENTRO X real
+        path.push(`L ${toCenterX} ${toY}`);     // Desce reto pelo centro
+      }
+      else if (fromPort === 'bottom' && toPort === 'bottom') {
+        // Ambos por baixo - fazer arco por baixo
+        const dobra = Math.max(fromY, toY) + OFFSET;
+        path.push(`L ${fromX} ${dobra}`);       // Desce além dos dois
+        path.push(`L ${toCenterX} ${dobra}`);   // Vai para o CENTRO X real
+        path.push(`L ${toCenterX} ${toY}`);     // Sobe reto pelo centro
+      }
+      else if (fromPort === 'top' && toPort === 'top') {
+        // Ambos por cima - fazer arco por cima
+        const dobra = Math.min(fromY, toY) - OFFSET;
+        path.push(`L ${fromX} ${dobra}`);       // Sobe além dos dois
+        path.push(`L ${toCenterX} ${dobra}`);   // Vai para o CENTRO X real
+        path.push(`L ${toCenterX} ${toY}`);     // Desce reto pelo centro
+      }
     }
-    path.push(`L ${toX} ${toY}`);
   }
 
-  return path.join(' ');
+  // Caso 2: Ambas as portas são horizontais (left/right)
+  else if ((fromPort === 'left' || fromPort === 'right') &&
+           (toPort === 'left' || toPort === 'right')) {
+
+    // ✅ USAR toCenterY (centro real) ao invés de toY (porta com offset)!
+
+    // Se estão perfeitamente alinhados horizontalmente
+    if (Math.abs(fromY - toCenterY) < 5) {
+      // Linha reta horizontal passando pelo centro
+      path.push(`L ${toX} ${toCenterY}`);
+    } else {
+      // Determinar onde fazer a dobra baseado nas portas
+      if (fromPort === 'right' && toPort === 'left') {
+        // Saindo pela direita, entrando pela esquerda
+        const dobra = Math.min(fromX + OFFSET, toX - OFFSET);
+        path.push(`L ${dobra} ${fromY}`);       // Vai pra direita
+        path.push(`L ${dobra} ${toCenterY}`);   // Vai para o CENTRO Y real
+        path.push(`L ${toX} ${toCenterY}`);     // Vai reto pelo centro até a porta
+      }
+      else if (fromPort === 'left' && toPort === 'right') {
+        // Saindo pela esquerda, entrando pela direita
+        const dobra = Math.max(fromX - OFFSET, toX + OFFSET);
+        path.push(`L ${dobra} ${fromY}`);       // Vai pra esquerda
+        path.push(`L ${dobra} ${toCenterY}`);   // Vai para o CENTRO Y real
+        path.push(`L ${toX} ${toCenterY}`);     // Vai reto pelo centro
+      }
+      else if (fromPort === 'right' && toPort === 'right') {
+        // Ambos pela direita - fazer arco pela direita
+        const dobra = Math.max(fromX, toX) + OFFSET;
+        path.push(`L ${dobra} ${fromY}`);       // Vai além dos dois
+        path.push(`L ${dobra} ${toCenterY}`);   // Vai para o CENTRO Y real
+        path.push(`L ${toX} ${toCenterY}`);     // Volta pelo centro
+      }
+      else if (fromPort === 'left' && toPort === 'left') {
+        // Ambos pela esquerda - fazer arco pela esquerda
+        const dobra = Math.min(fromX, toX) - OFFSET;
+        path.push(`L ${dobra} ${fromY}`);       // Vai além dos dois
+        path.push(`L ${dobra} ${toCenterY}`);   // Vai para o CENTRO Y real
+        path.push(`L ${toX} ${toCenterY}`);     // Volta pelo centro
+      }
+    }
+  }
+
+  // Caso 3: Origem horizontal (left/right) → Destino vertical (top/bottom)
+  else if ((fromPort === 'left' || fromPort === 'right') &&
+           (toPort === 'top' || toPort === 'bottom')) {
+
+    // ✅ Usar toCenterX para linha descer pelo centro
+    // console.log(`  📐 H->V: fromPort=${fromPort}, toPort=${toPort}`);
+    // console.log(`    Usando toCenterX=${toCenterX} (centro) ao invés de toX=${toX}`);
+    // console.log(`    Path: M ${fromX} ${fromY} -> L ${toCenterX} ${fromY} -> L ${toCenterX} ${toY}`);
+
+    // Caminho simples em L - horizontal depois vertical
+    path.push(`L ${toCenterX} ${fromY}`);    // Vai horizontal até o centro X do destino
+    path.push(`L ${toCenterX} ${toY}`);      // Desce/sobe pelo centro até a porta
+  }
+
+  // Caso 4: Origem vertical (top/bottom) → Destino horizontal (left/right)
+  else if ((fromPort === 'top' || fromPort === 'bottom') &&
+           (toPort === 'left' || toPort === 'right')) {
+
+    // ✅ Usar toCenterY para linha ir pelo centro
+    // Caminho simples em L - vertical depois horizontal
+    path.push(`L ${fromX} ${toCenterY}`);    // Desce/sobe até o centro Y do destino
+    path.push(`L ${toX} ${toCenterY}`);      // Vai horizontal pelo centro até a porta
+  }
+
+  const finalPath = path.join(' ');
+  // console.log(`  ✅ Path final: ${finalPath}`);
+  // console.log('---');
+  return finalPath;
 };
 // ================================================
 

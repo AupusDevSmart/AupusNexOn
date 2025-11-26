@@ -1,7 +1,5 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
+import { api } from '@/config/api'; // Using authenticated API instance
 
 interface GraficoDiaData {
   data: string;
@@ -50,7 +48,10 @@ export function useGraficoDia(equipamentoId: string | null, data?: string) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    console.log('📊 [useGraficoDia] Hook called with:', { equipamentoId, data });
+
     if (!equipamentoId) {
+      console.log('📊 [useGraficoDia] No equipamentoId provided, skipping fetch');
       setGraficoDia(null);
       return;
     }
@@ -60,15 +61,43 @@ export function useGraficoDia(equipamentoId: string | null, data?: string) {
       setError(null);
       try {
         const params = data ? { data } : {};
-        const response = await axios.get(
-          `${API_URL}/equipamentos-dados/${equipamentoId}/grafico-dia`,
-          { params }
-        );
+        const url = `/equipamentos-dados/${equipamentoId}/grafico-dia`;
+        console.log('📊 [GRAFICO DIA] Buscando dados de:', url);
+        console.log('📊 [GRAFICO DIA] Params:', params);
+
+        const response = await api.get(url, {
+          params
+        });
+
+        console.log('📊 [GRAFICO DIA] Response status:', response.status);
+        console.log('📊 [GRAFICO DIA] Response headers:', response.headers);
+        console.log('📊 [GRAFICO DIA] Response data type:', typeof response.data);
         console.log('📊 [GRAFICO DIA] Response completa:', response.data);
-        // API retorna { success, data, meta } - extrair apenas data
-        setGraficoDia(response.data.data || response.data);
+
+        // Verificar se recebemos dados válidos
+        if (!response.data) {
+          console.error('❌ [GRAFICO DIA] Resposta vazia do servidor');
+          setError('Resposta vazia do servidor');
+          setGraficoDia(null);
+          return;
+        }
+
+        // API pode retornar dados em diferentes formatos
+        let graficoDados = response.data;
+
+        // Se a resposta tem a estrutura { success, data, meta }
+        if (response.data.hasOwnProperty('data')) {
+          graficoDados = response.data.data;
+        }
+
+        console.log('📊 [GRAFICO DIA] Dados extraídos:', graficoDados);
+        console.log('📊 [GRAFICO DIA] Tipo dos dados:', typeof graficoDados);
+        console.log('📊 [GRAFICO DIA] Tem dados.dados?', graficoDados?.dados);
+
+        setGraficoDia(graficoDados);
       } catch (err: any) {
-        console.error('Erro ao buscar gráfico do dia:', err);
+        console.error('❌ [GRAFICO DIA] Erro ao buscar:', err);
+        console.error('❌ [GRAFICO DIA] Response:', err.response);
         setError(err.response?.data?.message || 'Erro ao carregar gráfico do dia');
         setGraficoDia(null);
       } finally {
@@ -98,15 +127,22 @@ export function useGraficoMes(equipamentoId: string | null, mes?: string) {
       setError(null);
       try {
         const params = mes ? { mes } : {};
-        const response = await axios.get(
-          `${API_URL}/equipamentos-dados/${equipamentoId}/grafico-mes`,
-          { params }
-        );
+        const url = `/equipamentos-dados/${equipamentoId}/grafico-mes`;
+        console.log('📊 [GRAFICO MES] Buscando dados de:', url);
+        console.log('📊 [GRAFICO MES] Params:', params);
+
+        const response = await api.get(url, { params });
+
+        console.log('📊 [GRAFICO MES] Response status:', response.status);
         console.log('📊 [GRAFICO MES] Response completa:', response.data);
+
         // API retorna { success, data, meta } - extrair apenas data
-        setGraficoMes(response.data.data || response.data);
+        const graficoDados = response.data.data || response.data;
+        console.log('📊 [GRAFICO MES] Dados extraídos:', graficoDados);
+        setGraficoMes(graficoDados);
       } catch (err: any) {
-        console.error('Erro ao buscar gráfico do mês:', err);
+        console.error('❌ [GRAFICO MES] Erro ao buscar:', err);
+        console.error('❌ [GRAFICO MES] Response:', err.response);
         setError(err.response?.data?.message || 'Erro ao carregar gráfico do mês');
         setGraficoMes(null);
       } finally {
@@ -136,15 +172,22 @@ export function useGraficoAno(equipamentoId: string | null, ano?: string) {
       setError(null);
       try {
         const params = ano ? { ano } : {};
-        const response = await axios.get(
-          `${API_URL}/equipamentos-dados/${equipamentoId}/grafico-ano`,
-          { params }
-        );
+        const url = `/equipamentos-dados/${equipamentoId}/grafico-ano`;
+        console.log('📊 [GRAFICO ANO] Buscando dados de:', url);
+        console.log('📊 [GRAFICO ANO] Params:', params);
+
+        const response = await api.get(url, { params });
+
+        console.log('📊 [GRAFICO ANO] Response status:', response.status);
         console.log('📊 [GRAFICO ANO] Response completa:', response.data);
+
         // API retorna { success, data, meta } - extrair apenas data
-        setGraficoAno(response.data.data || response.data);
+        const graficoDados = response.data.data || response.data;
+        console.log('📊 [GRAFICO ANO] Dados extraídos:', graficoDados);
+        setGraficoAno(graficoDados);
       } catch (err: any) {
-        console.error('Erro ao buscar gráfico do ano:', err);
+        console.error('❌ [GRAFICO ANO] Erro ao buscar:', err);
+        console.error('❌ [GRAFICO ANO] Response:', err.response);
         setError(err.response?.data?.message || 'Erro ao carregar gráfico do ano');
         setGraficoAno(null);
       } finally {

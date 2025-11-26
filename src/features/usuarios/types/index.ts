@@ -184,21 +184,28 @@ export interface UsuarioResponse extends Usuario {
 
 // ✅ MAPEAMENTOS PARA COMPATIBILIDADE FRONTEND ↔ API E DB CONSTRAINT
 export const ROLE_TO_TIPO_MAPPING = {
+  'super_admin': 'Super Administrador',
   'admin': 'Administrador',
   'consultor': 'Consultor',
   'gerente': 'Gerente',
   'vendedor': 'Vendedor',
-  // Roles que podem existir no Spatie mas não no constraint da coluna legacy
   'proprietario': 'Proprietário',
+  'corretor': 'Corretor',
+  'cativo': 'Cativo',
+  'associado': 'Associado',
   'user': 'Vendedor',
 } as const;
 
 export const TIPO_TO_ROLE_MAPPING = {
+  'Super Administrador': 'super_admin',
   'Administrador': 'admin',
   'Consultor': 'consultor',
   'Gerente': 'gerente',
   'Vendedor': 'vendedor',
-  'Proprietário': 'proprietario', // Será mapeado para gerente na coluna legacy
+  'Proprietário': 'proprietario',
+  'Corretor': 'corretor',
+  'Cativo': 'cativo',
+  'Associado': 'associado',
 } as const;
 
 // ✅ MAPEAMENTO ESPECÍFICO PARA CONSTRAINT DA COLUNA ROLE (LEGACY)
@@ -291,43 +298,15 @@ export const mapUsuarioToFormData = (usuario: Usuario): UsuarioFormData => {
 };
 
 export const mapFormDataToCreateDto = (formData: UsuarioFormData) => {
-  console.log('🔄 [mapFormDataToCreateDto] Mapeando form data:', {
-    roleNames: formData.roleNames,
-    permissions: formData.permissions?.length,
-    tipo: formData.tipo
-  });
-  
-  // ✅ CORREÇÃO: Tratar roleNames como string única (do select)
-  let roleNames: string[] = [];
-  
-  if (formData.roleNames) {
-    if (Array.isArray(formData.roleNames)) {
-      roleNames = formData.roleNames;
-    } else {
-      // roleNames agora é uma string única do select
-      roleNames = [formData.roleNames as string];
-    }
-  } else if (formData.tipo) {
-    // Converter tipo para role se necessário
-    const role = TIPO_TO_ROLE_MAPPING[formData.tipo as keyof typeof TIPO_TO_ROLE_MAPPING];
-    if (role) {
-      roleNames = [role];
-    }
-  }
-  
-  // Se ainda está vazio, usar role padrão
-  if (roleNames.length === 0) {
-    roleNames = ['vendedor'];
-  }
-  
-  console.log('🎯 [mapFormDataToCreateDto] Roles finais:', roleNames);
-  
+  // ✅ SIMPLIFICADO: roleNames é sempre uma string do select
+  const roleName = typeof formData.roleNames === 'string' ? formData.roleNames : formData.roleNames?.[0] || 'vendedor';
+
   // Criar objeto limpo sem campos undefined
   const dto: any = {
     nome: formData.nome,
     email: formData.email,
     status: formData.status || UsuarioStatus.ATIVO,
-    roleNames: roleNames, // ✅ BACKEND AINDA ESPERA ESTE CAMPO LEGACY
+    roleNames: [roleName], // Backend espera array
   };
 
   // Adicionar campos opcionais apenas se tiverem valor
@@ -338,18 +317,16 @@ export const mapFormDataToCreateDto = (formData: UsuarioFormData) => {
   if (formData.estado) dto.estado = formData.estado;
   if (formData.cep) dto.cep = formData.cep;
   if (formData.endereco) dto.endereco = formData.endereco;
-  
+
   if (formData.concessionariaAtualId) dto.concessionariaAtualId = formData.concessionariaAtualId;
   if (formData.organizacaoAtualId) dto.organizacaoAtualId = formData.organizacaoAtualId;
   if (formData.managerId) dto.managerId = formData.managerId;
   if (formData.permissions && formData.permissions.length > 0) {
-    dto.permissions = formData.permissions; // ✅ BACKEND AINDA ESPERA ESTE CAMPO LEGACY
+    dto.permissions = formData.permissions;
   } else if (formData.permissao && formData.permissao.length > 0) {
     dto.permissions = formData.permissao;
   }
 
-  console.log('✅ [mapFormDataToCreateDto] DTO final:', dto);
-  
   return dto;
 };
 

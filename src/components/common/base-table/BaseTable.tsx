@@ -83,12 +83,54 @@ export function BaseTable<T extends BaseEntity>({
 
   if (loading) {
     return (
-      <div className="border rounded-md">
+      <div className="border rounded-md flex flex-col h-full">
+        <div className="overflow-auto flex-1">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {columns.map((column, index) => (
+                  <TableHead key={index} className={column.className}>
+                    {column.label}
+                  </TableHead>
+                ))}
+                {hasActions && <TableHead className="w-32">Ações</TableHead>}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {Array.from({ length: 5 }).map((_, index) => (
+                <TableRow key={index}>
+                  {columns.map((_, colIndex) => (
+                    <TableCell key={colIndex}>
+                      <Skeleton className="h-4 w-full" />
+                    </TableCell>
+                  ))}
+                  {hasActions && (
+                    <TableCell>
+                      <Skeleton className="h-8 w-20" />
+                    </TableCell>
+                  )}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="border rounded-md bg-card flex flex-col h-full">
+      <div className="overflow-auto flex-1">
         <Table>
           <TableHeader>
             <TableRow>
               {columns.map((column, index) => (
-                <TableHead key={index} className={column.className}>
+                <TableHead
+                  key={index}
+                  className={`${column.className || ''} ${
+                    column.hideOnMobile ? 'hidden lg:table-cell' : ''
+                  } ${column.hideOnTablet ? 'hidden xl:table-cell' : ''}`}
+                >
                   {column.label}
                 </TableHead>
               ))}
@@ -96,45 +138,6 @@ export function BaseTable<T extends BaseEntity>({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {Array.from({ length: 5 }).map((_, index) => (
-              <TableRow key={index}>
-                {columns.map((_, colIndex) => (
-                  <TableCell key={colIndex}>
-                    <Skeleton className="h-4 w-full" />
-                  </TableCell>
-                ))}
-                {hasActions && (
-                  <TableCell>
-                    <Skeleton className="h-8 w-20" />
-                  </TableCell>
-                )}
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-    );
-  }
-
-  return (
-    <div className="border rounded-md bg-card">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            {columns.map((column, index) => (
-              <TableHead 
-                key={index} 
-                className={`${column.className || ''} ${
-                  column.hideOnMobile ? 'hidden lg:table-cell' : ''
-                } ${column.hideOnTablet ? 'hidden xl:table-cell' : ''}`}
-              >
-                {column.label}
-              </TableHead>
-            ))}
-            {hasActions && <TableHead className="w-32">Ações</TableHead>}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
           {data.length === 0 ? (
             <TableRow>
               <TableCell colSpan={columns.length + (hasActions ? 1 : 0)} className="text-center py-8 text-muted-foreground">
@@ -250,7 +253,8 @@ export function BaseTable<T extends BaseEntity>({
           )}
         </TableBody>
       </Table>
-      
+      </div>
+
       {/* Paginação */}
       {pagination.totalPages > 1 && (
         <div className="flex items-center justify-between px-4 py-3 border-t">

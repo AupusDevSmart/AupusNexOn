@@ -34,10 +34,21 @@ interface InversorGraficoDiaProps {
 }
 
 export function InversorGraficoDia({ data, loading, height = 400 }: InversorGraficoDiaProps) {
-  const chartData = useMemo(() => {
-    if (!data?.dados) return [];
+  console.log('🔵 [InversorGraficoDia] Renderizando com:', {
+    hasData: !!data,
+    loading,
+    dadosLength: data?.dados?.length,
+    data
+  });
 
-    return data.dados.map((point) => ({
+  const chartData = useMemo(() => {
+    if (!data?.dados) {
+      console.log('⚠️ [InversorGraficoDia] Sem dados para processar');
+      return [];
+    }
+
+    console.log('📊 [InversorGraficoDia] Processando dados:', data.dados.length, 'pontos');
+    const processed = data.dados.map((point) => ({
       timestamp: new Date(point.timestamp).getTime(),
       hora: format(new Date(point.timestamp), 'HH:mm'),
       potencia: point.potencia_kw,
@@ -45,6 +56,8 @@ export function InversorGraficoDia({ data, loading, height = 400 }: InversorGraf
       potencia_max: point.potencia_max,
       leituras: point.num_leituras,
     }));
+    console.log('✅ [InversorGraficoDia] Dados processados:', processed.length, 'pontos');
+    return processed;
   }, [data]);
 
   const stats = useMemo(() => {

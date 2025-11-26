@@ -82,27 +82,96 @@ export function InversorMqttDataModal({ equipamentoId, open, onOpenChange }: Inv
     );
   }
 
-  if (!data || !data.dado) {
-    console.log('⚠️ Estado: SEM DADOS MQTT');
+  // Mesmo sem dados MQTT, mostrar os gráficos históricos
+  const hasMqttData = data && data.dado;
+  const equipmentName = data?.equipamento?.nome || 'Inversor';
+
+  if (!hasMqttData) {
+    console.log('⚠️ Estado: SEM DADOS MQTT - Mostrando apenas gráficos históricos');
     console.log('⚠️ Tem data?', !!data);
     console.log('⚠️ Tem data.dado?', !!data?.dado);
     console.log('⚠️ Mensagem:', data?.message);
+
+    // Mostrar modal com gráficos mesmo sem dados MQTT
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Zap className="h-5 w-5" />
-              {data?.equipamento?.nome || 'Inversor'}
+              {equipmentName} - Análise Histórica
             </DialogTitle>
           </DialogHeader>
-          <div className="p-6 text-center">
-            <p className="text-muted-foreground">
-              {data?.message || 'Nenhum dado MQTT disponível para este equipamento.'}
-            </p>
-            <p className="text-sm text-muted-foreground mt-2">
-              Verifique se o equipamento está com MQTT habilitado e enviando dados.
-            </p>
+
+          <div className="space-y-6 py-4">
+            {/* Aviso sobre dados MQTT */}
+            <Card className="border-yellow-200 dark:border-yellow-900 bg-yellow-50/50 dark:bg-yellow-950/30">
+              <CardContent className="pt-6">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="h-5 w-5 text-yellow-600 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-yellow-900 dark:text-yellow-100">
+                      Dados MQTT em tempo real não disponíveis
+                    </p>
+                    <p className="text-sm text-yellow-800 dark:text-yellow-200 mt-1">
+                      {data?.message || 'O equipamento não está enviando dados via MQTT no momento.'}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Gráficos de Geração - Dia, Mês e Ano */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <BarChart3 className="h-5 w-5 text-yellow-500" />
+                  Análise de Geração
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Tabs defaultValue="dia" className="w-full">
+                  <TabsList className="grid w-full grid-cols-3">
+                    <TabsTrigger value="dia" className="flex items-center gap-2">
+                      <Calendar className="h-4 w-4" />
+                      Dia
+                    </TabsTrigger>
+                    <TabsTrigger value="mes" className="flex items-center gap-2">
+                      <BarChart3 className="h-4 w-4" />
+                      Mês
+                    </TabsTrigger>
+                    <TabsTrigger value="ano" className="flex items-center gap-2">
+                      <TrendingUp className="h-4 w-4" />
+                      Ano
+                    </TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="dia" className="mt-6">
+                    <InversorGraficoDia
+                      data={graficoDia.data}
+                      loading={graficoDia.loading}
+                      height={350}
+                    />
+                  </TabsContent>
+
+                  <TabsContent value="mes" className="mt-6">
+                    <InversorGraficoMes
+                      data={graficoMes.data}
+                      loading={graficoMes.loading}
+                      height={350}
+                    />
+                  </TabsContent>
+
+                  <TabsContent value="ano" className="mt-6">
+                    <InversorGraficoAno
+                      data={graficoAno.data}
+                      loading={graficoAno.loading}
+                      height={350}
+                    />
+                  </TabsContent>
+                </Tabs>
+              </CardContent>
+            </Card>
           </div>
         </DialogContent>
       </Dialog>

@@ -21,9 +21,9 @@ import { usePermissoes, usePermissoesGrouped } from '@/hooks/usePermissoes';
 // ✅ COMPONENTE PARA SELEÇÃO DE ROLES DINÂMICO - USANDO DADOS DA TABELA
 const RoleSelector = ({ value, onChange, disabled }: any) => {
   const { roles, loading, error } = useRoles();
-  
-  console.log('🔍 [RoleSelector] Debug:', { value, roles, loading, error });
-  
+
+  console.log('🔍 [RoleSelector] Debug:', { value, roles, loading, error, disabled });
+
   if (loading) {
     return (
       <Select disabled>
@@ -48,16 +48,48 @@ const RoleSelector = ({ value, onChange, disabled }: any) => {
   const currentRole = roles.find(role => role.value === value);
   console.log('🔍 [RoleSelector] Role atual encontrado:', currentRole);
 
+  // ✅ MODO VIEW (DISABLED): Mostrar como texto estilizado ao invés de Select desabilitado
+  if (disabled) {
+    return (
+      <div className="flex items-center p-3 border rounded-md bg-muted/30">
+        <div className="flex flex-col">
+          <span className="font-medium text-sm">
+            {currentRole ? currentRole.label : value || 'Não definido'}
+          </span>
+          <span className="text-xs text-muted-foreground">
+            Role: {value || 'N/A'}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  // ✅ MODO EDIT: Select normal para edição
+  // Garantir que value seja uma string válida ou undefined (NUNCA string vazia para Select controlado)
+  const selectValue = value && String(value).trim() !== '' ? String(value) : undefined;
+
+  console.log('🔍 [RoleSelector] Renderizando Select com value:', {
+    originalValue: value,
+    valueType: typeof value,
+    selectValue,
+    selectValueType: typeof selectValue,
+    isUndefined: selectValue === undefined,
+    currentRole,
+    rolesAvailable: roles.map(r => r.value)
+  });
+
   return (
     <Select
-      value={value || ''}
-      onValueChange={onChange}
+      key={`role-select-${selectValue || 'empty'}`}
+      value={selectValue}
+      onValueChange={(newValue) => {
+        console.log('🔍 [RoleSelector] onChange chamado:', newValue);
+        onChange(newValue);
+      }}
       disabled={disabled}
     >
       <SelectTrigger>
-        <SelectValue placeholder="Selecione um tipo de usuário">
-          {currentRole ? currentRole.label : value || ''}
-        </SelectValue>
+        <SelectValue placeholder="Selecione um tipo de usuário" />
       </SelectTrigger>
       <SelectContent>
         {roles.map(role => (
@@ -381,31 +413,5 @@ export const usuariosFormFields: FormField[] = [
     required: false,
     render: PermissoesSelector,
     group: 'permissoes'
-  },
-  
-  // ✅ ORGANIZACIONAL (OPCIONAL)
-  {
-    key: 'managerId',
-    label: 'Gerente Responsável',
-    type: 'custom',
-    required: false,
-    render: GerenteSelector,
-    group: 'organizacional'
-  },
-  {
-    key: 'concessionariaAtualId',
-    label: 'Concessionária Atual',
-    type: 'custom',
-    required: false,
-    render: ConcessionariaSelector,
-    group: 'organizacional'
-  },
-  {
-    key: 'organizacaoAtualId',
-    label: 'Organização Atual',
-    type: 'custom',
-    required: false,
-    render: OrganizacaoSelector,
-    group: 'organizacional'
   }
 ];

@@ -144,11 +144,6 @@ export function UsuarioModal({
       key: 'permissoes',
       title: 'Permissões',
       fields: ['permissions']
-    },
-    {
-      key: 'organizacional',
-      title: 'Informações Organizacionais',
-      fields: ['managerId', 'concessionariaAtualId', 'organizacaoAtualId']
     }
   ];
 

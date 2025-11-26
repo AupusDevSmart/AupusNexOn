@@ -36,9 +36,11 @@ import type { M300Reading } from "@/components/equipment/M300/M300.types"; // Ho
 import { A966Modal } from "@/features/supervisorio/components/a966-modal";
 import { DomAnchoredConnectionsOverlay } from "@/features/supervisorio/components/DomAnchoredConnectionsOverlay";
 import "@/features/supervisorio/components/DomAnchoredConnectionsOverlay.css";
+import { DiagramGrid, useGridSettings } from "@/features/supervisorio/components/DiagramGrid";
 import { DisjuntorModal } from "@/features/supervisorio/components/disjuntor-modal";
 import { InversorModal } from "@/features/supervisorio/components/inversor-modal";
 import { InversorMqttDataModal } from "@/features/equipamentos/components/InversorMqttDataModal";
+import { PivoModal, type DadosPivo } from "@/features/supervisorio/components/pivo";
 import { LandisGyrModal } from "@/features/supervisorio/components/landisgyr-modal";
 import { M160Modal } from "@/features/supervisorio/components/m160-modal";
 import { M300Modal } from "@/features/supervisorio/components/m300-modal";
@@ -1215,6 +1217,135 @@ case "PONTO_JUNCAO":
           </svg>
         );
 
+      case "PIVO":
+        // Renderização do PIVO com suporte a estado simulado
+        const isOperando = dados?.operando || false;
+
+        return (
+          <svg
+            width="48"
+            height="48"
+            viewBox="0 0 60 60"
+            className="drop-shadow-sm"
+          >
+            {/* Círculo externo - área de irrigação */}
+            <circle
+              cx="30"
+              cy="30"
+              r="24"
+              className={`${statusClasses.stroke} fill-none`}
+              strokeWidth="2"
+              strokeDasharray="4,2"
+              opacity={isOperando ? "0.6" : "0.3"}
+            />
+
+            {/* Círculo intermediário */}
+            <circle
+              cx="30"
+              cy="30"
+              r="18"
+              className={`${statusClasses.stroke} fill-none`}
+              strokeWidth="1"
+              opacity={isOperando ? "0.3" : "0.2"}
+            />
+
+            {/* Ponto central - torre fixa */}
+            <circle cx="30" cy="30" r="4" className={statusClasses.fill} />
+
+            {/* Anel interno no centro */}
+            <circle
+              cx="30"
+              cy="30"
+              r="6"
+              className={`${statusClasses.stroke} fill-background`}
+              strokeWidth="1.5"
+            />
+
+            {/* Braço do pivô - com animação quando irrigando */}
+            <g className={isOperando ? "animate-spin-slow" : ""} style={{ transformOrigin: "30px 30px" }}>
+              <line
+                x1="30"
+                y1="30"
+                x2="54"
+                y2="30"
+                className={statusClasses.stroke}
+                strokeWidth="3"
+                strokeLinecap="round"
+              />
+
+              {/* Seta na ponta */}
+              <path
+                d="M 50 26 L 54 30 L 50 34"
+                className={statusClasses.stroke}
+                strokeWidth="2"
+                fill="none"
+                strokeLinecap="round"
+              />
+              {/* Gotas de água - visíveis quando irrigando */}
+              {isOperando && (
+                <>
+                  <circle cx="38" cy="30" r="1.5" className="fill-blue-400">
+                    <animate
+                      attributeName="opacity"
+                      values="1;0.3;1"
+                      dur="1s"
+                      repeatCount="indefinite"
+                    />
+                  </circle>
+                  <circle cx="44" cy="30" r="1.5" className="fill-blue-400">
+                    <animate
+                      attributeName="opacity"
+                      values="0.3;1;0.3"
+                      dur="1s"
+                      repeatCount="indefinite"
+                    />
+                  </circle>
+                  <circle cx="50" cy="30" r="1.5" className="fill-blue-400">
+                    <animate
+                      attributeName="opacity"
+                      values="1;0.3;1"
+                      dur="1s"
+                      repeatCount="indefinite"
+                    />
+                  </circle>
+                </>
+              )}
+            </g>
+
+            {/* LED de status - pisca quando irrigando */}
+            <circle
+              cx="52"
+              cy="8"
+              r="5"
+              className={statusClasses.fill}
+              opacity="0.9"
+            >
+              {isOperando && (
+                <animate
+                  attributeName="opacity"
+                  values="0.9;0.4;0.9"
+                  dur="1.5s"
+                  repeatCount="indefinite"
+                />
+              )}
+            </circle>
+
+            {/* Label dinâmico */}
+            <text
+              x="30"
+              y="32"
+              textAnchor="middle"
+              dominantBaseline="middle"
+              fontSize="8"
+              fontWeight="700"
+              className="fill-background"
+              style={{ pointerEvents: "none" }}
+            >
+              {isOperando ? "PF" : "PV"}
+            </text>
+          </svg>
+        );
+
       default:
         return (
           <svg
@@ -1344,6 +1475,7 @@ export function SinopticoAtivoPage() {
   const [errorDiagrama, setErrorDiagrama] = useState<string | null>(null);
   const [equipamentos, setEquipamentos] = useState<any[]>([]);
   const [diagramaIdAtual, setDiagramaIdAtual] = useState<string | null>(null);
+  const [isSavingDiagrama, setIsSavingDiagrama] = useState(false);
 
   const reloadDiagrama = useCallback(async () => {
     if (!unidadeId) return;
@@ -1527,6 +1659,10 @@ export function SinopticoAtivoPage() {
   // Estados para modal MQTT do inversor
   const [inversorMqttModalOpen, setInversorMqttModalOpen] = useState(false);
   const [selectedInversorMqttId, setSelectedInversorMqttId] = useState<string | null>(null);
+  const [pivoModalOpen, setPivoModalOpen] = useState(false);
+  const [selectedPivoId, setSelectedPivoId] = useState<string | null>(null);
+  // Estado simulado dos pivôs (chave: equipamento_id, valor: dados do pivô)
+  const [pivoStates, setPivoStates] = useState<Record<string, any>>({});
 
   // Estados para o modo de edição
   const [modoEdicao, setModoEdicao] = useState(false);
@@ -1540,6 +1676,14 @@ export function SinopticoAtivoPage() {
 
   // Estados para drag and drop
   const [isDragging, setIsDragging] = useState(false);
+
+  // Hook para configurações do grid (apenas visual)
+  const {
+    gridSettings,
+    toggleGrid,
+    updateGridSize,
+    updateOpacity
+  } = useGridSettings();
   const [dragOffset, setDragOffset] = useState<Position>({ x: 0, y: 0 });
   const [componenteDragId, setComponenteDragId] = useState<string | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -1598,6 +1742,22 @@ export function SinopticoAtivoPage() {
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
     };
   }, []);
+
+  // Prevenir navegação durante salvamento
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isSavingDiagrama) {
+        e.preventDefault();
+        e.returnValue = 'O diagrama está sendo salvo. Tem certeza que deseja sair?';
+        return e.returnValue;
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [isSavingDiagrama]);
 
   // Estados para conexões
   const [connecting, setConnecting] = useState<{
@@ -2102,6 +2262,13 @@ export function SinopticoAtivoPage() {
         return;
       }
 
+      // Detectar PIVO
+      if (componente.tipo === 'PIVO' && componente.dados?.equipamento_id) {
+        setSelectedPivoId(componente.dados.equipamento_id);
+        setPivoModalOpen(true);
+        return;
+      }
+
       // Detectar tópico MQTT e abrir modal correto
       const tag = (componente as any).tag || '';
 
@@ -2175,11 +2342,11 @@ export function SinopticoAtivoPage() {
     let newX = (mouseX / canvasRect.width) * 100;
     let newY = (mouseY / canvasRect.height) * 100;
 
-    // ===== SNAP TO GRID (5%) =====
-
-    const gridSize = 1;
-    newX = Math.round(newX / gridSize) * gridSize;
-    newY = Math.round(newY / gridSize) * gridSize;
+    // ===== MOVIMENTO LIVRE - GRID APENAS VISUAL =====
+    // O grid é apenas uma referência visual, não afeta o movimento
+    // Mantém apenas um arredondamento mínimo para evitar valores muito quebrados
+    newX = Math.round(newX * 100) / 100; // Arredonda para 2 casas decimais
+    newY = Math.round(newY * 100) / 100; // Arredonda para 2 casas decimais
     // =============================
 
     // Aplicar limites
@@ -2324,12 +2491,16 @@ export function SinopticoAtivoPage() {
       const equipamento = Array.isArray(equipamentos) ? equipamentos.find(eq => eq.id.trim() === equipamentoId) : null;
 
       if (equipamento) {
+        // Posição inicial padrão (sem snap)
+        const initialX = 40;
+        const initialY = 40;
+
         const novoComponente: ComponenteDU = {
           id: `eq-${equipamentoId}`,
           tipo: equipamento.tipoEquipamento?.codigo || 'MEDIDOR',
           nome: equipamento.nome,
           tag: equipamento.tag,
-          posicao: { x: 40, y: 40 },
+          posicao: { x: initialX, y: initialY },
           rotacao: equipamento.rotacao || 0,
           status: equipamento.status || 'NORMAL',
           dados: {
@@ -2339,8 +2510,26 @@ export function SinopticoAtivoPage() {
             numero_serie: equipamento.numero_serie,
             mqtt_topico: equipamento.topico_mqtt,
             mqtt_habilitado: equipamento.mqtt_habilitado,
+            // Para PIVO, adicionar estado inicial
+            ...(equipamento.tipoEquipamento?.codigo === 'PIVO' ? { operando: false } : {})
           },
         };
+
+        // Se for um PIVO, inicializar seu estado simulado
+        if (equipamento.tipoEquipamento?.codigo === 'PIVO') {
+          setPivoStates(prev => ({
+            ...prev,
+            [equipamento.id.trim()]: {
+              status: "DESLIGADO",
+              operando: false,
+              velocidadeRotacao: 0,
+              modoOperacao: "MANUAL",
+              tempoOperacao: "0h 00min",
+              setorAtual: 0
+            }
+          }));
+        }
+
         updateDiagram([...componentes, novoComponente]);
         console.log('✅ Equipamento adicionado ao diagrama:', equipamento.nome);
       }
@@ -2367,11 +2556,15 @@ export function SinopticoAtivoPage() {
           throw new Error('Backend não retornou ID válido para o componente virtual');
         }
 
+        // Posição inicial padrão (sem snap)
+        const initialX = 40;
+        const initialY = 40;
+
         const novoComponente: ComponenteDU = {
           id: `eq-${equipamentoId}`,
           tipo: equipamentoData.tipo_equipamento?.trim() || tipo,
           nome: equipamentoData.nome?.trim() || `${tipo} ${componentes.length + 1}`,
-          posicao: { x: 40, y: 40 },
+          posicao: { x: initialX, y: initialY },
           rotacao: 0,
           status: 'NORMAL',
           dados: {
@@ -2519,6 +2712,9 @@ export function SinopticoAtivoPage() {
       console.log('❌ Salvamento cancelado pelo usuário');
       return;
     }
+
+    // Iniciar loading
+    setIsSavingDiagrama(true);
 
     try {
       console.log('💾 Salvando diagrama no backend...');
@@ -2702,6 +2898,9 @@ export function SinopticoAtivoPage() {
     } catch (error: any) {
       console.error('❌ Erro ao salvar diagrama:', error);
       alert(`❌ Erro ao salvar diagrama: ${error.message || 'Erro desconhecido'}`);
+    } finally {
+      // Finalizar loading
+      setIsSavingDiagrama(false);
     }
   }, [unidadeId, componentes, connections, unidadeAtual]); 
     
@@ -2761,6 +2960,30 @@ export function SinopticoAtivoPage() {
   return (
     <Layout>
       <Layout.Main>
+        {/* Loading Overlay para salvamento */}
+        {isSavingDiagrama && (
+          <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center">
+            <div className="bg-white dark:bg-slate-800 rounded-lg p-8 shadow-2xl flex flex-col items-center gap-4 max-w-sm">
+              <div className="relative">
+                <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-200 dark:border-blue-800"></div>
+                <div className="absolute inset-0 animate-spin rounded-full h-16 w-16 border-4 border-transparent border-t-blue-600 dark:border-t-blue-400"></div>
+              </div>
+              <div className="text-center">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                  Salvando Diagrama
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Por favor, aguarde enquanto o diagrama está sendo salvo...
+                </p>
+                <div className="mt-3 space-y-1 text-xs text-gray-500 dark:text-gray-500">
+                  <p>📊 {componentes.length} componentes</p>
+                  <p>🔗 {connections.length} conexões</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="w-full max-w-full space-y-3">
           {/* Header */}
           <div className="flex items-center gap-3 p-2">
@@ -2768,6 +2991,7 @@ export function SinopticoAtivoPage() {
               variant="outline"
               size="sm"
               onClick={() => navigate(-1)}
+              disabled={isSavingDiagrama}
               className="flex items-center gap-2"
             >
               <ArrowLeft className="h-4 w-4" />
@@ -2850,6 +3074,58 @@ export function SinopticoAtivoPage() {
                         Conectar
                       </Button>
                     </div>
+                  </div>
+
+                  {/* Controles do Grid */}
+                  <div className="flex items-center gap-2 border-r pr-4">
+                    <span className="text-sm font-medium">Grid:</span>
+                    <Button
+                      variant={gridSettings.visible ? "default" : "outline"}
+                      size="sm"
+                      onClick={toggleGrid}
+                      title={gridSettings.visible ? "Ocultar Grid" : "Mostrar Grid"}
+                    >
+                      {gridSettings.visible ? (
+                        <>
+                          <Square className="h-3 w-3 mr-1" />
+                          On
+                        </>
+                      ) : (
+                        <>
+                          <Square className="h-3 w-3 mr-1" />
+                          Off
+                        </>
+                      )}
+                    </Button>
+
+                    {gridSettings.visible && (
+                      <>
+                        <select
+                          className="h-8 px-2 text-sm border rounded bg-background"
+                          value={gridSettings.gridSize}
+                          onChange={(e) => updateGridSize(Number(e.target.value))}
+                          title="Tamanho do Grid"
+                        >
+                          <option value="25">25px</option>
+                          <option value="50">50px</option>
+                          <option value="75">75px</option>
+                          <option value="100">100px</option>
+                          <option value="150">150px</option>
+                          <option value="200">200px</option>
+                        </select>
+
+                        <input
+                          type="range"
+                          min="0.1"
+                          max="1"
+                          step="0.1"
+                          value={gridSettings.opacity}
+                          onChange={(e) => updateOpacity(Number(e.target.value))}
+                          className="w-20"
+                          title={`Opacidade: ${Math.round(gridSettings.opacity * 100)}%`}
+                        />
+                      </>
+                    )}
                   </div>
 
                   {/* Adicionar Componentes */}
@@ -3054,18 +3330,60 @@ export function SinopticoAtivoPage() {
                 <div className="lg:col-span-2 flex">
                   <Card
                     ref={diagramCardRef}
-                    className={`flex flex-col w-full min-h-[900px] !bg-black overflow-visible ${
+                    className={`flex flex-col w-full min-h-[900px] overflow-visible ${
                       diagramaFullscreen
-                        ? 'fixed inset-0 z-50 m-0 rounded-none border-0'
-                        : ''
+                        ? 'fixed inset-0 z-50 m-0 rounded-none border-0 !bg-slate-50 dark:!bg-slate-900'
+                        : 'bg-slate-50 dark:bg-slate-900'
                     }`}
                   >
-                    <div className="flex items-center justify-between p-4 pb-2 border-b flex-shrink-0 !bg-black">
+                    <div className="flex items-center justify-between p-4 pb-2 border-b flex-shrink-0 bg-slate-50 dark:bg-slate-900">
                       <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
                         <Network className="h-5 w-5" />
                         Diagrama Unifilar {diagramaFullscreen && '- Tela Cheia'}
                       </h3>
                       <div className="flex items-center gap-2">
+                        {/* Controles do Grid */}
+                        <div className="flex items-center gap-2 border-r pr-2 mr-2">
+                          <Button
+                            variant={gridSettings.visible ? "default" : "outline"}
+                            size="sm"
+                            onClick={toggleGrid}
+                            title={gridSettings.visible ? "Ocultar Grid" : "Mostrar Grid"}
+                          >
+                            <Square className="h-3 w-3 mr-1" />
+                            Grid
+                          </Button>
+
+                          {gridSettings.visible && (
+                            <>
+                              <select
+                                className="h-8 px-2 text-sm border rounded bg-background"
+                                value={gridSettings.gridSize}
+                                onChange={(e) => updateGridSize(Number(e.target.value))}
+                                title="Tamanho do Grid"
+                              >
+                                <option value="25">25px</option>
+                                <option value="50">50px</option>
+                                <option value="75">75px</option>
+                                <option value="100">100px</option>
+                                <option value="150">150px</option>
+                                <option value="200">200px</option>
+                              </select>
+
+                              <input
+                                type="range"
+                                min="0.1"
+                                max="1"
+                                step="0.1"
+                                value={gridSettings.opacity}
+                                onChange={(e) => updateOpacity(Number(e.target.value))}
+                                className="w-20"
+                                title={`Opacidade: ${Math.round(gridSettings.opacity * 100)}%`}
+                              />
+                            </>
+                          )}
+                        </div>
+
                         <Button
                           variant="outline"
                           size="sm"
@@ -3099,21 +3417,25 @@ export function SinopticoAtivoPage() {
                     </div>
 
                     <div
-                      className={`flex-1 relative bg-black overflow-visible ${
+                      className={`flex-1 relative overflow-visible !bg-slate-50 dark:!bg-slate-900 ${
                         diagramaFullscreen ? 'h-[calc(100vh-73px)]' : 'min-h-[580px]'
                       }`}
                       ref={canvasRef}
                     >
-                      {(() => {
-                        console.log('🚀 [INDEX] RENDERIZANDO DIAGRAMA VISUALIZAÇÃO:', {
-                          componentes: componentes.length,
-                          connections: connections.length,
-                          modoEdicao,
-                          diagramaFullscreen,
-                          canvasRef: !!canvasRef.current
-                        });
-                        return null;
-                      })()}
+                      {/* GRID DE FUNDO - MODO VISUALIZAÇÃO */}
+                      {canvasRef.current && (
+                        <DiagramGrid
+                          width={canvasRef.current.offsetWidth || 1920}
+                          height={canvasRef.current.offsetHeight || 1080}
+                          visible={gridSettings.visible}
+                          gridSize={gridSettings.gridSize}
+                          subdivisions={gridSettings.subdivisions}
+                          opacity={gridSettings.opacity}
+                          // Cores adaptativas: escuro no tema claro, claro no tema escuro
+                          gridColor={document.documentElement.classList.contains('dark') ? "#94a3b8" : "#64748b"}
+                          subGridColor={document.documentElement.classList.contains('dark') ? "#475569" : "#cbd5e1"}
+                        />
+                      )}
 
                       {/* COMPONENTE DE CONEXÕES PARA MODO VISUALIZAÇÃO */}
                       <DomAnchoredConnectionsOverlay
@@ -3140,8 +3462,8 @@ export function SinopticoAtivoPage() {
 
             {/* Modo Edição - Tela Cheia */}
             {modoEdicao && (
-              <Card className="flex flex-col min-h-[900px] !bg-black">
-                <div className="flex items-center justify-between p-4 pb-2 border-b flex-shrink-0 !bg-black">
+              <Card className="flex flex-col min-h-[900px] bg-slate-50 dark:bg-slate-900">
+                <div className="flex items-center justify-between p-4 pb-2 border-b flex-shrink-0 bg-slate-50 dark:bg-slate-900">
                   <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
                     <Network className="h-5 w-5" />
                     Diagrama Unifilar
@@ -3151,10 +3473,20 @@ export function SinopticoAtivoPage() {
                       variant="outline"
                       size="sm"
                       onClick={salvarDiagrama}
+                      disabled={isSavingDiagrama}
                       className="flex items-center gap-2"
                     >
-                      <Save className="h-4 w-4" />
-                      Salvar
+                      {isSavingDiagrama ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current" />
+                          Salvando...
+                        </>
+                      ) : (
+                        <>
+                          <Save className="h-4 w-4" />
+                          Salvar
+                        </>
+                      )}
                     </Button>
                     <div className="text-xs text-muted-foreground flex items-center gap-3">
                       <span>Componentes: {componentes.length}</span>
@@ -3165,6 +3497,7 @@ export function SinopticoAtivoPage() {
                       variant="default"
                       size="sm"
                       onClick={toggleModoEdicao}
+                      disabled={isSavingDiagrama}
                       className="flex items-center gap-2"
                     >
                       <X className="h-4 w-4" />
@@ -3173,7 +3506,22 @@ export function SinopticoAtivoPage() {
                   </div>
                 </div>
 
-                <div className="relative flex-1 min-h-[580px] bg-black overflow-visible" ref={canvasRef}>
+                <div className="relative flex-1 min-h-[580px] bg-slate-50 dark:bg-slate-900 overflow-visible" ref={canvasRef}>
+                  {/* GRID DE FUNDO - MODO EDIÇÃO */}
+                  {canvasRef.current && (
+                    <DiagramGrid
+                      width={canvasRef.current.offsetWidth || 1920}
+                      height={canvasRef.current.offsetHeight || 1080}
+                      visible={gridSettings.visible}
+                      gridSize={gridSettings.gridSize}
+                      subdivisions={gridSettings.subdivisions}
+                      opacity={gridSettings.opacity}
+                      // Cores adaptativas: escuro no tema claro, claro no tema escuro
+                      gridColor={document.documentElement.classList.contains('dark') ? "#94a3b8" : "#64748b"}
+                      subGridColor={document.documentElement.classList.contains('dark') ? "#475569" : "#cbd5e1"}
+                    />
+                  )}
+
                   {/* COMPONENTE DE CONEXÕES PARA MODO EDIÇÃO */}
                   <DomAnchoredConnectionsOverlay
                     connections={connections}
@@ -3212,6 +3560,7 @@ export function SinopticoAtivoPage() {
                           <ElectricalSymbol
                             tipo={componente.tipo}
                             status={componente.status}
+                            dados={componente.dados}
                             onClick={() => handleComponenteClick(componente)}
                           />
                           {/* Não mostrar nome para junction nodes e pontos */}
@@ -3551,6 +3900,140 @@ export function SinopticoAtivoPage() {
           open={inversorMqttModalOpen}
           onOpenChange={setInversorMqttModalOpen}
         />
+
+        {/* Modal do Pivô */}
+        {pivoModalOpen && selectedPivoId && (
+          <PivoModal
+            open={pivoModalOpen}
+            onClose={() => {
+              setPivoModalOpen(false);
+              setSelectedPivoId(null);
+            }}
+            dados={{
+              status: pivoStates[selectedPivoId]?.status || "DESLIGADO",
+              operando: pivoStates[selectedPivoId]?.operando || false,
+              velocidadeRotacao: pivoStates[selectedPivoId]?.velocidadeRotacao || 0,
+              pressaoAgua: pivoStates[selectedPivoId]?.operando ? 3.5 : 0,
+              vazaoAgua: pivoStates[selectedPivoId]?.operando ? 120 : 0,
+              areaIrrigada: 50,
+              tempoOperacao: pivoStates[selectedPivoId]?.tempoOperacao || "0h 00min",
+              setorAtual: pivoStates[selectedPivoId]?.setorAtual || 0,
+              umidadeSolo: 65,
+              modoOperacao: pivoStates[selectedPivoId]?.modoOperacao || "MANUAL",
+              ultimaManutencao: "15/11/2024"
+            } as DadosPivo}
+            nomeComponente={componenteSelecionado?.nome || "Pivô Central"}
+            // Funções de controle simuladas
+            onLigar={() => {
+              // Apenas atualizar o estado local
+              setPivoStates(prev => ({
+                ...prev,
+                [selectedPivoId]: {
+                  ...prev[selectedPivoId],
+                  status: "NORMAL",
+                  velocidadeRotacao: 2.5,
+                  tempoOperacao: "0h 01min"
+                }
+              }));
+
+              // Atualizar status do componente
+              setComponentes(prev => prev.map(c =>
+                c.dados?.equipamento_id === selectedPivoId
+                  ? { ...c, status: "NORMAL" }
+                  : c
+              ));
+            }}
+            onDesligar={() => {
+              // Apenas atualizar o estado local
+              setPivoStates(prev => ({
+                ...prev,
+                [selectedPivoId]: {
+                  ...prev[selectedPivoId],
+                  status: "DESLIGADO",
+                  operando: false,
+                  velocidadeRotacao: 0
+                }
+              }));
+
+              // Atualizar status e operação do componente
+              setComponentes(prev => prev.map(c =>
+                c.dados?.equipamento_id === selectedPivoId
+                  ? { ...c, status: "INATIVO", dados: { ...c.dados, operando: false }}
+                  : c
+              ));
+            }}
+            onIniciarIrrigacao={() => {
+              // Atualizar apenas o estado local do PIVO
+              setPivoStates(prev => ({
+                ...prev,
+                [selectedPivoId]: {
+                  ...prev[selectedPivoId],
+                  operando: true,
+                  setorAtual: 0
+                }
+              }));
+
+              // Atualizar apenas os dados do componente específico sem re-renderizar todo o diagrama
+              setComponentes(prev => prev.map(c =>
+                c.dados?.equipamento_id === selectedPivoId
+                  ? { ...c, dados: { ...c.dados, operando: true }}
+                  : c
+              ));
+
+              // Simular rotação gradual do pivô
+              let angle = 0;
+              const interval = setInterval(() => {
+                angle += 5;
+                if (angle >= 360) {
+                  clearInterval(interval);
+                  angle = 0;
+                }
+                setPivoStates(prev => ({
+                  ...prev,
+                  [selectedPivoId]: {
+                    ...prev[selectedPivoId],
+                    setorAtual: angle
+                  }
+                }));
+              }, 1000); // Atualiza a cada 1 segundo
+            }}
+            onPararIrrigacao={() => {
+              // Atualizar apenas o estado local do PIVO
+              setPivoStates(prev => ({
+                ...prev,
+                [selectedPivoId]: {
+                  ...prev[selectedPivoId],
+                  operando: false
+                }
+              }));
+
+              // Atualizar apenas os dados do componente específico
+              setComponentes(prev => prev.map(c =>
+                c.dados?.equipamento_id === selectedPivoId
+                  ? { ...c, dados: { ...c.dados, operando: false }}
+                  : c
+              ));
+            }}
+            onAlterarVelocidade={(velocidade) => {
+              setPivoStates(prev => ({
+                ...prev,
+                [selectedPivoId]: {
+                  ...prev[selectedPivoId],
+                  velocidadeRotacao: velocidade
+                }
+              }));
+            }}
+            onAlterarModo={(modo) => {
+              setPivoStates(prev => ({
+                ...prev,
+                [selectedPivoId]: {
+                  ...prev[selectedPivoId],
+                  modoOperacao: modo
+                }
+              }));
+            }}
+          />
+        )}
 
         <DisjuntorModal
           open={modalAberto === "DISJUNTOR"}

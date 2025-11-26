@@ -878,7 +878,7 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
                           type={dado.tipo === 'number' ? 'number' : 'text'}
                           value={dado.valor}
                           onChange={(e) => handleDadoTecnicoChange(index, 'valor', e.target.value)}
-                          placeholder={`Digite ${dado.campo.toLowerCase()}`}
+                          placeholder={`Digite ${dado.campo ? dado.campo.toLowerCase() : 'o valor'}`}
                         />
                       )}
                     </>

@@ -27,10 +27,12 @@ const ElectricalSymbol = ({
   tipo,
   status = "NORMAL",
   onClick,
+  dados,
 }: {
   tipo: string;
   status: string;
   onClick?: () => void;
+  dados?: any;
 }) => {
   interface StatusClasses {
     stroke: string;
@@ -278,6 +280,20 @@ case "DISJUNTOR_ABERTO":
       />
     </svg>
   );
+  case "PIVO":
+    // Caso padrão para PIVO - usa o componente PivoSymbol com estado dinâmico
+    const isOperandoPivo = dados?.operando || false;
+    const statusPivo = status === "INATIVO" ? "DESLIGADO" : (status as "NORMAL" | "ALARME" | "FALHA" | "DESLIGADO");
+    return (
+      <PivoSymbol
+        status={statusPivo}
+        rotacao={0}
+        operando={isOperandoPivo}
+        estado={isOperandoPivo ? "FECHADO" : "ABERTO"}
+        onClick={onClick}
+      />
+    );
+
   case "PIVO_ABERTO":
     return (
       <PivoSymbol
@@ -288,7 +304,7 @@ case "DISJUNTOR_ABERTO":
         onClick={onClick}
       />
     );
-  
+
   case "PIVO_FECHADO":
     return (
       <PivoSymbol
@@ -1407,6 +1423,7 @@ export function SinopticoDiagrama({
               <ElectricalSymbol
                 tipo={componente.tipo}
                 status={componente.status}
+                dados={componente.dados}
               />
 
            {/* Label do componente - NÃO mostrar para PONTO, PONTO_JUNCAO ou JUNCTION */}

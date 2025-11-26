@@ -174,27 +174,29 @@ const getNodeRect = (
 
 /**
  * Calcula o offset da porta baseado na direção
+ * Retorna tanto a posição da porta quanto o centro do equipamento
  */
 const getPortOffset = (
   rect: NodeRect,
   port: "top" | "bottom" | "left" | "right"
-): { x: number; y: number } => {
+): { x: number; y: number; centerX: number; centerY: number } => {
   switch (port) {
     case "top":
-      return { x: rect.centerX, y: rect.y };
+      return { x: rect.centerX, y: rect.y, centerX: rect.centerX, centerY: rect.centerY };
     case "bottom":
-      return { x: rect.centerX, y: rect.y + rect.height };
+      return { x: rect.centerX, y: rect.y + rect.height, centerX: rect.centerX, centerY: rect.centerY };
     case "left":
-      return { x: rect.x, y: rect.centerY };
+      return { x: rect.x, y: rect.centerY, centerX: rect.centerX, centerY: rect.centerY };
     case "right":
-      return { x: rect.x + rect.width, y: rect.centerY };
+      return { x: rect.x + rect.width, y: rect.centerY, centerX: rect.centerX, centerY: rect.centerY };
     default:
-      return { x: rect.centerX, y: rect.centerY };
+      return { x: rect.centerX, y: rect.centerY, centerX: rect.centerX, centerY: rect.centerY };
   }
 };
 
 /**
  * Gera path SVG ortogonal (linhas retas em ângulos de 90°)
+ * Usa os centros dos equipamentos para fazer as dobras, não as posições das portas
  */
 const generateOrthogonalPath = (
   fromX: number,
@@ -202,7 +204,11 @@ const generateOrthogonalPath = (
   toX: number,
   toY: number,
   fromPort: string,
-  toPort: string
+  toPort: string,
+  fromCenterX: number,
+  fromCenterY: number,
+  toCenterX: number,
+  toCenterY: number
 ): string => {
   const path: string[] = [];
   path.push(`M ${fromX.toFixed(2)} ${fromY.toFixed(2)}`);
@@ -239,8 +245,9 @@ const generateOrthogonalPath = (
   ) {
     const midY = (fromY + toY) / 2;
     path.push(`L ${fromX.toFixed(2)} ${midY.toFixed(2)}`);
-    path.push(`L ${toX.toFixed(2)} ${midY.toFixed(2)}`);
-    path.push(`L ${toX.toFixed(2)} ${toY.toFixed(2)}`);
+    // USAR toCenterX ao invés de toX para a linha descer pelo centro
+    path.push(`L ${toCenterX.toFixed(2)} ${midY.toFixed(2)}`);
+    path.push(`L ${toCenterX.toFixed(2)} ${toY.toFixed(2)}`);
   }
   // Conexões horizontais (left/right → left/right)
   else if (
@@ -249,27 +256,24 @@ const generateOrthogonalPath = (
   ) {
     const midX = (fromX + toX) / 2;
     path.push(`L ${midX.toFixed(2)} ${fromY.toFixed(2)}`);
-    path.push(`L ${midX.toFixed(2)} ${toY.toFixed(2)}`);
-    path.push(`L ${toX.toFixed(2)} ${toY.toFixed(2)}`);
+    // USAR toCenterY ao invés de toY para a linha ir pelo centro
+    path.push(`L ${midX.toFixed(2)} ${toCenterY.toFixed(2)}`);
+    path.push(`L ${toX.toFixed(2)} ${toCenterY.toFixed(2)}`);
   }
   // Conexões mistas (perpendiculares)
   else {
+    // Horizontal -> Vertical: usar toCenterX para dobrar no centro
     if (fromPort === "right" || fromPort === "left") {
-      const midX =
-        fromPort === "right"
-          ? Math.max(fromX, toX) + 20
-          : Math.min(fromX, toX) - 20;
-      path.push(`L ${midX.toFixed(2)} ${fromY.toFixed(2)}`);
-      path.push(`L ${midX.toFixed(2)} ${toY.toFixed(2)}`);
-    } else {
-      const midY =
-        fromPort === "bottom"
-          ? Math.max(fromY, toY) + 20
-          : Math.min(fromY, toY) - 20;
-      path.push(`L ${fromX.toFixed(2)} ${midY.toFixed(2)}`);
-      path.push(`L ${toX.toFixed(2)} ${midY.toFixed(2)}`);
+      // A linha deve ir horizontal até o centro X do equipamento de destino
+      path.push(`L ${toCenterX.toFixed(2)} ${fromY.toFixed(2)}`);
+      path.push(`L ${toCenterX.toFixed(2)} ${toY.toFixed(2)}`);
     }
-    path.push(`L ${toX.toFixed(2)} ${toY.toFixed(2)}`);
+    // Vertical -> Horizontal: usar toCenterY para dobrar no centro
+    else {
+      // A linha deve descer até o centro Y do equipamento de destino
+      path.push(`L ${fromX.toFixed(2)} ${toCenterY.toFixed(2)}`);
+      path.push(`L ${toX.toFixed(2)} ${toCenterY.toFixed(2)}`);
+    }
   }
 
   return path.join(" ");
@@ -456,18 +460,22 @@ export function DomAnchoredConnectionsOverlay({
         return;
       }
 
-      // Calcular posições das portas
+      // Calcular posições das portas (agora com centros)
       const fromPos = getPortOffset(fromRect, connection.fromPort);
       const toPos = getPortOffset(toRect, connection.toPort);
 
-      // Gerar path SVG
+      // Gerar path SVG passando também os centros dos equipamentos
       const pathData = generateOrthogonalPath(
         fromPos.x,
         fromPos.y,
         toPos.x,
         toPos.y,
         connection.fromPort,
-        connection.toPort
+        connection.toPort,
+        fromPos.centerX,
+        fromPos.centerY,
+        toPos.centerX,
+        toPos.centerY
       );
 
       newPaths.set(connection.id, {
