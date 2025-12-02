@@ -10,6 +10,7 @@ import {
   ResponsiveContainer,
   Cell,
 } from 'recharts';
+import { formatEnergy, formatPower, getEnergyValue, getPowerValue } from '@/utils/formatEnergy';
 
 interface GraficoMesData {
   mes: string;
@@ -66,13 +67,15 @@ export function InversorGraficoMes({ data, loading, height = 400 }: InversorGraf
     return { max, min, avg };
   }, [chartData]);
 
-  // Cores baseadas no nível de energia
+  // Tons de cinza que funcionam em light e dark mode
   const getBarColor = (energia: number) => {
     const normalizedValue = energia / stats.max;
-    if (normalizedValue > 0.8) return 'hsl(142, 76%, 36%)'; // Verde
-    if (normalizedValue > 0.5) return 'hsl(45, 93%, 47%)'; // Amarelo
-    if (normalizedValue > 0.2) return 'hsl(25, 95%, 53%)'; // Laranja
-    return 'hsl(0, 84%, 60%)'; // Vermelho
+    // Usa tons de cinza com diferentes intensidades
+    if (normalizedValue > 0.8) return '#4b5563'; // gray-600
+    if (normalizedValue > 0.6) return '#6b7280'; // gray-500
+    if (normalizedValue > 0.4) return '#9ca3af'; // gray-400
+    if (normalizedValue > 0.2) return '#d1d5db'; // gray-300
+    return '#e5e7eb'; // gray-200
   };
 
   if (loading) {
@@ -93,23 +96,23 @@ export function InversorGraficoMes({ data, loading, height = 400 }: InversorGraf
 
   return (
     <div className="space-y-4">
-      {/* Estatísticas */}
+      {/* Estatísticas - Design Minimalista */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="text-center p-3 bg-yellow-50 dark:bg-yellow-950 rounded-lg">
-          <div className="text-sm text-muted-foreground mb-1">Energia Total</div>
-          <div className="text-2xl font-bold text-yellow-600">{data.energia_total_kwh.toFixed(2)} kWh</div>
+        <div className="text-center p-3 border rounded-lg">
+          <div className="text-xs text-muted-foreground mb-1">Energia Total</div>
+          <div className="text-lg font-semibold">{formatEnergy(data.energia_total_kwh)}</div>
         </div>
-        <div className="text-center p-3 bg-blue-50 dark:bg-blue-950 rounded-lg">
-          <div className="text-sm text-muted-foreground mb-1">Média Diária</div>
-          <div className="text-2xl font-bold text-blue-600">{stats.avg.toFixed(2)} kWh</div>
+        <div className="text-center p-3 border rounded-lg">
+          <div className="text-xs text-muted-foreground mb-1">Média Diária</div>
+          <div className="text-lg font-semibold">{formatEnergy(stats.avg)}</div>
         </div>
-        <div className="text-center p-3 bg-green-50 dark:bg-green-950 rounded-lg">
-          <div className="text-sm text-muted-foreground mb-1">Melhor Dia</div>
-          <div className="text-2xl font-bold text-green-600">{stats.max.toFixed(2)} kWh</div>
+        <div className="text-center p-3 border rounded-lg">
+          <div className="text-xs text-muted-foreground mb-1">Melhor Dia</div>
+          <div className="text-lg font-semibold">{formatEnergy(stats.max)}</div>
         </div>
-        <div className="text-center p-3 bg-purple-50 dark:bg-purple-950 rounded-lg">
-          <div className="text-sm text-muted-foreground mb-1">Dias com Dados</div>
-          <div className="text-2xl font-bold text-purple-600">{data.total_dias}</div>
+        <div className="text-center p-3 border rounded-lg">
+          <div className="text-xs text-muted-foreground mb-1">Dias com Dados</div>
+          <div className="text-lg font-semibold">{data.total_dias}</div>
         </div>
       </div>
 
@@ -138,28 +141,56 @@ export function InversorGraficoMes({ data, loading, height = 400 }: InversorGraf
             domain={[0, 'auto']}
           />
           <Tooltip
+            wrapperClassName="chart-tooltip-opaque"
             contentStyle={{
-              backgroundColor: 'hsl(var(--background))',
-              border: '1px solid hsl(var(--border))',
-              borderRadius: '8px',
+              backgroundColor: 'hsl(var(--card))',
+              backgroundImage: 'linear-gradient(to bottom, hsl(var(--card)), hsl(var(--card)))',
+              backdropFilter: 'none',
+              opacity: 1,
+              border: '3px solid hsl(var(--primary))',
+              borderRadius: '16px',
+              boxShadow: '0 15px 50px rgba(0, 0, 0, 0.4)',
+              padding: '16px',
+              minWidth: '280px'
             }}
-            labelStyle={{ color: 'hsl(var(--foreground))' }}
+            labelStyle={{
+              color: 'hsl(var(--foreground))',
+              fontSize: '16px',
+              fontWeight: '700',
+              marginBottom: '12px'
+            }}
             formatter={(value: number, name: string, props: any) => {
-              if (name === 'energia') {
+              if (name === 'energia' || name === 'Energia Diária') {
+                const energyData = getEnergyValue(value);
+                const powerData = getPowerValue(props.payload.potencia_media);
+
                 return [
-                  <>
-                    <div>{value.toFixed(2)} kWh</div>
-                    <div className="text-xs text-muted-foreground">
-                      Potência média: {props.payload.potencia_media.toFixed(2)} kW
+                  <div className="space-y-3">
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-3xl font-black">
+                        {energyData.value}
+                      </span>
+                      <span className="text-xl font-bold text-muted-foreground">
+                        {energyData.unit}
+                      </span>
                     </div>
-                    <div className="text-xs text-muted-foreground">
-                      Data: {props.payload.data}
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Potência Média:</span>
+                      <span className="font-bold">{formatPower(props.payload.potencia_media)}</span>
                     </div>
-                  </>,
-                  'Energia Gerada'
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Data:</span>
+                      <span className="font-semibold">{new Date(props.payload.data).toLocaleDateString('pt-BR')}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Registros:</span>
+                      <span className="font-semibold">{props.payload.registros.toLocaleString()}</span>
+                    </div>
+                  </div>,
+                  <span className="text-lg font-bold">Energia Gerada - Dia {props.payload.dia}</span>
                 ];
               }
-              return [value, name];
+              return [formatEnergy(value), name];
             }}
           />
           <Legend />

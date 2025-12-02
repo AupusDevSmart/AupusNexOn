@@ -3,22 +3,33 @@ import { useState } from 'react';
 import { BaseModal } from '@/components/common/base-modal/BaseModal';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { 
-  Users, 
-  Building2, 
-  BarChart3, 
-  Wrench, 
-  Shield, 
-  UserCheck, 
-  Leaf, 
+import {
+  Users,
+  Building2,
+  BarChart3,
+  Wrench,
+  Shield,
+  UserCheck,
+  Leaf,
   Settings,
   AlertCircle,
-  CheckCircle
+  CheckCircle,
+  Trash2
 } from 'lucide-react';
 import { Usuario, ModalMode, UsuarioFormData } from '../types';
 import { usuariosFormFields } from '../config/form-config';
 import { useUsuarios } from '../hooks/useUsuarios';
 import { PermissionManager } from './PermissionManager';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 interface UsuarioModalProps {
   isOpen: boolean;
@@ -42,9 +53,10 @@ export function UsuarioModal({
   const isCreateMode = mode === 'create';
 
   // Hook para operações CRUD
-  const { 
-    createUsuario, 
-    updateUsuario, 
+  const {
+    createUsuario,
+    updateUsuario,
+    deleteUsuario,
     usuarioToFormData,
     error,
     clearError
@@ -53,6 +65,8 @@ export function UsuarioModal({
   // Estado local para feedback
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const handleSubmit = async (data: any) => {
     console.log('🚀 Iniciando handleSubmit do modal');
@@ -86,11 +100,15 @@ export function UsuarioModal({
         onSuccess();
       }, 2000);
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Erro no handleSubmit:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido ao salvar usuário';
+      // Pegar a mensagem de erro da resposta da API se disponível
+      const errorMessage = error?.response?.data?.error?.message ||
+                          error?.response?.data?.message ||
+                          error?.message ||
+                          'Erro desconhecido ao salvar usuário';
       setSubmitError(errorMessage);
-      throw error; // Re-throw para o BaseModal tratar
+      // Não re-lançar o erro - já tratamos mostrando a mensagem
     }
   };
 
@@ -98,6 +116,37 @@ export function UsuarioModal({
     if (usuario && onGerenciarPlantas) {
       console.log('Abrindo gerenciamento de plantas para:', usuario.nome);
       onGerenciarPlantas(usuario);
+    }
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!usuario) return;
+
+    setIsDeleting(true);
+    setSubmitError(null);
+
+    try {
+      console.log('🗑️ Deletando usuário:', usuario.id);
+      await deleteUsuario(usuario.id);
+      setSubmitSuccess(`Usuário ${usuario.nome} deletado com sucesso!`);
+      setShowDeleteDialog(false);
+
+      // Aguardar um momento para mostrar a mensagem antes de fechar
+      setTimeout(() => {
+        onSuccess();
+        onClose();
+      }, 1500);
+    } catch (error: any) {
+      console.error('❌ Erro ao deletar usuário:', error);
+      // Pegar a mensagem de erro da resposta da API se disponível
+      const errorMessage = error?.response?.data?.error?.message ||
+                          error?.response?.data?.message ||
+                          error?.message ||
+                          'Erro ao deletar usuário';
+      setSubmitError(errorMessage);
+      setShowDeleteDialog(false);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -202,6 +251,34 @@ export function UsuarioModal({
         </div>
       )}
 
+      {/* BOTÃO DE DELETAR - Apenas no modo de edição */}
+      {isEditMode && usuario && (
+        <div className="mb-4 p-4 border border-red-200 dark:border-red-800 rounded-lg bg-red-50 dark:bg-red-950">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="flex-1">
+              <h4 className="font-medium text-red-900 dark:text-red-100 flex items-center gap-2">
+                <AlertCircle className="h-4 w-4" />
+                Zona de Perigo
+              </h4>
+              <p className="text-xs md:text-sm text-red-700 dark:text-red-300 mt-1">
+                Deletar permanentemente este usuário do sistema
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              onClick={() => setShowDeleteDialog(true)}
+              disabled={isDeleting}
+              className="w-full sm:w-auto"
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              {isDeleting ? 'Deletando...' : 'Deletar Usuário'}
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Informações sobre senha padrão - Responsivo */}
       {isCreateMode && (
         <div className="mt-4 md:mt-6 space-y-3 md:space-y-4">
@@ -281,6 +358,34 @@ export function UsuarioModal({
           </div>
         </div>
       )}
+
+      {/* DIALOG DE CONFIRMAÇÃO DE DELETE */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Tem certeza?</AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <span className="block">
+                Esta ação não pode ser desfeita. Isso irá permanentemente deletar o usuário
+                <span className="font-semibold"> {usuario?.nome}</span> e remover todos os seus dados do sistema.
+              </span>
+              <span className="block text-red-600 dark:text-red-400 font-medium">
+                ⚠️ Atenção: Todas as permissões, acessos e vínculos com plantas serão removidos.
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteConfirm}
+              disabled={isDeleting}
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+            >
+              {isDeleting ? 'Deletando...' : 'Sim, deletar usuário'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </BaseModal>
   );
 }

@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import {
   Activity,
   ArrowLeft,
+  BarChart3,
   Building,
   Circle,
   Copy,
@@ -40,6 +41,7 @@ import { DiagramGrid, useGridSettings } from "@/features/supervisorio/components
 import { DisjuntorModal } from "@/features/supervisorio/components/disjuntor-modal";
 import { InversorModal } from "@/features/supervisorio/components/inversor-modal";
 import { InversorMqttDataModal } from "@/features/equipamentos/components/InversorMqttDataModal";
+// Removido: MultiplosInversoresGraficosModal - seleção é feita via modal de configuração
 import { PivoModal, type DadosPivo } from "@/features/supervisorio/components/pivo";
 import { LandisGyrModal } from "@/features/supervisorio/components/landisgyr-modal";
 import { M160Modal } from "@/features/supervisorio/components/m160-modal";
@@ -47,6 +49,7 @@ import { M300Modal } from "@/features/supervisorio/components/m300-modal";
 import { MedidorModal } from "@/features/supervisorio/components/medidor-modal";
 import { SinopticoDiagrama } from "@/features/supervisorio/components/sinoptico-diagrama";
 import { SinopticoGraficos } from "@/features/supervisorio/components/sinoptico-graficos";
+import { SinopticoGraficosV2 } from "@/features/supervisorio/components/sinoptico-graficos-v2";
 import { SinopticoIndicadores } from "@/features/supervisorio/components/sinoptico-indicadores";
 import { TransformadorModal } from "@/features/supervisorio/components/transformador-modal";
 // TEMPORÁRIO: MQTT comentado - implementar depois
@@ -228,7 +231,7 @@ const getStatusClasses = (status: string) => {
 };
 
 // Componente para renderizar símbolos elétricos - APENAS PARA MODO EDIÇÃO
-const ElectricalSymbol = ({
+const ElectricalSymbol = React.memo(({
   tipo,
   status = "NORMAL",
   onClick,
@@ -1394,7 +1397,7 @@ case "PONTO_JUNCAO":
       )}
     </div>
   );
-};
+});
 // Modal LandisGyr inline
 function LandisGyrModalInline({
   open,
@@ -1665,6 +1668,9 @@ export function SinopticoAtivoPage() {
   const [selectedPivoId, setSelectedPivoId] = useState<string | null>(null);
   // Estado simulado dos pivôs (chave: equipamento_id, valor: dados do pivô)
   const [pivoStates, setPivoStates] = useState<Record<string, any>>({});
+
+  // Estado removido - seleção múltipla não é necessária
+  // A seleção de equipamentos para o gráfico de demanda é feita via modal de configuração
 
   // Estados para o modo de edição
   const [modoEdicao, setModoEdicao] = useState(false);
@@ -2240,7 +2246,7 @@ export function SinopticoAtivoPage() {
     },
   };
 
-  // Função principal de clique em componente - CORRIGIDO + MQTT
+  // Função principal de clique em componente - CORRIGIDO + MQTT + Multi-seleção
   const handleComponenteClick = useCallback(
     (componente: ComponenteDU, event?: React.MouseEvent) => {
       if (modoEdicao) {
@@ -2252,6 +2258,9 @@ export function SinopticoAtivoPage() {
         }
         return;
       }
+
+      // Lógica de seleção múltipla removida
+      // A seleção de equipamentos para agregação é feita via modal de configuração
 
       setComponenteSelecionado(componente);
 
@@ -2332,42 +2341,65 @@ export function SinopticoAtivoPage() {
     [modoFerramenta, modoEdicao, componentes, getActiveCanvasRef]
   );
 
+  // Throttle com requestAnimationFrame para performance máxima
+  const rafIdRef = useRef<number | null>(null);
+  const lastMousePosRef = useRef<{ x: number; y: number } | null>(null);
+
   const handleMouseMove = useCallback(
   (e: MouseEvent) => {
     const activeCanvas = getActiveCanvasRef();
     if (!isDragging || !componenteDragId || !activeCanvas.current) return;
 
-    const canvasRect = activeCanvas.current.getBoundingClientRect();
-    const mouseX = e.clientX - canvasRect.left - dragOffset.x;
-    const mouseY = e.clientY - canvasRect.top - dragOffset.y;
+    // Armazenar posição do mouse
+    lastMousePosRef.current = { x: e.clientX, y: e.clientY };
 
-    let newX = (mouseX / canvasRect.width) * 100;
-    let newY = (mouseY / canvasRect.height) * 100;
+    // Cancelar frame anterior se ainda não executou
+    if (rafIdRef.current !== null) {
+      return;
+    }
 
-    // ===== MOVIMENTO LIVRE - GRID APENAS VISUAL =====
-    // O grid é apenas uma referência visual, não afeta o movimento
-    // Mantém apenas um arredondamento mínimo para evitar valores muito quebrados
-    newX = Math.round(newX * 100) / 100; // Arredonda para 2 casas decimais
-    newY = Math.round(newY * 100) / 100; // Arredonda para 2 casas decimais
-    // =============================
+    // Throttle com requestAnimationFrame - executa no próximo frame
+    rafIdRef.current = requestAnimationFrame(() => {
+      rafIdRef.current = null;
 
-    // Aplicar limites
-    newX = Math.max(2, Math.min(98, newX));
-    newY = Math.max(2, Math.min(98, newY));
+      if (!lastMousePosRef.current || !activeCanvas.current) return;
 
-    const newComponentes = componentes.map((comp) =>
-      comp.id === componenteDragId
-        ? { ...comp, posicao: { x: newX, y: newY } }
-        : comp
-    );
+      const canvasRect = activeCanvas.current.getBoundingClientRect();
+      const mouseX = lastMousePosRef.current.x - canvasRect.left - dragOffset.x;
+      const mouseY = lastMousePosRef.current.y - canvasRect.top - dragOffset.y;
 
-    setComponentes(newComponentes);
+      let newX = (mouseX / canvasRect.width) * 100;
+      let newY = (mouseY / canvasRect.height) * 100;
+
+      // Movimento livre - apenas arredondamento mínimo
+      newX = Math.round(newX * 100) / 100;
+      newY = Math.round(newY * 100) / 100;
+
+      // Aplicar limites
+      newX = Math.max(2, Math.min(98, newX));
+      newY = Math.max(2, Math.min(98, newY));
+
+      // Atualização otimizada - cria novo array apenas uma vez
+      setComponentes(prevComponentes =>
+        prevComponentes.map((comp) =>
+          comp.id === componenteDragId
+            ? { ...comp, posicao: { x: newX, y: newY } }
+            : comp
+        )
+      );
+    });
   },
-  [isDragging, componenteDragId, dragOffset, componentes, getActiveCanvasRef]
+  [isDragging, componenteDragId, dragOffset, getActiveCanvasRef]
 );
 
   const handleMouseUp = useCallback(() => {
     if (!isDragging) return;
+
+    // Cancelar qualquer animationFrame pendente
+    if (rafIdRef.current !== null) {
+      cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
+    }
 
     setIsDragging(false);
     setComponenteDragId(null);
@@ -2381,6 +2413,11 @@ export function SinopticoAtivoPage() {
       return () => {
         document.removeEventListener("mousemove", handleMouseMove);
         document.removeEventListener("mouseup", handleMouseUp);
+        // Cancelar qualquer animationFrame pendente ao desmontar
+        if (rafIdRef.current !== null) {
+          cancelAnimationFrame(rafIdRef.current);
+          rafIdRef.current = null;
+        }
       };
     }
   }, [isDragging, handleMouseMove, handleMouseUp]);
@@ -2988,7 +3025,7 @@ export function SinopticoAtivoPage() {
 
         <div className="w-full max-w-full space-y-3">
           {/* Header */}
-          <div className="flex items-center gap-3 p-2">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 p-2 sm:p-4">
             <Button
               variant="outline"
               size="sm"
@@ -2997,12 +3034,20 @@ export function SinopticoAtivoPage() {
               className="flex items-center gap-2"
             >
               <ArrowLeft className="h-4 w-4" />
-              Voltar
+              <span className="hidden sm:inline">Voltar</span>
             </Button>
 
-            <div className="flex items-center gap-4 flex-1">
-              <h1 className="text-2xl font-bold text-foreground">
-                Sinóptico - {unidadeAtual ? `${plantaAtual?.nome} → ${unidadeAtual.nome}` : 'Selecione uma Unidade'}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 flex-1 w-full sm:w-auto">
+              <h1 className="text-lg sm:text-2xl font-bold text-foreground">
+                <span className="hidden sm:inline">Sinóptico - </span>
+                {unidadeAtual ? (
+                  <>
+                    <span className="hidden md:inline">{plantaAtual?.nome} → </span>
+                    {unidadeAtual.nome}
+                  </>
+                ) : (
+                  'Selecione uma Unidade'
+                )}
               </h1>
 
               {/* NOVO: Botão para selecionar unidade */}
@@ -3013,25 +3058,30 @@ export function SinopticoAtivoPage() {
                 className="flex items-center gap-2"
               >
                 <Building className="h-4 w-4" />
-                {unidadeAtual ? 'Trocar Unidade' : 'Selecionar Unidade'}
+                <span className="hidden sm:inline">
+                  {unidadeAtual ? 'Trocar Unidade' : 'Selecionar Unidade'}
+                </span>
+                <span className="sm:hidden">
+                  {unidadeAtual ? 'Trocar' : 'Selecionar'}
+                </span>
               </Button>
 
               {loadingDiagrama && (
-                <div className="flex items-center gap-2 text-sm text-blue-600">
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-                  Carregando...
+                <div className="flex items-center gap-2 text-xs sm:text-sm text-blue-600">
+                  <div className="animate-spin rounded-full h-3 w-3 sm:h-4 sm:w-4 border-b-2 border-blue-600"></div>
+                  <span className="hidden sm:inline">Carregando...</span>
                 </div>
               )}
             </div>
 
             {/* Debug info */}
-            <div className="text-xs text-muted-foreground">
+            <div className="text-xs text-muted-foreground hidden lg:block">
               Componentes: {componentes.length} | Equipamentos: {Array.isArray(equipamentos) ? equipamentos.length : 0}
             </div>
           </div>
 
-          {/* Indicadores */}
-          <SinopticoIndicadores indicadores={indicadores} />
+          {/* Indicadores - Comentados temporariamente (não podem ser calculados corretamente ainda) */}
+          {/* <SinopticoIndicadores indicadores={indicadores} /> */}
 
           {/* Barra de Ferramentas - SÓ APARECE NO MODO EDIÇÃO */}
           {modoEdicao && (
@@ -3078,57 +3128,7 @@ export function SinopticoAtivoPage() {
                     </div>
                   </div>
 
-                  {/* Controles do Grid */}
-                  <div className="flex items-center gap-2 border-r pr-4">
-                    <span className="text-sm font-medium">Grid:</span>
-                    <Button
-                      variant={gridSettings.visible ? "default" : "outline"}
-                      size="sm"
-                      onClick={toggleGrid}
-                      title={gridSettings.visible ? "Ocultar Grid" : "Mostrar Grid"}
-                    >
-                      {gridSettings.visible ? (
-                        <>
-                          <Square className="h-3 w-3 mr-1" />
-                          On
-                        </>
-                      ) : (
-                        <>
-                          <Square className="h-3 w-3 mr-1" />
-                          Off
-                        </>
-                      )}
-                    </Button>
-
-                    {gridSettings.visible && (
-                      <>
-                        <select
-                          className="h-8 px-2 text-sm border rounded bg-background"
-                          value={gridSettings.gridSize}
-                          onChange={(e) => updateGridSize(Number(e.target.value))}
-                          title="Tamanho do Grid"
-                        >
-                          <option value="25">25px</option>
-                          <option value="50">50px</option>
-                          <option value="75">75px</option>
-                          <option value="100">100px</option>
-                          <option value="150">150px</option>
-                          <option value="200">200px</option>
-                        </select>
-
-                        <input
-                          type="range"
-                          min="0.1"
-                          max="1"
-                          step="0.1"
-                          value={gridSettings.opacity}
-                          onChange={(e) => updateOpacity(Number(e.target.value))}
-                          className="w-20"
-                          title={`Opacidade: ${Math.round(gridSettings.opacity * 100)}%`}
-                        />
-                      </>
-                    )}
-                  </div>
+                  {/* Grid removido - aparece automaticamente no modo de edição (25px fixo) */}
 
                   {/* Adicionar Componentes */}
                   <div className="flex items-center gap-2 border-r pr-4">
@@ -3309,10 +3309,11 @@ export function SinopticoAtivoPage() {
           {/* Layout Principal */}
           <div className="w-full">
             {!modoEdicao && (
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-fit">
-                {/* Gráficos à Esquerda */}
-                <div className="lg:col-span-1 flex">
-                  <SinopticoGraficos
+              <div className="flex flex-col gap-6">
+                {/* Gráfico de Demanda - 100% Largura no Topo */}
+                <div className="w-full">
+                  <SinopticoGraficosV2
+                    unidadeId={unidadeId}
                     dadosPotencia={
                       historicoMqtt.length > 0
                         ? historicoMqtt
@@ -3328,8 +3329,8 @@ export function SinopticoAtivoPage() {
                   />
                 </div>
 
-                {/* Diagrama Unifilar - MODO VISUALIZAÇÃO */}
-                <div className="lg:col-span-2 flex">
+                {/* Diagrama Unifilar - MODO VISUALIZAÇÃO - Abaixo do Gráfico */}
+                <div className="w-full flex">
                   <Card
                     ref={diagramCardRef}
                     className={`flex flex-col w-full min-h-[900px] overflow-visible ${
@@ -3338,106 +3339,60 @@ export function SinopticoAtivoPage() {
                         : 'bg-slate-50 dark:bg-slate-900'
                     }`}
                   >
-                    <div className="flex items-center justify-between p-4 pb-2 border-b flex-shrink-0 bg-slate-50 dark:bg-slate-900">
-                      <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                        <Network className="h-5 w-5" />
-                        Diagrama Unifilar {diagramaFullscreen && '- Tela Cheia'}
-                      </h3>
-                      <div className="flex items-center gap-2">
-                        {/* Controles do Grid */}
-                        <div className="flex items-center gap-2 border-r pr-2 mr-2">
-                          <Button
-                            variant={gridSettings.visible ? "default" : "outline"}
-                            size="sm"
-                            onClick={toggleGrid}
-                            title={gridSettings.visible ? "Ocultar Grid" : "Mostrar Grid"}
-                          >
-                            <Square className="h-3 w-3 mr-1" />
-                            Grid
-                          </Button>
-
-                          {gridSettings.visible && (
-                            <>
-                              <select
-                                className="h-8 px-2 text-sm border rounded bg-background"
-                                value={gridSettings.gridSize}
-                                onChange={(e) => updateGridSize(Number(e.target.value))}
-                                title="Tamanho do Grid"
-                              >
-                                <option value="25">25px</option>
-                                <option value="50">50px</option>
-                                <option value="75">75px</option>
-                                <option value="100">100px</option>
-                                <option value="150">150px</option>
-                                <option value="200">200px</option>
-                              </select>
-
-                              <input
-                                type="range"
-                                min="0.1"
-                                max="1"
-                                step="0.1"
-                                value={gridSettings.opacity}
-                                onChange={(e) => updateOpacity(Number(e.target.value))}
-                                className="w-20"
-                                title={`Opacidade: ${Math.round(gridSettings.opacity * 100)}%`}
-                              />
-                            </>
-                          )}
-                        </div>
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 pb-2 border-b flex-shrink-0 bg-slate-50 dark:bg-slate-900 gap-3">
+                      <div>
+                        <h3 className="text-base sm:text-lg font-semibold text-foreground flex items-center gap-2">
+                          <Network className="h-4 w-4 sm:h-5 sm:w-5" />
+                          <span className="hidden sm:inline">Diagrama Unifilar</span>
+                          <span className="sm:hidden">Diagrama</span>
+                          {diagramaFullscreen && <span className="hidden sm:inline">- Tela Cheia</span>}
+                        </h3>
+                      </div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {/* Grid removido - aparece automaticamente no modo de edição (25px fixo) */}
 
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={toggleFullscreen}
-                          className="flex items-center gap-2"
+                          className="flex items-center gap-1 sm:gap-2"
                         >
                           {diagramaFullscreen ? (
                             <>
                               <Minimize className="h-4 w-4" />
-                              Sair
+                              <span className="hidden sm:inline">Sair</span>
                             </>
                           ) : (
                             <>
                               <Maximize className="h-4 w-4" />
-                              Tela Cheia
+                              <span className="hidden sm:inline">Tela Cheia</span>
                             </>
                           )}
                         </Button>
                         {!diagramaFullscreen && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={toggleModoEdicao}
-                            className="flex items-center gap-2"
-                          >
-                            <Edit3 className="h-4 w-4" />
-                            Editar
-                          </Button>
+                          <>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={toggleModoEdicao}
+                              className="flex items-center gap-1 sm:gap-2"
+                            >
+                              <Edit3 className="h-4 w-4" />
+                              <span className="hidden sm:inline">Editar</span>
+                            </Button>
+
+                          </>
                         )}
                       </div>
                     </div>
 
                     <div
-                      className={`flex-1 relative overflow-visible !bg-slate-50 dark:!bg-slate-900 ${
-                        diagramaFullscreen ? 'h-[calc(100vh-73px)]' : 'min-h-[580px]'
+                      className={`flex-1 relative w-full overflow-auto !bg-slate-50 dark:!bg-slate-900 ${
+                        diagramaFullscreen ? 'h-[calc(100vh-73px)]' : 'min-h-[580px] h-[700px]'
                       }`}
                       ref={canvasRef}
                     >
-                      {/* GRID DE FUNDO - MODO VISUALIZAÇÃO */}
-                      {canvasRef.current && (
-                        <DiagramGrid
-                          width={canvasRef.current.offsetWidth || 1920}
-                          height={canvasRef.current.offsetHeight || 1080}
-                          visible={gridSettings.visible}
-                          gridSize={gridSettings.gridSize}
-                          subdivisions={gridSettings.subdivisions}
-                          opacity={gridSettings.opacity}
-                          // Cores adaptativas: escuro no tema claro, claro no tema escuro
-                          gridColor={document.documentElement.classList.contains('dark') ? "#94a3b8" : "#64748b"}
-                          subGridColor={document.documentElement.classList.contains('dark') ? "#475569" : "#cbd5e1"}
-                        />
-                      )}
+                      {/* Grid removido do modo visualização - aparece apenas no modo de edição */}
 
                       {/* COMPONENTE DE CONEXÕES PARA MODO VISUALIZAÇÃO */}
                       <DomAnchoredConnectionsOverlay
@@ -3509,15 +3464,15 @@ export function SinopticoAtivoPage() {
                 </div>
 
                 <div className="relative flex-1 min-h-[580px] bg-slate-50 dark:bg-slate-900 overflow-visible" ref={canvasRef}>
-                  {/* GRID DE FUNDO - MODO EDIÇÃO */}
+                  {/* GRID DE FUNDO - MODO EDIÇÃO (25px fixo, opacidade 100%) */}
                   {canvasRef.current && (
                     <DiagramGrid
                       width={canvasRef.current.offsetWidth || 1920}
                       height={canvasRef.current.offsetHeight || 1080}
-                      visible={gridSettings.visible}
-                      gridSize={gridSettings.gridSize}
-                      subdivisions={gridSettings.subdivisions}
-                      opacity={gridSettings.opacity}
+                      visible={true}
+                      gridSize={25}
+                      subdivisions={5}
+                      opacity={1.0}
                       // Cores adaptativas: escuro no tema claro, claro no tema escuro
                       gridColor={document.documentElement.classList.contains('dark') ? "#94a3b8" : "#64748b"}
                       subGridColor={document.documentElement.classList.contains('dark') ? "#475569" : "#cbd5e1"}
@@ -4099,6 +4054,8 @@ export function SinopticoAtivoPage() {
           dados={dadosTransformador}
           nomeComponente={componenteSelecionado?.nome || ""}
         />
+
+        {/* Seleção de equipamentos para agregação é feita via modal de configuração */}
 
         {/* Modal de seleção de unidade - disponível sempre */}
         <ModalSelecionarUnidade

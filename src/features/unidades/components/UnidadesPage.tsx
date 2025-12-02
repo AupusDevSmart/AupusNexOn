@@ -5,28 +5,22 @@ import { Layout } from '@/components/common/Layout';
 import { TitleCard } from '@/components/common/title-card';
 import { BaseTable } from '@/components/common/base-table/BaseTable';
 import { BaseFilters } from '@/components/common/base-filters/BaseFilters';
-import { BaseModal } from '@/components/common/base-modal/BaseModal';
+import { UnidadeModal } from './unidade-modal';
 import { Button } from '@/components/ui/button';
 import { Plus, Factory, RefreshCw } from 'lucide-react';
 import { useGenericModal } from '@/hooks/useGenericModal';
 import { toast } from '@/hooks/use-toast';
 import { unidadesTableColumns } from '../config/table-config';
 import { createUnidadesFilterConfig } from '../config/filter-config';
-import { unidadesFormFields } from '../config/form-config';
 import { usePlantas } from '../hooks/usePlantas';
 import {
   getAllUnidades,
   getUnidadeById,
-  createUnidade,
-  updateUnidade,
-  deleteUnidade,
 } from '@/services/unidades.services';
 import type {
   Unidade,
   UnidadeFilters,
-  UnidadeFormData,
 } from '../types';
-import { formDataToDto, unidadeToFormData } from '../types';
 
 const initialFilters: UnidadeFilters = {
   search: '',
@@ -37,7 +31,6 @@ const initialFilters: UnidadeFilters = {
 };
 
 export function UnidadesPage() {
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [unidades, setUnidades] = useState<Unidade[]>([]);
   const [totalUnidades, setTotalUnidades] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -124,93 +117,10 @@ export function UnidadesPage() {
     setFilters((prev) => ({ ...prev, page: newPage }));
   };
 
-  // Handler: Criar unidade
-  const handleCreate = async (formData: any) => {
-    try {
-      setIsSubmitting(true);
-      console.log('➕ [UNIDADES PAGE] Criando unidade:', formData);
-
-      // Converter formData para DTO
-      const dto = formDataToDto(formData);
-
-      await createUnidade(dto);
-
-      toast({
-        title: "Unidade criada",
-        description: "A unidade foi criada com sucesso.",
-      });
-
-      closeModal();
-      fetchUnidades(filters);
-    } catch (error: any) {
-      console.error('❌ [UNIDADES PAGE] Erro ao criar unidade:', error);
-      toast({
-        title: "Erro ao criar unidade",
-        description: error.response?.data?.message || error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  // Handler: Editar unidade
-  const handleUpdate = async (formData: any) => {
-    if (!modalState.entity) return;
-
-    try {
-      setIsSubmitting(true);
-      console.log('✏️ [UNIDADES PAGE] Atualizando unidade:', modalState.entity.id, formData);
-
-      // Converter formData para DTO
-      const dto = formDataToDto(formData);
-
-      await updateUnidade(modalState.entity.id, dto);
-
-      toast({
-        title: "Unidade atualizada",
-        description: "A unidade foi atualizada com sucesso.",
-      });
-
-      closeModal();
-      fetchUnidades(filters);
-    } catch (error: any) {
-      console.error('❌ [UNIDADES PAGE] Erro ao atualizar unidade:', error);
-      toast({
-        title: "Erro ao atualizar unidade",
-        description: error.response?.data?.message || error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  // Handler: Excluir unidade
-  const handleDelete = async (unidade: Unidade) => {
-    if (!window.confirm(`Tem certeza que deseja excluir a unidade "${unidade.nome}"?`)) {
-      return;
-    }
-
-    try {
-      console.log('🗑️ [UNIDADES PAGE] Excluindo unidade:', unidade.id);
-
-      await deleteUnidade(unidade.id);
-
-      toast({
-        title: "Unidade excluída",
-        description: `A unidade "${unidade.nome}" foi excluída com sucesso.`,
-      });
-
-      fetchUnidades(filters);
-    } catch (error: any) {
-      console.error('❌ [UNIDADES PAGE] Erro ao excluir unidade:', error);
-      toast({
-        title: "Erro ao excluir unidade",
-        description: error.response?.data?.message || error.message,
-        variant: "destructive",
-      });
-    }
+  // Handler: Sucesso ao salvar unidade
+  const handleModalSuccess = () => {
+    fetchUnidades(filters);
+    closeModal();
   };
 
   // Handler: Abrir modal de edição
@@ -275,26 +185,6 @@ export function UnidadesPage() {
     totalPages: Math.ceil(totalUnidades / (filters.limit || 10))
   };
 
-  // Helper: Título do modal
-  const getModalTitle = () => {
-    const titles = {
-      create: 'Nova Unidade',
-      edit: 'Editar Unidade',
-      view: 'Visualizar Unidade'
-    };
-    return titles[modalState.mode as keyof typeof titles] || 'Unidade';
-  };
-
-  // Helper: Ícone do modal
-  const getModalIcon = () => {
-    return <Factory className="h-5 w-5 text-blue-600" />;
-  };
-
-  // Helper: Dados da entidade para o modal
-  const getModalEntity = () => {
-    return modalState.entity;
-  };
-
   return (
     <Layout>
       <Layout.Main>
@@ -346,27 +236,19 @@ export function UnidadesPage() {
               pagination={pagination}
               onPageChange={handlePageChange}
               onEdit={handleEdit}
-              onDelete={handleDelete}
               onView={handleView}
               emptyMessage="Nenhuma unidade encontrada"
             />
           </div>
         </div>
 
-        {/* Modal */}
-        <BaseModal
+        {/* Modal com delete */}
+        <UnidadeModal
           isOpen={modalState.isOpen}
-          onClose={closeModal}
           mode={modalState.mode}
-          entity={getModalEntity()}
-          title={getModalTitle()}
-          icon={getModalIcon()}
-          formFields={unidadesFormFields}
-          onSubmit={modalState.mode === 'create' ? handleCreate : handleUpdate}
-          loading={isSubmitting}
-          loadingText={modalState.mode === 'create' ? 'Criando unidade...' : 'Salvando alterações...'}
-          closeOnBackdropClick={!isSubmitting}
-          closeOnEscape={true}
+          unidade={modalState.entity}
+          onClose={closeModal}
+          onSuccess={handleModalSuccess}
         />
       </Layout.Main>
     </Layout>

@@ -196,6 +196,54 @@ class EquipamentosDadosService {
     });
     return response.data;
   }
+
+  /**
+   * Busca dados agregados de múltiplos inversores para gráfico do dia
+   */
+  async getGraficoDiaMultiplosInversores(
+    equipamentosIds: string[],
+    data?: string
+  ) {
+    const response = await api.post('/equipamentos-dados/multiplos-inversores/grafico-dia', {
+      equipamentosIds,
+    }, {
+      params: data ? { data } : undefined,
+    });
+    return response.data;
+  }
+
+  /**
+   * Busca dados agregados de múltiplos inversores para gráfico do mês
+   */
+  async getGraficoMesMultiplosInversores(
+    equipamentosIds: string[],
+    mes?: string
+  ) {
+    const response = await api.post('/equipamentos-dados/multiplos-inversores/grafico-mes', {
+      equipamentosIds,
+    }, {
+      params: mes ? { mes } : undefined,
+    });
+    return response.data;
+  }
+
+  /**
+   * Busca dados agregados de múltiplos inversores para gráfico do ano
+   */
+  async getGraficoAnoMultiplosInversores(
+    equipamentosIds: string[],
+    ano?: string
+  ) {
+    const response = await api.post('/equipamentos-dados/multiplos-inversores/grafico-ano', {
+      equipamentosIds,
+    }, {
+      params: ano ? { ano } : undefined,
+    });
+    return response.data;
+  }
 }
 
 export default new EquipamentosDadosService();
+
+// Export as named export for better import syntax
+export const equipamentosDadosService = new EquipamentosDadosService();

@@ -11,15 +11,16 @@ interface ComponenteDU {
   dados: any;
 }
 
-// Props do componente - ADICIONADO modoEdicao
+// Props do componente - ADICIONADO modoEdicao e seleção múltipla
 interface SinopticoDiagramaProps {
   componentes: ComponenteDU[];
-  onComponenteClick: (componente: ComponenteDU) => void;
+  onComponenteClick: (componente: ComponenteDU, event?: React.MouseEvent) => void;
   className?: string;
   mostrarGrid?: boolean;
   modoEdicao?: boolean; // NOVO PROP
   componenteEditando?: string | null; // NOVO PROP
   connecting?: { from: string; port: string } | null; // NOVO PROP
+  selectedEquipamentos?: ComponenteDU[]; // NOVO PROP - equipamentos selecionados
 }
 
 // Componente para renderizar símbolos elétricos - APENAS VISUALIZAÇÃO
@@ -1361,23 +1362,29 @@ export function SinopticoDiagrama({
   modoEdicao = false, // NOVO PROP
   componenteEditando, // NOVO PROP
   connecting, // NOVO PROP
+  selectedEquipamentos = [], // NOVO PROP com valor padrão
 }: SinopticoDiagramaProps) {
   const [hoveredComponent, setHoveredComponent] = useState<string | null>(null);
 
+  // Função para verificar se um componente está selecionado
+  const isComponenteSelected = (componenteId: string) => {
+    return selectedEquipamentos.some(eq => eq.id === componenteId);
+  };
+
   return (
     <div className={`relative w-full h-full min-h-[400px] ${className}`}>
-      {/* Grid de visualização */}
-      {mostrarGrid && (
+      {/* Grid de edição - aparece apenas no modo de edição */}
+      {modoEdicao && (
         <svg className="absolute inset-0 w-full h-full pointer-events-none z-0">
           <defs>
             <pattern
               id="grid-sinoptico"
-              width="40"
-              height="40"
+              width="25"
+              height="25"
               patternUnits="userSpaceOnUse"
             >
               <path
-                d="M 40 0 L 0 0 0 40"
+                d="M 25 0 L 0 0 0 25"
                 fill="none"
                 className="stroke-border"
                 strokeWidth="0.5"
@@ -1418,13 +1425,35 @@ export function SinopticoDiagrama({
               }}
               onMouseEnter={() => setHoveredComponent(componente.id)}
               onMouseLeave={() => setHoveredComponent(null)}
-              onClick={() => onComponenteClick(componente)}
+              onClick={(e) => onComponenteClick(componente, e)}
             >
               <ElectricalSymbol
                 tipo={componente.tipo}
                 status={componente.status}
                 dados={componente.dados}
               />
+
+              {/* Indicador de seleção múltipla para equipamentos com dados de energia */}
+              {['INVERSOR', 'MEDIDOR', 'M160', 'A966', 'LANDIS_E750', 'TRANSFORMADOR'].includes(componente.tipo) &&
+               isComponenteSelected(componente.id) && (
+                <div className="absolute -top-2 -right-2 z-50">
+                  <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
+                    <svg
+                      className="w-4 h-4 text-white"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                  </div>
+                </div>
+              )}
 
            {/* Label do componente - NÃO mostrar para PONTO, PONTO_JUNCAO ou JUNCTION */}
 {componente.tipo !== "PONTO" && componente.tipo !== "PONTO_JUNCAO" && componente.tipo !== "JUNCTION" && (

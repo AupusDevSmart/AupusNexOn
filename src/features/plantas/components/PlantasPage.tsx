@@ -5,7 +5,7 @@ import { Layout } from '@/components/common/Layout';
 import { TitleCard } from '@/components/common/title-card';
 import { BaseTable } from '@/components/common/base-table/BaseTable';
 import { BaseFilters } from '@/components/common/base-filters/BaseFilters';
-import { BaseModal } from '@/components/common/base-modal/BaseModal';
+import { PlantaModal } from './planta-modal';
 import { Button } from '@/components/ui/button';
 import { Plus, Factory, ArrowLeft, RefreshCw, Filter } from 'lucide-react';
 import { useGenericModal } from '@/hooks/useGenericModal';
@@ -13,15 +13,11 @@ import { toast } from '@/hooks/use-toast';
 import { PlantasFilters } from '../types';
 import { plantasTableColumns } from '../config/table-config';
 import { useProprietarios, createPlantasFilterConfig } from '../config/filter-config';
-import { plantasFormFields } from '../config/form-config';
 import {
   PlantasService,
-  CreatePlantaRequest,
-  UpdatePlantaRequest,
   PlantaResponse,
   FindAllPlantasParams
 } from '@/services/plantas.services';
-import { CNPJUtils } from '@/components/ui/cnpj-input';
 
 const initialFilters: PlantasFilters = {
   search: '',
@@ -30,42 +26,11 @@ const initialFilters: PlantasFilters = {
   limit: 10
 };
 
-// ✅ HELPER: Transformar dados do formulário para API
-const transformFormDataToAPI = (data: any) => {
-  console.log('🔄 [PLANTAS PAGE] Transformando dados do formulário:', data);
-
-  // Validar CNPJ
-  const cnpjFormatted = CNPJUtils.mask(data.cnpj || '');
-  const cnpjClean = CNPJUtils.unmask(data.cnpj || '');
-
-  // Validar endereço
-  const endereco = data.endereco || {};
-
-  const transformedData = {
-    nome: (data.nome || '').trim(),
-    cnpj: cnpjFormatted, // Enviar formatado como a API espera
-    proprietarioId: data.proprietarioId, // ✅ API espera camelCase (DTO usa camelCase)
-    horarioFuncionamento: (data.horarioFuncionamento || '').trim(), // ✅ API espera camelCase (DTO usa camelCase)
-    localizacao: (data.localizacao || '').trim(),
-    endereco: {
-      logradouro: (endereco.logradouro || '').trim(),
-      bairro: (endereco.bairro || '').trim(),
-      cidade: (endereco.cidade || '').trim(),
-      uf: (endereco.uf || '').trim(),
-      cep: (endereco.cep || '').trim(),
-    }
-  };
-
-  console.log('✅ [PLANTAS PAGE] Dados transformados:', transformedData);
-  return transformedData;
-};
-
 export function PlantasPage() {
   const location = useLocation();
   const navigate = useNavigate();
-  
+
   // Estados locais
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [plantas, setPlantas] = useState<PlantaResponse[]>([]);
   const [totalPlantas, setTotalPlantas] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -252,50 +217,10 @@ export function PlantasPage() {
     }
   };
 
-  // ✅ HANDLER: Submissão do formulário (Create e Update)
-  const handleSubmit = async (data: any) => {
-    console.log('💾 [PLANTAS PAGE] Dados recebidos do formulário:', data);
-    setIsSubmitting(true);
-
-    try {
-      // ✅ Transformar dados antes de enviar
-      const transformedData = transformFormDataToAPI(data);
-
-      if (modalState.mode === 'create') {
-        const requestData: CreatePlantaRequest = transformedData;
-        const novaPlanta = await PlantasService.createPlanta(requestData);
-
-        toast({
-          title: "Planta cadastrada!",
-          description: `A planta "${novaPlanta.nome}" foi cadastrada com sucesso.`,
-          variant: "default",
-        });
-
-      } else if (modalState.mode === 'edit' && modalState.entity) {
-        const updateData: UpdatePlantaRequest = transformedData;
-        const plantaAtualizada = await PlantasService.updatePlanta(modalState.entity.id, updateData);
-
-        toast({
-          title: "Planta atualizada!",
-          description: `A planta "${plantaAtualizada.nome}" foi atualizada com sucesso.`,
-          variant: "default",
-        });
-      }
-
-      await fetchPlantas(filters);
-      closeModal();
-
-    } catch (error: any) {
-      console.error('❌ [PLANTAS PAGE] Erro ao salvar planta:', error);
-      
-      toast({
-        title: modalState.mode === 'create' ? "Erro ao cadastrar planta" : "Erro ao atualizar planta",
-        description: error.message || "Ocorreu um erro interno. Tente novamente.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
+  // ✅ HANDLER: Sucesso ao salvar planta
+  const handleModalSuccess = () => {
+    fetchPlantas(filters);
+    closeModal();
   };
 
   // ✅ HANDLERS: Navegação
@@ -311,32 +236,6 @@ export function PlantasPage() {
     });
   };
 
-  // ✅ HANDLERS: Modal
-  const getModalTitle = () => {
-    const titles = {
-      create: 'Nova Planta',
-      edit: 'Editar Planta', 
-      view: 'Visualizar Planta'
-    };
-    return titles[modalState.mode as keyof typeof titles] || 'Planta';
-  };
-
-  const getModalIcon = () => {
-    return <Factory className="h-5 w-5 text-blue-600" />;
-  };
-
-  const getModalEntity = () => {
-    const entity = modalState.entity;
-    
-    if (modalState.mode === 'create') {
-      return {
-        id: null,
-        proprietarioId: filters.proprietarioId !== 'all' ? filters.proprietarioId : null
-      };
-    }
-    
-    return entity;
-  };
 
   // ✅ CALCULAR PAGINAÇÃO
   const pagination = {
@@ -417,10 +316,9 @@ export function PlantasPage() {
                 Atualizar
               </Button>
               
-              <Button 
+              <Button
                 onClick={() => openModal('create')}
                 className="bg-primary hover:bg-primary/90"
-                disabled={isSubmitting}
               >
                 <Plus className="mr-2 h-4 w-4" />
                 Nova Planta
@@ -470,24 +368,14 @@ export function PlantasPage() {
           </div>
         </div>
 
-        {/* ✅ Modal integrado */}
-        <BaseModal
+        {/* ✅ Modal integrado com delete */}
+        <PlantaModal
           isOpen={modalState.isOpen}
           mode={modalState.mode}
-          entity={getModalEntity()}
-          title={getModalTitle()}
-          icon={getModalIcon()}
-          formFields={plantasFormFields}
+          planta={modalState.entity}
           onClose={closeModal}
-          onSubmit={handleSubmit}
-          width="w-[600px]"
-          
-          loading={isSubmitting}
-          loadingText={modalState.mode === 'create' ? "Cadastrando planta..." : "Salvando alterações..."}
-          
-          closeOnBackdropClick={!isSubmitting}
-          closeOnEscape={true}
-          submitButtonText={modalState.mode === 'create' ? "Cadastrar Planta" : "Salvar Alterações"}
+          onSuccess={handleModalSuccess}
+          proprietarioIdDefault={filters.proprietarioId !== 'all' ? filters.proprietarioId : undefined}
         />
       </Layout.Main>
     </Layout>

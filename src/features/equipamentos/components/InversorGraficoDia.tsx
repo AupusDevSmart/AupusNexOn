@@ -12,6 +12,7 @@ import {
   ComposedChart,
 } from 'recharts';
 import { format } from 'date-fns';
+import { formatEnergy, formatPower, getEnergyValue, getPowerValue } from '@/utils/formatEnergy';
 
 interface GraficoDiaData {
   data: string;
@@ -94,23 +95,23 @@ export function InversorGraficoDia({ data, loading, height = 400 }: InversorGraf
 
   return (
     <div className="space-y-4">
-      {/* Estatísticas */}
+      {/* Estatísticas - Design Minimalista */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="text-center p-3 bg-yellow-50 dark:bg-yellow-950 rounded-lg">
-          <div className="text-sm text-muted-foreground mb-1">Energia Total</div>
-          <div className="text-2xl font-bold text-yellow-600">{stats.energia.toFixed(2)} kWh</div>
+        <div className="text-center p-3 border rounded-lg">
+          <div className="text-xs text-muted-foreground mb-1">Energia Total</div>
+          <div className="text-lg font-semibold">{formatEnergy(stats.energia)}</div>
         </div>
-        <div className="text-center p-3 bg-blue-50 dark:bg-blue-950 rounded-lg">
-          <div className="text-sm text-muted-foreground mb-1">Potência Média</div>
-          <div className="text-2xl font-bold text-blue-600">{stats.avg.toFixed(2)} kW</div>
+        <div className="text-center p-3 border rounded-lg">
+          <div className="text-xs text-muted-foreground mb-1">Potência Média</div>
+          <div className="text-lg font-semibold">{formatPower(stats.avg)}</div>
         </div>
-        <div className="text-center p-3 bg-green-50 dark:bg-green-950 rounded-lg">
-          <div className="text-sm text-muted-foreground mb-1">Pico</div>
-          <div className="text-2xl font-bold text-green-600">{stats.max.toFixed(2)} kW</div>
+        <div className="text-center p-3 border rounded-lg">
+          <div className="text-xs text-muted-foreground mb-1">Pico</div>
+          <div className="text-lg font-semibold">{formatPower(stats.max)}</div>
         </div>
-        <div className="text-center p-3 bg-purple-50 dark:bg-purple-950 rounded-lg">
-          <div className="text-sm text-muted-foreground mb-1">Pontos</div>
-          <div className="text-2xl font-bold text-purple-600">{data.total_pontos}</div>
+        <div className="text-center p-3 border rounded-lg">
+          <div className="text-xs text-muted-foreground mb-1">Pontos</div>
+          <div className="text-lg font-semibold">{data.total_pontos}</div>
         </div>
       </div>
 
@@ -139,17 +140,65 @@ export function InversorGraficoDia({ data, loading, height = 400 }: InversorGraf
             domain={[0, 'auto']}
           />
           <Tooltip
+            wrapperClassName="chart-tooltip-opaque"
             contentStyle={{
-              backgroundColor: 'hsl(var(--background))',
-              border: '1px solid hsl(var(--border))',
-              borderRadius: '8px',
+              backgroundColor: 'hsl(var(--card))',
+              backgroundImage: 'linear-gradient(to bottom, hsl(var(--card)), hsl(var(--card)))',
+              backdropFilter: 'none',
+              opacity: 1,
+              border: '3px solid hsl(var(--primary))',
+              borderRadius: '16px',
+              boxShadow: '0 15px 50px rgba(0, 0, 0, 0.4)',
+              padding: '16px',
+              minWidth: '280px'
             }}
-            labelStyle={{ color: 'hsl(var(--foreground))' }}
-            formatter={(value: number, name: string) => {
-              if (name === 'potencia') return [`${value.toFixed(2)} kW`, 'Potência Média'];
-              if (name === 'potencia_max') return [`${value.toFixed(2)} kW`, 'Máxima'];
-              if (name === 'potencia_min') return [`${value.toFixed(2)} kW`, 'Mínima'];
-              return [value, name];
+            labelStyle={{
+              color: 'hsl(var(--foreground))',
+              fontSize: '16px',
+              fontWeight: '700',
+              marginBottom: '12px'
+            }}
+            formatter={(value: number, name: string, props: any) => {
+              const powerData = getPowerValue(value);
+
+              if (name === 'potencia' || name === 'Potência Média') {
+                return [
+                  <div className="space-y-1">
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-3xl font-black">
+                        {powerData.value}
+                      </span>
+                      <span className="text-xl font-bold text-muted-foreground">
+                        {powerData.unit}
+                      </span>
+                    </div>
+                    <div className="text-sm text-muted-foreground">Potência Média</div>
+                  </div>,
+                  ''
+                ];
+              }
+
+              if (name === 'potencia_max' || name === 'Máxima') {
+                return [
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Máxima:</span>
+                    <span className="font-bold">{formatPower(value)}</span>
+                  </div>,
+                  ''
+                ];
+              }
+
+              if (name === 'potencia_min' || name === 'Mínima') {
+                return [
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Mínima:</span>
+                    <span className="font-bold">{formatPower(value)}</span>
+                  </div>,
+                  ''
+                ];
+              }
+
+              return [formatPower(value), name];
             }}
           />
           <Legend />
@@ -160,8 +209,8 @@ export function InversorGraficoDia({ data, loading, height = 400 }: InversorGraf
               type="monotone"
               dataKey="potencia_max"
               stroke="none"
-              fill="hsl(217, 91%, 60%)"
-              fillOpacity={0.1}
+              fill="hsl(var(--muted))"
+              fillOpacity={0.3}
               name="Faixa de Variação"
             />
           )}
@@ -169,7 +218,7 @@ export function InversorGraficoDia({ data, loading, height = 400 }: InversorGraf
           <Line
             type="monotone"
             dataKey="potencia"
-            stroke="hsl(217, 91%, 60%)"
+            stroke="#6b7280"
             strokeWidth={2}
             dot={false}
             name="Potência Média"
@@ -181,7 +230,7 @@ export function InversorGraficoDia({ data, loading, height = 400 }: InversorGraf
             <Line
               type="monotone"
               dataKey="potencia_max"
-              stroke="hsl(142, 76%, 36%)"
+              stroke="#9ca3af"
               strokeWidth={1}
               strokeDasharray="3 3"
               dot={false}
@@ -193,7 +242,7 @@ export function InversorGraficoDia({ data, loading, height = 400 }: InversorGraf
             <Line
               type="monotone"
               dataKey="potencia_min"
-              stroke="hsl(0, 84%, 60%)"
+              stroke="#9ca3af"
               strokeWidth={1}
               strokeDasharray="3 3"
               dot={false}
