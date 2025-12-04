@@ -2,6 +2,7 @@ import { api } from '@/config/api';
 import {
   CreateUnidadeDto,
   UpdateUnidadeDto,
+  Unidade as UnidadeCompleta,
 } from '../features/unidades/types';
 import {
   UnidadeNexon,
@@ -20,11 +21,16 @@ class UnidadesService {
       const params = new URLSearchParams();
 
       if (filtros?.search) params.append('search', filtros.search);
+      if (filtros?.plantaId) params.append('plantaId', filtros.plantaId);
       if (filtros?.tipo) params.append('tipo', filtros.tipo);
       if (filtros?.status) params.append('status', filtros.status);
       if (filtros?.estado) params.append('estado', filtros.estado);
       if (filtros?.page) params.append('page', filtros.page.toString());
       if (filtros?.limit) params.append('limit', filtros.limit.toString());
+      if (filtros?.orderBy) params.append('orderBy', filtros.orderBy);
+      if (filtros?.orderDirection) params.append('orderDirection', filtros.orderDirection);
+
+      console.log('🔍 [UnidadesService] Enviando requisição com params:', params.toString());
 
       const response = await api.get(`${this.baseUrl}?${params.toString()}`);
 
@@ -254,4 +260,4 @@ export const deleteUnidade = (id: string) => unidadesService.excluirUnidade(id);
 export const getUnidadesByPlanta = (plantaId: string) => unidadesService.buscarUnidadesPorPlanta(plantaId);
 
 // ✅ TIPOS RE-EXPORTADOS
-export type { UnidadeNexon as Unidade, FilterUnidadeDto as UnidadeFilters };
+export type { UnidadeCompleta as Unidade, FilterUnidadeDto as UnidadeFilters };

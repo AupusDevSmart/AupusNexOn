@@ -83,6 +83,8 @@ export function useDadosDemanda(configuracao: ConfiguracaoDemanda, unidadeId?: s
 
       const equipamentosSelecionados = configuracao.equipamentos.filter(e => e.selecionado);
 
+      // console.log('🔍 [DEMANDA] Equipamentos selecionados:', equipamentosSelecionados.length);
+
       if (equipamentosSelecionados.length === 0) {
         return null;
       }
@@ -91,13 +93,23 @@ export function useDadosDemanda(configuracao: ConfiguracaoDemanda, unidadeId?: s
         // Buscar dados de cada equipamento selecionado
         const promises = equipamentosSelecionados.map(async (equip) => {
           try {
+            // console.log(`📊 [DEMANDA] Buscando dados do equipamento: ${equip.nome} (${equip.id})`);
             const response = await api.get(`/equipamentos-dados/${equip.id}/grafico-dia`);
+
+            // console.log(`📊 [DEMANDA] Resposta do equipamento ${equip.nome}:`, {
+            //   hasData: !!response.data,
+            //   hasDataData: !!response.data?.data,
+            //   hasDados: !!response.data?.dados,
+            //   dataDataLength: response.data?.data?.dados?.length,
+            //   dadosLength: response.data?.dados?.length
+            // });
 
             // A resposta vem em response.data.data quando encapsulada
             const responseData = response.data?.data || response.data;
 
             // Aceitar dados mesmo que a potência seja zero (inversores à noite, etc.)
             if (responseData && responseData.dados && responseData.dados.length > 0) {
+              // console.log(`✅ [DEMANDA] Equipamento ${equip.nome} retornou ${responseData.dados.length} pontos`);
               return {
                 id: equip.id,
                 tipo: equip.tipo,
@@ -106,15 +118,19 @@ export function useDadosDemanda(configuracao: ConfiguracaoDemanda, unidadeId?: s
                 dados: responseData.dados
               };
             }
+            // console.log(`⚠️ [DEMANDA] Equipamento ${equip.nome} sem dados válidos`);
             return null;
           } catch (error) {
             // Erro silencioso - equipamento sem dados
+            console.error(`❌ [DEMANDA] Erro ao buscar dados do equipamento ${equip.nome}:`, error);
             return null;
           }
         });
 
         const resultados = await Promise.all(promises);
-        return resultados.filter(r => r !== null);
+        const resultadosValidos = resultados.filter(r => r !== null);
+        // console.log(`📊 [DEMANDA] Total de equipamentos com dados: ${resultadosValidos.length}/${equipamentosSelecionados.length}`);
+        return resultadosValidos;
       } catch (error) {
         console.error('Erro ao buscar dados do agrupamento:', error);
         return null;
@@ -126,7 +142,13 @@ export function useDadosDemanda(configuracao: ConfiguracaoDemanda, unidadeId?: s
 
   // Processar dados do agrupamento
   const processarAgrupamento = useCallback((dadosEquipamentos: any[]) => {
+    // console.log('🔧 [DEMANDA] Processando agrupamento:', {
+    //   totalEquipamentos: dadosEquipamentos?.length || 0,
+    //   equipamentos: dadosEquipamentos?.map(e => ({ id: e.id, tipo: e.tipo, totalDados: e.dados?.length }))
+    // });
+
     if (!dadosEquipamentos || dadosEquipamentos.length === 0) {
+      // console.log('⚠️ [DEMANDA] Nenhum equipamento com dados para processar');
       return null;
     }
 
@@ -206,6 +228,13 @@ export function useDadosDemanda(configuracao: ConfiguracaoDemanda, unidadeId?: s
         ...d,
         potencia: d.potencia / 1000 // Converter de W para kW para o gráfico
       }));
+
+    // console.log('✅ [DEMANDA] Dados processados:', {
+    //   totalPontos: dadosProcessados.length,
+    //   primeiroTimestamp: dadosProcessados[0]?.timestamp,
+    //   ultimoTimestamp: dadosProcessados[dadosProcessados.length - 1]?.timestamp,
+    //   amostraPrimeiro: dadosProcessados[0]
+    // });
 
     // Aplicar fator de perdas se configurado
     if (configuracao.aplicarPerdas && configuracao.fatorPerdas > 0) {

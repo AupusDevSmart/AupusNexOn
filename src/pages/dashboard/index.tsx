@@ -13,9 +13,18 @@ import {
   RefreshCw,
   WifiOff,
   Clock,
-  Map,
   Loader2
 } from "lucide-react";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer
+} from "recharts";
 import { useCoaDashboard } from "@/features/coa/hooks/use-coa-dashboard";
 import { MapaCoa } from "@/features/coa/components/mapa-coa";
 import { Button } from "@/components/ui/button";
@@ -25,6 +34,31 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useNavigate } from "react-router-dom";
+
+// Dados mockados para gráfico de performance por região
+const performancePorRegiao = [
+  { regiao: "Sudeste", geracao: 75.8, meta: 80, eficiencia: 94.2 },
+  { regiao: "Nordeste", geracao: 68.4, meta: 70, eficiencia: 92.1 },
+  { regiao: "Centro-Oeste", geracao: 18.1, meta: 20, eficiencia: 93.2 },
+  { regiao: "Sul", geracao: 12.3, meta: 15, eficiencia: 89.7 },
+  { regiao: "Norte", geracao: 8.9, meta: 10, eficiencia: 91.4 },
+];
+
+// Dados mockados para cargas monitoradas
+const cargasMonitoradas = [
+  { nome: "Fábrica ABC", tipo: "Industrial", consumo: "12.3 MW", status: "Normal" },
+  { nome: "Shopping XYZ", tipo: "Comercial", consumo: "8.7 MW", status: "Normal" },
+  { nome: "Hospital Central", tipo: "Hospitalar", consumo: "5.2 MW", status: "Alerta" },
+  { nome: "Data Center Alpha", tipo: "Tecnologia", consumo: "9.5 MW", status: "Normal" },
+];
+
+// Dados mockados para eventos recentes
+const eventosRecentes = [
+  { mensagem: "UFV Bahia - Sistema em TRIP - Técnico despachado", hora: "11:15", tipo: "critico" },
+  { mensagem: "UFV São Paulo - Manutenção preventiva iniciada", hora: "10:30", tipo: "info" },
+  { mensagem: "UFV Ceará - Performance acima da meta por 48h consecutivas", hora: "09:45", tipo: "sucesso" },
+  { mensagem: "Subestação RJ Norte - Temperatura elevada detectada", hora: "08:22", tipo: "alerta" },
+];
 
 /**
  * Página COA (Centro de Operações Avançadas) com Dados Reais
@@ -303,113 +337,468 @@ export function DashboardPage() {
                 />
               </div>
 
-              {/* Mapa de Unidades */}
+              {/* Estatísticas Adicionais - Estilo COA Antigo */}
               {data && (
-                <Card>
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Map className="h-5 w-5 text-purple-500" />
-                        <CardTitle>Mapa dos Ativos</CardTitle>
-                      </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <Card className="p-6">
+                    <h4 className="text-sm font-medium text-muted-foreground mb-2">
+                      Eficiência Média
+                    </h4>
+                    <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+                      {metricas.eficienciaMedia.toFixed(1)}%
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      +2.3% em relação ao mês anterior
+                    </p>
+                  </Card>
 
-                      {data.plantas.reduce((acc, planta) =>
-                        acc + planta.unidades.filter(u => u.coordenadas).length, 0
-                      ) > 0 && (
-                        <Badge variant="outline">
-                          {data.plantas.reduce((acc, planta) =>
-                            acc + planta.unidades.filter(u => u.coordenadas).length, 0
-                          )} unidades mapeadas
-                        </Badge>
-                      )}
-                    </div>
-                  </CardHeader>
-                  <CardContent>
+                  <Card className="p-6">
+                    <h4 className="text-sm font-medium text-muted-foreground mb-2">
+                      Disponibilidade Média
+                    </h4>
+                    <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                      {((data.resumoGeral.unidadesOnline / data.resumoGeral.totalUnidades) * 100).toFixed(1)}%
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Dentro da meta estabelecida
+                    </p>
+                  </Card>
+
+                  <Card className="p-6">
+                    <h4 className="text-sm font-medium text-muted-foreground mb-2">
+                      Total Geração Hoje
+                    </h4>
+                    <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">
+                      {data.resumoGeral.totalGeracao.toFixed(1)} kW
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {((data.resumoGeral.totalGeracao / (data.resumoGeral.totalGeracao * 1.17)) * 100).toFixed(1)}% da capacidade total
+                    </p>
+                  </Card>
+                </div>
+              )}
+
+              {/* Layout: Mapa + Painel Lateral de Usinas */}
+              {data && (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                  {/* Mapa - 2/3 da largura */}
+                  <div className="lg:col-span-2">
                     <MapaCoa
                       unidades={data.plantas.flatMap(planta => planta.unidades)}
                       onUnidadeClick={(unidadeId) => {
                         console.log('Unidade clicada:', unidadeId);
-                        // Pode navegar para detalhes da unidade
-                        // navigate(`/unidades/${unidadeId}`);
+                        navigate(`/supervisorio/sinoptico-ativo/${unidadeId}`);
                       }}
                     />
-                  </CardContent>
-                </Card>
-              )}
+                  </div>
 
-              {/* Grid de Plantas */}
-              {data && data.plantas.length > 0 && (
-                <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-                  {data.plantas.map(planta => (
-                    <Card key={planta.id} className="hover:shadow-lg transition-all">
-                      <CardHeader className="pb-3">
-                        <div className="flex items-center justify-between">
-                          <CardTitle className="text-lg">{planta.nome}</CardTitle>
-                          <Badge variant={planta.totais.unidadesAtivas > 0 ? "success" : "secondary"}>
-                            {planta.totais.unidadesAtivas} ativas
-                          </Badge>
-                        </div>
-                        <p className="text-sm text-muted-foreground">{planta.cliente}</p>
+                  {/* Painel Lateral - Resumo Rápido */}
+                  <div className="lg:col-span-1 h-full">
+                    <Card className="h-full">
+                      <CardHeader>
+                        <CardTitle className="text-base">📊 Resumo Rápido</CardTitle>
                       </CardHeader>
-                      <CardContent className="space-y-4">
-                        {/* Métricas da Planta */}
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <p className="text-xs text-muted-foreground">Geração</p>
-                            <p className="text-xl font-semibold text-green-600">
-                              {planta.totais.geracao.toFixed(1)} kW
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-xs text-muted-foreground">Consumo</p>
-                            <p className="text-xl font-semibold text-blue-600">
-                              {planta.totais.consumo.toFixed(1)} kW
-                            </p>
-                          </div>
-                        </div>
-
-                        {/* Lista de Unidades */}
-                        <div className="space-y-2">
-                          <p className="text-sm font-medium">Unidades ({planta.unidades.length})</p>
-                          {planta.unidades.slice(0, 3).map(unidade => (
-                            <div key={unidade.id} className="flex items-center justify-between p-2 bg-muted/30 rounded">
-                              <div className="flex items-center gap-2">
-                                <div className={`h-2 w-2 rounded-full ${
-                                  unidade.status === 'ONLINE' ? 'bg-green-500' :
-                                  unidade.status === 'ALERTA' ? 'bg-yellow-500' :
-                                  'bg-gray-400'
-                                }`} />
-                                <span className="text-sm">{unidade.nome}</span>
-                              </div>
-                              <span className="text-xs text-muted-foreground">
-                                {unidade.metricas.potenciaAtual.toFixed(1)} kW
-                              </span>
+                      <CardContent>
+                        <div className="grid grid-cols-2 gap-3 text-xs">
+                          <div className="text-center p-2 bg-green-50 dark:bg-green-900/20 rounded border">
+                            <div className="font-bold text-green-600 text-lg">
+                              {data.resumoGeral.unidadesOnline}
                             </div>
-                          ))}
-                          {planta.unidades.length > 3 && (
-                            <p className="text-xs text-muted-foreground text-center">
-                              +{planta.unidades.length - 3} unidades
-                            </p>
-                          )}
+                            <div className="text-green-700 dark:text-green-400">Online</div>
+                          </div>
+                          <div className="text-center p-2 bg-yellow-50 dark:bg-yellow-900/20 rounded border">
+                            <div className="font-bold text-yellow-600 text-lg">
+                              {data.alertas.filter(a => a.severidade === 'warning').length}
+                            </div>
+                            <div className="text-yellow-700 dark:text-yellow-400">Alertas</div>
+                          </div>
+                          <div className="text-center p-2 bg-red-50 dark:bg-red-900/20 rounded border">
+                            <div className="font-bold text-red-600 text-lg">
+                              {data.alertas.filter(a => a.severidade === 'critical').length}
+                            </div>
+                            <div className="text-red-700 dark:text-red-400">Críticos</div>
+                          </div>
+                          <div className="text-center p-2 bg-blue-50 dark:bg-blue-900/20 rounded border">
+                            <div className="font-bold text-blue-600 text-lg">
+                              {data.resumoGeral.totalGeracao.toFixed(0)}
+                            </div>
+                            <div className="text-blue-700 dark:text-blue-400">kW Ativo</div>
+                          </div>
                         </div>
                       </CardContent>
                     </Card>
-                  ))}
+                  </div>
                 </div>
               )}
 
-              {/* Se não houver dados */}
-              {data && data.plantas.length === 0 && (
-                <Card>
-                  <CardContent className="flex flex-col items-center justify-center py-12">
-                    <WifiOff className="h-12 w-12 text-muted-foreground mb-4" />
-                    <p className="text-lg font-medium">Nenhuma planta encontrada</p>
-                    <p className="text-sm text-muted-foreground text-center mt-2">
-                      Verifique se há plantas cadastradas com equipamentos configurados
-                    </p>
-                  </CardContent>
-                </Card>
+
+              {/* Tabelas de Usinas e Cargas */}
+              {data && (
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                  {/* Tabela: USINAS FOTOVOLTAICAS */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-sm sm:text-base flex items-center gap-2">
+                        <span>☀️ USINAS FOTOVOLTAICAS</span>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+                        <table className="w-full text-xs min-w-[600px]">
+                          <thead>
+                            <tr className="border-b">
+                              <th className="text-left py-2 px-2 font-medium">Nome</th>
+                              <th className="text-center py-2 px-2 font-medium">Potência</th>
+                              <th className="text-center py-2 px-2 font-medium">Potência Inst.</th>
+                              <th className="text-center py-2 px-2 font-medium">FC</th>
+                              <th className="text-center py-2 px-2 font-medium">Clima</th>
+                              <th className="text-center py-2 px-2 font-medium">Status</th>
+                              <th className="text-center py-2 px-2 font-medium">Trip</th>
+                              <th className="text-center py-2 px-2 font-medium">Alarme</th>
+                              <th className="text-center py-2 px-2 font-medium">Update</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(() => {
+                              const todasUnidades = data.plantas.flatMap(planta => planta.unidades);
+                              // Filtrar UFVs: tipo === 'UFV'
+                              const ufvs = todasUnidades.filter(unidade => unidade.tipo === 'UFV');
+                              console.log('[Dashboard] UFVs filtradas:', ufvs.length, ufvs.map(u => ({ nome: u.nome, tipo: u.tipo })));
+
+                              if (ufvs.length === 0) {
+                                return (
+                                  <tr>
+                                    <td colSpan={9} className="text-center py-4 text-muted-foreground">
+                                      Nenhuma unidade UFV encontrada
+                                    </td>
+                                  </tr>
+                                );
+                              }
+
+                              return ufvs.map((unidade) => {
+                                const potenciaPercent = unidade.metricas.potenciaAtual > 0
+                                  ? Math.round((unidade.metricas.potenciaAtual / (unidade.metricas.potenciaAtual * 1.1)) * 100)
+                                  : 0;
+                                const fatorCarga = unidade.metricas.fatorPotencia || 0;
+                                const hasTrip = unidade.status === 'OFFLINE' || unidade.status === 'FALHA';
+                                const hasAlarme = unidade.status === 'ALERTA';
+
+                                return (
+                                  <tr
+                                    key={unidade.id}
+                                    className="border-b hover:bg-muted/30 cursor-pointer"
+                                    onClick={() => navigate(`/supervisorio/sinoptico-ativo/${unidade.id}`)}
+                                  >
+                                    <td className="py-2 px-2 font-medium">{unidade.nome}</td>
+                                    <td className="text-center py-2 px-2">
+                                      <div className="flex flex-col items-center gap-1">
+                                        <div className="flex items-center gap-2 w-full">
+                                          <span className="text-xs font-medium whitespace-nowrap">{potenciaPercent}%</span>
+                                          <div className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                                            <div
+                                              className={`h-full rounded-full transition-all ${
+                                                potenciaPercent >= 90 ? 'bg-green-500' :
+                                                potenciaPercent >= 70 ? 'bg-yellow-500' :
+                                                'bg-red-500'
+                                              }`}
+                                              style={{ width: `${Math.min(potenciaPercent, 100)}%` }}
+                                            />
+                                          </div>
+                                        </div>
+                                        <span className="text-xs text-muted-foreground">{unidade.metricas.potenciaAtual.toFixed(1)} MW</span>
+                                      </div>
+                                    </td>
+                                    <td className="text-center py-2 px-2">
+                                      <Badge variant="outline">0%</Badge>
+                                    </td>
+                                    <td className="text-center py-2 px-2">
+                                      <Badge variant="outline">{fatorCarga.toFixed(0)}</Badge>
+                                    </td>
+                                    <td className="text-center py-2 px-2">☀️</td>
+                                    <td className="text-center py-2 px-2">
+                                      <div className={`w-3 h-3 rounded-full mx-auto ${
+                                        unidade.status === 'ONLINE' ? 'bg-green-500' :
+                                        unidade.status === 'ALERTA' ? 'bg-yellow-500' :
+                                        'bg-red-500'
+                                      }`} />
+                                    </td>
+                                    <td className="text-center py-2 px-2">
+                                      <Badge variant={hasTrip ? "destructive" : "outline"}>
+                                        {hasTrip ? '1' : '0'}
+                                      </Badge>
+                                    </td>
+                                    <td className="text-center py-2 px-2">
+                                      <Badge variant={hasAlarme ? "warning" : "outline"}>
+                                        {hasAlarme ? '1' : '0'}
+                                      </Badge>
+                                    </td>
+                                    <td className="text-center py-2 px-2">
+                                      {unidade.ultimaLeitura
+                                        ? new Date(unidade.ultimaLeitura).toLocaleTimeString("pt-BR", {
+                                            hour: '2-digit',
+                                            minute: '2-digit'
+                                          })
+                                        : '--:--'}
+                                    </td>
+                                  </tr>
+                                );
+                              });
+                            })()}
+                          </tbody>
+                        </table>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Tabela: CARGAS MONITORADAS */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-sm sm:text-base flex items-center gap-2">
+                        <span>⚡ CARGAS MONITORADAS</span>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+                        <table className="w-full text-xs min-w-[600px]">
+                          <thead>
+                            <tr className="border-b">
+                              <th className="text-left py-2 px-2 font-medium">Nome</th>
+                              <th className="text-center py-2 px-2 font-medium">Consumo</th>
+                              <th className="text-center py-2 px-2 font-medium">Potência Inst.</th>
+                              <th className="text-center py-2 px-2 font-medium">FC</th>
+                              <th className="text-center py-2 px-2 font-medium">Clima</th>
+                              <th className="text-center py-2 px-2 font-medium">Status</th>
+                              <th className="text-center py-2 px-2 font-medium">Trip</th>
+                              <th className="text-center py-2 px-2 font-medium">Alarme</th>
+                              <th className="text-center py-2 px-2 font-medium">Update</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(() => {
+                              const todasUnidades = data.plantas.flatMap(planta => planta.unidades);
+                              // Filtrar CARGAS: tipo === 'Carga'
+                              const cargas = todasUnidades.filter(unidade => unidade.tipo === 'Carga');
+                              console.log('[Dashboard] Cargas filtradas:', cargas.length, cargas.map(u => ({ nome: u.nome, tipo: u.tipo })));
+
+                              if (cargas.length === 0) {
+                                return (
+                                  <tr>
+                                    <td colSpan={9} className="text-center py-4 text-muted-foreground">
+                                      Nenhuma carga encontrada
+                                    </td>
+                                  </tr>
+                                );
+                              }
+
+                              return cargas.map((unidade) => {
+                                const consumoPercent = unidade.metricas.potenciaAtual > 0
+                                  ? Math.round((unidade.metricas.potenciaAtual / (unidade.metricas.potenciaAtual * 1.1)) * 100)
+                                  : 0;
+                                const fatorCarga = unidade.metricas.fatorPotencia || 0;
+                                const hasTrip = unidade.status === 'OFFLINE' || unidade.status === 'FALHA';
+                                const hasAlarme = unidade.status === 'ALERTA';
+
+                                return (
+                                  <tr
+                                    key={unidade.id}
+                                    className="border-b hover:bg-muted/30 cursor-pointer"
+                                    onClick={() => navigate(`/supervisorio/sinoptico-ativo/${unidade.id}`)}
+                                  >
+                                    <td className="py-2 px-2 font-medium">{unidade.nome}</td>
+                                    <td className="text-center py-2 px-2">
+                                      <div className="flex flex-col items-center gap-1">
+                                        <div className="flex items-center gap-2 w-full">
+                                          <span className="text-xs font-medium whitespace-nowrap">{consumoPercent}%</span>
+                                          <div className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                                            <div
+                                              className={`h-full rounded-full transition-all ${
+                                                consumoPercent >= 90 ? 'bg-red-500' :
+                                                consumoPercent >= 70 ? 'bg-yellow-500' :
+                                                'bg-green-500'
+                                              }`}
+                                              style={{ width: `${Math.min(consumoPercent, 100)}%` }}
+                                            />
+                                          </div>
+                                        </div>
+                                        <span className="text-xs text-muted-foreground">{unidade.metricas.potenciaAtual.toFixed(1)} MW</span>
+                                      </div>
+                                    </td>
+                                    <td className="text-center py-2 px-2">
+                                      <Badge variant="outline">0%</Badge>
+                                    </td>
+                                    <td className="text-center py-2 px-2">
+                                      <Badge variant="outline">{fatorCarga.toFixed(0)}</Badge>
+                                    </td>
+                                    <td className="text-center py-2 px-2">⚡</td>
+                                    <td className="text-center py-2 px-2">
+                                      <div className={`w-3 h-3 rounded-full mx-auto ${
+                                        unidade.status === 'ONLINE' ? 'bg-green-500' :
+                                        unidade.status === 'ALERTA' ? 'bg-yellow-500' :
+                                        'bg-red-500'
+                                      }`} />
+                                    </td>
+                                    <td className="text-center py-2 px-2">
+                                      <Badge variant={hasTrip ? "destructive" : "outline"}>
+                                        {hasTrip ? '1' : '0'}
+                                      </Badge>
+                                    </td>
+                                    <td className="text-center py-2 px-2">
+                                      <Badge variant={hasAlarme ? "warning" : "outline"}>
+                                        {hasAlarme ? '1' : '0'}
+                                      </Badge>
+                                    </td>
+                                    <td className="text-center py-2 px-2">
+                                      {unidade.ultimaLeitura
+                                        ? new Date(unidade.ultimaLeitura).toLocaleTimeString("pt-BR", {
+                                            hour: '2-digit',
+                                            minute: '2-digit'
+                                          })
+                                        : '--:--'}
+                                    </td>
+                                  </tr>
+                                );
+                              });
+                            })()}
+                          </tbody>
+                        </table>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
               )}
+
+              {/* 1. Gráfico de Performance por Região */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Activity className="h-5 w-5 text-purple-500" />
+                    Performance por Região
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={280}>
+                    <BarChart data={performancePorRegiao}>
+                      <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                      <XAxis
+                        dataKey="regiao"
+                        fontSize={12}
+                        angle={-45}
+                        textAnchor="end"
+                        height={60}
+                      />
+                      <YAxis
+                        fontSize={12}
+                        label={{
+                          value: "MW",
+                          angle: -90,
+                          position: "insideLeft",
+                        }}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: "hsl(var(--background))",
+                          border: "1px solid hsl(var(--border))",
+                          borderRadius: "6px",
+                        }}
+                      />
+                      <Legend />
+                      <Bar
+                        dataKey="geracao"
+                        fill="#3b82f6"
+                        name="Geração Atual"
+                        radius={[4, 4, 0, 0]}
+                      />
+                      <Bar
+                        dataKey="meta"
+                        fill="#e5e7eb"
+                        name="Meta"
+                        radius={[4, 4, 0, 0]}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+
+              {/* 2. Tabela de Cargas Monitoradas */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Activity className="h-5 w-5 text-blue-500" />
+                    Cargas Monitoradas
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b">
+                          <th className="text-left py-2 px-2 text-sm font-medium">Nome</th>
+                          <th className="text-left py-2 px-2 text-sm font-medium">Tipo</th>
+                          <th className="text-right py-2 px-2 text-sm font-medium">Consumo</th>
+                          <th className="text-right py-2 px-2 text-sm font-medium">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {cargasMonitoradas.map((carga, index) => (
+                          <tr key={index} className="border-b hover:bg-muted/50 transition-colors">
+                            <td className="py-2 px-2 text-sm">{carga.nome}</td>
+                            <td className="py-2 px-2 text-sm text-muted-foreground">{carga.tipo}</td>
+                            <td className="text-right py-2 px-2 text-sm font-medium">{carga.consumo}</td>
+                            <td className="text-right py-2 px-2">
+                              <Badge
+                                variant="outline"
+                                className={
+                                  carga.status === "Normal"
+                                    ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
+                                    : "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400"
+                                }
+                              >
+                                {carga.status}
+                              </Badge>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* 3. Eventos Recentes */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Clock className="h-5 w-5 text-purple-500" />
+                    Eventos Recentes
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {eventosRecentes.map((evento, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center justify-between py-2 px-2 border-b hover:bg-muted/30 transition-colors rounded"
+                      >
+                        <div className="flex items-center gap-2">
+                          <div
+                            className={`w-2 h-2 rounded-full ${
+                              evento.tipo === "critico"
+                                ? "bg-red-500 animate-pulse"
+                                : evento.tipo === "alerta"
+                                ? "bg-yellow-500"
+                                : evento.tipo === "sucesso"
+                                ? "bg-green-500"
+                                : "bg-blue-500"
+                            }`}
+                          />
+                          <span className="text-sm">{evento.mensagem}</span>
+                        </div>
+                        <span className="text-xs text-muted-foreground">{evento.hora}</span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
 
               {/* Painel de Alertas */}
               {data && data.alertas.length > 0 && (

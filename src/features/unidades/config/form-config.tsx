@@ -10,6 +10,27 @@ import { Input } from '@/components/ui/input';
 import { ConcessionariaSelectField } from '../components/ConcessionariaSelectField';
 
 /**
+ * Componente para exibir Proprietário (read-only)
+ */
+const ProprietarioDisplay = ({ entity, mode }: FormFieldProps) => {
+  // Não mostrar em modo create
+  if (mode === 'create' || !entity?.planta?.proprietario) {
+    return null;
+  }
+
+  const proprietario = entity.planta.proprietario;
+
+  return (
+    <div className="w-full px-3 py-2 border border-border bg-muted rounded-md">
+      <div className="flex flex-col">
+        <span className="font-medium text-foreground">{proprietario.nome}</span>
+        <span className="text-sm text-muted-foreground">{proprietario.email}</span>
+      </div>
+    </div>
+  );
+};
+
+/**
  * Componente para seleção de Planta
  */
 const PlantaSelector = ({ value, onChange, disabled, mode }: FormFieldProps) => {
@@ -207,6 +228,13 @@ const PontosMedicaoManager = ({ value, onChange, disabled, mode }: FormFieldProp
  */
 export const unidadesFormFields: FormField[] = [
   {
+    key: 'proprietario',
+    label: 'Proprietário da Planta',
+    type: 'custom',
+    render: ProprietarioDisplay,
+    required: false,
+  },
+  {
     key: 'plantaId',
     label: 'Planta',
     type: 'custom',
@@ -222,15 +250,13 @@ export const unidadesFormFields: FormField[] = [
   },
   {
     key: 'tipo',
-    label: 'Tipo',
+    label: 'Tipo de Geração',
     type: 'select',
     required: true,
     options: [
       { value: TipoUnidade.UFV, label: 'UFV (Usina Fotovoltaica)' },
-      { value: TipoUnidade.Carga, label: 'Carga' },
-      { value: TipoUnidade.Motor, label: 'Motor' },
-      { value: TipoUnidade.Inversor, label: 'Inversor' },
-      { value: TipoUnidade.Transformador, label: 'Transformador' },
+      { value: TipoUnidade.PCH, label: 'PCH (Pequena Central Hidrelétrica)' },
+      { value: TipoUnidade.OUTRO, label: 'Outro' },
     ],
   },
   {
@@ -346,12 +372,13 @@ export const unidadesFormFields: FormField[] = [
   },
   {
     key: 'tipoUnidade',
-    label: 'Tipo de Unidade de Energia',
+    label: 'Classificação de Consumo',
     type: 'select',
     required: false,
     options: [
-      { value: TipoUnidadeEnergia.CARGA, label: 'Carga' },
-      { value: TipoUnidadeEnergia.GERACAO, label: 'Geração' },
+      { value: TipoUnidadeEnergia.CARGA, label: 'Carga (Apenas Consumo)' },
+      { value: TipoUnidadeEnergia.GERACAO, label: 'Geração (Apenas Produção)' },
+      { value: TipoUnidadeEnergia.CARGA_E_GERACAO, label: 'Carga e Geração (Consumo e Produção)' },
     ],
   },
   {
@@ -360,16 +387,22 @@ export const unidadesFormFields: FormField[] = [
     type: 'number',
     required: false,
     placeholder: 'Ex: 150.5',
-    conditionalRender: (formData: any) => {
-      return formData.tipoUnidade === TipoUnidadeEnergia.CARGA;
-    },
     validation: (value, formData: any) => {
-      if (formData?.tipoUnidade === TipoUnidadeEnergia.CARGA) {
-        if (!value) return 'Demanda de carga é obrigatória quando tipo é Carga';
+      const tipoUnidade = formData?.tipoUnidade;
+      if (value) {
         const num = parseFloat(value as string);
         if (isNaN(num) || num < 0) return 'Demanda de carga deve ser maior ou igual a zero';
       }
       return null;
+    },
+    helpText: (formData: any) => {
+      const tipo = formData?.tipoUnidade;
+      if (tipo === TipoUnidadeEnergia.CARGA) {
+        return 'Este campo é importante para unidades de Carga';
+      } else if (tipo === TipoUnidadeEnergia.CARGA_E_GERACAO) {
+        return 'Preencha este campo para unidades com Carga e Geração';
+      }
+      return 'Preencha se aplicável';
     },
   },
   {
@@ -378,16 +411,22 @@ export const unidadesFormFields: FormField[] = [
     type: 'number',
     required: false,
     placeholder: 'Ex: 200.0',
-    conditionalRender: (formData: any) => {
-      return formData.tipoUnidade === TipoUnidadeEnergia.GERACAO;
-    },
     validation: (value, formData: any) => {
-      if (formData?.tipoUnidade === TipoUnidadeEnergia.GERACAO) {
-        if (!value) return 'Demanda de geração é obrigatória quando tipo é Geração';
+      const tipoUnidade = formData?.tipoUnidade;
+      if (value) {
         const num = parseFloat(value as string);
         if (isNaN(num) || num < 0) return 'Demanda de geração deve ser maior ou igual a zero';
       }
       return null;
+    },
+    helpText: (formData: any) => {
+      const tipo = formData?.tipoUnidade;
+      if (tipo === TipoUnidadeEnergia.GERACAO) {
+        return 'Este campo é importante para unidades de Geração';
+      } else if (tipo === TipoUnidadeEnergia.CARGA_E_GERACAO) {
+        return 'Preencha este campo para unidades com Carga e Geração';
+      }
+      return 'Preencha se aplicável';
     },
   },
   {

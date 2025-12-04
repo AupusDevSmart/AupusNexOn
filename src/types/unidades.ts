@@ -55,8 +55,11 @@ export interface FilterUnidadeDto {
   tipo?: TipoUnidadeNexon;
   status?: StatusUnidadeNexon;
   estado?: string;
+  plantaId?: string;
   page?: number;
   limit?: number;
+  orderBy?: string;
+  orderDirection?: 'asc' | 'desc';
 }
 
 // Resposta paginada

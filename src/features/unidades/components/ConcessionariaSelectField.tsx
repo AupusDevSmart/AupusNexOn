@@ -107,12 +107,11 @@ export function ConcessionariaSelectField({
     console.log('🔑 [ConcessionariaSelect] newValue recebido:', newValue);
     console.log('🔍 [ConcessionariaSelect] Tipo:', typeof newValue);
 
-    // ✅ CORREÇÃO CRÍTICA: Concessionária é OBRIGATÓRIA
-    // Radix Select envia "" quando usuário clica no item já selecionado (toggle off)
-    // PREVENIR desseleção - manter o valor atual
-    if (!newValue || newValue.trim() === '') {
-      console.log('⚠️ [ConcessionariaSelect] Tentativa de desselecionar BLOQUEADA (campo obrigatório)');
-      return; // ❌ NÃO permitir desselecionar
+    // Permitir limpar o campo (concessionária é opcional)
+    if (newValue === '__clear__') {
+      console.log('ℹ️ [ConcessionariaSelect] Limpando concessionária (campo opcional)');
+      onChange?.(undefined as any); // Enviar undefined para limpar
+      return;
     }
 
     console.log('✅ [ConcessionariaSelect] Novo valor válido:', newValue);
@@ -141,6 +140,11 @@ export function ConcessionariaSelectField({
         />
       </SelectTrigger>
       <SelectContent>
+        {value && (
+          <SelectItem value="__clear__">
+            <span className="text-muted-foreground italic">-- Limpar seleção --</span>
+          </SelectItem>
+        )}
         {concessionarias.map((concessionaria) => (
           <SelectItem key={concessionaria.id} value={concessionaria.id?.trim() || concessionaria.id}>
             {concessionaria.nome} ({concessionaria.estado})

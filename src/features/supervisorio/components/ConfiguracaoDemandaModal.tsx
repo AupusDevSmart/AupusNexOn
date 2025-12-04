@@ -71,12 +71,12 @@ export function ConfiguracaoDemandaModal({
 
   // Debug log
   useEffect(() => {
-    console.log('🎯 Modal ConfiguracaoDemanda:');
-    console.log('  - open:', open);
-    console.log('  - equipamentosDisponiveis:', equipamentosDisponiveis);
-    console.log('  - equipamentosDisponiveis length:', equipamentosDisponiveis?.length);
-    console.log('  - configuracao.equipamentos:', configuracao.equipamentos);
-    console.log('  - config.equipamentos:', config.equipamentos);
+    // console.log('🎯 Modal ConfiguracaoDemanda:');
+    // console.log('  - open:', open);
+    // console.log('  - equipamentosDisponiveis:', equipamentosDisponiveis);
+    // console.log('  - equipamentosDisponiveis length:', equipamentosDisponiveis?.length);
+    // console.log('  - configuracao.equipamentos:', configuracao.equipamentos);
+    // console.log('  - config.equipamentos:', config.equipamentos);
   }, [open, equipamentosDisponiveis]);
 
   useEffect(() => {

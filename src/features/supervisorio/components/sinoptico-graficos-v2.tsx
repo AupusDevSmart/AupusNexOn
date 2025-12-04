@@ -6,6 +6,7 @@ import { DadosGrafico } from "@/types/dtos/sinoptico-ativo";
 import { Activity, Settings, TrendingUp, Zap, AlertTriangle, CheckCircle, Loader2 } from "lucide-react";
 import { useState, useEffect, useMemo } from "react";
 import {
+  Brush,
   CartesianGrid,
   Legend,
   Line,
@@ -366,11 +367,18 @@ export function SinopticoGraficosV2({
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
               <p className="text-sm text-muted-foreground">Carregando dados do gráfico...</p>
             </div>
+          ) : dadosFormatadosPotencia.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-[300px] space-y-3">
+              <AlertTriangle className="h-8 w-8 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">
+                {detalhes?.formula || 'Nenhum dado disponível. Configure os equipamentos no botão de configuração.'}
+              </p>
+            </div>
           ) : (
-          <ResponsiveContainer width="100%" height={300}>
+          <ResponsiveContainer width="100%" height={350}>
             <LineChart data={dadosFormatadosPotencia}>
               <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-              <XAxis dataKey="hora" fontSize={12} interval="preserveStartEnd" />
+              <XAxis dataKey="hora" fontSize={12} />
               <YAxis
                 fontSize={12}
                 label={{
@@ -383,6 +391,15 @@ export function SinopticoGraficosV2({
               <Legend
                 wrapperStyle={{ fontSize: '12px' }}
                 iconType="line"
+              />
+
+              {/* Brush para zoom e navegação */}
+              <Brush
+                dataKey="hora"
+                height={30}
+                stroke="#8884d8"
+                fill="hsl(var(--muted))"
+                travellerWidth={10}
               />
 
               {/* Linha 1: Demanda Real (Potência) */}
@@ -444,8 +461,7 @@ export function SinopticoGraficosV2({
         </CardContent>
       </Card>
 
-      {/* Gráficos de Tensão e Fator de Potência - Comentados temporariamente */}
-      {/*
+      {/* Gráficos de Tensão e Fator de Potência */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -457,10 +473,10 @@ export function SinopticoGraficosV2({
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <ResponsiveContainer width="100%" height={250}>
+          <ResponsiveContainer width="100%" height={300}>
             <LineChart data={dadosFormatadosTensao}>
               <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-              <XAxis dataKey="hora" fontSize={12} interval="preserveStartEnd" />
+              <XAxis dataKey="hora" fontSize={12} />
               <YAxis
                 fontSize={12}
                 domain={["dataMin - 5", "dataMax + 5"]}
@@ -471,9 +487,24 @@ export function SinopticoGraficosV2({
                 }}
               />
               <Tooltip content={<CustomTooltip />} />
+              <Legend
+                wrapperStyle={{ fontSize: '12px' }}
+                iconType="line"
+              />
+
+              {/* Brush para zoom e navegação */}
+              <Brush
+                dataKey="hora"
+                height={30}
+                stroke="#3b82f6"
+                fill="hsl(var(--muted))"
+                travellerWidth={10}
+              />
+
               <Line
                 type="monotone"
                 dataKey="tensao"
+                name="Tensão (V)"
                 stroke="#3b82f6"
                 strokeWidth={2}
                 dot={false}
@@ -495,10 +526,10 @@ export function SinopticoGraficosV2({
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <ResponsiveContainer width="100%" height={250}>
+          <ResponsiveContainer width="100%" height={300}>
             <LineChart data={dados}>
               <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-              <XAxis dataKey="hora" fontSize={12} interval="preserveStartEnd" />
+              <XAxis dataKey="hora" fontSize={12} />
               <YAxis
                 fontSize={12}
                 domain={[0.75, 1.0]}
@@ -512,6 +543,15 @@ export function SinopticoGraficosV2({
               <Legend
                 wrapperStyle={{ fontSize: '12px' }}
                 iconType="line"
+              />
+
+              {/* Brush para zoom e navegação */}
+              <Brush
+                dataKey="hora"
+                height={30}
+                stroke="#8b5cf6"
+                fill="hsl(var(--muted))"
+                travellerWidth={10}
               />
 
               <Line
@@ -537,7 +577,6 @@ export function SinopticoGraficosV2({
           </ResponsiveContainer>
         </CardContent>
       </Card>
-      */}
 
       {/* Modal de Configuração */}
       <ConfiguracaoDemandaModal

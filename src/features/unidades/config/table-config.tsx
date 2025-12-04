@@ -5,6 +5,7 @@ import {
   MapPin,
   Calendar,
   Building2,
+  Droplets,
 } from 'lucide-react';
 import { TableColumn } from '@/types/base';
 import type { Unidade } from '../types';
@@ -15,14 +16,14 @@ export const unidadesTableColumns: TableColumn<Unidade>[] = [
     label: 'Unidade',
     sortable: true,
     render: (unidade) => (
-      <div className="space-y-1">
+      <div className="space-y-1 min-w-0">
         <div className="flex items-center gap-2 font-medium text-foreground">
-          <Factory className="h-4 w-4 text-blue-600" />
-          <span className="truncate max-w-48" title={unidade.nome}>
+          <Factory className="h-4 w-4 text-blue-600 shrink-0" />
+          <span className="truncate" title={unidade.nome}>
             {unidade.nome}
           </span>
         </div>
-        <div className="text-xs text-muted-foreground">
+        <div className="text-xs text-muted-foreground truncate">
           {unidade.tipo}
           {unidade.potencia && ` • ${unidade.potencia} kW`}
         </div>
@@ -33,24 +34,17 @@ export const unidadesTableColumns: TableColumn<Unidade>[] = [
     key: 'planta',
     label: 'Planta',
     render: (unidade) => (
-      <div className="space-y-1">
+      <div className="flex items-center gap-2">
         {unidade.planta ? (
           <>
-            <div className="flex items-center gap-2">
-              <Building2 className="h-3 w-3 text-muted-foreground" />
-              <span className="text-sm truncate block max-w-40" title={unidade.planta.nome}>
-                {unidade.planta.nome}
-              </span>
-            </div>
-            {unidade.planta.localizacao && (
-              <div className="text-xs text-muted-foreground truncate" title={unidade.planta.localizacao}>
-                {unidade.planta.localizacao}
-              </div>
-            )}
+            <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
+            <span className="text-sm font-medium truncate" title={unidade.planta.nome}>
+              {unidade.planta.nome}
+            </span>
           </>
         ) : (
-          <span className="text-sm text-muted-foreground">
-            Planta não informada
+          <span className="text-sm text-muted-foreground italic">
+            Não informada
           </span>
         )}
       </div>
@@ -59,23 +53,24 @@ export const unidadesTableColumns: TableColumn<Unidade>[] = [
   {
     key: 'localizacao',
     label: 'Localização',
+    hideOnMobile: true,
     render: (unidade) => (
-      <div className="space-y-1">
+      <div className="space-y-1 min-w-0">
         {unidade.cidade && unidade.estado ? (
           <>
             <div className="flex items-center gap-2">
-              <MapPin className="h-3 w-3 text-muted-foreground" />
-              <span className="text-sm">
+              <MapPin className="h-4 w-4 text-muted-foreground shrink-0" />
+              <span className="text-sm font-medium truncate">
                 {unidade.cidade}/{unidade.estado}
               </span>
             </div>
-            <div className="text-xs text-muted-foreground">
-              Lat: {unidade.latitude.toFixed(4)}, Lng: {unidade.longitude.toFixed(4)}
+            <div className="text-xs text-muted-foreground truncate">
+              {unidade.latitude.toFixed(4)}, {unidade.longitude.toFixed(4)}
             </div>
           </>
         ) : (
-          <span className="text-sm text-muted-foreground">
-            Localização não informada
+          <span className="text-sm text-muted-foreground italic">
+            Não informada
           </span>
         )}
       </div>
@@ -86,25 +81,23 @@ export const unidadesTableColumns: TableColumn<Unidade>[] = [
     label: 'Energia',
     hideOnMobile: true,
     render: (unidade) => (
-      <div className="space-y-1">
-        {unidade.tipoUnidade && (
-          <div className="text-sm font-medium">
+      <div className="space-y-1 min-w-0">
+        {unidade.tipoUnidade ? (
+          <div className="text-sm font-medium text-foreground truncate">
             {unidade.tipoUnidade}
           </div>
+        ) : (
+          <div className="text-sm text-muted-foreground italic">-</div>
         )}
-        {unidade.demandaCarga && (
-          <div className="text-xs text-muted-foreground">
-            Carga: {unidade.demandaCarga} kW
-          </div>
-        )}
-        {unidade.demandaGeracao && (
-          <div className="text-xs text-muted-foreground">
-            Geração: {unidade.demandaGeracao} kW
+        {(unidade.demandaCarga || unidade.demandaGeracao) && (
+          <div className="text-xs text-muted-foreground space-y-0.5">
+            {unidade.demandaCarga && <div>↓ {unidade.demandaCarga} kW</div>}
+            {unidade.demandaGeracao && <div>↑ {unidade.demandaGeracao} kW</div>}
           </div>
         )}
         {unidade.grupo && (
-          <div className="text-xs text-muted-foreground">
-            Grupo {unidade.grupo} {unidade.subgrupo && `- ${unidade.subgrupo}`}
+          <div className="text-xs text-muted-foreground truncate">
+            {unidade.grupo}{unidade.subgrupo && ` • ${unidade.subgrupo}`}
           </div>
         )}
       </div>
@@ -124,8 +117,9 @@ export const unidadesTableColumns: TableColumn<Unidade>[] = [
           {unidade.status === 'ativo' ? '✓ Ativo' : '✗ Inativo'}
         </div>
         {unidade.irrigante && (
-          <div className="text-xs text-blue-600">
-            💧 Irrigante
+          <div className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400">
+            <Droplets className="h-3 w-3" />
+            <span>Irrigante</span>
           </div>
         )}
       </div>

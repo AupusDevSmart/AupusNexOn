@@ -114,9 +114,9 @@ class DiagramasServiceClass {
    */
   async getDiagrama(diagramaId: string): Promise<Diagrama> {
     try {
-      console.log(`📡 [DiagramasService] GET /diagramas/${diagramaId}`);
+      // console.log(`📡 [DiagramasService] GET /diagramas/${diagramaId}`);
       const response = await api.get(`/diagramas/${diagramaId}`);
-      console.log('✅ [DiagramasService] Diagrama fetched:', response.data?.data?.nome || response.data?.nome);
+      // console.log('✅ [DiagramasService] Diagrama fetched:', response.data?.data?.nome || response.data?.nome);
       // Backend retorna { success, data, meta } ou diretamente os dados
       return response.data?.data || response.data;
     } catch (error: any) {
@@ -130,10 +130,10 @@ class DiagramasServiceClass {
    */
   async getDiagramasByUnidade(unidadeId: string): Promise<Diagrama[]> {
     try {
-      console.log(`📡 [DiagramasService] GET /unidades/${unidadeId}/diagramas`);
+      // console.log(`📡 [DiagramasService] GET /unidades/${unidadeId}/diagramas`);
       const response = await api.get(`/unidades/${unidadeId}/diagramas`);
       const diagramas = response.data?.data || response.data || [];
-      console.log('✅ [DiagramasService] Fetched', diagramas.length, 'diagramas');
+      // console.log('✅ [DiagramasService] Fetched', diagramas.length, 'diagramas');
       return Array.isArray(diagramas) ? diagramas : [];
     } catch (error: any) {
       console.error(`❌ [DiagramasService] Error fetching diagramas for unidade ${unidadeId}:`, error);
@@ -146,10 +146,10 @@ class DiagramasServiceClass {
    */
   async getActiveDiagrama(unidadeId: string): Promise<Diagrama | null> {
     try {
-      console.log(`📡 [DiagramasService] GET /unidades/${unidadeId}/diagramas (ativo)`);
+      // console.log(`📡 [DiagramasService] GET /unidades/${unidadeId}/diagramas (ativo)`);
       const diagramas = await this.getDiagramasByUnidade(unidadeId);
       const ativo = diagramas.find(d => d.ativo === true);
-      console.log('✅ [DiagramasService] Active diagrama:', ativo?.nome || 'none');
+      // console.log('✅ [DiagramasService] Active diagrama:', ativo?.nome || 'none');
       return ativo || null;
     } catch (error: any) {
       console.error(`❌ [DiagramasService] Error fetching active diagrama:`, error);
@@ -162,9 +162,9 @@ class DiagramasServiceClass {
    */
   async createDiagrama(dto: CreateDiagramaDto): Promise<Diagrama> {
     try {
-      console.log('📡 [DiagramasService] POST /diagramas', dto);
+      // console.log('📡 [DiagramasService] POST /diagramas', dto);
       const response = await api.post('/diagramas', dto);
-      console.log('✅ [DiagramasService] Diagrama created:', response.data?.data?.id);
+      // console.log('✅ [DiagramasService] Diagrama created:', response.data?.data?.id);
       return response.data.data; // Backend retorna { success, data, meta }
     } catch (error: any) {
       console.error('❌ [DiagramasService] Error creating diagrama:', error);
@@ -177,9 +177,9 @@ class DiagramasServiceClass {
    */
   async updateDiagrama(diagramaId: string, dto: UpdateDiagramaDto): Promise<Diagrama> {
     try {
-      console.log(`📡 [DiagramasService] PATCH /diagramas/${diagramaId}`, dto);
+      // console.log(`📡 [DiagramasService] PATCH /diagramas/${diagramaId}`, dto);
       const response = await api.patch(`/diagramas/${diagramaId}`, dto);
-      console.log('✅ [DiagramasService] Diagrama updated:', response.data?.id);
+      // console.log('✅ [DiagramasService] Diagrama updated:', response.data?.id);
       return response.data;
     } catch (error: any) {
       console.error(`❌ [DiagramasService] Error updating diagrama ${diagramaId}:`, error);
@@ -192,9 +192,9 @@ class DiagramasServiceClass {
    */
   async deleteDiagrama(diagramaId: string): Promise<void> {
     try {
-      console.log(`📡 [DiagramasService] DELETE /diagramas/${diagramaId}`);
+      // console.log(`📡 [DiagramasService] DELETE /diagramas/${diagramaId}`);
       await api.delete(`/diagramas/${diagramaId}`);
-      console.log('✅ [DiagramasService] Diagrama deleted:', diagramaId);
+      // console.log('✅ [DiagramasService] Diagrama deleted:', diagramaId);
     } catch (error: any) {
       console.error(`❌ [DiagramasService] Error deleting diagrama ${diagramaId}:`, error);
       throw new Error(error.response?.data?.message || 'Erro ao excluir diagrama');
@@ -206,9 +206,9 @@ class DiagramasServiceClass {
    */
   async addEquipamento(diagramaId: string, dto: AddEquipamentoToDiagramaDto): Promise<DiagramaEquipamento> {
     try {
-      console.log(`📡 [DiagramasService] POST /diagramas/${diagramaId}/equipamentos`, dto);
+      // console.log(`📡 [DiagramasService] POST /diagramas/${diagramaId}/equipamentos`, dto);
       const response = await api.post(`/diagramas/${diagramaId}/equipamentos`, dto);
-      console.log('✅ [DiagramasService] Equipamento added to diagrama');
+      // console.log('✅ [DiagramasService] Equipamento added to diagrama');
       return response.data;
     } catch (error: any) {
       console.error(`❌ [DiagramasService] Error adding equipamento to diagrama:`, error);
@@ -225,9 +225,9 @@ class DiagramasServiceClass {
     dto: UpdateEquipamentoPosicaoDto
   ): Promise<DiagramaEquipamento> {
     try {
-      console.log(`📡 [DiagramasService] PATCH /diagramas/${diagramaId}/equipamentos/${equipamentoId}`, dto);
+      // console.log(`📡 [DiagramasService] PATCH /diagramas/${diagramaId}/equipamentos/${equipamentoId}`, dto);
       const response = await api.patch(`/diagramas/${diagramaId}/equipamentos/${equipamentoId}`, dto);
-      console.log('✅ [DiagramasService] Equipamento position updated');
+      // console.log('✅ [DiagramasService] Equipamento position updated');
       return response.data;
     } catch (error: any) {
       console.error(`❌ [DiagramasService] Error updating equipamento position:`, error);
@@ -240,9 +240,9 @@ class DiagramasServiceClass {
    */
   async removeEquipamento(diagramaId: string, equipamentoId: string): Promise<void> {
     try {
-      console.log(`📡 [DiagramasService] DELETE /diagramas/${diagramaId}/equipamentos/${equipamentoId}`);
+      // console.log(`📡 [DiagramasService] DELETE /diagramas/${diagramaId}/equipamentos/${equipamentoId}`);
       await api.delete(`/diagramas/${diagramaId}/equipamentos/${equipamentoId}`);
-      console.log('✅ [DiagramasService] Equipamento removed from diagrama');
+      // console.log('✅ [DiagramasService] Equipamento removed from diagrama');
     } catch (error: any) {
       console.error(`❌ [DiagramasService] Error removing equipamento:`, error);
       throw new Error(error.response?.data?.message || 'Erro ao remover equipamento');
@@ -254,9 +254,9 @@ class DiagramasServiceClass {
    */
   async createConexao(diagramaId: string, dto: CreateConexaoDto): Promise<DiagramaConexao> {
     try {
-      console.log(`📡 [DiagramasService] POST /diagramas/${diagramaId}/conexoes`, dto);
+      // console.log(`📡 [DiagramasService] POST /diagramas/${diagramaId}/conexoes`, dto);
       const response = await api.post(`/diagramas/${diagramaId}/conexoes`, dto);
-      console.log('✅ [DiagramasService] Connection created');
+      // console.log('✅ [DiagramasService] Connection created');
       return response.data;
     } catch (error: any) {
       console.error(`❌ [DiagramasService] Error creating connection:`, error);
@@ -269,9 +269,9 @@ class DiagramasServiceClass {
    */
   async deleteConexao(diagramaId: string, conexaoId: string): Promise<void> {
     try {
-      console.log(`📡 [DiagramasService] DELETE /diagramas/${diagramaId}/conexoes/${conexaoId}`);
+      // console.log(`📡 [DiagramasService] DELETE /diagramas/${diagramaId}/conexoes/${conexaoId}`);
       await api.delete(`/diagramas/${diagramaId}/conexoes/${conexaoId}`);
-      console.log('✅ [DiagramasService] Connection deleted');
+      // console.log('✅ [DiagramasService] Connection deleted');
     } catch (error: any) {
       console.error(`❌ [DiagramasService] Error deleting connection:`, error);
       throw new Error(error.response?.data?.message || 'Erro ao excluir conexão');
@@ -283,9 +283,9 @@ class DiagramasServiceClass {
    */
   async activateDiagrama(diagramaId: string): Promise<Diagrama> {
     try {
-      console.log(`📡 [DiagramasService] POST /diagramas/${diagramaId}/ativar`);
+      // console.log(`📡 [DiagramasService] POST /diagramas/${diagramaId}/ativar`);
       const response = await api.post(`/diagramas/${diagramaId}/ativar`);
-      console.log('✅ [DiagramasService] Diagrama activated');
+      // console.log('✅ [DiagramasService] Diagrama activated');
       return response.data;
     } catch (error: any) {
       console.error(`❌ [DiagramasService] Error activating diagrama:`, error);
@@ -298,12 +298,12 @@ class DiagramasServiceClass {
    */
   async addEquipamentosBulk(diagramaId: string, equipamentos: AddEquipamentoToDiagramaDto[]): Promise<any> {
     try {
-      console.log(`📡 [DiagramasService] POST /diagramas/${diagramaId}/equipamentos/bulk`);
-      console.log(`   📦 Adding ${equipamentos.length} equipamentos`);
+      // console.log(`📡 [DiagramasService] POST /diagramas/${diagramaId}/equipamentos/bulk`);
+      // console.log(`   📦 Adding ${equipamentos.length} equipamentos`);
       const response = await api.post(`/diagramas/${diagramaId}/equipamentos/bulk`, {
         equipamentos,
       });
-      console.log('✅ [DiagramasService] Bulk equipamentos added:', response.data);
+      // console.log('✅ [DiagramasService] Bulk equipamentos added:', response.data);
       return response.data;
     } catch (error: any) {
       console.error(`❌ [DiagramasService] Error adding bulk equipamentos:`, error);
@@ -316,12 +316,12 @@ class DiagramasServiceClass {
    */
   async createConexoesBulk(diagramaId: string, conexoes: CreateConexaoDto[]): Promise<any> {
     try {
-      console.log(`📡 [DiagramasService] POST /diagramas/${diagramaId}/conexoes/bulk`);
-      console.log(`   🔗 Creating ${conexoes.length} conexões`);
+      // console.log(`📡 [DiagramasService] POST /diagramas/${diagramaId}/conexoes/bulk`);
+      // console.log(`   🔗 Creating ${conexoes.length} conexões`);
       const response = await api.post(`/diagramas/${diagramaId}/conexoes/bulk`, {
         conexoes,
       });
-      console.log('✅ [DiagramasService] Bulk conexões created:', response.data);
+      // console.log('✅ [DiagramasService] Bulk conexões created:', response.data);
       return response.data;
     } catch (error: any) {
       console.error(`❌ [DiagramasService] Error creating bulk conexões:`, error);
@@ -334,9 +334,9 @@ class DiagramasServiceClass {
    */
   async removeAllConnections(diagramaId: string): Promise<any> {
     try {
-      console.log(`📡 [DiagramasService] DELETE /diagramas/${diagramaId}/conexoes`);
+      // console.log(`📡 [DiagramasService] DELETE /diagramas/${diagramaId}/conexoes`);
       const response = await api.delete(`/diagramas/${diagramaId}/conexoes`);
-      console.log('✅ [DiagramasService] All connections removed:', response.data);
+      // console.log('✅ [DiagramasService] All connections removed:', response.data);
       return response.data;
     } catch (error: any) {
       console.error(`❌ [DiagramasService] Error removing all connections:`, error);
@@ -350,9 +350,9 @@ class DiagramasServiceClass {
    */
   async removeAllEquipamentos(diagramaId: string): Promise<any> {
     try {
-      console.log(`📡 [DiagramasService] DELETE /diagramas/${diagramaId}/equipamentos (REMOVE ALL - Immutability Pattern)`);
+      // console.log(`📡 [DiagramasService] DELETE /diagramas/${diagramaId}/equipamentos (REMOVE ALL - Immutability Pattern)`);
       const response = await api.delete(`/diagramas/${diagramaId}/equipamentos`);
-      console.log('✅ [DiagramasService] All equipamentos removed:', response.data);
+      // console.log('✅ [DiagramasService] All equipamentos removed:', response.data);
       return response.data;
     } catch (error: any) {
       console.error(`❌ [DiagramasService] Error removing all equipamentos:`, error);

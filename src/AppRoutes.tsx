@@ -56,6 +56,13 @@ const SinopticoPage = lazy(() =>
   }))
 );
 
+// ✅ COA Antigo (Layout Original com Mock)
+const CoaAntigoPage = lazy(() =>
+  import("@/pages/supervisorio/coa-com-mock-completo").then((module) => ({
+    default: module.COAPage,
+  }))
+);
+
 // ✅ Lazy load para Cadastros
 const CadastroUsuariosPage = lazy(() =>
   import("@/pages/cadastros/usuarios")
@@ -234,6 +241,16 @@ export const appRoutes = createBrowserRouter([
           <FeatureWrapper feature="supervisorio">
             <Suspense fallback={<div>Carregando...</div>}>
               <DemoMqttPage />
+            </Suspense>
+          </FeatureWrapper>
+        ),
+      },
+      {
+        path: "coa-antigo",
+        element: (
+          <FeatureWrapper feature="Dashboard">
+            <Suspense fallback={<div>Carregando...</div>}>
+              <CoaAntigoPage />
             </Suspense>
           </FeatureWrapper>
         ),

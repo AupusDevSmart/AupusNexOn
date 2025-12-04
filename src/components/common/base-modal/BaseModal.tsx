@@ -153,7 +153,7 @@ export function BaseModal<T extends BaseEntity>({
 
     if (entity && (isViewMode || isEditMode)) {
       console.log('📖 BaseModal: Modo view/edit, carregando entity:', entity);
-      console.log('🔑 BaseModal: entity.concessionariaId ANTES normalização:', entity.concessionariaId);
+      console.log('🔑 BaseModal: entity.concessionariaId ANTES normalização:', (entity as any).concessionariaId);
       // ✅ CORREÇÃO: Normalizar entity para converter strings vazias em undefined
       initialData = normalizeEntityData(entity);
       console.log('✨ BaseModal: Entity normalizada:', initialData);

@@ -6,12 +6,7 @@ import {
   Factory,
   AlertCircle,
   CheckCircle,
-  Trash2,
-  MapPin,
-  Home,
-  Zap,
-  Activity,
-  Power
+  Trash2
 } from 'lucide-react';
 import { ModalMode, UnidadeFormData, Unidade } from '../types';
 import { unidadesFormFields } from '../config/form-config';
@@ -155,22 +150,27 @@ export function UnidadeModal({
   const formGroups = [
     {
       key: 'informacoes_basicas',
-      title: 'Informações Básicas',
-      fields: ['nome', 'tipo', 'plantaId', 'status', 'potencia']
-    },
-    {
-      key: 'endereco',
-      title: 'Endereço',
-      fields: ['cep', 'logradouro', 'numero', 'complemento', 'bairro', 'cidade', 'estado']
+      title: 'Informações Gerais',
+      fields: ['proprietario', 'plantaId', 'nome', 'tipo', 'potencia', 'status']
     },
     {
       key: 'localizacao',
       title: 'Localização',
-      fields: ['latitude', 'longitude']
+      fields: ['estado', 'cidade', 'latitude', 'longitude']
+    },
+    {
+      key: 'energia',
+      title: 'Configurações de Energia',
+      fields: ['tipoUnidade', 'demandaCarga', 'demandaGeracao', 'concessionariaId']
+    },
+    {
+      key: 'tarifacao',
+      title: 'Tarifação',
+      fields: ['irrigante', 'grupo', 'subgrupo']
     },
     {
       key: 'medicao',
-      title: 'Medição',
+      title: 'Pontos de Medição',
       fields: ['pontosMedicao']
     }
   ];
@@ -232,173 +232,56 @@ export function UnidadeModal({
 
       {/* BOTÃO DE DELETAR - Apenas no modo de edição */}
       {isEditMode && unidade && (
-        <div className="mb-4 p-4 border border-red-200 dark:border-red-800 rounded-lg bg-red-50 dark:bg-red-950">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-            <div className="flex-1">
-              <h4 className="font-medium text-red-900 dark:text-red-100 flex items-center gap-2">
-                <AlertCircle className="h-4 w-4" />
-                Zona de Perigo
-              </h4>
-              <p className="text-xs md:text-sm text-red-700 dark:text-red-300 mt-1">
-                Deletar permanentemente esta unidade do sistema
-              </p>
-            </div>
-            <Button
-              type="button"
-              variant="destructive"
-              size="sm"
-              onClick={() => setShowDeleteDialog(true)}
-              disabled={isDeleting}
-              className="w-full sm:w-auto"
-            >
-              <Trash2 className="h-4 w-4 mr-2" />
-              {isDeleting ? 'Deletando...' : 'Deletar Unidade'}
-            </Button>
-          </div>
+        <div className="mb-4 flex justify-end">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowDeleteDialog(true)}
+            disabled={isDeleting}
+            className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950"
+          >
+            <Trash2 className="h-4 w-4 mr-2" />
+            {isDeleting ? 'Deletando...' : 'Excluir Unidade'}
+          </Button>
         </div>
       )}
 
-      {/* Informações adicionais da unidade - Responsivo */}
-      {(isViewMode || isEditMode) && unidade && (
-        <div className="mt-4 md:mt-6 space-y-3 md:space-y-4">
-          <h3 className="text-sm md:text-base font-semibold flex items-center gap-2 border-b pb-2">
-            <Factory className="h-3 w-3 md:h-4 md:w-4" />
-            Informações Adicionais
-          </h3>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
-            {/* Status da Unidade */}
-            <div className="bg-muted/30 rounded-lg p-3 border border-muted-foreground/20">
-              <div className="flex items-start gap-2">
-                <Activity className="h-4 w-4 text-muted-foreground mt-0.5" />
-                <div className="min-w-0 flex-1">
-                  <h4 className="text-xs font-medium text-muted-foreground">Status</h4>
-                  <div className="mt-1">
-                    {unidade.status === 'ATIVO' ? (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
-                        ✅ Ativo
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
-                        ❌ Inativo
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Tipo da Unidade */}
-            <div className="bg-muted/30 rounded-lg p-3 border border-muted-foreground/20">
-              <div className="flex items-start gap-2">
-                <Home className="h-4 w-4 text-muted-foreground mt-0.5" />
-                <div className="min-w-0 flex-1">
-                  <h4 className="text-xs font-medium text-muted-foreground">Tipo</h4>
-                  <p className="text-sm mt-1 break-words">{unidade.tipo || 'Não informado'}</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Potência */}
-            <div className="bg-muted/30 rounded-lg p-3 border border-muted-foreground/20">
-              <div className="flex items-start gap-2">
-                <Power className="h-4 w-4 text-muted-foreground mt-0.5" />
-                <div className="min-w-0 flex-1">
-                  <h4 className="text-xs font-medium text-muted-foreground">Potência</h4>
-                  <p className="text-sm mt-1 break-words font-semibold">
-                    {unidade.potencia ? `${unidade.potencia} kW` : 'Não informada'}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Pontos de Medição */}
-            <div className="bg-muted/30 rounded-lg p-3 border border-muted-foreground/20">
-              <div className="flex items-start gap-2">
-                <Zap className="h-4 w-4 text-muted-foreground mt-0.5" />
-                <div className="min-w-0 flex-1">
-                  <h4 className="text-xs font-medium text-muted-foreground">Pontos de Medição</h4>
-                  <p className="text-sm mt-1 break-words">{unidade.pontosMedicao || 'Não informado'}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Localização Completa */}
-          {(unidade.latitude && unidade.longitude) && (
-            <div className="bg-muted/30 rounded-lg p-3 border border-muted-foreground/20">
-              <div className="flex items-start gap-2">
-                <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
-                <div className="min-w-0 flex-1">
-                  <h4 className="text-xs font-medium text-muted-foreground">Coordenadas</h4>
-                  <p className="text-sm mt-1 break-words">
-                    Latitude: {unidade.latitude}, Longitude: {unidade.longitude}
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Endereço Completo */}
-          {unidade.logradouro && (
-            <div className="bg-muted/30 rounded-lg p-3 border border-muted-foreground/20">
-              <div className="flex items-start gap-2">
-                <Home className="h-4 w-4 text-muted-foreground mt-0.5" />
-                <div className="min-w-0 flex-1">
-                  <h4 className="text-xs font-medium text-muted-foreground">Endereço Completo</h4>
-                  <p className="text-sm mt-1 break-words">
-                    {unidade.logradouro}
-                    {unidade.numero && `, ${unidade.numero}`}
-                    {unidade.complemento && ` - ${unidade.complemento}`}
-                    {unidade.bairro && ` - ${unidade.bairro}`}
-                    {unidade.cidade && ` - ${unidade.cidade}`}
-                    {unidade.estado && `/${unidade.estado}`}
-                    {unidade.cep && ` - CEP: ${unidade.cep}`}
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
 
       {/* DIALOG DE CONFIRMAÇÃO DE DELETE */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Tem certeza?</AlertDialogTitle>
+            <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-3">
                 <p className="text-sm text-muted-foreground">
-                  Esta ação não pode ser desfeita. Isso irá permanentemente deletar a unidade
-                  <span className="font-semibold"> {unidade?.nome}</span> e remover todos os seus dados do sistema.
+                  Você está prestes a excluir permanentemente a unidade
+                  <span className="font-semibold"> {unidade?.nome}</span>. Esta ação não pode ser revertida.
                 </p>
 
                 {/* Aviso sobre equipamentos */}
                 {unidade && unidade.totalEquipamentos > 0 && (
-                  <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-md p-3">
+                  <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-md p-3">
                     <div className="flex items-start gap-2">
-                      <span className="text-red-600 dark:text-red-400 text-lg">⚠️</span>
+                      <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
                       <div>
-                        <p className="text-red-800 dark:text-red-200 font-semibold">
-                          Atenção: Esta unidade possui {unidade.totalEquipamentos} equipamento{unidade.totalEquipamentos > 1 ? 's' : ''} vinculado{unidade.totalEquipamentos > 1 ? 's' : ''}.
+                        <p className="text-amber-900 dark:text-amber-100 font-medium text-sm">
+                          Esta unidade possui {unidade.totalEquipamentos} equipamento{unidade.totalEquipamentos > 1 ? 's' : ''} vinculado{unidade.totalEquipamentos > 1 ? 's' : ''}
                         </p>
-                        <p className="text-red-700 dark:text-red-300 text-sm mt-1">
-                          Todos os equipamentos serão permanentemente deletados junto com a unidade. Esta ação não pode ser revertida.
+                        <p className="text-amber-700 dark:text-amber-300 text-sm mt-1">
+                          Todos os equipamentos serão excluídos em cascata junto com seus dados históricos, registros de manutenção e anomalias.
                         </p>
                       </div>
                     </div>
                   </div>
                 )}
 
-                <div className="text-amber-600 dark:text-amber-400">
-                  <p className="font-medium mb-1">⚠️ Consequências adicionais:</p>
-                  <ul className="list-disc list-inside text-sm text-muted-foreground">
-                    <li>Todos os dados históricos dos equipamentos serão perdidos</li>
-                    <li>Registros de manutenção e anomalias serão removidos</li>
-                    <li>Diagramas vinculados serão afetados</li>
-                  </ul>
-                </div>
+                {!unidade?.totalEquipamentos && (
+                  <p className="text-sm text-muted-foreground">
+                    Todos os dados relacionados a esta unidade serão permanentemente removidos do sistema.
+                  </p>
+                )}
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -409,7 +292,7 @@ export function UnidadeModal({
               disabled={isDeleting}
               className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
             >
-              {isDeleting ? 'Deletando...' : 'Sim, deletar unidade e equipamentos'}
+              {isDeleting ? 'Excluindo...' : 'Confirmar Exclusão'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

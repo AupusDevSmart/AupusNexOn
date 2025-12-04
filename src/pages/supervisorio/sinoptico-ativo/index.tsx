@@ -65,6 +65,7 @@ import {
 // NOVO: Imports para integração com backend
 // TEMPORÁRIO: Hook comentado - implementar carregamento depois
 // import { useDiagramaUnidade } from '@/hooks/useDiagramaUnidade';
+import { api } from '@/config/api';
 import { ModalSelecionarUnidade } from '@/components/supervisorio/ModalSelecionarUnidade';
 import type { PlantaResponse } from '@/services/plantas.services';
 import type { Unidade } from '@/services/unidades.services';
@@ -1482,6 +1483,45 @@ export function SinopticoAtivoPage() {
   const [diagramaIdAtual, setDiagramaIdAtual] = useState<string | null>(null);
   const [isSavingDiagrama, setIsSavingDiagrama] = useState(false);
 
+  // Carregar dados da unidade quando o componente monta ou quando unidadeId muda
+  useEffect(() => {
+    const carregarUnidade = async () => {
+      if (!unidadeId) return;
+
+      try {
+        const response = await api.get(`/unidades/${unidadeId}`);
+        const unidadeData = response.data?.data || response.data;
+
+        // Converter snake_case para camelCase
+        const unidadeFormatada: Unidade = {
+          ...unidadeData,
+          demandaGeracao: unidadeData.demanda_geracao || unidadeData.demandaGeracao,
+          demandaCarga: unidadeData.demanda_carga || unidadeData.demandaCarga,
+          tipoUnidade: unidadeData.tipo_unidade || unidadeData.tipoUnidade,
+          concessionariaId: unidadeData.concessionaria_id || unidadeData.concessionariaId,
+          plantaId: unidadeData.planta_id || unidadeData.plantaId,
+        };
+
+        setUnidadeAtual(unidadeFormatada);
+
+        // Carregar planta se tiver plantaId
+        if (unidadeData.planta_id) {
+          try {
+            const plantaResponse = await api.get(`/plantas/${unidadeData.planta_id}`);
+            const plantaData = plantaResponse.data?.data || plantaResponse.data;
+            setPlantaAtual(plantaData);
+          } catch (err) {
+            console.error('❌ Erro ao carregar planta:', err);
+          }
+        }
+      } catch (error) {
+        console.error('❌ [SINÓPTICO] Erro ao carregar unidade:', error);
+      }
+    };
+
+    carregarUnidade();
+  }, [unidadeId]);
+
   const reloadDiagrama = useCallback(async () => {
     if (!unidadeId) return;
     console.log('🔄 Recarregando diagrama da unidade:', unidadeId);
@@ -1835,43 +1875,48 @@ export function SinopticoAtivoPage() {
   //   }
   // }, [m160Data]);
 
-  const [dadosGraficos] = useState(() => {
+  // Dados do gráfico - recalcula quando a unidade muda
+  const dadosGraficos = useMemo(() => {
     const agora = new Date();
+
+    // Usar demanda de geração da unidade, se existir
+    const demandaBase = unidadeAtual?.demandaGeracao || 1800;
+
     return Array.from({ length: 288 }, (_, i) => {
       // 288 pontos = 24h em intervalos de 5 min
       const timestamp = new Date(
         agora.getTime() - (287 - i) * 5 * 60 * 1000 // 5 minutos entre cada ponto
       ).toISOString();
 
-      // Simula um dia típico com picos de demanda
+      // Simula um dia típico com picos de demanda baseado na demanda real da unidade
       const hora = i / 12; // Converte índice para hora do dia
-      let potencia = 1800; // Base
+      let potencia = demandaBase * 0.7; // Base: 70% da demanda
 
       // Padrão diário: baixa demanda de madrugada, picos nos horários comerciais
       if (hora >= 6 && hora < 9) {
-        // Manhã: aumento progressivo
-        potencia = 1900 + (hora - 6) * 150 + Math.random() * 100;
+        // Manhã: aumento progressivo (70% a 85% da demanda)
+        potencia = demandaBase * 0.7 + (hora - 6) * (demandaBase * 0.05) + Math.random() * (demandaBase * 0.05);
       } else if (hora >= 9 && hora < 12) {
-        // Meio da manhã: demanda alta, alguns picos ultrapassam
+        // Meio da manhã: demanda alta (85% a 95%)
         potencia =
-          2200 + Math.sin((hora - 9) * Math.PI) * 200 + Math.random() * 150;
+          demandaBase * 0.85 + Math.sin((hora - 9) * Math.PI) * (demandaBase * 0.1) + Math.random() * (demandaBase * 0.08);
       } else if (hora >= 12 && hora < 14) {
-        // Horário de almoço: pico máximo - ULTRAPASSA OS LIMITES
+        // Horário de almoço: pico máximo (95% a 105% - pode ultrapassar!)
         potencia =
-          2400 +
-          Math.sin((hora - 12) * Math.PI * 2) * 250 +
-          Math.random() * 150;
+          demandaBase * 0.95 +
+          Math.sin((hora - 12) * Math.PI * 2) * (demandaBase * 0.1) +
+          Math.random() * (demandaBase * 0.08);
       } else if (hora >= 14 && hora < 18) {
-        // Tarde: demanda elevada, próxima ao limite
+        // Tarde: demanda elevada (80% a 95%)
         potencia =
-          2100 + Math.sin((hora - 14) * Math.PI) * 150 + Math.random() * 120;
+          demandaBase * 0.85 + Math.sin((hora - 14) * Math.PI) * (demandaBase * 0.1) + Math.random() * (demandaBase * 0.06);
       } else if (hora >= 18 && hora < 20) {
-        // Final do expediente: novo pico - PODE ULTRAPASSAR
+        // Final do expediente: novo pico (90% a 105%)
         potencia =
-          2300 + Math.sin((hora - 18) * Math.PI) * 200 + Math.random() * 100;
+          demandaBase * 0.90 + Math.sin((hora - 18) * Math.PI) * (demandaBase * 0.12) + Math.random() * (demandaBase * 0.05);
       } else {
-        // Madrugada/noite: demanda baixa
-        potencia = 1600 + Math.random() * 100;
+        // Madrugada/noite: demanda baixa (60% a 70%)
+        potencia = demandaBase * 0.6 + Math.random() * (demandaBase * 0.1);
       }
 
       return {
@@ -1887,7 +1932,7 @@ export function SinopticoAtivoPage() {
         limiteMinimo: 0.92,
       };
     });
-  });
+  }, [unidadeAtual]);
 
   // Calcular indicadores baseados em dados MQTT ou usar valores fixos
   const indicadores = useMemo(() => {
@@ -2467,6 +2512,15 @@ export function SinopticoAtivoPage() {
     // Limpar espaços em branco do ID (pode vir do banco de dados com espaços)
     const unidadeIdLimpo = novaUnidadeId.trim();
 
+    // console.log('🏭 [SINÓPTICO] Unidade selecionada:', {
+    //   nome: unidade.nome,
+    //   id: unidadeIdLimpo,
+    //   demandaGeracao: unidade.demandaGeracao,
+    //   demandaCarga: unidade.demandaCarga,
+    //   tipo: unidade.tipo,
+    //   potencia: unidade.potencia,
+    // });
+
     setUnidadeId(unidadeIdLimpo);
     setPlantaAtual(planta);
     setUnidadeAtual(unidade);
@@ -2982,12 +3036,7 @@ export function SinopticoAtivoPage() {
         {/* Modal de seleção */}
         <ModalSelecionarUnidade
           isOpen={modalSelecionarUnidade}
-          onClose={() => {
-            // Não permitir fechar se não tiver unidade selecionada
-            if (unidadeId) {
-              setModalSelecionarUnidade(false);
-            }
-          }}
+          onClose={() => setModalSelecionarUnidade(false)}
           onSelect={handleUnidadeSelect}
           currentPlantaId={plantaAtual?.id}
           currentUnidadeId={unidadeId}
@@ -3308,10 +3357,20 @@ export function SinopticoAtivoPage() {
 
           {/* Layout Principal */}
           <div className="w-full">
-            {!modoEdicao && (
-              <div className="flex flex-col gap-6">
-                {/* Gráfico de Demanda - 100% Largura no Topo */}
-                <div className="w-full">
+            {!modoEdicao && (() => {
+              const valorContratadoReal = unidadeAtual?.demandaGeracao || 2300;
+              // console.log('📊 [GRÁFICO DEMANDA] Renderizando com:', {
+              //   valorContratado: valorContratadoReal,
+              //   unidadeNome: unidadeAtual?.nome,
+              //   demandaGeracao: unidadeAtual?.demandaGeracao,
+              //   demandaCarga: unidadeAtual?.demandaCarga,
+              //   usandoFallback: !unidadeAtual?.demandaGeracao,
+              // });
+
+              return (
+              <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                {/* Gráficos - Painel Lateral (1/3 da largura em telas grandes) */}
+                <div className="xl:col-span-1 flex flex-col gap-4">
                   <SinopticoGraficosV2
                     unidadeId={unidadeId}
                     dadosPotencia={
@@ -3324,13 +3383,13 @@ export function SinopticoAtivoPage() {
                         ? historicoMqtt
                         : dadosGraficos
                     }
-                    valorContratado={2300} //simulando valores
-                    percentualAdicional={5} //simulando valores
+                    valorContratado={valorContratadoReal}
+                    percentualAdicional={5}
                   />
                 </div>
 
-                {/* Diagrama Unifilar - MODO VISUALIZAÇÃO - Abaixo do Gráfico */}
-                <div className="w-full flex">
+                {/* Diagrama Unifilar - MODO VISUALIZAÇÃO - Principal (2/3 da largura) */}
+                <div className="xl:col-span-2 flex">
                   <Card
                     ref={diagramCardRef}
                     className={`flex flex-col w-full min-h-[900px] overflow-visible ${
@@ -3415,7 +3474,8 @@ export function SinopticoAtivoPage() {
                   </Card>
                 </div>
               </div>
-            )}
+              );
+            })()}
 
             {/* Modo Edição - Tela Cheia */}
             {modoEdicao && (
@@ -4060,12 +4120,7 @@ export function SinopticoAtivoPage() {
         {/* Modal de seleção de unidade - disponível sempre */}
         <ModalSelecionarUnidade
           isOpen={modalSelecionarUnidade}
-          onClose={() => {
-            // Só permitir fechar se já tiver unidade selecionada
-            if (unidadeId) {
-              setModalSelecionarUnidade(false);
-            }
-          }}
+          onClose={() => setModalSelecionarUnidade(false)}
           onSelect={handleUnidadeSelect}
           currentPlantaId={plantaAtual?.id}
           currentUnidadeId={unidadeId}

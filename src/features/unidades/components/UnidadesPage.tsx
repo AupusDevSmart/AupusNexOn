@@ -196,8 +196,9 @@ export function UnidadesPage() {
           />
 
           {/* Filtros e Ações */}
-          <div className="flex flex-col lg:flex-row gap-4 mb-6">
-            <div className="flex-1">
+          <div className="flex flex-col gap-3 sm:gap-4 mb-4 sm:mb-6">
+            {/* Filtros */}
+            <div className="w-full">
               <BaseFilters
                 filters={filters}
                 config={filterConfig}
@@ -205,40 +206,43 @@ export function UnidadesPage() {
               />
             </div>
 
-            <div className="flex gap-2 shrink-0">
+            {/* Botões de Ação */}
+            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto sm:self-end">
               <Button
                 variant="outline"
                 onClick={handleRefresh}
                 disabled={loading}
-                className="border-gray-300 text-gray-700 hover:bg-gray-50"
+                className="w-full sm:w-auto border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300"
               >
-                <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-                Atualizar
+                <RefreshCw className={`h-4 w-4 sm:mr-2 ${loading ? 'animate-spin' : ''}`} />
+                <span className="sm:inline">Atualizar</span>
               </Button>
 
               <Button
                 onClick={() => openModal('create')}
                 disabled={loading}
-                className="bg-blue-600 hover:bg-blue-700 text-white"
+                className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white"
               >
-                <Plus className="mr-2 h-4 w-4" />
-                Nova Unidade
+                <Plus className="h-4 w-4 sm:mr-2" />
+                <span className="sm:inline">Nova Unidade</span>
               </Button>
             </div>
           </div>
 
           {/* Tabela */}
-          <div className="flex-1 overflow-y-auto overflow-x-auto">
-            <BaseTable
-              columns={unidadesTableColumns}
-              data={unidades}
-              loading={loading}
-              pagination={pagination}
-              onPageChange={handlePageChange}
-              onEdit={handleEdit}
-              onView={handleView}
-              emptyMessage="Nenhuma unidade encontrada"
-            />
+          <div className="flex-1 overflow-auto -mx-4 sm:mx-0">
+            <div className="min-w-full inline-block align-middle">
+              <BaseTable
+                columns={unidadesTableColumns}
+                data={unidades}
+                loading={loading}
+                pagination={pagination}
+                onPageChange={handlePageChange}
+                onEdit={handleEdit}
+                onView={handleView}
+                emptyMessage="Nenhuma unidade encontrada"
+              />
+            </div>
           </div>
         </div>
 

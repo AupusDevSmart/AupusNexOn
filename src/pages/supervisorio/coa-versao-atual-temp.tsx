@@ -14,16 +14,6 @@ import {
   Clock,
   Map
 } from "lucide-react";
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer
-} from "recharts";
 import { useCoaDashboard } from "@/features/coa/hooks/use-coa-dashboard";
 import { MapaCoa } from "@/features/coa/components/mapa-coa";
 import { Button } from "@/components/ui/button";
@@ -34,30 +24,6 @@ import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useNavigate } from "react-router-dom";
 import { formatEnergy, formatPower } from "@/utils/formatEnergy";
-
-// Dados mockados para gráfico de performance 24h
-const dadosPerformance24h = Array.from({ length: 24 }, (_, i) => ({
-  hora: `${i.toString().padStart(2, "0")}:00`,
-  geracao: 80 + Math.sin((i / 24) * Math.PI * 4) * 30 + Math.random() * 10,
-  consumo: 70 + Math.sin((i / 24) * Math.PI * 2) * 20 + Math.random() * 8,
-  meta: 85,
-}));
-
-// Dados mockados para cargas monitoradas
-const cargasMonitoradas = [
-  { nome: "Fábrica ABC", tipo: "Industrial", consumo: "12.3 MW", status: "Normal" },
-  { nome: "Shopping XYZ", tipo: "Comercial", consumo: "8.7 MW", status: "Normal" },
-  { nome: "Hospital Central", tipo: "Hospitalar", consumo: "5.2 MW", status: "Alerta" },
-  { nome: "Data Center Alpha", tipo: "Tecnologia", consumo: "9.5 MW", status: "Normal" },
-];
-
-// Dados mockados para eventos recentes
-const eventosRecentes = [
-  { mensagem: "UFV Bahia - Sistema em TRIP - Técnico despachado", hora: "11:15", tipo: "critico" },
-  { mensagem: "UFV São Paulo - Manutenção preventiva iniciada", hora: "10:30", tipo: "info" },
-  { mensagem: "UFV Ceará - Performance acima da meta por 48h consecutivas", hora: "09:45", tipo: "sucesso" },
-  { mensagem: "Subestação RJ Norte - Temperatura elevada detectada", hora: "08:22", tipo: "alerta" },
-];
 
 /**
  * Página COA (Centro de Operações Avançadas)
@@ -336,151 +302,74 @@ export function COAPage() {
               </Card>
             )}
 
-            {/* 1. Gráfico de Performance das Últimas 24h */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <TrendingUp className="h-5 w-5 text-green-500" />
-                  Performance Últimas 24h
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={280}>
-                  <LineChart data={dadosPerformance24h}>
-                    <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                    <XAxis
-                      dataKey="hora"
-                      fontSize={12}
-                      interval="preserveStartEnd"
-                    />
-                    <YAxis
-                      fontSize={12}
-                      label={{
-                        value: "MW",
-                        angle: -90,
-                        position: "insideLeft",
-                      }}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: "hsl(var(--background))",
-                        border: "1px solid hsl(var(--border))",
-                        borderRadius: "6px",
-                      }}
-                    />
-                    <Legend />
-                    <Line
-                      type="monotone"
-                      dataKey="geracao"
-                      stroke="#22c55e"
-                      strokeWidth={2}
-                      name="Geração"
-                      dot={false}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="consumo"
-                      stroke="#3b82f6"
-                      strokeWidth={2}
-                      name="Consumo"
-                      dot={false}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="meta"
-                      stroke="#ef4444"
-                      strokeWidth={2}
-                      strokeDasharray="5 5"
-                      name="Meta"
-                      dot={false}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-
-            {/* 2. Tabela de Cargas Monitoradas */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Activity className="h-5 w-5 text-blue-500" />
-                  Cargas Monitoradas
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b">
-                        <th className="text-left py-2 px-2 text-sm font-medium">Nome</th>
-                        <th className="text-left py-2 px-2 text-sm font-medium">Tipo</th>
-                        <th className="text-right py-2 px-2 text-sm font-medium">Consumo</th>
-                        <th className="text-right py-2 px-2 text-sm font-medium">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {cargasMonitoradas.map((carga, index) => (
-                        <tr key={index} className="border-b hover:bg-muted/50 transition-colors">
-                          <td className="py-2 px-2 text-sm">{carga.nome}</td>
-                          <td className="py-2 px-2 text-sm text-muted-foreground">{carga.tipo}</td>
-                          <td className="text-right py-2 px-2 text-sm font-medium">{carga.consumo}</td>
-                          <td className="text-right py-2 px-2">
-                            <Badge
-                              variant="outline"
-                              className={
-                                carga.status === "Normal"
-                                  ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
-                                  : "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400"
-                              }
-                            >
-                              {carga.status}
-                            </Badge>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* 3. Eventos Recentes */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Clock className="h-5 w-5 text-purple-500" />
-                  Eventos Recentes
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  {eventosRecentes.map((evento, index) => (
-                    <div
-                      key={index}
-                      className="flex items-center justify-between py-2 px-2 border-b hover:bg-muted/30 transition-colors rounded"
-                    >
-                      <div className="flex items-center gap-2">
-                        <div
-                          className={`w-2 h-2 rounded-full ${
-                            evento.tipo === "critico"
-                              ? "bg-red-500 animate-pulse"
-                              : evento.tipo === "alerta"
-                              ? "bg-yellow-500"
-                              : evento.tipo === "sucesso"
-                              ? "bg-green-500"
-                              : "bg-blue-500"
-                          }`}
-                        />
-                        <span className="text-sm">{evento.mensagem}</span>
+            {/* Grid de Plantas */}
+            {data && data.plantas.length > 0 ? (
+              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+                {data.plantas.map(planta => (
+                  <Card key={planta.id} className="hover:shadow-lg transition-all">
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-lg">{planta.nome}</CardTitle>
+                        <Badge variant={planta.totais.unidadesAtivas > 0 ? "success" : "secondary"}>
+                          {planta.totais.unidadesAtivas} ativas
+                        </Badge>
                       </div>
-                      <span className="text-xs text-muted-foreground">{evento.hora}</span>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+                      <p className="text-sm text-muted-foreground">{planta.cliente}</p>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {/* Métricas da Planta */}
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <p className="text-xs text-muted-foreground">Geração</p>
+                          <p className="text-xl font-semibold">{formatPower(planta.totais.geracao)}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">Consumo</p>
+                          <p className="text-xl font-semibold">{formatPower(planta.totais.consumo)}</p>
+                        </div>
+                      </div>
 
-            {/* Painel de Alertas Reais (API) */}
+                      {/* Lista de Unidades */}
+                      <div className="space-y-2">
+                        <p className="text-sm font-medium">Unidades ({planta.unidades.length})</p>
+                        {planta.unidades.slice(0, 3).map(unidade => (
+                          <div key={unidade.id} className="flex items-center justify-between p-2 bg-muted/30 rounded">
+                            <div className="flex items-center gap-2">
+                              <div className={`h-2 w-2 rounded-full ${
+                                unidade.status === 'ONLINE' ? 'bg-green-500' :
+                                unidade.status === 'ALERTA' ? 'bg-yellow-500' :
+                                'bg-gray-400'
+                              }`} />
+                              <span className="text-sm">{unidade.nome}</span>
+                            </div>
+                            <span className="text-xs text-muted-foreground">
+                              {formatPower(unidade.metricas.potenciaAtual)}
+                            </span>
+                          </div>
+                        ))}
+                        {planta.unidades.length > 3 && (
+                          <p className="text-xs text-muted-foreground text-center">
+                            +{planta.unidades.length - 3} unidades
+                          </p>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center py-12">
+                  <WifiOff className="h-12 w-12 text-muted-foreground mb-4" />
+                  <p className="text-lg font-medium">Nenhuma planta encontrada</p>
+                  <p className="text-sm text-muted-foreground">
+                    Verifique se há plantas cadastradas com equipamentos configurados
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Painel de Alertas */}
             {data && data.alertas.length > 0 && (
               <Card>
                 <CardHeader>

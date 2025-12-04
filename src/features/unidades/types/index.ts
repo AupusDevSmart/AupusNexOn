@@ -4,10 +4,8 @@
 
 export enum TipoUnidade {
   UFV = 'UFV',
-  Carga = 'Carga',
-  Motor = 'Motor',
-  Inversor = 'Inversor',
-  Transformador = 'Transformador',
+  PCH = 'PCH',
+  OUTRO = 'OUTRO',
 }
 
 export enum StatusUnidade {
@@ -29,6 +27,7 @@ export enum SubgrupoUnidade {
 export enum TipoUnidadeEnergia {
   CARGA = 'Carga',
   GERACAO = 'Geração',
+  CARGA_E_GERACAO = 'Carga e Geração',
 }
 
 // ===== TIPOS BASE =====
@@ -71,6 +70,11 @@ export interface Unidade {
     id: string;
     nome: string;
     localizacao?: string;
+    proprietario?: {
+      id: string;
+      nome: string;
+      email: string;
+    };
   };
 }
 
@@ -335,7 +339,7 @@ export const unidadeToFormData = (unidade: Unidade): UnidadeFormData => {
 export const defaultUnidadeFormValues: UnidadeFormData = {
   plantaId: '',
   nome: '',
-  tipo: TipoUnidade.Carga,
+  tipo: TipoUnidade.UFV,
   estado: '',
   cidade: '',
   latitude: '',

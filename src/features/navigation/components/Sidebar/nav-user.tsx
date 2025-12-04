@@ -44,29 +44,29 @@ export function NavUser() {
   const avatarUrl = getAvatarUrl(user?.avatar_url)
 
   // Debug: verificar URLs e testar acessibilidade
-  useEffect(() => {
-    if (user) {
-      console.log('👤 [NAV-USER] Dados do usuário:', user)
-      console.log('🖼️ [NAV-USER] avatar_url original:', user.avatar_url)
-      console.log('🖼️ [NAV-USER] avatar URL completa:', avatarUrl)
+  // useEffect(() => {
+  //   if (user) {
+  //     console.log('👤 [NAV-USER] Dados do usuário:', user)
+  //     console.log('🖼️ [NAV-USER] avatar_url original:', user.avatar_url)
+  //     console.log('🖼️ [NAV-USER] avatar URL completa:', avatarUrl)
 
-      // Testar se a imagem está acessível
-      if (avatarUrl) {
-        fetch(avatarUrl, { method: 'HEAD' })
-          .then(response => {
-            if (response.ok) {
-              console.log('✅ [NAV-USER] Imagem acessível:', avatarUrl)
-              console.log('Content-Type:', response.headers.get('content-type'))
-            } else {
-              console.error('❌ [NAV-USER] Imagem não acessível:', response.status, response.statusText)
-            }
-          })
-          .catch(error => {
-            console.error('❌ [NAV-USER] Erro ao acessar imagem:', error)
-          })
-      }
-    }
-  }, [user, avatarUrl])
+  //     // Testar se a imagem está acessível
+  //     if (avatarUrl) {
+  //       fetch(avatarUrl, { method: 'HEAD' })
+  //         .then(response => {
+  //           if (response.ok) {
+  //             console.log('✅ [NAV-USER] Imagem acessível:', avatarUrl)
+  //             console.log('Content-Type:', response.headers.get('content-type'))
+  //           } else {
+  //             console.error('❌ [NAV-USER] Imagem não acessível:', response.status, response.statusText)
+  //           }
+  //         })
+  //         .catch(error => {
+  //           console.error('❌ [NAV-USER] Erro ao acessar imagem:', error)
+  //         })
+  //     }
+  //   }
+  // }, [user, avatarUrl])
 
   const logout = async () => {
     try {
@@ -111,8 +111,8 @@ export function NavUser() {
                     alt={user?.nome || 'Usuário'}
                     className="object-cover"
                     onError={(e) => {
-                      console.error('❌ [NAV-USER] Erro ao carregar imagem:', avatarUrl);
-                      console.error('Erro detalhado:', e);
+                      // console.error('❌ [NAV-USER] Erro ao carregar imagem:', avatarUrl);
+                      // console.error('Erro detalhado:', e);
                       // Remove src em caso de erro para mostrar o fallback
                       (e.target as HTMLImageElement).style.display = 'none';
                     }}
@@ -143,8 +143,8 @@ export function NavUser() {
                       alt={user?.nome || 'Usuário'}
                       className="object-cover"
                       onError={(e) => {
-                        console.error('❌ [NAV-USER DROPDOWN] Erro ao carregar imagem:', avatarUrl);
-                        console.error('Erro detalhado:', e);
+                        // console.error('❌ [NAV-USER DROPDOWN] Erro ao carregar imagem:', avatarUrl);
+                        // console.error('Erro detalhado:', e);
                         // Remove src em caso de erro para mostrar o fallback
                         (e.target as HTMLImageElement).style.display = 'none';
                       }}

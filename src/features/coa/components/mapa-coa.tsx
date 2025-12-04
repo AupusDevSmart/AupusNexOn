@@ -372,10 +372,10 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
 
         {/* Mapa */}
         <Card className="p-0 h-full relative border-0 shadow-none bg-transparent">
-          <div className="relative">
+          <div className="relative h-full">
             <div
               ref={mapRef}
-              className="w-full h-[400px] rounded-lg border border-border bg-muted relative"
+              className="w-full h-full min-h-[400px] rounded-lg border border-border bg-muted relative"
             >
               {/* Fallback se o Leaflet não carregar */}
               {typeof window === "undefined" || !(window as any).L ? (
@@ -475,14 +475,14 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
                     Status
                   </span>
                   <Badge
-                    variant={
+                    variant={unidadeSelecionada.status === "ONLINE" ? "default" : unidadeSelecionada.status === "ALERTA" ? "destructive" : "secondary"}
+                    className={`mt-1 ${
                       unidadeSelecionada.status === "ONLINE"
-                        ? "success"
+                        ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
                         : unidadeSelecionada.status === "ALERTA"
-                        ? "warning"
-                        : "secondary"
-                    }
-                    className="mt-1"
+                        ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400"
+                        : ""
+                    }`}
                   >
                     {unidadeSelecionada.status}
                   </Badge>
