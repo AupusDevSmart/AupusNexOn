@@ -162,6 +162,7 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
         fabricante: dadosCompletos.fabricante || '',
         modelo: dadosCompletos.modelo || '',
         numeroSerie: dadosCompletos.numeroSerie || '',
+        tag: dadosCompletos.tag || '',
         criticidade: dadosCompletos.criticidade || '3',
         tipoEquipamento: dadosCompletos.tipoEquipamento || dadosCompletos.tipo || '',
         plantaId: dadosCompletos.unidade?.plantaId || '',
@@ -171,6 +172,9 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
         valorContabil: dadosCompletos.valorContabil || '',
         dataImobilizacao: dadosCompletos.dataImobilizacao || '',
         emOperacao: dadosCompletos.emOperacao || '',
+        // Campos MQTT
+        mqttHabilitado: dadosCompletos.mqttHabilitado || dadosCompletos.mqtt_habilitado || false,
+        topicoMqtt: dadosCompletos.topicoMqtt || dadosCompletos.topico_mqtt || '',
         // Campos MCPSE
         mcpse: dadosCompletos.mcpse || false,
         mcpseAtivo: dadosCompletos.mcpse || dadosCompletos.mcpseAtivo ||
@@ -274,6 +278,7 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
       fabricante: '',
       modelo: '',
       numeroSerie: '',
+      tag: '',
       criticidade: '3',
       tipoEquipamento: '',
       unidadeId: '',
@@ -283,6 +288,9 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
       valorContabil: '',
       dataImobilizacao: '',
       emOperacao: 'sim',
+      // Campos MQTT
+      mqttHabilitado: false,
+      topicoMqtt: '',
       // Campos MCPSE
       mcpse: false,
       tuc: '',
@@ -404,6 +412,12 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
         }
       }
 
+      // Validar MQTT: se habilitado, tópico é obrigatório
+      if (formData.mqttHabilitado && !formData.topicoMqtt?.trim()) {
+        setError('Tópico MQTT é obrigatório quando MQTT está habilitado');
+        return;
+      }
+
       // Combinar dados técnicos sem duplicação
       const dadosPredefinidos = dadosTecnicos.filter(d => d.valor?.trim());
       const dadosPersonalizados = dadosTecnicosPersonalizados.filter(d => d.campo?.trim() && d.valor?.trim());
@@ -449,6 +463,7 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
         fabricante: formData.fabricante,
         modelo: formData.modelo,
         numero_serie: formData.numeroSerie,
+        tag: formData.tag,
         criticidade: formData.criticidade,
         tipo_equipamento: formData.tipoEquipamento,  // Código (compatibilidade)
         tipo_equipamento_id: tipoEqpSelecionado?.id,  // ID do tipo (correto)
@@ -456,6 +471,9 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
         data_imobilizacao: dataImobilizacaoFormatted,
         valor_contabil: formData.valorContabil ? parseFloat(formData.valorContabil) : undefined,
         localizacao: formData.localizacao,
+        // Campos MQTT
+        mqtt_habilitado: formData.mqttHabilitado,
+        topico_mqtt: formData.topicoMqtt,
         // Campos MCPSE
         mcpse: formData.mcpseAtivo,
         tuc: formData.tuc,
@@ -516,7 +534,7 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
 
   const renderDadosBasicos = () => (
     <div className="space-y-4">
-      <h3 className="text-sm font-semibold text-gray-700 border-b pb-1">
+      <h3 className="text-sm font-semibold text-foreground pb-2 border-b">
         Dados Básicos
       </h3>
       
@@ -563,6 +581,17 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
             value={formData.numeroSerie || ''}
             onChange={(e) => handleInputChange('numeroSerie', e.target.value)}
             placeholder="Ex: ABC123456"
+            disabled={isReadonly}
+          />
+        </div>
+
+        {/* TAG */}
+        <div className="space-y-2">
+          <label className="text-sm font-medium">TAG</label>
+          <Input
+            value={formData.tag || ''}
+            onChange={(e) => handleInputChange('tag', e.target.value)}
+            placeholder="Ex: TAG-001"
             disabled={isReadonly}
           />
         </div>
@@ -629,16 +658,16 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
 
   const renderLocalizacao = () => (
     <div className="space-y-4">
-      <h3 className="text-sm font-semibold text-gray-700 border-b pb-1">
+      <h3 className="text-sm font-semibold text-foreground pb-2 border-b">
         Localização
       </h3>
 
       {/* Hierarquia Completa - Apenas em View/Edit */}
       {(mode === 'view' || mode === 'edit') && (proprietarioDetalhes || plantaDetalhes || unidadeDetalhes) && (
-        <div className="space-y-3 p-4 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg">
+        <div className="space-y-3 p-4 bg-muted/40 border border-border/40 rounded-lg">
           <div className="flex items-center gap-2 mb-2">
             <Badge variant="secondary" className="text-xs">
-              Hierarquia Completa
+              Hierarquia
             </Badge>
           </div>
 
@@ -806,11 +835,11 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
     const tipoEqp = getTipoEquipamento(formData.tipoEquipamento);
     const temDadosPredefinidos = dadosTecnicos.length > 0;
     const temDadosPersonalizados = dadosTecnicosPersonalizados.length > 0;
-    
+
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-gray-700 border-b pb-1">
+          <h3 className="text-sm font-semibold text-foreground pb-2 border-b">
             Dados Técnicos
           </h3>
           {!isReadonly && (
@@ -1010,7 +1039,7 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
 
   const renderInformacoesComplementares = () => (
     <div className="space-y-4">
-      <h3 className="text-sm font-semibold text-gray-700 border-b pb-1">
+      <h3 className="text-sm font-semibold text-foreground pb-2 border-b">
         Informações Complementares
       </h3>
       
@@ -1171,6 +1200,50 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
           </div>
         )}
       </div>
+
+      {/* Seção MQTT */}
+      <div className="space-y-4 pt-4">
+        {isReadonly ? (
+          <div className="space-y-2">
+            <label className="text-sm font-medium">
+              Configuração MQTT
+            </label>
+            <div className="p-2 bg-gray-50 dark:bg-gray-800 rounded border text-sm">
+              {formData.mqttHabilitado ? 'MQTT Habilitado' : 'MQTT Não habilitado'}
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="mqttHabilitado"
+              checked={formData.mqttHabilitado || false}
+              onCheckedChange={(checked) => handleInputChange('mqttHabilitado', checked)}
+              disabled={isReadonly}
+            />
+            <label htmlFor="mqttHabilitado" className="text-sm font-medium">
+              Equipamento possui MQTT habilitado
+            </label>
+          </div>
+        )}
+
+        {formData.mqttHabilitado && (
+          <div className="space-y-2 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+            <label className="text-sm font-medium">
+              Tópico MQTT <span className="text-red-500">*</span>
+            </label>
+            <Input
+              type="text"
+              value={formData.topicoMqtt || ''}
+              onChange={(e) => handleInputChange('topicoMqtt', e.target.value)}
+              placeholder="Ex: solar/medidor/01"
+              disabled={isReadonly}
+            />
+            <p className="text-xs text-gray-500">
+              Informe o tópico MQTT associado a este equipamento
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
 
@@ -1178,7 +1251,7 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
     if (loading) {
       return (
         <div className="flex justify-center">
-          <Button disabled>
+          <Button disabled size="sm" className="h-9">
             <Loader2 className="h-4 w-4 animate-spin mr-2" />
             Carregando...
           </Button>
@@ -1190,21 +1263,24 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
       <div className="flex justify-end gap-2">
         <Button
           variant="outline"
+          size="sm"
           onClick={onClose}
           disabled={loading}
+          className="h-9"
         >
-          <X className="h-4 w-4 mr-1" />
+          <X className="h-4 w-4 mr-2" />
           {isReadonly ? 'Fechar' : 'Cancelar'}
         </Button>
-        
+
         {!isReadonly && (
           <Button
             onClick={handleSubmit}
             disabled={loading}
-            className="bg-orange-600 hover:bg-orange-700"
+            size="sm"
+            className="h-9"
           >
-            <Save className="h-4 w-4 mr-1" />
-            {isCreating ? 'Criar' : 'Salvar'}
+            <Save className="h-4 w-4 mr-2" />
+            {isCreating ? 'Criar Equipamento' : 'Salvar Alterações'}
           </Button>
         )}
       </div>
@@ -1216,44 +1292,48 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
   // ============================================================================
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-        {renderHeader()}
-        
-        {error && (
-          <Alert className="border-red-200 bg-red-50">
-            <AlertCircle className="h-4 w-4 text-red-600" />
-            <AlertDescription className="text-red-800">
-              {error}
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {locationCascade.error && (
-          <Alert className="border-orange-200 bg-orange-50">
-            <AlertCircle className="h-4 w-4 text-orange-600" />
-            <AlertDescription className="text-orange-800">
-              {locationCascade.error}
-            </AlertDescription>
-          </Alert>
-        )}
-
-        <div className="space-y-6">
-          {renderDadosBasicos()}
-          
-          <Separator />
-          
-          {renderLocalizacao()}
-          
-          <Separator />
-          
-          {renderDadosTecnicos()}
-          
-          <Separator />
-          
-          {renderInformacoesComplementares()}
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col gap-0 p-0">
+        <div className="border-b px-6 py-4">
+          {renderHeader()}
         </div>
 
-        <div className="pt-4 border-t">
+        <div className="flex-1 overflow-y-auto px-6 py-4">
+          {error && (
+            <Alert variant="destructive" className="mb-4 rounded-md">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription className="text-sm">
+                {error}
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {locationCascade.error && (
+            <Alert className="mb-4 rounded-md border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950">
+              <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+              <AlertDescription className="text-sm text-amber-800 dark:text-amber-200">
+                {locationCascade.error}
+              </AlertDescription>
+            </Alert>
+          )}
+
+          <div className="space-y-6">
+            {renderDadosBasicos()}
+
+            <Separator />
+
+            {renderLocalizacao()}
+
+            <Separator />
+
+            {renderDadosTecnicos()}
+
+            <Separator />
+
+            {renderInformacoesComplementares()}
+          </div>
+        </div>
+
+        <div className="border-t px-6 py-3 bg-muted/20">
           {renderActions()}
         </div>
       </DialogContent>

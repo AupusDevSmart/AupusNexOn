@@ -331,8 +331,8 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
 
   return (
     <>
-      <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-4">
-        {/* Lista de Unidades */}
+      {/* COMENTADO: Lista de Unidades lateral - pode ser reativada futuramente */}
+      {/* <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-4">
         <Card className="p-4 h-[400px] overflow-y-auto">
           <div className="space-y-2">
             <div className="flex items-center justify-between mb-3">
@@ -368,9 +368,9 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
               ))
             )}
           </div>
-        </Card>
+        </Card> */}
 
-        {/* Mapa */}
+        {/* Mapa - Agora ocupa toda a largura */}
         <Card className="p-0 h-full relative border-0 shadow-none bg-transparent">
           <div className="relative h-full">
             <div
@@ -452,7 +452,6 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
           </div>
         </div>
       </Card>
-      </div>
 
       {/* Modal de detalhes da unidade */}
       <Dialog open={modalAberto} onOpenChange={fecharModal}>

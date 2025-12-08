@@ -245,6 +245,27 @@ class UnidadesService {
       return [];
     }
   }
+
+  // Buscar unidades por proprietário
+  async buscarUnidadesPorProprietario(proprietarioId: string): Promise<UnidadeNexon[]> {
+    try {
+      const cleanProprietarioId = proprietarioId?.trim();
+      console.log(`📡 [UnidadesService] Buscando unidades do proprietário ${cleanProprietarioId}`);
+
+      // Usar endpoint geral com filtro de proprietário
+      const response = await api.get(`${this.baseUrl}?proprietarioId=${cleanProprietarioId}&limit=1000`);
+
+      const responseData = response.data.data || response.data;
+      const data = responseData.data || responseData || [];
+
+      console.log(`✅ [UnidadesService] ${Array.isArray(data) ? data.length : 0} unidades encontradas`);
+      return Array.isArray(data) ? data : [];
+    } catch (error: any) {
+      console.error(`❌ [UnidadesService] Erro ao buscar unidades por proprietário ${proprietarioId}:`, error);
+      // Retornar array vazio em vez de throw para não quebrar o UI
+      return [];
+    }
+  }
 }
 
 // Exportar instância única (singleton)
@@ -258,6 +279,7 @@ export const createUnidade = (dados: CreateUnidadeDto) => unidadesService.criarU
 export const updateUnidade = (id: string, dados: UpdateUnidadeDto) => unidadesService.atualizarUnidade(id, dados);
 export const deleteUnidade = (id: string) => unidadesService.excluirUnidade(id);
 export const getUnidadesByPlanta = (plantaId: string) => unidadesService.buscarUnidadesPorPlanta(plantaId);
+export const getUnidadesByProprietario = (proprietarioId: string) => unidadesService.buscarUnidadesPorProprietario(proprietarioId);
 
 // ✅ TIPOS RE-EXPORTADOS
 export type { UnidadeCompleta as Unidade, FilterUnidadeDto as UnidadeFilters };

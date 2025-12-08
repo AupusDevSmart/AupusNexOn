@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { selectionDataService } from '@/services/selection-data.services';
 import { PlantasService } from '@/services/plantas.services';
-import { getUnidadesByPlanta, getAllUnidades } from '@/services/unidades.services';
+import { getUnidadesByPlanta, getAllUnidades, getUnidadesByProprietario } from '@/services/unidades.services';
 
 export interface FilterOption {
   value: string;
@@ -25,6 +25,9 @@ export interface UseEquipamentoFiltersReturn {
 
   // Função para carregar unidades por planta
   loadUnidadesByPlanta: (plantaId: string) => Promise<void>;
+
+  // Função para carregar unidades por proprietário
+  loadUnidadesByProprietario: (proprietarioId: string) => Promise<void>;
 
   // Função para carregar dados iniciais
   loadInitialData: () => Promise<void>;
@@ -174,24 +177,6 @@ export function useEquipamentoFilters(): UseEquipamentoFiltersReturn {
   }, [loadTodasPlantas]);
 
   // ============================================================================
-  // CARREGAR DADOS INICIAIS
-  // ============================================================================
-  const loadInitialData = useCallback(async () => {
-    console.log('🚀 [FILTERS] Carregando dados iniciais dos filtros...');
-    
-    // Carregar proprietários e todas as plantas em paralelo
-    await Promise.all([
-      loadProprietarios(),
-      loadTodasPlantas()
-    ]);
-    
-    console.log('✅ [FILTERS] Dados iniciais carregados');
-  }, [loadProprietarios, loadTodasPlantas]);
-
-  // ============================================================================
-  // CARREGAR UNIDADES POR PLANTA
-  // ============================================================================
-  // ============================================================================
   // RESETAR UNIDADES
   // ============================================================================
   const resetUnidades = useCallback(() => {
@@ -293,6 +278,66 @@ export function useEquipamentoFilters(): UseEquipamentoFiltersReturn {
   }, [resetUnidades, loadTodasUnidades]);
 
   // ============================================================================
+  // CARREGAR UNIDADES POR PROPRIETÁRIO
+  // ============================================================================
+  const loadUnidadesByProprietario = useCallback(async (proprietarioId: string) => {
+    console.log('🔄 [FILTERS] Carregando unidades do proprietário:', proprietarioId);
+
+    if (!proprietarioId || proprietarioId === 'all') {
+      // Se "Todos os Proprietários", carregar todas as unidades
+      console.log('⚠️ [FILTERS] ProprietarioId é "all", carregando todas as unidades');
+      await loadTodasUnidades();
+      return;
+    }
+
+    try {
+      setLoadingUnidades(true);
+      setError(null);
+
+      console.log('📡 [FILTERS] Chamando getUnidadesByProprietario...');
+      const unidadesData = await getUnidadesByProprietario(proprietarioId);
+      console.log('📦 [FILTERS] Unidades recebidas:', unidadesData);
+
+      const options: FilterOption[] = [
+        { value: 'all', label: 'Todas as Unidades deste Proprietário' },
+        ...unidadesData
+          .sort((a, b) => a.nome.localeCompare(b.nome))
+          .map(unidade => ({
+            value: unidade.id,
+            label: `${unidade.nome} - ${unidade.tipo} (${unidade.planta?.nome || 'Sem planta'})`
+          }))
+      ];
+
+      console.log('📋 [FILTERS] Options geradas:', options);
+      setUnidades(options);
+      console.log('✅ [FILTERS] Unidades do proprietário carregadas:', options.length - 1);
+
+    } catch (error: any) {
+      console.error('❌ [FILTERS] Erro ao carregar unidades do proprietário:', error);
+      setError('Erro ao carregar unidades do proprietário');
+      setUnidades([{ value: 'all', label: 'Todas as Unidades' }]);
+    } finally {
+      setLoadingUnidades(false);
+    }
+  }, [loadTodasUnidades]);
+
+  // ============================================================================
+  // CARREGAR DADOS INICIAIS
+  // ============================================================================
+  const loadInitialData = useCallback(async () => {
+    console.log('🚀 [FILTERS] Carregando dados iniciais dos filtros...');
+
+    // Carregar proprietários, todas as plantas e todas as unidades em paralelo
+    await Promise.all([
+      loadProprietarios(),
+      loadTodasPlantas(),
+      loadTodasUnidades()
+    ]);
+
+    console.log('✅ [FILTERS] Dados iniciais carregados');
+  }, [loadProprietarios, loadTodasPlantas, loadTodasUnidades]);
+
+  // ============================================================================
   // RESETAR PLANTAS
   // ============================================================================
   const resetPlantas = useCallback(() => {
@@ -328,6 +373,7 @@ export function useEquipamentoFilters(): UseEquipamentoFiltersReturn {
     // Funções
     loadPlantasByProprietario,
     loadUnidadesByPlanta,
+    loadUnidadesByProprietario,
     loadInitialData,
     resetPlantas,
     resetUnidades,

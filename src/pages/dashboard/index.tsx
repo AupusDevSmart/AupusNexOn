@@ -237,8 +237,8 @@ export function DashboardPage() {
   return (
     <Layout>
       <Layout.Main>
-        <div className="min-h-screen w-full">
-          <div className="max-h-[calc(100vh-4rem)] overflow-y-auto">
+        <div className="h-screen w-full overflow-hidden">
+          <div className="h-full overflow-y-auto">
             <div className="flex flex-col gap-3 p-2">
               {/* Header com Status */}
               <div className="w-full">
@@ -247,8 +247,8 @@ export function DashboardPage() {
                     <h1 className="text-2xl font-bold text-foreground">
                       Centro de Operação de Ativos (COA)
                     </h1>
-                    <div className="flex items-center gap-4 mt-2">
-                      {/* Status de Conexão */}
+                    {/* COMENTADO: Status de conexão e última atualização */}
+                    {/* <div className="flex items-center gap-4 mt-2">
                       <div className="flex items-center gap-2">
                         <div className={`h-2 w-2 rounded-full ${isStale ? 'bg-yellow-500' : 'bg-green-500'} animate-pulse`} />
                         <span className="text-sm text-muted-foreground">
@@ -256,7 +256,6 @@ export function DashboardPage() {
                         </span>
                       </div>
 
-                      {/* Última Atualização */}
                       {lastUpdate && (
                         <div className="flex items-center gap-1 text-sm text-muted-foreground">
                           <Clock className="h-3 w-3" />
@@ -268,7 +267,7 @@ export function DashboardPage() {
                           </span>
                         </div>
                       )}
-                    </div>
+                    </div> */}
                   </div>
 
                   {/* Botões de Ação */}
@@ -338,7 +337,8 @@ export function DashboardPage() {
               </div>
 
               {/* Estatísticas Adicionais - Estilo COA Antigo */}
-              {data && (
+              {/* COMENTADO: Cards de estatísticas secundárias - podem ser reativados futuramente */}
+              {/* {data && (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <Card className="p-6">
                     <h4 className="text-sm font-medium text-muted-foreground mb-2">
@@ -376,9 +376,9 @@ export function DashboardPage() {
                     </p>
                   </Card>
                 </div>
-              )}
+              )} */}
 
-              {/* Layout: Mapa + Painel Lateral de Usinas */}
+              {/* Layout: Mapa + Tabelas Laterais */}
               {data && (
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                   {/* Mapa - 2/3 da largura */}
@@ -392,8 +392,8 @@ export function DashboardPage() {
                     />
                   </div>
 
-                  {/* Painel Lateral - Resumo Rápido */}
-                  <div className="lg:col-span-1 h-full">
+                  {/* COMENTADO: Painel Lateral - Resumo Rápido */}
+                  {/* <div className="lg:col-span-1 h-full">
                     <Card className="h-full">
                       <CardHeader>
                         <CardTitle className="text-base">📊 Resumo Rápido</CardTitle>
@@ -427,23 +427,19 @@ export function DashboardPage() {
                         </div>
                       </CardContent>
                     </Card>
-                  </div>
-                </div>
-              )}
+                  </div> */}
 
-
-              {/* Tabelas de Usinas e Cargas */}
-              {data && (
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                  {/* Tabela: USINAS FOTOVOLTAICAS */}
-                  <Card>
-                    <CardHeader>
+                  {/* Painel Lateral - Tabelas de UFVs e Cargas */}
+                  <div className="lg:col-span-1 flex flex-col gap-4">
+                    {/* Tabela: USINAS FOTOVOLTAICAS */}
+                    <Card className="flex flex-col h-[calc(50vh-8rem)]">
+                    <CardHeader className="flex-shrink-0">
                       <CardTitle className="text-sm sm:text-base flex items-center gap-2">
                         <span>☀️ USINAS FOTOVOLTAICAS</span>
                       </CardTitle>
                     </CardHeader>
-                    <CardContent>
-                      <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+                    <CardContent className="flex-1 overflow-hidden">
+                      <div className="h-full overflow-y-auto overflow-x-auto">
                         <table className="w-full text-xs min-w-[600px]">
                           <thead>
                             <tr className="border-b">
@@ -551,14 +547,14 @@ export function DashboardPage() {
                   </Card>
 
                   {/* Tabela: CARGAS MONITORADAS */}
-                  <Card>
-                    <CardHeader>
+                  <Card className="flex flex-col h-[calc(50vh-8rem)]">
+                    <CardHeader className="flex-shrink-0">
                       <CardTitle className="text-sm sm:text-base flex items-center gap-2">
                         <span>⚡ CARGAS MONITORADAS</span>
                       </CardTitle>
                     </CardHeader>
-                    <CardContent>
-                      <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+                    <CardContent className="flex-1 overflow-hidden">
+                      <div className="h-full overflow-y-auto overflow-x-auto">
                         <table className="w-full text-xs min-w-[600px]">
                           <thead>
                             <tr className="border-b">
@@ -664,11 +660,12 @@ export function DashboardPage() {
                       </div>
                     </CardContent>
                   </Card>
+                  </div>
                 </div>
               )}
 
-              {/* 1. Gráfico de Performance por Região */}
-              <Card>
+              {/* COMENTADO: Gráfico de Performance por Região - dados mockados */}
+              {/* <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Activity className="h-5 w-5 text-purple-500" />
@@ -717,10 +714,10 @@ export function DashboardPage() {
                     </BarChart>
                   </ResponsiveContainer>
                 </CardContent>
-              </Card>
+              </Card> */}
 
-              {/* 2. Tabela de Cargas Monitoradas */}
-              <Card>
+              {/* COMENTADO: Tabela de Cargas Monitoradas - dados mockados */}
+              {/* <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Activity className="h-5 w-5 text-blue-500" />
@@ -762,10 +759,10 @@ export function DashboardPage() {
                     </table>
                   </div>
                 </CardContent>
-              </Card>
+              </Card> */}
 
-              {/* 3. Eventos Recentes */}
-              <Card>
+              {/* COMENTADO: Eventos Recentes - dados mockados */}
+              {/* <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Clock className="h-5 w-5 text-purple-500" />
@@ -798,7 +795,7 @@ export function DashboardPage() {
                     ))}
                   </div>
                 </CardContent>
-              </Card>
+              </Card> */}
 
               {/* Painel de Alertas */}
               {data && data.alertas.length > 0 && (

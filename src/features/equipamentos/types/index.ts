@@ -118,7 +118,12 @@ export interface Equipamento extends BaseEntity {
   localizacao?: string;
   localizacaoEspecifica?: string;
   observacoes?: string;
-  
+
+  // TAG e MQTT
+  tag?: string;
+  mqttHabilitado?: boolean;
+  topicoMqtt?: string;
+
   // Campos MCPSE
   mcpse?: boolean;
   mcpseAtivo?: boolean;
@@ -168,6 +173,9 @@ export interface EquipamentoFormData {
   localizacao?: string;
   localizacaoEspecifica?: string;
   observacoes?: string;
+  tag?: string;
+  mqttHabilitado?: boolean;
+  topicoMqtt?: string;
   mcpse?: boolean;
   mcpseAtivo?: boolean;
   tuc?: string;

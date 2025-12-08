@@ -61,6 +61,7 @@ export function EquipamentosPage() {
     unidades,
     loadPlantasByProprietario,
     loadUnidadesByPlanta,
+    loadUnidadesByProprietario,
     error: filtersError,
     clearError: clearFiltersError
   } = useEquipamentoFilters();
@@ -136,18 +137,21 @@ export function EquipamentosPage() {
   // HANDLERS DOS FILTROS E PAGINAÇÃO
   // ============================================================================
   const handleFilterChange = useCallback(async (newFilters: Partial<EquipamentosFilters>) => {
-    // Se o proprietário mudou, carregar plantas correspondentes
+    // Se o proprietário mudou, carregar plantas e unidades correspondentes
     if (newFilters.proprietarioId !== undefined && newFilters.proprietarioId !== filters.proprietarioId) {
-      console.log('🔄 [EQUIPAMENTOS] Proprietário mudou, carregando plantas...');
+      console.log('🔄 [EQUIPAMENTOS] Proprietário mudou, carregando plantas e unidades...');
 
       // Limpar erro anterior
       if (filtersError) clearFiltersError();
 
-      // Carregar plantas do proprietário selecionado
+      // Carregar plantas e unidades do proprietário selecionado em paralelo
       try {
-        await loadPlantasByProprietario(newFilters.proprietarioId);
+        await Promise.all([
+          loadPlantasByProprietario(newFilters.proprietarioId),
+          loadUnidadesByProprietario(newFilters.proprietarioId)
+        ]);
 
-        // Se mudou proprietário, resetar planta e unidade selecionadas
+        // Se mudou proprietário, resetar planta (mas não unidade, já que foram carregadas)
         setFilters(prev => ({
           ...prev,
           ...newFilters,
@@ -156,7 +160,7 @@ export function EquipamentosPage() {
           page: 1 // Reset página quando filtros mudam
         }));
       } catch (error) {
-        console.error('❌ [EQUIPAMENTOS] Erro ao carregar plantas:', error);
+        console.error('❌ [EQUIPAMENTOS] Erro ao carregar plantas/unidades:', error);
 
         // Mesmo com erro, atualizar filtros
         setFilters(prev => ({
@@ -205,7 +209,7 @@ export function EquipamentosPage() {
         page: 1 // Reset página quando filtros mudam
       }));
     }
-  }, [filters.proprietarioId, filters.plantaId, filtersError, clearFiltersError, loadPlantasByProprietario, loadUnidadesByPlanta]);
+  }, [filters.proprietarioId, filters.plantaId, filtersError, clearFiltersError, loadPlantasByProprietario, loadUnidadesByPlanta, loadUnidadesByProprietario]);
 
   const handlePageChange = (page: number) => {
     setFilters(prev => ({ ...prev, page }));
@@ -424,9 +428,9 @@ export function EquipamentosPage() {
         <div className="flex flex-col h-97 w-full mb-8">
           {/* Alerta de erro */}
           {error && (
-            <Alert variant="destructive" className="mb-4">
+            <Alert variant="destructive" className="mb-4 rounded-md">
               <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
+              <AlertDescription className="text-sm">
                 {error}
               </AlertDescription>
             </Alert>
@@ -435,28 +439,28 @@ export function EquipamentosPage() {
           {/* Header com informações do filtro de planta */}
           {plantaInfo ? (
             <div className="mb-6">
-              <div className="flex items-center gap-2 mb-2">
+              <div className="flex items-center gap-2 mb-3">
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={handleBackToPlantas}
-                  className="text-muted-foreground hover:text-foreground"
+                  className="text-muted-foreground hover:text-foreground h-8"
                 >
-                  <ArrowLeft className="h-4 w-4 mr-1" />
+                  <ArrowLeft className="h-3.5 w-3.5 mr-1.5" />
                   Voltar às Plantas
                 </Button>
               </div>
-              
-              <div className="bg-green-50 border border-green-200 rounded-lg p-4 dark:bg-green-950 dark:border-green-800">
+
+              <div className="bg-muted/40 border border-border/40 rounded-lg p-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <Wrench className="h-5 w-5 text-green-600" />
+                    <Wrench className="h-4 w-4 text-muted-foreground" />
                     <div>
-                      <h2 className="font-semibold text-green-900 dark:text-green-100">
+                      <h2 className="font-semibold text-sm text-foreground">
                         Equipamentos de {plantaInfo.nome}
                       </h2>
-                      <p className="text-sm text-green-700 dark:text-green-300">
-                        Visualizando {equipamentos.length} {equipamentos.length === 1 ? 'equipamento' : 'equipamentos'} desta planta
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {equipamentos.length} {equipamentos.length === 1 ? 'equipamento' : 'equipamentos'}
                         {plantaInfo.localizacao && ` • ${plantaInfo.localizacao}`}
                       </p>
                     </div>
@@ -465,9 +469,9 @@ export function EquipamentosPage() {
                     variant="outline"
                     size="sm"
                     onClick={handleClearPlantaFilter}
-                    className="border-green-200 text-green-700 hover:bg-green-100 dark:border-green-700 dark:text-green-300 dark:hover:bg-green-800"
+                    className="h-8 text-xs"
                   >
-                    Ver Todos os Equipamentos
+                    Ver Todos
                   </Button>
                 </div>
               </div>
@@ -482,13 +486,13 @@ export function EquipamentosPage() {
           <div className="flex flex-col gap-4 mb-6">
             {/* Erro dos filtros */}
             {filtersError && (
-              <Alert className="border-orange-200 bg-orange-50">
-                <AlertCircle className="h-4 w-4 text-orange-600" />
-                <AlertDescription className="text-orange-800">
+              <Alert className="rounded-md border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950">
+                <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                <AlertDescription className="text-sm text-amber-800 dark:text-amber-200">
                   {filtersError} - Os dados podem estar desatualizados.
-                  <Button 
-                    variant="link" 
-                    className="p-0 h-auto text-orange-600 underline ml-2"
+                  <Button
+                    variant="link"
+                    className="p-0 h-auto text-amber-600 dark:text-amber-400 underline ml-2"
                     onClick={clearFiltersError}
                   >
                     Tentar novamente
@@ -496,7 +500,7 @@ export function EquipamentosPage() {
                 </AlertDescription>
               </Alert>
             )}
-            
+
             {/* Filtros - CORRIGIDO: removido prop loading */}
             <div className="w-full">
               <BaseFilters
@@ -512,12 +516,12 @@ export function EquipamentosPage() {
                 onFilterChange={handleFilterChange}
               />
             </div>
-            
+
             {/* Botões de Ação - responsivos */}
             <div className="flex flex-col sm:flex-row gap-2 w-full">
-              <Button 
+              <Button
                 onClick={() => openUCModal('create')}
-                className="bg-orange-600 hover:bg-orange-700 w-full sm:w-auto"
+                className="w-full sm:w-auto h-9"
                 disabled={loading}
               >
                 <Wrench className="mr-2 h-4 w-4" />

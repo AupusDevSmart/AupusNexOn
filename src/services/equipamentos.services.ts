@@ -197,7 +197,7 @@ export class EquipamentosApiService {
   async create(data: CreateEquipamentoApiData): Promise<EquipamentoApiResponse> {
   // console.log('🚀 API SERVICE: create iniciado');
   // console.log('🚀 API SERVICE: Dados para enviar:', JSON.stringify(data, null, 2));
-  
+
   try {
     const response = await api.post<EquipamentoApiResponse>(this.baseEndpoint, data);
     // console.log('✅ API SERVICE: Resposta recebida:', response.data);
@@ -209,6 +209,34 @@ export class EquipamentosApiService {
     throw error;
   }
 }
+
+  /**
+   * Cria um equipamento rapidamente com dados mínimos
+   * Ideal para adicionar equipamentos durante a edição do diagrama
+   * @param unidadeId ID da unidade onde o equipamento será criado
+   * @param tipoEquipamentoId ID do tipo de equipamento (ex: MEDIDOR, TRANSFORMADOR)
+   * @param nome Nome opcional (será gerado automaticamente se não fornecido)
+   * @param tag TAG opcional de identificação
+   * @returns Promise com dados do equipamento criado
+   */
+  async criarEquipamentoRapido(
+    unidadeId: string,
+    tipoEquipamentoId: string,
+    nome?: string,
+    tag?: string
+  ): Promise<{ success: boolean; message: string; data: EquipamentoApiResponse }> {
+    const response = await api.post<{ success: boolean; message: string; data: EquipamentoApiResponse }>(
+      `${this.baseEndpoint}/rapido`,
+      {
+        unidade_id: unidadeId?.trim(),
+        tipo_equipamento_id: tipoEquipamentoId?.trim(),
+        nome: nome?.trim() || undefined,
+        tag: tag?.trim() || undefined,
+        classificacao: 'UC'
+      }
+    );
+    return response.data;
+  }
 
   async findAll(params?: EquipamentosQueryParams): Promise<EquipamentosListApiResponse> {
     const response = await api.get<EquipamentosListApiResponse>(this.baseEndpoint, {

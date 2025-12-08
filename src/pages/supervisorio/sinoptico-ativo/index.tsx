@@ -67,6 +67,7 @@ import {
 // import { useDiagramaUnidade } from '@/hooks/useDiagramaUnidade';
 import { api } from '@/config/api';
 import { ModalSelecionarUnidade } from '@/components/supervisorio/ModalSelecionarUnidade';
+import { ModalCriarEquipamentoRapido } from '@/features/supervisorio/components/ModalCriarEquipamentoRapido';
 import type { PlantaResponse } from '@/services/plantas.services';
 import type { Unidade } from '@/services/unidades.services';
 
@@ -1706,6 +1707,9 @@ export function SinopticoAtivoPage() {
   const [selectedInversorMqttId, setSelectedInversorMqttId] = useState<string | null>(null);
   const [pivoModalOpen, setPivoModalOpen] = useState(false);
   const [selectedPivoId, setSelectedPivoId] = useState<string | null>(null);
+
+  // Estado para modal de criação rápida de equipamentos
+  const [modalCriarRapido, setModalCriarRapido] = useState(false);
   // Estado simulado dos pivôs (chave: equipamento_id, valor: dados do pivô)
   const [pivoStates, setPivoStates] = useState<Record<string, any>>({});
 
@@ -2687,6 +2691,67 @@ export function SinopticoAtivoPage() {
     }
   };
 
+  // Handler para equipamento criado via modal de criação rápida
+  const handleEquipamentoCriado = async (equipamento: any) => {
+    console.log('🎉 [CRIAÇÃO RÁPIDA] Equipamento criado:', equipamento);
+
+    try {
+      // Recarregar lista de equipamentos para incluir o novo
+      await loadDiagramaFromBackend();
+
+      // Extrair tipo do equipamento (pode vir em diferentes formatos)
+      const tipoEquipamento = equipamento.tipoEquipamento
+        || equipamento.tipo_equipamento_rel
+        || equipamento.tipo_equipamento;
+
+      const tipoCodigo = tipoEquipamento?.codigo || 'MEDIDOR';
+
+      // Posição inicial padrão (mesma lógica do select de equipamentos cadastrados)
+      const posicaoInicial = {
+        x: 40,
+        y: 40
+      };
+
+      // Adicionar automaticamente ao diagrama
+      const novoComponente: ComponenteDU = {
+        id: `eq-${equipamento.id.trim()}`,
+        tipo: tipoCodigo,
+        nome: equipamento.nome?.trim() || 'Equipamento',
+        tag: equipamento.tag?.trim(),
+        posicao: posicaoInicial,
+        rotacao: 0,
+        status: 'NORMAL',
+        dados: {
+          equipamento_id: equipamento.id.trim(),
+          fabricante: equipamento.fabricante,
+          modelo: equipamento.modelo,
+          numero_serie: equipamento.numero_serie,
+        },
+      };
+
+      // Se for um PIVO, inicializar seu estado simulado
+      if (tipoCodigo === 'PIVO') {
+        setPivoStates(prev => ({
+          ...prev,
+          [equipamento.id.trim()]: {
+            status: "DESLIGADO",
+            operando: false,
+            velocidadeRotacao: 0,
+            modoOperacao: "MANUAL",
+            tempoOperacao: "0h 00min",
+            setorAtual: 0
+          }
+        }));
+      }
+
+      updateDiagram([...componentes, novoComponente]);
+
+      console.log('✅ [CRIAÇÃO RÁPIDA] Equipamento adicionado ao diagrama:', novoComponente);
+    } catch (error) {
+      console.error('❌ [CRIAÇÃO RÁPIDA] Erro ao processar equipamento:', error);
+    }
+  };
+
   const removerComponente = async (id: string) => {
     const componente = componentes.find((c) => c.id === id);
 
@@ -3002,7 +3067,7 @@ export function SinopticoAtivoPage() {
     return (
       <Layout>
         <Layout.Main>
-          <div className="flex flex-col items-center justify-center min-h-[600px] gap-6">
+          <div className="flex flex-col items-center justify-center h-full w-full gap-6">
             {!unidadeId ? (
               // Mensagem para selecionar unidade
               <div className="text-center max-w-md">
@@ -3179,6 +3244,19 @@ export function SinopticoAtivoPage() {
 
                   {/* Grid removido - aparece automaticamente no modo de edição (25px fixo) */}
 
+                  {/* Botão Criar Equipamento Rápido */}
+                  <div className="flex items-center gap-2 border-r pr-4">
+                    <Button
+                      size="sm"
+                      variant="default"
+                      className="h-8 bg-green-600 hover:bg-green-700 text-white"
+                      onClick={() => setModalCriarRapido(true)}
+                    >
+                      <Zap className="h-4 w-4 mr-2" />
+                      Novo Equipamento
+                    </Button>
+                  </div>
+
                   {/* Adicionar Componentes */}
                   <div className="flex items-center gap-2 border-r pr-4">
                     <span className="text-sm font-medium">Adicionar:</span>
@@ -3199,17 +3277,28 @@ export function SinopticoAtivoPage() {
                       {/* Equipamentos UC da Unidade (apenas equipamentos principais) */}
                       {Array.isArray(equipamentos) && equipamentos.filter(eq => eq.classificacao === 'UC').length > 0 ? (
                         <optgroup label="📦 Equipamentos da Unidade (UC)">
-                          {equipamentos
-                            .filter(eq => eq.classificacao === 'UC' && !componentes.some(comp => comp.dados?.equipamento_id === eq.id))
-                            .map(equipamento => (
+                          {(() => {
+                            // Filtrar equipamentos UC que não estão no diagrama
+                            const equipamentosFiltrados = equipamentos.filter(eq => {
+                              const isUC = eq.classificacao === 'UC';
+                              const jaNoDiagrama = componentes.some(comp => {
+                                // Usar trim() para comparar IDs (remover espaços em branco)
+                                const match = comp.dados?.equipamento_id?.trim() === eq.id?.trim();
+                                return match;
+                              });
+
+                              return isUC && !jaNoDiagrama;
+                            });
+
+                            return equipamentosFiltrados.map(equipamento => (
                               <option key={equipamento.id} value={`EQUIPAMENTO:${equipamento.id}`}>
                                 {equipamento.nome}
                                 {equipamento.tag && ` [${equipamento.tag}]`}
                                 {equipamento.fabricante && ` - ${equipamento.fabricante}`}
                               </option>
-                            ))
-                          }
-                          {Array.isArray(equipamentos) && equipamentos.filter(eq => eq.classificacao === 'UC' && !componentes.some(comp => comp.dados?.equipamento_id === eq.id)).length === 0 && (
+                            ));
+                          })()}
+                          {Array.isArray(equipamentos) && equipamentos.filter(eq => eq.classificacao === 'UC' && !componentes.some(comp => comp.dados?.equipamento_id?.trim() === eq.id?.trim())).length === 0 && (
                             <option value="" disabled>Todos equipamentos já adicionados</option>
                           )}
                         </optgroup>
@@ -4124,6 +4213,14 @@ export function SinopticoAtivoPage() {
           onSelect={handleUnidadeSelect}
           currentPlantaId={plantaAtual?.id}
           currentUnidadeId={unidadeId}
+        />
+
+        {/* Modal Criar Equipamento Rápido */}
+        <ModalCriarEquipamentoRapido
+          open={modalCriarRapido}
+          onClose={() => setModalCriarRapido(false)}
+          onEquipamentoCriado={handleEquipamentoCriado}
+          unidadeId={unidadeId}
         />
 
       </Layout.Main>

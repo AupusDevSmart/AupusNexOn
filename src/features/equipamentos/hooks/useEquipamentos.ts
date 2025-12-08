@@ -146,8 +146,13 @@ export const transformApiToFrontend = (apiEquipamento: EquipamentoApiResponse): 
       tipo: dt.tipo,
       unidade: dt.unidade
     })) || [],
-    
-    totalComponentes: apiEquipamento.totalComponentes || apiEquipamento.componentes_uar?.length || 0
+
+    // Prioridade: usar equipamentos_filhos (nome correto no backend) > totalComponentes > _count > componentes_uar
+    totalComponentes: (apiEquipamento as any).equipamentos_filhos?.length
+      || apiEquipamento.totalComponentes
+      || (apiEquipamento as any)._count?.componentes_uar
+      || apiEquipamento.componentes_uar?.length
+      || 0
   };
 };
 
@@ -431,8 +436,10 @@ export function useEquipamentos(): UseEquipamentosReturn {
       setError(null);
       setLastFilters(filters);
       
-      // Filtros hierárquicos: unidade tem prioridade sobre planta
-      // Se unidade está selecionada, não enviamos planta_id
+      // Filtros hierárquicos: proprietário > planta > unidade
+      // Prioridade: unidade > planta > proprietário
+      // Se unidade está selecionada, não enviamos planta_id nem proprietario_id
+      const hasProprietario = filters?.proprietarioId && filters.proprietarioId !== 'all';
       const hasUnidade = filters?.unidadeId && filters.unidadeId !== 'all';
       const hasPlanta = filters?.plantaId && filters.plantaId !== 'all';
 
@@ -442,22 +449,34 @@ export function useEquipamentos(): UseEquipamentosReturn {
         search: filters?.search || undefined,
         classificacao: (filters?.classificacao !== 'all' ? filters?.classificacao : undefined) as 'UC' | 'UAR' | undefined,
         criticidade: (filters?.criticidade !== 'all' ? filters?.criticidade : undefined) as '1' | '2' | '3' | '4' | '5' | undefined,
-        // Se unidade está selecionada, usar apenas unidade_id
-        // Caso contrário, usar planta_id se disponível
-        unidade_id: hasUnidade ? filters.unidadeId : undefined,
-        planta_id: hasUnidade ? undefined : (hasPlanta ? filters.plantaId : undefined)
+        // Hierarquia: unidade > planta > proprietário (com trim para evitar espaços)
+        unidade_id: hasUnidade ? filters.unidadeId?.trim() : undefined,
+        planta_id: hasUnidade ? undefined : (hasPlanta ? filters.plantaId?.trim() : undefined),
+        proprietario_id: (hasUnidade || hasPlanta) ? undefined : (hasProprietario ? filters.proprietarioId?.trim() : undefined)
       };
       
       const response = await equipamentosApi.findAll(params);
 
       // A API retorna: { success: true, data: { data: [], pagination: {} }, meta: {} }
       // Então precisamos acessar response.data.data
-      const equipamentosTransformados = response.data.data.map(transformApiToFrontend);
+      const equipamentosArray = response.data.data || response.data;
+
+      // DEBUG: Verificar primeiro equipamento UC para ver campos disponíveis
+      const primeiroUC = equipamentosArray.find((eq: any) => eq.classificacao === 'UC');
+      if (primeiroUC) {
+        console.log('🔍 [DEBUG] Primeiro UC completo:', primeiroUC);
+        console.log('✅ [DEBUG] equipamentos_filhos (CORRETO):', primeiroUC.equipamentos_filhos);
+        console.log('✅ [DEBUG] equipamentos_filhos.length:', primeiroUC.equipamentos_filhos?.length);
+        console.log('📊 [DEBUG] totalComponentes (backend):', primeiroUC.totalComponentes);
+        console.log('📊 [DEBUG] Contagem FINAL que será usada:', primeiroUC.equipamentos_filhos?.length || primeiroUC.totalComponentes || 0);
+      }
+
+      const equipamentosTransformados = equipamentosArray.map(transformApiToFrontend);
 
       setEquipamentos(equipamentosTransformados);
-      setTotalPages(response.data.pagination.pages);
-      setCurrentPage(response.data.pagination.page);
-      setTotal(response.data.pagination.total);
+      setTotalPages(response.data.pagination?.pages || 0);
+      setCurrentPage(response.data.pagination?.page || 1);
+      setTotal(response.data.pagination?.total || 0);
       
       return equipamentosTransformados;
       
@@ -548,11 +567,21 @@ export function useEquipamentos(): UseEquipamentosReturn {
       setLoading(true);
       setError(null);
 
+      console.log('🔍 [GERENCIAR] Buscando componentes para UC:', ucId);
       const response = await equipamentosApi.findComponentesParaGerenciar(ucId);
+      console.log('📦 [GERENCIAR] Resposta COMPLETA da API:', response);
+      console.log('📦 [GERENCIAR] response.data:', response.data);
+      console.log('📦 [GERENCIAR] response.data.componentes:', response.data?.componentes);
+      console.log('📦 [GERENCIAR] response.data.equipamentoUC:', response.data?.equipamentoUC);
+
+      // A API retorna: { success: true, data: { equipamentoUC: {...}, componentes: [...] } }
+      const componentes = response.data?.componentes || [];
+      const componentesTransformados = componentes.map(transformApiToFrontend);
+      console.log('✅ [GERENCIAR] Componentes transformados:', componentesTransformados);
 
       return {
-        equipamentoUC: response.equipamentoUC,
-        componentes: (response.componentes || []).map(transformApiToFrontend)
+        equipamentoUC: response.data?.equipamentoUC || null,
+        componentes: componentesTransformados
       };
 
     } catch (err) {

@@ -461,7 +461,7 @@ export function SinopticoGraficosV2({
         </CardContent>
       </Card>
 
-      {/* Gráficos de Tensão e Fator de Potência */}
+      {/* Gráfico de Tensão */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -473,6 +473,19 @@ export function SinopticoGraficosV2({
           </CardTitle>
         </CardHeader>
         <CardContent>
+          {dadosFormatadosTensao.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-[300px] space-y-3">
+              <Activity className="h-12 w-12 text-muted-foreground/50" />
+              <div className="text-center space-y-1">
+                <p className="text-sm font-medium text-muted-foreground">
+                  Dados de tensão não disponíveis
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Configure equipamentos com leitura de tensão
+                </p>
+              </div>
+            </div>
+          ) : (
           <ResponsiveContainer width="100%" height={300}>
             <LineChart data={dadosFormatadosTensao}>
               <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
@@ -512,6 +525,7 @@ export function SinopticoGraficosV2({
               />
             </LineChart>
           </ResponsiveContainer>
+          )}
         </CardContent>
       </Card>
 
@@ -526,6 +540,19 @@ export function SinopticoGraficosV2({
           </CardTitle>
         </CardHeader>
         <CardContent>
+          {dados.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-[300px] space-y-3">
+              <TrendingUp className="h-12 w-12 text-muted-foreground/50" />
+              <div className="text-center space-y-1">
+                <p className="text-sm font-medium text-muted-foreground">
+                  Dados de fator de potência não disponíveis
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Configure equipamentos com leitura de fator de potência
+                </p>
+              </div>
+            </div>
+          ) : (
           <ResponsiveContainer width="100%" height={300}>
             <LineChart data={dados}>
               <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
@@ -575,6 +602,7 @@ export function SinopticoGraficosV2({
               />
             </LineChart>
           </ResponsiveContainer>
+          )}
         </CardContent>
       </Card>
 

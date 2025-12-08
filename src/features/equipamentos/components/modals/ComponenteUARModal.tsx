@@ -16,7 +16,6 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
 import { Component, Save, Wrench, X, AlertCircle, Loader2 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { Equipamento } from '../../types';
@@ -41,6 +40,7 @@ export const ComponenteUARModal: React.FC<ComponenteUARModalProps> = ({
 }) => {
   const [formData, setFormData] = useState<any>({});
   const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Estados para tipos de equipamentos da API
   const [tiposEquipamentos, setTiposEquipamentos] = useState<TipoEquipamentoModal[]>([]);
@@ -88,9 +88,25 @@ export const ComponenteUARModal: React.FC<ComponenteUARModalProps> = ({
     if (entity && mode !== 'create') {
       console.log('📋 [MODAL UAR] Dados completos do componente:', entity);
 
+      // Extrair dados técnicos para o formData
+      const dadosTecnicosObj: Record<string, string> = {};
+      if (entity.dadosTecnicos && Array.isArray(entity.dadosTecnicos)) {
+        entity.dadosTecnicos.forEach((dt: any) => {
+          dadosTecnicosObj[dt.campo] = dt.valor;
+        });
+      }
+
+      // Formatar data de instalação para input type="date" (YYYY-MM-DD)
+      const dataInstalacaoFormatted = entity.dataInstalacao
+        ? entity.dataInstalacao.split('T')[0] // Extrai apenas YYYY-MM-DD
+        : '';
+
+      // Mapear campos para o formData
       setFormData({
         ...entity,
-        tipoComponente: entity.tipoEquipamento || entity.tipo || ''
+        ...dadosTecnicosObj, // Espalhar dados técnicos como campos individuais
+        tipoComponente: entity.tipoEquipamento || entity.tipo || '',
+        dataInstalacao: dataInstalacaoFormatted
       });
     } else {
       setFormData({
@@ -110,18 +126,22 @@ export const ComponenteUARModal: React.FC<ComponenteUARModalProps> = ({
     setFormData((prev: any) => ({ ...prev, [field]: value }));
   };
 
-  // Filtrar apenas tipos apropriados para componentes UAR
-  const tiposComponentesUAR = tiposEquipamentos.filter(tipo => 
-    ['sensor_temperatura', 'sensor_vibracao', 'bomba_oleo', 'filtro_ar', 'valvula_seguranca', 
-     'rele_protecao', 'disjuntor', 'seccionadora', 'inversor_frequencia', 'clp', 'sensor_pressao',
-     'medidor_energia', 'analisador_qualidade', 'controlador_temperatura'].includes(tipo.value) ||
-    ['eletronica', 'instrumentacao', 'protecao'].includes(tipo.categoria)
-  );
+  // TEMPORÁRIO: Mostrar TODOS os tipos para testar
+  // TODO: Restaurar filtro após configurar categorias corretas no backend
+  const tiposComponentesUAR = tiposEquipamentos;
+
+  // Filtro original (comentado temporariamente):
+  // const tiposComponentesUAR = tiposEquipamentos.filter(tipo =>
+  //   ['sensor_temperatura', 'sensor_vibracao', 'bomba_oleo', 'filtro_ar', 'valvula_seguranca',
+  //    'rele_protecao', 'disjuntor', 'seccionadora', 'inversor_frequencia', 'clp', 'sensor_pressao',
+  //    'medidor_energia', 'analisador_qualidade', 'controlador_temperatura'].includes(tipo.value) ||
+  //   ['eletronica', 'instrumentacao', 'protecao'].includes(tipo.categoria)
+  // );
 
   const renderCamposTecnicos = () => {
     if (!formData.tipoComponente) {
       return (
-        <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border text-center text-gray-500 dark:text-gray-400">
+        <div className="p-4 rounded-lg border border-dashed border-border/40 text-center text-muted-foreground/70 text-sm">
           Selecione um tipo de componente para ver os campos técnicos
         </div>
       );
@@ -131,7 +151,7 @@ export const ComponenteUARModal: React.FC<ComponenteUARModalProps> = ({
     const tipoEqp = getTipoEquipamento(formData.tipoComponente);
     if (!tipoEqp || !tipoEqp.camposTecnicos.length) {
       return (
-        <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border text-center text-gray-500 dark:text-gray-400">
+        <div className="p-4 rounded-lg border border-dashed border-border/40 text-center text-muted-foreground/70 text-sm">
           Nenhum campo técnico definido para este tipo
         </div>
       );
@@ -139,8 +159,8 @@ export const ComponenteUARModal: React.FC<ComponenteUARModalProps> = ({
 
     return (
       <div className="space-y-4">
-        <h4 className="font-medium text-sm text-muted-foreground border-b pb-2">
-          Dados Técnicos - {tipoEqp.label}
+        <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+          {tipoEqp.label}
         </h4>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {tipoEqp.camposTecnicos.map((campo) => (
@@ -220,58 +240,88 @@ export const ComponenteUARModal: React.FC<ComponenteUARModalProps> = ({
       return;
     }
 
-    // Buscar o ID do tipo de equipamento pelo código
-    const tipoEqpSelecionado = formData.tipoComponente ?
-      await tiposEquipamentosApi.findByCode(formData.tipoComponente) : null;
+    setIsSubmitting(true);
+    setError(null);
 
-    const submitData = {
-      // Dados básicos
-      nome: formData.nome,
-      classificacao: 'UAR',
-      equipamento_pai_id: formData.equipamentoPaiId,
-      fabricante: formData.fabricante,
-      modelo: formData.modelo,
-      numero_serie: formData.numeroSerie,
-      criticidade: formData.criticidade,
-      tipo_equipamento: formData.tipoComponente,  // Código (compatibilidade)
-      tipo_equipamento_id: tipoEqpSelecionado?.id,  // ID do tipo (correto)
-      data_instalacao: formData.dataInstalacao,
-      localizacao_especifica: formData.localizacaoEspecifica,
-      plano_manutencao: formData.planoManutencao,
-      fornecedor: formData.fornecedor,
-      valor_imobilizado: formData.valorImobilizado ? parseFloat(formData.valorImobilizado) : undefined,
-      valor_depreciacao: formData.valorDepreciacao ? parseFloat(formData.valorDepreciacao) : undefined,
-      valor_contabil: formData.valorContabil ? parseFloat(formData.valorContabil) : undefined,
-      observacoes: formData.observacoes,
-      // Herdar do equipamento pai
-      planta_id: formData.plantaId,
-      proprietario_id: formData.proprietarioId
-    };
+    try {
+      // Buscar o ID do tipo de equipamento pelo código
+      const tipoEqpSelecionado = formData.tipoComponente ?
+        await tiposEquipamentosApi.findByCode(formData.tipoComponente) : null;
 
-    console.log('📤 [MODAL UAR] Dados sendo enviados para API:', submitData);
-    onSubmit(submitData);
+      // Coletar dados técnicos do formData
+      const tipoEqp = getTipoEquipamento(formData.tipoComponente);
+      const dadosTecnicos = tipoEqp?.camposTecnicos
+        ?.filter(campo => formData[campo.campo]) // Apenas campos preenchidos
+        .map(campo => ({
+          campo: campo.campo,
+          valor: String(formData[campo.campo]), // Garantir que é string
+          tipo: campo.tipo === 'select' ? 'string' : campo.tipo, // Normalizar tipo
+          unidade: campo.unidade
+        })) || [];
+
+      // Formatar data de instalação para ISO-8601 DateTime se fornecida
+      const dataInstalacaoFormatted = formData.dataInstalacao
+        ? new Date(formData.dataInstalacao + 'T00:00:00.000Z').toISOString()
+        : undefined;
+
+      const submitData = {
+        // Dados básicos
+        nome: formData.nome,
+        classificacao: 'UAR',
+        equipamento_pai_id: formData.equipamentoPaiId,
+        unidade_id: formData.unidadeId, // Herdado do equipamento pai
+        fabricante: formData.fabricante,
+        modelo: formData.modelo,
+        numero_serie: formData.numeroSerie,
+        criticidade: formData.criticidade,
+        tipo_equipamento: formData.tipoComponente,  // Código (compatibilidade)
+        tipo_equipamento_id: tipoEqpSelecionado?.id,  // ID do tipo (correto)
+        data_instalacao: dataInstalacaoFormatted,
+        localizacao_especifica: formData.localizacaoEspecifica,
+        fornecedor: formData.fornecedor,
+        valor_imobilizado: formData.valorImobilizado ? parseFloat(formData.valorImobilizado) : undefined,
+        valor_depreciacao: formData.valorDepreciacao ? parseFloat(formData.valorDepreciacao) : undefined,
+        valor_contabil: formData.valorContabil ? parseFloat(formData.valorContabil) : undefined,
+        observacoes: formData.observacoes,
+        // Herdar do equipamento pai
+        planta_id: formData.plantaId,
+        proprietario_id: formData.proprietarioId,
+        // Dados técnicos
+        dados_tecnicos: dadosTecnicos
+      };
+
+      console.log('📤 [MODAL UAR] Dados sendo enviados para API:', submitData);
+      console.log('🔧 [MODAL UAR] Dados técnicos coletados:', dadosTecnicos);
+
+      await onSubmit(submitData);
+    } catch (err) {
+      console.error('❌ [MODAL UAR] Erro ao salvar:', err);
+      setError('Erro ao salvar componente UAR. Tente novamente.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const isReadOnly = mode === 'view';
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-[1000px] max-h-[90vh] overflow-hidden flex flex-col">
-        <DialogHeader className="bg-blue-600 text-white px-6 py-4 -mx-6 -mt-6">
-          <DialogTitle className="flex items-center gap-2">
-            <Component className="h-5 w-5" />
-            {mode === 'create' ? 'Novo Componente UAR' : 
-             mode === 'edit' ? 'Editar Componente UAR' : 
+      <DialogContent className="max-w-[1000px] max-h-[90vh] overflow-hidden flex flex-col gap-0 p-0">
+        <DialogHeader className="border-b px-6 py-4 space-y-2">
+          <DialogTitle className="text-base font-semibold flex items-center gap-2">
+            <Component className="h-4 w-4 text-muted-foreground" />
+            {mode === 'create' ? 'Novo Componente UAR' :
+             mode === 'edit' ? 'Editar Componente UAR' :
              'Visualizar Componente UAR'}
           </DialogTitle>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto space-y-6 p-1">
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
           {/* Erro de validação */}
           {error && (
-            <Alert variant="destructive">
+            <Alert variant="destructive" className="rounded-md">
               <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
+              <AlertDescription className="text-sm">
                 {error}
               </AlertDescription>
             </Alert>
@@ -279,20 +329,20 @@ export const ComponenteUARModal: React.FC<ComponenteUARModalProps> = ({
 
           {/* Informação do Equipamento Pai */}
           {equipamentoPai && (
-            <div className="p-4 bg-orange-50 dark:bg-orange-950 border border-orange-200 dark:border-orange-800 rounded-lg">
+            <div className="p-3 bg-muted/40 border border-border/40 rounded-lg">
               <div className="flex items-center gap-2 mb-2">
-                <Wrench className="h-4 w-4 text-orange-600" />
-                <span className="text-sm font-medium text-orange-900 dark:text-orange-100">
-                  Equipamento Pai (UC):
+                <Wrench className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="text-xs font-medium text-muted-foreground">
+                  Equipamento Pai (UC)
                 </span>
               </div>
-              <div className="text-orange-700 dark:text-orange-300">
-                <div className="font-medium">{equipamentoPai.nome}</div>
-                <div className="text-xs flex gap-4">
-                  {equipamentoPai.fabricante && <span>Fabricante: {equipamentoPai.fabricante}</span>}
-                  {equipamentoPai.modelo && <span>Modelo: {equipamentoPai.modelo}</span>}
+              <div className="space-y-1">
+                <div className="text-sm font-medium">{equipamentoPai.nome}</div>
+                <div className="text-xs text-muted-foreground flex gap-3">
+                  {equipamentoPai.fabricante && <span>{equipamentoPai.fabricante}</span>}
+                  {equipamentoPai.modelo && <span>{equipamentoPai.modelo}</span>}
+                  {equipamentoPai.planta?.nome && <span>• {equipamentoPai.planta.nome}</span>}
                 </div>
-                <div className="text-xs">Planta: {equipamentoPai.planta?.nome}</div>
               </div>
             </div>
           )}
@@ -300,9 +350,9 @@ export const ComponenteUARModal: React.FC<ComponenteUARModalProps> = ({
           {/* ============================================================================ */}
           {/* DADOS BÁSICOS DO COMPONENTE UAR */}
           {/* ============================================================================ */}
-          <div>
-            <h3 className="font-medium mb-4 text-primary">Dados do Componente</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold text-foreground pb-2 border-b">Dados do Componente</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Coluna 1 */}
               <div className="space-y-4">
                 <div>
@@ -399,26 +449,17 @@ export const ComponenteUARModal: React.FC<ComponenteUARModalProps> = ({
                 </div>
                 <div>
                   <label className="text-sm font-medium">Localização Específica</label>
-                  <Input 
-                    value={formData.localizacaoEspecifica || ''} 
+                  <Input
+                    value={formData.localizacaoEspecifica || ''}
                     onChange={(e) => handleFieldChange('localizacaoEspecifica', e.target.value)}
                     disabled={isReadOnly}
                     placeholder="Ex: Lado direito, Entrada principal..."
                   />
                 </div>
                 <div>
-                  <label className="text-sm font-medium">PM (Plano de Manutenção)</label>
-                  <Input 
-                    value={formData.planoManutencao || ''} 
-                    onChange={(e) => handleFieldChange('planoManutencao', e.target.value)}
-                    disabled={isReadOnly}
-                    placeholder="Código do plano de manutenção"
-                  />
-                </div>
-                <div>
                   <label className="text-sm font-medium">Fornecedor</label>
-                  <Input 
-                    value={formData.fornecedor || ''} 
+                  <Input
+                    value={formData.fornecedor || ''}
                     onChange={(e) => handleFieldChange('fornecedor', e.target.value)}
                     disabled={isReadOnly}
                     placeholder="Fornecedor do componente"
@@ -431,16 +472,16 @@ export const ComponenteUARModal: React.FC<ComponenteUARModalProps> = ({
           {/* ============================================================================ */}
           {/* DADOS TÉCNICOS DINÂMICOS DO COMPONENTE */}
           {/* ============================================================================ */}
-          <div>
-            <h3 className="font-medium mb-4 text-primary">Dados Técnicos</h3>
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold text-foreground pb-2 border-b">Dados Técnicos</h3>
             {renderCamposTecnicos()}
           </div>
 
           {/* ============================================================================ */}
           {/* VALORES FINANCEIROS */}
           {/* ============================================================================ */}
-          <div>
-            <h3 className="font-medium mb-4 text-primary">Valores Financeiros</h3>
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold text-foreground pb-2 border-b">Valores Financeiros</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="text-sm font-medium">Valor Imobilizado</label>
@@ -478,28 +519,43 @@ export const ComponenteUARModal: React.FC<ComponenteUARModalProps> = ({
           {/* ============================================================================ */}
           {/* OBSERVAÇÕES ADICIONAIS */}
           {/* ============================================================================ */}
-          <div>
+          <div className="space-y-2">
             <label className="text-sm font-medium">Observações</label>
-            <Textarea 
-              value={formData.observacoes || ''} 
+            <Textarea
+              value={formData.observacoes || ''}
               onChange={(e) => handleFieldChange('observacoes', e.target.value)}
               disabled={isReadOnly}
               placeholder="Observações adicionais sobre o componente"
               rows={3}
+              className="resize-none"
             />
           </div>
         </div>
 
         {/* Footer com botões */}
-        <div className="border-t pt-4 flex justify-end gap-2">
-          <Button variant="outline" onClick={onClose}>
+        <div className="border-t px-6 py-3 flex justify-end gap-2 bg-muted/20">
+          <Button variant="outline" size="sm" onClick={onClose} disabled={isSubmitting} className="h-9">
             <X className="h-4 w-4 mr-2" />
-            Fechar
+            {isReadOnly ? 'Fechar' : 'Cancelar'}
           </Button>
           {mode !== 'view' && (
-            <Button onClick={handleSubmit} className="bg-blue-600 hover:bg-blue-700">
-              <Save className="h-4 w-4 mr-2" />
-              Salvar Componente UAR
+            <Button
+              onClick={handleSubmit}
+              size="sm"
+              className="h-9"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Salvando...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" />
+                  {mode === 'create' ? 'Criar Componente' : 'Salvar Alterações'}
+                </>
+              )}
             </Button>
           )}
         </div>
