@@ -50,7 +50,7 @@ export function useRoles(): UseRolesReturn {
 
         // Mapeamento de nomes técnicos para labels amigáveis
         const labelMapping: Record<string, string> = {
-          'super_admin': 'Super Administrador',
+          'super_admin': 'Super Admin',
           'admin': 'Administrador',
           'gerente': 'Gerente',
           'vendedor': 'Vendedor',

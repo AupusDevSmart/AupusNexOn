@@ -118,19 +118,30 @@ api.interceptors.response.use(
         originalRequest.headers.Authorization = `Bearer ${access_token}`;
         return api(originalRequest);
       } catch (refreshError) {
-        console.error('❌ [API INTERCEPTOR] Falha ao renovar token:', refreshError);
+        console.error('❌ [API INTERCEPTOR NexOn] Falha ao renovar token:', refreshError);
 
         // Processa fila com erro
         processQueue(refreshError, null);
 
-        // Limpa dados do usuário e redireciona para login
-        const { clearUser } = useUserStore.getState();
-        clearUser();
-        AuthService.clearTokens();
+        // ✅ DETECÇÃO DE CONTEXTO: Verificar se está rodando no Service ou standalone
+        // Quando importado no Service, há um FeatureWrapper do Service no DOM
+        const isRunningInService = document.querySelector('[data-app="aupus-service"]');
 
-        const currentPath = window.location.pathname;
-        if (currentPath !== '/login') {
-          window.location.href = `/login?redirectTo=${currentPath}`;
+        if (isRunningInService) {
+          // Rodando no Service: Deixar o Service lidar com autenticação
+          console.warn('⚠️ [API INTERCEPTOR NexOn] Token refresh falhou. Rodando no Service, deixando Service lidar com auth.');
+        } else {
+          // Rodando standalone: Lidar com autenticação normalmente
+          console.error('❌ [API INTERCEPTOR NexOn] Token refresh falhou. Limpando sessão e redirecionando...');
+
+          const { clearUser } = useUserStore.getState();
+          clearUser();
+          AuthService.clearTokens();
+
+          const currentPath = window.location.pathname;
+          if (currentPath !== '/login') {
+            window.location.href = `/login?redirectTo=${currentPath}`;
+          }
         }
 
         return Promise.reject(refreshError);

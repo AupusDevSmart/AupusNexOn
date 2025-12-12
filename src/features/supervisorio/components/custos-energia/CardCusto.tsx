@@ -31,64 +31,59 @@ export function CardCusto({
   observacao,
   className = '',
 }: CardCustoProps) {
-  const icone = getIconeTipoHorario(tipo);
   const label = getLabelTipoHorario(tipo);
   const descricao = getDescricaoTipoHorario(tipo);
-  const bgColor = getBgCorTipoHorario(tipo);
 
   // Formatar horário
   const horarioTexto =
     horario_inicio && horario_fim ? `${horario_inicio} - ${horario_fim}` : null;
 
   return (
-    <Card className={`p-4 border ${bgColor} ${className}`}>
-      {/* Cabeçalho */}
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <span className="text-2xl">{icone}</span>
-          <div>
-            <h3 className="font-semibold text-sm">{label}</h3>
-            {horarioTexto && (
-              <p className="text-xs text-muted-foreground">{horarioTexto}</p>
-            )}
-            {!horarioTexto && descricao && (
-              <p className="text-xs text-muted-foreground">{descricao}</p>
-            )}
-          </div>
+    <Card className={`p-3 border ${className}`}>
+      {/* Cabeçalho Compacto */}
+      <div className="flex items-center justify-between mb-2">
+        <div>
+          <h3 className="font-medium text-xs">{label}</h3>
+          {horarioTexto && (
+            <p className="text-[10px] text-muted-foreground">{horarioTexto}</p>
+          )}
+          {!horarioTexto && descricao && (
+            <p className="text-[10px] text-muted-foreground">{descricao}</p>
+          )}
         </div>
       </div>
 
-      {/* Valores */}
-      <div className="space-y-2">
+      {/* Valores Compactos */}
+      <div className="space-y-1">
         {/* Energia */}
         <div className="flex justify-between items-baseline">
-          <span className="text-xs text-muted-foreground">Energia:</span>
-          <span className="font-medium">{formatarEnergia(energia_kwh)} kWh</span>
+          <span className="text-[10px] text-muted-foreground">Energia:</span>
+          <span className="text-xs font-medium">{formatarEnergia(energia_kwh)} kWh</span>
         </div>
 
         {/* Tarifa (se fornecida) */}
         {tarifa !== undefined && tarifa !== null && (
           <div className="flex justify-between items-baseline">
-            <span className="text-xs text-muted-foreground">Tarifa:</span>
-            <span className="text-xs">R$ {tarifa.toFixed(4)}/kWh</span>
+            <span className="text-[10px] text-muted-foreground">Tarifa:</span>
+            <span className="text-[10px]">R$ {tarifa.toFixed(4)}/kWh</span>
           </div>
         )}
 
         {/* Custo Total */}
-        <div className="pt-2 border-t border-border/50">
+        <div className="pt-1 border-t border-border/30 mt-1">
           <div className="flex justify-between items-baseline">
-            <span className="text-xs font-medium">Custo:</span>
-            <span className="text-lg font-bold">{formatarMoeda(custo)}</span>
+            <span className="text-[10px] font-medium">Custo:</span>
+            <span className="text-sm font-semibold">{formatarMoeda(custo)}</span>
           </div>
         </div>
       </div>
 
       {/* Observação (se houver) */}
       {observacao && (
-        <div className="mt-3 pt-3 border-t border-border/50">
-          <Badge variant="outline" className="text-xs w-full justify-center">
+        <div className="mt-2 pt-2 border-t border-border/30">
+          <p className="text-[9px] text-muted-foreground text-center">
             {observacao}
-          </Badge>
+          </p>
         </div>
       )}
     </Card>

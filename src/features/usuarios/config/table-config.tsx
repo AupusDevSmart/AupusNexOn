@@ -88,7 +88,7 @@ export const usuariosTableColumns: TableColumn<Usuario>[] = [
         <div className="flex justify-left">
           <Badge
             variant="outline"
-            className={`w-36 justify-center ${getRoleColor(primaryRole || 'consultor')}`}
+            className={`w-36 justify-center whitespace-nowrap ${getRoleColor(primaryRole || 'consultor')}`}
           >
             {getRoleIcon(primaryRole || 'consultor')}
             {roleDisplay}

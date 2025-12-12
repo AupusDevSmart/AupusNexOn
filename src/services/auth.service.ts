@@ -9,9 +9,12 @@ import { UsuarioDTO } from '@/types/dtos/usuarios-dto';
 
 /**
  * Chaves de armazenamento no localStorage
+ * ✅ Detecta contexto: usa chaves do Service quando rodando nele
  */
-const AUTH_TOKEN_KEY = 'authToken';
-const REFRESH_TOKEN_KEY = 'refreshToken';
+const isRunningInService = () => !!document.querySelector('[data-app="aupus-service"]');
+
+const AUTH_TOKEN_KEY = isRunningInService() ? 'service_authToken' : 'authToken';
+const REFRESH_TOKEN_KEY = isRunningInService() ? 'service_refreshToken' : 'refreshToken';
 
 /**
  * Serviço de autenticação do frontend

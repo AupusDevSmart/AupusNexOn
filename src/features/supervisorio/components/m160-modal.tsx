@@ -31,8 +31,8 @@ interface M160ModalProps {
 }
 
 export function M160Modal({ isOpen, onClose, componenteData }: M160ModalProps) {
-  // Estado da aba ativa
-  const [activeTab, setActiveTab] = useState<'leitura' | 'custos'>('leitura');
+  // Estado da aba ativa - CUSTOS como padrão
+  const [activeTab, setActiveTab] = useState<'leitura' | 'custos'>('custos');
 
   // Estado dos filtros de custos
   const [periodoCustos, setPeriodoCustos] = useState<PeriodoTipo>('dia');
@@ -156,20 +156,20 @@ export function M160Modal({ isOpen, onClose, componenteData }: M160ModalProps) {
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 justify-between">
+      <DialogContent className="max-w-6xl max-h-[95vh] overflow-y-auto">
+        <DialogHeader className="pb-2">
+          <DialogTitle className="flex items-center gap-2 justify-between text-base">
             <div className="flex items-center gap-2">
-              <Gauge className="h-5 w-5 text-green-500" />
+              <Gauge className="h-4 w-4" />
               {componenteData?.nome || 'M160'} - Multimedidor 4Q
             </div>
             {/* Indicador de Status de Conexão */}
             {isConnected ? (
-              <Badge variant="outline" className="text-xs bg-green-500/10 text-green-500 border-green-500/50">
+              <Badge variant="outline" className="text-[10px] px-2 py-0">
                 🟢 Tempo Real
               </Badge>
             ) : (
-              <Badge variant="outline" className="text-xs bg-yellow-500/10 text-yellow-500 border-yellow-500/50">
+              <Badge variant="outline" className="text-[10px] px-2 py-0">
                 {error ? <WifiOff className="h-3 w-3 mr-1" /> : <Loader2 className="h-3 w-3 mr-1 animate-spin" />}
                 {error ? 'Desconectado' : 'Conectando...'}
               </Badge>
@@ -251,9 +251,9 @@ export function M160Modal({ isOpen, onClose, componenteData }: M160ModalProps) {
           </TabsContent>
 
           {/* ABA: Custos de Energia */}
-          <TabsContent value="custos" className="space-y-4">
-            {/* Filtros */}
-            <div className="space-y-4 p-4 bg-muted/30 rounded-lg">
+          <TabsContent value="custos" className="space-y-3">
+            {/* Filtros Compactos */}
+            <div className="space-y-3 p-3 bg-muted/30 rounded-lg">
               <div className="flex items-center justify-between gap-4">
                 <div className="flex items-center gap-2">
                   <Calendar className="h-4 w-4 text-muted-foreground" />
@@ -309,12 +309,14 @@ export function M160Modal({ isOpen, onClose, componenteData }: M160ModalProps) {
 
             {/* Conteúdo de Custos */}
             {custosData && !custosLoading && (
-              <div className="space-y-6">
-                {/* Informações da Unidade */}
-                <div className="flex items-center gap-2 text-sm">
-                  <Badge variant="outline">{custosData.unidade.grupo} - {custosData.unidade.subgrupo}</Badge>
+              <div className="space-y-3">
+                {/* Informações da Unidade Compactas */}
+                <div className="flex items-center gap-2 text-xs">
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                    {custosData.unidade.grupo} - {custosData.unidade.subgrupo}
+                  </Badge>
                   {isIrrigante && (
-                    <Badge variant="outline" className="bg-green-500/10 text-green-500 border-green-500/50">
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0">
                       Irrigante
                     </Badge>
                   )}
@@ -322,12 +324,12 @@ export function M160Modal({ isOpen, onClose, componenteData }: M160ModalProps) {
                   <span className="text-muted-foreground">{custosData.unidade.nome}</span>
                 </div>
 
-                {/* Grid de Cards de Custos - Layout adaptativo baseado no grupo */}
+                {/* Grid de Cards de Custos - Layout COMPACTO */}
                 {isGrupoA ? (
-                  // GRUPO A: Grid 2x2 + Resumo + Irrigante (se aplicável)
-                  <div className="grid gap-4">
-                    {/* Linha 1: Ponta e Fora Ponta */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  // GRUPO A: Grid 3 colunas + Resumo + Irrigante
+                  <div className="grid gap-2">
+                    {/* Linha 1: Ponta, Fora Ponta, Reservado */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                       <CardCusto
                         tipo="PONTA"
                         energia_kwh={custosData.consumo.energia_ponta_kwh}
@@ -351,10 +353,6 @@ export function M160Modal({ isOpen, onClose, componenteData }: M160ModalProps) {
                           undefined
                         }
                       />
-                    </div>
-
-                    {/* Linha 2: Reservado e Demanda */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <CardCusto
                         tipo="RESERVADO"
                         energia_kwh={custosData.consumo.energia_reservado_kwh}
@@ -363,8 +361,12 @@ export function M160Modal({ isOpen, onClose, componenteData }: M160ModalProps) {
                           custosData.tarifas_aplicadas.find((t) => t.tipo_horario === 'RESERVADO')?.tarifa_total ||
                           undefined
                         }
-                        observacao="Na tarifa Verde: HR = FP"
+                        observacao="Verde: HR = FP"
                       />
+                    </div>
+
+                    {/* Linha 2: Demanda, Irrigante, Resumo */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                       <CardCusto
                         tipo="DEMANDA"
                         energia_kwh={custosData.consumo.demanda_contratada_kw || 0}
@@ -374,25 +376,27 @@ export function M160Modal({ isOpen, onClose, componenteData }: M160ModalProps) {
                           undefined
                         }
                       />
+
+                      {/* Irrigante ou placeholder */}
+                      {isIrrigante && custosData.irrigante ? (
+                        <IndicadorIrrigante irrigante={custosData.irrigante} />
+                      ) : (
+                        <div />
+                      )}
+
+                      {/* Resumo Total */}
+                      <CardResumoTotal
+                        energia_total_kwh={custosData.consumo.energia_total_kwh}
+                        custo_total={custosData.custos.custo_total}
+                        custo_medio_kwh={custosData.custos.custo_medio_kwh}
+                        demanda_maxima_kw={custosData.consumo.demanda_maxima_kw}
+                        demanda_contratada_kw={custosData.consumo.demanda_contratada_kw}
+                      />
                     </div>
-
-                    {/* Irrigante (se aplicável) */}
-                    {isIrrigante && custosData.irrigante && (
-                      <IndicadorIrrigante irrigante={custosData.irrigante} />
-                    )}
-
-                    {/* Resumo Total */}
-                    <CardResumoTotal
-                      energia_total_kwh={custosData.consumo.energia_total_kwh}
-                      custo_total={custosData.custos.custo_total}
-                      custo_medio_kwh={custosData.custos.custo_medio_kwh}
-                      demanda_maxima_kw={custosData.consumo.demanda_maxima_kw}
-                      demanda_contratada_kw={custosData.consumo.demanda_contratada_kw}
-                    />
                   </div>
                 ) : (
-                  // GRUPO B: Layout simplificado
-                  <div className="grid gap-4">
+                  // GRUPO B: Grid compacto em 3 colunas
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                     <CardCusto
                       tipo="FORA_PONTA"
                       energia_kwh={
@@ -406,7 +410,7 @@ export function M160Modal({ isOpen, onClose, componenteData }: M160ModalProps) {
                     />
 
                     {/* Irrigante (se aplicável) */}
-                    {isIrrigante && custosData.irrigante && custosData.consumo.energia_irrigante_kwh > 0 && (
+                    {isIrrigante && custosData.irrigante && custosData.consumo.energia_irrigante_kwh > 0 ? (
                       <>
                         <CardCusto
                           tipo="IRRIGANTE"
@@ -415,14 +419,26 @@ export function M160Modal({ isOpen, onClose, componenteData }: M160ModalProps) {
                         />
                         <IndicadorIrrigante irrigante={custosData.irrigante} />
                       </>
+                    ) : (
+                      <>
+                        <div />
+                        <CardResumoTotal
+                          energia_total_kwh={custosData.consumo.energia_total_kwh}
+                          custo_total={custosData.custos.custo_total}
+                          custo_medio_kwh={custosData.custos.custo_medio_kwh}
+                        />
+                      </>
                     )}
 
-                    {/* Resumo Total */}
-                    <CardResumoTotal
-                      energia_total_kwh={custosData.consumo.energia_total_kwh}
-                      custo_total={custosData.custos.custo_total}
-                      custo_medio_kwh={custosData.custos.custo_medio_kwh}
-                    />
+                    {/* Resumo Total (quando tem irrigante) */}
+                    {isIrrigante && custosData.irrigante && custosData.consumo.energia_irrigante_kwh > 0 && (
+                      <CardResumoTotal
+                        energia_total_kwh={custosData.consumo.energia_total_kwh}
+                        custo_total={custosData.custos.custo_total}
+                        custo_medio_kwh={custosData.custos.custo_medio_kwh}
+                        className="md:col-span-3"
+                      />
+                    )}
                   </div>
                 )}
               </div>

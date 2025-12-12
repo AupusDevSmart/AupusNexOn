@@ -46,10 +46,12 @@ export function LoginForm({ redirectTo = '/dashboard' }: LoginFormProps) {
   };
 
   return (
-    <Card className="w-full max-w-md mx-4 shadow-lg border-border/50">
-      <CardHeader className="space-y-1">
-        <CardTitle className="text-2xl font-bold text-center">Login</CardTitle>
-        <CardDescription className="text-center">
+    <Card className="w-full max-w-md mx-4 shadow-lg border-border bg-card">
+      <CardHeader className="space-y-1 pb-6">
+        <CardTitle className="text-2xl font-semibold text-center text-foreground">
+          Login
+        </CardTitle>
+        <CardDescription className="text-center text-muted-foreground">
           Digite suas credenciais para acessar o sistema
         </CardDescription>
       </CardHeader>
@@ -123,7 +125,11 @@ export function LoginForm({ redirectTo = '/dashboard' }: LoginFormProps) {
         </CardContent>
 
         <CardFooter>
-          <Button type="submit" className="w-full" disabled={isLoading}>
+          <Button
+            type="submit"
+            className="w-full bg-foreground text-background hover:bg-foreground/90"
+            disabled={isLoading}
+          >
             {isLoading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />

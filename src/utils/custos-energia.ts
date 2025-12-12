@@ -70,17 +70,11 @@ export function getCorTipoHorario(tipo: TipoHorario): string {
 }
 
 /**
- * Retorna cor de fundo para tipo de horário
+ * Retorna cor de fundo para tipo de horário (minimalista)
  */
 export function getBgCorTipoHorario(tipo: TipoHorario): string {
-  const cores: Record<TipoHorario, string> = {
-    PONTA: 'bg-red-500/10 border-red-500/50',
-    FORA_PONTA: 'bg-blue-500/10 border-blue-500/50',
-    RESERVADO: 'bg-purple-500/10 border-purple-500/50',
-    IRRIGANTE: 'bg-green-500/10 border-green-500/50',
-    DEMANDA: 'bg-orange-500/10 border-orange-500/50',
-  };
-  return cores[tipo] || 'bg-gray-500/10 border-gray-500/50';
+  // Retorna apenas borda padrão sem cores
+  return '';
 }
 
 /**

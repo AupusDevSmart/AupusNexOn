@@ -28,12 +28,14 @@ interface BreadcrumbConfigItem {
   dropdownItems?: DropdownItem[];
 }
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { api } from '@/config/api';
 
 export function CustomBreadcrumbs({ className = '' }: { className?: string }) {
   const navigate = useNavigate();
   const location = useLocation();
   const breadcrumbRef = useRef<HTMLDivElement>(null);
+  const [unidadeNomes, setUnidadeNomes] = useState<Record<string, string>>({});
 
   const handleClick = (href: string) => {
     navigate(href);
@@ -180,21 +182,59 @@ export function CustomBreadcrumbs({ className = '' }: { className?: string }) {
       .join(' ');
   };
 
+  // Carregar nome da unidade quando a URL mudar
+  useEffect(() => {
+    const pathname = location.pathname;
+    const match = pathname.match(/\/supervisorio\/sinoptico-ativo\/([a-z0-9]+)/);
+
+    if (match) {
+      const unidadeId = match[1];
+
+      // Se já temos o nome em cache, não buscar novamente
+      if (unidadeNomes[unidadeId]) return;
+
+      // Buscar nome da unidade
+      api.get(`/unidades/${unidadeId}`)
+        .then(response => {
+          const unidadeData = response.data?.data || response.data;
+          const nome = unidadeData?.nome || unidadeData?.name;
+
+          if (nome) {
+            setUnidadeNomes(prev => ({
+              ...prev,
+              [unidadeId]: nome
+            }));
+          }
+        })
+        .catch(err => {
+          console.error('Erro ao carregar nome da unidade:', err);
+        });
+    }
+  }, [location.pathname, unidadeNomes]);
+
   const getBreadcrumbItems = () => {
     const pathname = location.pathname.replace(/\/$/, '');
     const pathSegments = pathname.split('/').filter(Boolean);
     const breadcrumbItems: BreadcrumbConfigItem[] = [];
 
-    pathSegments.reduce((acc, segment) => {
+    pathSegments.reduce((acc, segment, index) => {
       const currentPath = `${acc}/${segment}`;
       const configItem = breadcrumbConfig.find((item) => item.path === currentPath);
 
       if (configItem) {
         breadcrumbItems.push(configItem);
       } else {
+        // Verificar se é um ID de unidade (segmento após sinoptico-ativo)
+        const prevSegment = pathSegments[index - 1];
+        let label = formatLabel(segment);
+
+        if (prevSegment === 'sinoptico-ativo' && unidadeNomes[segment]) {
+          label = unidadeNomes[segment];
+        }
+
         breadcrumbItems.push({
           path: currentPath,
-          label: formatLabel(segment),
+          label: label,
         });
       }
 

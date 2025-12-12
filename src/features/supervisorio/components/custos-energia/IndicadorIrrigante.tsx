@@ -13,30 +13,26 @@ export function IndicadorIrrigante({ irrigante, className = '' }: IndicadorIrrig
   const temEconomia = irrigante.economia_total > 0;
 
   return (
-    <Card
-      className={`p-4 bg-gradient-to-br from-green-500/10 to-emerald-500/10 border-green-500/30 ${className}`}
-    >
-      {/* Cabeçalho */}
-      <div className="flex items-center justify-between mb-4">
+    <Card className={`p-3 border ${className}`}>
+      {/* Cabeçalho Compacto */}
+      <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
-          <div className="p-2 rounded-full bg-green-500/20">
-            <Droplets className="h-5 w-5 text-green-500" />
-          </div>
+          <Droplets className="h-4 w-4 text-foreground" />
           <div>
-            <h3 className="font-semibold text-sm">Tarifa Irrigante</h3>
-            <p className="text-xs text-muted-foreground">Desconto especial de irrigação</p>
+            <h3 className="font-medium text-xs">Tarifa Irrigante</h3>
+            <p className="text-[9px] text-muted-foreground">Desconto irrigação</p>
           </div>
         </div>
-        <Badge variant="outline" className="bg-green-500/20 text-green-500 border-green-500/50">
+        <Badge variant="outline" className="text-[9px] px-1.5 py-0">
           {formatarPercentual(irrigante.percentual_desconto)} TE
         </Badge>
       </div>
 
-      {/* Informações */}
-      <div className="space-y-3">
+      {/* Informações Compactas */}
+      <div className="space-y-1">
         {/* Horário */}
-        <div className="flex items-center gap-2 text-sm">
-          <Clock className="h-4 w-4 text-muted-foreground" />
+        <div className="flex items-center gap-1 text-[10px]">
+          <Clock className="h-3 w-3 text-muted-foreground" />
           <span className="text-muted-foreground">Período:</span>
           <span className="font-medium">
             {irrigante.horario_inicio} - {irrigante.horario_fim}
@@ -44,22 +40,20 @@ export function IndicadorIrrigante({ irrigante, className = '' }: IndicadorIrrig
         </div>
 
         {/* Energia no Período */}
-        <div className="bg-background/50 rounded-lg p-3">
-          <div className="flex justify-between items-baseline">
-            <span className="text-xs text-muted-foreground">Energia no período:</span>
-            <span className="font-semibold">{formatarEnergia(irrigante.energia_periodo_kwh)} kWh</span>
-          </div>
+        <div className="flex justify-between items-baseline">
+          <span className="text-[10px] text-muted-foreground">Energia período:</span>
+          <span className="text-xs font-medium">{formatarEnergia(irrigante.energia_periodo_kwh)} kWh</span>
         </div>
 
         {/* Economia */}
         {temEconomia && (
-          <div className="bg-green-500/10 rounded-lg p-3 border border-green-500/30">
+          <div className="bg-muted/50 rounded p-2 mt-1">
             <div className="flex justify-between items-center">
-              <div className="flex items-center gap-2">
-                <TrendingDown className="h-4 w-4 text-green-500" />
-                <span className="text-sm font-medium text-green-500">Economia:</span>
+              <div className="flex items-center gap-1">
+                <TrendingDown className="h-3 w-3" />
+                <span className="text-[10px] font-medium">Economia:</span>
               </div>
-              <span className="text-lg font-bold text-green-500">
+              <span className="text-sm font-semibold">
                 {formatarMoeda(irrigante.economia_total)}
               </span>
             </div>
@@ -68,17 +62,16 @@ export function IndicadorIrrigante({ irrigante, className = '' }: IndicadorIrrig
 
         {/* Aviso se não houver economia */}
         {!temEconomia && (
-          <div className="text-xs text-muted-foreground text-center pt-2">
-            Nenhum consumo no horário irrigante neste período
+          <div className="text-[9px] text-muted-foreground text-center pt-1">
+            Sem consumo no horário irrigante
           </div>
         )}
       </div>
 
       {/* Rodapé com explicação */}
-      <div className="mt-4 pt-3 border-t border-border/50">
-        <p className="text-xs text-muted-foreground text-center">
-          O desconto de {formatarPercentual(irrigante.percentual_desconto)} é aplicado apenas na TE
-          (Tarifa de Energia), mantendo o TUSD integral
+      <div className="mt-2 pt-2 border-t border-border/30">
+        <p className="text-[9px] text-muted-foreground text-center">
+          Desconto de {formatarPercentual(irrigante.percentual_desconto)} aplicado apenas na TE, TUSD integral
         </p>
       </div>
     </Card>

@@ -184,7 +184,7 @@ export interface UsuarioResponse extends Usuario {
 
 // ✅ MAPEAMENTOS PARA COMPATIBILIDADE FRONTEND ↔ API E DB CONSTRAINT
 export const ROLE_TO_TIPO_MAPPING = {
-  'super_admin': 'Super Administrador',
+  'super_admin': 'Super Admin',
   'admin': 'Administrador',
   'consultor': 'Consultor',
   'gerente': 'Gerente',
@@ -197,7 +197,7 @@ export const ROLE_TO_TIPO_MAPPING = {
 } as const;
 
 export const TIPO_TO_ROLE_MAPPING = {
-  'Super Administrador': 'super_admin',
+  'Super Admin': 'super_admin',
   'Administrador': 'admin',
   'Consultor': 'consultor',
   'Gerente': 'gerente',

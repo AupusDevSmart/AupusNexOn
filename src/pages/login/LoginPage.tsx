@@ -3,6 +3,9 @@ import { LoginBanner } from '@/features/login/components/LoginBanner/LoginBanner
 import { useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useUserStore } from '@/store/useUserStore';
+import { useTheme } from '@/components/theme-provider';
+import { Moon, Sun } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 /**
  * Página de Login
@@ -13,6 +16,7 @@ export function LoginPage() {
   const redirectTo = searchParams.get('redirectTo') || '/dashboard';
   const navigate = useNavigate();
   const { user } = useUserStore();
+  const { theme, setTheme } = useTheme();
 
   // Se já estiver autenticado, redireciona automaticamente
   useEffect(() => {
@@ -22,8 +26,27 @@ export function LoginPage() {
     }
   }, [user, redirectTo, navigate]);
 
+  const toggleTheme = () => {
+    setTheme(theme === 'dark' ? 'light' : 'dark');
+  };
+
   return (
-    <div className="h-screen w-screen bg-card text-card-foreground flex flex-col lg:flex-row overflow-hidden">
+    <div className="h-screen w-screen bg-background text-foreground flex flex-col lg:flex-row overflow-hidden">
+      {/* Botão de toggle de tema - canto superior direito */}
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={toggleTheme}
+        className="absolute top-4 right-4 z-50 hover:bg-accent"
+        aria-label="Toggle theme"
+      >
+        {theme === 'dark' ? (
+          <Sun className="h-5 w-5" />
+        ) : (
+          <Moon className="h-5 w-5" />
+        )}
+      </Button>
+
       {/* Banner lateral - visível apenas em desktop */}
       <LoginBanner
         bannerSrc="/aupussmart.png"

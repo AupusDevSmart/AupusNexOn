@@ -266,6 +266,42 @@ class UnidadesService {
       return [];
     }
   }
+
+  // Buscar estatísticas de uma unidade específica
+  async buscarEstatisticasUnidade(id: string): Promise<UnidadeStats> {
+    try {
+      const cleanId = id?.trim();
+      console.log(`📡 [UnidadesService] Buscando estatísticas da unidade ${cleanId}`);
+
+      const response = await api.get(`${this.baseUrl}/${cleanId}/estatisticas`);
+      return response.data.data || response.data;
+    } catch (error: any) {
+      console.error(`❌ [UnidadesService] Erro ao buscar estatísticas da unidade ${id}:`, error);
+      throw error;
+    }
+  }
+
+  // Buscar equipamentos de uma unidade específica
+  async buscarEquipamentosUnidade(
+    id: string,
+    filters?: { page?: number; limit?: number; search?: string }
+  ): Promise<any> {
+    try {
+      const cleanId = id?.trim();
+      console.log(`📡 [UnidadesService] Buscando equipamentos da unidade ${cleanId}`);
+
+      const params = new URLSearchParams();
+      if (filters?.page) params.append('page', filters.page.toString());
+      if (filters?.limit) params.append('limit', filters.limit.toString());
+      if (filters?.search) params.append('search', filters.search);
+
+      const response = await api.get(`${this.baseUrl}/${cleanId}/equipamentos?${params.toString()}`);
+      return response.data.data || response.data;
+    } catch (error: any) {
+      console.error(`❌ [UnidadesService] Erro ao buscar equipamentos da unidade ${id}:`, error);
+      throw error;
+    }
+  }
 }
 
 // Exportar instância única (singleton)
@@ -280,6 +316,9 @@ export const updateUnidade = (id: string, dados: UpdateUnidadeDto) => unidadesSe
 export const deleteUnidade = (id: string) => unidadesService.excluirUnidade(id);
 export const getUnidadesByPlanta = (plantaId: string) => unidadesService.buscarUnidadesPorPlanta(plantaId);
 export const getUnidadesByProprietario = (proprietarioId: string) => unidadesService.buscarUnidadesPorProprietario(proprietarioId);
+export const getUnidadeEstatisticas = (id: string) => unidadesService.buscarEstatisticasUnidade(id);
+export const getUnidadeEquipamentos = (id: string, filters?: { page?: number; limit?: number; search?: string }) =>
+  unidadesService.buscarEquipamentosUnidade(id, filters);
 
 // ✅ TIPOS RE-EXPORTADOS
 export type { UnidadeCompleta as Unidade, FilterUnidadeDto as UnidadeFilters };

@@ -371,11 +371,11 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
         </Card> */}
 
         {/* Mapa - Agora ocupa toda a largura */}
-        <Card className="p-0 h-full relative border-0 shadow-none bg-transparent">
+        <Card className="p-0 h-full relative border-0 shadow-none bg-transparent z-[0]">
           <div className="relative h-full">
             <div
               ref={mapRef}
-              className="w-full h-full min-h-[400px] rounded-lg border border-border bg-muted relative"
+              className="w-full h-full min-h-[400px] rounded-lg border border-border bg-muted relative z-1"
             >
               {/* Fallback se o Leaflet não carregar */}
               {typeof window === "undefined" || !(window as any).L ? (
@@ -455,7 +455,7 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
 
       {/* Modal de detalhes da unidade */}
       <Dialog open={modalAberto} onOpenChange={fecharModal}>
-        <DialogContent className="sm:max-w-md z-[9999]">
+        <DialogContent className="sm:max-w-md z-0">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Activity className="h-4 w-4 text-blue-600" />
