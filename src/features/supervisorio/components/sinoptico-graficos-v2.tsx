@@ -1,9 +1,13 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { DadosGrafico } from "@/types/dtos/sinoptico-ativo";
-import { Activity, Settings, TrendingUp, Zap, AlertTriangle, CheckCircle, Loader2 } from "lucide-react";
+import { Activity, Settings, TrendingUp, Zap, AlertTriangle, CheckCircle, Loader2, Expand } from "lucide-react";
 import { useState, useEffect, useMemo } from "react";
 import {
   Brush,
@@ -18,6 +22,7 @@ import {
 } from "recharts";
 import { ConfiguracaoDemandaModal, ConfiguracaoDemanda, EquipamentoConfig } from "./ConfiguracaoDemandaModal";
 import { useDadosDemanda } from "@/hooks/useDadosDemanda";
+import { useDadosM160 } from "@/hooks/useDadosM160";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/config/api";
 
@@ -120,6 +125,14 @@ export function SinopticoGraficosV2({
   percentualAdicional = 5,
 }: SinopticoGraficosV2Props) {
   const [modalOpen, setModalOpen] = useState(false);
+  const [modalExpandidoOpen, setModalExpandidoOpen] = useState(false);
+
+  // Estados para gráficos de tensão e FP
+  const [m160Selecionado, setM160Selecionado] = useState<string>('');
+  const [fasesTensao, setFasesTensao] = useState({ A: true, B: true, C: true });
+  const [fasesFP, setFasesFP] = useState({ A: true, B: true, C: true });
+  const [modalTensaoOpen, setModalTensaoOpen] = useState(false);
+  const [modalFPOpen, setModalFPOpen] = useState(false);
 
   // Buscar configuração da API
   const { data: configData, refetch: refetchConfig } = useQuery({
@@ -171,6 +184,7 @@ export function SinopticoGraficosV2({
       intervaloAtualizacao: 30,
       aplicarPerdas: true,
       fatorPerdas: 3,
+      demandaContratada: valorContratado, // Inicializar com valor da unidade
     };
   });
 
@@ -277,19 +291,41 @@ export function SinopticoGraficosV2({
 
       setConfiguracao({
         ...configData as ConfiguracaoDemanda,
-        equipamentos: equipamentosComSelecao
+        equipamentos: equipamentosComSelecao,
+        demandaContratada: valorContratado, // Garantir que sempre tenha o valor atualizado da unidade
       });
     } else if (equipamentosData && equipamentosData.length > 0 && !configData) {
       // Se não tem config na API, usar equipamentos disponíveis
       setConfiguracao(prev => ({
         ...prev,
-        equipamentos: equipamentosData
+        equipamentos: equipamentosData,
+        demandaContratada: valorContratado, // Garantir que sempre tenha o valor atualizado da unidade
       }));
     }
-  }, [configData, equipamentosData]);
+  }, [configData, equipamentosData, valorContratado]);
 
   // Usar hook de dados de demanda
-  const { dados, fonte, confiabilidade, detalhes, isLoading } = useDadosDemanda(configuracao, unidadeId);
+  const { dados, fonte, confiabilidade, detalhes, isLoading, energiaDia } = useDadosDemanda(configuracao, unidadeId);
+
+  // Usar hook de dados M160 para tensão e FP
+  const { dados: dadosM160, equipamentosM160, isLoading: isLoadingM160 } = useDadosM160(unidadeId, m160Selecionado);
+
+  // Selecionar automaticamente o primeiro M160 disponível
+  useEffect(() => {
+    if (equipamentosM160.length > 0 && !m160Selecionado) {
+      setM160Selecionado(equipamentosM160[0].id);
+    }
+  }, [equipamentosM160, m160Selecionado]);
+
+  // Log para debug da energia do dia
+  useEffect(() => {
+    console.log('📊 [GRÁFICO] Energia do dia recebida:', {
+      energiaDia,
+      temValor: energiaDia !== undefined,
+      diferenteDeZero: energiaDia !== 0,
+      vaiMostrar: energiaDia !== undefined && energiaDia !== 0
+    });
+  }, [energiaDia]);
 
   // Salvar configuração na API
   const handleSalvarConfiguracao = async (novaConfig: ConfiguracaoDemanda) => {
@@ -312,6 +348,13 @@ export function SinopticoGraficosV2({
 
       await api.put(`/configuracao-demanda/unidade/${unidadeId}`, configParaBanco);
 
+      // Se houver demanda contratada, atualizar na unidade
+      if (novaConfig.demandaContratada !== undefined) {
+        await api.put(`/unidades/${unidadeId}`, {
+          demanda_geracao: novaConfig.demandaContratada
+        });
+      }
+
       // Atualizar estado local imediatamente
       setConfiguracao(novaConfig);
 
@@ -320,6 +363,11 @@ export function SinopticoGraficosV2({
 
       // Fechar modal
       setModalOpen(false);
+
+      // Se alterou a demanda contratada, recarregar a página para atualizar o gráfico
+      if (novaConfig.demandaContratada !== undefined) {
+        setTimeout(() => window.location.reload(), 600);
+      }
     } catch (error) {
       console.error('Erro ao salvar configuração:', error);
     }
@@ -331,10 +379,30 @@ export function SinopticoGraficosV2({
     [dados, valorContratado, percentualAdicional]
   );
 
-  const dadosFormatadosTensao = useMemo(() =>
-    formatarDadosGrafico(dadosTensao || []),
-    [dadosTensao]
-  );
+  // Formatar dados de tensão e FP do M160
+  const dadosFormatadosTensao = useMemo(() => {
+    return dadosM160.map((item) => ({
+      hora: new Date(item.timestamp).toLocaleTimeString("pt-BR", {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+      tensaoA: item.tensaoA,
+      tensaoB: item.tensaoB,
+      tensaoC: item.tensaoC,
+    }));
+  }, [dadosM160]);
+
+  const dadosFormatadosFP = useMemo(() => {
+    return dadosM160.map((item) => ({
+      hora: new Date(item.timestamp).toLocaleTimeString("pt-BR", {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+      fatorPotenciaA: item.fatorPotenciaA,
+      fatorPotenciaB: item.fatorPotenciaB,
+      fatorPotenciaC: item.fatorPotenciaC,
+    }));
+  }, [dadosM160]);
 
   return (
     <div className="w-full">
@@ -354,7 +422,16 @@ export function SinopticoGraficosV2({
               <Button
                 variant="outline"
                 size="sm"
+                onClick={() => setModalExpandidoOpen(true)}
+                title="Expandir gráfico"
+              >
+                <Expand className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setModalOpen(true)}
+                title="Configurações"
               >
                 <Settings className="h-4 w-4" />
               </Button>
@@ -362,6 +439,15 @@ export function SinopticoGraficosV2({
           </div>
         </CardHeader>
         <CardContent>
+          {/* Energia do Dia */}
+          {energiaDia !== undefined && energiaDia !== 0 && (
+            <div className="mb-4 p-3 bg-muted/50 rounded-lg flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-green-600 dark:text-green-400" />
+              <span className="text-sm font-semibold text-green-600 dark:text-green-400">
+                Energia do dia: {energiaDia.toFixed(2)} kWh
+              </span>
+            </div>
+          )}
           {isLoading ? (
             <div className="flex flex-col items-center justify-center h-[300px] space-y-3">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -391,15 +477,6 @@ export function SinopticoGraficosV2({
               <Legend
                 wrapperStyle={{ fontSize: '12px' }}
                 iconType="line"
-              />
-
-              {/* Brush para zoom e navegação */}
-              <Brush
-                dataKey="hora"
-                height={30}
-                stroke="#8884d8"
-                fill="hsl(var(--muted))"
-                travellerWidth={10}
               />
 
               {/* Linha 1: Demanda Real (Potência) */}
@@ -443,6 +520,11 @@ export function SinopticoGraficosV2({
             <div className="mt-4 p-3 bg-muted rounded-lg text-xs">
               <p className="font-medium mb-1">Detalhes da Medição:</p>
               <div className="flex flex-wrap gap-3">
+                {energiaDia !== undefined && energiaDia !== 0 && (
+                  <span className="font-semibold text-green-600 dark:text-green-400">
+                    Energia do dia: {energiaDia.toFixed(2)} kWh
+                  </span>
+                )}
                 {detalhes.formula && (
                   <span>Fórmula: {detalhes.formula}</span>
                 )}
@@ -455,6 +537,9 @@ export function SinopticoGraficosV2({
                 {detalhes.perdaAplicada !== undefined && detalhes.perdaAplicada > 0 && (
                   <span>Perdas: {detalhes.perdaAplicada}%</span>
                 )}
+                {detalhes.energiaDetalhes && (
+                  <span className="text-muted-foreground">({detalhes.energiaDetalhes})</span>
+                )}
               </div>
             </div>
           )}
@@ -464,147 +549,798 @@ export function SinopticoGraficosV2({
       {/* Gráfico de Tensão */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Activity className="h-5 w-5 text-blue-500" />
-            Tensão
-            <Badge variant="outline" className="ml-auto">
-              Últimas 24h
-            </Badge>
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Activity className="h-5 w-5 text-blue-500" />
+              <CardTitle>Tensão</CardTitle>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline">Últimas 24h</Badge>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setModalTensaoOpen(true)}
+                title="Expandir gráfico"
+              >
+                <Expand className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
-          {dadosFormatadosTensao.length === 0 ? (
+          {/* Controles */}
+          <div className="mb-4 space-y-3">
+            {/* Select M160 */}
+            <div className="flex items-center gap-2">
+              <Label htmlFor="m160-tensao" className="text-sm min-w-[80px]">
+                M160:
+              </Label>
+              <Select value={m160Selecionado} onValueChange={setM160Selecionado}>
+                <SelectTrigger id="m160-tensao" className="w-[250px]">
+                  <SelectValue placeholder="Selecione um M160" />
+                </SelectTrigger>
+                <SelectContent>
+                  {equipamentosM160.map((eq) => (
+                    <SelectItem key={eq.id} value={eq.id}>
+                      {eq.nome}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Checkboxes Fases */}
+            <div className="flex items-center gap-4">
+              <Label className="text-sm min-w-[80px]">Fases:</Label>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="fase-a-tensao"
+                    checked={fasesTensao.A}
+                    onCheckedChange={(checked) =>
+                      setFasesTensao((prev) => ({ ...prev, A: !!checked }))
+                    }
+                  />
+                  <Label htmlFor="fase-a-tensao" className="text-sm cursor-pointer">
+                    Fase A
+                  </Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="fase-b-tensao"
+                    checked={fasesTensao.B}
+                    onCheckedChange={(checked) =>
+                      setFasesTensao((prev) => ({ ...prev, B: !!checked }))
+                    }
+                  />
+                  <Label htmlFor="fase-b-tensao" className="text-sm cursor-pointer">
+                    Fase B
+                  </Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="fase-c-tensao"
+                    checked={fasesTensao.C}
+                    onCheckedChange={(checked) =>
+                      setFasesTensao((prev) => ({ ...prev, C: !!checked }))
+                    }
+                  />
+                  <Label htmlFor="fase-c-tensao" className="text-sm cursor-pointer">
+                    Fase C
+                  </Label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Gráfico */}
+          {isLoadingM160 ? (
+            <div className="flex flex-col items-center justify-center h-[300px] space-y-3">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">Carregando dados...</p>
+            </div>
+          ) : !m160Selecionado ? (
             <div className="flex flex-col items-center justify-center h-[300px] space-y-3">
               <Activity className="h-12 w-12 text-muted-foreground/50" />
               <div className="text-center space-y-1">
                 <p className="text-sm font-medium text-muted-foreground">
-                  Dados de tensão não disponíveis
+                  Nenhum M160 disponível
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Configure equipamentos com leitura de tensão
+                  Adicione um M160 com MQTT habilitado à unidade
+                </p>
+              </div>
+            </div>
+          ) : dadosFormatadosTensao.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-[300px] space-y-3">
+              <Activity className="h-12 w-12 text-muted-foreground/50" />
+              <div className="text-center space-y-1">
+                <p className="text-sm font-medium text-muted-foreground">
+                  Sem dados de tensão
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Aguardando dados do M160 selecionado
                 </p>
               </div>
             </div>
           ) : (
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={dadosFormatadosTensao}>
-              <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-              <XAxis dataKey="hora" fontSize={12} />
-              <YAxis
-                fontSize={12}
-                domain={["dataMin - 5", "dataMax + 5"]}
-                label={{
-                  value: "V",
-                  angle: -90,
-                  position: "insideLeft",
-                }}
-              />
-              <Tooltip content={<CustomTooltip />} />
-              <Legend
-                wrapperStyle={{ fontSize: '12px' }}
-                iconType="line"
-              />
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={dadosFormatadosTensao}>
+                <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                <XAxis dataKey="hora" fontSize={12} />
+                <YAxis
+                  fontSize={12}
+                  domain={["dataMin - 5", "dataMax + 5"]}
+                  label={{
+                    value: "V",
+                    angle: -90,
+                    position: "insideLeft",
+                  }}
+                />
+                <Tooltip content={<CustomTooltip />} />
+                <Legend wrapperStyle={{ fontSize: "12px" }} iconType="line" />
 
-              {/* Brush para zoom e navegação */}
-              <Brush
-                dataKey="hora"
-                height={30}
-                stroke="#3b82f6"
-                fill="hsl(var(--muted))"
-                travellerWidth={10}
-              />
-
-              <Line
-                type="monotone"
-                dataKey="tensao"
-                name="Tensão (V)"
-                stroke="#3b82f6"
-                strokeWidth={2}
-                dot={false}
-                activeDot={{ r: 4 }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
+                {fasesTensao.A && (
+                  <Line
+                    type="monotone"
+                    dataKey="tensaoA"
+                    name="Tensão Fase A"
+                    stroke="#ef4444"
+                    strokeWidth={2}
+                    dot={false}
+                    activeDot={{ r: 4 }}
+                  />
+                )}
+                {fasesTensao.B && (
+                  <Line
+                    type="monotone"
+                    dataKey="tensaoB"
+                    name="Tensão Fase B"
+                    stroke="#3b82f6"
+                    strokeWidth={2}
+                    dot={false}
+                    activeDot={{ r: 4 }}
+                  />
+                )}
+                {fasesTensao.C && (
+                  <Line
+                    type="monotone"
+                    dataKey="tensaoC"
+                    name="Tensão Fase C"
+                    stroke="#22c55e"
+                    strokeWidth={2}
+                    dot={false}
+                    activeDot={{ r: 4 }}
+                  />
+                )}
+              </LineChart>
+            </ResponsiveContainer>
           )}
         </CardContent>
       </Card>
 
+      {/* Gráfico de Fator de Potência */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <TrendingUp className="h-5 w-5 text-purple-500" />
-            Fator de Potência
-            <Badge variant="outline" className="ml-auto">
-              Últimas 24h
-            </Badge>
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="h-5 w-5 text-purple-500" />
+              <CardTitle>Fator de Potência</CardTitle>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline">Últimas 24h</Badge>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setModalFPOpen(true)}
+                title="Expandir gráfico"
+              >
+                <Expand className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
-          {dados.length === 0 ? (
+          {/* Controles */}
+          <div className="mb-4 space-y-3">
+            {/* Select M160 */}
+            <div className="flex items-center gap-2">
+              <Label htmlFor="m160-fp" className="text-sm min-w-[80px]">
+                M160:
+              </Label>
+              <Select value={m160Selecionado} onValueChange={setM160Selecionado}>
+                <SelectTrigger id="m160-fp" className="w-[250px]">
+                  <SelectValue placeholder="Selecione um M160" />
+                </SelectTrigger>
+                <SelectContent>
+                  {equipamentosM160.map((eq) => (
+                    <SelectItem key={eq.id} value={eq.id}>
+                      {eq.nome}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Checkboxes Fases */}
+            <div className="flex items-center gap-4">
+              <Label className="text-sm min-w-[80px]">Fases:</Label>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="fase-a-fp"
+                    checked={fasesFP.A}
+                    onCheckedChange={(checked) =>
+                      setFasesFP((prev) => ({ ...prev, A: !!checked }))
+                    }
+                  />
+                  <Label htmlFor="fase-a-fp" className="text-sm cursor-pointer">
+                    Fase A
+                  </Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="fase-b-fp"
+                    checked={fasesFP.B}
+                    onCheckedChange={(checked) =>
+                      setFasesFP((prev) => ({ ...prev, B: !!checked }))
+                    }
+                  />
+                  <Label htmlFor="fase-b-fp" className="text-sm cursor-pointer">
+                    Fase B
+                  </Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="fase-c-fp"
+                    checked={fasesFP.C}
+                    onCheckedChange={(checked) =>
+                      setFasesFP((prev) => ({ ...prev, C: !!checked }))
+                    }
+                  />
+                  <Label htmlFor="fase-c-fp" className="text-sm cursor-pointer">
+                    Fase C
+                  </Label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Gráfico */}
+          {isLoadingM160 ? (
+            <div className="flex flex-col items-center justify-center h-[300px] space-y-3">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">Carregando dados...</p>
+            </div>
+          ) : !m160Selecionado ? (
             <div className="flex flex-col items-center justify-center h-[300px] space-y-3">
               <TrendingUp className="h-12 w-12 text-muted-foreground/50" />
               <div className="text-center space-y-1">
                 <p className="text-sm font-medium text-muted-foreground">
-                  Dados de fator de potência não disponíveis
+                  Nenhum M160 disponível
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Configure equipamentos com leitura de fator de potência
+                  Adicione um M160 com MQTT habilitado à unidade
+                </p>
+              </div>
+            </div>
+          ) : dadosFormatadosFP.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-[300px] space-y-3">
+              <TrendingUp className="h-12 w-12 text-muted-foreground/50" />
+              <div className="text-center space-y-1">
+                <p className="text-sm font-medium text-muted-foreground">
+                  Sem dados de fator de potência
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Aguardando dados do M160 selecionado
                 </p>
               </div>
             </div>
           ) : (
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={dados}>
-              <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-              <XAxis dataKey="hora" fontSize={12} />
-              <YAxis
-                fontSize={12}
-                domain={[0.75, 1.0]}
-                label={{
-                  value: "FP",
-                  angle: -90,
-                  position: "insideLeft",
-                }}
-              />
-              <Tooltip content={<CustomTooltip />} />
-              <Legend
-                wrapperStyle={{ fontSize: '12px' }}
-                iconType="line"
-              />
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={dadosFormatadosFP}>
+                <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                <XAxis dataKey="hora" fontSize={12} />
+                <YAxis
+                  fontSize={12}
+                  domain={[0.75, 1.0]}
+                  label={{
+                    value: "FP",
+                    angle: -90,
+                    position: "insideLeft",
+                  }}
+                />
+                <Tooltip content={<CustomTooltip />} />
+                <Legend wrapperStyle={{ fontSize: "12px" }} iconType="line" />
 
-              {/* Brush para zoom e navegação */}
-              <Brush
-                dataKey="hora"
-                height={30}
-                stroke="#8b5cf6"
-                fill="hsl(var(--muted))"
-                travellerWidth={10}
-              />
+                {fasesFP.A && (
+                  <Line
+                    type="monotone"
+                    dataKey="fatorPotenciaA"
+                    name="FP Fase A"
+                    stroke="#ef4444"
+                    strokeWidth={2}
+                    dot={false}
+                    activeDot={{ r: 4 }}
+                  />
+                )}
+                {fasesFP.B && (
+                  <Line
+                    type="monotone"
+                    dataKey="fatorPotenciaB"
+                    name="FP Fase B"
+                    stroke="#3b82f6"
+                    strokeWidth={2}
+                    dot={false}
+                    activeDot={{ r: 4 }}
+                  />
+                )}
+                {fasesFP.C && (
+                  <Line
+                    type="monotone"
+                    dataKey="fatorPotenciaC"
+                    name="FP Fase C"
+                    stroke="#22c55e"
+                    strokeWidth={2}
+                    dot={false}
+                    activeDot={{ r: 4 }}
+                  />
+                )}
 
-              <Line
-                type="monotone"
-                dataKey="fatorPotencia"
-                name="Fator de Potência"
-                stroke="#8b5cf6"
-                strokeWidth={2}
-                dot={false}
-                activeDot={{ r: 4 }}
-              />
-
-              <Line
-                type="monotone"
-                dataKey={() => 0.92}
-                name="Limite Mínimo (0.92)"
-                stroke="#ef4444"
-                strokeWidth={2}
-                strokeDasharray="5 5"
-                dot={false}
-              />
-            </LineChart>
-          </ResponsiveContainer>
+                {/* Linha de limite mínimo 0.92 */}
+                <Line
+                  type="monotone"
+                  dataKey={() => 0.92}
+                  name="Limite Mínimo (0.92)"
+                  stroke="#f97316"
+                  strokeWidth={2}
+                  strokeDasharray="5 5"
+                  dot={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
           )}
         </CardContent>
       </Card>
+
+      {/* Modal Expandido - Gráfico de Demanda */}
+      <Dialog open={modalExpandidoOpen} onOpenChange={setModalExpandidoOpen}>
+        <DialogContent className="max-w-[90vw] max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Zap className="h-5 w-5 text-yellow-500" />
+              Gráfico de Demanda - Expandido
+              {getConfiabilidadeBadge(fonte, confiabilidade)}
+            </DialogTitle>
+          </DialogHeader>
+
+          {/* Energia do Dia - Modal Expandido */}
+          {energiaDia !== undefined && energiaDia !== 0 && (
+            <div className="p-3 bg-muted/50 rounded-lg flex items-center gap-2">
+              <TrendingUp className="h-5 w-5 text-green-600 dark:text-green-400" />
+              <span className="text-base font-semibold text-green-600 dark:text-green-400">
+                Energia do dia: {energiaDia.toFixed(2)} kWh
+              </span>
+            </div>
+          )}
+
+          <div className="w-full h-[70vh]">
+            {isLoading ? (
+              <div className="flex flex-col items-center justify-center h-full space-y-3">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">Carregando dados do gráfico...</p>
+              </div>
+            ) : dadosFormatadosPotencia.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full space-y-3">
+                <AlertTriangle className="h-8 w-8 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">
+                  {detalhes?.formula || 'Nenhum dado disponível. Configure os equipamentos no botão de configuração.'}
+                </p>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={dadosFormatadosPotencia}>
+                  <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                  <XAxis dataKey="hora" fontSize={12} />
+                  <YAxis
+                    fontSize={12}
+                    label={{
+                      value: "kW",
+                      angle: -90,
+                      position: "insideLeft",
+                    }}
+                  />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend
+                    wrapperStyle={{ fontSize: '12px' }}
+                    iconType="line"
+                  />
+
+                  {/* Brush para zoom e navegação - apenas no modal expandido */}
+                  <Brush
+                    dataKey="hora"
+                    height={30}
+                    stroke="#8884d8"
+                    fill="hsl(var(--muted))"
+                    travellerWidth={10}
+                  />
+
+                  {/* Linha 1: Demanda Real (Potência) */}
+                  <Line
+                    type="monotone"
+                    dataKey="potencia"
+                    name="Demanda Real"
+                    stroke="#eab308"
+                    strokeWidth={2}
+                    dot={false}
+                    activeDot={{ r: 4 }}
+                  />
+
+                  {/* Linha 2: Valor Contratado */}
+                  <Line
+                    type="monotone"
+                    dataKey="valorContratado"
+                    name="Valor Contratado"
+                    stroke="#22c55e"
+                    strokeWidth={2}
+                    strokeDasharray="5 5"
+                    dot={false}
+                  />
+
+                  {/* Linha 3: Valor Contratado + Adicional */}
+                  <Line
+                    type="monotone"
+                    dataKey="valorAdicional"
+                    name={`Contratado + ${percentualAdicional}%`}
+                    stroke="#3b82f6"
+                    strokeWidth={2}
+                    strokeDasharray="5 5"
+                    dot={false}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
+
+            {/* Detalhes adicionais */}
+            {!isLoading && configuracao.mostrarDetalhes && detalhes && (
+              <div className="mt-4 p-3 bg-muted rounded-lg text-xs">
+                <p className="font-medium mb-1">Detalhes da Medição:</p>
+                <div className="flex flex-wrap gap-3">
+                  {detalhes.formula && (
+                    <span>Fórmula: {detalhes.formula}</span>
+                  )}
+                  {detalhes.equipamentosUsados !== undefined && (
+                    <span>Equipamentos: {detalhes.equipamentosUsados}</span>
+                  )}
+                  {detalhes.equipamentosOffline !== undefined && detalhes.equipamentosOffline > 0 && (
+                    <span className="text-yellow-600">Offline: {detalhes.equipamentosOffline}</span>
+                  )}
+                  {detalhes.perdaAplicada !== undefined && detalhes.perdaAplicada > 0 && (
+                    <span>Perdas: {detalhes.perdaAplicada}%</span>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Expandido - Gráfico de Tensão */}
+      <Dialog open={modalTensaoOpen} onOpenChange={setModalTensaoOpen}>
+        <DialogContent className="max-w-[90vw] max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Activity className="h-5 w-5 text-blue-500" />
+              Gráfico de Tensão - Expandido
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="w-full h-[70vh]">
+            {/* Controles */}
+            <div className="mb-4 space-y-3">
+              {/* Select M160 */}
+              <div className="flex items-center gap-2">
+                <Label htmlFor="m160-tensao-modal" className="text-sm min-w-[80px]">
+                  M160:
+                </Label>
+                <Select value={m160Selecionado} onValueChange={setM160Selecionado}>
+                  <SelectTrigger id="m160-tensao-modal" className="w-[250px]">
+                    <SelectValue placeholder="Selecione um M160" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {equipamentosM160.map((eq) => (
+                      <SelectItem key={eq.id} value={eq.id}>
+                        {eq.nome}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Checkboxes Fases */}
+              <div className="flex items-center gap-4">
+                <Label className="text-sm min-w-[80px]">Fases:</Label>
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="fase-a-tensao-modal"
+                      checked={fasesTensao.A}
+                      onCheckedChange={(checked) =>
+                        setFasesTensao((prev) => ({ ...prev, A: !!checked }))
+                      }
+                    />
+                    <Label htmlFor="fase-a-tensao-modal" className="text-sm cursor-pointer">
+                      Fase A
+                    </Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="fase-b-tensao-modal"
+                      checked={fasesTensao.B}
+                      onCheckedChange={(checked) =>
+                        setFasesTensao((prev) => ({ ...prev, B: !!checked }))
+                      }
+                    />
+                    <Label htmlFor="fase-b-tensao-modal" className="text-sm cursor-pointer">
+                      Fase B
+                    </Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="fase-c-tensao-modal"
+                      checked={fasesTensao.C}
+                      onCheckedChange={(checked) =>
+                        setFasesTensao((prev) => ({ ...prev, C: !!checked }))
+                      }
+                    />
+                    <Label htmlFor="fase-c-tensao-modal" className="text-sm cursor-pointer">
+                      Fase C
+                    </Label>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Gráfico */}
+            {isLoadingM160 ? (
+              <div className="flex flex-col items-center justify-center h-full space-y-3">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">Carregando dados...</p>
+              </div>
+            ) : dadosFormatadosTensao.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full space-y-3">
+                <Activity className="h-12 w-12 text-muted-foreground/50" />
+                <p className="text-sm text-muted-foreground">Sem dados de tensão</p>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={dadosFormatadosTensao}>
+                  <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                  <XAxis dataKey="hora" fontSize={12} />
+                  <YAxis
+                    fontSize={12}
+                    domain={["dataMin - 5", "dataMax + 5"]}
+                    label={{
+                      value: "V",
+                      angle: -90,
+                      position: "insideLeft",
+                    }}
+                  />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend wrapperStyle={{ fontSize: "12px" }} iconType="line" />
+
+                  {/* Brush para zoom - apenas no modal expandido */}
+                  <Brush
+                    dataKey="hora"
+                    height={30}
+                    stroke="#3b82f6"
+                    fill="hsl(var(--muted))"
+                    travellerWidth={10}
+                  />
+
+                  {fasesTensao.A && (
+                    <Line
+                      type="monotone"
+                      dataKey="tensaoA"
+                      name="Tensão Fase A"
+                      stroke="#ef4444"
+                      strokeWidth={2}
+                      dot={false}
+                      activeDot={{ r: 4 }}
+                    />
+                  )}
+                  {fasesTensao.B && (
+                    <Line
+                      type="monotone"
+                      dataKey="tensaoB"
+                      name="Tensão Fase B"
+                      stroke="#3b82f6"
+                      strokeWidth={2}
+                      dot={false}
+                      activeDot={{ r: 4 }}
+                    />
+                  )}
+                  {fasesTensao.C && (
+                    <Line
+                      type="monotone"
+                      dataKey="tensaoC"
+                      name="Tensão Fase C"
+                      stroke="#22c55e"
+                      strokeWidth={2}
+                      dot={false}
+                      activeDot={{ r: 4 }}
+                    />
+                  )}
+                </LineChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Expandido - Gráfico de Fator de Potência */}
+      <Dialog open={modalFPOpen} onOpenChange={setModalFPOpen}>
+        <DialogContent className="max-w-[90vw] max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <TrendingUp className="h-5 w-5 text-purple-500" />
+              Gráfico de Fator de Potência - Expandido
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="w-full h-[70vh]">
+            {/* Controles */}
+            <div className="mb-4 space-y-3">
+              {/* Select M160 */}
+              <div className="flex items-center gap-2">
+                <Label htmlFor="m160-fp-modal" className="text-sm min-w-[80px]">
+                  M160:
+                </Label>
+                <Select value={m160Selecionado} onValueChange={setM160Selecionado}>
+                  <SelectTrigger id="m160-fp-modal" className="w-[250px]">
+                    <SelectValue placeholder="Selecione um M160" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {equipamentosM160.map((eq) => (
+                      <SelectItem key={eq.id} value={eq.id}>
+                        {eq.nome}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Checkboxes Fases */}
+              <div className="flex items-center gap-4">
+                <Label className="text-sm min-w-[80px]">Fases:</Label>
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="fase-a-fp-modal"
+                      checked={fasesFP.A}
+                      onCheckedChange={(checked) =>
+                        setFasesFP((prev) => ({ ...prev, A: !!checked }))
+                      }
+                    />
+                    <Label htmlFor="fase-a-fp-modal" className="text-sm cursor-pointer">
+                      Fase A
+                    </Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="fase-b-fp-modal"
+                      checked={fasesFP.B}
+                      onCheckedChange={(checked) =>
+                        setFasesFP((prev) => ({ ...prev, B: !!checked }))
+                      }
+                    />
+                    <Label htmlFor="fase-b-fp-modal" className="text-sm cursor-pointer">
+                      Fase B
+                    </Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="fase-c-fp-modal"
+                      checked={fasesFP.C}
+                      onCheckedChange={(checked) =>
+                        setFasesFP((prev) => ({ ...prev, C: !!checked }))
+                      }
+                    />
+                    <Label htmlFor="fase-c-fp-modal" className="text-sm cursor-pointer">
+                      Fase C
+                    </Label>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Gráfico */}
+            {isLoadingM160 ? (
+              <div className="flex flex-col items-center justify-center h-full space-y-3">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">Carregando dados...</p>
+              </div>
+            ) : dadosFormatadosFP.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full space-y-3">
+                <TrendingUp className="h-12 w-12 text-muted-foreground/50" />
+                <p className="text-sm text-muted-foreground">Sem dados de fator de potência</p>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={dadosFormatadosFP}>
+                  <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                  <XAxis dataKey="hora" fontSize={12} />
+                  <YAxis
+                    fontSize={12}
+                    domain={[0.75, 1.0]}
+                    label={{
+                      value: "FP",
+                      angle: -90,
+                      position: "insideLeft",
+                    }}
+                  />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend wrapperStyle={{ fontSize: "12px" }} iconType="line" />
+
+                  {/* Brush para zoom - apenas no modal expandido */}
+                  <Brush
+                    dataKey="hora"
+                    height={30}
+                    stroke="#8b5cf6"
+                    fill="hsl(var(--muted))"
+                    travellerWidth={10}
+                  />
+
+                  {fasesFP.A && (
+                    <Line
+                      type="monotone"
+                      dataKey="fatorPotenciaA"
+                      name="FP Fase A"
+                      stroke="#ef4444"
+                      strokeWidth={2}
+                      dot={false}
+                      activeDot={{ r: 4 }}
+                    />
+                  )}
+                  {fasesFP.B && (
+                    <Line
+                      type="monotone"
+                      dataKey="fatorPotenciaB"
+                      name="FP Fase B"
+                      stroke="#3b82f6"
+                      strokeWidth={2}
+                      dot={false}
+                      activeDot={{ r: 4 }}
+                    />
+                  )}
+                  {fasesFP.C && (
+                    <Line
+                      type="monotone"
+                      dataKey="fatorPotenciaC"
+                      name="FP Fase C"
+                      stroke="#22c55e"
+                      strokeWidth={2}
+                      dot={false}
+                      activeDot={{ r: 4 }}
+                    />
+                  )}
+
+                  {/* Linha de limite mínimo 0.92 */}
+                  <Line
+                    type="monotone"
+                    dataKey={() => 0.92}
+                    name="Limite Mínimo (0.92)"
+                    stroke="#f97316"
+                    strokeWidth={2}
+                    strokeDasharray="5 5"
+                    dot={false}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Modal de Configuração */}
       <ConfiguracaoDemandaModal

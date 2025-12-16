@@ -49,7 +49,7 @@ export function LoginPage() {
 
       {/* Banner lateral - visível apenas em desktop */}
       <LoginBanner
-        bannerSrc="/aupussmart.png"
+        bannerSrc="/logoaupus.svg"
         subtitle="Interligando você com o futuro. Energize-se."
       />
 

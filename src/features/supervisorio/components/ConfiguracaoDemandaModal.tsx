@@ -19,6 +19,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
 import {
   Settings,
   Zap,
@@ -49,6 +50,7 @@ export interface ConfiguracaoDemanda {
   intervaloAtualizacao: number; // segundos
   aplicarPerdas: boolean;
   fatorPerdas: number; // percentual
+  demandaContratada?: number; // kW - demanda contratada da unidade
 }
 
 interface ConfiguracaoDemandaModalProps {
@@ -351,23 +353,24 @@ export function ConfiguracaoDemandaModal({
           <TabsContent value="avancado" className="space-y-4">
             <div className="space-y-4">
               <div>
-                <Label htmlFor="intervalo">Intervalo de Atualização</Label>
-                <Select
-                  value={config.intervaloAtualizacao.toString()}
-                  onValueChange={(value) =>
-                    setConfig(prev => ({ ...prev, intervaloAtualizacao: parseInt(value) }))
+                <Label htmlFor="demandaContratada">Demanda Contratada (kW)</Label>
+                <Input
+                  type="number"
+                  id="demandaContratada"
+                  min={0}
+                  step={0.01}
+                  value={config.demandaContratada || ''}
+                  onChange={(e) =>
+                    setConfig(prev => ({
+                      ...prev,
+                      demandaContratada: parseFloat(e.target.value) || 0
+                    }))
                   }
-                >
-                  <SelectTrigger id="intervalo">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="30">30 segundos</SelectItem>
-                    <SelectItem value="60">1 minuto</SelectItem>
-                    <SelectItem value="300">5 minutos</SelectItem>
-                    <SelectItem value="900">15 minutos</SelectItem>
-                  </SelectContent>
-                </Select>
+                  placeholder="Ex: 2500"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Valor da demanda contratada com a concessionária (usado como linha de referência no gráfico)
+                </p>
               </div>
 
               <div className="space-y-2">
@@ -383,12 +386,12 @@ export function ConfiguracaoDemandaModal({
                 {config.aplicarPerdas && (
                   <div className="ml-6">
                     <Label htmlFor="perdas">Percentual de Perdas (%)</Label>
-                    <input
+                    <Input
                       type="number"
                       id="perdas"
-                      min="0"
-                      max="10"
-                      step="0.5"
+                      min={0}
+                      max={10}
+                      step={0.5}
                       value={config.fatorPerdas}
                       onChange={(e) =>
                         setConfig(prev => ({
@@ -396,7 +399,7 @@ export function ConfiguracaoDemandaModal({
                           fatorPerdas: parseFloat(e.target.value) || 0
                         }))
                       }
-                      className="w-24 px-3 py-1 text-sm border rounded-md"
+                      className="w-24"
                     />
                   </div>
                 )}

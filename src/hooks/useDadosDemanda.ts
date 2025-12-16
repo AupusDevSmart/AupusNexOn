@@ -21,11 +21,13 @@ interface ResultadoDemanda {
   dados: DadosDemanda[];
   fonte: 'A966' | 'AGRUPAMENTO' | 'SIMULADO';
   confiabilidade: number;
+  energiaDia?: number; // kWh - Energia acumulada do dia
   detalhes?: {
     equipamentosUsados?: number;
     equipamentosOffline?: number;
     perdaAplicada?: number;
     formula?: string;
+    energiaDetalhes?: string; // Detalhe do cálculo da energia
   };
 }
 
@@ -35,7 +37,8 @@ export function useDadosDemanda(configuracao: ConfiguracaoDemanda, unidadeId?: s
   const [dadosDemanda, setDadosDemanda] = useState<ResultadoDemanda>({
     dados: [],
     fonte: 'AGRUPAMENTO',
-    confiabilidade: 0
+    confiabilidade: 0,
+    energiaDia: 0
   });
 
   // Query para A966 (medidor principal)
@@ -73,6 +76,43 @@ export function useDadosDemanda(configuracao: ConfiguracaoDemanda, unidadeId?: s
     },
     refetchInterval: configuracao.intervaloAtualizacao * 1000,
     enabled: !!(unidadeId && (configuracao.fonte === 'A966' || configuracao.fonte === 'AUTO'))
+  });
+
+  // Query para buscar últimos dados dos equipamentos (para energia do dia)
+  const { data: dadosEnergia } = useQuery({
+    queryKey: ['energia-dia', configuracao.equipamentos, unidadeId],
+    queryFn: async () => {
+      if (!unidadeId) return null;
+
+      const equipamentosSelecionados = configuracao.equipamentos.filter(e => e.selecionado);
+      if (equipamentosSelecionados.length === 0) return null;
+
+      try {
+        // Buscar último dado de cada equipamento
+        const promises = equipamentosSelecionados.map(async (equip) => {
+          try {
+            const response = await api.get(`/equipamentos-dados/${equip.id}/latest`);
+            return {
+              id: equip.id,
+              tipo: equip.tipo,
+              fluxoEnergia: equip.fluxoEnergia,
+              dados: response.data?.data || response.data
+            };
+          } catch (error) {
+            console.error(`Erro ao buscar último dado do equipamento ${equip.nome}:`, error);
+            return null;
+          }
+        });
+
+        const resultados = await Promise.all(promises);
+        return resultados.filter(r => r !== null);
+      } catch (error) {
+        console.error('Erro ao buscar dados de energia:', error);
+        return null;
+      }
+    },
+    refetchInterval: configuracao.intervaloAtualizacao * 1000,
+    enabled: !!(unidadeId && configuracao.equipamentos.some(e => e.selecionado))
   });
 
   // Query para equipamentos do agrupamento
@@ -139,6 +179,103 @@ export function useDadosDemanda(configuracao: ConfiguracaoDemanda, unidadeId?: s
     refetchInterval: configuracao.intervaloAtualizacao * 1000,
     enabled: !!(unidadeId && (configuracao.fonte === 'AGRUPAMENTO' || (configuracao.fonte === 'AUTO' && !dadosA966)))
   });
+
+  // Calcular energia do dia a partir dos equipamentos
+  const calcularEnergiaDia = useCallback((dadosEquipamentos: any[]) => {
+    console.log('🔋 [ENERGIA DIA] Iniciando cálculo:', {
+      totalEquipamentos: dadosEquipamentos?.length || 0
+    });
+
+    if (!dadosEquipamentos || dadosEquipamentos.length === 0) {
+      console.log('⚠️ [ENERGIA DIA] Nenhum equipamento disponível');
+      return { energiaTotal: 0, detalhes: 'Nenhum equipamento disponível' };
+    }
+
+    let energiaTotal = 0;
+    const detalhesEquipamentos: string[] = [];
+
+    dadosEquipamentos.forEach((equip) => {
+      if (!equip || !equip.dados) {
+        console.log('⚠️ [ENERGIA DIA] Equipamento sem dados:', equip?.tipo || 'desconhecido');
+        return;
+      }
+
+      // O dado já vem direto (não é um array)
+      const dadoMaisRecente = equip.dados;
+      let energiaEquipamento = 0;
+
+      // O endpoint /latest retorna { equipamento, dado }
+      // Precisamos acessar dado.dados para chegar nos dados reais
+      const dadosReais = dadoMaisRecente.dado?.dados || dadoMaisRecente.dados || dadoMaisRecente;
+
+      console.log('🔍 [ENERGIA DIA] Analisando equipamento:', {
+        tipo: equip.tipo,
+        fluxo: equip.fluxoEnergia,
+        temDadoDados: !!dadoMaisRecente.dado?.dados,
+        dadosReais: {
+          hasPhf: dadosReais.Dados?.phf !== undefined,
+          phf: dadosReais.Dados?.phf,
+          hasEnergyDailyYield: dadosReais.energy?.daily_yield !== undefined,
+          energyDailyYield: dadosReais.energy?.daily_yield,
+          keys: Object.keys(dadosReais)
+        }
+      });
+
+      // Extrair energia baseado no tipo de equipamento
+      // M160: campo Dados.phf (energia acumulada em kWh)
+      if (dadosReais.Dados?.phf !== undefined) {
+        energiaEquipamento = dadosReais.Dados.phf; // kWh
+        console.log('✅ [ENERGIA DIA] Encontrou Dados.phf:', energiaEquipamento);
+      }
+      // Inversor: campo energy.daily_yield (energia do dia em kWh) - estrutura MQTT
+      else if (dadosReais.energy?.daily_yield !== undefined) {
+        energiaEquipamento = dadosReais.energy.daily_yield; // kWh
+        console.log('✅ [ENERGIA DIA] Encontrou energy.daily_yield:', energiaEquipamento);
+      }
+      // Inversor: campo daily_yield direto (energia do dia em kWh)
+      else if (dadosReais.daily_yield !== undefined) {
+        energiaEquipamento = dadosReais.daily_yield; // kWh
+        console.log('✅ [ENERGIA DIA] Encontrou daily_yield:', energiaEquipamento);
+      }
+      // Outros possíveis campos de energia
+      else if (dadosReais.energia_dia_kwh !== undefined) {
+        energiaEquipamento = dadosReais.energia_dia_kwh; // kWh
+        console.log('✅ [ENERGIA DIA] Encontrou energia_dia_kwh:', energiaEquipamento);
+      } else {
+        console.log('❌ [ENERGIA DIA] Nenhum campo de energia encontrado');
+      }
+
+      if (energiaEquipamento > 0) {
+        // Aplicar sinal baseado no fluxo de energia
+        if (equip.fluxoEnergia === 'GERACAO') {
+          energiaTotal += energiaEquipamento; // Positivo
+          detalhesEquipamentos.push(`${equip.tipo}: +${energiaEquipamento.toFixed(2)} kWh (Geração)`);
+          console.log('➕ [ENERGIA DIA] Adicionado GERAÇÃO:', energiaEquipamento);
+        } else if (equip.fluxoEnergia === 'CONSUMO') {
+          energiaTotal -= energiaEquipamento; // Negativo
+          detalhesEquipamentos.push(`${equip.tipo}: -${energiaEquipamento.toFixed(2)} kWh (Consumo)`);
+          console.log('➖ [ENERGIA DIA] Subtraído CONSUMO:', energiaEquipamento);
+        } else if (equip.fluxoEnergia === 'BIDIRECIONAL') {
+          // Para bidirecional, assumir que valores positivos são geração
+          energiaTotal += energiaEquipamento;
+          detalhesEquipamentos.push(`${equip.tipo}: ${energiaEquipamento >= 0 ? '+' : ''}${energiaEquipamento.toFixed(2)} kWh (Bidirecional)`);
+          console.log('↔️ [ENERGIA DIA] Adicionado BIDIRECIONAL:', energiaEquipamento);
+        }
+      }
+    });
+
+    console.log('📊 [ENERGIA DIA] Resultado final:', {
+      energiaTotal,
+      detalhes: detalhesEquipamentos
+    });
+
+    return {
+      energiaTotal,
+      detalhes: detalhesEquipamentos.length > 0
+        ? detalhesEquipamentos.join(' | ')
+        : 'Nenhum dado de energia disponível'
+    };
+  }, []);
 
   // Processar dados do agrupamento
   const processarAgrupamento = useCallback((dadosEquipamentos: any[]) => {
@@ -269,13 +406,18 @@ export function useDadosDemanda(configuracao: ConfiguracaoDemanda, unidadeId?: s
         const dadosProcessados = processarAgrupamento(dadosAgrupamento || []);
 
         if (dadosProcessados && dadosProcessados.length > 0) {
+          // Calcular energia do dia
+          const { energiaTotal, detalhes: energiaDetalhes } = calcularEnergiaDia(dadosEnergia || []);
+
           resultado = {
             dados: dadosProcessados,
             fonte: 'AGRUPAMENTO',
             confiabilidade: 80,
+            energiaDia: energiaTotal,
             detalhes: {
               equipamentosUsados: dadosAgrupamento?.length || 0,
-              formula: 'A966 não disponível, usando agrupamento'
+              formula: 'A966 não disponível, usando agrupamento',
+              energiaDetalhes
             }
           };
         } else {
@@ -303,15 +445,20 @@ export function useDadosDemanda(configuracao: ConfiguracaoDemanda, unidadeId?: s
         const equipamentosOffline = configuracao.equipamentos
           .filter(e => e.selecionado && !e.online).length;
 
+        // Calcular energia do dia
+        const { energiaTotal, detalhes: energiaDetalhes } = calcularEnergiaDia(dadosEnergia || []);
+
         resultado = {
           dados: dadosProcessados,
           fonte: 'AGRUPAMENTO',
           confiabilidade: equipamentosOffline > 0 ? 70 : 85,
+          energiaDia: energiaTotal,
           detalhes: {
             equipamentosUsados,
             equipamentosOffline,
             perdaAplicada: configuracao.aplicarPerdas ? configuracao.fatorPerdas : 0,
-            formula: `Σ(Geração × ${configuracao.aplicarPerdas ? (1 - configuracao.fatorPerdas/100).toFixed(2) : '1'}) - Σ(Consumo)`
+            formula: `Σ(Geração × ${configuracao.aplicarPerdas ? (1 - configuracao.fatorPerdas/100).toFixed(2) : '1'}) - Σ(Consumo)`,
+            energiaDetalhes
           }
         };
       } else {
@@ -351,13 +498,18 @@ export function useDadosDemanda(configuracao: ConfiguracaoDemanda, unidadeId?: s
         const dadosProcessados = processarAgrupamento(dadosAgrupamento || []);
 
         if (dadosProcessados && dadosProcessados.length > 0) {
+          // Calcular energia do dia
+          const { energiaTotal, detalhes: energiaDetalhes } = calcularEnergiaDia(dadosEnergia || []);
+
           resultado = {
             dados: dadosProcessados,
             fonte: 'AGRUPAMENTO',
             confiabilidade: 80,
+            energiaDia: energiaTotal,
             detalhes: {
               equipamentosUsados: dadosAgrupamento?.length || 0,
-              formula: 'Auto: A966 indisponível, usando agrupamento'
+              formula: 'Auto: A966 indisponível, usando agrupamento',
+              energiaDetalhes
             }
           };
         } else {
@@ -379,7 +531,7 @@ export function useDadosDemanda(configuracao: ConfiguracaoDemanda, unidadeId?: s
     }
 
     setDadosDemanda(resultado);
-  }, [configuracao, dadosA966, dadosAgrupamento, processarAgrupamento]);
+  }, [configuracao, dadosA966, dadosAgrupamento, dadosEnergia, processarAgrupamento, calcularEnergiaDia]);
 
   return {
     ...dadosDemanda,

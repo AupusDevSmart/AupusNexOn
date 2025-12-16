@@ -10,7 +10,7 @@ interface LoginBannerProps {
  * Visível apenas em desktop (lg:)
  */
 export function LoginBanner({
-  bannerSrc = '/aupussmart.png',
+  bannerSrc = '/logoaupus.svg',
   title,
   subtitle = 'Interligando você com o futuro. Energize-se.',
 }: LoginBannerProps) {
