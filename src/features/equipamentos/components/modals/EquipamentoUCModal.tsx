@@ -155,6 +155,7 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
 
       console.log('📋 [MODAL] Dados completos do equipamento:', dadosCompletos);
       console.log('🔧 [MODAL] Mapeamento - tipo:', dadosCompletos.tipo, 'tipoEquipamento:', dadosCompletos.tipoEquipamento);
+      console.log('🔧 [MODAL] Mapeamento - tipoEquipamentoObj:', dadosCompletos.tipoEquipamentoObj);
       console.log('⚡ [MODAL] Mapeamento - mcpse:', dadosCompletos.mcpse, 'mcpseAtivo será:', dadosCompletos.mcpse || dadosCompletos.mcpseAtivo || false);
       
       setFormData({
@@ -164,7 +165,7 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
         numeroSerie: dadosCompletos.numeroSerie || '',
         tag: dadosCompletos.tag || '',
         criticidade: dadosCompletos.criticidade || '3',
-        tipoEquipamento: dadosCompletos.tipoEquipamento || dadosCompletos.tipo || '',
+        tipoEquipamento: dadosCompletos.tipoEquipamentoObj?.codigo || dadosCompletos.tipoEquipamento || dadosCompletos.tipo || '',
         plantaId: dadosCompletos.unidade?.plantaId || '',
         unidadeId: dadosCompletos.unidadeId || dadosCompletos.unidade?.id || '',  // ✅ CORRIGIDO: pegar unidade.id se unidadeId não existir
         proprietarioId: dadosCompletos.proprietarioId || '',
@@ -192,10 +193,12 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
 
       // Separar dados técnicos em pré-definidos e personalizados
       console.log('🔧 [MODAL] dadosCompletos.dadosTecnicos:', dadosCompletos.dadosTecnicos);
-      console.log('🔧 [MODAL] Tipo do equipamento:', dadosCompletos.tipoEquipamento || dadosCompletos.tipo);
+      console.log('🔧 [MODAL] Tipo do equipamento (ID):', dadosCompletos.tipoEquipamento || dadosCompletos.tipo);
+      console.log('🔧 [MODAL] Tipo do equipamento (código):', dadosCompletos.tipoEquipamentoObj?.codigo);
 
       if (dadosCompletos.dadosTecnicos && dadosCompletos.dadosTecnicos.length > 0) {
-        const tipoEqp = getTipoEquipamento(dadosCompletos.tipoEquipamento || dadosCompletos.tipo || '');
+        const codigoTipo = dadosCompletos.tipoEquipamentoObj?.codigo || dadosCompletos.tipoEquipamento || dadosCompletos.tipo || '';
+        const tipoEqp = getTipoEquipamento(codigoTipo);
         console.log('🔧 [MODAL] Tipo encontrado para dados técnicos:', tipoEqp);
         console.log('🔧 [MODAL] Campos técnicos do tipo:', tipoEqp?.camposTecnicos);
 

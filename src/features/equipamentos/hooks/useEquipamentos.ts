@@ -51,8 +51,9 @@ export const transformApiToFrontend = (apiEquipamento: EquipamentoApiResponse): 
     modelo: apiEquipamento.modelo,
     numeroSerie: apiEquipamento.numero_serie,
     criticidade: apiEquipamento.criticidade || '3',
-    tipo: apiEquipamento.tipo_equipamento,
-    
+    tipo: ((apiEquipamento as any).tipo_equipamento_rel?.id || apiEquipamento.tipo_equipamento_id || apiEquipamento.tipo_equipamento)?.trim(),
+    tipoEquipamento: ((apiEquipamento as any).tipo_equipamento_rel?.id || apiEquipamento.tipo_equipamento_id || apiEquipamento.tipo_equipamento)?.trim(), // Alias para compatibilidade com modal
+
     // Estados operacionais
     emOperacao: apiEquipamento.em_operacao as 'sim' | 'nao' | undefined,
     tipoDepreciacao: apiEquipamento.tipo_depreciacao as 'linear' | 'uso' | undefined,
@@ -76,7 +77,12 @@ export const transformApiToFrontend = (apiEquipamento: EquipamentoApiResponse): 
     localizacao: apiEquipamento.localizacao,
     localizacaoEspecifica: apiEquipamento.localizacao_especifica,
     observacoes: apiEquipamento.observacoes,
-    
+
+    // TAG e MQTT
+    tag: apiEquipamento.tag,
+    mqttHabilitado: apiEquipamento.mqtt_habilitado,
+    topicoMqtt: apiEquipamento.topico_mqtt,
+
     // Campos MCPSE
     mcpse: apiEquipamento.mcpse,
     tuc: apiEquipamento.tuc,
@@ -147,6 +153,17 @@ export const transformApiToFrontend = (apiEquipamento: EquipamentoApiResponse): 
       unidade: dt.unidade
     })) || [],
 
+    // Tipo de equipamento completo (relação com tipos_equipamentos)
+    tipoEquipamentoObj: (apiEquipamento as any).tipo_equipamento_rel ? {
+      id: (apiEquipamento as any).tipo_equipamento_rel.id?.trim(),
+      codigo: (apiEquipamento as any).tipo_equipamento_rel.codigo?.trim(),
+      nome: (apiEquipamento as any).tipo_equipamento_rel.nome?.trim(),
+      categoria: (apiEquipamento as any).tipo_equipamento_rel.categoria?.trim(),
+      larguraPadrao: (apiEquipamento as any).tipo_equipamento_rel.largura_padrao,
+      alturaPadrao: (apiEquipamento as any).tipo_equipamento_rel.altura_padrao,
+      iconeSvg: (apiEquipamento as any).tipo_equipamento_rel.icone_svg
+    } : undefined,
+
     // Prioridade: usar equipamentos_filhos (nome correto no backend) > totalComponentes > _count > componentes_uar
     totalComponentes: (apiEquipamento as any).equipamentos_filhos?.length
       || apiEquipamento.totalComponentes
@@ -184,7 +201,7 @@ export const transformFrontendToApi = (equipamento: any): CreateEquipamentoApiDa
     fabricante: equipamento.fabricante,
     modelo: equipamento.modelo,
     numero_serie: equipamento.numero_serie || equipamento.numeroSerie,
-    tipo_equipamento: equipamento.tipo_equipamento || equipamento.tipo,
+    tipo_equipamento_id: (equipamento.tipo_equipamento_id || equipamento.tipoEquipamento || equipamento.tipo)?.trim(),
     
     // Estados operacionais
     em_operacao: equipamento.em_operacao || equipamento.emOperacao,
@@ -209,7 +226,12 @@ export const transformFrontendToApi = (equipamento: any): CreateEquipamentoApiDa
     localizacao: equipamento.localizacao,
     localizacao_especifica: equipamento.localizacao_especifica || equipamento.localizacaoEspecifica,
     observacoes: equipamento.observacoes,
-    
+
+    // TAG e MQTT
+    tag: equipamento.tag,
+    mqtt_habilitado: equipamento.mqtt_habilitado || equipamento.mqttHabilitado,
+    topico_mqtt: equipamento.topico_mqtt || equipamento.topicoMqtt,
+
     // MCPSE
     mcpse: equipamento.mcpse,
     tuc: equipamento.tuc,
@@ -219,7 +241,7 @@ export const transformFrontendToApi = (equipamento: any): CreateEquipamentoApiDa
     a4: equipamento.a4,
     a5: equipamento.a5,
     a6: equipamento.a6,
-    
+
     // Dados técnicos
     dados_tecnicos: equipamento.dados_tecnicos || equipamento.dadosTecnicos
   };
