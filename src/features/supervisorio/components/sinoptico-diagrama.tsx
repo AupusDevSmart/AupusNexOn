@@ -1464,7 +1464,7 @@ export function SinopticoDiagrama({
         : "opacity-80"
     }`}
   >
-    {componente.nome}
+    {componente.dados?.tag || componente.nome}
   </div>
 )}
 

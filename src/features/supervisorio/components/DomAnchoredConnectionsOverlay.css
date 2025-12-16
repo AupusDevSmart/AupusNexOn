@@ -122,8 +122,13 @@ html.dark .nexon-connection-path {
   pointer-events: stroke;
 }
 
+/* No modo visualização, o SVG deve permitir que cliques passem através dele */
 .nexon-connections-overlay[data-edit-mode="false"] {
-  pointer-events: none;
+  pointer-events: none; /* O SVG não bloqueia cliques */
+}
+
+.nexon-connections-overlay[data-edit-mode="false"] .nexon-connection-path {
+  pointer-events: none; /* Os paths também não bloqueiam */
 }
 
 /* ========================================

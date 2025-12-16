@@ -2298,6 +2298,15 @@ export function SinopticoAtivoPage() {
   // Função principal de clique em componente - CORRIGIDO + MQTT + Multi-seleção
   const handleComponenteClick = useCallback(
     (componente: ComponenteDU, event?: React.MouseEvent) => {
+      console.log('🖱️ [CLICK] Componente clicado:', {
+        id: componente.id,
+        tipo: componente.tipo,
+        nome: componente.nome,
+        modoEdicao,
+        diagramaFullscreen,
+        dados: componente.dados
+      });
+
       if (modoEdicao) {
         if (modoFerramenta === "selecionar") {
           setComponenteEditando(componente.id);
@@ -2317,6 +2326,7 @@ export function SinopticoAtivoPage() {
       if (componente.tipo === 'INVERSOR' &&
           componente.dados?.mqtt_habilitado === true &&
           componente.dados?.equipamento_id) {
+        console.log('🔌 [MODAL] Abrindo InversorMqttDataModal para:', componente.dados.equipamento_id);
         setSelectedInversorMqttId(componente.dados.equipamento_id);
         setInversorMqttModalOpen(true);
         return;
@@ -2324,6 +2334,7 @@ export function SinopticoAtivoPage() {
 
       // Detectar PIVO
       if (componente.tipo === 'PIVO' && componente.dados?.equipamento_id) {
+        console.log('🚜 [MODAL] Abrindo PivoModal para:', componente.dados.equipamento_id);
         setSelectedPivoId(componente.dados.equipamento_id);
         setPivoModalOpen(true);
         return;
@@ -2333,16 +2344,20 @@ export function SinopticoAtivoPage() {
       const tag = (componente as any).tag || '';
 
       if (tag.includes('M160')) {
+        console.log('📊 [MODAL] Abrindo M160Modal');
         setModalAberto('M160');
       } else if (tag.includes('a966/state') && !tag.includes('LANDIS')) {
+        console.log('📊 [MODAL] Abrindo A966Modal');
         setModalAberto('A966');
       } else if (tag.includes('LANDIS')) {
+        console.log('📊 [MODAL] Abrindo LandisModal');
         setModalAberto('LANDIS_E750');
       } else {
+        console.log('📊 [MODAL] Abrindo modal padrão para tipo:', componente.tipo);
         setModalAberto(componente.tipo);
       }
     },
-    [modoEdicao, modoFerramenta]
+    [modoEdicao, modoFerramenta, diagramaFullscreen]
   );
 
   // Utilitários para conexões
@@ -3560,6 +3575,9 @@ export function SinopticoAtivoPage() {
                         connecting={connecting}
                       />
                     </div>
+
+                    {/* Container para modais em fullscreen */}
+                    {diagramaFullscreen && <div id="fullscreen-modal-container" />}
                   </Card>
                 </div>
               </div>
