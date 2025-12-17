@@ -18,6 +18,7 @@ import {
   PlantaResponse,
   FindAllPlantasParams
 } from '@/services/plantas.services';
+import { useUserStore } from '@/store/useUserStore';
 
 const initialFilters: PlantasFilters = {
   search: '',
@@ -29,6 +30,7 @@ const initialFilters: PlantasFilters = {
 export function PlantasPage() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { isAdmin } = useUserStore();
 
   // Estados locais
   const [plantas, setPlantas] = useState<PlantaResponse[]>([]);
@@ -36,28 +38,37 @@ export function PlantasPage() {
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState<PlantasFilters>(initialFilters);
 
-  // Hook para proprietários
+  // Hook para proprietários (só carrega se for admin)
   const { proprietarios, loading: loadingProprietarios, error: proprietariosError } = useProprietarios();
 
   // ✅ CONFIGURAÇÃO DINÂMICA: Filtros que se atualizam quando proprietários carregam
   const filterConfig = useMemo(() => {
+    // Filtro de busca sempre disponível
+    const searchFilter = {
+      key: 'search',
+      type: 'search' as const,
+      placeholder: 'Buscar por nome, CNPJ ou localização...',
+      className: 'lg:min-w-80'
+    };
+
+    // Se não for admin, mostrar apenas busca
+    if (!isAdmin()) {
+      return [searchFilter];
+    }
+
+    // Para admin, incluir filtro de proprietário
     if (loadingProprietarios || proprietariosError) {
       return [
-        {
-          key: 'search',
-          type: 'search' as const,
-          placeholder: 'Buscar por nome, CNPJ ou localização...',
-          className: 'lg:min-w-80'
-        },
+        searchFilter,
         {
           key: 'proprietarioId',
           type: 'select' as const,
           label: 'Proprietário',
           className: 'min-w-64',
           options: [
-            { 
-              value: 'all', 
-              label: loadingProprietarios ? 'Carregando proprietários...' : 'Erro ao carregar proprietários' 
+            {
+              value: 'all',
+              label: loadingProprietarios ? 'Carregando proprietários...' : 'Erro ao carregar proprietários'
             }
           ]
         }
@@ -65,7 +76,7 @@ export function PlantasPage() {
     }
 
     return createPlantasFilterConfig(proprietarios);
-  }, [proprietarios, loadingProprietarios, proprietariosError]);
+  }, [proprietarios, loadingProprietarios, proprietariosError, isAdmin]);
 
   // Modal state
   const {

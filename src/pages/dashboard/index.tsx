@@ -378,11 +378,11 @@ export function DashboardPage() {
                 </div>
               )} */}
 
-              {/* Layout: Mapa + Tabelas Laterais */}
+              {/* Layout: Mapa + Tabelas Laterais - Alinhado com os cards de cima */}
               {data && (
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                  {/* Mapa - 2/3 da largura */}
-                  <div className="lg:col-span-2 h-full">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                  {/* Mapa - 3/5 da largura (alinha com os 3 primeiros cards) */}
+                  <div className="lg:col-span-3 h-full">
                     <MapaCoa
                       unidades={data.plantas.flatMap(planta => planta.unidades)}
                       onUnidadeClick={(unidadeId) => {
@@ -429,8 +429,8 @@ export function DashboardPage() {
                     </Card>
                   </div> */}
 
-                  {/* Painel Lateral - Tabelas de UFVs e Cargas */}
-                  <div className="lg:col-span-1 flex flex-col gap-4">
+                  {/* Painel Lateral - Tabelas de UFVs e Cargas - 2/5 da largura (alinha com os 2 últimos cards) */}
+                  <div className="lg:col-span-2 flex flex-col gap-4">
                     {/* Tabela: USINAS FOTOVOLTAICAS */}
                     <Card className="flex flex-col h-[calc(50vh-8rem)]">
                     <CardHeader className="flex-shrink-0">

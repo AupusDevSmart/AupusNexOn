@@ -13,6 +13,7 @@ import { getEquipamentosTableColumns } from '../config/table-config';
 import { createEquipamentosFilterConfig } from '../config/filter-config';
 import { useEquipamentos } from '../hooks/useEquipamentos';
 import { useEquipamentoFilters } from '../hooks/useEquipamentoFilters';
+import { useUserStore } from '@/store/useUserStore';
 
 // Modais separados
 import { EquipamentoUCModal } from './modals/EquipamentoUCModal';
@@ -33,7 +34,8 @@ const initialFilters: EquipamentosFilters = {
 export function EquipamentosPage() {
   const location = useLocation();
   const navigate = useNavigate();
-  
+  const { isAdmin } = useUserStore();
+
   // Hook da API
   const {
     loading,
@@ -511,7 +513,8 @@ export function EquipamentosPage() {
                   loadingProprietarios,
                   loadingPlantas,
                   unidades,
-                  loadingUnidades
+                  loadingUnidades,
+                  isAdmin() // Mostrar filtro de proprietário apenas para admins
                 )}
                 onFilterChange={handleFilterChange}
               />

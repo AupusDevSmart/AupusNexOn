@@ -8,8 +8,9 @@ type UserStoreState = {
   setUser: (newUser: UsuarioDTO) => void;
   updateUser: (partialUser: Partial<UsuarioDTO>) => void;
   clearUser: () => void;
-  getUserRole: () => string; 
+  getUserRole: () => string;
   isSuperAdmin: () => boolean;
+  isAdmin: () => boolean;
 };
 
 export const useUserStore = create(
@@ -40,6 +41,11 @@ export const useUserStore = create(
       getUserRole: () => get().user?.roles?.[0]?.name || '',
 
       isSuperAdmin: () => get().getUserRole() === 'super_admin',
+
+      isAdmin: () => {
+        const role = get().getUserRole();
+        return role === 'admin' || role === 'super_admin';
+      },
     }),
     {
       name: 'user-storage',

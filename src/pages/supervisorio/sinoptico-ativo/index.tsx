@@ -1616,6 +1616,7 @@ export function SinopticoAtivoPage() {
               status: eq.status || 'NORMAL',
               dados: {
                 equipamento_id: equipamentoId,
+                tag: eq.tag,
                 fabricante: eq.fabricante,
                 modelo: eq.modelo,
                 mqtt_topico: eq.topico_mqtt,
@@ -2617,6 +2618,7 @@ export function SinopticoAtivoPage() {
           status: equipamento.status || 'NORMAL',
           dados: {
             equipamento_id: equipamento.id.trim(),
+            tag: equipamento.tag,
             fabricante: equipamento.fabricante,
             modelo: equipamento.modelo,
             numero_serie: equipamento.numero_serie,
@@ -2738,6 +2740,7 @@ export function SinopticoAtivoPage() {
         status: 'NORMAL',
         dados: {
           equipamento_id: equipamento.id.trim(),
+          tag: equipamento.tag?.trim(),
           fabricante: equipamento.fabricante,
           modelo: equipamento.modelo,
           numero_serie: equipamento.numero_serie,
