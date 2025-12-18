@@ -5,6 +5,7 @@ import {
   M160Multimeter,
   M300Multimeter,
 } from "@/components/equipment";
+import { EquipmentLabel } from "@/components/equipment/EquipmentLabel";
 import { Equipment } from "@/types/equipment";
 import React, { useCallback, useRef, useState } from "react";
 
@@ -24,16 +25,18 @@ export const DiagramCanvas: React.FC<DiagramCanvasProps> = ({
   const canvasRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [draggedId, setDraggedId] = useState<string | null>(null);
-  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const dragOffsetRef = useRef({ x: 0, y: 0 }); // Use ref instead of state
 
   const handleMouseDown = (e: React.MouseEvent, equipmentId: string) => {
+    console.log("🖱️ MouseDown no equipamento:", equipmentId);
     const rect = e.currentTarget.getBoundingClientRect();
-    setDragOffset({
+    dragOffsetRef.current = {
       x: e.clientX - rect.left,
       y: e.clientY - rect.top,
-    });
+    };
     setDraggedId(equipmentId);
     setIsDragging(true);
+    console.log("📞 Chamando onEquipmentClick com:", equipmentId);
     onEquipmentClick(equipmentId);
   };
 
@@ -43,13 +46,13 @@ export const DiagramCanvas: React.FC<DiagramCanvasProps> = ({
 
       const rect = canvasRef.current.getBoundingClientRect();
       const newPosition = {
-        x: e.clientX - rect.left - dragOffset.x,
-        y: e.clientY - rect.top - dragOffset.y,
+        x: e.clientX - rect.left - dragOffsetRef.current.x,
+        y: e.clientY - rect.top - dragOffsetRef.current.y,
       };
 
       onEquipmentMove(draggedId, newPosition);
     },
-    [isDragging, draggedId, dragOffset, onEquipmentMove]
+    [isDragging, draggedId, onEquipmentMove]
   );
 
   const handleMouseUp = useCallback(() => {
@@ -68,10 +71,12 @@ export const DiagramCanvas: React.FC<DiagramCanvasProps> = ({
     }
   }, [isDragging, handleMouseMove, handleMouseUp]);
 
-  const renderEquipment = (eq: Equipment) => {
+  const renderEquipment = useCallback((eq: Equipment) => {
+    let equipmentComponent: React.ReactNode = null;
+
     switch (eq.type) {
       case "m300":
-        return (
+        equipmentComponent = (
           <M300Multimeter
             id={eq.id}
             name={eq.data.name}
@@ -87,8 +92,9 @@ export const DiagramCanvas: React.FC<DiagramCanvasProps> = ({
             scale={0.8}
           />
         );
+        break;
       case "m160":
-        return (
+        equipmentComponent = (
           <M160Multimeter
             id={eq.id}
             name={eq.data.name}
@@ -106,8 +112,9 @@ export const DiagramCanvas: React.FC<DiagramCanvasProps> = ({
             scale={0.8}
           />
         );
+        break;
       case "landisE750":
-        return (
+        equipmentComponent = (
           <LandisGyrE750
             id={eq.id}
             name={eq.data.name}
@@ -136,8 +143,9 @@ export const DiagramCanvas: React.FC<DiagramCanvasProps> = ({
             }
           />
         );
+        break;
       case "a966":
-        return (
+        equipmentComponent = (
           <A966Gateway
             id={eq.id}
             name={eq.data.name}
@@ -155,12 +163,20 @@ export const DiagramCanvas: React.FC<DiagramCanvasProps> = ({
             scale={0.8}
           />
         );
+        break;
 
       // Adicionar outros equipamentos aqui
       default:
         return null;
     }
-  };
+
+    // Envolver com EquipmentLabel para posicionar o nome
+    return (
+      <EquipmentLabel name={eq.data.name} position={eq.labelPosition}>
+        {equipmentComponent}
+      </EquipmentLabel>
+    );
+  }, []); // Empty deps - function doesn't depend on any changing values
 
   return (
     <div

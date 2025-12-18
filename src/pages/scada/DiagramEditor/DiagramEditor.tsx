@@ -9,6 +9,12 @@ export const DiagramEditor: React.FC = () => {
   const [equipment, setEquipment] = useState<Equipment[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
+  console.log("🔄 DiagramEditor render:", {
+    equipmentCount: equipment.length,
+    selectedId,
+    equipmentIds: equipment.map(e => e.id)
+  });
+
   const handleAddEquipment = (type: string) => {
     // Dados base para todos os equipamentos
     const baseData = {
@@ -132,6 +138,7 @@ export const DiagramEditor: React.FC = () => {
 
     setEquipment([...equipment, newEquipment]);
     setSelectedId(newEquipment.id);
+    console.log("➕ Equipamento adicionado:", newEquipment.id);
   };
 
   const handleEquipmentMove = (
@@ -143,30 +150,42 @@ export const DiagramEditor: React.FC = () => {
     );
   };
 
+  const handleEquipmentClick = (id: string) => {
+    console.log("🖱️ Equipamento clicado:", id);
+    console.log("📋 Estado atual selectedId ANTES:", selectedId);
+    setSelectedId(id);
+    console.log("✅ setSelectedId chamado com:", id);
+  };
+
   const handleUpdateEquipment = (id: string, updates: Partial<Equipment>) => {
+    console.log("🔧 Atualizando equipamento:", id, updates);
     setEquipment(
       equipment.map((eq) => (eq.id === id ? { ...eq, ...updates } : eq))
     );
   };
 
   const selectedEquipment = equipment.find((eq) => eq.id === selectedId);
+  console.log("🎯 selectedEquipment encontrado:", selectedEquipment ? selectedEquipment.id : "NENHUM");
 
   return (
-    <div className="flex h-screen bg-gray-900">
-      <div className="w-64">
+    <div className="flex h-screen bg-gray-900 overflow-hidden">
+      {/* Toolbar Esquerda - Equipamentos */}
+      <div className="w-64 flex-shrink-0">
         <EquipmentToolbar onAddEquipment={handleAddEquipment} />
       </div>
 
-      <div className="flex-1">
+      {/* Canvas Central - Diagrama */}
+      <div className="flex-1 min-w-0">
         <DiagramCanvas
           equipment={equipment}
           onEquipmentMove={handleEquipmentMove}
-          onEquipmentClick={setSelectedId}
+          onEquipmentClick={handleEquipmentClick}
           selectedId={selectedId}
         />
       </div>
 
-      <div className="w-80">
+      {/* Painel Direita - Propriedades */}
+      <div className="w-80 flex-shrink-0 h-full overflow-y-auto bg-gray-800">
         <PropertiesPanel
           selectedEquipment={selectedEquipment}
           onUpdateEquipment={handleUpdateEquipment}

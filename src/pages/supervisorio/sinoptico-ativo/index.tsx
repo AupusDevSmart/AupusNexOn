@@ -232,6 +232,23 @@ const getStatusClasses = (status: string) => {
   }
 };
 
+// Função helper para obter classes CSS baseado na posição do label
+const getLabelPositionClasses = (position?: string) => {
+  switch (position) {
+    case "top":
+      return "absolute -top-6 left-1/2 transform -translate-x-1/2";
+    case "bottom":
+      return "absolute -bottom-6 left-1/2 transform -translate-x-1/2";
+    case "left":
+      return "absolute top-1/2 -left-2 transform -translate-x-full -translate-y-1/2";
+    case "right":
+      return "absolute top-1/2 -right-2 transform translate-x-full -translate-y-1/2";
+    default:
+      // Default é bottom (padrão antigo)
+      return "absolute -bottom-6 left-1/2 transform -translate-x-1/2";
+  }
+};
+
 // Componente para renderizar símbolos elétricos - APENAS PARA MODO EDIÇÃO
 const ElectricalSymbol = React.memo(({
   tipo,
@@ -1613,6 +1630,7 @@ export function SinopticoAtivoPage() {
                 y: eq.posicao?.y || 0,
               },
               rotacao: eq.rotacao || 0,
+              label_position: eq.label_position || 'bottom',
               status: eq.status || 'NORMAL',
               dados: {
                 equipamento_id: equipamentoId,
@@ -1703,6 +1721,16 @@ export function SinopticoAtivoPage() {
     useState<ComponenteDU | null>(null);
   const [diagramaFullscreen, setDiagramaFullscreen] = useState(false);
 
+  // LOG: Monitorar mudanças no componenteSelecionado
+  useEffect(() => {
+    console.log('🔄 [STATE] componenteSelecionado mudou:', {
+      hasComponent: !!componenteSelecionado,
+      componentId: componenteSelecionado?.id,
+      componentNome: componenteSelecionado?.nome,
+      componentTipo: componenteSelecionado?.tipo
+    });
+  }, [componenteSelecionado]);
+
   // Estados para modal MQTT do inversor
   const [inversorMqttModalOpen, setInversorMqttModalOpen] = useState(false);
   const [selectedInversorMqttId, setSelectedInversorMqttId] = useState<string | null>(null);
@@ -1726,6 +1754,16 @@ export function SinopticoAtivoPage() {
   const [componenteEditando, setComponenteEditando] = useState<string | null>(
     null
   );
+
+  // LOG: Monitorar mudanças no componenteEditando
+  useEffect(() => {
+    console.log('🔄 [STATE] componenteEditando mudou:', {
+      hasComponenteEditando: !!componenteEditando,
+      componenteEditandoId: componenteEditando,
+      modoEdicao,
+      modoFerramenta
+    });
+  }, [componenteEditando, modoEdicao, modoFerramenta]);
 
   // Estados para drag and drop
   const [isDragging, setIsDragging] = useState(false);
@@ -2309,10 +2347,19 @@ export function SinopticoAtivoPage() {
       });
 
       if (modoEdicao) {
+        console.log('✏️ [MODO EDIÇÃO] Componente clicado no modo edição:', {
+          modoFerramenta,
+          componenteId: componente.id,
+          componenteNome: componente.nome
+        });
+
         if (modoFerramenta === "selecionar") {
+          console.log('🎯 [EDIÇÃO] setComponenteEditando sendo chamado com:', componente.id);
           setComponenteEditando(componente.id);
+          console.log('✅ [EDIÇÃO] setComponenteEditando executado');
         } else if (modoFerramenta === "conectar" && event) {
           const port = determineClickPort(event);
+          console.log('🔌 [EDIÇÃO] Iniciando conexão:', { from: componente.id, port });
           startConnection(componente.id, port);
         }
         return;
@@ -2321,7 +2368,13 @@ export function SinopticoAtivoPage() {
       // Lógica de seleção múltipla removida
       // A seleção de equipamentos para agregação é feita via modal de configuração
 
+      console.log('✅ [SET] setComponenteSelecionado sendo chamado com:', {
+        id: componente.id,
+        nome: componente.nome,
+        tipo: componente.tipo
+      });
       setComponenteSelecionado(componente);
+      console.log('🎯 [SET] setComponenteSelecionado executado');
 
       // Detectar Inversor com MQTT Habilitado
       if (componente.tipo === 'INVERSOR' &&
@@ -2946,6 +2999,7 @@ export function SinopticoAtivoPage() {
             y: comp.posicao?.y || 0,
           },
           rotacao: comp.rotacao || 0,
+          labelPosition: comp.label_position || 'bottom',
         }));
 
       console.log(`📦 Salvando ${equipamentosParaSalvar.length} equipamentos (incluindo virtuais) no diagrama ${diagramaId}...`);
@@ -3217,8 +3271,8 @@ export function SinopticoAtivoPage() {
 
           {/* Barra de Ferramentas - SÓ APARECE NO MODO EDIÇÃO */}
           {modoEdicao && (
-            <div className="mb-6">
-              <Card className="p-4">
+            <div className="mb-6 relative z-50">
+              <Card className="p-4 bg-white dark:bg-gray-900 shadow-lg">
                 <div className="flex flex-wrap items-center gap-4">
                   {/* Modos de Ferramentas - CORRIGIDO: BOTÃO ÚNICO */}
                   <div className="flex items-center gap-2 border-r pr-4">
@@ -3403,61 +3457,195 @@ export function SinopticoAtivoPage() {
                 </div>
 
                 {/* Info do Componente Selecionado */}
-                {componenteEditando && (
-                  <div className="mt-4 pt-4 border-t">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div>
-                          <Badge variant="outline" className="mr-2">
-                            {
-                              componentes.find(
-                                (c) => c.id === componenteEditando
-                              )?.tipo
-                            }
-                          </Badge>
-                          <span className="text-sm font-medium">
-                            {
-                              componentes.find(
-                                (c) => c.id === componenteEditando
-                              )?.nome
-                            }
-                          </span>
-                        </div>
-                        {connecting &&
-                          connecting.from === componenteEditando && (
-                            <Badge
-                              variant="secondary"
-                              className="animate-pulse"
-                            >
+                {(() => {
+                  console.log('📊 [RENDER] Info do Componente Selecionado:', {
+                    componenteEditando,
+                    hasComponenteEditando: !!componenteEditando,
+                    componenteEncontrado: componentes.find(c => c.id === componenteEditando)
+                  });
+                  return null;
+                })()}
+                {componenteEditando && (() => {
+                  const componenteSelecionado = componentes.find(c => c.id === componenteEditando);
+                  if (!componenteSelecionado) return null;
+
+                  return (
+                    <div className="mt-4 pt-4 border-t relative z-50 bg-white dark:bg-gray-900">
+                      {/* Cabeçalho com info básica */}
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-4">
+                          <div>
+                            <Badge variant="outline" className="mr-2">
+                              {componenteSelecionado.tipo}
+                            </Badge>
+                            <span className="text-sm font-medium">
+                              {componenteSelecionado.nome}
+                            </span>
+                          </div>
+                          {connecting && connecting.from === componenteEditando && (
+                            <Badge variant="secondary" className="animate-pulse">
                               Conectando...
                             </Badge>
                           )}
-                        {isDragging &&
-                          componenteDragId === componenteEditando && (
-                            <Badge
-                              variant="secondary"
-                              className="animate-pulse"
-                            >
+                          {isDragging && componenteDragId === componenteEditando && (
+                            <Badge variant="secondary" className="animate-pulse">
                               Arrastando...
                             </Badge>
                           )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground">
+                            Conexões: {connections.filter(c => c.from === componenteEditando || c.to === componenteEditando).length}
+                          </span>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground">
-                          Conexões:{" "}
-                          {
-                            connections.filter(
-                              (c) =>
-                                c.from === componenteEditando ||
-                                c.to === componenteEditando
-                            ).length
-                          }
-                        </span>
-                        
+
+                      {/* Painel de Propriedades Editáveis */}
+                      <div className="flex gap-4 items-start">
+                        {/* Posições X e Y em coluna */}
+                        <div className="flex flex-col gap-2">
+                          <div>
+                            <label className="text-xs text-muted-foreground block mb-1">Posição X (%)</label>
+                            <input
+                              type="number"
+                              step="0.1"
+                              value={componenteSelecionado.posicao?.x || 0}
+                              onChange={(e) => {
+                                setComponentes(componentes.map(c =>
+                                  c.id === componenteEditando
+                                    ? { ...c, posicao: { ...c.posicao, x: parseFloat(e.target.value) || 0 } }
+                                    : c
+                                ));
+                              }}
+                              className="w-32 px-2 py-1 text-sm border rounded bg-background"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="text-xs text-muted-foreground block mb-1">Posição Y (%)</label>
+                            <input
+                              type="number"
+                              step="0.1"
+                              value={componenteSelecionado.posicao?.y || 0}
+                              onChange={(e) => {
+                                setComponentes(componentes.map(c =>
+                                  c.id === componenteEditando
+                                    ? { ...c, posicao: { ...c.posicao, y: parseFloat(e.target.value) || 0 } }
+                                    : c
+                                ));
+                              }}
+                              className="w-32 px-2 py-1 text-sm border rounded bg-background"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Seletor de Posição do Label - Lado a lado com as posições */}
+                        <div>
+                          <label className="text-xs text-muted-foreground block mb-1">Posição do Nome</label>
+                          <div className="flex items-center justify-center gap-1 p-2 border rounded bg-background">
+                            {/* Seletor Visual em Cruz */}
+                            <div className="flex flex-col items-center gap-1">
+                              {/* TOP */}
+                              <button
+                                onClick={() => {
+                                  setComponentes(componentes.map(c =>
+                                    c.id === componenteEditando
+                                      ? { ...c, label_position: 'top' }
+                                      : c
+                                  ));
+                                }}
+                                className={`p-1 rounded transition-colors ${
+                                  (componenteSelecionado.label_position || 'top') === 'top'
+                                    ? 'bg-blue-600 text-white'
+                                    : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-gray-600'
+                                }`}
+                                title="Nome acima"
+                              >
+                                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                  <path d="M10 3l-7 7h14l-7-7z"/>
+                                </svg>
+                              </button>
+
+                              {/* LEFT, CENTER, RIGHT */}
+                              <div className="flex items-center gap-1">
+                                <button
+                                  onClick={() => {
+                                    setComponentes(componentes.map(c =>
+                                      c.id === componenteEditando
+                                        ? { ...c, label_position: 'left' }
+                                        : c
+                                    ));
+                                  }}
+                                  className={`p-1 rounded transition-colors ${
+                                    componenteSelecionado.label_position === 'left'
+                                      ? 'bg-blue-600 text-white'
+                                      : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-gray-600'
+                                  }`}
+                                  title="Nome à esquerda"
+                                >
+                                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M3 10l7-7v14l-7-7z"/>
+                                  </svg>
+                                </button>
+
+                                {/* Centro - representação do equipamento */}
+                                <div className="w-5 h-5 bg-gray-300 dark:bg-gray-600 rounded border border-gray-400 dark:border-gray-500"></div>
+
+                                <button
+                                  onClick={() => {
+                                    setComponentes(componentes.map(c =>
+                                      c.id === componenteEditando
+                                        ? { ...c, label_position: 'right' }
+                                        : c
+                                    ));
+                                  }}
+                                  className={`p-1 rounded transition-colors ${
+                                    componenteSelecionado.label_position === 'right'
+                                      ? 'bg-blue-600 text-white'
+                                      : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-gray-600'
+                                  }`}
+                                  title="Nome à direita"
+                                >
+                                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M17 10l-7 7V3l7 7z"/>
+                                  </svg>
+                                </button>
+                              </div>
+
+                              {/* BOTTOM */}
+                              <button
+                                onClick={() => {
+                                  setComponentes(componentes.map(c =>
+                                    c.id === componenteEditando
+                                      ? { ...c, label_position: 'bottom' }
+                                      : c
+                                  ));
+                                }}
+                                className={`p-1 rounded transition-colors ${
+                                  componenteSelecionado.label_position === 'bottom'
+                                    ? 'bg-blue-600 text-white'
+                                    : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-gray-600'
+                                }`}
+                                title="Nome abaixo"
+                              >
+                                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                  <path d="M10 17l7-7H3l7 7z"/>
+                                </svg>
+                              </button>
+                            </div>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-1 text-center">
+                            {componenteSelecionado.label_position === 'top' && 'Acima'}
+                            {componenteSelecionado.label_position === 'bottom' && 'Abaixo'}
+                            {componenteSelecionado.label_position === 'left' && 'À esquerda'}
+                            {componenteSelecionado.label_position === 'right' && 'À direita'}
+                            {!componenteSelecionado.label_position && 'Acima (padrão)'}
+                          </p>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
               </Card>
             </div>
           )}
@@ -3692,8 +3880,8 @@ export function SinopticoAtivoPage() {
                           />
                           {/* Não mostrar nome para junction nodes e pontos */}
                           {componente.tipo !== "JUNCTION" && componente.tipo !== "PONTO" && (
-                            <div className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs font-medium text-muted-foreground bg-background/90 px-2 py-1 rounded whitespace-nowrap border">
-                              {componente.nome}
+                            <div className={`${getLabelPositionClasses(componente.label_position)} text-xs font-medium text-muted-foreground bg-background/90 px-2 py-1 rounded whitespace-nowrap border`}>
+                              {componente.tag || componente.nome}
                             </div>
                           )}
                         </div>

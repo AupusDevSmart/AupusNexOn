@@ -1,14 +1,32 @@
 import { useState } from "react";
 import { PivoSymbol } from "./pivo";
 
+// Helper function para posicionamento do label
+const getLabelPositionClasses = (position?: string) => {
+  switch (position) {
+    case "top":
+      return "absolute -top-6 left-1/2 transform -translate-x-1/2";
+    case "bottom":
+      return "absolute -bottom-6 left-1/2 transform -translate-x-1/2";
+    case "left":
+      return "absolute top-1/2 -left-2 transform -translate-x-full -translate-y-1/2";
+    case "right":
+      return "absolute top-1/2 -right-2 transform translate-x-full -translate-y-1/2";
+    default:
+      return "absolute -bottom-6 left-1/2 transform -translate-x-1/2";
+  }
+};
+
 // Interface do componente
 interface ComponenteDU {
   id: string;
   tipo: string;
   nome: string;
+  tag?: string;
   posicao: { x: number; y: number };
   status: string;
   dados: any;
+  label_position?: string;
 }
 
 // Props do componente - ADICIONADO modoEdicao e seleção múltipla
@@ -1458,13 +1476,13 @@ export function SinopticoDiagrama({
            {/* Label do componente - NÃO mostrar para PONTO, PONTO_JUNCAO ou JUNCTION */}
 {componente.tipo !== "PONTO" && componente.tipo !== "PONTO_JUNCAO" && componente.tipo !== "JUNCTION" && (
   <div
-    className={`absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs font-medium text-muted-foreground bg-background/90 px-2 py-1 rounded whitespace-nowrap border transition-opacity ${
+    className={`${getLabelPositionClasses(componente.label_position)} text-xs font-medium text-muted-foreground bg-background/90 px-2 py-1 rounded whitespace-nowrap border transition-opacity ${
       hoveredComponent === componente.id
         ? "opacity-100"
         : "opacity-80"
     }`}
   >
-    {componente.dados?.tag || componente.nome}
+    {componente.tag || componente.dados?.tag || componente.nome}
   </div>
 )}
 
