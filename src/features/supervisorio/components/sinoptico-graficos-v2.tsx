@@ -134,7 +134,7 @@ export function SinopticoGraficosV2({
   const [modalTensaoOpen, setModalTensaoOpen] = useState(false);
   const [modalFPOpen, setModalFPOpen] = useState(false);
 
-  // Buscar configuração da API
+  // OTIMIZAÇÃO: Buscar configuração da API com prioridade alta
   const { data: configData, refetch: refetchConfig } = useQuery({
     queryKey: ['configuracao-demanda', unidadeId],
     queryFn: async () => {
@@ -172,7 +172,8 @@ export function SinopticoGraficosV2({
     },
     enabled: !!unidadeId,
     refetchOnMount: true,
-    staleTime: 30000 // Cache por 30 segundos
+    staleTime: 10000, // OTIMIZAÇÃO: Reduzido para 10s
+    networkMode: 'online' // OTIMIZAÇÃO: Forçar carregamento imediato
   });
 
   // Estado local da configuração (inicializa com valores padrão ou da API)
@@ -253,10 +254,10 @@ export function SinopticoGraficosV2({
       }
     },
     enabled: !!unidadeId,
-    staleTime: 60000, // Cache por 60 segundos
-    gcTime: 300000, // Manter em cache por 5 minutos
+    staleTime: 10000, // OTIMIZAÇÃO: Reduzido para 10s
+    gcTime: 60000, // OTIMIZAÇÃO: Reduzido para 1 minuto
     refetchOnWindowFocus: false,
-    refetchOnMount: false
+    refetchOnMount: 'always' // OTIMIZAÇÃO: Sempre refaz ao montar
   });
 
   // Forçar refetch quando modal abrir
@@ -404,9 +405,21 @@ export function SinopticoGraficosV2({
     }));
   }, [dadosM160]);
 
+  // Verificar se tem equipamentos disponíveis para o gráfico de demanda
+  // SEMPRE mostra o gráfico se tiver equipamentos disponíveis (mesmo sem nenhum selecionado)
+  // Isso permite que o usuário clique em "Configurar" para selecionar equipamentos
+  const temEquipamentosDisponiveis = equipamentosData && equipamentosData.length > 0;
+
+  // Verificar se tem algum equipamento selecionado
+  const temEquipamentosSelecionados = configuracao.equipamentos.some(e => e.selecionado);
+
+  // Verificar se tem M160 disponível para tensão e FP
+  const temM160Disponivel = equipamentosM160.length > 0;
+
   return (
-    <div className="w-full">
-      {/* Gráfico de Demanda */}
+    <div className="w-full flex flex-col gap-4">
+      {/* Gráfico de Demanda - Mostra se tiver equipamentos disponíveis (mesmo que nenhum esteja selecionado) */}
+      {temEquipamentosDisponiveis && (
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -456,9 +469,18 @@ export function SinopticoGraficosV2({
           ) : dadosFormatadosPotencia.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-[300px] space-y-3">
               <AlertTriangle className="h-8 w-8 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">
-                {detalhes?.formula || 'Nenhum dado disponível. Configure os equipamentos no botão de configuração.'}
-              </p>
+              <div className="text-center space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">
+                  {temEquipamentosSelecionados
+                    ? 'Nenhum dado disponível'
+                    : 'Nenhum equipamento selecionado'}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {temEquipamentosSelecionados
+                    ? 'Aguardando dados dos equipamentos selecionados'
+                    : 'Clique no botão de configuração para selecionar equipamentos'}
+                </p>
+              </div>
             </div>
           ) : (
           <ResponsiveContainer width="100%" height={350}>
@@ -545,8 +567,10 @@ export function SinopticoGraficosV2({
           )}
         </CardContent>
       </Card>
+      )}
 
-      {/* Gráfico de Tensão */}
+      {/* Gráfico de Tensão - Só mostra se tiver M160 */}
+      {temM160Disponivel && (
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -718,8 +742,10 @@ export function SinopticoGraficosV2({
           )}
         </CardContent>
       </Card>
+      )}
 
-      {/* Gráfico de Fator de Potência */}
+      {/* Gráfico de Fator de Potência - Só mostra se tiver M160 */}
+      {temM160Disponivel && (
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -902,6 +928,7 @@ export function SinopticoGraficosV2({
           )}
         </CardContent>
       </Card>
+      )}
 
       {/* Modal Expandido - Gráfico de Demanda */}
       <Dialog open={modalExpandidoOpen} onOpenChange={setModalExpandidoOpen}>
@@ -933,9 +960,18 @@ export function SinopticoGraficosV2({
             ) : dadosFormatadosPotencia.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full space-y-3">
                 <AlertTriangle className="h-8 w-8 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">
-                  {detalhes?.formula || 'Nenhum dado disponível. Configure os equipamentos no botão de configuração.'}
-                </p>
+                <div className="text-center space-y-2">
+                  <p className="text-sm font-medium text-muted-foreground">
+                    {temEquipamentosSelecionados
+                      ? 'Nenhum dado disponível'
+                      : 'Nenhum equipamento selecionado'}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {temEquipamentosSelecionados
+                      ? 'Aguardando dados dos equipamentos selecionados'
+                      : 'Feche este modal e clique no botão de configuração para selecionar equipamentos'}
+                  </p>
+                </div>
               </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">

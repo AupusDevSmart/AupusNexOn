@@ -1501,6 +1501,20 @@ export function SinopticoAtivoPage() {
   const [diagramaIdAtual, setDiagramaIdAtual] = useState<string | null>(null);
   const [isSavingDiagrama, setIsSavingDiagrama] = useState(false);
 
+  // Atualizar título da página quando unidade carrega
+  useEffect(() => {
+    if (unidadeAtual?.nome) {
+      document.title = `Sinóptico - ${unidadeAtual.nome}`;
+    } else {
+      document.title = 'Sinóptico';
+    }
+
+    // Cleanup: restaurar título ao desmontar
+    return () => {
+      document.title = 'AupusNexOn';
+    };
+  }, [unidadeAtual]);
+
   // Carregar dados da unidade quando o componente monta ou quando unidadeId muda
   useEffect(() => {
     const carregarUnidade = async () => {
@@ -1551,13 +1565,11 @@ export function SinopticoAtivoPage() {
   const [connections, setConnections] = useState<Connection[]>([]);
   const [diagramaCarregado, setDiagramaCarregado] = useState(false);
 
-  // Log sempre que connections mudar
+  // OTIMIZAÇÃO: Log simplificado sem stack trace
   useEffect(() => {
-    console.log('🔄 [STATE CHANGE] connections mudou:', {
-      total: connections.length,
-      ids: connections.map(c => c.id),
-      stackTrace: new Error().stack
-    });
+    if (import.meta.env.DEV) {
+      console.log('🔄 [STATE] connections:', connections.length);
+    }
   }, [connections]);
 
   // Função para carregar diagrama do backend
@@ -1569,12 +1581,21 @@ export function SinopticoAtivoPage() {
     setErrorDiagrama(null);
 
     try {
-      // Carregar equipamentos da unidade
-      const { equipamentosApi } = await import('@/services/equipamentos.services');
-      console.log('🔍 Buscando equipamentos para unidade:', unidadeId);
-      const equipamentosResponse = await equipamentosApi.findByUnidade(unidadeId, { limit: 100 });
-      console.log('📦 Resposta da API:', equipamentosResponse);
-      // A resposta tem estrutura: { data: { data: [...], pagination: {...} } }
+      // OTIMIZAÇÃO: Carregar equipamentos e diagrama em PARALELO
+      const [
+        { equipamentosApi },
+        { DiagramasService }
+      ] = await Promise.all([
+        import('@/services/equipamentos.services'),
+        import('@/services/diagramas.services')
+      ]);
+
+      const [equipamentosResponse, diagramaAtivo] = await Promise.all([
+        equipamentosApi.findByUnidade(unidadeId, { limit: 100 }),
+        DiagramasService.getActiveDiagrama(unidadeId).catch(() => null)
+      ]);
+
+      // Processar equipamentos
       const equipamentosData = Array.isArray(equipamentosResponse?.data?.data)
         ? equipamentosResponse.data.data
         : Array.isArray(equipamentosResponse?.data)
@@ -1582,43 +1603,21 @@ export function SinopticoAtivoPage() {
           : Array.isArray(equipamentosResponse)
             ? equipamentosResponse
             : [];
-      console.log('✅ Equipamentos carregados:', equipamentosData.length, equipamentosData);
+      console.log('✅ Equipamentos carregados:', equipamentosData.length);
       setEquipamentos(equipamentosData);
 
-      // Carregar diagrama ativo da unidade
-      const { DiagramasService } = await import('@/services/diagramas.services');
-      let diagramaAtivo = null;
-      try {
-        diagramaAtivo = await DiagramasService.getActiveDiagrama(unidadeId);
-      } catch (err) {
-        console.log('ℹ️ Nenhum diagrama ativo encontrado, criando diagrama vazio');
-      }
-
       if (diagramaAtivo) {
-        console.log('📊 Diagrama ativo encontrado:', diagramaAtivo.id);
         setDiagramaIdAtual(diagramaAtivo.id.trim());
 
         // Buscar diagrama completo com equipamentos e conexões
         try {
           const diagramaCompleto = await DiagramasService.getDiagrama(diagramaAtivo.id);
-          console.log('✅ Diagrama completo carregado:', diagramaCompleto);
 
           // Converter equipamentos do backend para componentes do frontend
-          console.log('🔍 Estrutura do primeiro equipamento do backend:', diagramaCompleto.equipamentos?.[0]);
           const componentesCarregados = (diagramaCompleto.equipamentos || []).map((eq: any) => {
             const equipamentoId = (eq.id || '').trim();
             // Para BARRAMENTO/PONTO, usar tipo_equipamento direto. Para outros, usar tipo.codigo
             const tipoComponente = eq.tipo_equipamento || eq.tipo?.codigo || 'MEDIDOR';
-
-            // Log de debug para verificar tipos
-            if (eq.nome?.includes('PONTO') || eq.nome?.includes('BARRAMENTO')) {
-              console.log(`🔍 DEBUG TIPO - ${eq.nome}:`, {
-                tipo_equipamento: eq.tipo_equipamento,
-                'tipo.codigo': eq.tipo?.codigo,
-                tipoComponente,
-                equipamento: eq
-              });
-            }
 
             return {
               id: `eq-${equipamentoId}`,
@@ -1644,11 +1643,7 @@ export function SinopticoAtivoPage() {
             };
           });
 
-          // TODOS os componentes agora são equipamentos (incluindo BARRAMENTO/PONTO virtuais)
-          console.log('✅ Componentes carregados:', componentesCarregados.map(c => ({ id: c.id, tipo: c.tipo, posicao: c.posicao })));
-
           // Converter TODAS as conexões do backend (incluindo virtuais)
-          console.log('🔍 Estrutura da primeira conexão do backend:', diagramaCompleto.conexoes?.[0]);
           const conexoesCarregadas = (diagramaCompleto.conexoes || []).map((conn: any) => {
             const origemId = (conn.origem?.equipamentoId || '').trim();
             const destinoId = (conn.destino?.equipamentoId || '').trim();
@@ -1673,26 +1668,28 @@ export function SinopticoAtivoPage() {
             };
           });
 
-          console.log('📦 [loadDiagramaFromBackend] Chamando setComponentes e setConnections...');
           setComponentes(componentesCarregados);
           setConnections(conexoesCarregadas);
-          console.log('✅ Diagrama carregado:', componentesCarregados.length, 'componentes,', conexoesCarregadas.length, 'conexões');
-          console.log('📊 [DEBUG] Componentes:', componentesCarregados);
-          console.log('🔗 [DEBUG] Conexões:', conexoesCarregadas);
+          if (import.meta.env.DEV) {
+            console.log('✅ Diagrama:', componentesCarregados.length, 'componentes,', conexoesCarregadas.length, 'conexões');
+          }
         } catch (err) {
-          console.error('❌ Erro ao carregar diagrama completo:', err);
+          if (import.meta.env.DEV) {
+            console.error('Erro ao carregar diagrama:', err);
+          }
           setComponentes([]);
           setConnections([]);
         }
       } else {
-        console.log('ℹ️ Diagrama vazio, iniciando com componentes vazios');
         setComponentes([]);
         setConnections([]);
       }
 
       setDiagramaCarregado(true);
     } catch (error: any) {
-      console.error('❌ Erro ao carregar diagrama:', error);
+      if (import.meta.env.DEV) {
+        console.error('Erro ao carregar diagrama:', error);
+      }
       setErrorDiagrama(error.message || 'Erro ao carregar diagrama');
       setComponentes([]);
       setConnections([]);
@@ -1721,14 +1718,11 @@ export function SinopticoAtivoPage() {
     useState<ComponenteDU | null>(null);
   const [diagramaFullscreen, setDiagramaFullscreen] = useState(false);
 
-  // LOG: Monitorar mudanças no componenteSelecionado
+  // OTIMIZAÇÃO: Log simplificado
   useEffect(() => {
-    console.log('🔄 [STATE] componenteSelecionado mudou:', {
-      hasComponent: !!componenteSelecionado,
-      componentId: componenteSelecionado?.id,
-      componentNome: componenteSelecionado?.nome,
-      componentTipo: componenteSelecionado?.tipo
-    });
+    if (import.meta.env.DEV && componenteSelecionado) {
+      console.log('🔄 Selecionado:', componenteSelecionado.nome);
+    }
   }, [componenteSelecionado]);
 
   // Estados para modal MQTT do inversor
@@ -1755,15 +1749,12 @@ export function SinopticoAtivoPage() {
     null
   );
 
-  // LOG: Monitorar mudanças no componenteEditando
+  // OTIMIZAÇÃO: Log simplificado
   useEffect(() => {
-    console.log('🔄 [STATE] componenteEditando mudou:', {
-      hasComponenteEditando: !!componenteEditando,
-      componenteEditandoId: componenteEditando,
-      modoEdicao,
-      modoFerramenta
-    });
-  }, [componenteEditando, modoEdicao, modoFerramenta]);
+    if (import.meta.env.DEV && componenteEditando) {
+      console.log('🔄 Editando:', componenteEditando);
+    }
+  }, [componenteEditando]);
 
   // Estados para drag and drop
   const [isDragging, setIsDragging] = useState(false);
@@ -1791,41 +1782,23 @@ export function SinopticoAtivoPage() {
 
     try {
       if (!document.fullscreenElement) {
-        console.log('🟢 [FULLSCREEN] Entrando em fullscreen...', {
-          diagramCardRef: !!diagramCardRef.current,
-          canvasRef: !!canvasRef.current,
-          conexoes: connections.length,
-          componentes: componentes.length
-        });
         await diagramCardRef.current.requestFullscreen();
         setDiagramaFullscreen(true);
-        console.log('🟢 [FULLSCREEN] Fullscreen ativado!');
       } else {
-        console.log('🔴 [FULLSCREEN] Saindo do fullscreen...');
         await document.exitFullscreen();
         setDiagramaFullscreen(false);
-        console.log('🔴 [FULLSCREEN] Fullscreen desativado!');
       }
     } catch (error) {
-      console.error("❌ [FULLSCREEN] Erro ao alternar fullscreen:", error);
+      if (import.meta.env.DEV) {
+        console.error("Erro fullscreen:", error);
+      }
     }
-  }, [connections.length, componentes.length]);
+  }, []);
 
   // Listener para mudanças no fullscreen (ESC, etc)
   useEffect(() => {
     const handleFullscreenChange = () => {
-      const isFullscreen = !!document.fullscreenElement;
-      console.log('📺 [FULLSCREEN CHANGE EVENT]', {
-        isFullscreen,
-        fullscreenElement: document.fullscreenElement?.tagName,
-        canvasRef: !!canvasRef.current,
-        canvasDimensions: canvasRef.current ? {
-          width: canvasRef.current.offsetWidth,
-          height: canvasRef.current.offsetHeight,
-          boundingRect: canvasRef.current.getBoundingClientRect()
-        } : null
-      });
-      setDiagramaFullscreen(isFullscreen);
+      setDiagramaFullscreen(!!document.fullscreenElement);
     };
 
     document.addEventListener("fullscreenchange", handleFullscreenChange);
@@ -2061,22 +2034,32 @@ export function SinopticoAtivoPage() {
     }
   }, [canRedo, history, historyIndex]);
 
+  // OTIMIZAÇÃO: Debounce para atualizar histórico (evita JSON.stringify frequente)
+  const debouncedAddToHistory = useCallback(
+    (() => {
+      let timeoutId: NodeJS.Timeout;
+      return (state: DiagramState) => {
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => {
+          const lastState = history[historyIndex];
+          // Comparação simples por tamanho primeiro
+          if (!lastState ||
+              lastState.componentes.length !== state.componentes.length ||
+              lastState.connections.length !== state.connections.length) {
+            addToHistory(state);
+          }
+        }, 500); // 500ms de debounce
+      };
+    })(),
+    [historyIndex, history, addToHistory]
+  );
+
   // Atualizar histórico quando componentes/conexões mudarem
   useEffect(() => {
     if (diagramaCarregado && componentes.length > 0) {
-      const currentState = { componentes, connections };
-      const lastState = history[historyIndex];
-
-      // Só adicionar ao histórico se houve mudança real
-      if (
-        !lastState ||
-        JSON.stringify(lastState.componentes) !== JSON.stringify(componentes) ||
-        JSON.stringify(lastState.connections) !== JSON.stringify(connections)
-      ) {
-        addToHistory(currentState);
-      }
+      debouncedAddToHistory({ componentes, connections });
     }
-  }, [componentes, connections, diagramaCarregado]);
+  }, [componentes, connections, diagramaCarregado, debouncedAddToHistory]);
 
   // Atalhos de teclado para undo/redo
   useEffect(() => {
@@ -3162,9 +3145,11 @@ export function SinopticoAtivoPage() {
               <div className="text-center">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
                 <p className="text-lg text-gray-700">Carregando diagrama...</p>
-                <p className="text-sm text-gray-500 mt-2">
-                  Unidade: {unidadeAtual?.nome || unidadeId}
-                </p>
+                {unidadeAtual?.nome && (
+                  <p className="text-sm text-gray-500 mt-2">
+                    Unidade: {unidadeAtual.nome}
+                  </p>
+                )}
               </div>
             )}
           </div>
@@ -3231,6 +3216,9 @@ export function SinopticoAtivoPage() {
                     <span className="hidden md:inline">{plantaAtual?.nome} → </span>
                     {unidadeAtual.nome}
                   </>
+                ) : unidadeId ? (
+                  // Enquanto carrega, mostra "Carregando..." ao invés do ID
+                  <span className="text-muted-foreground animate-pulse">Carregando unidade...</span>
                 ) : (
                   'Selecione uma Unidade'
                 )}
@@ -3471,37 +3459,43 @@ export function SinopticoAtivoPage() {
 
                   return (
                     <div className="mt-4 pt-4 border-t relative z-50 bg-white dark:bg-gray-900">
-                      {/* Cabeçalho com info básica */}
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-4">
-                          <div>
-                            <Badge variant="outline" className="mr-2">
-                              {componenteSelecionado.tipo}
-                            </Badge>
-                            <span className="text-sm font-medium">
-                              {componenteSelecionado.nome}
-                            </span>
-                          </div>
-                          {connecting && connecting.from === componenteEditando && (
-                            <Badge variant="secondary" className="animate-pulse">
-                              Conectando...
-                            </Badge>
-                          )}
-                          {isDragging && componenteDragId === componenteEditando && (
-                            <Badge variant="secondary" className="animate-pulse">
-                              Arrastando...
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground">
-                            Conexões: {connections.filter(c => c.from === componenteEditando || c.to === componenteEditando).length}
-                          </span>
-                        </div>
+                      {/* Cabeçalho com estados e conexões */}
+                      <div className="flex items-center justify-end gap-2 mb-3">
+                        {connecting && connecting.from === componenteEditando && (
+                          <Badge variant="secondary" className="animate-pulse">
+                            Conectando...
+                          </Badge>
+                        )}
+                        {isDragging && componenteDragId === componenteEditando && (
+                          <Badge variant="secondary" className="animate-pulse">
+                            Arrastando...
+                          </Badge>
+                        )}
+                        <span className="text-xs text-muted-foreground">
+                          Conexões: {connections.filter(c => c.from === componenteEditando || c.to === componenteEditando).length}
+                        </span>
                       </div>
 
-                      {/* Painel de Propriedades Editáveis */}
-                      <div className="flex gap-4 items-start">
+                      {/* Painel de Propriedades Editáveis - Layout Reorganizado */}
+                      <div className="flex gap-3 items-start">
+                        {/* Coluna 1: Nome e Tipo */}
+                        <div className="flex flex-col gap-2">
+                          <div>
+                            <label className="text-xs text-muted-foreground block mb-1">Nome</label>
+                            <input
+                              type="text"
+                              value={componenteSelecionado.nome}
+                              readOnly
+                              className="w-32 px-2 py-1 text-sm border rounded bg-background text-muted-foreground"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs text-muted-foreground block mb-1">Tipo</label>
+                            <Badge variant="outline" className="w-32 justify-center">
+                              {componenteSelecionado.tipo}
+                            </Badge>
+                          </div>
+                        </div>
                         {/* Posições X e Y em coluna */}
                         <div className="flex flex-col gap-2">
                           <div>
@@ -3517,7 +3511,7 @@ export function SinopticoAtivoPage() {
                                     : c
                                 ));
                               }}
-                              className="w-32 px-2 py-1 text-sm border rounded bg-background"
+                              className="w-24 px-2 py-1 text-sm border rounded bg-background"
                             />
                           </div>
 
@@ -3534,17 +3528,17 @@ export function SinopticoAtivoPage() {
                                     : c
                                 ));
                               }}
-                              className="w-32 px-2 py-1 text-sm border rounded bg-background"
+                              className="w-24 px-2 py-1 text-sm border rounded bg-background"
                             />
                           </div>
                         </div>
 
-                        {/* Seletor de Posição do Label - Lado a lado com as posições */}
-                        <div>
+                        {/* Seletor de Posição do Label - Mais compacto */}
+                        <div className="flex-1">
                           <label className="text-xs text-muted-foreground block mb-1">Posição do Nome</label>
-                          <div className="flex items-center justify-center gap-1 p-2 border rounded bg-background">
-                            {/* Seletor Visual em Cruz */}
-                            <div className="flex flex-col items-center gap-1">
+                          <div className="flex items-center gap-4">
+                            {/* Seletor Visual em Cruz - mais compacto */}
+                            <div className="flex flex-col items-center gap-0.5 p-1.5 border rounded bg-background">
                               {/* TOP */}
                               <button
                                 onClick={() => {
@@ -3567,7 +3561,7 @@ export function SinopticoAtivoPage() {
                               </button>
 
                               {/* LEFT, CENTER, RIGHT */}
-                              <div className="flex items-center gap-1">
+                              <div className="flex items-center gap-0.5">
                                 <button
                                   onClick={() => {
                                     setComponentes(componentes.map(c =>
@@ -3589,7 +3583,7 @@ export function SinopticoAtivoPage() {
                                 </button>
 
                                 {/* Centro - representação do equipamento */}
-                                <div className="w-5 h-5 bg-gray-300 dark:bg-gray-600 rounded border border-gray-400 dark:border-gray-500"></div>
+                                <div className="w-4 h-4 bg-gray-300 dark:bg-gray-600 rounded border border-gray-400 dark:border-gray-500"></div>
 
                                 <button
                                   onClick={() => {
@@ -3633,14 +3627,16 @@ export function SinopticoAtivoPage() {
                                 </svg>
                               </button>
                             </div>
+
+                            {/* Texto indicador ao lado */}
+                            <p className="text-xs text-muted-foreground">
+                              {componenteSelecionado.label_position === 'top' && 'Acima'}
+                              {componenteSelecionado.label_position === 'bottom' && 'Abaixo'}
+                              {componenteSelecionado.label_position === 'left' && 'À esquerda'}
+                              {componenteSelecionado.label_position === 'right' && 'À direita'}
+                              {!componenteSelecionado.label_position && 'Acima (padrão)'}
+                            </p>
                           </div>
-                          <p className="text-xs text-muted-foreground mt-1 text-center">
-                            {componenteSelecionado.label_position === 'top' && 'Acima'}
-                            {componenteSelecionado.label_position === 'bottom' && 'Abaixo'}
-                            {componenteSelecionado.label_position === 'left' && 'À esquerda'}
-                            {componenteSelecionado.label_position === 'right' && 'À direita'}
-                            {!componenteSelecionado.label_position && 'Acima (padrão)'}
-                          </p>
                         </div>
                       </div>
                     </div>
@@ -3662,9 +3658,16 @@ export function SinopticoAtivoPage() {
               //   usandoFallback: !unidadeAtual?.demandaGeracao,
               // });
 
+              // Verificar se há pelo menos um gráfico visível para adaptar layout
+              const temGraficosVisiveis = unidadeAtual && (
+                equipamentos.some(e => e.mqtt_habilitado) || // Tem equipamentos para demanda
+                equipamentos.some(e => e.tipo_equipamento?.includes('M160')) // Tem M160 para tensão/FP
+              );
+
               return (
-              <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-                {/* Gráficos - Painel Lateral (1/3 da largura em telas grandes) */}
+              <div className={`grid grid-cols-1 ${temGraficosVisiveis ? 'xl:grid-cols-3' : ''} gap-6`}>
+                {/* Gráficos - Painel Lateral (1/3 da largura em telas grandes) - Só renderiza se tiver gráficos */}
+                {temGraficosVisiveis && (
                 <div className="xl:col-span-1 flex flex-col gap-4">
                   <SinopticoGraficosV2
                     unidadeId={unidadeId}
@@ -3682,9 +3685,10 @@ export function SinopticoAtivoPage() {
                     percentualAdicional={5}
                   />
                 </div>
+                )}
 
-                {/* Diagrama Unifilar - MODO VISUALIZAÇÃO - Principal (2/3 da largura) */}
-                <div className="xl:col-span-2 flex">
+                {/* Diagrama Unifilar - MODO VISUALIZAÇÃO - Adapta largura baseado em gráficos visíveis */}
+                <div className={temGraficosVisiveis ? "xl:col-span-2 flex" : "flex"}>
                   <Card
                     ref={diagramCardRef}
                     className={`flex flex-col w-full min-h-[900px] overflow-visible ${

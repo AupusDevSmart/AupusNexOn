@@ -455,7 +455,7 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
 
       {/* Modal de detalhes da unidade */}
       <Dialog open={modalAberto} onOpenChange={fecharModal}>
-        <DialogContent className="sm:max-w-md z-0">
+        <DialogContent className="sm:max-w-md z-[9999]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Activity className="h-4 w-4 text-blue-600" />

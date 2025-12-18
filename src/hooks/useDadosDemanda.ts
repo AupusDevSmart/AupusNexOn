@@ -75,7 +75,9 @@ export function useDadosDemanda(configuracao: ConfiguracaoDemanda, unidadeId?: s
       }
     },
     refetchInterval: configuracao.intervaloAtualizacao * 1000,
-    enabled: !!(unidadeId && (configuracao.fonte === 'A966' || configuracao.fonte === 'AUTO'))
+    enabled: !!(unidadeId && (configuracao.fonte === 'A966' || configuracao.fonte === 'AUTO')),
+    staleTime: 5000, // OTIMIZAÇÃO: Cache curto para evitar refetch imediato
+    gcTime: 30000 // OTIMIZAÇÃO: Manter em cache por 30s
   });
 
   // Query para buscar últimos dados dos equipamentos (para energia do dia)
@@ -112,7 +114,9 @@ export function useDadosDemanda(configuracao: ConfiguracaoDemanda, unidadeId?: s
       }
     },
     refetchInterval: configuracao.intervaloAtualizacao * 1000,
-    enabled: !!(unidadeId && configuracao.equipamentos.some(e => e.selecionado))
+    enabled: !!(unidadeId && configuracao.equipamentos.some(e => e.selecionado)),
+    staleTime: 5000, // OTIMIZAÇÃO: Cache curto
+    gcTime: 30000 // OTIMIZAÇÃO: Manter em cache por 30s
   });
 
   // Query para equipamentos do agrupamento
@@ -177,7 +181,9 @@ export function useDadosDemanda(configuracao: ConfiguracaoDemanda, unidadeId?: s
       }
     },
     refetchInterval: configuracao.intervaloAtualizacao * 1000,
-    enabled: !!(unidadeId && (configuracao.fonte === 'AGRUPAMENTO' || (configuracao.fonte === 'AUTO' && !dadosA966)))
+    enabled: !!(unidadeId && (configuracao.fonte === 'AGRUPAMENTO' || (configuracao.fonte === 'AUTO' && !dadosA966))),
+    staleTime: 5000, // OTIMIZAÇÃO: Cache curto
+    gcTime: 30000 // OTIMIZAÇÃO: Manter em cache por 30s
   });
 
   // Calcular energia do dia a partir dos equipamentos
