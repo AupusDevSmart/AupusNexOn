@@ -49,7 +49,7 @@ export function CardResumoTotal({
         {/* Custo Médio */}
         <div className="flex justify-between items-baseline">
           <span className="text-[10px] text-muted-foreground">Custo Médio:</span>
-          <span className="text-[10px] font-medium">R$ {custo_medio_kwh.toFixed(4)}/kWh</span>
+          <span className="text-[10px] font-medium">R$ {custo_medio_kwh.toFixed(6)}/kWh</span>
         </div>
 
         {/* Demanda (se disponível) */}
@@ -57,7 +57,7 @@ export function CardResumoTotal({
           <div className="pt-1 border-t border-border/30 mt-1 space-y-1">
             <div className="flex justify-between items-baseline">
               <span className="text-[10px] text-muted-foreground">Demanda Máx:</span>
-              <span className="text-[10px] font-medium">{demanda_maxima_kw.toFixed(2)} kW</span>
+              <span className="text-[10px] font-medium">{demanda_maxima_kw.toFixed(4)} kW</span>
             </div>
             {demanda_contratada_kw && (
               <div className="flex justify-between items-baseline">

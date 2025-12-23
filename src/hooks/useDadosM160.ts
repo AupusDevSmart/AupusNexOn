@@ -54,7 +54,7 @@ export function useDadosM160(unidadeId?: string, equipamentoId?: string) {
         const equipamentosM160 = equipamentos.filter((eq: any) => {
           const codigo = eq.tipoEquipamento?.codigo || eq.tipo_equipamento_rel?.codigo;
           console.log(`📊 [useDadosM160] Equipamento ${eq.nome}: código=${codigo}`);
-          return codigo === 'M160' || codigo === 'M-160' || codigo === 'MEDIDOR';
+          return codigo === 'M160' || codigo === 'M-160' || codigo === 'METER_M160' || codigo === 'MEDIDOR';
         });
 
         console.log('📊 [useDadosM160] Equipamentos M-160 filtrados:', equipamentosM160);
@@ -89,7 +89,7 @@ export function useDadosM160(unidadeId?: string, equipamentoId?: string) {
 
         return responseData.dados;
       } catch (error) {
-        console.error('Erro ao buscar dados do M160:', error);
+        console.error('Erro ao buscar dados M160:', error);
         return null;
       }
     },
@@ -105,7 +105,6 @@ export function useDadosM160(unidadeId?: string, equipamentoId?: string) {
     }
 
     const dadosProcessados: DadosM160[] = dadosM160.map((item: any) => {
-      // Extrair dados do M160
       const dados = item.Dados || {};
 
       return {
@@ -113,9 +112,9 @@ export function useDadosM160(unidadeId?: string, equipamentoId?: string) {
         tensaoA: dados.Va || 0,
         tensaoB: dados.Vb || 0,
         tensaoC: dados.Vc || 0,
-        fatorPotenciaA: dados.FPa || 0,
-        fatorPotenciaB: dados.FPb || 0,
-        fatorPotenciaC: dados.FPc || 0,
+        fatorPotenciaA: dados.FPA || 0,
+        fatorPotenciaB: dados.FPB || 0,
+        fatorPotenciaC: dados.FPC || 0,
       };
     });
 

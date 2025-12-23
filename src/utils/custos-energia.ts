@@ -12,7 +12,7 @@ export function formatarMoeda(valor: number): string {
     style: 'currency',
     currency: 'BRL',
     minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+    maximumFractionDigits: 6,
   }).format(valor);
 }
 
@@ -22,7 +22,7 @@ export function formatarMoeda(valor: number): string {
 export function formatarEnergia(kwh: number): string {
   return new Intl.NumberFormat('pt-BR', {
     minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+    maximumFractionDigits: 6,
   }).format(kwh);
 }
 
@@ -32,7 +32,7 @@ export function formatarEnergia(kwh: number): string {
 export function formatarDemanda(kw: number): string {
   return new Intl.NumberFormat('pt-BR', {
     minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+    maximumFractionDigits: 4,
   }).format(kw);
 }
 

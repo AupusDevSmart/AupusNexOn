@@ -65,7 +65,7 @@ export function CardCusto({
         {tarifa !== undefined && tarifa !== null && (
           <div className="flex justify-between items-baseline">
             <span className="text-[10px] text-muted-foreground">Tarifa:</span>
-            <span className="text-[10px]">R$ {tarifa.toFixed(4)}/kWh</span>
+            <span className="text-[10px]">R$ {tarifa.toFixed(6)}/kWh</span>
           </div>
         )}
 

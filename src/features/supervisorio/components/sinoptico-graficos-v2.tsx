@@ -688,9 +688,10 @@ export function SinopticoGraficosV2({
               </div>
             </div>
           ) : (
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={dadosFormatadosTensao}>
-                <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+            <div className="bg-slate-700 dark:bg-black p-4 rounded-lg">
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={dadosFormatadosTensao}>
+                  <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                 <XAxis dataKey="hora" fontSize={12} />
                 <YAxis
                   fontSize={12}
@@ -720,7 +721,7 @@ export function SinopticoGraficosV2({
                     type="monotone"
                     dataKey="tensaoB"
                     name="Tensão Fase B"
-                    stroke="#3b82f6"
+                    stroke="#ffffff"
                     strokeWidth={2}
                     dot={false}
                     activeDot={{ r: 4 }}
@@ -731,7 +732,7 @@ export function SinopticoGraficosV2({
                     type="monotone"
                     dataKey="tensaoC"
                     name="Tensão Fase C"
-                    stroke="#22c55e"
+                    stroke="#3b82f6"
                     strokeWidth={2}
                     dot={false}
                     activeDot={{ r: 4 }}
@@ -739,6 +740,7 @@ export function SinopticoGraficosV2({
                 )}
               </LineChart>
             </ResponsiveContainer>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -863,10 +865,11 @@ export function SinopticoGraficosV2({
               </div>
             </div>
           ) : (
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={dadosFormatadosFP}>
-                <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                <XAxis dataKey="hora" fontSize={12} />
+            <div className="bg-slate-700 dark:bg-black p-4 rounded-lg">
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={dadosFormatadosFP}>
+                  <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                  <XAxis dataKey="hora" fontSize={12} />
                 <YAxis
                   fontSize={12}
                   domain={[0.75, 1.0]}
@@ -895,7 +898,7 @@ export function SinopticoGraficosV2({
                     type="monotone"
                     dataKey="fatorPotenciaB"
                     name="FP Fase B"
-                    stroke="#3b82f6"
+                    stroke="#ffffff"
                     strokeWidth={2}
                     dot={false}
                     activeDot={{ r: 4 }}
@@ -906,7 +909,7 @@ export function SinopticoGraficosV2({
                     type="monotone"
                     dataKey="fatorPotenciaC"
                     name="FP Fase C"
-                    stroke="#22c55e"
+                    stroke="#3b82f6"
                     strokeWidth={2}
                     dot={false}
                     activeDot={{ r: 4 }}
@@ -925,6 +928,7 @@ export function SinopticoGraficosV2({
                 />
               </LineChart>
             </ResponsiveContainer>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -1071,9 +1075,9 @@ export function SinopticoGraficosV2({
             </DialogTitle>
           </DialogHeader>
 
-          <div className="w-full h-[70vh]">
+          <div className="w-full flex flex-col gap-4" style={{ height: '70vh' }}>
             {/* Controles */}
-            <div className="mb-4 space-y-3">
+            <div className="space-y-3 flex-shrink-0">
               {/* Select M160 */}
               <div className="flex items-center gap-2">
                 <Label htmlFor="m160-tensao-modal" className="text-sm min-w-[80px]">
@@ -1138,6 +1142,7 @@ export function SinopticoGraficosV2({
             </div>
 
             {/* Gráfico */}
+            <div className="flex-1 min-h-0">
             {isLoadingM160 ? (
               <div className="flex flex-col items-center justify-center h-full space-y-3">
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -1149,10 +1154,11 @@ export function SinopticoGraficosV2({
                 <p className="text-sm text-muted-foreground">Sem dados de tensão</p>
               </div>
             ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={dadosFormatadosTensao}>
-                  <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                  <XAxis dataKey="hora" fontSize={12} />
+              <div className="bg-slate-700 dark:bg-black p-4 rounded-lg h-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={dadosFormatadosTensao}>
+                    <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                    <XAxis dataKey="hora" fontSize={12} />
                   <YAxis
                     fontSize={12}
                     domain={["dataMin - 5", "dataMax + 5"]}
@@ -1190,7 +1196,7 @@ export function SinopticoGraficosV2({
                       type="monotone"
                       dataKey="tensaoB"
                       name="Tensão Fase B"
-                      stroke="#3b82f6"
+                      stroke="#ffffff"
                       strokeWidth={2}
                       dot={false}
                       activeDot={{ r: 4 }}
@@ -1201,7 +1207,7 @@ export function SinopticoGraficosV2({
                       type="monotone"
                       dataKey="tensaoC"
                       name="Tensão Fase C"
-                      stroke="#22c55e"
+                      stroke="#3b82f6"
                       strokeWidth={2}
                       dot={false}
                       activeDot={{ r: 4 }}
@@ -1209,7 +1215,9 @@ export function SinopticoGraficosV2({
                   )}
                 </LineChart>
               </ResponsiveContainer>
+              </div>
             )}
+            </div>
           </div>
         </DialogContent>
       </Dialog>
@@ -1224,9 +1232,9 @@ export function SinopticoGraficosV2({
             </DialogTitle>
           </DialogHeader>
 
-          <div className="w-full h-[70vh]">
+          <div className="w-full flex flex-col gap-4" style={{ height: '70vh' }}>
             {/* Controles */}
-            <div className="mb-4 space-y-3">
+            <div className="space-y-3 flex-shrink-0">
               {/* Select M160 */}
               <div className="flex items-center gap-2">
                 <Label htmlFor="m160-fp-modal" className="text-sm min-w-[80px]">
@@ -1291,6 +1299,7 @@ export function SinopticoGraficosV2({
             </div>
 
             {/* Gráfico */}
+            <div className="flex-1 min-h-0">
             {isLoadingM160 ? (
               <div className="flex flex-col items-center justify-center h-full space-y-3">
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -1302,10 +1311,11 @@ export function SinopticoGraficosV2({
                 <p className="text-sm text-muted-foreground">Sem dados de fator de potência</p>
               </div>
             ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={dadosFormatadosFP}>
-                  <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                  <XAxis dataKey="hora" fontSize={12} />
+              <div className="bg-slate-700 dark:bg-black p-4 rounded-lg h-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={dadosFormatadosFP}>
+                    <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                    <XAxis dataKey="hora" fontSize={12} />
                   <YAxis
                     fontSize={12}
                     domain={[0.75, 1.0]}
@@ -1343,7 +1353,7 @@ export function SinopticoGraficosV2({
                       type="monotone"
                       dataKey="fatorPotenciaB"
                       name="FP Fase B"
-                      stroke="#3b82f6"
+                      stroke="#ffffff"
                       strokeWidth={2}
                       dot={false}
                       activeDot={{ r: 4 }}
@@ -1354,7 +1364,7 @@ export function SinopticoGraficosV2({
                       type="monotone"
                       dataKey="fatorPotenciaC"
                       name="FP Fase C"
-                      stroke="#22c55e"
+                      stroke="#3b82f6"
                       strokeWidth={2}
                       dot={false}
                       activeDot={{ r: 4 }}
@@ -1373,7 +1383,9 @@ export function SinopticoGraficosV2({
                   />
                 </LineChart>
               </ResponsiveContainer>
+              </div>
             )}
+            </div>
           </div>
         </DialogContent>
       </Dialog>

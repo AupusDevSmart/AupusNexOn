@@ -1019,6 +1019,7 @@ case "RELE":
 
       
       case "M160":
+      case "METER_M160": // ✅ Suporte ao novo código
         return (
           <svg
             width="32"
@@ -1452,7 +1453,7 @@ export function SinopticoDiagrama({
               />
 
               {/* Indicador de seleção múltipla para equipamentos com dados de energia */}
-              {['INVERSOR', 'MEDIDOR', 'M160', 'A966', 'LANDIS_E750', 'TRANSFORMADOR'].includes(componente.tipo) &&
+              {['INVERSOR', 'MEDIDOR', 'M160', 'METER_M160', 'A966', 'LANDIS_E750', 'TRANSFORMADOR'].includes(componente.tipo) &&
                isComponenteSelected(componente.id) && (
                 <div className="absolute -top-2 -right-2 z-50">
                   <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">

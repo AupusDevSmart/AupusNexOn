@@ -317,16 +317,20 @@ export function useDadosDemanda(configuracao: ConfiguracaoDemanda, unidadeId?: s
         let potenciaEquipamento = 0;
 
         // Extrair potência baseado na estrutura dos dados
-        // 0. Estrutura de INVERSOR do endpoint /grafico-dia (potencia_kw direto)
+        // 0. ✅ NOVO: Formato M160 Resumo e INVERSOR (potencia_kw direto no root)
         if (leitura.potencia_kw !== undefined) {
           potenciaEquipamento = leitura.potencia_kw * 1000; // Converter kW para W
         }
-        // 1. Estrutura M-160 (multimedidor)
-        else
-        if (leitura.Dados) {
-          // M-160: soma das potências das 3 fases (Pa + Pb + Pc)
-          const potenciaFases = (leitura.Dados.Pa || 0) + (leitura.Dados.Pb || 0) + (leitura.Dados.Pc || 0);
-          potenciaEquipamento = potenciaFases; // Já vem em Watts
+        // 1. Estrutura M-160 legado (multimedidor com campo Dados)
+        else if (leitura.Dados) {
+          // ✅ ATUALIZADO: Priorizar potencia_kw se disponível no Dados
+          if (leitura.Dados.potencia_kw !== undefined) {
+            potenciaEquipamento = leitura.Dados.potencia_kw * 1000; // Converter kW para W
+          } else {
+            // M-160 legado: soma das potências das 3 fases (Pa + Pb + Pc)
+            const potenciaFases = (leitura.Dados.Pa || 0) + (leitura.Dados.Pb || 0) + (leitura.Dados.Pc || 0);
+            potenciaEquipamento = potenciaFases; // Já vem em Watts
+          }
         }
         // 2. Estrutura Inversor (nested power object)
         else if (leitura.power?.active_total !== undefined) {

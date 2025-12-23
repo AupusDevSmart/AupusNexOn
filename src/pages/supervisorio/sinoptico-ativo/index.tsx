@@ -2380,7 +2380,8 @@ export function SinopticoAtivoPage() {
       // Detectar tópico MQTT e abrir modal correto
       const tag = (componente as any).tag || '';
 
-      if (tag.includes('M160')) {
+      // ✅ CORRIGIDO: Verificar tipo E tag para M160
+      if (tag.includes('M160') || componente.tipo === 'M160' || componente.tipo === 'METER_M160') {
         console.log('📊 [MODAL] Abrindo M160Modal');
         setModalAberto('M160');
       } else if (tag.includes('a966/state') && !tag.includes('LANDIS')) {

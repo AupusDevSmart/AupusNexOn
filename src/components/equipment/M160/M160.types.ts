@@ -14,11 +14,14 @@ export interface M160Reading {
     N?: number; // Corrente de neutro
   };
   power: {
-    active?: number; // Potência ativa (kW)
+    active?: number; // Potência ativa total (kW)
     reactive?: number; // Potência reativa (kVAr)
     apparent?: number; // Potência aparente (kVA)
     import?: number; // Energia importada (kWh)
     export?: number; // Energia exportada (kWh) - 4 quadrantes
+    L1?: number; // Potência ativa fase A (Pa) em W
+    L2?: number; // Potência ativa fase B (Pb) em W
+    L3?: number; // Potência ativa fase C (Pc) em W
   };
   frequency?: number;
   powerFactor?: number; // FPA

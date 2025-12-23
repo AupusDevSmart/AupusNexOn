@@ -122,9 +122,9 @@ const M160Multimeter: React.FC<M160Props> = ({
     customDisplayLabels: {
       voltage: "TENSÕES",
       current: "CORRENTES",
-      power: "POTÊNCIAS",
-      energy: "ENERGIA",
-      thd: "QUALIDADE",
+      power: "POT POR FASE",
+      energy: "POT TOTAIS",
+      thd: "FATOR POTÊNCIA",
     },
     ...navigation,
   };
@@ -336,23 +336,22 @@ const M160Multimeter: React.FC<M160Props> = ({
         return (
           <>
             <DigitalDisplay
-              value={readings.power.active}
+              value={readings.power.L1}
               unit="W"
-              label="Pa+Pb+Pc"
-              isExport={readings.power.active && readings.power.active < 0}
-              precision={3}
+              label="Pa (Fase A)"
+              precision={1}
             />
             <DigitalDisplay
-              value={readings.power.reactive}
-              unit="VAr"
-              label="qhfi"
-              precision={3}
+              value={readings.power.L2}
+              unit="W"
+              label="Pb (Fase B)"
+              precision={1}
             />
             <DigitalDisplay
-              value={readings.power.apparent}
-              unit="VA"
-              label="S"
-              precision={3}
+              value={readings.power.L3}
+              unit="W"
+              label="Pc (Fase C)"
+              precision={1}
             />
           </>
         );
@@ -360,22 +359,22 @@ const M160Multimeter: React.FC<M160Props> = ({
         return (
           <>
             <DigitalDisplay
-              value={readings.energy?.activeImport}
-              unit="kWh"
-              label="phf"
+              value={readings.power.active}
+              unit="kW"
+              label="P (Ativa)"
+              isExport={readings.power.active && readings.power.active < 0}
               precision={3}
             />
             <DigitalDisplay
-              value={readings.energy?.activeExport}
-              unit="kWh"
-              label="phr"
+              value={readings.power.reactive}
+              unit="kVAr"
+              label="Q (Reativa)"
               precision={3}
-              isExport={true}
             />
             <DigitalDisplay
-              value={readings.energy?.reactiveImport}
-              unit="kVArh"
-              label="qhfi"
+              value={readings.power.apparent}
+              unit="kVA"
+              label="S (Aparente)"
               precision={3}
             />
           </>
@@ -386,20 +385,20 @@ const M160Multimeter: React.FC<M160Props> = ({
             <DigitalDisplay
               value={readings.powerFactor}
               unit=""
-              label="FPA"
-              precision={2}
+              label="FP Fase A"
+              precision={3}
             />
             <DigitalDisplay
               value={readings.powerFactorB}
               unit=""
-              label="FPB"
-              precision={2}
+              label="FP Fase B"
+              precision={3}
             />
             <DigitalDisplay
               value={readings.powerFactorC}
               unit=""
-              label="FPC"
-              precision={2}
+              label="FP Fase C"
+              precision={3}
             />
           </>
         );

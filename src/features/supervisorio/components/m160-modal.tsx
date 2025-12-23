@@ -96,7 +96,7 @@ export function M160Modal({ isOpen, onClose, componenteData }: M160ModalProps) {
           import: 0,
           export: 0,
         },
-        frequency: 60.0,
+        frequency: 0,
         powerFactor: 0,
         thd: { voltage: 0, current: 0 },
         energy: {
@@ -110,42 +110,59 @@ export function M160Modal({ isOpen, onClose, componenteData }: M160ModalProps) {
 
     const d = mqttData.payload.Dados;
 
-    // Calcular potências totais
+    // Calcular potências totais (Pa, Pb, Pc em Watts)
     const Pa = d.Pa || 0;
     const Pb = d.Pb || 0;
     const Pc = d.Pc || 0;
-    const potenciaAtiva = Pa + Pb + Pc;
+    const potenciaAtivaW = Pa + Pb + Pc; // Total em Watts
+    const potenciaAtivaKw = potenciaAtivaW / 1000; // Converter para kW
+
+    // ✅ NOVO: Usar potencia_kw do payload principal se disponível (mais preciso)
+    const potenciaReal = mqttData.payload.potencia_kw ?? potenciaAtivaKw;
+
+    // Calcular potência aparente usando fator de potência médio
+    const fpMedio = ((d.FPA || 0) + (d.FPB || 0) + (d.FPC || 0)) / 3;
+    const potenciaAparente = fpMedio !== 0 ? potenciaReal / fpMedio : 0;
+
+    // Calcular potência reativa usando teorema de Pitágoras (S² = P² + Q²)
+    const potenciaReativa = Math.sqrt(Math.max(0, Math.pow(potenciaAparente, 2) - Math.pow(potenciaReal, 2)));
 
     return {
       voltage: {
         L1: d.Va || 0,
         L2: d.Vb || 0,
         L3: d.Vc || 0,
-        LN: ((d.Va || 0) + (d.Vb || 0) + (d.Vc || 0)) / 3,
+        LN: ((d.Va || 0) + (d.Vb || 0) + (d.Vc || 0)) / 3, // Média das fases
       },
       current: {
         L1: d.Ia || 0,
         L2: d.Ib || 0,
         L3: d.Ic || 0,
-        N: 0,
+        N: 0, // Corrente de neutro não disponível no M160
       },
       power: {
-        active: potenciaAtiva,
-        reactive: d.qhfi || 0,
-        apparent: Math.sqrt(Math.pow(potenciaAtiva, 2) + Math.pow(d.qhfi || 0, 2)),
-        import: potenciaAtiva >= 0 ? potenciaAtiva : 0,
-        export: potenciaAtiva < 0 ? Math.abs(potenciaAtiva) : 0,
+        active: potenciaReal, // kW
+        reactive: potenciaReativa, // kVAr (calculado)
+        apparent: potenciaAparente, // kVA (calculado)
+        import: potenciaReal >= 0 ? potenciaReal : 0, // kW (consumo)
+        export: potenciaReal < 0 ? Math.abs(potenciaReal) : 0, // kW (geração)
+        L1: Pa, // Potência fase A (W)
+        L2: Pb, // Potência fase B (W)
+        L3: Pc, // Potência fase C (W)
       },
-      frequency: 60.0,
+      frequency: d.freq || 60.0, // ✅ CORRIGIDO: Usar frequência real do payload
       powerFactor: d.FPA || 0,
       powerFactorB: d.FPB || 0,
       powerFactorC: d.FPC || 0,
-      thd: { voltage: 0, current: 0 },
+      thd: {
+        voltage: 0, // THD não disponível no M160
+        current: 0  // THD não disponível no M160
+      },
       energy: {
-        activeImport: d.phf || 0,
-        activeExport: d.phr || 0,
-        reactiveImport: d.qhfi || 0,
-        reactiveExport: d.qhri || 0,
+        activeImport: d.phf || mqttData.payload.energia_kwh || 0, // ✅ CORRIGIDO: PHF ou energia_kwh
+        activeExport: 0, // Não disponível no M160
+        reactiveImport: 0, // Não disponível no M160
+        reactiveExport: 0, // Não disponível no M160
       },
     };
   }, [mqttData]);
@@ -263,7 +280,7 @@ export function M160Modal({ isOpen, onClose, componenteData }: M160ModalProps) {
                   <SelectTrigger className="w-[180px]">
                     <SelectValue placeholder="Selecione o período" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent position="popper" sideOffset={5}>
                     <SelectItem value="dia">Dia Atual</SelectItem>
                     <SelectItem value="mes">Mês Atual</SelectItem>
                     <SelectItem value="custom">Período Customizado</SelectItem>
@@ -322,6 +339,11 @@ export function M160Modal({ isOpen, onClose, componenteData }: M160ModalProps) {
                   )}
                   <span className="text-muted-foreground">•</span>
                   <span className="text-muted-foreground">{custosData.unidade.nome}</span>
+                  <span className="text-muted-foreground">•</span>
+                  {/* Badge indicando que demanda nunca está incluída */}
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground">
+                    Demanda não incluída no custo
+                  </Badge>
                 </div>
 
                 {/* Grid de Cards de Custos - Layout COMPACTO */}
