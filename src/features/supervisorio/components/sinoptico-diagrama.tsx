@@ -41,8 +41,8 @@ interface SinopticoDiagramaProps {
   selectedEquipamentos?: ComponenteDU[]; // NOVO PROP - equipamentos selecionados
 }
 
-// Componente para renderizar símbolos elétricos - APENAS VISUALIZAÇÃO
-const ElectricalSymbol = ({
+// Componente para renderizar símbolos elétricos - Usado em visualização e edição
+export const ElectricalSymbol = ({
   tipo,
   status = "NORMAL",
   onClick,
@@ -217,27 +217,19 @@ const ElectricalSymbol = ({
             viewBox="0 0 40 20"
             className="drop-shadow-sm"
           >
+            {/* Apenas bordas, sem preenchimento */}
             <rect
               x="2"
               y="2"
               width="36"
               height="16"
-              className="fill-gray-600 dark:fill-gray-500"
+              className={statusClasses.stroke}
               strokeWidth="2"
               rx="2"
+              fill="none"
             />
-             <rect
-        x="2"
-        y="2"
-        width="36"
-        height="16"
-        className={statusClasses.stroke}
-        strokeWidth="2"
-        rx="2"
-        fill="none"
-      />
-    </svg>
-  );
+          </svg>
+        );
   case "DISJUNTOR_FECHADO":
   return (
     <svg
@@ -246,22 +238,13 @@ const ElectricalSymbol = ({
       viewBox="0 0 40 20"
       className="drop-shadow-sm"
     >
-      {/* Caixa vermelha preenchida - FECHADO/ENERGIZADO */}
+      {/* Apenas bordas vermelhas, sem preenchimento - FECHADO/ENERGIZADO */}
       <rect
         x="2"
         y="2"
         width="36"
         height="16"
-        className="fill-red-600 dark:fill-red-500"
-        rx="2"
-      />
-      {/* Contorno */}
-      <rect
-        x="2"
-        y="2"
-        width="36"
-        height="16"
-        className="stroke-red-800 dark:stroke-red-700"
+        className="stroke-red-600 dark:stroke-red-500"
         strokeWidth="2"
         rx="2"
         fill="none"
@@ -277,22 +260,13 @@ case "DISJUNTOR_ABERTO":
       viewBox="0 0 40 20"
       className="drop-shadow-sm"
     >
-      {/* Caixa verde preenchida - ABERTO/DESENERGIZADO */}
+      {/* Apenas bordas verdes, sem preenchimento - ABERTO/DESENERGIZADO */}
       <rect
         x="2"
         y="2"
         width="36"
         height="16"
-        className="fill-green-600 dark:fill-green-500"
-        rx="2"
-      />
-      {/* Contorno */}
-      <rect
-        x="2"
-        y="2"
-        width="36"
-        height="16"
-        className="stroke-green-800 dark:stroke-green-700"
+        className="stroke-green-600 dark:stroke-green-500"
         strokeWidth="2"
         rx="2"
         fill="none"
@@ -1432,7 +1406,8 @@ export function SinopticoDiagrama({
 
             return true;
           })
-          .map((componente) => (
+          .map((componente) => {
+            return (
             <div
               key={componente.id}
               data-node-id={componente.id}
@@ -1492,7 +1467,8 @@ export function SinopticoDiagrama({
                 <div className="absolute inset-0 ring-2 ring-blue-400 ring-offset-1 rounded-lg pointer-events-none animate-pulse" />
               )}
             </div>
-          ))}
+            );
+          })}
       </div>
       )}
 

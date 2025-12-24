@@ -495,12 +495,18 @@ export function useEquipamentos(): UseEquipamentosReturn {
 
       const equipamentosTransformados = equipamentosArray.map(transformApiToFrontend);
 
-      setEquipamentos(equipamentosTransformados);
+      // Filtrar para ocultar PONTOS e BARRAMENTOS
+      const equipamentosFiltrados = equipamentosTransformados.filter(eq => {
+        const tipoId = eq.tipo?.toUpperCase() || eq.tipoEquipamento?.toUpperCase() || '';
+        return tipoId !== 'PONTO' && tipoId !== 'BARRAMENTO';
+      });
+
+      setEquipamentos(equipamentosFiltrados);
       setTotalPages(response.data.pagination?.pages || 0);
       setCurrentPage(response.data.pagination?.page || 1);
-      setTotal(response.data.pagination?.total || 0);
-      
-      return equipamentosTransformados;
+      setTotal(equipamentosFiltrados.length); // Atualizar total com a quantidade filtrada
+
+      return equipamentosFiltrados;
       
     } catch (err) {
       handleError(err, 'fetchEquipamentos');
@@ -528,13 +534,19 @@ export function useEquipamentos(): UseEquipamentosReturn {
       // A API retorna: { success: true, data: { data: [], pagination: {}, planta: {} }, meta: {} }
       const equipamentosTransformados = response.data.data.map(transformApiToFrontend);
 
-      setEquipamentos(equipamentosTransformados);
+      // Filtrar para ocultar PONTOS e BARRAMENTOS
+      const equipamentosFiltrados = equipamentosTransformados.filter(eq => {
+        const tipoId = eq.tipo?.toUpperCase() || eq.tipoEquipamento?.toUpperCase() || '';
+        return tipoId !== 'PONTO' && tipoId !== 'BARRAMENTO';
+      });
+
+      setEquipamentos(equipamentosFiltrados);
       setTotalPages(response.data.pagination.pages);
       setCurrentPage(response.data.pagination.page);
-      setTotal(response.data.pagination.total);
+      setTotal(equipamentosFiltrados.length); // Atualizar total com a quantidade filtrada
 
       return {
-        equipamentos: equipamentosTransformados,
+        equipamentos: equipamentosFiltrados,
         planta: response.data.planta
       };
       

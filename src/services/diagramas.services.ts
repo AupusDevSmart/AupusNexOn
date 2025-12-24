@@ -316,12 +316,17 @@ class DiagramasServiceClass {
    */
   async createConexoesBulk(diagramaId: string, conexoes: CreateConexaoDto[]): Promise<any> {
     try {
-      // console.log(`📡 [DiagramasService] POST /diagramas/${diagramaId}/conexoes/bulk`);
-      // console.log(`   🔗 Creating ${conexoes.length} conexões`);
+      console.log(`📡 [DiagramasService] POST /diagramas/${diagramaId}/conexoes/bulk`);
+      console.log(`   🔗 Creating ${conexoes.length} conexões`);
+
+      // Aumentar timeout para 2 minutos (120 segundos) para operações em lote grandes
       const response = await api.post(`/diagramas/${diagramaId}/conexoes/bulk`, {
         conexoes,
+      }, {
+        timeout: 120000, // 2 minutos
       });
-      // console.log('✅ [DiagramasService] Bulk conexões created:', response.data);
+
+      console.log('✅ [DiagramasService] Bulk conexões created:', response.data);
       return response.data;
     } catch (error: any) {
       console.error(`❌ [DiagramasService] Error creating bulk conexões:`, error);

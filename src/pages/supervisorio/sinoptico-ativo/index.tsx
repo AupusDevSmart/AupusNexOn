@@ -383,35 +383,26 @@ const ElectricalSymbol = React.memo(({
         );
 
       case "DISJUNTOR":
-  return (
-    <svg
-      width="32"
-      height="16"
-      viewBox="0 0 40 20"
-      className="drop-shadow-sm"
-    >
-      {/* Caixa cinza preenchida */}
-      <rect
-        x="2"
-        y="2"
-        width="36"
-        height="16"
-        className="fill-gray-600 dark:fill-gray-500"
-        rx="2"
-      />
-      {/* Contorno */}
-      <rect
-        x="2"
-        y="2"
-        width="36"
-        height="16"
-        className={statusClasses.stroke}
-        strokeWidth="2"
-        rx="2"
-        fill="none"
-      />
-    </svg>
-  );
+        return (
+          <svg
+            width="32"
+            height="16"
+            viewBox="0 0 40 20"
+            className="drop-shadow-sm"
+          >
+            {/* Apenas bordas, sem preenchimento */}
+            <rect
+              x="2"
+              y="2"
+              width="36"
+              height="16"
+              className={statusClasses.stroke}
+              strokeWidth="2"
+              rx="2"
+              fill="none"
+            />
+          </svg>
+        );
   case "DISJUNTOR_FECHADO":
   return (
     <svg
@@ -420,22 +411,13 @@ const ElectricalSymbol = React.memo(({
       viewBox="0 0 40 20"
       className="drop-shadow-sm"
     >
-      {/* Caixa vermelha preenchida - FECHADO/ENERGIZADO */}
+      {/* Apenas bordas vermelhas, sem preenchimento - FECHADO/ENERGIZADO */}
       <rect
         x="2"
         y="2"
         width="36"
         height="16"
-        className="fill-red-600 dark:fill-red-500"
-        rx="2"
-      />
-      {/* Contorno */}
-      <rect
-        x="2"
-        y="2"
-        width="36"
-        height="16"
-        className="stroke-red-800 dark:stroke-red-700"
+        className="stroke-red-600 dark:stroke-red-500"
         strokeWidth="2"
         rx="2"
         fill="none"
@@ -451,22 +433,13 @@ case "DISJUNTOR_ABERTO":
       viewBox="0 0 40 20"
       className="drop-shadow-sm"
     >
-      {/* Caixa verde preenchida - ABERTO/DESENERGIZADO */}
+      {/* Apenas bordas verdes, sem preenchimento - ABERTO/DESENERGIZADO */}
       <rect
         x="2"
         y="2"
         width="36"
         height="16"
-        className="fill-green-600 dark:fill-green-500"
-        rx="2"
-      />
-      {/* Contorno */}
-      <rect
-        x="2"
-        y="2"
-        width="36"
-        height="16"
-        className="stroke-green-800 dark:stroke-green-700"
+        className="stroke-green-600 dark:stroke-green-500"
         strokeWidth="2"
         rx="2"
         fill="none"
@@ -948,6 +921,7 @@ case "PONTO_JUNCAO":
           </svg>
         );
       case "M160":
+      case "METER_M160": // ✅ Suporte ao novo código
         return (
           <svg
             width="32"
@@ -1370,6 +1344,325 @@ case "PONTO_JUNCAO":
           </svg>
         );
 
+      case "JUNCTION":
+        // Junction node - apenas um pequeno ponto azul
+        return (
+          <svg
+            width="6"
+            height="6"
+            viewBox="0 0 6 6"
+            style={{ overflow: "visible" }}
+          >
+            <circle
+              cx="3"
+              cy="3"
+              r="2.5"
+              className="fill-blue-600 dark:fill-blue-400"
+            />
+          </svg>
+        );
+
+      case "PAINEL_SOLAR":
+      case "placa_solar":
+        // Módulo Fotovoltaico
+        return (
+          <svg
+            width="40"
+            height="36"
+            viewBox="0 0 200 180"
+            className="drop-shadow-sm"
+          >
+            {/* Retângulo externo (módulo fotovoltaico) */}
+            <rect
+              x="20"
+              y="20"
+              width="160"
+              height="120"
+              className={`${statusClasses.stroke} fill-background`}
+              strokeWidth="2.5"
+            />
+
+            {/* Triângulo invertido (estilo envelope - ponta no meio) */}
+            <polygon
+              points="20,20 100,80 180,20"
+              className={statusClasses.stroke}
+              strokeWidth="2.5"
+              fill="none"
+            />
+
+            {/* Linha vertical de conexão */}
+            <line
+              x1="100"
+              y1="140"
+              x2="100"
+              y2="170"
+              className={statusClasses.stroke}
+              strokeWidth="2.5"
+            />
+
+            {/* Texto "PV" */}
+            <text
+              x="100"
+              y="130"
+              textAnchor="middle"
+              fontSize="12"
+              fontWeight="bold"
+              className={statusClasses.fill}
+            >
+              PV
+            </text>
+          </svg>
+        );
+
+      case "PIVO_ABERTO":
+        return (
+          <svg
+            width="40"
+            height="40"
+            viewBox="0 0 50 50"
+            className="drop-shadow-sm"
+          >
+            <circle
+              cx="25"
+              cy="25"
+              r="22"
+              className="stroke-green-600 dark:stroke-green-400 fill-background"
+              strokeWidth="2"
+            />
+            <circle
+              cx="25"
+              cy="25"
+              r="16"
+              className="stroke-green-600 dark:stroke-green-400 fill-none"
+              strokeWidth="1.5"
+              strokeDasharray="3,2"
+            />
+            <text
+              x="25"
+              y="28"
+              textAnchor="middle"
+              dominantBaseline="middle"
+              fontSize="8"
+              fontWeight="600"
+              className="fill-green-600 dark:fill-green-400"
+            >
+              PV
+            </text>
+          </svg>
+        );
+
+      case "PIVO_FECHADO":
+        return (
+          <svg
+            width="40"
+            height="40"
+            viewBox="0 0 50 50"
+            className="drop-shadow-sm"
+          >
+            <circle
+              cx="25"
+              cy="25"
+              r="22"
+              className="stroke-red-600 dark:stroke-red-400 fill-red-100 dark:fill-red-900"
+              strokeWidth="2"
+            />
+            <circle
+              cx="25"
+              cy="25"
+              r="16"
+              className="stroke-red-600 dark:stroke-red-400 fill-none"
+              strokeWidth="1.5"
+            />
+            <text
+              x="25"
+              y="28"
+              textAnchor="middle"
+              dominantBaseline="middle"
+              fontSize="8"
+              fontWeight="600"
+              className="fill-red-600 dark:fill-red-400"
+            >
+              PF
+            </text>
+          </svg>
+        );
+
+      case "PAINEL_PMT":
+        return (
+          <svg width="40" height="32" viewBox="0 0 50 40" className="drop-shadow-sm">
+            <rect
+              x="5"
+              y="5"
+              width="40"
+              height="30"
+              className={`${statusClasses.stroke} fill-background`}
+              strokeWidth="2"
+              rx="3"
+            />
+            <circle cx="15" cy="15" r="2" className={statusClasses.fill} />
+            <circle cx="25" cy="15" r="2" className={statusClasses.fill} />
+            <circle cx="35" cy="15" r="2" className={statusClasses.fill} />
+            <circle cx="15" cy="25" r="2" className={statusClasses.fill} />
+            <circle cx="25" cy="25" r="2" className={statusClasses.fill} />
+            <circle cx="35" cy="25" r="2" className={statusClasses.fill} />
+            <text
+              x="25"
+              y="20"
+              textAnchor="middle"
+              dominantBaseline="middle"
+              fontSize="7"
+              fontWeight="600"
+              className={statusClasses.fill}
+            >
+              PMT
+            </text>
+          </svg>
+        );
+
+      case "SALA_COMANDO":
+        return (
+          <svg width="48" height="36" viewBox="0 0 60 45" className="drop-shadow-sm">
+            <rect
+              x="5"
+              y="5"
+              width="50"
+              height="35"
+              className={`${statusClasses.stroke} fill-background`}
+              strokeWidth="2"
+              rx="2"
+            />
+            <rect x="10" y="12" width="18" height="12" className={statusClasses.fill} rx="1" />
+            <rect x="32" y="12" width="18" height="12" className={statusClasses.fill} rx="1" />
+            <line x1="15" y1="30" x2="25" y2="30" className={statusClasses.stroke} strokeWidth="1.5" />
+            <line x1="35" y1="30" x2="45" y2="30" className={statusClasses.stroke} strokeWidth="1.5" />
+            <text
+              x="30"
+              y="40"
+              textAnchor="middle"
+              fontSize="6"
+              fontWeight="600"
+              className={statusClasses.fill}
+            >
+              CTRL
+            </text>
+          </svg>
+        );
+
+      case "SCADA":
+        return (
+          <svg width="40" height="32" viewBox="0 0 50 40" className="drop-shadow-sm">
+            <rect
+              x="5"
+              y="8"
+              width="40"
+              height="24"
+              className={`${statusClasses.stroke} fill-background`}
+              strokeWidth="2"
+              rx="2"
+            />
+            <line x1="5" y1="14" x2="45" y2="14" className={statusClasses.stroke} strokeWidth="1" />
+            <circle cx="15" cy="21" r="3" className={statusClasses.fill} />
+            <circle cx="25" cy="21" r="3" className={statusClasses.fill} />
+            <circle cx="35" cy="21" r="3" className={statusClasses.fill} />
+            <text
+              x="25"
+              y="11"
+              textAnchor="middle"
+              fontSize="5"
+              fontWeight="600"
+              className={statusClasses.fill}
+            >
+              SCADA
+            </text>
+          </svg>
+        );
+
+      case "SKID":
+        return (
+          <svg width="48" height="32" viewBox="0 0 60 40" className="drop-shadow-sm">
+            <rect
+              x="5"
+              y="5"
+              width="50"
+              height="30"
+              className={`${statusClasses.stroke} fill-background`}
+              strokeWidth="2"
+              rx="3"
+            />
+            <rect x="12" y="12" width="10" height="16" className={statusClasses.fill} rx="1" />
+            <rect x="25" y="12" width="10" height="16" className={statusClasses.fill} rx="1" />
+            <rect x="38" y="12" width="10" height="16" className={statusClasses.fill} rx="1" />
+            <text
+              x="30"
+              y="35"
+              textAnchor="middle"
+              fontSize="6"
+              fontWeight="600"
+              className={statusClasses.fill}
+            >
+              SKID
+            </text>
+          </svg>
+        );
+
+      case "TELECOM":
+        return (
+          <svg width="32" height="32" viewBox="0 0 40 40" className="drop-shadow-sm">
+            <rect
+              x="5"
+              y="5"
+              width="30"
+              height="30"
+              className={`${statusClasses.stroke} fill-background`}
+              strokeWidth="2"
+              rx="3"
+            />
+            <circle cx="13" cy="13" r="2" className={statusClasses.fill} />
+            <circle cx="27" cy="13" r="2" className={statusClasses.fill} />
+            <path
+              d="M20,20 Q15,25 10,30 M20,20 Q25,25 30,30"
+              className={statusClasses.stroke}
+              strokeWidth="1.5"
+              fill="none"
+            />
+            <text
+              x="20"
+              y="36"
+              textAnchor="middle"
+              fontSize="6"
+              fontWeight="600"
+              className={statusClasses.fill}
+            >
+              TEL
+            </text>
+          </svg>
+        );
+
+      case "CFTV":
+        return (
+          <svg width="32" height="32" viewBox="0 0 40 40" className="drop-shadow-sm">
+            <circle
+              cx="20"
+              cy="20"
+              r="16"
+              className={`${statusClasses.stroke} fill-background`}
+              strokeWidth="2"
+            />
+            <circle cx="20" cy="20" r="8" className={statusClasses.fill} />
+            <circle cx="20" cy="20" r="4" className="fill-background" />
+            <text
+              x="20"
+              y="36"
+              textAnchor="middle"
+              fontSize="6"
+              fontWeight="600"
+              className={statusClasses.fill}
+            >
+              CAM
+            </text>
+          </svg>
+        );
+
       default:
         return (
           <svg
@@ -1565,6 +1858,9 @@ export function SinopticoAtivoPage() {
   const [connections, setConnections] = useState<Connection[]>([]);
   const [diagramaCarregado, setDiagramaCarregado] = useState(false);
 
+  // Rastrear equipamentos que tiveram nome/tag modificados (para otimizar salvamento)
+  const [equipamentosModificados, setEquipamentosModificados] = useState<Set<string>>(new Set());
+
   // OTIMIZAÇÃO: Log simplificado sem stack trace
   useEffect(() => {
     if (import.meta.env.DEV) {
@@ -1686,6 +1982,8 @@ export function SinopticoAtivoPage() {
       }
 
       setDiagramaCarregado(true);
+      // Limpar equipamentos modificados ao carregar novo diagrama
+      setEquipamentosModificados(new Set());
     } catch (error: any) {
       if (import.meta.env.DEV) {
         console.error('Erro ao carregar diagrama:', error);
@@ -2369,31 +2667,33 @@ export function SinopticoAtivoPage() {
         return;
       }
 
-      // Detectar PIVO
-      if (componente.tipo === 'PIVO' && componente.dados?.equipamento_id) {
-        console.log('🚜 [MODAL] Abrindo PivoModal para:', componente.dados.equipamento_id);
-        setSelectedPivoId(componente.dados.equipamento_id);
-        setPivoModalOpen(true);
-        return;
-      }
+      // ❌ DESABILITADO: Pivo modal não funciona completamente ainda
+      // if (componente.tipo === 'PIVO' && componente.dados?.equipamento_id) {
+      //   console.log('🚜 [MODAL] Abrindo PivoModal para:', componente.dados.equipamento_id);
+      //   setSelectedPivoId(componente.dados.equipamento_id);
+      //   setPivoModalOpen(true);
+      //   return;
+      // }
 
       // Detectar tópico MQTT e abrir modal correto
       const tag = (componente as any).tag || '';
 
-      // ✅ CORRIGIDO: Verificar tipo E tag para M160
+      // ✅ HABILITADO: Apenas M160 e INVERSOR funcionam completamente
       if (tag.includes('M160') || componente.tipo === 'M160' || componente.tipo === 'METER_M160') {
         console.log('📊 [MODAL] Abrindo M160Modal');
         setModalAberto('M160');
-      } else if (tag.includes('a966/state') && !tag.includes('LANDIS')) {
-        console.log('📊 [MODAL] Abrindo A966Modal');
-        setModalAberto('A966');
-      } else if (tag.includes('LANDIS')) {
-        console.log('📊 [MODAL] Abrindo LandisModal');
-        setModalAberto('LANDIS_E750');
-      } else {
-        console.log('📊 [MODAL] Abrindo modal padrão para tipo:', componente.tipo);
-        setModalAberto(componente.tipo);
       }
+      // ❌ DESABILITADO: Outros modais não funcionam completamente ainda
+      // else if (tag.includes('a966/state') && !tag.includes('LANDIS')) {
+      //   console.log('📊 [MODAL] Abrindo A966Modal');
+      //   setModalAberto('A966');
+      // } else if (tag.includes('LANDIS')) {
+      //   console.log('📊 [MODAL] Abrindo LandisModal');
+      //   setModalAberto('LANDIS_E750');
+      // } else {
+      //   console.log('📊 [MODAL] Abrindo modal padrão para tipo:', componente.tipo);
+      //   setModalAberto(componente.tipo);
+      // }
     },
     [modoEdicao, modoFerramenta, diagramaFullscreen]
   );
@@ -2973,6 +3273,49 @@ export function SinopticoAtivoPage() {
         }
       }
 
+      // Atualizar nome e tag APENAS dos equipamentos que foram modificados
+      if (equipamentosModificados.size > 0) {
+        console.log(`📝 Atualizando ${equipamentosModificados.size} equipamentos modificados...`);
+        const { equipamentosApi } = await import('@/services/equipamentos.services');
+
+        for (const equipamentoId of equipamentosModificados) {
+          // Encontrar o componente correspondente
+          const comp = componentes.find(c => c.dados?.equipamento_id === equipamentoId);
+          if (!comp) continue;
+
+          try {
+            const updateData: any = {};
+
+            // Sempre enviar nome se existir e não for null/undefined
+            if (comp.nome !== null && comp.nome !== undefined && typeof comp.nome === 'string') {
+              const nomeTrimmed = comp.nome.trim();
+              if (nomeTrimmed !== '') {
+                updateData.nome = nomeTrimmed;
+              }
+            }
+
+            // Enviar tag se existir e não for null/undefined (pode ser string vazia para limpar)
+            if (comp.tag !== null && comp.tag !== undefined && typeof comp.tag === 'string') {
+              updateData.tag = comp.tag.trim();
+            }
+
+            // Só fazer update se houver algo para atualizar
+            if (Object.keys(updateData).length > 0) {
+              await equipamentosApi.update(equipamentoId, updateData);
+              console.log(`✅ Equipamento ${equipamentoId} atualizado:`, updateData);
+            }
+          } catch (err: any) {
+            console.warn(`⚠️ Erro ao atualizar equipamento ${equipamentoId}:`, err.message);
+            // Continuar mesmo se houver erro (não bloquear salvamento do diagrama)
+          }
+        }
+
+        // Limpar o set de equipamentos modificados após salvar
+        setEquipamentosModificados(new Set());
+      } else {
+        console.log('ℹ️ Nenhum equipamento teve nome/tag modificado');
+      }
+
       // TODOS os componentes agora têm equipamento_id (incluindo BARRAMENTO/PONTO)
       const equipamentosParaSalvar = componentes
         .filter(comp => comp.dados?.equipamento_id) // Só salvar componentes com equipamento_id
@@ -2987,41 +3330,33 @@ export function SinopticoAtivoPage() {
         }));
 
       console.log(`📦 Salvando ${equipamentosParaSalvar.length} equipamentos (incluindo virtuais) no diagrama ${diagramaId}...`);
-      console.log('📤 Enviando equipamentos para o backend:', equipamentosParaSalvar);
 
-      // 1. PRIMEIRO: Remover TODOS os equipamentos antigos (IMMUTABILITY PATTERN - Replace)
-      console.log('🧹 [IMMUTABILITY] Removendo TODOS os equipamentos antigos do diagrama (1 requisição)...');
+      // ✅ OTIMIZAÇÃO: Remover equipamentos e conexões antigas EM PARALELO
+      console.log('🧹 [PARALELO] Limpando equipamentos e conexões antigas...');
       try {
-        const resultado = await DiagramasService.removeAllEquipamentos(diagramaId);
-        console.log(`✅ [IMMUTABILITY] ${resultado.data?.totalRemovidos || 0} equipamentos removidos em uma operação`);
+        await Promise.all([
+          DiagramasService.removeAllEquipamentos(diagramaId),
+          DiagramasService.removeAllConnections(diagramaId)
+        ]);
+        console.log('✅ [PARALELO] Equipamentos e conexões antigas removidos');
       } catch (err: any) {
-        console.warn('⚠️ Erro ao remover equipamentos antigos (pode ser que não existam):', err.message);
+        console.warn('⚠️ Erro ao limpar dados antigos (pode ser que não existam):', err.message);
       }
 
-      // 2. DEPOIS: Adicionar APENAS os novos equipamentos (IMMUTABILITY PATTERN - Replace)
+      // ✅ Adicionar novos equipamentos (se houver)
       if (equipamentosParaSalvar.length > 0) {
         try {
           const resultadoEquipamentos = await DiagramasService.addEquipamentosBulk(
             diagramaId,
             equipamentosParaSalvar
           );
-          console.log('✅ [IMMUTABILITY] Equipamentos salvos:', resultadoEquipamentos);
+          console.log('✅ Equipamentos salvos:', resultadoEquipamentos);
         } catch (err: any) {
           console.error('❌ Erro ao salvar equipamentos:', err);
           throw new Error(`Erro ao salvar equipamentos: ${err.message}`);
         }
       } else {
-        console.log('ℹ️ [IMMUTABILITY] Diagrama vazio salvo (nenhum equipamento)');
-      }
-
-      // 2. Salvar TODAS as conexões (entre equipamentos reais e virtuais)
-      // IMPORTANTE: Primeiro limpar todas as conexões antigas para evitar duplicatas
-      console.log('🧹 Removendo todas as conexões antigas do diagrama...');
-      try {
-        await DiagramasService.removeAllConnections(diagramaId);
-        console.log('✅ Conexões antigas removidas');
-      } catch (err: any) {
-        console.warn('⚠️ Erro ao remover conexões antigas (pode ser que não existam):', err.message);
+        console.log('ℹ️ Diagrama vazio salvo (nenhum equipamento)');
       }
 
       if (connections.length > 0) {
@@ -3082,15 +3417,49 @@ export function SinopticoAtivoPage() {
           },
         }));
 
-        console.log('📤 Enviando conexões para o backend:', conexoesParaSalvar);
+        console.log('📤 Preparando para salvar conexões...');
 
         if (conexoesParaSalvar.length > 0) {
           try {
-            const resultadoConexoes = await DiagramasService.createConexoesBulk(
-              diagramaId,
-              conexoesParaSalvar
-            );
-            console.log('✅ Conexões salvas:', resultadoConexoes);
+            // Se houver muitas conexões (>50), processar em lotes menores para evitar timeout
+            const BATCH_SIZE = 50;
+
+            if (conexoesParaSalvar.length > BATCH_SIZE) {
+              console.log(`🔄 Processando ${conexoesParaSalvar.length} conexões em lotes de ${BATCH_SIZE}...`);
+
+              // Dividir em lotes
+              const batches = [];
+              for (let i = 0; i < conexoesParaSalvar.length; i += BATCH_SIZE) {
+                batches.push(conexoesParaSalvar.slice(i, i + BATCH_SIZE));
+              }
+
+              // Processar lotes em grupos de 3 em paralelo (para não sobrecarregar)
+              const PARALLEL_BATCHES = 3;
+              for (let i = 0; i < batches.length; i += PARALLEL_BATCHES) {
+                const parallelBatches = batches.slice(i, i + PARALLEL_BATCHES);
+                const startBatch = i + 1;
+                const endBatch = Math.min(i + PARALLEL_BATCHES, batches.length);
+
+                console.log(`📦 Salvando lotes ${startBatch}-${endBatch} de ${batches.length} em paralelo...`);
+
+                await Promise.all(
+                  parallelBatches.map((batch, idx) =>
+                    DiagramasService.createConexoesBulk(diagramaId, batch)
+                      .then(() => console.log(`✅ Lote ${i + idx + 1}/${batches.length} salvo`))
+                  )
+                );
+              }
+
+              console.log(`✅ Todas as ${conexoesParaSalvar.length} conexões salvas em ${batches.length} lotes`);
+            } else {
+              // Poucas conexões, salvar tudo de uma vez
+              console.log(`📤 Enviando ${conexoesParaSalvar.length} conexões em um único lote...`);
+              const resultadoConexoes = await DiagramasService.createConexoesBulk(
+                diagramaId,
+                conexoesParaSalvar
+              );
+              console.log('✅ Conexões salvas:', resultadoConexoes);
+            }
           } catch (err: any) {
             console.error('❌ Erro ao salvar conexões:', err);
             throw new Error(`Erro ao salvar conexões: ${err.message}`);
@@ -3479,22 +3848,68 @@ export function SinopticoAtivoPage() {
 
                       {/* Painel de Propriedades Editáveis - Layout Reorganizado */}
                       <div className="flex gap-3 items-start">
-                        {/* Coluna 1: Nome e Tipo */}
+                        {/* Coluna 1: Nome, Tag e Tipo */}
                         <div className="flex flex-col gap-2">
                           <div>
-                            <label className="text-xs text-muted-foreground block mb-1">Nome</label>
+                            <label className="text-xs text-muted-foreground block mb-1 flex items-center gap-1">
+                              Nome
+                              <Edit3 className="h-3 w-3 text-blue-500" />
+                            </label>
                             <input
                               type="text"
                               value={componenteSelecionado.nome}
-                              readOnly
-                              className="w-32 px-2 py-1 text-sm border rounded bg-background text-muted-foreground"
+                              onChange={(e) => {
+                                setComponentes(componentes.map(c =>
+                                  c.id === componenteEditando
+                                    ? { ...c, nome: e.target.value }
+                                    : c
+                                ));
+                                // Marcar equipamento como modificado
+                                if (componenteSelecionado.dados?.equipamento_id) {
+                                  setEquipamentosModificados(prev => new Set(prev).add(componenteSelecionado.dados.equipamento_id));
+                                }
+                              }}
+                              placeholder="Nome do equipamento"
+                              className="w-40 px-2 py-1 text-sm border rounded bg-background focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                              title="Digite o nome do equipamento"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs text-muted-foreground block mb-1 flex items-center gap-1">
+                              Tag
+                              <Edit3 className="h-3 w-3 text-blue-500" />
+                            </label>
+                            <input
+                              type="text"
+                              value={componenteSelecionado.tag || ''}
+                              onChange={(e) => {
+                                setComponentes(componentes.map(c =>
+                                  c.id === componenteEditando
+                                    ? { ...c, tag: e.target.value }
+                                    : c
+                                ));
+                                // Marcar equipamento como modificado
+                                if (componenteSelecionado.dados?.equipamento_id) {
+                                  setEquipamentosModificados(prev => new Set(prev).add(componenteSelecionado.dados.equipamento_id));
+                                }
+                              }}
+                              placeholder="Tag do equipamento"
+                              className="w-40 px-2 py-1 text-sm border rounded bg-background focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                              title="A tag será exibida no diagrama (se preenchida, substitui o nome)"
                             />
                           </div>
                           <div>
                             <label className="text-xs text-muted-foreground block mb-1">Tipo</label>
-                            <Badge variant="outline" className="w-32 justify-center">
+                            <Badge variant="outline" className="w-40 justify-center">
                               {componenteSelecionado.tipo}
                             </Badge>
+                          </div>
+                          {/* Nota informativa */}
+                          <div className="text-[10px] text-muted-foreground bg-blue-50 dark:bg-blue-950 px-2 py-1 rounded border border-blue-200 dark:border-blue-800">
+                            {componenteSelecionado.tag
+                              ? `Exibindo: "${componenteSelecionado.tag}"`
+                              : `Exibindo: "${componenteSelecionado.nome}"`
+                            }
                           </div>
                         </div>
                         {/* Posições X e Y em coluna */}
