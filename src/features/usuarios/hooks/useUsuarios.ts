@@ -64,7 +64,8 @@ class UsuariosApiService {
 
   async create(data: UsuarioFormData): Promise<Usuario> {
     // ✅ CONVERTER FORM DATA PARA DTO DA API
-    const createDto = mapFormDataToCreateDto(data);
+    const createDto = await mapFormDataToCreateDto(data);
+    console.log('📤 [UsuariosApiService] DTO enviado para API:', createDto);
 
     const response = await api.post('/usuarios', createDto);
     const result = response.data;
@@ -72,7 +73,7 @@ class UsuariosApiService {
   }
 
   async update(id: string, data: Partial<UsuarioFormData>): Promise<Usuario> {
-    const updateDto = mapFormDataToCreateDto(data as UsuarioFormData);
+    const updateDto = await mapFormDataToCreateDto(data as UsuarioFormData);
     const response = await api.patch(`/usuarios/${id}`, updateDto);
     return this.mapApiResponseToUsuario(response.data);
   }

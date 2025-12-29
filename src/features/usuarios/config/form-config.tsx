@@ -2,12 +2,12 @@
 import { FormField } from '@/types/base';
 import {  Permissao } from '../types';
 import { Checkbox } from '@/components/ui/checkbox';
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
 } from '@/components/ui/select';
 import { EstadoSelect } from '@/components/common/EstadoSelect';
 import { CidadeSelect } from '@/components/common/CidadeSelect';
@@ -17,12 +17,24 @@ import { ConcessionariaSelect } from '@/components/common/ConcessionariaSelect';
 import { OrganizacaoSelect } from '@/components/common/OrganizacaoSelect';
 import { useRoles } from '@/hooks/useRoles';
 import { usePermissoes, usePermissoesGrouped } from '@/hooks/usePermissoes';
+import { useUserStore } from '@/store/useUserStore';
 
 // ✅ COMPONENTE PARA SELEÇÃO DE ROLES DINÂMICO - USANDO DADOS DA TABELA
 const RoleSelector = ({ value, onChange, disabled }: any) => {
   const { roles, loading, error } = useRoles();
 
-  console.log('🔍 [RoleSelector] Debug:', { value, roles, loading, error, disabled });
+  // ✅ IMPORTAR useUserStore para verificar role do usuário logado
+  const { user } = useUserStore();
+  const currentUserRole = user?.roles?.[0] || user?.role;
+
+  console.log('🔍 [RoleSelector] Debug:', { value, roles, loading, error, disabled, currentUserRole });
+
+  // ✅ FILTRAR ROLES: Se usuário logado é proprietário, mostrar apenas "operador"
+  let availableRoles = roles;
+  if (currentUserRole === 'propietario' || currentUserRole === 'proprietario') {
+    console.log('🔒 [RoleSelector] Usuário é proprietário - limitando opções apenas para Operador');
+    availableRoles = roles.filter(role => role.value === 'operador');
+  }
 
   if (loading) {
     return (
@@ -75,7 +87,9 @@ const RoleSelector = ({ value, onChange, disabled }: any) => {
     selectValueType: typeof selectValue,
     isUndefined: selectValue === undefined,
     currentRole,
-    rolesAvailable: roles.map(r => r.value)
+    rolesAvailable: availableRoles.map(r => r.value),
+    totalRoles: roles.length,
+    filteredRoles: availableRoles.length
   });
 
   return (
@@ -92,7 +106,7 @@ const RoleSelector = ({ value, onChange, disabled }: any) => {
         <SelectValue placeholder="Selecione um tipo de usuário" />
       </SelectTrigger>
       <SelectContent>
-        {roles.map(role => (
+        {availableRoles.map(role => (
           <SelectItem key={role.value} value={role.value}>
             <div className="flex flex-col">
               <span className="font-medium">{role.label}</span>

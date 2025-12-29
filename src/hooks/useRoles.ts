@@ -56,9 +56,11 @@ export function useRoles(): UseRolesReturn {
           'vendedor': 'Vendedor',
           'consultor': 'Consultor',
           'proprietario': 'Proprietário',
+          'propietario': 'Proprietário',
           'corretor': 'Corretor',
           'cativo': 'Cativo',
           'associado': 'Associado',
+          'operador': 'Operador',
         };
 
         // Transform backend data to expected format

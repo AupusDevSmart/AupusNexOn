@@ -91,6 +91,57 @@ const CustomTooltip = ({ active, payload, label }: CustomTooltipProps) => {
   return null;
 };
 
+// Função para verificar qualidade dos dados (detecta períodos sem dados)
+const analisarQualidadeDados = (dados: any[]) => {
+  if (!dados || dados.length === 0) {
+    return {
+      status: 'SEM_DADOS',
+      mensagem: 'Nenhum dado disponível',
+      cor: 'text-red-500',
+      icone: AlertTriangle
+    };
+  }
+
+  // Verificar se há lacunas grandes nos dados (mais de 2 horas sem dados)
+  const agora = new Date();
+  const ultimoDado = new Date(dados[dados.length - 1]?.timestamp || 0);
+  const diferencaHoras = (agora.getTime() - ultimoDado.getTime()) / (1000 * 60 * 60);
+
+  if (diferencaHoras > 2) {
+    return {
+      status: 'DESATUALIZADO',
+      mensagem: `Último dado: ${Math.floor(diferencaHoras)}h atrás`,
+      cor: 'text-orange-500',
+      icone: AlertTriangle
+    };
+  }
+
+  // Verificar cobertura dos últimos 24h
+  const dadosUltimas24h = dados.filter(d => {
+    const timestamp = new Date(d.timestamp);
+    const diff = agora.getTime() - timestamp.getTime();
+    return diff <= 24 * 60 * 60 * 1000; // 24 horas
+  });
+
+  const coberturaPercentual = (dadosUltimas24h.length / 288) * 100; // 288 = pontos esperados em 24h (5min cada)
+
+  if (coberturaPercentual < 50) {
+    return {
+      status: 'PARCIAL',
+      mensagem: `Cobertura: ${Math.round(coberturaPercentual)}%`,
+      cor: 'text-yellow-500',
+      icone: AlertTriangle
+    };
+  }
+
+  return {
+    status: 'OK',
+    mensagem: 'Dados atualizados',
+    cor: 'text-green-500',
+    icone: CheckCircle
+  };
+};
+
 // Função para obter badge de confiabilidade
 const getConfiabilidadeBadge = (fonte: string, confiabilidade: number) => {
   if (fonte === 'A966') {
@@ -416,6 +467,9 @@ export function SinopticoGraficosV2({
   // Verificar se tem M160 disponível para tensão e FP
   const temM160Disponivel = equipamentosM160.length > 0;
 
+  // Analisar qualidade dos dados
+  const qualidadeDados = useMemo(() => analisarQualidadeDados(dados), [dados]);
+
   return (
     <div className="w-full flex flex-col gap-4">
       {/* Gráfico de Demanda - Mostra se tiver equipamentos disponíveis (mesmo que nenhum esteja selecionado) */}
@@ -423,10 +477,19 @@ export function SinopticoGraficosV2({
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <Zap className="h-5 w-5 text-yellow-500" />
               <CardTitle>Demanda</CardTitle>
               {getConfiabilidadeBadge(fonte, confiabilidade)}
+
+              {/* Badge de Status de Dados */}
+              <Badge
+                variant={qualidadeDados.status === 'OK' ? 'outline' : 'destructive'}
+                className={`gap-1 ${qualidadeDados.cor}`}
+              >
+                <qualidadeDados.icone className="h-3 w-3" />
+                {qualidadeDados.mensagem}
+              </Badge>
             </div>
             <div className="flex items-center gap-2">
               <Badge variant="outline">
@@ -452,6 +515,56 @@ export function SinopticoGraficosV2({
           </div>
         </CardHeader>
         <CardContent>
+          {/* Alerta de Dados Desatualizados/Sem Dados */}
+          {qualidadeDados.status !== 'OK' && (
+            <div className={`mb-4 p-4 rounded-lg border-l-4 ${
+              qualidadeDados.status === 'SEM_DADOS'
+                ? 'bg-red-50 dark:bg-red-950/20 border-red-500'
+                : qualidadeDados.status === 'DESATUALIZADO'
+                ? 'bg-orange-50 dark:bg-orange-950/20 border-orange-500'
+                : 'bg-yellow-50 dark:bg-yellow-950/20 border-yellow-500'
+            }`}>
+              <div className="flex items-start gap-3">
+                <AlertTriangle className={`h-5 w-5 mt-0.5 ${qualidadeDados.cor}`} />
+                <div className="flex-1">
+                  <h4 className={`text-sm font-semibold ${qualidadeDados.cor} mb-1`}>
+                    {qualidadeDados.status === 'SEM_DADOS'
+                      ? '⚠️ Nenhum Dado Disponível'
+                      : qualidadeDados.status === 'DESATUALIZADO'
+                      ? '⚠️ Dados Desatualizados'
+                      : '⚠️ Dados Incompletos'}
+                  </h4>
+                  <p className="text-sm text-muted-foreground">
+                    {qualidadeDados.status === 'SEM_DADOS' && (
+                      <>
+                        Não há dados salvos no banco de dados para os equipamentos selecionados.
+                        <br />
+                        <strong>Possíveis causas:</strong> Serviço MQTT desconectado, equipamentos offline, ou falha no servidor.
+                      </>
+                    )}
+                    {qualidadeDados.status === 'DESATUALIZADO' && (
+                      <>
+                        Os dados estão desatualizados. {qualidadeDados.mensagem}
+                        <br />
+                        <strong>Possível causa:</strong> Conexão MQTT interrompida ou equipamentos offline.
+                      </>
+                    )}
+                    {qualidadeDados.status === 'PARCIAL' && (
+                      <>
+                        Apenas {qualidadeDados.mensagem.split(': ')[1]} dos dados esperados estão disponíveis nas últimas 24h.
+                        <br />
+                        <strong>Possível causa:</strong> Falhas intermitentes na conexão MQTT ou nos equipamentos.
+                      </>
+                    )}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    💡 <strong>Sugestão:</strong> Verifique se o serviço backend está rodando e se os equipamentos estão conectados ao MQTT.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Energia do Dia */}
           {energiaDia !== undefined && energiaDia !== 0 && (
             <div className="mb-4 p-3 bg-muted/50 rounded-lg flex items-center gap-2">

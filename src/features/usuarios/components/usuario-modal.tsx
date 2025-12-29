@@ -102,6 +102,15 @@ export function UsuarioModal({
       
     } catch (error: any) {
       console.error('❌ Erro no handleSubmit:', error);
+      console.error('❌ Erro completo (response):', error?.response);
+      console.error('❌ Erro completo (response.data):', error?.response?.data);
+      console.error('❌ Detalhes do erro:', {
+        status: error?.response?.status,
+        statusText: error?.response?.statusText,
+        data: error?.response?.data,
+        message: error?.message
+      });
+
       // Pegar a mensagem de erro da resposta da API se disponível
       const errorMessage = error?.response?.data?.error?.message ||
                           error?.response?.data?.message ||

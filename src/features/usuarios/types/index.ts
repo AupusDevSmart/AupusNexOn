@@ -115,7 +115,9 @@ export interface UsuarioFormData {
   status?: string;
   cpfCnpj?: string;
   cidade?: string;
+  cidadeId?: string | number;
   estado?: string;
+  estadoId?: string | number;
   endereco?: string;
   cep?: string;
   concessionariaAtualId?: string;
@@ -123,7 +125,7 @@ export interface UsuarioFormData {
   managerId?: string;
   permissions?: Permissao[];
   roleNames?: string | string[]; // ✅ Pode ser string (do select) ou array
-  
+
   // ✅ COMPATIBILIDADE COM FRONTEND EXISTENTE
   tipo?: string;
   permissao?: Permissao[];
@@ -275,7 +277,9 @@ export const mapUsuarioToFormData = (usuario: Usuario): UsuarioFormData => {
     status: statusNormalizado,
     cpfCnpj: usuario.cpf_cnpj,
     cidade: usuario.cidade,
+    cidadeId: (usuario as any).cidadeId || (usuario as any).cidade_id,
     estado: usuario.estado,
+    estadoId: (usuario as any).estadoId || (usuario as any).estado_id,
     endereco: usuario.endereco,
     cep: usuario.cep,
     concessionariaAtualId: usuario.concessionaria_atual_id,
@@ -297,7 +301,11 @@ export const mapUsuarioToFormData = (usuario: Usuario): UsuarioFormData => {
   return formData;
 };
 
-export const mapFormDataToCreateDto = (formData: UsuarioFormData) => {
+export const mapFormDataToCreateDto = async (formData: UsuarioFormData) => {
+  console.log('🔍 [mapFormDataToCreateDto] FormData recebido:', formData);
+  console.log('🔍 [mapFormDataToCreateDto] formData.nome:', formData.nome);
+  console.log('🔍 [mapFormDataToCreateDto] formData.email:', formData.email);
+
   // ✅ SIMPLIFICADO: roleNames é sempre uma string do select
   const roleName = typeof formData.roleNames === 'string' ? formData.roleNames : formData.roleNames?.[0] || 'vendedor';
 
@@ -309,23 +317,60 @@ export const mapFormDataToCreateDto = (formData: UsuarioFormData) => {
     roleNames: [roleName], // Backend espera array
   };
 
+  console.log('🔍 [mapFormDataToCreateDto] DTO criado (antes de adicionar campos opcionais):', dto);
+
   // Adicionar campos opcionais apenas se tiverem valor
   if (formData.telefone) dto.telefone = formData.telefone;
   if (formData.instagram) dto.instagram = formData.instagram;
   if (formData.cpfCnpj) dto.cpfCnpj = formData.cpfCnpj;
+
+  // ✅ CORREÇÃO: Enviar cidadeId e estadoId se disponíveis
+  if (formData.cidadeId) dto.cidadeId = String(formData.cidadeId);
+  if (formData.estadoId) dto.estadoId = String(formData.estadoId);
+
+  // Manter cidade e estado como strings para compatibilidade
   if (formData.cidade) dto.cidade = formData.cidade;
   if (formData.estado) dto.estado = formData.estado;
+
   if (formData.cep) dto.cep = formData.cep;
   if (formData.endereco) dto.endereco = formData.endereco;
 
   if (formData.concessionariaAtualId) dto.concessionariaAtualId = formData.concessionariaAtualId;
   if (formData.organizacaoAtualId) dto.organizacaoAtualId = formData.organizacaoAtualId;
   if (formData.managerId) dto.managerId = formData.managerId;
-  if (formData.permissions && formData.permissions.length > 0) {
-    dto.permissions = formData.permissions;
-  } else if (formData.permissao && formData.permissao.length > 0) {
-    dto.permissions = formData.permissao;
+
+  // ✅ CORREÇÃO CRÍTICA: Converter permissões (nomes) para IDs numéricos
+  const permissions = formData.permissions || formData.permissao || [];
+  if (permissions.length > 0) {
+    try {
+      // Importar API para buscar permissões
+      const { api } = await import('@/config/api');
+      const permissoesResponse = await api.get('/usuarios/available/permissions');
+      const todasPermissoes = permissoesResponse.data?.data || permissoesResponse.data || [];
+
+      // Mapear nomes para IDs
+      const permissionIds = permissions
+        .map((permName: string) => {
+          const perm = todasPermissoes.find((p: any) => p.name === permName);
+          return perm ? Number(perm.id) : null;
+        })
+        .filter((id): id is number => id !== null);
+
+      if (permissionIds.length > 0) {
+        dto.permissionIds = permissionIds;
+        console.log('✅ [mapFormDataToCreateDto] Permissões convertidas:', {
+          nomes: permissions,
+          ids: permissionIds
+        });
+      }
+    } catch (error) {
+      console.error('❌ [mapFormDataToCreateDto] Erro ao converter permissões:', error);
+      // Fallback: enviar como nomes (backend pode não aceitar)
+      dto.permissions = permissions;
+    }
   }
+
+  console.log('📤 [mapFormDataToCreateDto] DTO final:', dto);
 
   return dto;
 };

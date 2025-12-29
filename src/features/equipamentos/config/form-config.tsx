@@ -8,6 +8,21 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Button } from "@/components/ui/button";
+import { Check, ChevronsUpDown } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { PlantasService } from '@/services/plantas.services';
 import { getUnidadesByPlanta } from '@/services/unidades.services';
 
@@ -170,6 +185,66 @@ const mockProprietarios = [
   { id: 5, razaoSocial: 'Ana Costa' },
   { id: 6, razaoSocial: 'Indústria XYZ S.A.' }
 ];
+
+/**
+ * Combobox com busca para selecionar tipo de equipamento
+ */
+interface SearchableSelectProps {
+  value: string;
+  onChange: (value: string) => void;
+  options: Array<{ value: string; label: string }>;
+  placeholder?: string;
+  disabled?: boolean;
+}
+
+const SearchableSelect = ({ value, onChange, options, placeholder = "Selecione...", disabled = false }: SearchableSelectProps) => {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="w-full justify-between"
+          disabled={disabled}
+        >
+          {value
+            ? options.find((option) => option.value === value)?.label
+            : placeholder}
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-full p-0" align="start">
+        <Command>
+          <CommandInput placeholder="Buscar..." />
+          <CommandEmpty>Nenhum resultado encontrado.</CommandEmpty>
+          <CommandGroup className="max-h-[300px] overflow-auto">
+            {options.map((option) => (
+              <CommandItem
+                key={option.value}
+                value={option.value}
+                onSelect={(currentValue) => {
+                  onChange(currentValue === value ? "" : currentValue);
+                  setOpen(false);
+                }}
+              >
+                <Check
+                  className={cn(
+                    "mr-2 h-4 w-4",
+                    value === option.value ? "opacity-100" : "opacity-0"
+                  )}
+                />
+                {option.label}
+              </CommandItem>
+            ))}
+          </CommandGroup>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+};
 
 // Tipos de equipamentos com campos específicos
 const TIPOS_EQUIPAMENTOS = [
@@ -613,9 +688,17 @@ export const equipamentosFormFields: FormField[] = [
   {
     key: 'tipoEquipamento',
     label: 'Tipo',
-    type: 'select',
+    type: 'custom',
     required: true,
-    options: TIPOS_EQUIPAMENTOS,
+    render: (props) => (
+      <SearchableSelect
+        value={props.value || ''}
+        onChange={props.onChange}
+        options={TIPOS_EQUIPAMENTOS}
+        placeholder="Buscar tipo de equipamento..."
+        disabled={props.disabled || props.mode === 'view'}
+      />
+    ),
   },
   {
     key: 'centroCusto',
