@@ -3,9 +3,9 @@
 import {
   Factory,
   MapPin,
-  Calendar,
   Building2,
   Droplets,
+  ExternalLink,
 } from 'lucide-react';
 import { TableColumn } from '@/types/base';
 import type { Unidade } from '../types';
@@ -17,12 +17,17 @@ export const unidadesTableColumns: TableColumn<Unidade>[] = [
     sortable: true,
     render: (unidade) => (
       <div className="space-y-1 min-w-0">
-        <div className="flex items-center gap-2 font-medium text-foreground">
-          <Factory className="h-4 w-4 text-blue-600 shrink-0" />
+        <a
+          href={`/cadastros/equipamentos?unidadeId=${unidade.id}&unidadeNome=${encodeURIComponent(unidade.nome)}`}
+          className="flex items-center gap-2 font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline group"
+          title={`Ver equipamentos de ${unidade.nome}`}
+        >
+          <Factory className="h-4 w-4 shrink-0" />
           <span className="truncate" title={unidade.nome}>
             {unidade.nome}
           </span>
-        </div>
+          <ExternalLink className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+        </a>
         <div className="text-xs text-muted-foreground truncate">
           {unidade.tipo}
           {unidade.potencia && ` • ${unidade.potencia} kW`}
@@ -124,44 +129,8 @@ export const unidadesTableColumns: TableColumn<Unidade>[] = [
         )}
       </div>
     )
-  },
-  {
-    key: 'informacoes_cadastro',
-    label: 'Cadastro',
-    hideOnMobile: true,
-    render: (unidade) => (
-      <div className="space-y-1">
-        {unidade.createdAt && (
-          <div className="flex items-center gap-2">
-            <Calendar className="h-3 w-3 text-muted-foreground" />
-            <span className="text-xs text-muted-foreground">
-              {formatDate(unidade.createdAt)}
-            </span>
-          </div>
-        )}
-        {unidade.updatedAt && unidade.updatedAt !== unidade.createdAt && (
-          <div className="text-xs text-muted-foreground">
-            Atualizada: {formatDate(unidade.updatedAt)}
-          </div>
-        )}
-      </div>
-    )
   }
 ];
-
-// Helper: Formatação de data
-function formatDate(dateString: string): string {
-  try {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('pt-BR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    });
-  } catch (error) {
-    return 'Data inválida';
-  }
-}
 
 // Configurações adicionais da tabela
 export const unidadesTableConfig = {

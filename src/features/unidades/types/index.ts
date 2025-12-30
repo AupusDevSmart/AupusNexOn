@@ -59,6 +59,7 @@ export interface Unidade {
   demandaCarga?: number;
   demandaGeracao?: number;
   concessionariaId?: string;
+  numeroUc?: string; // ✅ Número da Unidade Consumidora
 
   // Timestamps
   createdAt: string;
@@ -101,6 +102,7 @@ export interface CreateUnidadeDto {
   demanda_carga?: number;
   demanda_geracao?: number;
   concessionaria_id?: string;
+  numero_uc?: string; // ✅ Número da Unidade Consumidora
 }
 
 /**
@@ -205,6 +207,7 @@ export interface UnidadeFormData {
   demandaCarga?: number | string;
   demandaGeracao?: number | string;
   concessionariaId?: string | undefined; // Explicitly allow undefined
+  numeroUc?: string; // ✅ Número da Unidade Consumidora
 }
 
 // ===== UTILITÁRIOS DE CONVERSÃO =====
@@ -286,6 +289,11 @@ export const formDataToDto = (formData: UnidadeFormData): CreateUnidadeDto => {
     console.log('⚠️ [formDataToDto] concessionaria_id NÃO adicionado (undefined/null/empty)');
   }
 
+  // ✅ Adicionar numero_uc se houver valor
+  if (formData.numeroUc && formData.numeroUc.trim() !== '') {
+    dto.numero_uc = formData.numeroUc.trim();
+  }
+
   console.log('📦 [formDataToDto] DTO final:', JSON.stringify(dto, null, 2));
   console.log('🔑 [formDataToDto] concessionaria_id no DTO:', dto.concessionaria_id);
   console.log('🔍 [formDataToDto] Propriedade existe?', 'concessionaria_id' in dto);
@@ -330,6 +338,7 @@ export const unidadeToFormData = (unidade: Unidade): UnidadeFormData => {
     demandaCarga: unidade.demandaCarga,
     demandaGeracao: unidade.demandaGeracao,
     concessionariaId: unidade.concessionariaId || undefined, // Convert empty string or null to undefined
+    numeroUc: unidade.numeroUc || undefined, // ✅ Número da Unidade Consumidora
   };
 };
 
@@ -354,6 +363,7 @@ export const defaultUnidadeFormValues: UnidadeFormData = {
   demandaCarga: '',
   demandaGeracao: '',
   concessionariaId: undefined, // undefined instead of empty string
+  numeroUc: '', // ✅ Número da Unidade Consumidora
 };
 
 // Estados do Brasil

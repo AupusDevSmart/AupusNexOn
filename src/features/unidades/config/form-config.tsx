@@ -233,6 +233,7 @@ export const unidadesFormFields: FormField[] = [
     type: 'custom',
     render: ProprietarioDisplay,
     required: false,
+    colSpan: 2, // Ocupa 2 colunas
   },
   {
     key: 'plantaId',
@@ -240,6 +241,7 @@ export const unidadesFormFields: FormField[] = [
     type: 'custom',
     render: PlantaSelector,
     required: true,
+    colSpan: 2, // Ocupa 2 colunas
   },
   {
     key: 'nome',
@@ -247,6 +249,15 @@ export const unidadesFormFields: FormField[] = [
     type: 'text',
     required: true,
     placeholder: 'Ex: Unidade 1, Subestação Principal, etc.',
+    colSpan: 2, // Ocupa 2 colunas
+  },
+  {
+    key: 'numeroUc',
+    label: 'Número da Unidade Consumidora',
+    type: 'text',
+    required: false,
+    placeholder: 'Ex: 123456789',
+    colSpan: 2, // Ocupa 2 colunas
   },
   {
     key: 'tipo',
@@ -329,6 +340,7 @@ export const unidadesFormFields: FormField[] = [
     type: 'custom',
     required: false,
     render: PontosMedicaoManager,
+    colSpan: 2, // Ocupa 2 colunas
   },
   {
     key: 'irrigante',
@@ -380,6 +392,7 @@ export const unidadesFormFields: FormField[] = [
       { value: TipoUnidadeEnergia.GERACAO, label: 'Geração (Apenas Produção)' },
       { value: TipoUnidadeEnergia.CARGA_E_GERACAO, label: 'Carga e Geração (Consumo e Produção)' },
     ],
+    colSpan: 2, // Ocupa 2 colunas
   },
   {
     key: 'demandaCarga',
@@ -434,6 +447,7 @@ export const unidadesFormFields: FormField[] = [
     label: 'Concessionária de Energia',
     type: 'custom',
     required: false,
+    colSpan: 2, // Ocupa 2 colunas
     render: (props: FormFieldProps) => {
       const { value, onChange, disabled, mode, formData } = props;
 

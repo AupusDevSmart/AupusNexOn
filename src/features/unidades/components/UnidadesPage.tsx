@@ -1,13 +1,14 @@
 // src/features/unidades/components/UnidadesPage.tsx
 
 import { useEffect, useState, useMemo } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Layout } from '@/components/common/Layout';
 import { TitleCard } from '@/components/common/title-card';
 import { BaseTable } from '@/components/common/base-table/BaseTable';
 import { BaseFilters } from '@/components/common/base-filters/BaseFilters';
 import { UnidadeModal } from './unidade-modal';
 import { Button } from '@/components/ui/button';
-import { Plus, Factory, RefreshCw } from 'lucide-react';
+import { Plus, Factory, RefreshCw, ArrowLeft, Filter } from 'lucide-react';
 import { useGenericModal } from '@/hooks/useGenericModal';
 import { toast } from '@/hooks/use-toast';
 import { unidadesTableColumns } from '../config/table-config';
@@ -31,6 +32,8 @@ const initialFilters: UnidadeFilters = {
 };
 
 export function UnidadesPage() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [unidades, setUnidades] = useState<Unidade[]>([]);
   const [totalUnidades, setTotalUnidades] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -95,6 +98,23 @@ export function UnidadesPage() {
       setLoading(false);
     }
   };
+
+  // Aplicar filtros da URL quando a página carrega
+  useEffect(() => {
+    const urlParams = new URLSearchParams(location.search);
+    const plantaId = urlParams.get('plantaId');
+
+    if (plantaId) {
+      console.log(`🔗 [UNIDADES PAGE] Filtro da URL: planta ${plantaId}`);
+
+      const newFilters = {
+        ...initialFilters,
+        plantaId: plantaId,
+      };
+
+      setFilters(newFilters);
+    }
+  }, [location.search]);
 
   // Carregar unidades quando filtros mudarem
   useEffect(() => {
@@ -176,6 +196,39 @@ export function UnidadesPage() {
     fetchUnidades(filters);
   };
 
+  // Função para obter informações da planta filtrada
+  const getPlantaInfo = () => {
+    if (!filters.plantaId) return null;
+
+    // Tentar pegar o nome da URL primeiro
+    const urlParams = new URLSearchParams(location.search);
+    const plantaNome = urlParams.get('plantaNome');
+
+    if (plantaNome) {
+      return {
+        id: filters.plantaId,
+        nome: decodeURIComponent(plantaNome)
+      };
+    }
+
+    // Se não tiver na URL, buscar nas plantas carregadas
+    const planta = plantas.find(p => p.id === filters.plantaId);
+    return planta ? { id: planta.id, nome: planta.nome } : null;
+  };
+
+  const plantaInfo = getPlantaInfo();
+  const filteredByPlanta = !!plantaInfo;
+
+  // Handler: Voltar para plantas
+  const handleBackToPlantas = () => {
+    navigate('/cadastros/plantas');
+  };
+
+  // Handler: Limpar filtro de planta
+  const handleClearPlantaFilter = () => {
+    navigate('/cadastros/unidades');
+    setFilters(initialFilters);
+  };
 
   // Calcular paginação
   const pagination = {
@@ -189,11 +242,51 @@ export function UnidadesPage() {
     <Layout>
       <Layout.Main>
         <div className="flex flex-col h-full w-full">
-          {/* Header */}
-          <TitleCard
-            title="Unidades"
-            description="Gerencie as unidades cadastradas no sistema"
-          />
+          {/* Header com informações do filtro de planta */}
+          {filteredByPlanta ? (
+            <div className="mb-6">
+              <div className="flex items-center gap-2 mb-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleBackToPlantas}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <ArrowLeft className="h-4 w-4 mr-1" />
+                  Voltar às Plantas
+                </Button>
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 dark:bg-blue-950 dark:border-blue-800">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Factory className="h-5 w-5 text-blue-600" />
+                    <div>
+                      <h2 className="font-semibold text-blue-900 dark:text-blue-100">
+                        Unidades de {plantaInfo.nome}
+                      </h2>
+                      <p className="text-sm text-blue-700 dark:text-blue-300">
+                        Visualizando {unidades.length} {unidades.length === 1 ? 'unidade' : 'unidades'} desta planta
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleClearPlantaFilter}
+                    className="border-blue-200 text-blue-700 hover:bg-blue-100 dark:border-blue-700 dark:text-blue-300 dark:hover:bg-blue-800"
+                  >
+                    Ver Todas as Unidades
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <TitleCard
+              title="Unidades"
+              description="Gerencie as unidades cadastradas no sistema"
+            />
+          )}
 
           {/* Filtros e Ações */}
           <div className="flex flex-col gap-3 sm:gap-4 mb-4 sm:mb-6">

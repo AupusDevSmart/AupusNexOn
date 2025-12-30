@@ -1,5 +1,6 @@
 // src/features/usuarios/config/table-config.tsx - ATUALIZADO
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Building2,
   User,
@@ -11,10 +12,12 @@ import {
   Home,
   Briefcase,
   UserCircle,
-  Crown
+  Crown,
+  ExternalLink
 } from 'lucide-react';
 import { TableColumn } from '@/types/base';
 import { Usuario, UsuarioStatus, getUserRoleDisplay } from '../types';
+import { useNavigate } from 'react-router-dom';
 
 // ✅ FUNÇÃO PARA OBTER ÍCONE DO ROLE
 const getRoleIcon = (role: string) => {
@@ -55,9 +58,14 @@ export const usuariosTableColumns: TableColumn<Usuario>[] = [
     label: 'Nome',
     sortable: true,
     render: (usuario) => (
-      <div className="font-medium">
-        {usuario.nome}
-      </div>
+      <a
+        href={`/cadastros/plantas?usuarioId=${usuario.id}&usuarioNome=${encodeURIComponent(usuario.nome)}`}
+        className="font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline flex items-center gap-1 group"
+        title={`Ver plantas de ${usuario.nome}`}
+      >
+        <span>{usuario.nome}</span>
+        <ExternalLink className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+      </a>
     )
   },
   {

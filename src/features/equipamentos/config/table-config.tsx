@@ -24,19 +24,12 @@ export const getEquipamentosTableColumns = (actions?: TableActionsProps): TableC
         )}
         <div className="flex flex-col gap-1">
           <span className="font-medium text-sm">{equipamento.nome}</span>
-          <div className="flex items-center gap-1.5">
-            <Badge
-              variant="outline"
-              className="bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-600 text-xs"
-            >
-              {equipamento.classificacao}
-            </Badge>
-            {equipamento.tipo && (
-              <Badge variant="outline" className="bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-900 dark:text-slate-400 dark:border-slate-700 text-xs">
-                {equipamento.tipo}
-              </Badge>
-            )}
-          </div>
+          <Badge
+            variant="outline"
+            className="bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-600 text-xs w-fit"
+          >
+            {equipamento.classificacao}
+          </Badge>
         </div>
       </div>
     )

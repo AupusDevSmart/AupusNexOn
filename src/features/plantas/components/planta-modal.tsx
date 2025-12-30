@@ -1,5 +1,5 @@
 // src/features/plantas/components/planta-modal.tsx
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { BaseModal } from '@/components/common/base-modal/BaseModal';
 import { Button } from '@/components/ui/button';
 import {
@@ -46,7 +46,7 @@ const transformFormDataToAPI = (data: any) => {
   // Validar endereço
   const endereco = data.endereco || {};
 
-  const transformedData = {
+  const transformedData: any = {
     nome: (data.nome || '').trim(),
     cnpj: cnpjFormatted, // Enviar formatado como a API espera
     proprietarioId: data.proprietarioId,
@@ -60,6 +60,11 @@ const transformFormDataToAPI = (data: any) => {
       cep: (endereco.cep || '').trim(),
     }
   };
+
+  // Adicionar numero_uc se houver valor
+  if (data.numeroUc && data.numeroUc.trim() !== '') {
+    transformedData.numero_uc = data.numeroUc.trim();
+  }
 
   console.log('✅ [PLANTA MODAL] Dados transformados:', transformedData);
   return transformedData;
@@ -184,7 +189,7 @@ export function PlantaModal({
     {
       key: 'informacoes_basicas',
       title: 'Informações Básicas',
-      fields: ['nome', 'cnpj', 'proprietarioId']
+      fields: ['nome', 'numeroUc', 'cnpj', 'proprietarioId']
     },
     {
       key: 'operacional',
@@ -195,6 +200,11 @@ export function PlantaModal({
       key: 'endereco',
       title: 'Endereço',
       fields: ['endereco']
+    },
+    {
+      key: 'gestao',
+      title: 'Gestão',
+      fields: ['gestaoEquipamentos']
     }
   ];
 
@@ -260,81 +270,18 @@ export function PlantaModal({
 
       {/* BOTÃO DE DELETAR - Apenas no modo de edição */}
       {isEditMode && planta && (
-        <div className="mb-4 p-4 border border-red-200 dark:border-red-800 rounded-lg bg-red-50 dark:bg-red-950">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-            <div className="flex-1">
-              <h4 className="font-medium text-red-900 dark:text-red-100 flex items-center gap-2">
-                <AlertCircle className="h-4 w-4" />
-                Zona de Perigo
-              </h4>
-              <p className="text-xs md:text-sm text-red-700 dark:text-red-300 mt-1">
-                Deletar permanentemente esta planta do sistema
-              </p>
-            </div>
-            <Button
-              type="button"
-              variant="destructive"
-              size="sm"
-              onClick={() => setShowDeleteDialog(true)}
-              disabled={isDeleting}
-              className="w-full sm:w-auto"
-            >
-              <Trash2 className="h-4 w-4 mr-2" />
-              {isDeleting ? 'Deletando...' : 'Deletar Planta'}
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* Informações adicionais da planta - Responsivo */}
-      {(isViewMode || isEditMode) && planta && (
-        <div className="mt-4 md:mt-6 space-y-3 md:space-y-4">
-          <h3 className="text-sm md:text-base font-semibold flex items-center gap-2 border-b pb-2">
-            <Building2 className="h-3 w-3 md:h-4 md:w-4" />
-            Informações Adicionais
-          </h3>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
-            {/* Localização */}
-            <div className="bg-muted/30 rounded-lg p-3 border border-muted-foreground/20">
-              <div className="flex items-start gap-2">
-                <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
-                <div className="min-w-0 flex-1">
-                  <h4 className="text-xs font-medium text-muted-foreground">Localização</h4>
-                  <p className="text-sm mt-1 break-words">{planta.localizacao || 'Não informada'}</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Horário de Funcionamento */}
-            <div className="bg-muted/30 rounded-lg p-3 border border-muted-foreground/20">
-              <div className="flex items-start gap-2">
-                <Clock className="h-4 w-4 text-muted-foreground mt-0.5" />
-                <div className="min-w-0 flex-1">
-                  <h4 className="text-xs font-medium text-muted-foreground">Horário</h4>
-                  <p className="text-sm mt-1 break-words">{planta.horarioFuncionamento || 'Não informado'}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Endereço Completo */}
-          {planta.endereco && (
-            <div className="bg-muted/30 rounded-lg p-3 border border-muted-foreground/20">
-              <div className="flex items-start gap-2">
-                <Building2 className="h-4 w-4 text-muted-foreground mt-0.5" />
-                <div className="min-w-0 flex-1">
-                  <h4 className="text-xs font-medium text-muted-foreground">Endereço Completo</h4>
-                  <p className="text-sm mt-1 break-words">
-                    {planta.endereco.logradouro && `${planta.endereco.logradouro}, `}
-                    {planta.endereco.bairro && `${planta.endereco.bairro} - `}
-                    {planta.endereco.cidade}/{planta.endereco.uf}
-                    {planta.endereco.cep && ` - CEP: ${planta.endereco.cep}`}
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
+        <div className="mt-6 pt-4 border-t border-border">
+          <Button
+            type="button"
+            variant="destructive"
+            size="sm"
+            onClick={() => setShowDeleteDialog(true)}
+            disabled={isDeleting}
+            className="w-full sm:w-auto"
+          >
+            <Trash2 className="h-4 w-4 mr-2" />
+            {isDeleting ? 'Excluindo...' : 'Excluir Planta'}
+          </Button>
         </div>
       )}
 
@@ -342,41 +289,11 @@ export function PlantaModal({
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Tem certeza?</AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div className="space-y-3">
-                <p className="text-sm text-muted-foreground">
-                  Esta ação não pode ser desfeita. Isso irá permanentemente deletar a planta
-                  <span className="font-semibold"> {planta?.nome}</span> e remover todos os seus dados do sistema.
-                </p>
-
-                {/* Aviso sobre consequências em cascata */}
-                <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-md p-3">
-                  <div className="flex items-start gap-2">
-                    <span className="text-red-600 dark:text-red-400 text-lg">⚠️</span>
-                    <div>
-                      <p className="text-red-800 dark:text-red-200 font-semibold">
-                        ATENÇÃO: Esta ação deletará TUDO relacionado a esta planta!
-                      </p>
-                      <p className="text-red-700 dark:text-red-300 text-sm mt-1">
-                        Todas as unidades e equipamentos vinculados serão permanentemente deletados. Esta ação não pode ser revertida.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="text-amber-600 dark:text-amber-400">
-                  <p className="font-medium mb-1">⚠️ Consequências da exclusão:</p>
-                  <ul className="list-disc list-inside text-sm text-muted-foreground">
-                    <li>Todas as unidades da planta serão deletadas</li>
-                    <li>Todos os equipamentos das unidades serão deletados</li>
-                    <li>Históricos de dados e medições serão perdidos</li>
-                    <li>Registros de manutenção e anomalias serão removidos</li>
-                    <li>Diagramas e configurações serão perdidos</li>
-                    <li>Esta ação afetará TODA a estrutura hierárquica abaixo desta planta</li>
-                  </ul>
-                </div>
-              </div>
+            <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir a planta <strong>{planta?.nome}</strong>?
+              <br /><br />
+              Esta ação não pode ser desfeita e irá remover permanentemente a planta, suas unidades e equipamentos vinculados.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -386,7 +303,7 @@ export function PlantaModal({
               disabled={isDeleting}
               className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
             >
-              {isDeleting ? 'Deletando...' : 'Sim, deletar planta e TUDO relacionado'}
+              {isDeleting ? 'Excluindo...' : 'Excluir'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

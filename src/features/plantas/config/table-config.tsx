@@ -1,10 +1,11 @@
 // src/features/plantas/config/table-config.tsx - ATUALIZADO PARA API
-import { 
-  Factory, 
-  Building2, 
-  MapPin, 
-  Clock, 
+import {
+  Factory,
+  Building2,
+  MapPin,
+  Clock,
   Calendar,
+  ExternalLink,
 } from 'lucide-react';
 import { TableColumn } from '@/types/base';
 import { PlantaApiResponse } from '../types'; // ✅ Usando tipo da API
@@ -16,12 +17,17 @@ export const plantasTableColumns: TableColumn<PlantaApiResponse>[] = [
     sortable: true,
     render: (planta) => (
       <div className="space-y-1">
-        <div className="flex items-center gap-2 font-medium text-foreground">
-          <Factory className="h-4 w-4 text-blue-600" />
+        <a
+          href={`/cadastros/unidades?plantaId=${planta.id}&plantaNome=${encodeURIComponent(planta.nome)}`}
+          className="flex items-center gap-2 font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline group"
+          title={`Ver unidades de ${planta.nome}`}
+        >
+          <Factory className="h-4 w-4" />
           <span className="truncate max-w-48" title={planta.nome}>
             {planta.nome}
           </span>
-        </div>
+          <ExternalLink className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+        </a>
         <div className="text-xs font-mono text-muted-foreground">
           CNPJ: {planta.cnpj}
         </div>
@@ -108,28 +114,6 @@ export const plantasTableColumns: TableColumn<PlantaApiResponse>[] = [
             <div>CEP: {planta.endereco.cep}</div>
           )}
         </div>
-      </div>
-    )
-  },
-  {
-    key: 'informacoes_cadastro',
-    label: 'Cadastro',
-    hideOnMobile: true,
-    render: (planta) => (
-      <div className="space-y-1">
-        {planta.criadoEm && (
-          <div className="flex items-center gap-2">
-            <Calendar className="h-3 w-3 text-muted-foreground" />
-            <span className="text-xs text-muted-foreground">
-              {formatDate(planta.criadoEm)}
-            </span>
-          </div>
-        )}
-        {planta.atualizadoEm && planta.atualizadoEm !== planta.criadoEm && (
-          <div className="text-xs text-muted-foreground">
-            Atualizada: {formatDate(planta.atualizadoEm)}
-          </div>
-        )}
       </div>
     )
   }

@@ -57,15 +57,9 @@ const profileFormSchema = z.object({
     }),
   password: z
     .string()
-    .min(8, {
-      message: 'Senha deve ter pelo menos 8 caracteres.',
-    })
     .optional(),
   newPassword: z
     .string()
-    .min(8, {
-      message: 'Nova senha deve ter pelo menos 8 caracteres.',
-    })
     .optional(),
   confirmPassword: z
     .string()
@@ -78,7 +72,8 @@ const profileFormSchema = z.object({
     .transform(files => files.length > 0 ? files[0] : null)
     .optional(),
 }).refine((data) => {
-  if (data.newPassword && !data.password) {
+  // Se o usuário preencheu nova senha, senha atual é obrigatória
+  if (data.newPassword && data.newPassword.trim() && !data.password) {
     return false;
   }
   return true;
@@ -86,6 +81,34 @@ const profileFormSchema = z.object({
   message: "Senha atual é obrigatória para alterar a senha",
   path: ["password"],
 }).refine((data) => {
+  // Se forneceu senha atual, nova senha é obrigatória
+  if (data.password && data.password.trim() && !data.newPassword) {
+    return false;
+  }
+  return true;
+}, {
+  message: "Nova senha é obrigatória quando você informa a senha atual",
+  path: ["newPassword"],
+}).refine((data) => {
+  // Nova senha deve ter pelo menos 8 caracteres quando fornecida
+  if (data.newPassword && data.newPassword.trim() && data.newPassword.length < 8) {
+    return false;
+  }
+  return true;
+}, {
+  message: "Nova senha deve ter pelo menos 8 caracteres",
+  path: ["newPassword"],
+}).refine((data) => {
+  // Confirmar senha é obrigatória quando nova senha é fornecida
+  if (data.newPassword && data.newPassword.trim() && !data.confirmPassword) {
+    return false;
+  }
+  return true;
+}, {
+  message: "Confirmação de senha é obrigatória",
+  path: ["confirmPassword"],
+}).refine((data) => {
+  // Senhas devem corresponder quando ambas fornecidas
   if (data.newPassword && data.confirmPassword && data.newPassword !== data.confirmPassword) {
     return false;
   }
@@ -174,8 +197,8 @@ export function AccountForm() {
     const profileResult = await updateProfile(profileData)
     if (!profileResult.success) return
 
-    // 3. Alterar senha se fornecida
-    if (data.password && data.newPassword) {
+    // 3. Alterar senha se fornecida (validar que ambos campos têm valor)
+    if (data.password && data.password.trim() && data.newPassword && data.newPassword.trim()) {
       const passwordResult = await changePassword({
         senhaAtual: data.password,
         novaSenha: data.newPassword,
@@ -372,7 +395,7 @@ export function AccountForm() {
               <CardHeader>
                 <CardTitle>Segurança</CardTitle>
                 <CardDescription>
-                  Altere sua senha para manter sua conta segura.
+                  Altere sua senha para manter sua conta segura. Deixe em branco se não quiser alterar.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -399,7 +422,7 @@ export function AccountForm() {
                         </div>
                       </FormControl>
                       <FormDescription>
-                        Digite sua senha atual para confirmar alterações.
+                        Digite sua senha atual apenas se quiser alterá-la. Não é necessária para atualizar outras informações.
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
@@ -429,7 +452,7 @@ export function AccountForm() {
                         </div>
                       </FormControl>
                       <FormDescription>
-                        A nova senha deve ter pelo menos 8 caracteres.
+                        Digite uma nova senha com pelo menos 8 caracteres. Deixe em branco para manter a senha atual.
                       </FormDescription>
                       <FormMessage />
                     </FormItem>

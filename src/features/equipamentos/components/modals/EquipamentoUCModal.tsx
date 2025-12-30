@@ -19,7 +19,21 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Wrench, Save, X, AlertCircle, Loader2, Eye, Edit2, Plus, Trash2 } from 'lucide-react';
+import { Wrench, Save, X, AlertCircle, Loader2, Eye, Edit2, Plus, Trash2, Check, ChevronsUpDown } from 'lucide-react';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 import { Equipamento } from '../../types';
 import { useSelectionData } from '../../hooks/useSelectionData';
 import { useEquipamentos } from '../../hooks/useEquipamentos';
@@ -29,6 +43,106 @@ import { getUnidadeById } from '@/services/unidades.services';
 import { PlantasService } from '@/services/plantas.services';
 import type { Unidade } from '@/features/unidades/types';
 import type { PlantaResponse, ProprietarioBasico } from '@/services/plantas.services';
+
+/**
+ * Componente SearchableSelect para seleção com busca
+ */
+interface SearchableSelectProps {
+  value: string;
+  onChange: (value: string) => void;
+  options: Array<{ value: string; label: string; categoria?: string }>;
+  placeholder?: string;
+  disabled?: boolean;
+}
+
+const SearchableSelect: React.FC<SearchableSelectProps> = ({
+  value,
+  onChange,
+  options,
+  placeholder = "Selecione...",
+  disabled = false
+}) => {
+  const [open, setOpen] = useState(false);
+  const [searchValue, setSearchValue] = useState("");
+
+  // Filtrar opções baseado na busca
+  const filteredOptions = options.filter((option) => {
+    const search = searchValue.toLowerCase();
+    return (
+      option.label.toLowerCase().includes(search) ||
+      option.value.toLowerCase().includes(search) ||
+      (option.categoria && option.categoria.toLowerCase().includes(search))
+    );
+  });
+
+  // Prevenir propagação do evento de scroll para o Dialog
+  const handleWheel = (e: React.WheelEvent) => {
+    e.stopPropagation();
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="w-full justify-between"
+          disabled={disabled}
+        >
+          {value
+            ? options.find((option) => option.value === value)?.label
+            : placeholder}
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        className="w-[400px] p-0 z-[99999]"
+        align="start"
+        side="bottom"
+        sideOffset={5}
+        onWheel={handleWheel}
+      >
+        <Command shouldFilter={false}>
+          <CommandInput
+            placeholder="Buscar..."
+            value={searchValue}
+            onValueChange={setSearchValue}
+          />
+          <CommandList className="max-h-[300px] overflow-y-auto">
+            <CommandEmpty>Nenhum resultado encontrado.</CommandEmpty>
+            <CommandGroup>
+              {filteredOptions.map((option) => (
+                <CommandItem
+                  key={option.value}
+                  value={option.value}
+                  onSelect={() => {
+                    onChange(option.value);
+                    setOpen(false);
+                    setSearchValue("");
+                  }}
+                >
+                  <Check
+                    className={cn(
+                      "mr-2 h-4 w-4",
+                      value === option.value ? "opacity-100" : "opacity-0"
+                    )}
+                  />
+                  {option.label}
+                  {option.categoria && (
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      ({option.categoria})
+                    </span>
+                  )}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+};
 
 interface EquipamentoUCModalProps {
   isOpen: boolean;
@@ -637,22 +751,13 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
               )}
             </div>
           ) : (
-            <Select
+            <SearchableSelect
               value={formData.tipoEquipamento || ''}
-              onValueChange={handleTipoEquipamentoChange}
-              disabled={isReadonly}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione o tipo" />
-              </SelectTrigger>
-              <SelectContent className="max-h-60">
-                {tiposEquipamentos.map((tipoConfig) => (
-                  <SelectItem key={tipoConfig.value} value={tipoConfig.value}>
-                    {tipoConfig.label} ({tipoConfig.categoria})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              onChange={handleTipoEquipamentoChange}
+              options={tiposEquipamentos}
+              placeholder={loadingTipos ? "Carregando tipos..." : "Buscar tipo de equipamento..."}
+              disabled={isReadonly || loadingTipos}
+            />
           )}
         </div>
       </div>

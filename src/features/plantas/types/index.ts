@@ -24,11 +24,12 @@ export interface Planta extends BaseEntity {
   localizacao: string;
   horarioFuncionamento: string;
   endereco: Endereco;
-  
+  numeroUc?: string; // ✅ Número da Unidade Consumidora
+
   // Relacionamento com proprietário
   proprietarioId: string; // ✅ String para compatibilidade com API
   proprietario?: ProprietarioBasico;
-  
+
   // Timestamps da API
   criadoEm: string; // ✅ ISO string da API
   atualizadoEm: string; // ✅ ISO string da API
@@ -41,6 +42,7 @@ export interface PlantaFormData {
   localizacao: string;
   horarioFuncionamento: string;
   endereco: Endereco;
+  numeroUc?: string; // ✅ Número da Unidade Consumidora
   proprietarioId: string; // ✅ String para compatibilidade
 }
 
@@ -81,8 +83,8 @@ export type PlantaInternalToApi = (internalPlanta: PlantaFormData) => any;
 // ✅ UTILITIES TYPES
 
 // Extract apenas os campos editáveis da Planta
-export type EditablePlantaFields = Pick<Planta, 
-  'nome' | 'cnpj' | 'localizacao' | 'horarioFuncionamento' | 'endereco' | 'proprietarioId'
+export type EditablePlantaFields = Pick<Planta,
+  'nome' | 'cnpj' | 'localizacao' | 'horarioFuncionamento' | 'endereco' | 'numeroUc' | 'proprietarioId'
 >;
 
 // Campos obrigatórios para criação
@@ -126,6 +128,7 @@ export interface PlantaApiResponse {
   localizacao: string;
   horarioFuncionamento: string;
   endereco: Endereco;
+  numeroUc?: string; // ✅ Número da Unidade Consumidora
   proprietarioId: string;
   proprietario?: ProprietarioBasico;
   criadoEm: string;

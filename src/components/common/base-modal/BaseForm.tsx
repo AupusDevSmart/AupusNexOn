@@ -528,26 +528,32 @@ export function BaseForm({
           return null;
         }
 
+        const currentGroup = groups?.find(g => g.key === groupName);
+        const useGridLayout = (currentGroup as any)?.layout === 'grid';
+
         return (
           <div key={groupName}>
             {groupIndex > 0 && <Separator className="my-6" />}
-            
+
             {groupName !== 'main' && (
               <div className="mb-4">
                 <h3 className="text-base font-semibold text-foreground border-b pb-2 capitalize">
-                  {groups?.find(g => g.key === groupName)?.title || groupName.replace(/_/g, ' ')}
+                  {currentGroup?.title || groupName.replace(/_/g, ' ')}
                 </h3>
               </div>
             )}
-            
-            <div className="grid grid-cols-1 gap-4">
+
+            <div className={useGridLayout ? "grid grid-cols-1 sm:grid-cols-2 gap-4" : "grid grid-cols-1 gap-4"}>
               {groupFields.map((field) => {
                 const colSpan = (field as any).colSpan || 1;
-                
+
+                // Classe responsiva para colSpan
+                const colSpanClass = colSpan === 2 ? 'sm:col-span-2' : '';
+
                 return (
-                  <div 
-                    key={field.key} 
-                    className={colSpan > 1 ? `col-span-${colSpan}` : ''}
+                  <div
+                    key={field.key}
+                    className={colSpanClass}
                   >
                     {field.type !== 'checkbox' && (
                       <Label htmlFor={field.key} className="text-sm font-medium">

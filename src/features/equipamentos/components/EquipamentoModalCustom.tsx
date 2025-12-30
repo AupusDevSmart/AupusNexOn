@@ -11,36 +11,30 @@ import {
   SelectValue
 } from '@/components/ui/select';
 import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Wrench, Component, Save, X, Plus } from 'lucide-react';
+import { Wrench, Component, Save, X, Plus, Check, ChevronsUpDown } from 'lucide-react';
 import { Equipamento } from '../types';
 import { CheckedState } from '@radix-ui/react-checkbox';
 import { ProprietarioSelector } from '@/features/plantas/components/ProprietarioSelector';
-
-// Tipos de equipamentos
-const TIPOS_EQUIPAMENTOS = [
-  { value: 'motor_inducao', label: 'Motor de Indução' },
-  { value: 'banco_capacitor', label: 'Banco de Capacitor' },
-  { value: 'transformador', label: 'Transformador' },
-  { value: 'pde', label: 'PDE (Poste de Distribuição)' },
-  { value: 'cabine_blindada', label: 'Cabine Blindada ao Tempo' },
-  { value: 'cabine_alvenaria', label: 'Cabine de Alvenaria' },
-  { value: 'qgbt', label: 'QGBT – Quadro Geral de Baixa Tensão' },
-  { value: 'qd', label: 'QD – Quadro de Distribuição' },
-  { value: 'iluminacao', label: 'Iluminação' },
-  { value: 'cftv', label: 'CFTV – Circuito Fechado de TV' },
-  { value: 'monitoramento', label: 'Monitoramento' },
-  { value: 'aterramento_spda', label: 'Aterramento / SPDA' },
-  { value: 'inversor_solar', label: 'Inversor Solar' },
-  { value: 'placa_solar', label: 'Placa Solar' },
-  { value: 'estrutura_fixa', label: 'Estrutura Fixa' },
-  { value: 'estrutura_tracker', label: 'Estrutura Tracker' },
-  { value: 'cercamento', label: 'Cercamento' }
-];
+import { cn } from "@/lib/utils";
+import { tiposEquipamentosApi, TipoEquipamento } from '@/services/tipos-equipamentos.services';
 
 const mockPlantas = [
   { id: 1, nome: 'Planta Industrial São Paulo' },
@@ -48,6 +42,83 @@ const mockPlantas = [
   { id: 3, nome: 'Unidade Administrativa BH' },
   { id: 4, nome: 'Oficina João Silva' }
 ];
+
+/**
+ * Combobox com busca para selecionar tipo de equipamento
+ */
+interface SearchableSelectProps {
+  value: string;
+  onChange: (value: string) => void;
+  options: Array<{ value: string; label: string }>;
+  placeholder?: string;
+  disabled?: boolean;
+}
+
+const SearchableSelect = ({ value, onChange, options, placeholder = "Selecione...", disabled = false }: SearchableSelectProps) => {
+  const [open, setOpen] = useState(false);
+  const [searchValue, setSearchValue] = useState("");
+
+  // Filtrar opções baseado na busca
+  const filteredOptions = options.filter((option) => {
+    const search = searchValue.toLowerCase();
+    return (
+      option.label.toLowerCase().includes(search) ||
+      option.value.toLowerCase().includes(search)
+    );
+  });
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="w-full justify-between"
+          disabled={disabled}
+        >
+          {value
+            ? options.find((option) => option.value === value)?.label
+            : placeholder}
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[400px] p-0" align="start">
+        <Command shouldFilter={false}>
+          <CommandInput
+            placeholder="Buscar..."
+            value={searchValue}
+            onValueChange={setSearchValue}
+          />
+          <CommandList>
+            <CommandEmpty>Nenhum resultado encontrado.</CommandEmpty>
+            <CommandGroup>
+              {filteredOptions.map((option) => (
+                <CommandItem
+                  key={option.value}
+                  value={option.value}
+                  onSelect={() => {
+                    onChange(option.value);
+                    setOpen(false);
+                    setSearchValue("");
+                  }}
+                >
+                  <Check
+                    className={cn(
+                      "mr-2 h-4 w-4",
+                      value === option.value ? "opacity-100" : "opacity-0"
+                    )}
+                  />
+                  {option.label}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+};
 
 interface EquipamentoModalCustomProps {
   isOpen: boolean;
@@ -68,6 +139,35 @@ export const EquipamentoModalCustom: React.FC<EquipamentoModalCustomProps> = ({
 }) => {
   const [formData, setFormData] = useState<any>({});
   const [temTUC, setTemTUC] = useState(false);
+  const [tiposEquipamentos, setTiposEquipamentos] = useState<Array<{ value: string; label: string }>>([]);
+  const [loadingTipos, setLoadingTipos] = useState(false);
+
+  // Carregar tipos de equipamentos do banco de dados
+  useEffect(() => {
+    const loadTiposEquipamentos = async () => {
+      try {
+        setLoadingTipos(true);
+        const tipos = await tiposEquipamentosApi.getAll({ ativo: true });
+
+        // Converter para formato { value, label }
+        const tiposFormatados = tipos.map((tipo: TipoEquipamento) => ({
+          value: tipo.codigo,
+          label: tipo.nome
+        }));
+
+        setTiposEquipamentos(tiposFormatados);
+        console.log('📦 [EQUIPAMENTO-MODAL] Tipos carregados:', tiposFormatados.length);
+      } catch (error) {
+        console.error('❌ [EQUIPAMENTO-MODAL] Erro ao carregar tipos:', error);
+        // Em caso de erro, manter array vazio
+        setTiposEquipamentos([]);
+      } finally {
+        setLoadingTipos(false);
+      }
+    };
+
+    loadTiposEquipamentos();
+  }, []);
 
   useEffect(() => {
     if (entity && mode !== 'create') {
@@ -228,10 +328,11 @@ export const EquipamentoModalCustom: React.FC<EquipamentoModalCustomProps> = ({
         );
 
       default:
+        const tipoLabel = tiposEquipamentos.find(t => t.value === tipoEquipamento)?.label || tipoEquipamento;
         return (
           <div className="p-4 bg-muted/30 rounded-lg border border-dashed">
             <p className="text-sm text-muted-foreground">
-              Campos específicos para <strong>{TIPOS_EQUIPAMENTOS.find(t => t.value === tipoEquipamento)?.label}</strong> serão implementados.
+              Campos específicos para <strong>{tipoLabel}</strong> serão implementados.
             </p>
             <p className="text-xs text-muted-foreground mt-1">
               Vai depender do tipo de equipamento. Permitir o Analista adicionar campos adicionais técnicos na aba "Tipo de Ativo"
@@ -414,18 +515,13 @@ export const EquipamentoModalCustom: React.FC<EquipamentoModalCustomProps> = ({
                 </div>
                 <div>
                   <label className="text-sm font-medium">Tipo:</label>
-                  <Select value={formData.tipoEquipamento || ''} onValueChange={(value) => handleFieldChange('tipoEquipamento', value)} disabled={isReadOnly}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione o tipo" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {TIPOS_EQUIPAMENTOS.map(tipo => (
-                        <SelectItem key={tipo.value} value={tipo.value}>
-                          {tipo.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <SearchableSelect
+                    value={formData.tipoEquipamento || ''}
+                    onChange={(value) => handleFieldChange('tipoEquipamento', value)}
+                    options={tiposEquipamentos}
+                    placeholder={loadingTipos ? "Carregando tipos..." : "Buscar tipo de equipamento..."}
+                    disabled={isReadOnly || loadingTipos}
+                  />
                 </div>
                 <div>
                   <label className="text-sm font-medium">Centro de custo</label>

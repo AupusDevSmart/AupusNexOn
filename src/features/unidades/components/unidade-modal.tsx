@@ -151,22 +151,26 @@ export function UnidadeModal({
     {
       key: 'informacoes_basicas',
       title: 'Informações Gerais',
-      fields: ['proprietario', 'plantaId', 'nome', 'tipo', 'potencia', 'status']
+      fields: ['proprietario', 'plantaId', 'nome', 'numeroUc', 'tipo', 'potencia', 'status'],
+      layout: 'grid' // Indica que deve usar grid
     },
     {
       key: 'localizacao',
       title: 'Localização',
-      fields: ['estado', 'cidade', 'latitude', 'longitude']
+      fields: ['estado', 'cidade', 'latitude', 'longitude'],
+      layout: 'grid'
     },
     {
       key: 'energia',
       title: 'Configurações de Energia',
-      fields: ['tipoUnidade', 'demandaCarga', 'demandaGeracao', 'concessionariaId']
+      fields: ['tipoUnidade', 'demandaCarga', 'demandaGeracao', 'concessionariaId'],
+      layout: 'grid'
     },
     {
       key: 'tarifacao',
       title: 'Tarifação',
-      fields: ['irrigante', 'grupo', 'subgrupo']
+      fields: ['irrigante', 'grupo', 'subgrupo'],
+      layout: 'grid'
     },
     {
       key: 'medicao',

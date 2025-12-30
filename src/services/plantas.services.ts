@@ -27,6 +27,7 @@ export interface PlantaResponse {
   localizacao: string;
   horarioFuncionamento: string;
   endereco: Endereco;
+  numeroUc?: string; // ✅ Número da Unidade Consumidora
   proprietarioId: string;
   proprietario?: ProprietarioBasico;
   criadoEm: string;
@@ -47,6 +48,7 @@ export interface CreatePlantaDto {
   cnpj: string;
   localizacao: string;
   horario_funcionamento: string;
+  numero_uc?: string; // ✅ Número da Unidade Consumidora
   proprietario_id: string;
   endereco: {
     logradouro: string;
@@ -106,12 +108,10 @@ class PlantasServiceClass {
    */
   async getPlanta(id: string): Promise<PlantaResponse> {
     try {
-      console.log(`📡 [PlantasService] GET /plantas/${id}`);
       const response = await api.get<{ success: boolean; data: PlantaResponse; meta?: any }>(`/plantas/${id}`);
 
       // ✅ CORRIGIDO: A API retorna { success, data, meta }, extrair apenas o "data"
       const planta = response.data.data || response.data;
-      console.log('✅ [PlantasService] Planta fetched:', planta?.nome);
 
       return planta;
     } catch (error: any) {
@@ -144,8 +144,8 @@ class PlantasServiceClass {
    */
   async updatePlanta(id: string, dto: UpdatePlantaDto): Promise<PlantaResponse> {
     try {
-      console.log(`📡 [PlantasService] PATCH /plantas/${id}`, dto);
-      const response = await api.patch<{ success: boolean; data: PlantaResponse; meta?: any }>(`/plantas/${id}`, dto);
+      console.log(`📡 [PlantasService] PUT /plantas/${id}`, dto);
+      const response = await api.put<{ success: boolean; data: PlantaResponse; meta?: any }>(`/plantas/${id}`, dto);
 
       // ✅ CORRIGIDO: Extrair dados do caminho correto
       const planta = response.data.data || response.data;

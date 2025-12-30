@@ -75,6 +75,10 @@ export function EquipamentosPage() {
     nome: string;
     localizacao: string;
   } | null>(null);
+  const [unidadeInfo, setUnidadeInfo] = useState<{
+    id: string;
+    nome: string;
+  } | null>(null);
 
   // ============================================================================
   // ESTADOS DOS MODAIS SEPARADOS
@@ -125,11 +129,31 @@ export function EquipamentosPage() {
   useEffect(() => {
     const urlParams = new URLSearchParams(location.search);
     const plantaId = urlParams.get('plantaId');
+    const unidadeId = urlParams.get('unidadeId');
+    const unidadeNome = urlParams.get('unidadeNome');
+
+    const urlFilters: Partial<EquipamentosFilters> = {};
 
     if (plantaId) {
+      urlFilters.plantaId = plantaId;
+    }
+
+    if (unidadeId) {
+      urlFilters.unidadeId = unidadeId;
+      // Atualizar unidadeInfo se tiver o nome na URL
+      if (unidadeNome) {
+        setUnidadeInfo({
+          id: unidadeId,
+          nome: decodeURIComponent(unidadeNome)
+        });
+      }
+    }
+
+    if (Object.keys(urlFilters).length > 0) {
+      console.log(`🔗 [EQUIPAMENTOS PAGE] Filtros da URL:`, urlFilters);
       setFilters(prev => ({
         ...prev,
-        plantaId: plantaId, // MANTÉM COMO STRING
+        ...urlFilters,
         page: 1
       }));
     }
@@ -438,32 +462,32 @@ export function EquipamentosPage() {
             </Alert>
           )}
 
-          {/* Header com informações do filtro de planta */}
-          {plantaInfo ? (
+          {/* Header com informações do filtro de planta ou unidade */}
+          {(plantaInfo || unidadeInfo) ? (
             <div className="mb-6">
               <div className="flex items-center gap-2 mb-3">
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={handleBackToPlantas}
+                  onClick={() => navigate(unidadeInfo ? '/cadastros/unidades' : '/cadastros/plantas')}
                   className="text-muted-foreground hover:text-foreground h-8"
                 >
                   <ArrowLeft className="h-3.5 w-3.5 mr-1.5" />
-                  Voltar às Plantas
+                  {unidadeInfo ? 'Voltar às Unidades' : 'Voltar às Plantas'}
                 </Button>
               </div>
 
-              <div className="bg-muted/40 border border-border/40 rounded-lg p-4">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 dark:bg-blue-950 dark:border-blue-800">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <Wrench className="h-4 w-4 text-muted-foreground" />
+                    <Wrench className="h-5 w-5 text-blue-600" />
                     <div>
-                      <h2 className="font-semibold text-sm text-foreground">
-                        Equipamentos de {plantaInfo.nome}
+                      <h2 className="font-semibold text-blue-900 dark:text-blue-100">
+                        {unidadeInfo ? `Equipamentos de ${unidadeInfo.nome}` : `Equipamentos de ${plantaInfo?.nome}`}
                       </h2>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {equipamentos.length} {equipamentos.length === 1 ? 'equipamento' : 'equipamentos'}
-                        {plantaInfo.localizacao && ` • ${plantaInfo.localizacao}`}
+                      <p className="text-sm text-blue-700 dark:text-blue-300">
+                        Visualizando {equipamentos.length} {equipamentos.length === 1 ? 'equipamento' : 'equipamentos'}
+                        {plantaInfo?.localizacao && !unidadeInfo && ` • ${plantaInfo.localizacao}`}
                       </p>
                     </div>
                   </div>
@@ -471,7 +495,7 @@ export function EquipamentosPage() {
                     variant="outline"
                     size="sm"
                     onClick={handleClearPlantaFilter}
-                    className="h-8 text-xs"
+                    className="border-blue-200 text-blue-700 hover:bg-blue-100 dark:border-blue-700 dark:text-blue-300 dark:hover:bg-blue-800"
                   >
                     Ver Todos
                   </Button>

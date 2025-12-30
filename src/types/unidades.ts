@@ -22,6 +22,7 @@ export interface LocalizacaoUnidade {
 export interface UnidadeNexon {
   id: string;
   nome: string;
+  numeroUc?: string; // ✅ Número da Unidade Consumidora
   tipo: TipoUnidadeNexon;
   localizacao: LocalizacaoUnidade;
   potencia: number;
@@ -34,6 +35,7 @@ export interface UnidadeNexon {
 // DTOs para requisições
 export interface CreateUnidadeDto {
   nome: string;
+  numeroUc?: string; // ✅ Número da Unidade Consumidora
   tipo: TipoUnidadeNexon;
   localizacao: LocalizacaoUnidade;
   potencia: number;
@@ -43,6 +45,7 @@ export interface CreateUnidadeDto {
 
 export interface UpdateUnidadeDto {
   nome?: string;
+  numeroUc?: string; // ✅ Número da Unidade Consumidora
   tipo?: TipoUnidadeNexon;
   localizacao?: LocalizacaoUnidade;
   potencia?: number;

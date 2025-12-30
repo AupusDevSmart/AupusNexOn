@@ -47,48 +47,42 @@ const CNPJFieldComponent = ({ value, onChange, disabled, hasError }: FormFieldPr
           💡 <strong>Dica:</strong> Verifique se o CNPJ está correto. O sistema validará automaticamente os dígitos verificadores.
         </div>
       )}
-      
-      {/* ✅ Confirmação de CNPJ válido */}
-      {CNPJUtils.isValidCNPJ(displayValue) && (
-        <div className="text-xs text-green-600 bg-green-50 p-2 rounded border border-green-200">
-          ✅ CNPJ válido
-        </div>
-      )}
     </div>
   );
 };
 
-// ✅ COMPONENTE COMPLETO: UF, Cidade e CEP com busca automática (SEM MUDANÇAS)
-const EnderecoCompleto = ({ onChange, disabled, entity }: FormFieldProps & { entity?: any }) => {
+// ✅ COMPONENTE COMPLETO: UF, Cidade e CEP com busca automática
+const EnderecoCompleto = ({ onChange, disabled, entity, value }: FormFieldProps & { entity?: any }) => {
   const [selectedUF, setSelectedUF] = React.useState<string>('');
   const [selectedCidade, setSelectedCidade] = React.useState<string>('');
   const [cep, setCep] = React.useState<string>('');
   const [logradouro, setLogradouro] = React.useState<string>('');
   const [bairro, setBairro] = React.useState<string>('');
-  const [initialized, setInitialized] = React.useState(false);
   const [lastCEP, setLastCEP] = React.useState('');
-  
+  const [initialized, setInitialized] = React.useState(false);
+  const [isLoadingInitialData, setIsLoadingInitialData] = React.useState(false);
+
   const { estados, loading: loadingEstados } = useEstadosIBGE();
-  // useCidadesIBGE espera um ID numérico, mas selectedUF é string (sigla UF)
-  // Precisamos encontrar o ID do estado pela sigla
   const estadoSelecionado = estados.find(e => e.sigla === selectedUF);
   const { cidades, loading: loadingCidades } = useCidadesIBGE(estadoSelecionado?.id || null);
   const { buscarCEP, loading: loadingCEP, error: errorCEP } = useViaCEP();
 
-  // Inicializar apenas uma vez com dados existentes
+  // Carregar valores quando value ou entity mudar
   React.useEffect(() => {
-    if (entity?.endereco && !initialized) {
-      const endereco = entity.endereco;
+    const endereco = value || entity?.endereco;
+    if (endereco && !initialized) {
+      setIsLoadingInitialData(true);
       setSelectedUF(endereco.uf || '');
       setSelectedCidade(endereco.cidade || '');
       setCep(endereco.cep || '');
+      setLastCEP(endereco.cep || ''); // Marcar CEP inicial para evitar auto-busca
       setLogradouro(endereco.logradouro || '');
       setBairro(endereco.bairro || '');
       setInitialized(true);
-    } else if (!entity?.endereco && !initialized) {
-      setInitialized(true);
+      // Dar tempo para os estados serem definidos antes de permitir auto-busca
+      setTimeout(() => setIsLoadingInitialData(false), 100);
     }
-  }, [entity?.endereco, initialized]);
+  }, [value, entity?.endereco, initialized]);
 
   const onChangeRef = React.useRef(onChange);
   onChangeRef.current = onChange;
@@ -102,7 +96,6 @@ const EnderecoCompleto = ({ onChange, disabled, entity }: FormFieldProps & { ent
         logradouro,
         bairro
       };
-
       onChangeRef.current(enderecoAtualizado);
     }
   }, [selectedUF, selectedCidade, cep, logradouro, bairro, initialized]);
@@ -132,23 +125,15 @@ const EnderecoCompleto = ({ onChange, disabled, entity }: FormFieldProps & { ent
   };
 
   React.useEffect(() => {
-    if (validarCEP(cep) && cep.length === 9 && cep !== lastCEP) {
+    // Só busca CEP automaticamente se:
+    // 1. O componente já estiver inicializado
+    // 2. NÃO estiver carregando dados iniciais
+    // 3. CEP for válido e diferente do último
+    if (initialized && !isLoadingInitialData && validarCEP(cep) && cep.length === 9 && cep !== lastCEP) {
       setLastCEP(cep);
       handleBuscarCEP();
     }
-  }, [cep, lastCEP]);
-
-  if (!initialized) {
-    return (
-      <div className="space-y-4 animate-pulse">
-        <div className="h-10 bg-muted rounded"></div>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="h-10 bg-muted rounded"></div>
-          <div className="h-10 bg-muted rounded"></div>
-        </div>
-      </div>
-    );
-  }
+  }, [cep, lastCEP, initialized, isLoadingInitialData]);
 
   return (
     <div className="space-y-4">
@@ -202,7 +187,7 @@ const EnderecoCompleto = ({ onChange, disabled, entity }: FormFieldProps & { ent
             required
           />
         </div>
-        
+
         <div className="space-y-2">
           <label className="text-sm font-medium">Bairro</label>
           <Input
@@ -355,6 +340,13 @@ export const plantasFormFields: FormField[] = [
     required: true,
     placeholder: 'Ex: Planta Industrial São Paulo',
   },
+  {
+    key: 'numeroUc',
+    label: 'Número da Unidade Consumidora',
+    type: 'text',
+    required: false,
+    placeholder: 'Ex: 123456789',
+  },
   // ✅ ATUALIZADO: Campo CNPJ com máscara automática
   {
     key: 'cnpj',
@@ -384,11 +376,11 @@ export const plantasFormFields: FormField[] = [
     label: 'Proprietário',
     type: 'custom',
     required: true,
-    render: ({ value, onChange, disabled }) => (
+    render: ({ value, onChange, disabled, mode }) => (
       <ProprietarioSelector
         value={value as string | null}
         onChange={onChange}
-        disabled={disabled}
+        disabled={disabled || mode === 'edit'}
       />
     ),
     validation: (value) => {
