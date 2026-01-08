@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { OrganizacaoDTO } from '@/types/dtos/organizacao-dto';
+import { api } from '@/config/api';
 
 interface UseOrganizacoesReturn {
   organizacoes: OrganizacaoDTO[];
@@ -17,49 +18,29 @@ export function useOrganizacoes(): UseOrganizacoesReturn {
     try {
       setLoading(true);
       setError(null);
-      
-      // TODO: Implementar chamada real para API de organizações
-      // Por enquanto, vou simular algumas organizações baseadas no DTO
-      const mockOrganizacoes: OrganizacaoDTO[] = [
-        {
-          id: '1',
-          nome: 'Aupus Energy',
-          email: 'contato@aupus.com.br',
-          documento: '12.345.678/0001-90',
-          status: 'Ativo',
-          usuarios_count: 45
-        },
-        {
-          id: '2', 
-          nome: 'Solar Brasil',
-          email: 'contato@solarbrasil.com.br',
-          documento: '98.765.432/0001-10',
-          status: 'Ativo',
-          usuarios_count: 23
-        },
-        {
-          id: '3',
-          nome: 'Green Energy Corp',
-          email: 'admin@greenenergy.com.br',
-          documento: '11.222.333/0001-44',
-          status: 'Ativo',
-          usuarios_count: 67
-        },
-        {
-          id: '4',
-          nome: 'Energia Limpa Ltda',
-          email: 'contato@energialimpa.com.br',
-          documento: '55.666.777/0001-88',
-          status: 'Inativo',
-          usuarios_count: 12
-        }
-      ];
-      
-      setOrganizacoes(mockOrganizacoes);
-      
+
+      // ✅ CORRIGIDO: Chamada real para API de organizações
+      const response = await api.get('/organizacoes');
+      const data = response.data?.data || response.data || [];
+
+      if (!Array.isArray(data)) {
+        console.warn('⚠️ [useOrganizacoes] Resposta da API não é um array:', data);
+        setError('Nenhuma organização encontrada');
+        setOrganizacoes([]);
+        return;
+      }
+
+      if (data.length === 0) {
+        console.warn('⚠️ [useOrganizacoes] Nenhuma organização cadastrada no sistema');
+        setError('Nenhuma organização cadastrada');
+      }
+
+      setOrganizacoes(data);
+
     } catch (error) {
-      // console.error('Erro ao buscar organizações:', error);
-      setError(error instanceof Error ? error.message : 'Erro desconhecido');
+      console.error('❌ [useOrganizacoes] Erro ao buscar organizações:', error);
+      setError(error instanceof Error ? error.message : 'Erro ao carregar organizações');
+      setOrganizacoes([]);
     } finally {
       setLoading(false);
     }

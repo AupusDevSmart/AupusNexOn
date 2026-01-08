@@ -8,7 +8,7 @@ import { BaseTable } from '@/components/common/base-table/BaseTable';
 import { BaseFilters } from '@/components/common/base-filters/BaseFilters';
 import { UnidadeModal } from './unidade-modal';
 import { Button } from '@/components/ui/button';
-import { Plus, Factory, RefreshCw, ArrowLeft, Filter } from 'lucide-react';
+import { Plus, RefreshCw } from 'lucide-react';
 import { useGenericModal } from '@/hooks/useGenericModal';
 import { toast } from '@/hooks/use-toast';
 import { unidadesTableColumns } from '../config/table-config';
@@ -88,8 +88,8 @@ export function UnidadesPage() {
     } catch (error: any) {
       console.error('❌ [UNIDADES PAGE] Erro ao carregar unidades:', error);
       toast({
-        title: "Erro ao carregar unidades",
-        description: error.message || "Não foi possível carregar a lista de unidades.",
+        title: "Erro ao carregar instalações",
+        description: error.message || "Não foi possível carregar a lista de instalações.",
         variant: "destructive",
       });
       setUnidades([]);
@@ -161,7 +161,7 @@ export function UnidadesPage() {
     } catch (error: any) {
       console.error('❌ [UNIDADES PAGE] Erro ao carregar unidade:', error);
       toast({
-        title: "Erro ao carregar unidade",
+        title: "Erro ao carregar instalação",
         description: error.message,
         variant: "destructive",
       });
@@ -183,7 +183,7 @@ export function UnidadesPage() {
     } catch (error: any) {
       console.error('❌ [UNIDADES PAGE] Erro ao carregar unidade:', error);
       toast({
-        title: "Erro ao carregar unidade",
+        title: "Erro ao carregar instalação",
         description: error.message,
         variant: "destructive",
       });
@@ -242,54 +242,13 @@ export function UnidadesPage() {
     <Layout>
       <Layout.Main>
         <div className="flex flex-col h-full w-full">
-          {/* Header com informações do filtro de planta */}
-          {filteredByPlanta ? (
-            <div className="mb-6">
-              <div className="flex items-center gap-2 mb-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleBackToPlantas}
-                  className="text-muted-foreground hover:text-foreground"
-                >
-                  <ArrowLeft className="h-4 w-4 mr-1" />
-                  Voltar às Plantas
-                </Button>
-              </div>
-
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 dark:bg-blue-950 dark:border-blue-800">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Factory className="h-5 w-5 text-blue-600" />
-                    <div>
-                      <h2 className="font-semibold text-blue-900 dark:text-blue-100">
-                        Unidades de {plantaInfo.nome}
-                      </h2>
-                      <p className="text-sm text-blue-700 dark:text-blue-300">
-                        Visualizando {unidades.length} {unidades.length === 1 ? 'unidade' : 'unidades'} desta planta
-                      </p>
-                    </div>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleClearPlantaFilter}
-                    className="border-blue-200 text-blue-700 hover:bg-blue-100 dark:border-blue-700 dark:text-blue-300 dark:hover:bg-blue-800"
-                  >
-                    Ver Todas as Unidades
-                  </Button>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <TitleCard
-              title="Unidades"
-              description="Gerencie as unidades cadastradas no sistema"
-            />
-          )}
+          <TitleCard
+            title="Instalações"
+            description="Gerencie as instalações cadastradas no sistema"
+          />
 
           {/* Filtros e Ações */}
-          <div className="flex flex-col gap-3 sm:gap-4 mb-4 sm:mb-6">
+          <div className="flex flex-col gap-2 mb-3">
             {/* Filtros */}
             <div className="w-full">
               <BaseFilters
@@ -317,7 +276,7 @@ export function UnidadesPage() {
                 className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white"
               >
                 <Plus className="h-4 w-4 sm:mr-2" />
-                <span className="sm:inline">Nova Unidade</span>
+                <span className="sm:inline">Nova Instalação</span>
               </Button>
             </div>
           </div>
@@ -333,7 +292,7 @@ export function UnidadesPage() {
                 onPageChange={handlePageChange}
                 onEdit={handleEdit}
                 onView={handleView}
-                emptyMessage="Nenhuma unidade encontrada"
+                emptyMessage="Nenhuma instalação encontrada"
               />
             </div>
           </div>

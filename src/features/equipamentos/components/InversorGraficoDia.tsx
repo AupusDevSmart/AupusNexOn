@@ -49,7 +49,18 @@ export function InversorGraficoDia({ data, loading, height = 400 }: InversorGraf
     }
 
     console.log('📊 [InversorGraficoDia] Processando dados:', data.dados.length, 'pontos');
-    const processed = data.dados.map((point) => ({
+
+    // Filtrar apenas dados de hoje (00:00 até agora)
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    const inicioDeHoje = hoje.getTime();
+
+    const dadosDeHoje = data.dados.filter(point => {
+      const timestamp = new Date(point.timestamp).getTime();
+      return timestamp >= inicioDeHoje;
+    });
+
+    const processed = dadosDeHoje.map((point) => ({
       timestamp: new Date(point.timestamp).getTime(),
       hora: format(new Date(point.timestamp), 'HH:mm'),
       potencia: point.potencia_kw,
@@ -57,7 +68,7 @@ export function InversorGraficoDia({ data, loading, height = 400 }: InversorGraf
       potencia_max: point.potencia_max,
       leituras: point.num_leituras,
     }));
-    console.log('✅ [InversorGraficoDia] Dados processados:', processed.length, 'pontos');
+    console.log('✅ [InversorGraficoDia] Dados processados:', processed.length, 'pontos (apenas de hoje)');
     return processed;
   }, [data]);
 
@@ -66,13 +77,21 @@ export function InversorGraficoDia({ data, loading, height = 400 }: InversorGraf
       return { max: 0, min: 0, avg: 0, energia: 0 };
     }
 
-    const potencias = chartData.map(d => d.potencia);
-    const max = Math.max(...potencias);
-    const min = Math.min(...potencias);
-    const avg = potencias.reduce((acc, val) => acc + val, 0) / potencias.length;
+    // Filtrar apenas valores não-null para estatísticas
+    const potenciasValidas = chartData
+      .map(d => d.potencia)
+      .filter((p): p is number => p !== null && p !== undefined);
+
+    if (potenciasValidas.length === 0) {
+      return { max: 0, min: 0, avg: 0, energia: 0 };
+    }
+
+    const max = Math.max(...potenciasValidas);
+    const min = Math.min(...potenciasValidas);
+    const avg = potenciasValidas.reduce((acc, val) => acc + val, 0) / potenciasValidas.length;
 
     // Energia total (soma da potência média de cada minuto * intervalo em horas)
-    const energia = chartData.reduce((acc, d) => acc + d.potencia, 0) / 60; // kWh
+    const energia = potenciasValidas.reduce((acc, val) => acc + val, 0) / 60; // kWh
 
     return { max, min, avg, energia };
   }, [chartData]);
@@ -223,6 +242,7 @@ export function InversorGraficoDia({ data, loading, height = 400 }: InversorGraf
             dot={false}
             name="Potência Média"
             isAnimationActive={false}
+            connectNulls={true}
           />
 
           {/* Linhas de min/max se disponíveis */}

@@ -32,7 +32,7 @@ export const createUnidadesFilterConfig = (
   {
     key: 'search',
     type: 'search',
-    placeholder: 'Buscar por nome da unidade...',
+    placeholder: 'Buscar por nome da instalação...',
     className: 'lg:min-w-80',
   },
   {
@@ -45,29 +45,6 @@ export const createUnidadesFilterConfig = (
     disabled: loadingPlantas,
     icon: Factory,
   } as FilterConfig,
-  {
-    key: 'orderBy',
-    type: 'select',
-    label: 'Ordenar por',
-    placeholder: 'Padrão (Nome)',
-    options: [
-      { value: 'nome', label: 'Nome' },
-      { value: 'created_at', label: 'Data de Criação' },
-      { value: 'updated_at', label: 'Última Atualização' },
-    ],
-    className: 'min-w-40',
-  },
-  {
-    key: 'orderDirection',
-    type: 'select',
-    label: 'Ordem',
-    placeholder: 'Padrão (A-Z)',
-    options: [
-      { value: 'asc', label: 'Crescente (A-Z)' },
-      { value: 'desc', label: 'Decrescente (Z-A)' },
-    ],
-    className: 'min-w-40',
-  },
 ];
 
 // Configuração padrão para quando as plantas ainda não foram carregadas
@@ -75,7 +52,7 @@ export const unidadesFilterConfig: FilterConfig[] = [
   {
     key: 'search',
     type: 'search',
-    placeholder: 'Buscar por nome da unidade...',
+    placeholder: 'Buscar por nome da instalação...',
     className: 'lg:min-w-80',
   },
   {
@@ -88,27 +65,4 @@ export const unidadesFilterConfig: FilterConfig[] = [
     disabled: true,
     icon: Factory,
   } as FilterConfig,
-  {
-    key: 'orderBy',
-    type: 'select',
-    label: 'Ordenar por',
-    placeholder: 'Padrão (Nome)',
-    options: [
-      { value: 'nome', label: 'Nome' },
-      { value: 'created_at', label: 'Data de Criação' },
-      { value: 'updated_at', label: 'Última Atualização' },
-    ],
-    className: 'min-w-40',
-  },
-  {
-    key: 'orderDirection',
-    type: 'select',
-    label: 'Ordem',
-    placeholder: 'Padrão (A-Z)',
-    options: [
-      { value: 'asc', label: 'Crescente (A-Z)' },
-      { value: 'desc', label: 'Decrescente (Z-A)' },
-    ],
-    className: 'min-w-40',
-  },
 ];

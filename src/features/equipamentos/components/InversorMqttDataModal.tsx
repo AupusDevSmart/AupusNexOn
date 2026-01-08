@@ -164,6 +164,23 @@ export function InversorMqttDataModal({ equipamentoId, open, onOpenChange }: Inv
   const inversorData = data.dado.dados;
   const statusColor = inversorData.status?.work_state === 0 ? 'green' : 'yellow';
 
+  // Verificar se os dados estão desatualizados
+  const dataTimestamp = new Date(data.dado.timestamp_dados);
+  const agora = new Date();
+  const diferencaMinutos = (agora.getTime() - dataTimestamp.getTime()) / (1000 * 60);
+  const isDataStale = diferencaMinutos > 5; // Dados com mais de 5 minutos são considerados desatualizados
+  const isDataVeryStale = diferencaMinutos > 60; // Dados com mais de 1 hora são muito desatualizados
+
+  // Formatar tempo decorrido
+  const getTempoDecorrido = () => {
+    if (diferencaMinutos < 1) return 'menos de 1 minuto';
+    if (diferencaMinutos < 60) return `${Math.floor(diferencaMinutos)} minutos`;
+    const horas = Math.floor(diferencaMinutos / 60);
+    if (horas < 24) return `${horas} hora${horas > 1 ? 's' : ''}`;
+    const dias = Math.floor(horas / 24);
+    return `${dias} dia${dias > 1 ? 's' : ''}`;
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-7xl max-h-[95vh] overflow-y-auto">
@@ -192,6 +209,26 @@ export function InversorMqttDataModal({ equipamentoId, open, onOpenChange }: Inv
         </DialogHeader>
 
         <div className="space-y-6 py-4">
+          {/* Aviso de Dados Desatualizados */}
+          {isDataStale && (
+            <Card className={`${isDataVeryStale ? 'border-red-200 dark:border-red-900 bg-red-50/50 dark:bg-red-950/30' : 'border-yellow-200 dark:border-yellow-900 bg-yellow-50/50 dark:bg-yellow-950/30'}`}>
+              <CardContent className="pt-6">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className={`h-5 w-5 mt-0.5 ${isDataVeryStale ? 'text-red-600' : 'text-yellow-600'}`} />
+                  <div className="flex-1">
+                    <p className={`text-sm font-medium ${isDataVeryStale ? 'text-red-900 dark:text-red-100' : 'text-yellow-900 dark:text-yellow-100'}`}>
+                      {isDataVeryStale ? 'Dados MQTT muito desatualizados' : 'Dados MQTT desatualizados'}
+                    </p>
+                    <p className={`text-sm mt-1 ${isDataVeryStale ? 'text-red-800 dark:text-red-200' : 'text-yellow-800 dark:text-yellow-200'}`}>
+                      O último dado foi recebido há {getTempoDecorrido()} ({dataTimestamp.toLocaleString('pt-BR')}).
+                      O equipamento pode não estar enviando dados via MQTT no momento.
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Status e Indicadores Principais - Design Minimalista */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <Card>

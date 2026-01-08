@@ -38,7 +38,9 @@ import { Equipamento } from '../../types';
 import { useSelectionData } from '../../hooks/useSelectionData';
 import { useEquipamentos } from '../../hooks/useEquipamentos';
 import { useLocationCascade } from '../../hooks/useLocationCascade';
-import { tiposEquipamentosApi, type TipoEquipamentoModal } from '@/services/tipos-equipamentos.services';
+import { tiposEquipamentosApi, type TipoEquipamentoModal, type TipoEquipamento } from '@/services/tipos-equipamentos.services';
+import { useCategorias } from '@/hooks/useCategorias';
+import { useModelos } from '@/hooks/useModelos';
 import { getUnidadeById } from '@/services/unidades.services';
 import { PlantasService } from '@/services/plantas.services';
 import type { Unidade } from '@/features/unidades/types';
@@ -172,7 +174,18 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
   const [plantaDetalhes, setPlantaDetalhes] = useState<PlantaResponse | null>(null);
   const [proprietarioDetalhes, setProprietarioDetalhes] = useState<ProprietarioBasico | null>(null);
 
-  // Estados para tipos de equipamentos da API
+  // Estados para seleção de categoria e modelo
+  const [categoriaIdSelecionada, setCategoriaIdSelecionada] = useState<string>('');
+  const [modeloSelecionado, setModeloSelecionado] = useState<TipoEquipamento | null>(null);
+
+  // Hooks para buscar categorias e modelos
+  const { categorias, loading: loadingCategorias } = useCategorias();
+  const { modelos, loading: loadingModelos } = useModelos({
+    categoriaId: categoriaIdSelecionada || undefined,
+    autoFetch: !!categoriaIdSelecionada,
+  });
+
+  // Estados para tipos de equipamentos da API (manter para compatibilidade)
   const [tiposEquipamentos, setTiposEquipamentos] = useState<TipoEquipamentoModal[]>([]);
   const [loadingTipos, setLoadingTipos] = useState(false);
 
@@ -271,15 +284,35 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
       console.log('🔧 [MODAL] Mapeamento - tipo:', dadosCompletos.tipo, 'tipoEquipamento:', dadosCompletos.tipoEquipamento);
       console.log('🔧 [MODAL] Mapeamento - tipoEquipamentoObj:', dadosCompletos.tipoEquipamentoObj);
       console.log('⚡ [MODAL] Mapeamento - mcpse:', dadosCompletos.mcpse, 'mcpseAtivo será:', dadosCompletos.mcpse || dadosCompletos.mcpseAtivo || false);
-      
+
+      // Buscar tipo de equipamento completo do backend para pegar categoria e fabricante
+      let tipoCompleto: TipoEquipamento | null = null;
+      const codigoTipo = dadosCompletos.tipoEquipamentoObj?.codigo || dadosCompletos.tipoEquipamento || dadosCompletos.tipo;
+      if (codigoTipo) {
+        try {
+          tipoCompleto = await tiposEquipamentosApi.findByCode(codigoTipo);
+          console.log('✅ [MODAL] Tipo completo carregado:', tipoCompleto);
+
+          // Setar categoria e modelo selecionados
+          if (tipoCompleto) {
+            setCategoriaIdSelecionada(tipoCompleto.categoriaId);
+            setModeloSelecionado(tipoCompleto);
+          }
+        } catch (err) {
+          console.warn('⚠️ [MODAL] Erro ao carregar tipo completo:', err);
+        }
+      }
+
       setFormData({
         nome: dadosCompletos.nome || '',
         fabricante: dadosCompletos.fabricante || '',
+        fabricanteCustom: dadosCompletos.fabricante_custom || '',
         modelo: dadosCompletos.modelo || '',
         numeroSerie: dadosCompletos.numeroSerie || '',
         tag: dadosCompletos.tag || '',
         criticidade: dadosCompletos.criticidade || '3',
-        tipoEquipamento: dadosCompletos.tipoEquipamentoObj?.codigo || dadosCompletos.tipoEquipamento || dadosCompletos.tipo || '',
+        tipoEquipamento: codigoTipo || '',
+        tipoEquipamentoId: tipoCompleto?.id || '',
         plantaId: dadosCompletos.unidade?.plantaId || '',
         unidadeId: dadosCompletos.unidadeId || dadosCompletos.unidade?.id || '',  // ✅ CORRIGIDO: pegar unidade.id se unidadeId não existir
         proprietarioId: dadosCompletos.proprietarioId || '',
@@ -393,11 +426,13 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
     setFormData({
       nome: '',
       fabricante: '',
+      fabricanteCustom: '',
       modelo: '',
       numeroSerie: '',
       tag: '',
       criticidade: '3',
       tipoEquipamento: '',
+      tipoEquipamentoId: '',
       unidadeId: '',
       plantaId: '',
       proprietarioId: '',
@@ -426,6 +461,10 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
     setPlantaDetalhes(null);
     setProprietarioDetalhes(null);
 
+    // Limpar categoria e modelo
+    setCategoriaIdSelecionada('');
+    setModeloSelecionado(null);
+
     // Reset do cascade
     locationCascade.reset();
   };
@@ -440,6 +479,63 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
     }));
   };
 
+  // Handler para mudança de categoria - reseta modelo
+  const handleCategoriaChange = (categoriaId: string) => {
+    console.log('🔄 [MODAL] Categoria selecionada:', categoriaId);
+    setCategoriaIdSelecionada(categoriaId);
+    setModeloSelecionado(null);
+
+    // Buscar nome da categoria para auto-preencher o nome do equipamento
+    const categoriaSelecionada = categorias.find(cat => cat.id === categoriaId);
+    const nomeAutoPreenchido = categoriaSelecionada ? categoriaSelecionada.nome : '';
+
+    // Limpar tipo de equipamento e auto-preencher nome
+    setFormData((prev: any) => ({
+      ...prev,
+      nome: nomeAutoPreenchido, // Auto-preencher nome do equipamento
+      tipoEquipamento: '',
+      tipoEquipamentoId: '',
+      fabricante: '',
+      fabricanteCustom: '',
+    }));
+
+    // Limpar dados técnicos
+    setDadosTecnicos([]);
+  };
+
+  // Handler para mudança de modelo - preenche fabricante automaticamente
+  const handleModeloChange = (modeloId: string) => {
+    console.log('🔄 [MODAL] Modelo selecionado ID:', modeloId);
+
+    const modelo = modelos.find(m => m.id === modeloId);
+    console.log('🔍 [MODAL] Modelo encontrado:', modelo);
+
+    if (modelo) {
+      setModeloSelecionado(modelo);
+
+      // Preencher tipo de equipamento e fabricante
+      setFormData((prev: any) => ({
+        ...prev,
+        tipoEquipamento: modelo.codigo,
+        tipoEquipamentoId: modelo.id,
+        fabricante: modelo.fabricante, // Auto-preencher do modelo
+      }));
+
+      // Carregar campos técnicos se existirem
+      const tipoFormatado = tiposEquipamentos.find(t => t.value === modelo.codigo);
+      if (tipoFormatado && tipoFormatado.camposTecnicos && tipoFormatado.camposTecnicos.length > 0) {
+        const dadosIniciais = tipoFormatado.camposTecnicos.map(campo => ({
+          campo: campo.campo,
+          valor: '',
+          tipo: campo.tipo,
+          unidade: campo.unidade || '',
+          obrigatorio: campo.obrigatorio || false
+        }));
+        console.log('✅ [MODAL] Dados técnicos inicializados para modelo:', dadosIniciais);
+        setDadosTecnicos(dadosIniciais);
+      }
+    }
+  };
 
   const handleTipoEquipamentoChange = (value: string) => {
     console.log('🔄 [MODAL] Tipo selecionado:', value);
@@ -578,6 +674,7 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
         classificacao: 'UC',
         unidade_id: isCreating ? locationCascade.selectedUnidadeId : formData.unidadeId,
         fabricante: formData.fabricante,
+        fabricante_custom: formData.fabricanteCustom || undefined, // ✅ NOVO: Fabricante customizado se divergir do modelo
         modelo: formData.modelo,
         numero_serie: formData.numeroSerie,
         tag: formData.tag,
@@ -669,26 +766,85 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
           />
         </div>
 
-        {/* Fabricante */}
+        {/* Categoria de Equipamento */}
         <div className="space-y-2">
-          <label className="text-sm font-medium">Fabricante</label>
-          <Input
-            value={formData.fabricante || ''}
-            onChange={(e) => handleInputChange('fabricante', e.target.value)}
-            placeholder="Ex: Siemens"
-            disabled={isReadonly}
-          />
+          <label className="text-sm font-medium">
+            Categoria <span className="text-red-500">*</span>
+          </label>
+          {isReadonly ? (
+            <div className="p-2 bg-gray-50 dark:bg-gray-800 rounded border text-sm">
+              {modeloSelecionado?.categoria?.nome || 'Não informado'}
+            </div>
+          ) : (
+            <Select
+              value={categoriaIdSelecionada}
+              onValueChange={handleCategoriaChange}
+              disabled={loadingCategorias}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder={loadingCategorias ? 'Carregando...' : 'Selecione a categoria'} />
+              </SelectTrigger>
+              <SelectContent>
+                {categorias.map((cat) => (
+                  <SelectItem key={cat.id} value={cat.id}>
+                    {cat.nome}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
 
-        {/* Modelo */}
+        {/* Modelo (Tipo de Equipamento) */}
         <div className="space-y-2">
-          <label className="text-sm font-medium">Modelo</label>
-          <Input
-            value={formData.modelo || ''}
-            onChange={(e) => handleInputChange('modelo', e.target.value)}
-            placeholder="Ex: S7-1200"
-            disabled={isReadonly}
-          />
+          <label className="text-sm font-medium">
+            Modelo <span className="text-red-500">*</span>
+          </label>
+          {isReadonly ? (
+            <div className="p-2 bg-gray-50 dark:bg-gray-800 rounded border text-sm">
+              {modeloSelecionado ? `${modeloSelecionado.nome} (${modeloSelecionado.codigo})` : formData.tipoEquipamento || 'Não informado'}
+            </div>
+          ) : !categoriaIdSelecionada ? (
+            <div className="p-2 bg-muted/50 rounded border text-xs text-muted-foreground flex items-center gap-2">
+              <AlertCircle className="h-3.5 w-3.5" />
+              Selecione uma categoria primeiro
+            </div>
+          ) : loadingModelos ? (
+            <div className="p-2 flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Carregando modelos...
+            </div>
+          ) : (
+            <Select
+              value={formData.tipoEquipamentoId}
+              onValueChange={handleModeloChange}
+              disabled={!categoriaIdSelecionada || loadingModelos}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione o modelo" />
+              </SelectTrigger>
+              <SelectContent>
+                {modelos.map((modelo) => (
+                  <SelectItem key={modelo.id} value={modelo.id}>
+                    {modelo.nome} | {modelo.fabricante}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+
+        {/* Fabricante (Auto-preenchido do modelo) */}
+        <div className="space-y-2">
+          <label className="text-sm font-medium">
+            Fabricante
+            {modeloSelecionado && (
+              <span className="ml-2 text-xs text-muted-foreground">(do modelo)</span>
+            )}
+          </label>
+          <div className="p-2 bg-muted/50 rounded border text-sm">
+            {formData.fabricante || 'Selecione um modelo'}
+          </div>
         </div>
 
         {/* Número de Série */}
@@ -734,31 +890,6 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
               <SelectItem value="5">5 (Muito Alta)</SelectItem>
             </SelectContent>
           </Select>
-        </div>
-
-        {/* Tipo de Equipamento */}
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Tipo de Equipamento</label>
-          {isReadonly ? (
-            <div className="p-2 bg-gray-50 dark:bg-gray-800 rounded border text-sm">
-              {formData.tipoEquipamento ? (
-                (() => {
-                  const tipo = tiposEquipamentos.find(t => t.value === formData.tipoEquipamento);
-                  return tipo ? `${tipo.label} (${tipo.categoria})` : formData.tipoEquipamento;
-                })()
-              ) : (
-                <span className="text-gray-400">Não informado</span>
-              )}
-            </div>
-          ) : (
-            <SearchableSelect
-              value={formData.tipoEquipamento || ''}
-              onChange={handleTipoEquipamentoChange}
-              options={tiposEquipamentos}
-              placeholder={loadingTipos ? "Carregando tipos..." : "Buscar tipo de equipamento..."}
-              disabled={isReadonly || loadingTipos}
-            />
-          )}
         </div>
       </div>
     </div>
@@ -1200,7 +1331,7 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
         {isReadonly ? (
           <div className="space-y-2">
             <label className="text-sm font-medium">
-              Campos MCPSE (Metodologia de Cálculo de Potência de Equipamentos)
+              Campos MCPSE (Manual de Controle Patrimonial do Setor Elétrico)
             </label>
             <div className="p-2 bg-gray-50 dark:bg-gray-800 rounded border text-sm">
               {formData.mcpseAtivo ? 'Ativado' : 'Não ativado'}
@@ -1215,7 +1346,7 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
               disabled={isReadonly}
             />
             <label htmlFor="mcpseAtivo" className="text-sm font-medium">
-              Campos MCPSE (Metodologia de Cálculo de Potência de Equipamentos)
+              Campos MCPSE (Manual de Controle Patrimonial do Setor Elétrico)
             </label>
           </div>
         )}
@@ -1329,7 +1460,7 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
               disabled={isReadonly}
             />
             <label htmlFor="mqttHabilitado" className="text-sm font-medium">
-              Equipamento possui MQTT habilitado
+              Equipamento possui monitoramento
             </label>
           </div>
         )}

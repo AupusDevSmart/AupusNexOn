@@ -158,7 +158,9 @@ export const transformApiToFrontend = (apiEquipamento: EquipamentoApiResponse): 
       id: (apiEquipamento as any).tipo_equipamento_rel.id?.trim(),
       codigo: (apiEquipamento as any).tipo_equipamento_rel.codigo?.trim(),
       nome: (apiEquipamento as any).tipo_equipamento_rel.nome?.trim(),
-      categoria: (apiEquipamento as any).tipo_equipamento_rel.categoria?.trim(),
+      // ✅ CORRIGIDO: categoria é objeto, não string
+      categoria: (apiEquipamento as any).tipo_equipamento_rel.categoria?.nome ||
+                 (apiEquipamento as any).tipo_equipamento_rel.categoria || '',
       larguraPadrao: (apiEquipamento as any).tipo_equipamento_rel.largura_padrao,
       alturaPadrao: (apiEquipamento as any).tipo_equipamento_rel.altura_padrao,
       iconeSvg: (apiEquipamento as any).tipo_equipamento_rel.icone_svg

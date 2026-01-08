@@ -74,12 +74,12 @@ export function UnidadeModal({
         console.log('✨ Criando nova unidade...');
         resultado = await createUnidade(dto);
         console.log('✅ Unidade criada com sucesso:', resultado);
-        setSubmitSuccess(`Unidade ${resultado.nome} criada com sucesso!`);
+        setSubmitSuccess(`Instalação ${resultado.nome} criada com sucesso!`);
       } else if (isEditMode && unidade) {
         console.log('📝 Atualizando unidade existente...');
         resultado = await updateUnidade(unidade.id, dto);
         console.log('✅ Unidade atualizada com sucesso:', resultado);
-        setSubmitSuccess(`Unidade ${resultado.nome} atualizada com sucesso!`);
+        setSubmitSuccess(`Instalação ${resultado.nome} atualizada com sucesso!`);
       }
 
       // Aguardar um momento para mostrar a mensagem
@@ -95,7 +95,7 @@ export function UnidadeModal({
       const errorMessage = error?.response?.data?.error?.message ||
                           error?.response?.data?.message ||
                           error?.message ||
-                          'Erro desconhecido ao salvar unidade';
+                          'Erro desconhecido ao salvar instalação';
       setSubmitError(errorMessage);
       // Não re-lançar o erro - já tratamos mostrando a mensagem
     } finally {
@@ -112,7 +112,7 @@ export function UnidadeModal({
     try {
       console.log('🗑️ Deletando unidade:', unidade.id);
       await deleteUnidade(unidade.id);
-      setSubmitSuccess(`Unidade ${unidade.nome} deletada com sucesso!`);
+      setSubmitSuccess(`Instalação ${unidade.nome} deletada com sucesso!`);
       setShowDeleteDialog(false);
 
       // Aguardar um momento para mostrar a mensagem antes de fechar
@@ -126,7 +126,7 @@ export function UnidadeModal({
       const errorMessage = error?.response?.data?.error?.message ||
                           error?.response?.data?.message ||
                           error?.message ||
-                          'Erro ao deletar unidade';
+                          'Erro ao deletar instalação';
       setSubmitError(errorMessage);
       setShowDeleteDialog(false);
     } finally {
@@ -136,9 +136,9 @@ export function UnidadeModal({
 
   const getModalTitle = () => {
     const titles = {
-      create: 'Nova Unidade',
-      edit: 'Editar Unidade',
-      view: 'Visualizar Unidade'
+      create: 'Nova Instalação',
+      edit: 'Editar Instalação',
+      view: 'Visualizar Instalação'
     };
     return titles[mode as keyof typeof titles];
   };
@@ -195,10 +195,10 @@ export function UnidadeModal({
       onSubmit={handleSubmit}
       width="w-[95vw] sm:w-[600px] lg:w-[700px]"
       loading={isSubmitting}
-      loadingText={isCreateMode ? "Cadastrando unidade..." : "Salvando alterações..."}
+      loadingText={isCreateMode ? "Cadastrando instalação..." : "Salvando alterações..."}
       closeOnBackdropClick={!isSubmitting && !isDeleting}
       closeOnEscape={!isDeleting}
-      submitButtonText={isCreateMode ? "Cadastrar Unidade" : "Salvar Alterações"}
+      submitButtonText={isCreateMode ? "Cadastrar Instalação" : "Salvar Alterações"}
     >
       {/* FEEDBACK DE ERRO - Responsivo */}
       {submitError && (
@@ -207,7 +207,7 @@ export function UnidadeModal({
             <AlertCircle className="h-4 w-4 md:h-5 md:w-5 text-red-600 mt-0.5 shrink-0" />
             <div className="min-w-0 flex-1">
               <h4 className="font-medium text-red-900 dark:text-red-100 text-sm md:text-base">
-                Erro ao salvar unidade
+                Erro ao salvar instalação
               </h4>
               <p className="text-xs md:text-sm text-red-700 dark:text-red-300 mt-1 break-words">
                 {submitError}
@@ -246,7 +246,7 @@ export function UnidadeModal({
             className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950"
           >
             <Trash2 className="h-4 w-4 mr-2" />
-            {isDeleting ? 'Deletando...' : 'Excluir Unidade'}
+            {isDeleting ? 'Deletando...' : 'Excluir Instalação'}
           </Button>
         </div>
       )}
@@ -260,7 +260,7 @@ export function UnidadeModal({
             <AlertDialogDescription asChild>
               <div className="space-y-3">
                 <p className="text-sm text-muted-foreground">
-                  Você está prestes a excluir permanentemente a unidade
+                  Você está prestes a excluir permanentemente a instalação
                   <span className="font-semibold"> {unidade?.nome}</span>. Esta ação não pode ser revertida.
                 </p>
 
@@ -271,7 +271,7 @@ export function UnidadeModal({
                       <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
                       <div>
                         <p className="text-amber-900 dark:text-amber-100 font-medium text-sm">
-                          Esta unidade possui {unidade.totalEquipamentos} equipamento{unidade.totalEquipamentos > 1 ? 's' : ''} vinculado{unidade.totalEquipamentos > 1 ? 's' : ''}
+                          Esta instalação possui {unidade.totalEquipamentos} equipamento{unidade.totalEquipamentos > 1 ? 's' : ''} vinculado{unidade.totalEquipamentos > 1 ? 's' : ''}
                         </p>
                         <p className="text-amber-700 dark:text-amber-300 text-sm mt-1">
                           Todos os equipamentos serão excluídos em cascata junto com seus dados históricos, registros de manutenção e anomalias.
@@ -283,7 +283,7 @@ export function UnidadeModal({
 
                 {!unidade?.totalEquipamentos && (
                   <p className="text-sm text-muted-foreground">
-                    Todos os dados relacionados a esta unidade serão permanentemente removidos do sistema.
+                    Todos os dados relacionados a esta instalação serão permanentemente removidos do sistema.
                   </p>
                 )}
               </div>

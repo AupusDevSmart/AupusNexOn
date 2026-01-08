@@ -60,6 +60,7 @@ export interface Unidade {
   demandaGeracao?: number;
   concessionariaId?: string;
   numeroUc?: string; // ✅ Número da Unidade Consumidora
+  tensaoNominal?: number; // Tensão nominal em V
 
   // Timestamps
   createdAt: string;

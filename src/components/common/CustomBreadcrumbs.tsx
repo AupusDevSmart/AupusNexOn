@@ -36,6 +36,7 @@ export function CustomBreadcrumbs({ className = '' }: { className?: string }) {
   const location = useLocation();
   const breadcrumbRef = useRef<HTMLDivElement>(null);
   const [unidadeNomes, setUnidadeNomes] = useState<Record<string, string>>({});
+  const unidadeNomesRef = useRef<Record<string, string>>({});
 
   const handleClick = (href: string) => {
     navigate(href);
@@ -182,35 +183,76 @@ export function CustomBreadcrumbs({ className = '' }: { className?: string }) {
       .join(' ');
   };
 
+  // Sincronizar ref com state
+  useEffect(() => {
+    unidadeNomesRef.current = unidadeNomes;
+  }, [unidadeNomes]);
+
   // Carregar nome da unidade quando a URL mudar
   useEffect(() => {
     const pathname = location.pathname;
-    const match = pathname.match(/\/supervisorio\/sinoptico-ativo\/([a-z0-9]+)/);
+    const match = pathname.match(/\/supervisorio\/sinoptico-ativo\/([a-z0-9%]+)/);
 
     if (match) {
-      const unidadeId = match[1];
+      // ✅ IMPORTANTE: Decodificar e fazer trim para remover espaços e %20
+      const unidadeIdOriginal = match[1];
+      const unidadeId = decodeURIComponent(unidadeIdOriginal).trim();
 
-      // Se já temos o nome em cache, não buscar novamente
-      if (unidadeNomes[unidadeId]) return;
+      console.log('🔍 [BREADCRUMB] Processando:', {
+        unidadeIdOriginal,
+        unidadeId,
+        temLocationState: !!location.state,
+        locationState: location.state,
+        cacheAtual: unidadeNomesRef.current
+      });
 
-      // Buscar nome da unidade
+      // ✅ PRIORIDADE 1: Verificar se veio via state (do dashboard)
+      const stateFromNavigation = location.state as { unidade?: { nome?: string } } | undefined;
+      if (stateFromNavigation?.unidade?.nome) {
+        console.log('✅ [BREADCRUMB] Usando nome do state:', stateFromNavigation.unidade.nome);
+        // Atualizar ref e state
+        if (unidadeNomesRef.current[unidadeId] !== stateFromNavigation.unidade.nome) {
+          console.log('💾 [BREADCRUMB] Salvando no cache:', stateFromNavigation.unidade.nome);
+          unidadeNomesRef.current = {
+            ...unidadeNomesRef.current,
+            [unidadeId]: stateFromNavigation.unidade.nome
+          };
+          setUnidadeNomes(unidadeNomesRef.current);
+        } else {
+          console.log('⏭️ [BREADCRUMB] Já está no cache, pulando');
+        }
+        return;
+      } else {
+        console.log('⚠️ [BREADCRUMB] Não encontrou nome no state');
+      }
+
+      // ✅ PRIORIDADE 2: Se já temos o nome em cache (ref), não buscar novamente
+      if (unidadeNomesRef.current[unidadeId]) {
+        console.log('✅ [BREADCRUMB] Usando nome do cache:', unidadeNomesRef.current[unidadeId]);
+        return;
+      }
+
+      // ✅ PRIORIDADE 3: Buscar nome da unidade do backend
+      console.log('🔄 [BREADCRUMB] Buscando nome da unidade do backend...');
       api.get(`/unidades/${unidadeId}`)
         .then(response => {
           const unidadeData = response.data?.data || response.data;
           const nome = unidadeData?.nome || unidadeData?.name;
 
           if (nome) {
-            setUnidadeNomes(prev => ({
-              ...prev,
+            console.log('✅ [BREADCRUMB] Nome carregado do backend:', nome);
+            unidadeNomesRef.current = {
+              ...unidadeNomesRef.current,
               [unidadeId]: nome
-            }));
+            };
+            setUnidadeNomes(unidadeNomesRef.current);
           }
         })
         .catch(err => {
-          console.error('Erro ao carregar nome da unidade:', err);
+          console.error('❌ [BREADCRUMB] Erro ao carregar nome da unidade:', err);
         });
     }
-  }, [location.pathname, unidadeNomes]);
+  }, [location.pathname, location.state]);
 
   const getBreadcrumbItems = () => {
     const pathname = location.pathname.replace(/\/$/, '');
@@ -226,10 +268,27 @@ export function CustomBreadcrumbs({ className = '' }: { className?: string }) {
       } else {
         // Verificar se é um ID de unidade (segmento após sinoptico-ativo)
         const prevSegment = pathSegments[index - 1];
-        let label = formatLabel(segment);
+        // ✅ CORRIGIDO: Decodificar URL e fazer trim para remover espaços
+        const decodedSegment = decodeURIComponent(segment).trim();
+        let label = formatLabel(decodedSegment);
 
-        if (prevSegment === 'sinoptico-ativo' && unidadeNomes[segment]) {
-          label = unidadeNomes[segment];
+        console.log('🔍 [BREADCRUMB] Verificando segmento:', {
+          segment,
+          decodedSegment,
+          prevSegment,
+          index,
+          pathSegments,
+          temNoCache: !!unidadeNomesRef.current[decodedSegment],
+          cache: unidadeNomesRef.current
+        });
+
+        // ✅ CORRIGIDO: Usar unidadeNomesRef.current ao invés de unidadeNomes
+        // para ter sempre o valor mais atualizado, mesmo antes do re-render
+        if (prevSegment === 'sinoptico-ativo' && unidadeNomesRef.current[decodedSegment]) {
+          label = unidadeNomesRef.current[decodedSegment];
+          console.log('🏷️ [BREADCRUMB] Renderizando com nome:', label);
+        } else if (prevSegment === 'sinoptico-ativo') {
+          console.log('⚠️ [BREADCRUMB] Renderizando com ID formatado:', decodedSegment, 'cache:', unidadeNomesRef.current);
         }
 
         breadcrumbItems.push({

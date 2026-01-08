@@ -84,39 +84,58 @@ export function DashboardPage() {
   const metricas = useMemo(() => {
     if (!data) {
       return {
-        energiaConsumida: 0,
-        consumoTotal: 0,
-        geracaoTotal: 0,
+        potenciaGeracaoInstantanea: 0,
+        energiaGeradaHoje: 0,
+        potenciaCargaInstantanea: 0,
+        energiaConsumidaHoje: 0,
+        custoEnergiaHoje: 0,
         totalEventos: 0,
         ativosMonitorados: 0,
+        unidadesGeradoras: 0,
+        unidadesConsumidoras: 0,
         eficienciaMedia: 0,
       };
     }
 
     // Soma totais de todas as plantas
-    let energiaTotal = 0;
+    let potenciaGeracaoInstantanea = 0;
+    let energiaGeradaHoje = 0;
+    let potenciaCargaInstantanea = 0;
+    let energiaConsumidaHoje = 0;
     let unidadesGeradoras = 0;
     let unidadesConsumidoras = 0;
 
     data.plantas.forEach(planta => {
       planta.unidades.forEach(unidade => {
-        energiaTotal += unidade.metricas.energiaHoje;
-
         // Classificar tipo de unidade baseado no tipo
-        if (unidade.tipo?.toLowerCase().includes('solar') ||
-            unidade.tipo?.toLowerCase().includes('ufv') ||
+        if (unidade.tipo === 'UFV' ||
+            unidade.tipo?.toLowerCase().includes('solar') ||
             unidade.tipo?.toLowerCase().includes('geracao')) {
+          // GERAÇÃO
+          potenciaGeracaoInstantanea += unidade.metricas.potenciaAtual;
+          energiaGeradaHoje += unidade.metricas.energiaHoje;
           unidadesGeradoras++;
-        } else {
+        } else if (unidade.tipo === 'Carga') {
+          // CARGA
+          potenciaCargaInstantanea += unidade.metricas.potenciaAtual;
+          energiaConsumidaHoje += unidade.metricas.energiaHoje;
           unidadesConsumidoras++;
         }
       });
     });
 
+    // ✅ Custo de energia: usar valor calculado do backend (com tarifas reais)
+    // Se não disponível, calcular estimativa com tarifa média
+    const custoEnergiaHoje = data.resumoGeral.custoTotalHoje !== undefined
+      ? data.resumoGeral.custoTotalHoje
+      : energiaConsumidaHoje * 0.50; // Fallback: tarifa média R$ 0,50/kWh
+
     return {
-      energiaConsumida: energiaTotal,
-      consumoTotal: data.resumoGeral.totalConsumo,
-      geracaoTotal: data.resumoGeral.totalGeracao,
+      potenciaGeracaoInstantanea,
+      energiaGeradaHoje,
+      potenciaCargaInstantanea,
+      energiaConsumidaHoje,
+      custoEnergiaHoje,
       totalEventos: data.alertas.length,
       ativosMonitorados: data.resumoGeral.totalUnidades,
       unidadesGeradoras,
@@ -286,47 +305,57 @@ export function DashboardPage() {
               </div>
 
               {/* Cards de Indicadores Principais */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-                {/* 1. Energia Hoje */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+                {/* 1. Potência de Geração */}
                 <MetricCard
-                  title="Energia Hoje"
-                  value={metricas.energiaConsumida}
-                  unit="kWh"
-                  subtitle="Total acumulado"
+                  title="Potência de Geração"
+                  value={metricas.potenciaGeracaoInstantanea}
+                  unit="kW"
+                  subtitle={`${metricas.unidadesGeradoras} geradores ativos`}
                   icon={Zap}
                   color="text-blue-500"
                 />
 
-                {/* 2. Consumo Total */}
+                {/* 2. Energia Gerada Hoje */}
                 <MetricCard
-                  title="Consumo Total"
-                  value={metricas.consumoTotal}
-                  unit="kW"
-                  subtitle={`${metricas.unidadesConsumidoras} cargas ativas`}
-                  icon={Battery}
+                  title="Energia Gerada Hoje"
+                  value={metricas.energiaGeradaHoje}
+                  unit="kWh"
+                  subtitle="Total acumulado"
+                  icon={TrendingUp}
                   color="text-green-500"
                 />
 
-                {/* 3. Geração Solar */}
+                {/* 3. Potência de Carga */}
                 <MetricCard
-                  title="Geração Solar"
-                  value={metricas.geracaoTotal}
+                  title="Potência de Carga"
+                  value={metricas.potenciaCargaInstantanea}
                   unit="kW"
-                  subtitle={`${metricas.unidadesGeradoras} geradores`}
+                  subtitle={`${metricas.unidadesConsumidoras} cargas ativas`}
+                  icon={Battery}
+                  color="text-orange-500"
+                />
+
+                {/* 4. Energia Consumida Hoje */}
+                <MetricCard
+                  title="Energia Consumida Hoje"
+                  value={metricas.energiaConsumidaHoje}
+                  unit="kWh"
+                  subtitle="Total de consumo"
+                  icon={Activity}
+                  color="text-red-500"
+                />
+
+                {/* 5. Custo da Energia */}
+                <MetricCard
+                  title="Custo da Energia"
+                  value={metricas.custoEnergiaHoje.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                  subtitle={data?.resumoGeral.custoTotalHoje !== undefined ? 'Tarifas reais' : 'Estimativa'}
                   icon={TrendingUp}
                   color="text-yellow-500"
                 />
 
-                {/* 4. Total de Eventos */}
-                <MetricCard
-                  title="Total de Eventos"
-                  value={metricas.totalEventos}
-                  subtitle={data?.alertas.length ? `${data.alertas.filter(a => a.severidade === 'critical').length} críticos` : 'Sem alertas'}
-                  icon={AlertTriangle}
-                  color={metricas.totalEventos > 0 ? "text-amber-500" : "text-gray-400"}
-                />
-
-                {/* 5. Ativos Monitorados */}
+                {/* 6. Ativos Monitorados */}
                 <MetricCard
                   title="Ativos Monitorados"
                   value={data?.resumoGeral.unidadesOnline || 0}
@@ -380,14 +409,36 @@ export function DashboardPage() {
 
               {/* Layout: Mapa + Tabelas Laterais - Alinhado com os cards de cima */}
               {data && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-                  {/* Mapa - 3/5 da largura (alinha com os 3 primeiros cards) */}
-                  <div className="lg:col-span-3 h-full">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+                  {/* Mapa - 4/6 da largura (alinha com os 4 primeiros cards) */}
+                  <div className="lg:col-span-4 h-full">
                     <MapaCoa
                       unidades={data.plantas.flatMap(planta => planta.unidades)}
                       onUnidadeClick={(unidadeId) => {
-                        console.log('Unidade clicada:', unidadeId);
-                        navigate(`/supervisorio/sinoptico-ativo/${unidadeId}`);
+                        console.log('🖱️ [DASHBOARD] Unidade clicada:', unidadeId);
+                        // Buscar dados completos da unidade e planta para passar via state
+                        const todasUnidades = data.plantas.flatMap(planta =>
+                          planta.unidades.map(u => ({ unidade: u, planta }))
+                        );
+                        const unidadeComPlanta = todasUnidades.find(item => item.unidade.id === unidadeId);
+
+                        if (unidadeComPlanta) {
+                          console.log('✅ [DASHBOARD] Navegando com dados via state:', {
+                            unidadeNome: unidadeComPlanta.unidade.nome,
+                            plantaNome: unidadeComPlanta.planta.nome
+                          });
+                          // Navegar passando os dados da unidade e planta via state
+                          navigate(`/supervisorio/sinoptico-ativo/${unidadeId}`, {
+                            state: {
+                              unidade: unidadeComPlanta.unidade,
+                              planta: unidadeComPlanta.planta
+                            }
+                          });
+                        } else {
+                          console.warn('⚠️ [DASHBOARD] Unidade não encontrada, navegando sem state');
+                          // Fallback: navegar sem state
+                          navigate(`/supervisorio/sinoptico-ativo/${unidadeId}`);
+                        }
                       }}
                     />
                   </div>
@@ -429,7 +480,7 @@ export function DashboardPage() {
                     </Card>
                   </div> */}
 
-                  {/* Painel Lateral - Tabelas de UFVs e Cargas - 2/5 da largura (alinha com os 2 últimos cards) */}
+                  {/* Painel Lateral - Tabelas de UFVs e Cargas - 2/6 da largura (alinha com os 2 últimos cards) */}
                   <div className="lg:col-span-2 flex flex-col gap-4">
                     {/* Tabela: USINAS FOTOVOLTAICAS */}
                     <Card className="flex flex-col h-[calc(50vh-8rem)]">
@@ -483,7 +534,19 @@ export function DashboardPage() {
                                   <tr
                                     key={unidade.id}
                                     className="border-b hover:bg-muted/30 cursor-pointer"
-                                    onClick={() => navigate(`/supervisorio/sinoptico-ativo/${unidade.id}`)}
+                                    onClick={() => {
+                                      // Buscar planta da unidade para passar via state
+                                      const plantaDaUnidade = data.plantas.find(p =>
+                                        p.unidades.some(u => u.id === unidade.id)
+                                      );
+
+                                      navigate(`/supervisorio/sinoptico-ativo/${unidade.id}`, {
+                                        state: {
+                                          unidade: unidade,
+                                          planta: plantaDaUnidade
+                                        }
+                                      });
+                                    }}
                                   >
                                     <td className="py-2 px-2 font-medium">{unidade.nome}</td>
                                     <td className="text-center py-2 px-2">
@@ -598,7 +661,19 @@ export function DashboardPage() {
                                   <tr
                                     key={unidade.id}
                                     className="border-b hover:bg-muted/30 cursor-pointer"
-                                    onClick={() => navigate(`/supervisorio/sinoptico-ativo/${unidade.id}`)}
+                                    onClick={() => {
+                                      // Buscar planta da unidade para passar via state
+                                      const plantaDaUnidade = data.plantas.find(p =>
+                                        p.unidades.some(u => u.id === unidade.id)
+                                      );
+
+                                      navigate(`/supervisorio/sinoptico-ativo/${unidade.id}`, {
+                                        state: {
+                                          unidade: unidade,
+                                          planta: plantaDaUnidade
+                                        }
+                                      });
+                                    }}
                                   >
                                     <td className="py-2 px-2 font-medium">{unidade.nome}</td>
                                     <td className="text-center py-2 px-2">

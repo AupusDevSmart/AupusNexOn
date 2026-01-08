@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -17,16 +17,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Loader2, Zap } from 'lucide-react';
-import { tiposEquipamentosApi } from '@/services/tipos-equipamentos.services';
+import { Loader2, Zap, Info } from 'lucide-react';
+import { useCategorias } from '@/hooks/useCategorias';
+import { useModelos } from '@/hooks/useModelos';
 import type { EquipamentoApiResponse } from '@/services/equipamentos.services';
-
-interface TipoEquipamento {
-  id: string;
-  codigo: string;
-  nome: string;
-  categoria?: string;
-}
 
 interface ModalCriarEquipamentoRapidoProps {
   open: boolean;
@@ -42,8 +36,7 @@ export function ModalCriarEquipamentoRapido({
   unidadeId
 }: ModalCriarEquipamentoRapidoProps) {
   const [loading, setLoading] = useState(false);
-  const [tiposEquipamentos, setTiposEquipamentos] = useState<TipoEquipamento[]>([]);
-  const [loadingTipos, setLoadingTipos] = useState(true);
+  const [categoriaId, setCategoriaId] = useState<string>('');
 
   const [formData, setFormData] = useState({
     tipo_equipamento_id: '',
@@ -51,26 +44,27 @@ export function ModalCriarEquipamentoRapido({
     tag: ''
   });
 
-  // Carregar tipos de equipamentos quando modal abre
+  // Buscar categorias
+  const { categorias, loading: loadingCategorias } = useCategorias();
+
+  // Buscar modelos filtrados pela categoria selecionada
+  const { modelos, loading: loadingModelos } = useModelos({
+    categoriaId: categoriaId || undefined,
+    autoFetch: !!categoriaId,
+  });
+
+  // Reset do form quando modal abre/fecha
   useEffect(() => {
-    if (open) {
-      carregarTipos();
+    if (!open) {
+      setCategoriaId('');
+      setFormData({ tipo_equipamento_id: '', nome: '', tag: '' });
     }
   }, [open]);
 
-  const carregarTipos = async () => {
-    try {
-      setLoadingTipos(true);
-      const tipos = await tiposEquipamentosApi.getAll();
-      console.log('✅ Tipos carregados:', tipos);
-      setTiposEquipamentos(tipos);
-    } catch (error) {
-      console.error('❌ Erro ao carregar tipos:', error);
-      alert('Erro ao carregar tipos de equipamentos');
-    } finally {
-      setLoadingTipos(false);
-    }
-  };
+  // Modelo selecionado
+  const modeloSelecionado = useMemo(() => {
+    return modelos.find(m => m.id === formData.tipo_equipamento_id);
+  }, [modelos, formData.tipo_equipamento_id]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -105,19 +99,14 @@ export function ModalCriarEquipamentoRapido({
   };
 
   const handleClose = () => {
-    setFormData({ tipo_equipamento_id: '', nome: '', tag: '' });
     onClose();
   };
 
-  // Agrupar tipos por categoria
-  const tiposPorCategoria = tiposEquipamentos.reduce((acc, tipo) => {
-    const categoria = tipo.categoria || 'Outros';
-    if (!acc[categoria]) {
-      acc[categoria] = [];
-    }
-    acc[categoria].push(tipo);
-    return acc;
-  }, {} as Record<string, TipoEquipamento[]>);
+  // Handler para mudança de categoria - reseta o modelo selecionado
+  const handleCategoriaChange = (value: string) => {
+    setCategoriaId(value);
+    setFormData({ ...formData, tipo_equipamento_id: '' }); // Reset modelo
+  };
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -134,41 +123,76 @@ export function ModalCriarEquipamentoRapido({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Tipo de Equipamento */}
+          {/* Categoria de Equipamento */}
           <div className="space-y-2">
-            <Label htmlFor="tipo" className="text-sm font-medium">
-              Tipo de Equipamento <span className="text-red-500">*</span>
+            <Label htmlFor="categoria" className="text-sm font-medium">
+              Categoria <span className="text-red-500">*</span>
             </Label>
-            {loadingTipos ? (
+            {loadingCategorias ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Carregando tipos...
+                Carregando categorias...
               </div>
             ) : (
-              <Select
-                value={formData.tipo_equipamento_id}
-                onValueChange={(value) => setFormData({ ...formData, tipo_equipamento_id: value })}
-              >
+              <Select value={categoriaId} onValueChange={handleCategoriaChange}>
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Selecione o tipo" />
+                  <SelectValue placeholder="Selecione a categoria" />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.entries(tiposPorCategoria).map(([categoria, tipos]) => (
-                    <div key={categoria}>
-                      <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
-                        {categoria}
-                      </div>
-                      {tipos.map((tipo) => (
-                        <SelectItem key={tipo.id} value={tipo.id}>
-                          {tipo.nome} ({tipo.codigo})
-                        </SelectItem>
-                      ))}
-                    </div>
+                  {categorias.map((cat) => (
+                    <SelectItem key={cat.id} value={cat.id}>
+                      {cat.nome}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             )}
           </div>
+
+          {/* Modelo (Tipo de Equipamento) */}
+          <div className="space-y-2">
+            <Label htmlFor="modelo" className="text-sm font-medium">
+              Modelo <span className="text-red-500">*</span>
+            </Label>
+            {!categoriaId ? (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground py-2 px-3 bg-muted/50 rounded-md">
+                <Info className="h-3.5 w-3.5" />
+                Selecione uma categoria primeiro
+              </div>
+            ) : loadingModelos ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Carregando modelos...
+              </div>
+            ) : (
+              <Select
+                value={formData.tipo_equipamento_id}
+                onValueChange={(value) => setFormData({ ...formData, tipo_equipamento_id: value })}
+                disabled={!categoriaId}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Selecione o modelo" />
+                </SelectTrigger>
+                <SelectContent>
+                  {modelos.map((modelo) => (
+                    <SelectItem key={modelo.id} value={modelo.id}>
+                      {modelo.nome} | {modelo.fabricante}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+
+          {/* Fabricante (Auto-preenchido) */}
+          {modeloSelecionado && (
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Fabricante</Label>
+              <div className="px-3 py-2 bg-muted/50 rounded-md text-sm">
+                {modeloSelecionado.fabricante}
+              </div>
+            </div>
+          )}
 
           {/* Nome (Opcional) */}
           <div className="space-y-2">
@@ -212,7 +236,7 @@ export function ModalCriarEquipamentoRapido({
             </Button>
             <Button
               type="submit"
-              disabled={loading || loadingTipos || !formData.tipo_equipamento_id}
+              disabled={loading || loadingCategorias || loadingModelos || !categoriaId || !formData.tipo_equipamento_id}
               className="bg-green-600 hover:bg-green-700"
             >
               {loading ? (

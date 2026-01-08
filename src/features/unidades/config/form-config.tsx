@@ -245,7 +245,7 @@ export const unidadesFormFields: FormField[] = [
   },
   {
     key: 'nome',
-    label: 'Nome da Unidade',
+    label: 'Nome da Instalação',
     type: 'text',
     required: true,
     placeholder: 'Ex: Unidade 1, Subestação Principal, etc.',

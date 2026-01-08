@@ -40,6 +40,7 @@ export function useDadosDemanda(configuracao: ConfiguracaoDemanda, unidadeId?: s
     confiabilidade: 0,
     energiaDia: 0
   });
+  const [hasInitialLoad, setHasInitialLoad] = useState(false);
 
   // Query para A966 (medidor principal)
   const { data: dadosA966, isLoading: loadingA966 } = useQuery({
@@ -541,11 +542,17 @@ export function useDadosDemanda(configuracao: ConfiguracaoDemanda, unidadeId?: s
     }
 
     setDadosDemanda(resultado);
-  }, [configuracao, dadosA966, dadosAgrupamento, dadosEnergia, processarAgrupamento, calcularEnergiaDia]);
+
+    // ✅ Marcar que já carregou pelo menos uma vez
+    if (!hasInitialLoad && (resultado.dados.length > 0 || (!loadingA966 && !loadingAgrupamento))) {
+      setHasInitialLoad(true);
+    }
+  }, [configuracao, dadosA966, dadosAgrupamento, dadosEnergia, processarAgrupamento, calcularEnergiaDia, hasInitialLoad, loadingA966, loadingAgrupamento]);
 
   return {
     ...dadosDemanda,
     isLoading: loadingA966 || loadingAgrupamento,
+    isInitialLoading: !hasInitialLoad && (loadingA966 || loadingAgrupamento), // ✅ NOVO: só true no PRIMEIRO load
     refetch: () => {
       // Força atualização dos dados
       setDadosDemanda(prev => ({ ...prev }));

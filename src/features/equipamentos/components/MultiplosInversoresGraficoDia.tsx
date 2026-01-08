@@ -57,13 +57,27 @@ export function MultiplosInversoresGraficoDia({
     );
   }
 
+  // Filtrar apenas dados de hoje (00:00 até agora)
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  const inicioDeHoje = hoje.getTime();
+
+  const dadosDeHoje = dados.dados.filter(d => {
+    const timestamp = new Date(d.hora).getTime();
+    return timestamp >= inicioDeHoje;
+  });
+
   // Calcular estatísticas
-  const potenciaMaxima = Math.max(...dados.dados.map(d => d.potencia_kw));
-  const potenciaMedia = dados.dados.reduce((acc, d) => acc + d.potencia_kw, 0) / dados.dados.length;
-  const potenciaMinima = Math.min(...dados.dados.filter(d => d.potencia_kw > 0).map(d => d.potencia_kw));
+  const potenciaMaxima = dadosDeHoje.length > 0 ? Math.max(...dadosDeHoje.map(d => d.potencia_kw)) : 0;
+  const potenciaMedia = dadosDeHoje.length > 0
+    ? dadosDeHoje.reduce((acc, d) => acc + d.potencia_kw, 0) / dadosDeHoje.length
+    : 0;
+  const potenciaMinima = dadosDeHoje.length > 0
+    ? Math.min(...dadosDeHoje.filter(d => d.potencia_kw > 0).map(d => d.potencia_kw))
+    : 0;
 
   // Formatar dados para o gráfico
-  const chartData = dados.dados.map(d => ({
+  const chartData = dadosDeHoje.map(d => ({
     hora: new Date(d.hora).toLocaleTimeString('pt-BR', {
       hour: '2-digit',
       minute: '2-digit',

@@ -19,7 +19,9 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Component, Save, Wrench, X, AlertCircle, Loader2 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { Equipamento } from '../../types';
-import { tiposEquipamentosApi, type TipoEquipamentoModal } from '@/services/tipos-equipamentos.services';
+import { tiposEquipamentosApi, type TipoEquipamentoModal, type TipoEquipamento } from '@/services/tipos-equipamentos.services';
+import { useCategorias } from '@/hooks/useCategorias';
+import { useModelos } from '@/hooks/useModelos';
 
 interface ComponenteUARModalProps {
   isOpen: boolean;
@@ -42,9 +44,20 @@ export const ComponenteUARModal: React.FC<ComponenteUARModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Estados para tipos de equipamentos da API
+  // Estados para tipos de equipamentos da API (DEPRECATED - usar hooks)
   const [tiposEquipamentos, setTiposEquipamentos] = useState<TipoEquipamentoModal[]>([]);
   const [loadingTipos, setLoadingTipos] = useState(false);
+
+  // ✅ NOVO: Estados para seleção hierárquica Categoria → Modelo
+  const [categoriaIdSelecionada, setCategoriaIdSelecionada] = useState<string>('');
+  const [modeloSelecionado, setModeloSelecionado] = useState<TipoEquipamento | null>(null);
+
+  // ✅ NOVO: Hooks para categorias e modelos
+  const { categorias, loading: loadingCategorias } = useCategorias();
+  const { modelos, loading: loadingModelos } = useModelos({
+    categoriaId: categoriaIdSelecionada || undefined,
+    autoFetch: !!categoriaIdSelecionada
+  });
 
   // Helper para buscar tipo de equipamento
   const getTipoEquipamento = (codigo: string): TipoEquipamentoModal | undefined => {
@@ -85,45 +98,100 @@ export const ComponenteUARModal: React.FC<ComponenteUARModalProps> = ({
   }, [isOpen]);
 
   useEffect(() => {
-    if (entity && mode !== 'create') {
-      console.log('📋 [MODAL UAR] Dados completos do componente:', entity);
+    const initializeFormData = async () => {
+      if (entity && mode !== 'create') {
+        console.log('📋 [MODAL UAR] Dados completos do componente:', entity);
 
-      // Extrair dados técnicos para o formData
-      const dadosTecnicosObj: Record<string, string> = {};
-      if (entity.dadosTecnicos && Array.isArray(entity.dadosTecnicos)) {
-        entity.dadosTecnicos.forEach((dt: any) => {
-          dadosTecnicosObj[dt.campo] = dt.valor;
+        // Extrair dados técnicos para o formData
+        const dadosTecnicosObj: Record<string, string> = {};
+        if (entity.dadosTecnicos && Array.isArray(entity.dadosTecnicos)) {
+          entity.dadosTecnicos.forEach((dt: any) => {
+            dadosTecnicosObj[dt.campo] = dt.valor;
+          });
+        }
+
+        // Formatar data de instalação para input type="date" (YYYY-MM-DD)
+        const dataInstalacaoFormatted = entity.dataInstalacao
+          ? entity.dataInstalacao.split('T')[0] // Extrai apenas YYYY-MM-DD
+          : '';
+
+        // ✅ NOVO: Buscar tipo completo com categoria e fabricante
+        const codigoTipo = entity.tipoEquipamento || entity.tipo || '';
+        let tipoCompleto: TipoEquipamento | null = null;
+        if (codigoTipo) {
+          try {
+            tipoCompleto = await tiposEquipamentosApi.findByCode(codigoTipo);
+            if (tipoCompleto) {
+              setCategoriaIdSelecionada(tipoCompleto.categoriaId);
+              setModeloSelecionado(tipoCompleto);
+            }
+          } catch (err) {
+            console.warn('⚠️ [MODAL UAR] Erro ao buscar tipo completo:', err);
+          }
+        }
+
+        // Mapear campos para o formData
+        setFormData({
+          ...entity,
+          ...dadosTecnicosObj, // Espalhar dados técnicos como campos individuais
+          tipoComponente: codigoTipo,
+          tipoEquipamentoId: tipoCompleto?.id || '',
+          fabricante: tipoCompleto?.fabricante || entity.fabricante || '',
+          fabricanteCustom: entity.fabricante_custom || '',
+          dataInstalacao: dataInstalacaoFormatted
+        });
+      } else {
+        setFormData({
+          classificacao: 'UAR',
+          criticidade: '3',
+          equipamentoPaiId: equipamentoPai?.id,
+          // Herdar dados do equipamento pai
+          plantaId: equipamentoPai?.unidade?.plantaId,
+          unidadeId: equipamentoPai?.unidadeId,
+          proprietarioId: equipamentoPai?.proprietarioId
         });
       }
+      setError(null);
+    };
 
-      // Formatar data de instalação para input type="date" (YYYY-MM-DD)
-      const dataInstalacaoFormatted = entity.dataInstalacao
-        ? entity.dataInstalacao.split('T')[0] // Extrai apenas YYYY-MM-DD
-        : '';
-
-      // Mapear campos para o formData
-      setFormData({
-        ...entity,
-        ...dadosTecnicosObj, // Espalhar dados técnicos como campos individuais
-        tipoComponente: entity.tipoEquipamento || entity.tipo || '',
-        dataInstalacao: dataInstalacaoFormatted
-      });
-    } else {
-      setFormData({
-        classificacao: 'UAR',
-        criticidade: '3',
-        equipamentoPaiId: equipamentoPai?.id,
-        // Herdar dados do equipamento pai
-        plantaId: equipamentoPai?.unidade?.plantaId,
-        unidadeId: equipamentoPai?.unidadeId,
-        proprietarioId: equipamentoPai?.proprietarioId
-      });
-    }
-    setError(null);
+    initializeFormData();
   }, [entity, mode, equipamentoPai]);
 
   const handleFieldChange = (field: string, value: any) => {
     setFormData((prev: any) => ({ ...prev, [field]: value }));
+  };
+
+  // ✅ NOVO: Handler para mudança de categoria
+  const handleCategoriaChange = (categoriaId: string) => {
+    setCategoriaIdSelecionada(categoriaId);
+    setModeloSelecionado(null);
+
+    // Buscar nome da categoria para auto-preencher o nome do componente
+    const categoriaSelecionada = categorias.find(cat => cat.id === categoriaId);
+    const nomeAutoPreenchido = categoriaSelecionada ? categoriaSelecionada.nome : '';
+
+    setFormData((prev: any) => ({
+      ...prev,
+      nome: nomeAutoPreenchido, // Auto-preencher nome do componente
+      tipoComponente: '',
+      tipoEquipamentoId: '',
+      fabricante: '',
+      fabricanteCustom: ''
+    }));
+  };
+
+  // ✅ NOVO: Handler para mudança de modelo (auto-fill fabricante)
+  const handleModeloChange = (modeloId: string) => {
+    const modelo = modelos.find(m => m.id === modeloId);
+    if (modelo) {
+      setModeloSelecionado(modelo);
+      setFormData((prev: any) => ({
+        ...prev,
+        tipoComponente: modelo.codigo,
+        tipoEquipamentoId: modelo.id,
+        fabricante: modelo.fabricante // ✅ Auto-preenchido do modelo
+      }));
+    }
   };
 
   // TEMPORÁRIO: Mostrar TODOS os tipos para testar
@@ -210,8 +278,13 @@ export const ComponenteUARModal: React.FC<ComponenteUARModalProps> = ({
       errors.push('Nome é obrigatório');
     }
 
-    if (!formData.tipoComponente) {
-      errors.push('Tipo é obrigatório');
+    // ✅ ATUALIZADO: Validar categoria e modelo em vez de tipoComponente
+    if (!categoriaIdSelecionada) {
+      errors.push('Categoria é obrigatória');
+    }
+
+    if (!formData.tipoEquipamentoId) {
+      errors.push('Modelo é obrigatório');
     }
 
     // Validar campos técnicos obrigatórios
@@ -271,6 +344,7 @@ export const ComponenteUARModal: React.FC<ComponenteUARModalProps> = ({
         equipamento_pai_id: formData.equipamentoPaiId,
         unidade_id: formData.unidadeId, // Herdado do equipamento pai
         fabricante: formData.fabricante,
+        fabricante_custom: formData.fabricanteCustom || undefined, // ✅ NOVO: Fabricante customizado se divergir do modelo
         modelo: formData.modelo,
         numero_serie: formData.numeroSerie,
         criticidade: formData.criticidade,
@@ -357,63 +431,103 @@ export const ComponenteUARModal: React.FC<ComponenteUARModalProps> = ({
               <div className="space-y-4">
                 <div>
                   <label className="text-sm font-medium">Nome <span className="text-red-500">*</span></label>
-                  <Input 
-                    value={formData.nome || ''} 
+                  <Input
+                    value={formData.nome || ''}
                     onChange={(e) => handleFieldChange('nome', e.target.value)}
                     disabled={isReadOnly}
                     placeholder="Nome do componente"
                   />
                 </div>
+
+                {/* ✅ NOVO: Categoria Select */}
                 <div>
-                  <label className="text-sm font-medium">Tipo <span className="text-red-500">*</span></label>
-                  <Select 
-                    value={formData.tipoComponente || ''} 
-                    onValueChange={(value) => handleFieldChange('tipoComponente', value)} 
-                    disabled={isReadOnly || loadingTipos}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder={loadingTipos ? "Carregando..." : "Selecione o tipo"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {loadingTipos ? (
-                        <div className="flex items-center justify-center p-2">
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        </div>
-                      ) : (
-                        tiposComponentesUAR.map(tipo => (
-                          <SelectItem key={tipo.value} value={tipo.value}>
-                            <div>
-                              <div>{tipo.label}</div>
-                              <div className="text-xs text-muted-foreground capitalize">{tipo.categoria}</div>
-                            </div>
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
+                  <label className="text-sm font-medium">Categoria <span className="text-red-500">*</span></label>
+                  {isReadOnly ? (
+                    <div className="p-2 bg-gray-50 dark:bg-gray-800 rounded border text-sm">
+                      {modeloSelecionado?.categoria?.nome || 'Não informado'}
+                    </div>
+                  ) : (
+                    <Select
+                      value={categoriaIdSelecionada}
+                      onValueChange={handleCategoriaChange}
+                      disabled={loadingCategorias}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={loadingCategorias ? "Carregando..." : "Selecione a categoria"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {loadingCategorias ? (
+                          <div className="flex items-center justify-center p-2">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          </div>
+                        ) : (
+                          categorias.map(cat => (
+                            <SelectItem key={cat.id} value={cat.id}>
+                              {cat.nome}
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
+
+                {/* ✅ NOVO: Modelo Select (filtered by categoria) */}
                 <div>
-                  <label className="text-sm font-medium">Modelo</label>
-                  <Input 
-                    value={formData.modelo || ''} 
-                    onChange={(e) => handleFieldChange('modelo', e.target.value)}
-                    disabled={isReadOnly}
-                    placeholder="Modelo do componente"
-                  />
+                  <label className="text-sm font-medium">Modelo <span className="text-red-500">*</span></label>
+                  {isReadOnly ? (
+                    <div className="p-2 bg-gray-50 dark:bg-gray-800 rounded border text-sm">
+                      {modeloSelecionado?.nome || 'Não informado'}
+                    </div>
+                  ) : (
+                    <Select
+                      value={formData.tipoEquipamentoId || ''}
+                      onValueChange={handleModeloChange}
+                      disabled={!categoriaIdSelecionada || loadingModelos}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={
+                          !categoriaIdSelecionada ? "Selecione uma categoria primeiro" :
+                          loadingModelos ? "Carregando..." :
+                          "Selecione o modelo"
+                        } />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {loadingModelos ? (
+                          <div className="flex items-center justify-center p-2">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          </div>
+                        ) : modelos.length === 0 ? (
+                          <div className="p-2 text-sm text-muted-foreground text-center">
+                            Nenhum modelo encontrado
+                          </div>
+                        ) : (
+                          modelos.map(modelo => (
+                            <SelectItem key={modelo.id} value={modelo.id}>
+                              {modelo.nome} | {modelo.fabricante}
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
+
+                {/* ✅ NOVO: Fabricante (read-only, auto-filled from modelo) */}
                 <div>
                   <label className="text-sm font-medium">Fabricante</label>
-                  <Input 
-                    value={formData.fabricante || ''} 
-                    onChange={(e) => handleFieldChange('fabricante', e.target.value)}
-                    disabled={isReadOnly}
-                    placeholder="Fabricante"
+                  <Input
+                    value={formData.fabricante || ''}
+                    disabled={true}
+                    placeholder="Selecionado automaticamente do modelo"
+                    className="bg-gray-50 dark:bg-gray-800"
                   />
                 </div>
+
                 <div>
                   <label className="text-sm font-medium">Número de Série</label>
-                  <Input 
-                    value={formData.numeroSerie || ''} 
+                  <Input
+                    value={formData.numeroSerie || ''}
                     onChange={(e) => handleFieldChange('numeroSerie', e.target.value)}
                     disabled={isReadOnly}
                     placeholder="Número de série"

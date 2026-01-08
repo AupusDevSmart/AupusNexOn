@@ -34,7 +34,7 @@ export const getEquipamentosTableColumns = (actions?: TableActionsProps): TableC
       </div>
     )
   },
-  
+
   {
     key: 'hierarquia',
     label: 'Hierarquia',
@@ -78,7 +78,7 @@ export const getEquipamentosTableColumns = (actions?: TableActionsProps): TableC
       </div>
     )
   },
-  
+
   {
     key: 'localizacao',
     label: 'Localização (Área)',
@@ -134,7 +134,7 @@ export const getEquipamentosTableColumns = (actions?: TableActionsProps): TableC
       );
     }
   },
-  
+
   {
     key: 'componentes_uar',
     label: 'Componentes UAR',

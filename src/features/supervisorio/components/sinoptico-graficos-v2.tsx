@@ -357,10 +357,10 @@ export function SinopticoGraficosV2({
   }, [configData, equipamentosData, valorContratado]);
 
   // Usar hook de dados de demanda
-  const { dados, fonte, confiabilidade, detalhes, isLoading, energiaDia } = useDadosDemanda(configuracao, unidadeId);
+  const { dados, fonte, confiabilidade, detalhes, isLoading, isInitialLoading, energiaDia } = useDadosDemanda(configuracao, unidadeId);
 
   // Usar hook de dados M160 para tensão e FP
-  const { dados: dadosM160, equipamentosM160, isLoading: isLoadingM160 } = useDadosM160(unidadeId, m160Selecionado);
+  const { dados: dadosM160, equipamentosM160, isLoading: isLoadingM160, isInitialLoading: isInitialLoadingM160 } = useDadosM160(unidadeId, m160Selecionado);
 
   // Selecionar automaticamente o primeiro M160 disponível
   useEffect(() => {
@@ -426,34 +426,168 @@ export function SinopticoGraficosV2({
   };
 
   // Preparar dados para o gráfico com useMemo para evitar re-cálculos desnecessários
-  const dadosFormatadosPotencia = useMemo(() =>
-    adicionarLinhasReferencia(dados || [], valorContratado, percentualAdicional),
-    [dados, valorContratado, percentualAdicional]
-  );
+  const dadosFormatadosPotencia = useMemo(() => {
+    if (!dados || dados.length === 0) return [];
 
-  // Formatar dados de tensão e FP do M160
+    // Filtrar apenas dados de hoje (00:00 até agora)
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    const inicioDeHoje = hoje.getTime();
+
+    const dadosDeHoje = dados.filter(item => {
+      const timestamp = new Date(item.timestamp).getTime();
+      return timestamp >= inicioDeHoje;
+    });
+
+    // Criar array com todas as horas do dia de 00:00 até agora
+    const agora = new Date();
+    const todosOsHorarios: any[] = [];
+    const horaFinal = agora.getHours();
+    const minutoFinal = agora.getMinutes();
+
+    for (let h = 0; h <= horaFinal; h++) {
+      const maxMinutos = (h === horaFinal) ? minutoFinal : 59;
+      for (let m = 0; m <= maxMinutos; m += 5) { // ✅ De 5 em 5 minutos
+        const timestamp = new Date(hoje);
+        timestamp.setHours(h, m, 0, 0);
+        todosOsHorarios.push({
+          timestamp: timestamp.toISOString(),
+          hora: timestamp.toLocaleTimeString("pt-BR", {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+          potencia: null,
+          valorContratado: valorContratado,
+          valorAdicional: valorContratado * (1 + percentualAdicional / 100),
+        });
+      }
+    }
+
+    // Mesclar dados reais com o template
+    const dadosMap = new Map(
+      dadosDeHoje.map((item) => [
+        new Date(item.timestamp).toLocaleTimeString("pt-BR", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+        {
+          ...item,
+          hora: new Date(item.timestamp).toLocaleTimeString("pt-BR", {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+          valorContratado: valorContratado,
+          valorAdicional: valorContratado * (1 + percentualAdicional / 100),
+        }
+      ])
+    );
+
+    return todosOsHorarios.map(slot => dadosMap.get(slot.hora) || slot);
+  }, [dados, valorContratado, percentualAdicional]);
+
+  // Formatar dados de tensão e FP do M160 - com período completo de 00:00 até agora
   const dadosFormatadosTensao = useMemo(() => {
-    return dadosM160.map((item) => ({
-      hora: new Date(item.timestamp).toLocaleTimeString("pt-BR", {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-      tensaoA: item.tensaoA,
-      tensaoB: item.tensaoB,
-      tensaoC: item.tensaoC,
-    }));
+    if (!dadosM160 || dadosM160.length === 0) return [];
+
+    // Criar array com todas as horas do dia de 00:00 até agora
+    const agora = new Date();
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    const todosOsHorarios: any[] = [];
+
+    // Ir até a hora atual
+    const horaFinal = agora.getHours();
+    const minutoFinal = agora.getMinutes();
+
+    for (let h = 0; h <= horaFinal; h++) {
+      const maxMinutos = (h === horaFinal) ? minutoFinal : 59;
+      for (let m = 0; m <= maxMinutos; m++) {
+        const timestamp = new Date(hoje);
+        timestamp.setHours(h, m, 0, 0);
+        todosOsHorarios.push({
+          hora: timestamp.toLocaleTimeString("pt-BR", {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+          tensaoA: null,
+          tensaoB: null,
+          tensaoC: null,
+        });
+      }
+    }
+
+    // Mesclar dados reais com o template
+    const dadosMap = new Map(
+      dadosM160.map((item) => [
+        new Date(item.timestamp).toLocaleTimeString("pt-BR", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+        {
+          hora: new Date(item.timestamp).toLocaleTimeString("pt-BR", {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+          tensaoA: item.tensaoA,
+          tensaoB: item.tensaoB,
+          tensaoC: item.tensaoC,
+        }
+      ])
+    );
+
+    return todosOsHorarios.map(slot => dadosMap.get(slot.hora) || slot);
   }, [dadosM160]);
 
   const dadosFormatadosFP = useMemo(() => {
-    return dadosM160.map((item) => ({
-      hora: new Date(item.timestamp).toLocaleTimeString("pt-BR", {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-      fatorPotenciaA: item.fatorPotenciaA,
-      fatorPotenciaB: item.fatorPotenciaB,
-      fatorPotenciaC: item.fatorPotenciaC,
-    }));
+    if (!dadosM160 || dadosM160.length === 0) return [];
+
+    // Criar array com todas as horas do dia de 00:00 até agora
+    const agora = new Date();
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    const todosOsHorarios: any[] = [];
+
+    // Ir até a hora atual
+    const horaFinal = agora.getHours();
+    const minutoFinal = agora.getMinutes();
+
+    for (let h = 0; h <= horaFinal; h++) {
+      const maxMinutos = (h === horaFinal) ? minutoFinal : 59;
+      for (let m = 0; m <= maxMinutos; m++) {
+        const timestamp = new Date(hoje);
+        timestamp.setHours(h, m, 0, 0);
+        todosOsHorarios.push({
+          hora: timestamp.toLocaleTimeString("pt-BR", {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+          fatorPotenciaA: null,
+          fatorPotenciaB: null,
+          fatorPotenciaC: null,
+        });
+      }
+    }
+
+    // Mesclar dados reais com o template
+    const dadosMap = new Map(
+      dadosM160.map((item) => [
+        new Date(item.timestamp).toLocaleTimeString("pt-BR", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+        {
+          hora: new Date(item.timestamp).toLocaleTimeString("pt-BR", {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+          fatorPotenciaA: item.fatorPotenciaA,
+          fatorPotenciaB: item.fatorPotenciaB,
+          fatorPotenciaC: item.fatorPotenciaC,
+        }
+      ])
+    );
+
+    return todosOsHorarios.map(slot => dadosMap.get(slot.hora) || slot);
   }, [dadosM160]);
 
   // Verificar se tem equipamentos disponíveis para o gráfico de demanda
@@ -475,46 +609,36 @@ export function SinopticoGraficosV2({
       {/* Gráfico de Demanda - Mostra se tiver equipamentos disponíveis (mesmo que nenhum esteja selecionado) */}
       {temEquipamentosDisponiveis && (
       <Card>
-        <CardHeader>
+        <CardHeader className="p-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 flex-wrap">
               <Zap className="h-5 w-5 text-yellow-500" />
               <CardTitle>Demanda</CardTitle>
               {getConfiabilidadeBadge(fonte, confiabilidade)}
-
-              {/* Badge de Status de Dados */}
-              <Badge
-                variant={qualidadeDados.status === 'OK' ? 'outline' : 'destructive'}
-                className={`gap-1 ${qualidadeDados.cor}`}
-              >
-                <qualidadeDados.icone className="h-3 w-3" />
-                {qualidadeDados.mensagem}
-              </Badge>
             </div>
             <div className="flex items-center gap-2">
-              <Badge variant="outline">
-                Últimas 24h
-              </Badge>
               <Button
-                variant="outline"
-                size="sm"
+                variant="ghost"
+                size="icon"
                 onClick={() => setModalExpandidoOpen(true)}
                 title="Expandir gráfico"
+                className="h-8 w-8 hover:bg-transparent"
               >
                 <Expand className="h-4 w-4" />
               </Button>
               <Button
-                variant="outline"
-                size="sm"
+                variant="ghost"
+                size="icon"
                 onClick={() => setModalOpen(true)}
                 title="Configurações"
+                className="h-8 w-8 hover:bg-transparent"
               >
                 <Settings className="h-4 w-4" />
               </Button>
             </div>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-2">
           {/* Alerta de Dados Desatualizados/Sem Dados */}
           {qualidadeDados.status !== 'OK' && (
             <div className={`mb-4 p-4 rounded-lg border-l-4 ${
@@ -567,14 +691,14 @@ export function SinopticoGraficosV2({
 
           {/* Energia do Dia */}
           {energiaDia !== undefined && energiaDia !== 0 && (
-            <div className="mb-4 p-3 bg-muted/50 rounded-lg flex items-center gap-2">
+            <div className="mb-2 bg-muted/50 rounded-lg flex items-center gap-2">
               <TrendingUp className="h-4 w-4 text-green-600 dark:text-green-400" />
               <span className="text-sm font-semibold text-green-600 dark:text-green-400">
                 Energia do dia: {energiaDia.toFixed(2)} kWh
               </span>
             </div>
           )}
-          {isLoading ? (
+          {isInitialLoading ? (
             <div className="flex flex-col items-center justify-center h-[300px] space-y-3">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
               <p className="text-sm text-muted-foreground">Carregando dados do gráfico...</p>
@@ -623,6 +747,7 @@ export function SinopticoGraficosV2({
                 strokeWidth={2}
                 dot={false}
                 activeDot={{ r: 4 }}
+                connectNulls={true}
               />
 
               {/* Linha 2: Valor Contratado */}
@@ -645,6 +770,7 @@ export function SinopticoGraficosV2({
                 strokeWidth={2}
                 strokeDasharray="5 5"
                 dot={false}
+                legendType="none"
               />
             </LineChart>
           </ResponsiveContainer>
@@ -685,26 +811,26 @@ export function SinopticoGraficosV2({
       {/* Gráfico de Tensão - Só mostra se tiver M160 */}
       {temM160Disponivel && (
       <Card>
-        <CardHeader>
+        <CardHeader className="p-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Activity className="h-5 w-5 text-blue-500" />
               <CardTitle>Tensão</CardTitle>
             </div>
             <div className="flex items-center gap-2">
-              <Badge variant="outline">Últimas 24h</Badge>
               <Button
-                variant="outline"
-                size="sm"
+                variant="ghost"
+                size="icon"
                 onClick={() => setModalTensaoOpen(true)}
                 title="Expandir gráfico"
+                className="h-8 w-8 hover:bg-transparent"
               >
                 <Expand className="h-4 w-4" />
               </Button>
             </div>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-2">
           {/* Controles */}
           <div className="mb-4 space-y-3">
             {/* Select M160 */}
@@ -771,7 +897,7 @@ export function SinopticoGraficosV2({
           </div>
 
           {/* Gráfico */}
-          {isLoadingM160 ? (
+          {isInitialLoadingM160 ? (
             <div className="flex flex-col items-center justify-center h-[300px] space-y-3">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
               <p className="text-sm text-muted-foreground">Carregando dados...</p>
@@ -827,6 +953,7 @@ export function SinopticoGraficosV2({
                     strokeWidth={2}
                     dot={false}
                     activeDot={{ r: 4 }}
+                    connectNulls={true}
                   />
                 )}
                 {fasesTensao.B && (
@@ -838,6 +965,7 @@ export function SinopticoGraficosV2({
                     strokeWidth={2}
                     dot={false}
                     activeDot={{ r: 4 }}
+                    connectNulls={true}
                   />
                 )}
                 {fasesTensao.C && (
@@ -849,6 +977,7 @@ export function SinopticoGraficosV2({
                     strokeWidth={2}
                     dot={false}
                     activeDot={{ r: 4 }}
+                    connectNulls={true}
                   />
                 )}
               </LineChart>
@@ -862,26 +991,26 @@ export function SinopticoGraficosV2({
       {/* Gráfico de Fator de Potência - Só mostra se tiver M160 */}
       {temM160Disponivel && (
       <Card>
-        <CardHeader>
+        <CardHeader className="p-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <TrendingUp className="h-5 w-5 text-purple-500" />
               <CardTitle>Fator de Potência</CardTitle>
             </div>
             <div className="flex items-center gap-2">
-              <Badge variant="outline">Últimas 24h</Badge>
               <Button
-                variant="outline"
-                size="sm"
+                variant="ghost"
+                size="icon"
                 onClick={() => setModalFPOpen(true)}
                 title="Expandir gráfico"
+                className="h-8 w-8 hover:bg-transparent"
               >
                 <Expand className="h-4 w-4" />
               </Button>
             </div>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-2">
           {/* Controles */}
           <div className="mb-4 space-y-3">
             {/* Select M160 */}
@@ -948,7 +1077,7 @@ export function SinopticoGraficosV2({
           </div>
 
           {/* Gráfico */}
-          {isLoadingM160 ? (
+          {isInitialLoadingM160 ? (
             <div className="flex flex-col items-center justify-center h-[300px] space-y-3">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
               <p className="text-sm text-muted-foreground">Carregando dados...</p>
@@ -1004,6 +1133,7 @@ export function SinopticoGraficosV2({
                     strokeWidth={2}
                     dot={false}
                     activeDot={{ r: 4 }}
+                    connectNulls={true}
                   />
                 )}
                 {fasesFP.B && (
@@ -1015,6 +1145,7 @@ export function SinopticoGraficosV2({
                     strokeWidth={2}
                     dot={false}
                     activeDot={{ r: 4 }}
+                    connectNulls={true}
                   />
                 )}
                 {fasesFP.C && (
@@ -1026,6 +1157,7 @@ export function SinopticoGraficosV2({
                     strokeWidth={2}
                     dot={false}
                     activeDot={{ r: 4 }}
+                    connectNulls={true}
                   />
                 )}
 
@@ -1069,7 +1201,7 @@ export function SinopticoGraficosV2({
           )}
 
           <div className="w-full h-[70vh]">
-            {isLoading ? (
+            {isInitialLoading ? (
               <div className="flex flex-col items-center justify-center h-full space-y-3">
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 <p className="text-sm text-muted-foreground">Carregando dados do gráfico...</p>
@@ -1127,6 +1259,7 @@ export function SinopticoGraficosV2({
                     strokeWidth={2}
                     dot={false}
                     activeDot={{ r: 4 }}
+                    connectNulls={true}
                   />
 
                   {/* Linha 2: Valor Contratado */}
@@ -1256,7 +1389,7 @@ export function SinopticoGraficosV2({
 
             {/* Gráfico */}
             <div className="flex-1 min-h-0">
-            {isLoadingM160 ? (
+            {isInitialLoadingM160 ? (
               <div className="flex flex-col items-center justify-center h-full space-y-3">
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 <p className="text-sm text-muted-foreground">Carregando dados...</p>
@@ -1413,7 +1546,7 @@ export function SinopticoGraficosV2({
 
             {/* Gráfico */}
             <div className="flex-1 min-h-0">
-            {isLoadingM160 ? (
+            {isInitialLoadingM160 ? (
               <div className="flex flex-col items-center justify-center h-full space-y-3">
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 <p className="text-sm text-muted-foreground">Carregando dados...</p>

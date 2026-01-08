@@ -28,7 +28,7 @@ import {
   Zap,
 } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
 
 // Componentes implementados
 import type { A966Reading } from "@/components/equipment/A966/A966.types";
@@ -1765,16 +1765,28 @@ function LandisGyrModalInline({
 export function SinopticoAtivoPage() {
   const { ativoId: ativoIdRaw } = useParams<{ ativoId?: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
 
   // Limpar espaços em branco do ID da URL
   const ativoId = ativoIdRaw?.trim();
 
+  // ✅ NOVO: Receber dados da unidade e planta via state do React Router (quando vem do dashboard)
+  const stateFromNavigation = location.state as { unidade?: Unidade; planta?: PlantaResponse } | undefined;
+
   // NOVO: Estados para integração com backend
   const [unidadeId, setUnidadeId] = useState<string | undefined>(ativoId);
-  const [plantaAtual, setPlantaAtual] = useState<PlantaResponse | null>(null);
-  const [unidadeAtual, setUnidadeAtual] = useState<Unidade | null>(null);
+  const [plantaAtual, setPlantaAtual] = useState<PlantaResponse | null>(stateFromNavigation?.planta || null);
+  const [unidadeAtual, setUnidadeAtual] = useState<Unidade | null>(stateFromNavigation?.unidade || null);
   // Abrir modal automaticamente se não tiver unidade selecionada
   const [modalSelecionarUnidade, setModalSelecionarUnidade] = useState(!ativoId);
+
+  // ✅ IMPORTANTE: Atualizar título IMEDIATAMENTE quando recebe dados via state
+  useEffect(() => {
+    if (stateFromNavigation?.unidade?.nome) {
+      console.log('🎯 [SINÓPTICO] Recebeu dados via state, atualizando título:', stateFromNavigation.unidade.nome);
+      document.title = `Sinóptico - ${stateFromNavigation.unidade.nome}`;
+    }
+  }, [stateFromNavigation]);
 
   // TEMPORÁRIO: Hook comentado para evitar loop infinito - implementar carregamento depois
   // const {
@@ -1796,9 +1808,20 @@ export function SinopticoAtivoPage() {
 
   // Atualizar título da página quando unidade carrega
   useEffect(() => {
+    console.log('📝 [SINÓPTICO] useEffect título executado:', {
+      unidadeNome: unidadeAtual?.nome,
+      unidadeId
+    });
+
     if (unidadeAtual?.nome) {
+      console.log('✅ [SINÓPTICO] Atualizando título com nome:', unidadeAtual.nome);
       document.title = `Sinóptico - ${unidadeAtual.nome}`;
+    } else if (unidadeId) {
+      // Enquanto carrega, mostrar "Carregando..." ao invés do ID
+      console.log('⏳ [SINÓPTICO] Atualizando título para "Carregando..."');
+      document.title = 'Sinóptico - Carregando...';
     } else {
+      console.log('📄 [SINÓPTICO] Atualizando título para "Sinóptico"');
       document.title = 'Sinóptico';
     }
 
@@ -1806,12 +1829,14 @@ export function SinopticoAtivoPage() {
     return () => {
       document.title = 'AupusNexOn';
     };
-  }, [unidadeAtual]);
+  }, [unidadeAtual, unidadeId]);
 
   // Carregar dados da unidade quando o componente monta ou quando unidadeId muda
   useEffect(() => {
     const carregarUnidade = async () => {
       if (!unidadeId) return;
+
+      console.log('🔄 [SINÓPTICO] Verificando necessidade de carregar unidade:', unidadeId);
 
       try {
         const response = await api.get(`/unidades/${unidadeId}`);
@@ -1827,6 +1852,7 @@ export function SinopticoAtivoPage() {
           plantaId: unidadeData.planta_id || unidadeData.plantaId,
         };
 
+        console.log('✅ [SINÓPTICO] Unidade carregada:', unidadeFormatada.nome);
         setUnidadeAtual(unidadeFormatada);
 
         // Carregar planta se tiver plantaId
@@ -1834,6 +1860,7 @@ export function SinopticoAtivoPage() {
           try {
             const plantaResponse = await api.get(`/plantas/${unidadeData.planta_id}`);
             const plantaData = plantaResponse.data?.data || plantaResponse.data;
+            console.log('✅ [SINÓPTICO] Planta carregada:', plantaData.nome);
             setPlantaAtual(plantaData);
           } catch (err) {
             console.error('❌ Erro ao carregar planta:', err);
@@ -3102,6 +3129,15 @@ export function SinopticoAtivoPage() {
       updateDiagram([...componentes, novoComponente]);
 
       console.log('✅ [CRIAÇÃO RÁPIDA] Equipamento adicionado ao diagrama:', novoComponente);
+
+      // ✅ SALVAR DIAGRAMA IMEDIATAMENTE NO BACKEND
+      try {
+        await salvarDiagramaNoBackend([...componentes, novoComponente], connections);
+        console.log('✅ [CRIAÇÃO RÁPIDA] Diagrama salvo no backend');
+      } catch (saveError) {
+        console.error('❌ [CRIAÇÃO RÁPIDA] Erro ao salvar diagrama:', saveError);
+        alert('Equipamento criado mas houve erro ao salvar no diagrama. Tente salvar manualmente.');
+      }
     } catch (error) {
       console.error('❌ [CRIAÇÃO RÁPIDA] Erro ao processar equipamento:', error);
     }
@@ -3580,35 +3616,28 @@ export function SinopticoAtivoPage() {
 
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 flex-1 w-full sm:w-auto">
               <h1 className="text-lg sm:text-2xl font-bold text-foreground">
-                <span className="hidden sm:inline">Sinóptico - </span>
-                {unidadeAtual ? (
-                  <>
-                    <span className="hidden md:inline">{plantaAtual?.nome} → </span>
-                    {unidadeAtual.nome}
-                  </>
-                ) : unidadeId ? (
-                  // Enquanto carrega, mostra "Carregando..." ao invés do ID
-                  <span className="text-muted-foreground animate-pulse">Carregando unidade...</span>
-                ) : (
-                  'Selecione uma Unidade'
-                )}
-              </h1>
+                <span className="hidden sm:inline">Sinóptico: </span>
+                {(() => {
+                  console.log('🎨 [SINÓPTICO] Renderizando header:', {
+                    unidadeAtual: unidadeAtual?.nome || 'null',
+                    plantaAtual: plantaAtual?.nome || 'null',
+                    unidadeId
+                  });
 
-              {/* NOVO: Botão para selecionar unidade */}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setModalSelecionarUnidade(true)}
-                className="flex items-center gap-2"
-              >
-                <Building className="h-4 w-4" />
-                <span className="hidden sm:inline">
-                  {unidadeAtual ? 'Trocar Unidade' : 'Selecionar Unidade'}
-                </span>
-                <span className="sm:hidden">
-                  {unidadeAtual ? 'Trocar' : 'Selecionar'}
-                </span>
-              </Button>
+                  if (unidadeAtual) {
+                    return (
+                      <>
+                        <span className="hidden md:inline">{plantaAtual?.nome} - </span>
+                        {unidadeAtual.nome}
+                      </>
+                    );
+                  } else if (unidadeId) {
+                    return <span className="text-muted-foreground animate-pulse">Carregando unidade...</span>;
+                  } else {
+                    return 'Selecione uma Unidade';
+                  }
+                })()}
+              </h1>
 
               {loadingDiagrama && (
                 <div className="flex items-center gap-2 text-xs sm:text-sm text-blue-600">

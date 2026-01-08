@@ -9,6 +9,7 @@ export interface DashboardData {
     totalUnidades: number;
     unidadesOnline: number;
     alertasAtivos: number;
+    custoTotalHoje?: number; // ✅ NOVO: Custo total agregado do dia
   };
   plantas: PlantaResumo[];
   alertas: Alerta[];
@@ -42,6 +43,7 @@ export interface UnidadeResumo {
     potenciaAtual: number;
     energiaHoje: number;
     fatorPotencia: number;
+    custoEnergiaHoje?: number; // ✅ NOVO: Custo de energia do dia desta unidade
   };
 }
 

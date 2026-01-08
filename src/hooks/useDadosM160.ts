@@ -20,6 +20,7 @@ interface EquipamentoM160 {
 
 export function useDadosM160(unidadeId?: string, equipamentoId?: string) {
   const [dados, setDados] = useState<DadosM160[]>([]);
+  const [hasInitialLoad, setHasInitialLoad] = useState(false);
 
   // Buscar lista de M160 da unidade
   const { data: equipamentosM160 } = useQuery({
@@ -51,18 +52,20 @@ export function useDadosM160(unidadeId?: string, equipamentoId?: string) {
         }
 
         // Filtrar apenas M160 pelo código do tipo de equipamento
+        // ✅ CORRIGIDO: Ordem de fallback correta (tipo_equipamento_rel é a fonte autoritativa)
         const equipamentosM160 = equipamentos.filter((eq: any) => {
-          const codigo = eq.tipoEquipamento?.codigo || eq.tipo_equipamento_rel?.codigo;
+          const codigo = eq.tipo_equipamento_rel?.codigo || eq.tipoEquipamento?.codigo || '';
           console.log(`📊 [useDadosM160] Equipamento ${eq.nome}: código=${codigo}`);
           return codigo === 'M160' || codigo === 'M-160' || codigo === 'METER_M160' || codigo === 'MEDIDOR';
         });
 
         console.log('📊 [useDadosM160] Equipamentos M-160 filtrados:', equipamentosM160);
 
+        // ✅ CORRIGIDO: Ordem de fallback correta em todos os campos
         return equipamentosM160.map((eq: any) => ({
           id: eq.id?.trim(),
           nome: eq.nome || eq.tag || 'M-160',
-          tipo: eq.tipoEquipamento?.codigo || eq.tipo_equipamento_rel?.codigo || 'M-160'
+          tipo: eq.tipo_equipamento_rel?.codigo || eq.tipoEquipamento?.codigo || 'M-160'
         }));
       } catch (error) {
         console.error('❌ Erro ao buscar M160:', error);
@@ -119,11 +122,17 @@ export function useDadosM160(unidadeId?: string, equipamentoId?: string) {
     });
 
     setDados(dadosProcessados);
-  }, [dadosM160]);
+
+    // ✅ Marcar que já carregou pelo menos uma vez
+    if (!hasInitialLoad) {
+      setHasInitialLoad(true);
+    }
+  }, [dadosM160, hasInitialLoad]);
 
   return {
     dados,
     equipamentosM160: equipamentosM160 || [],
-    isLoading
+    isLoading,
+    isInitialLoading: !hasInitialLoad && isLoading // ✅ NOVO: só true no PRIMEIRO load
   };
 }
