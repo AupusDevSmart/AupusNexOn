@@ -248,36 +248,48 @@ export function UnidadesPage() {
           />
 
           {/* Filtros e Ações */}
-          <div className="flex flex-col gap-2 mb-3">
-            {/* Filtros */}
+          <div className="flex flex-col gap-3 mb-4">
+            {/* Linha 1: Busca */}
             <div className="w-full">
               <BaseFilters
                 filters={filters}
-                config={filterConfig}
+                config={[filterConfig[0]]} // Apenas o campo de busca
                 onFilterChange={handleFilterChange}
               />
             </div>
 
-            {/* Botões de Ação */}
-            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto sm:self-end">
-              <Button
-                variant="outline"
-                onClick={handleRefresh}
-                disabled={loading}
-                className="w-full sm:w-auto border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300"
-              >
-                <RefreshCw className={`h-4 w-4 sm:mr-2 ${loading ? 'animate-spin' : ''}`} />
-                <span className="sm:inline">Atualizar</span>
-              </Button>
+            {/* Linha 2: Filtro de Plantas + Botões de Ação */}
+            <div className="flex flex-col sm:flex-row gap-2 w-full items-start sm:items-center">
+              {/* Filtro de Plantas */}
+              <div className="flex-1 w-full sm:w-auto sm:min-w-[250px]">
+                <BaseFilters
+                  filters={filters}
+                  config={[filterConfig[1]]} // Apenas o select de plantas
+                  onFilterChange={handleFilterChange}
+                />
+              </div>
 
-              <Button
-                onClick={() => openModal('create')}
-                disabled={loading}
-                className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white"
-              >
-                <Plus className="h-4 w-4 sm:mr-2" />
-                <span className="sm:inline">Nova Instalação</span>
-              </Button>
+              {/* Botões de Ação */}
+              <div className="flex flex-row gap-2 w-full sm:w-auto sm:ml-auto">
+                <Button
+                  variant="outline"
+                  onClick={handleRefresh}
+                  disabled={loading}
+                  className="flex-1 sm:flex-none border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300"
+                >
+                  <RefreshCw className={`h-4 w-4 sm:mr-2 ${loading ? 'animate-spin' : ''}`} />
+                  <span className="hidden sm:inline">Atualizar</span>
+                </Button>
+
+                <Button
+                  onClick={() => openModal('create')}
+                  disabled={loading}
+                  className="flex-1 sm:flex-none bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  <Plus className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">Nova Instalação</span>
+                </Button>
+              </div>
             </div>
           </div>
 

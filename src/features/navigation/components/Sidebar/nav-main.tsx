@@ -25,7 +25,7 @@ export function NavMain() {
   const { isMobile, setOpenMobile, setOpen } = useSidebar();
   const navigationLinks = useFilteredNavigationLinks();
 
-  console.log(navigationLinks);
+// console.log(navigationLinks);
 
   return (
     <SidebarGroup>

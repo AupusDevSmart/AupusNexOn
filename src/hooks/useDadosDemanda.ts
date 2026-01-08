@@ -234,10 +234,10 @@ export function useDadosDemanda(configuracao: ConfiguracaoDemanda, unidadeId?: s
         energiaEquipamento = dadosReais.Dados.phf; // kWh
         console.log('✅ [ENERGIA DIA] Encontrou Dados.phf:', energiaEquipamento);
       }
-      // Inversor: campo energy.daily_yield (energia do dia em kWh) - estrutura MQTT
+      // Inversor: campo energy.daily_yield (energia do dia em Wh, converter para kWh) - estrutura MQTT
       else if (dadosReais.energy?.daily_yield !== undefined) {
-        energiaEquipamento = dadosReais.energy.daily_yield; // kWh
-        console.log('✅ [ENERGIA DIA] Encontrou energy.daily_yield:', energiaEquipamento);
+        energiaEquipamento = dadosReais.energy.daily_yield / 1000; // Converter Wh para kWh
+        console.log('✅ [ENERGIA DIA] Encontrou energy.daily_yield (Wh):', dadosReais.energy.daily_yield, '→ kWh:', energiaEquipamento);
       }
       // Inversor: campo daily_yield direto (energia do dia em kWh)
       else if (dadosReais.daily_yield !== undefined) {

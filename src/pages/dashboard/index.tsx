@@ -90,7 +90,7 @@ export function DashboardPage() {
         energiaConsumidaHoje: 0,
         custoEnergiaHoje: 0,
         totalEventos: 0,
-        ativosMonitorados: 0,
+        instalacoesMonitoradas: 0,
         unidadesGeradoras: 0,
         unidadesConsumidoras: 0,
         eficienciaMedia: 0,
@@ -115,6 +115,13 @@ export function DashboardPage() {
           potenciaGeracaoInstantanea += unidade.metricas.potenciaAtual;
           energiaGeradaHoje += unidade.metricas.energiaHoje;
           unidadesGeradoras++;
+
+          // DEBUG: Log energia de cada unidade geradora
+          console.log(`[Dashboard] Unidade Geradora: ${unidade.nome}`, {
+            tipo: unidade.tipo,
+            energiaHoje: unidade.metricas.energiaHoje,
+            potenciaAtual: unidade.metricas.potenciaAtual
+          });
         } else if (unidade.tipo === 'Carga') {
           // CARGA
           potenciaCargaInstantanea += unidade.metricas.potenciaAtual;
@@ -122,6 +129,14 @@ export function DashboardPage() {
           unidadesConsumidoras++;
         }
       });
+    });
+
+    // DEBUG: Log totais calculados
+    console.log('[Dashboard] Totais calculados:', {
+      energiaGeradaHoje,
+      energiaConsumidaHoje,
+      unidadesGeradoras,
+      unidadesConsumidoras
     });
 
     // ✅ Custo de energia: usar valor calculado do backend (com tarifas reais)
@@ -137,7 +152,7 @@ export function DashboardPage() {
       energiaConsumidaHoje,
       custoEnergiaHoje,
       totalEventos: data.alertas.length,
-      ativosMonitorados: data.resumoGeral.totalUnidades,
+      instalacoesMonitoradas: data.resumoGeral.totalUnidades,
       unidadesGeradoras,
       unidadesConsumidoras,
       eficienciaMedia: data.resumoGeral.totalUnidades > 0
@@ -355,9 +370,9 @@ export function DashboardPage() {
                   color="text-yellow-500"
                 />
 
-                {/* 6. Ativos Monitorados */}
+                {/* 6. Instalações Monitoradas */}
                 <MetricCard
-                  title="Ativos Monitorados"
+                  title="Instalações Monitoradas"
                   value={data?.resumoGeral.unidadesOnline || 0}
                   subtitle={`de ${data?.resumoGeral.totalUnidades || 0} total`}
                   icon={Activity}

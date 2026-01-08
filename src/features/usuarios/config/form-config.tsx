@@ -27,12 +27,9 @@ const RoleSelector = ({ value, onChange, disabled }: any) => {
   const { user } = useUserStore();
   const currentUserRole = user?.roles?.[0] || user?.role;
 
-  console.log('🔍 [RoleSelector] Debug:', { value, roles, loading, error, disabled, currentUserRole });
-
   // ✅ FILTRAR ROLES: Se usuário logado é proprietário, mostrar apenas "operador"
   let availableRoles = roles;
   if (currentUserRole === 'propietario' || currentUserRole === 'proprietario') {
-    console.log('🔒 [RoleSelector] Usuário é proprietário - limitando opções apenas para Operador');
     availableRoles = roles.filter(role => role.value === 'operador');
   }
 
@@ -58,7 +55,6 @@ const RoleSelector = ({ value, onChange, disabled }: any) => {
 
   // Encontrar o role atual para mostrar o label correto
   const currentRole = roles.find(role => role.value === value);
-  console.log('🔍 [RoleSelector] Role atual encontrado:', currentRole);
 
   // ✅ MODO VIEW (DISABLED): Mostrar como texto estilizado ao invés de Select desabilitado
   if (disabled) {
@@ -80,26 +76,11 @@ const RoleSelector = ({ value, onChange, disabled }: any) => {
   // Garantir que value seja uma string válida ou undefined (NUNCA string vazia para Select controlado)
   const selectValue = value && String(value).trim() !== '' ? String(value) : undefined;
 
-  console.log('🔍 [RoleSelector] Renderizando Select com value:', {
-    originalValue: value,
-    valueType: typeof value,
-    selectValue,
-    selectValueType: typeof selectValue,
-    isUndefined: selectValue === undefined,
-    currentRole,
-    rolesAvailable: availableRoles.map(r => r.value),
-    totalRoles: roles.length,
-    filteredRoles: availableRoles.length
-  });
-
   return (
     <Select
       key={`role-select-${selectValue || 'empty'}`}
       value={selectValue}
-      onValueChange={(newValue) => {
-        console.log('🔍 [RoleSelector] onChange chamado:', newValue);
-        onChange(newValue);
-      }}
+      onValueChange={onChange}
       disabled={disabled}
     >
       <SelectTrigger>
@@ -123,23 +104,11 @@ const RoleSelector = ({ value, onChange, disabled }: any) => {
 const PermissoesSelector = ({ value, onChange, disabled }: any) => {
   // ✅ USAR ENDPOINT OTIMIZADO (dados já vêm agrupados do backend)
   const { permissoesPorCategoria, loading, error } = usePermissoesGrouped();
-  
+
   // Fallback para hook normal se necessário
   // const { permissoesPorCategoria, loading, error } = usePermissoes();
-  
+
   const permissoesSelecionadas = value || [];
-  
-  console.log('🔍 [PermissoesSelector] Debug:', { 
-    value, 
-    permissoesSelecionadas, 
-    loading, 
-    error,
-    categorias: Object.keys(permissoesPorCategoria)
-  });
-  
-  if (error) {
-    console.warn('Erro ao carregar permissões:', error);
-  }
   
   const handlePermissaoChange = (permissao: Permissao, checked: boolean) => {
     let novasPermissoes;

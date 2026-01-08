@@ -70,6 +70,8 @@ import { ModalSelecionarUnidade } from '@/components/supervisorio/ModalSeleciona
 import { ModalCriarEquipamentoRapido } from '@/features/supervisorio/components/ModalCriarEquipamentoRapido';
 import type { PlantaResponse } from '@/services/plantas.services';
 import type { Unidade } from '@/services/unidades.services';
+import { equipamentosApi } from '@/services/equipamentos.services';
+import { DiagramasService } from '@/services/diagramas.services';
 
 // Tipos - CORRIGIDOS com interfaces locais caso os imports falhem
 import type { ComponenteDU } from "@/types/dtos/sinoptico-ativo";
@@ -1904,15 +1906,7 @@ export function SinopticoAtivoPage() {
     setErrorDiagrama(null);
 
     try {
-      // OTIMIZAÇÃO: Carregar equipamentos e diagrama em PARALELO
-      const [
-        { equipamentosApi },
-        { DiagramasService }
-      ] = await Promise.all([
-        import('@/services/equipamentos.services'),
-        import('@/services/diagramas.services')
-      ]);
-
+      // ⚡ OTIMIZAÇÃO: Carregar equipamentos e diagrama em PARALELO
       const [equipamentosResponse, diagramaAtivo] = await Promise.all([
         equipamentosApi.findByUnidade(unidadeId, { limit: 100 }),
         DiagramasService.getActiveDiagrama(unidadeId).catch(() => null)
@@ -1942,6 +1936,11 @@ export function SinopticoAtivoPage() {
             // Para BARRAMENTO/PONTO, usar tipo_equipamento direto. Para outros, usar tipo.codigo
             const tipoComponente = eq.tipo_equipamento || eq.tipo?.codigo || 'MEDIDOR';
 
+            const labelOffset = (eq.label_offset || eq.propriedades?.labelOffset) ? {
+              x: (eq.label_offset?.x || eq.propriedades?.labelOffset?.x),
+              y: (eq.label_offset?.y || eq.propriedades?.labelOffset?.y),
+            } : undefined;
+
             return {
               id: `eq-${equipamentoId}`,
               tipo: tipoComponente,
@@ -1953,6 +1952,7 @@ export function SinopticoAtivoPage() {
               },
               rotacao: eq.rotacao || 0,
               label_position: eq.label_position || 'bottom',
+              label_offset: labelOffset,
               status: eq.status || 'NORMAL',
               dados: {
                 equipamento_id: equipamentoId,
@@ -2083,6 +2083,9 @@ export function SinopticoAtivoPage() {
 
   // Estados para drag and drop
   const [isDragging, setIsDragging] = useState(false);
+  const [isDraggingLabel, setIsDraggingLabel] = useState(false);
+  const [labelDragId, setLabelDragId] = useState<string | null>(null);
+  const [labelDragStart, setLabelDragStart] = useState<Position>({ x: 0, y: 0 });
 
   // Hook para configurações do grid (apenas visual)
   const {
@@ -2834,6 +2837,72 @@ export function SinopticoAtivoPage() {
     setComponenteDragId(null);
   }, [isDragging]);
 
+  // === DRAG DE LABELS ===
+  const handleLabelMouseDown = useCallback(
+    (e: React.MouseEvent, componentId: string) => {
+      if (!modoEdicao) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      setLabelDragId(componentId);
+      setIsDraggingLabel(true);
+      setLabelDragStart({ x: e.clientX, y: e.clientY });
+    },
+    [modoEdicao]
+  );
+
+  const handleLabelMouseMove = useCallback(
+    (e: MouseEvent) => {
+      if (!isDraggingLabel || !labelDragId) return;
+
+      const component = componentes.find((c) => c.id === labelDragId);
+      if (!component) return;
+
+      // Calcular delta do movimento
+      const deltaX = e.clientX - labelDragStart.x;
+      const deltaY = e.clientY - labelDragStart.y;
+
+      // Atualizar offset do label
+      setComponentes((prev) =>
+        prev.map((c) =>
+          c.id === labelDragId
+            ? {
+                ...c,
+                label_offset: {
+                  x: (c.label_offset?.x || 0) + deltaX,
+                  y: (c.label_offset?.y || 0) + deltaY,
+                },
+              }
+            : c
+        )
+      );
+
+      // Atualizar posição inicial para o próximo frame
+      setLabelDragStart({ x: e.clientX, y: e.clientY });
+    },
+    [isDraggingLabel, labelDragId, labelDragStart, componentes]
+  );
+
+  const handleLabelMouseUp = useCallback(() => {
+    if (!isDraggingLabel) return;
+
+    setIsDraggingLabel(false);
+    setLabelDragId(null);
+  }, [isDraggingLabel]);
+
+  // Event listeners para drag de label
+  useEffect(() => {
+    if (isDraggingLabel) {
+      document.addEventListener("mousemove", handleLabelMouseMove);
+      document.addEventListener("mouseup", handleLabelMouseUp);
+      return () => {
+        document.removeEventListener("mousemove", handleLabelMouseMove);
+        document.removeEventListener("mouseup", handleLabelMouseUp);
+      };
+    }
+  }, [isDraggingLabel, handleLabelMouseMove, handleLabelMouseUp]);
+
   // Event listeners para drag
   useEffect(() => {
     if (isDragging) {
@@ -3355,15 +3424,21 @@ export function SinopticoAtivoPage() {
       // TODOS os componentes agora têm equipamento_id (incluindo BARRAMENTO/PONTO)
       const equipamentosParaSalvar = componentes
         .filter(comp => comp.dados?.equipamento_id) // Só salvar componentes com equipamento_id
-        .map(comp => ({
-          equipamentoId: comp.dados.equipamento_id,
-          posicao: {
-            x: comp.posicao?.x || 0,
-            y: comp.posicao?.y || 0,
-          },
-          rotacao: comp.rotacao || 0,
-          labelPosition: comp.label_position || 'bottom',
-        }));
+        .map(comp => {
+          return {
+            equipamentoId: comp.dados.equipamento_id,
+            posicao: {
+              x: comp.posicao?.x || 0,
+              y: comp.posicao?.y || 0,
+            },
+            rotacao: comp.rotacao || 0,
+            labelPosition: comp.label_position || 'bottom',
+            labelOffset: comp.label_offset ? {
+              x: comp.label_offset.x,
+              y: comp.label_offset.y,
+            } : undefined,
+          };
+        });
 
       console.log(`📦 Salvando ${equipamentosParaSalvar.length} equipamentos (incluindo virtuais) no diagrama ${diagramaId}...`);
 
@@ -3978,109 +4053,31 @@ export function SinopticoAtivoPage() {
                           </div>
                         </div>
 
-                        {/* Seletor de Posição do Label - Mais compacto */}
+                        {/* Posição do Label - Drag and Drop */}
                         <div className="flex-1">
                           <label className="text-xs text-muted-foreground block mb-1">Posição do Nome</label>
-                          <div className="flex items-center gap-4">
-                            {/* Seletor Visual em Cruz - mais compacto */}
-                            <div className="flex flex-col items-center gap-0.5 p-1.5 border rounded bg-background">
-                              {/* TOP */}
-                              <button
-                                onClick={() => {
-                                  setComponentes(componentes.map(c =>
-                                    c.id === componenteEditando
-                                      ? { ...c, label_position: 'top' }
-                                      : c
-                                  ));
-                                }}
-                                className={`p-1 rounded transition-colors ${
-                                  (componenteSelecionado.label_position || 'top') === 'top'
-                                    ? 'bg-blue-600 text-white'
-                                    : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-gray-600'
-                                }`}
-                                title="Nome acima"
-                              >
-                                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                                  <path d="M10 3l-7 7h14l-7-7z"/>
-                                </svg>
-                              </button>
-
-                              {/* LEFT, CENTER, RIGHT */}
-                              <div className="flex items-center gap-0.5">
-                                <button
-                                  onClick={() => {
-                                    setComponentes(componentes.map(c =>
-                                      c.id === componenteEditando
-                                        ? { ...c, label_position: 'left' }
-                                        : c
-                                    ));
-                                  }}
-                                  className={`p-1 rounded transition-colors ${
-                                    componenteSelecionado.label_position === 'left'
-                                      ? 'bg-blue-600 text-white'
-                                      : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-gray-600'
-                                  }`}
-                                  title="Nome à esquerda"
-                                >
-                                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                                    <path d="M3 10l7-7v14l-7-7z"/>
-                                  </svg>
-                                </button>
-
-                                {/* Centro - representação do equipamento */}
-                                <div className="w-4 h-4 bg-gray-300 dark:bg-gray-600 rounded border border-gray-400 dark:border-gray-500"></div>
-
-                                <button
-                                  onClick={() => {
-                                    setComponentes(componentes.map(c =>
-                                      c.id === componenteEditando
-                                        ? { ...c, label_position: 'right' }
-                                        : c
-                                    ));
-                                  }}
-                                  className={`p-1 rounded transition-colors ${
-                                    componenteSelecionado.label_position === 'right'
-                                      ? 'bg-blue-600 text-white'
-                                      : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-gray-600'
-                                  }`}
-                                  title="Nome à direita"
-                                >
-                                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                                    <path d="M17 10l-7 7V3l7 7z"/>
-                                  </svg>
-                                </button>
-                              </div>
-
-                              {/* BOTTOM */}
-                              <button
-                                onClick={() => {
-                                  setComponentes(componentes.map(c =>
-                                    c.id === componenteEditando
-                                      ? { ...c, label_position: 'bottom' }
-                                      : c
-                                  ));
-                                }}
-                                className={`p-1 rounded transition-colors ${
-                                  componenteSelecionado.label_position === 'bottom'
-                                    ? 'bg-blue-600 text-white'
-                                    : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-gray-600'
-                                }`}
-                                title="Nome abaixo"
-                              >
-                                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                                  <path d="M10 17l7-7H3l7 7z"/>
-                                </svg>
-                              </button>
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 text-xs text-muted-foreground bg-blue-50 dark:bg-blue-950 px-3 py-2 rounded border border-blue-200 dark:border-blue-800">
+                              <Move className="inline h-3 w-3 mr-1 text-blue-600 dark:text-blue-400" />
+                              Clique e arraste o nome no diagrama para reposicioná-lo
                             </div>
-
-                            {/* Texto indicador ao lado */}
-                            <p className="text-xs text-muted-foreground">
-                              {componenteSelecionado.label_position === 'top' && 'Acima'}
-                              {componenteSelecionado.label_position === 'bottom' && 'Abaixo'}
-                              {componenteSelecionado.label_position === 'left' && 'À esquerda'}
-                              {componenteSelecionado.label_position === 'right' && 'À direita'}
-                              {!componenteSelecionado.label_position && 'Acima (padrão)'}
-                            </p>
+                            {componenteSelecionado.label_offset && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setComponentes(componentes.map(c =>
+                                    c.id === componenteEditando
+                                      ? { ...c, label_offset: undefined }
+                                      : c
+                                  ));
+                                }}
+                                className="text-xs"
+                                title="Resetar posição do label"
+                              >
+                                Resetar
+                              </Button>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -4329,7 +4326,14 @@ export function SinopticoAtivoPage() {
                           />
                           {/* Não mostrar nome para junction nodes e pontos */}
                           {componente.tipo !== "JUNCTION" && componente.tipo !== "PONTO" && (
-                            <div className={`${getLabelPositionClasses(componente.label_position)} text-xs font-medium text-muted-foreground bg-background/90 px-2 py-1 rounded whitespace-nowrap border`}>
+                            <div
+                              className={`${getLabelPositionClasses(componente.label_position)} text-xs font-medium text-muted-foreground bg-background/90 px-2 py-1 rounded whitespace-nowrap border ${modoEdicao ? 'cursor-move hover:ring-2 hover:ring-blue-400' : ''}`}
+                              style={componente.label_offset ? {
+                                transform: `translate(calc(-50% + ${componente.label_offset.x}px), calc(-50% + ${componente.label_offset.y}px))`
+                              } : undefined}
+                              onMouseDown={(e) => modoEdicao && handleLabelMouseDown(e, componente.id)}
+                              title={modoEdicao ? "Arraste para reposicionar o label" : undefined}
+                            >
                               {componente.tag || componente.nome}
                             </div>
                           )}

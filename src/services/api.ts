@@ -2,7 +2,7 @@ import axios, { AxiosError, AxiosResponse } from 'axios';
 
 // Configuração base da API
 const api = axios.create({
-  baseURL: 'http://localhost:3000', // Ajuste conforme sua configuração
+  baseURL: import.meta.env.VITE_WEBSOCKET_URL || 'http://localhost:3000',
   timeout: 30000, // Aumentar timeout para 30s
   headers: {
     'Content-Type': 'application/json',

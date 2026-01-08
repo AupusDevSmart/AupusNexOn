@@ -55,6 +55,8 @@ export interface ComponenteDU {
   posicao: { x: number; y: number };
   status: "NORMAL" | "ALARME" | "FALHA";
   dados: any; // Dados específicos do componente
+  label_position?: string; // Posição do label: top, bottom, left, right
+  label_offset?: { x: number; y: number }; // Offset customizado em pixels para posicionamento livre
 }
 
 // Interfaces para modais específicos

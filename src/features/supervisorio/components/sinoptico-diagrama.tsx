@@ -27,6 +27,7 @@ interface ComponenteDU {
   status: string;
   dados: any;
   label_position?: string;
+  label_offset?: { x: number; y: number };
 }
 
 // Props do componente - ADICIONADO modoEdicao e seleção múltipla
@@ -1457,6 +1458,9 @@ export function SinopticoDiagrama({
         ? "opacity-100"
         : "opacity-80"
     }`}
+    style={componente.label_offset ? {
+      transform: `translate(calc(-50% + ${componente.label_offset.x}px), calc(-50% + ${componente.label_offset.y}px))`
+    } : undefined}
   >
     {componente.tag || componente.dados?.tag || componente.nome}
   </div>
