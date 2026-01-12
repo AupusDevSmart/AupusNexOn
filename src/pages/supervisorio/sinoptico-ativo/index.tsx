@@ -3425,8 +3425,16 @@ export function SinopticoAtivoPage() {
       const equipamentosParaSalvar = componentes
         .filter(comp => comp.dados?.equipamento_id) // Só salvar componentes com equipamento_id
         .map(comp => {
+          // ✅ CRÍTICO: SEMPRE fazer trim do equipamento_id para evitar erros de "Equipamento não encontrado"
+          const equipamentoId = comp.dados.equipamento_id?.trim();
+
+          if (!equipamentoId) {
+            console.warn('⚠️ Componente sem equipamento_id válido:', comp);
+            return null;
+          }
+
           return {
-            equipamentoId: comp.dados.equipamento_id,
+            equipamentoId: equipamentoId,
             posicao: {
               x: comp.posicao?.x || 0,
               y: comp.posicao?.y || 0,
@@ -3438,9 +3446,18 @@ export function SinopticoAtivoPage() {
               y: comp.label_offset.y,
             } : undefined,
           };
-        });
+        })
+        .filter(Boolean); // Remove nulls
 
       console.log(`📦 Salvando ${equipamentosParaSalvar.length} equipamentos (incluindo virtuais) no diagrama ${diagramaId}...`);
+
+      // Log detalhado dos IDs para debug
+      if (equipamentosParaSalvar.length > 0 && import.meta.env.DEV) {
+        console.log('📋 IDs dos equipamentos a salvar:');
+        equipamentosParaSalvar.forEach((eq: any, idx: number) => {
+          console.log(`   [${idx + 1}] ${eq.equipamentoId}`);
+        });
+      }
 
       // ✅ OTIMIZAÇÃO: Remover equipamentos e conexões antigas EM PARALELO
       console.log('🧹 [PARALELO] Limpando equipamentos e conexões antigas...');
@@ -3482,7 +3499,8 @@ export function SinopticoAtivoPage() {
 
           const comp = componentes.find(c => c.id === visualId);
           if (comp?.dados?.equipamento_id) {
-            return comp.dados.equipamento_id;
+            // ✅ CRÍTICO: SEMPRE fazer trim do equipamento_id para evitar erros de "Equipamento não encontrado"
+            return comp.dados.equipamento_id.trim();
           }
 
           // Se não encontrou o componente, tenta extrair do ID visual

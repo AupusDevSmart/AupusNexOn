@@ -298,12 +298,17 @@ class DiagramasServiceClass {
    */
   async addEquipamentosBulk(diagramaId: string, equipamentos: AddEquipamentoToDiagramaDto[]): Promise<any> {
     try {
-      // console.log(`📡 [DiagramasService] POST /diagramas/${diagramaId}/equipamentos/bulk`);
-      // console.log(`   📦 Adding ${equipamentos.length} equipamentos`);
+      console.log(`📡 [DiagramasService] POST /diagramas/${diagramaId}/equipamentos/bulk`);
+      console.log(`   📦 Adding ${equipamentos.length} equipamentos`);
+
+      // Aumentar timeout para 2 minutos (120 segundos) para operações em lote grandes
       const response = await api.post(`/diagramas/${diagramaId}/equipamentos/bulk`, {
         equipamentos,
+      }, {
+        timeout: 120000, // 2 minutos
       });
-      // console.log('✅ [DiagramasService] Bulk equipamentos added:', response.data);
+
+      console.log('✅ [DiagramasService] Bulk equipamentos added:', response.data);
       return response.data;
     } catch (error: any) {
       console.error(`❌ [DiagramasService] Error adding bulk equipamentos:`, error);
