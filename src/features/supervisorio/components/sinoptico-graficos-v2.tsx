@@ -501,7 +501,7 @@ export function SinopticoGraficosV2({
 
     for (let h = 0; h <= horaFinal; h++) {
       const maxMinutos = (h === horaFinal) ? minutoFinal : 59;
-      for (let m = 0; m <= maxMinutos; m++) {
+      for (let m = 0; m <= maxMinutos; m += 5) { // ✅ De 5 em 5 minutos
         const timestamp = new Date(hoje);
         timestamp.setHours(h, m, 0, 0);
         todosOsHorarios.push({
@@ -522,11 +522,13 @@ export function SinopticoGraficosV2({
         new Date(item.timestamp).toLocaleTimeString("pt-BR", {
           hour: "2-digit",
           minute: "2-digit",
+          timeZone: 'America/Sao_Paulo',
         }),
         {
           hora: new Date(item.timestamp).toLocaleTimeString("pt-BR", {
             hour: "2-digit",
             minute: "2-digit",
+            timeZone: 'America/Sao_Paulo',
           }),
           tensaoA: item.tensaoA,
           tensaoB: item.tensaoB,
@@ -553,7 +555,7 @@ export function SinopticoGraficosV2({
 
     for (let h = 0; h <= horaFinal; h++) {
       const maxMinutos = (h === horaFinal) ? minutoFinal : 59;
-      for (let m = 0; m <= maxMinutos; m++) {
+      for (let m = 0; m <= maxMinutos; m += 5) { // ✅ De 5 em 5 minutos
         const timestamp = new Date(hoje);
         timestamp.setHours(h, m, 0, 0);
         todosOsHorarios.push({
@@ -574,11 +576,13 @@ export function SinopticoGraficosV2({
         new Date(item.timestamp).toLocaleTimeString("pt-BR", {
           hour: "2-digit",
           minute: "2-digit",
+          timeZone: 'America/Sao_Paulo',
         }),
         {
           hora: new Date(item.timestamp).toLocaleTimeString("pt-BR", {
             hour: "2-digit",
             minute: "2-digit",
+            timeZone: 'America/Sao_Paulo',
           }),
           fatorPotenciaA: item.fatorPotenciaA,
           fatorPotenciaB: item.fatorPotenciaB,
@@ -951,8 +955,8 @@ export function SinopticoGraficosV2({
                     name="Tensão Fase A"
                     stroke="#ef4444"
                     strokeWidth={2}
-                    dot={false}
-                    activeDot={{ r: 4 }}
+                    dot={{ r: 2 }}
+                    activeDot={{ r: 5 }}
                     connectNulls={true}
                   />
                 )}
@@ -963,8 +967,8 @@ export function SinopticoGraficosV2({
                     name="Tensão Fase B"
                     stroke="#ffffff"
                     strokeWidth={2}
-                    dot={false}
-                    activeDot={{ r: 4 }}
+                    dot={{ r: 2 }}
+                    activeDot={{ r: 5 }}
                     connectNulls={true}
                   />
                 )}
@@ -975,8 +979,8 @@ export function SinopticoGraficosV2({
                     name="Tensão Fase C"
                     stroke="#3b82f6"
                     strokeWidth={2}
-                    dot={false}
-                    activeDot={{ r: 4 }}
+                    dot={{ r: 2 }}
+                    activeDot={{ r: 5 }}
                     connectNulls={true}
                   />
                 )}
@@ -1131,8 +1135,8 @@ export function SinopticoGraficosV2({
                     name="FP Fase A"
                     stroke="#ef4444"
                     strokeWidth={2}
-                    dot={false}
-                    activeDot={{ r: 4 }}
+                    dot={{ r: 2 }}
+                    activeDot={{ r: 5 }}
                     connectNulls={true}
                   />
                 )}
@@ -1143,8 +1147,8 @@ export function SinopticoGraficosV2({
                     name="FP Fase B"
                     stroke="#ffffff"
                     strokeWidth={2}
-                    dot={false}
-                    activeDot={{ r: 4 }}
+                    dot={{ r: 2 }}
+                    activeDot={{ r: 5 }}
                     connectNulls={true}
                   />
                 )}
@@ -1155,8 +1159,8 @@ export function SinopticoGraficosV2({
                     name="FP Fase C"
                     stroke="#3b82f6"
                     strokeWidth={2}
-                    dot={false}
-                    activeDot={{ r: 4 }}
+                    dot={{ r: 2 }}
+                    activeDot={{ r: 5 }}
                     connectNulls={true}
                   />
                 )}
@@ -1590,8 +1594,8 @@ export function SinopticoGraficosV2({
                       name="FP Fase A"
                       stroke="#ef4444"
                       strokeWidth={2}
-                      dot={false}
-                      activeDot={{ r: 4 }}
+                      dot={{ r: 2 }}
+                      activeDot={{ r: 5 }}
                     />
                   )}
                   {fasesFP.B && (
@@ -1601,8 +1605,8 @@ export function SinopticoGraficosV2({
                       name="FP Fase B"
                       stroke="#ffffff"
                       strokeWidth={2}
-                      dot={false}
-                      activeDot={{ r: 4 }}
+                      dot={{ r: 2 }}
+                      activeDot={{ r: 5 }}
                     />
                   )}
                   {fasesFP.C && (
@@ -1612,8 +1616,8 @@ export function SinopticoGraficosV2({
                       name="FP Fase C"
                       stroke="#3b82f6"
                       strokeWidth={2}
-                      dot={false}
-                      activeDot={{ r: 4 }}
+                      dot={{ r: 2 }}
+                      activeDot={{ r: 5 }}
                     />
                   )}
 
