@@ -39,6 +39,7 @@ export interface UnidadeResumo {
   };
   cidade?: string;
   estado?: string;
+  potenciaInstalada: number; // ✅ NOVO: Potência instalada/cadastrada da unidade (kW)
   metricas: {
     potenciaAtual: number;
     energiaHoje: number;

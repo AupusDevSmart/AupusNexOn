@@ -538,8 +538,9 @@ export function DashboardPage() {
                               }
 
                               return ufvs.map((unidade) => {
-                                const potenciaPercent = unidade.metricas.potenciaAtual > 0
-                                  ? Math.round((unidade.metricas.potenciaAtual / (unidade.metricas.potenciaAtual * 1.1)) * 100)
+                                // ✅ CORRIGIDO: Calcular % baseado na potência instalada cadastrada
+                                const potenciaPercent = unidade.potenciaInstalada > 0
+                                  ? Math.round((unidade.metricas.potenciaAtual / unidade.potenciaInstalada) * 100)
                                   : 0;
                                 const fatorCarga = unidade.metricas.fatorPotencia || 0;
                                 const hasTrip = unidade.status === 'OFFLINE' || unidade.status === 'FALHA';
@@ -637,7 +638,7 @@ export function DashboardPage() {
                           <thead>
                             <tr className="border-b">
                               <th className="text-left py-2 px-2 font-medium">Nome</th>
-                              <th className="text-center py-2 px-2 font-medium">Consumo</th>
+                              <th className="text-center py-2 px-2 font-medium">Potência</th>
                               <th className="text-center py-2 px-2 font-medium">Potência Inst.</th>
                               <th className="text-center py-2 px-2 font-medium">FC</th>
                               <th className="text-center py-2 px-2 font-medium">Clima</th>
@@ -665,8 +666,9 @@ export function DashboardPage() {
                               }
 
                               return cargas.map((unidade) => {
-                                const consumoPercent = unidade.metricas.potenciaAtual > 0
-                                  ? Math.round((unidade.metricas.potenciaAtual / (unidade.metricas.potenciaAtual * 1.1)) * 100)
+                                // ✅ CORRIGIDO: Calcular % baseado na potência instalada cadastrada
+                                const consumoPercent = unidade.potenciaInstalada > 0
+                                  ? Math.round((unidade.metricas.potenciaAtual / unidade.potenciaInstalada) * 100)
                                   : 0;
                                 const fatorCarga = unidade.metricas.fatorPotencia || 0;
                                 const hasTrip = unidade.status === 'OFFLINE' || unidade.status === 'FALHA';

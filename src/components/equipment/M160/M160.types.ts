@@ -27,6 +27,7 @@ export interface M160Reading {
   powerFactor?: number; // FPA
   powerFactorB?: number; // FPB
   powerFactorC?: number; // FPC
+  powerFactorTotal?: number; // FP Total (Pt/St)
   thd?: {
     voltage?: number; // THD de tensão (%)
     current?: number; // THD de corrente (%)

@@ -33,8 +33,11 @@ export function useEquipamentoMqttData(equipamentoId: string | null) {
       const response = await equipamentosDadosService.getLatest(cleanId);
       console.log('✅ [useEquipamentoMqttData] Resposta completa:', response);
       console.log('✅ [useEquipamentoMqttData] Dados extraídos:', response.data);
-      setData(response.data || response);
-      setLastUpdate(new Date());
+      const responseData = response.data || response;
+      setData(responseData);
+      // ✅ CORREÇÃO: Usar timestamp_dados real ao invés da hora atual
+      const timestampDados = responseData?.dado?.timestamp_dados;
+      setLastUpdate(timestampDados ? new Date(timestampDados) : new Date());
     } catch (err: any) {
       console.error('❌ [useEquipamentoMqttData] Erro ao buscar dados:', err);
       setError(err.message || 'Erro ao buscar dados do equipamento');
@@ -113,10 +116,11 @@ export function useEquipamentoMqttData(equipamentoId: string | null) {
       console.log('📡 [WebSocket] Match?', event.equipamentoId === cleanId);
 
       if (event.equipamentoId === cleanId) {
-        const now = new Date();
+        // ✅ CORREÇÃO: Usar timestamp do evento ao invés da hora atual
+        const timestampEvento = event.timestamp ? new Date(event.timestamp) : new Date();
         console.log('✅ [WebSocket] Match confirmado! Atualizando dados...');
         console.log('✅ [WebSocket] Timestamp do evento:', event.timestamp);
-        console.log('✅ [WebSocket] Hora atual:', now.toISOString());
+        console.log('✅ [WebSocket] Timestamp convertido:', timestampEvento.toISOString());
 
         // Atualizar apenas o dado, mantendo as informações do equipamento
         setData((prevData) => {
@@ -139,8 +143,8 @@ export function useEquipamentoMqttData(equipamentoId: string | null) {
           return novosDados;
         });
 
-        setLastUpdate(now);
-        console.log('✅ [WebSocket] Dados atualizados em tempo real! LastUpdate:', now.toLocaleTimeString());
+        setLastUpdate(timestampEvento);
+        console.log('✅ [WebSocket] Dados atualizados em tempo real! LastUpdate:', timestampEvento.toLocaleTimeString());
       } else {
         console.log('⚠️ [WebSocket] ID não corresponde, ignorando evento');
       }

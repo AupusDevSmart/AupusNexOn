@@ -3,6 +3,7 @@ import type { M160Reading } from '@/components/equipment/M160/M160.types';
 import M160Multimeter from '@/components/equipment/M160/M160Multimeter';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
@@ -18,7 +19,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { DateTimeInput } from '@/components/ui/datetime-input';
-import { Gauge, WifiOff, Loader2, DollarSign, Activity, Calendar, RefreshCw } from 'lucide-react';
+import { Gauge, WifiOff, Loader2, DollarSign, Activity, Calendar, RefreshCw, Zap } from 'lucide-react';
 import { useEquipamentoMqttData } from '@/hooks/useEquipamentoMqttData';
 import { useCustosEnergia } from '@/hooks/useCustosEnergia';
 import type { PeriodoTipo } from '@/types/dtos/custos-energia-dto';
@@ -65,7 +66,39 @@ export function M160Modal({ isOpen, onClose, componenteData }: M160ModalProps) {
     };
   }, [mqttResponse]);
 
-  const isConnected = !!mqttData && !loading;
+  // ============================================
+  // DETECÇÃO DE DADOS DESATUALIZADOS
+  // ============================================
+  const dataStatus = useMemo(() => {
+    if (!lastUpdate) return { isConnected: false, isStale: false, minutesAgo: 0, hoursAgo: 0, timeText: '' };
+
+    const now = Date.now();
+    const dataAge = now - lastUpdate.getTime();
+    const minutesAgo = Math.floor(dataAge / 60000);
+    const hoursAgo = Math.floor(minutesAgo / 60);
+
+    // Considera desatualizado se > 5 minutos
+    const isStale = minutesAgo > 5;
+    const isConnected = !isStale && !loading;
+
+    // Formatar texto do tempo: mostrar em horas se >= 60 minutos
+    let timeText = '';
+    if (minutesAgo < 60) {
+      timeText = `${minutesAgo}min atrás`;
+    } else if (hoursAgo === 1) {
+      timeText = `1h atrás`;
+    } else if (hoursAgo < 24) {
+      const remainingMinutes = minutesAgo % 60;
+      timeText = remainingMinutes > 0 ? `${hoursAgo}h${remainingMinutes}min atrás` : `${hoursAgo}h atrás`;
+    } else {
+      const daysAgo = Math.floor(hoursAgo / 24);
+      timeText = daysAgo === 1 ? `1 dia atrás` : `${daysAgo} dias atrás`;
+    }
+
+    return { isConnected, isStale, minutesAgo, hoursAgo, timeText };
+  }, [lastUpdate, loading]);
+
+  const isConnected = dataStatus.isConnected;
 
   // ============================================
   // DADOS DE CUSTOS
@@ -110,22 +143,24 @@ export function M160Modal({ isOpen, onClose, componenteData }: M160ModalProps) {
 
     const d = mqttData.payload.Dados;
 
-    // Calcular potências totais (Pa, Pb, Pc em Watts)
+    // ✅ CORREÇÃO CRÍTICA: M160 fornece Pt (ativa), Qt (reativa) e St (aparente) diretamente!
+    // Não precisa calcular - usar os valores totais que já vêm no JSON
     const Pa = d.Pa || 0;
     const Pb = d.Pb || 0;
     const Pc = d.Pc || 0;
-    const potenciaAtivaW = Pa + Pb + Pc; // Total em Watts
-    const potenciaAtivaKw = potenciaAtivaW / 1000; // Converter para kW
 
-    // ✅ NOVO: Usar potencia_kw do payload principal se disponível (mais preciso)
-    const potenciaReal = mqttData.payload.potencia_kw ?? potenciaAtivaKw;
+    // Potências TOTAIS do M160 (já agregadas)
+    const potenciaAtivaW = d.Pt || 0;        // Pt = Potência ativa total (W)
+    const potenciaReativaVAr = d.Qt || 0;    // Qt = Potência reativa total (VAr)
+    const potenciaAparenteVA = d.St || 0;    // St = Potência aparente total (VA)
 
-    // Calcular potência aparente usando fator de potência médio
-    const fpMedio = ((d.FPA || 0) + (d.FPB || 0) + (d.FPC || 0)) / 3;
-    const potenciaAparente = fpMedio !== 0 ? potenciaReal / fpMedio : 0;
+    // Converter para kW, kvar, kva
+    const potenciaAtivaKw = potenciaAtivaW / 1000;
+    const potenciaReativaKvar = potenciaReativaVAr / 1000;
+    const potenciaAparenteKva = potenciaAparenteVA / 1000;
 
-    // Calcular potência reativa usando teorema de Pitágoras (S² = P² + Q²)
-    const potenciaReativa = Math.sqrt(Math.max(0, Math.pow(potenciaAparente, 2) - Math.pow(potenciaReal, 2)));
+    // ✅ Calcular Fator de Potência Total (Pt/St)
+    const fatorPotenciaTotal = potenciaAparenteVA > 0 ? potenciaAtivaW / potenciaAparenteVA : 0;
 
     return {
       voltage: {
@@ -141,11 +176,11 @@ export function M160Modal({ isOpen, onClose, componenteData }: M160ModalProps) {
         N: 0, // Corrente de neutro não disponível no M160
       },
       power: {
-        active: potenciaReal, // kW
-        reactive: potenciaReativa, // kVAr (calculado)
-        apparent: potenciaAparente, // kVA (calculado)
-        import: potenciaReal >= 0 ? potenciaReal : 0, // kW (consumo)
-        export: potenciaReal < 0 ? Math.abs(potenciaReal) : 0, // kW (geração)
+        active: potenciaAtivaKw, // kW (Pt convertido)
+        reactive: potenciaReativaKvar, // kvar (Qt convertido)
+        apparent: potenciaAparenteKva, // kva (St convertido)
+        import: potenciaAtivaKw >= 0 ? potenciaAtivaKw : 0, // kW (consumo)
+        export: potenciaAtivaKw < 0 ? Math.abs(potenciaAtivaKw) : 0, // kW (geração)
         L1: Pa, // Potência fase A (W)
         L2: Pb, // Potência fase B (W)
         L3: Pc, // Potência fase C (W)
@@ -154,15 +189,16 @@ export function M160Modal({ isOpen, onClose, componenteData }: M160ModalProps) {
       powerFactor: d.FPA || 0,
       powerFactorB: d.FPB || 0,
       powerFactorC: d.FPC || 0,
+      powerFactorTotal: fatorPotenciaTotal, // ✅ FP Total = Pt/St
       thd: {
         voltage: 0, // THD não disponível no M160
         current: 0  // THD não disponível no M160
       },
       energy: {
-        activeImport: d.phf || mqttData.payload.energia_kwh || 0, // ✅ CORRIGIDO: PHF ou energia_kwh
-        activeExport: 0, // Não disponível no M160
-        reactiveImport: 0, // Não disponível no M160
-        reactiveExport: 0, // Não disponível no M160
+        activeImport: d.phf || mqttData.payload.energia_kwh || 0, // ✅ PHF ou energia_kwh
+        activeExport: d.phr || 0, // ✅ Energia ativa exportada
+        reactiveImport: d.qhfi || 0, // ✅ Energia reativa indutiva
+        reactiveExport: d.qhfr || 0, // ✅ Energia reativa capacitiva
       },
     };
   }, [mqttData]);
@@ -180,8 +216,12 @@ export function M160Modal({ isOpen, onClose, componenteData }: M160ModalProps) {
               <Gauge className="h-4 w-4" />
               {componenteData?.nome || 'M160'} - Multimedidor 4Q
             </div>
-            {/* Indicador de Status de Conexão */}
-            {isConnected ? (
+            {/* Indicador de Status de Conexão com Detecção de Dados Desatualizados */}
+            {dataStatus.isStale ? (
+              <Badge variant="destructive" className="text-[10px] px-2 py-0">
+                ⚠️ Desatualizado ({dataStatus.timeText})
+              </Badge>
+            ) : isConnected ? (
               <Badge variant="outline" className="text-[10px] px-2 py-0">
                 🟢 Tempo Real
               </Badge>
@@ -216,7 +256,7 @@ export function M160Modal({ isOpen, onClose, componenteData }: M160ModalProps) {
                 <span className="text-sm font-medium">Dados em Tempo Real</span>
                 {lastUpdate && (
                   <span className="text-xs text-muted-foreground">
-                    • Atualizado às {lastUpdate.toLocaleTimeString('pt-BR')}
+                    • Atualizado às {lastUpdate.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' })}
                   </span>
                 )}
               </div>
@@ -230,6 +270,21 @@ export function M160Modal({ isOpen, onClose, componenteData }: M160ModalProps) {
               </Button>
             </div>
 
+            {/* Alerta de Dados Desatualizados */}
+            {dataStatus.isStale && !error && (
+              <div className="p-3 border border-amber-500/50 rounded-md bg-amber-500/10">
+                <p className="text-sm font-semibold text-amber-600 dark:text-amber-500">
+                  ⚠️ Dados desatualizados há {dataStatus.timeText.replace(' atrás', '')}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Última atualização: {lastUpdate?.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) || 'N/A'}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Os dados em tempo real estão sendo mostrados da última leitura. Verifique a conexão MQTT.
+                </p>
+              </div>
+            )}
+
             {/* Mostrar erro se houver */}
             {error && (
               <div className="bg-red-500/10 border border-red-500/50 rounded-md p-3">
@@ -240,30 +295,207 @@ export function M160Modal({ isOpen, onClose, componenteData }: M160ModalProps) {
               </div>
             )}
 
-            <div className="flex justify-center items-center py-6">
-              <div className="bg-gray-900 p-8 rounded-lg shadow-lg">
-                <M160Multimeter
-                  id="m160-modal"
-                  name={componenteData?.nome || 'M160'}
-                  readings={dadosM160}
-                  status={isConnected ? 'online' : 'offline'}
-                  displayMode="all"
-                  scale={1.0}
-                  navigation={{
-                    enableManualNavigation: true,
-                    showDisplayLabel: true,
-                    showPositionIndicator: true,
-                    allowAutoRotationToggle: false,
-                  }}
-                  onConfig={() => console.log('Configurar M160')}
-                />
+            {/* Grid de Cards com Dados - Minimalista */}
+            <div className={`grid gap-3 ${dataStatus.isStale ? 'opacity-60' : ''}`}>
+              {/* Card: Tensões e Correntes Trifásicas */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    <Activity className="h-4 w-4" />
+                    Grandezas Elétricas
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {/* Tensões */}
+                  <div className="space-y-2">
+                    <div className="text-xs font-medium text-muted-foreground">Tensões (V)</div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="text-center p-2 border rounded-md">
+                        <div className="text-lg font-semibold">{dadosM160.voltage.L1.toFixed(1)}</div>
+                        <div className="text-xs text-muted-foreground">Fase A</div>
+                      </div>
+                      <div className="text-center p-2 border rounded-md">
+                        <div className="text-lg font-semibold">{dadosM160.voltage.L2.toFixed(1)}</div>
+                        <div className="text-xs text-muted-foreground">Fase B</div>
+                      </div>
+                      <div className="text-center p-2 border rounded-md">
+                        <div className="text-lg font-semibold">{dadosM160.voltage.L3.toFixed(1)}</div>
+                        <div className="text-xs text-muted-foreground">Fase C</div>
+                      </div>
+                    </div>
+                  </div>
 
-                <div className="mt-6 text-center">
-                  <Badge variant="outline" className="text-xs">
-                    Display Interativo com Navegação
-                  </Badge>
-                </div>
-              </div>
+                  {/* Correntes */}
+                  <div className="space-y-2">
+                    <div className="text-xs font-medium text-muted-foreground">Correntes (A)</div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="text-center p-2 border rounded-md">
+                        <div className="text-lg font-semibold">{dadosM160.current.L1.toFixed(1)}</div>
+                        <div className="text-xs text-muted-foreground">Fase A</div>
+                      </div>
+                      <div className="text-center p-2 border rounded-md">
+                        <div className="text-lg font-semibold">{dadosM160.current.L2.toFixed(1)}</div>
+                        <div className="text-xs text-muted-foreground">Fase B</div>
+                      </div>
+                      <div className="text-center p-2 border rounded-md">
+                        <div className="text-lg font-semibold">{dadosM160.current.L3.toFixed(1)}</div>
+                        <div className="text-xs text-muted-foreground">Fase C</div>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Card: Potências */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    <Gauge className="h-4 w-4" />
+                    Potências
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="space-y-1">
+                      <div className="text-xs text-muted-foreground">Ativa</div>
+                      <div className="text-xl font-semibold">{dadosM160.power.active.toFixed(2)}</div>
+                      <div className="text-xs text-muted-foreground">kW</div>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-xs text-muted-foreground">Reativa</div>
+                      <div className="text-xl font-semibold">{dadosM160.power.reactive.toFixed(2)}</div>
+                      <div className="text-xs text-muted-foreground">kvar</div>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-xs text-muted-foreground">Aparente</div>
+                      <div className="text-xl font-semibold">{dadosM160.power.apparent.toFixed(2)}</div>
+                      <div className="text-xs text-muted-foreground">kva</div>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-xs text-muted-foreground">Frequência</div>
+                      <div className="text-xl font-semibold">{dadosM160.frequency.toFixed(1)}</div>
+                      <div className="text-xs text-muted-foreground">Hz</div>
+                    </div>
+                  </div>
+
+                  {/* Potências por Fase */}
+                  <div className="pt-3 border-t space-y-2">
+                    <div className="text-xs font-medium text-muted-foreground">Potência Ativa por Fase (W)</div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="text-center p-2 bg-muted/50 rounded-md">
+                        <div className="text-base font-semibold">{dadosM160.power.L1?.toFixed(0) || 0}</div>
+                        <div className="text-xs text-muted-foreground">Fase A</div>
+                      </div>
+                      <div className="text-center p-2 bg-muted/50 rounded-md">
+                        <div className="text-base font-semibold">{dadosM160.power.L2?.toFixed(0) || 0}</div>
+                        <div className="text-xs text-muted-foreground">Fase B</div>
+                      </div>
+                      <div className="text-center p-2 bg-muted/50 rounded-md">
+                        <div className="text-base font-semibold">{dadosM160.power.L3?.toFixed(0) || 0}</div>
+                        <div className="text-xs text-muted-foreground">Fase C</div>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Card: Fatores de Potência */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    <Activity className="h-4 w-4" />
+                    Fator de Potência
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="text-center space-y-2">
+                      <div className="text-2xl font-semibold">{dadosM160.powerFactor.toFixed(3)}</div>
+                      <div className="text-xs text-muted-foreground">Fase A</div>
+                      <Badge variant={dadosM160.powerFactor < 0.92 ? 'destructive' : 'outline'} className="text-xs">
+                        {dadosM160.powerFactor < 0.92 ? 'Baixo' : 'OK'}
+                      </Badge>
+                    </div>
+                    <div className="text-center space-y-2">
+                      <div className="text-2xl font-semibold">{dadosM160.powerFactorB?.toFixed(3) || '0.000'}</div>
+                      <div className="text-xs text-muted-foreground">Fase B</div>
+                      <Badge
+                        variant={(dadosM160.powerFactorB || 0) < 0.92 ? 'destructive' : 'outline'}
+                        className="text-xs"
+                      >
+                        {(dadosM160.powerFactorB || 0) < 0.92 ? 'Baixo' : 'OK'}
+                      </Badge>
+                    </div>
+                    <div className="text-center space-y-2">
+                      <div className="text-2xl font-semibold">{dadosM160.powerFactorC?.toFixed(3) || '0.000'}</div>
+                      <div className="text-xs text-muted-foreground">Fase C</div>
+                      <Badge
+                        variant={(dadosM160.powerFactorC || 0) < 0.92 ? 'destructive' : 'outline'}
+                        className="text-xs"
+                      >
+                        {(dadosM160.powerFactorC || 0) < 0.92 ? 'Baixo' : 'OK'}
+                      </Badge>
+                    </div>
+                    <div className="text-center space-y-2">
+                      <div className="text-2xl font-semibold">{dadosM160.powerFactorTotal?.toFixed(3) || '0.000'}</div>
+                      <div className="text-xs text-muted-foreground">Total (Pt/St)</div>
+                      <Badge
+                        variant={(dadosM160.powerFactorTotal || 0) < 0.92 ? 'destructive' : 'outline'}
+                        className="text-xs"
+                      >
+                        {(dadosM160.powerFactorTotal || 0) < 0.92 ? 'Baixo' : 'OK'}
+                      </Badge>
+                    </div>
+                  </div>
+
+                  {/* Alerta de FP Baixo - Minimalista */}
+                  {(dadosM160.powerFactor < 0.92 ||
+                    (dadosM160.powerFactorB || 0) < 0.92 ||
+                    (dadosM160.powerFactorC || 0) < 0.92 ||
+                    (dadosM160.powerFactorTotal || 0) < 0.92) && (
+                    <div className="mt-3 p-2 border border-destructive/50 rounded-md bg-destructive/5">
+                      <p className="text-xs font-medium">⚠️ FP abaixo de 0.92</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Risco de multa. Considere correção com capacitores.
+                      </p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Card: Energia Acumulada */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    <Zap className="h-4 w-4" />
+                    Energia Acumulada
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="space-y-1">
+                      <div className="text-xs text-muted-foreground">Importada</div>
+                      <div className="text-xl font-semibold">{dadosM160.energy.activeImport.toFixed(2)}</div>
+                      <div className="text-xs text-muted-foreground">kWh</div>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-xs text-muted-foreground">Exportada</div>
+                      <div className="text-xl font-semibold">{dadosM160.energy.activeExport.toFixed(2)}</div>
+                      <div className="text-xs text-muted-foreground">kWh</div>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-xs text-muted-foreground">Reativa Ind.</div>
+                      <div className="text-xl font-semibold">{dadosM160.energy.reactiveImport.toFixed(2)}</div>
+                      <div className="text-xs text-muted-foreground">kvarh</div>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-xs text-muted-foreground">Reativa Cap.</div>
+                      <div className="text-xl font-semibold">{dadosM160.energy.reactiveExport.toFixed(2)}</div>
+                      <div className="text-xs text-muted-foreground">kvarh</div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
           </TabsContent>
 
