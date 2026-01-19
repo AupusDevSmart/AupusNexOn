@@ -4106,8 +4106,8 @@ export function SinopticoAtivoPage() {
             </div>
           )}
 
-          {/* Layout Principal */}
-          <div className="w-full">
+          {/* Layout Principal - OTIMIZADO COM 100VH */}
+          <div className="w-full h-[calc(100vh-120px)] flex flex-col">
             {!modoEdicao && (() => {
               const valorContratadoReal = unidadeAtual?.demandaGeracao || 2300;
               // console.log('📊 [GRÁFICO DEMANDA] Renderizando com:', {
@@ -4125,10 +4125,10 @@ export function SinopticoAtivoPage() {
               );
 
               return (
-              <div className={`grid grid-cols-1 ${temGraficosVisiveis ? 'xl:grid-cols-3' : ''} gap-6`}>
-                {/* Gráficos - Painel Lateral (1/3 da largura em telas grandes) - Só renderiza se tiver gráficos */}
+              <div className={`grid grid-cols-1 ${temGraficosVisiveis ? 'xl:grid-cols-3' : ''} gap-4 h-full overflow-hidden`}>
+                {/* Gráficos - Painel Lateral (1/3 da largura em telas grandes) - Scrollável internamente */}
                 {temGraficosVisiveis && (
-                <div className="xl:col-span-1 flex flex-col gap-4">
+                <div className="xl:col-span-1 flex flex-col gap-4 h-full overflow-y-auto overflow-x-hidden pr-2">
                   <SinopticoGraficosV2
                     unidadeId={unidadeId}
                     dadosPotencia={
@@ -4147,14 +4147,14 @@ export function SinopticoAtivoPage() {
                 </div>
                 )}
 
-                {/* Diagrama Unifilar - MODO VISUALIZAÇÃO - Adapta largura baseado em gráficos visíveis */}
-                <div className={temGraficosVisiveis ? "xl:col-span-2 flex" : "flex"}>
+                {/* Diagrama Unifilar - MODO VISUALIZAÇÃO - Ocupa altura total disponível */}
+                <div className={`${temGraficosVisiveis ? "xl:col-span-2" : ""} flex h-full`}>
                   <Card
                     ref={diagramCardRef}
-                    className={`flex flex-col w-full min-h-[900px] overflow-visible ${
+                    className={`flex flex-col w-full overflow-hidden ${
                       diagramaFullscreen
                         ? 'fixed inset-0 z-50 m-0 rounded-none border-0 !bg-slate-50 dark:!bg-slate-900'
-                        : 'bg-slate-50 dark:bg-slate-900'
+                        : 'bg-slate-50 dark:bg-slate-900 h-full'
                     }`}
                   >
                     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 pb-2 border-b flex-shrink-0 bg-slate-50 dark:bg-slate-900 gap-3">
@@ -4206,7 +4206,7 @@ export function SinopticoAtivoPage() {
 
                     <div
                       className={`flex-1 relative w-full overflow-auto !bg-slate-50 dark:!bg-slate-900 ${
-                        diagramaFullscreen ? 'h-[calc(100vh-73px)]' : 'min-h-[580px] h-[700px]'
+                        diagramaFullscreen ? 'h-[calc(100vh-73px)]' : ''
                       }`}
                       ref={canvasRef}
                     >

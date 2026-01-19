@@ -87,7 +87,18 @@ export function BaseModal<T extends BaseEntity>({
         if (!initialData[parent]) initialData[parent] = {};
         initialData[parent][child] = '';
       } else {
-        initialData[field.key] = '';
+        // Para campos customizados (tipo 'custom'), inicializar com valor apropriado
+        if (field.type === 'custom' && field.key === 'endereco') {
+          initialData[field.key] = {
+            uf: '',
+            cidade: '',
+            cep: '',
+            logradouro: '',
+            bairro: ''
+          };
+        } else {
+          initialData[field.key] = '';
+        }
       }
     });
     return initialData;

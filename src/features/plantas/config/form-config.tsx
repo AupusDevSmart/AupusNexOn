@@ -69,15 +69,28 @@ const EnderecoCompleto = ({ onChange, disabled, entity, value }: FormFieldProps 
 
   // Carregar valores quando value ou entity mudar
   React.useEffect(() => {
-    const endereco = value || entity?.endereco;
-    if (endereco && !initialized) {
+    if (!initialized) {
+      const endereco = value || entity?.endereco;
       setIsLoadingInitialData(true);
-      setSelectedUF(endereco.uf || '');
-      setSelectedCidade(endereco.cidade || '');
-      setCep(endereco.cep || '');
-      setLastCEP(endereco.cep || ''); // Marcar CEP inicial para evitar auto-busca
-      setLogradouro(endereco.logradouro || '');
-      setBairro(endereco.bairro || '');
+
+      // Se há endereço, carregar os valores
+      if (endereco && typeof endereco === 'object') {
+        setSelectedUF(endereco.uf || '');
+        setSelectedCidade(endereco.cidade || '');
+        setCep(endereco.cep || '');
+        setLastCEP(endereco.cep || ''); // Marcar CEP inicial para evitar auto-busca
+        setLogradouro(endereco.logradouro || '');
+        setBairro(endereco.bairro || '');
+      } else {
+        // Se não há endereço, inicializar com valores vazios
+        setSelectedUF('');
+        setSelectedCidade('');
+        setCep('');
+        setLastCEP('');
+        setLogradouro('');
+        setBairro('');
+      }
+
       setInitialized(true);
       // Dar tempo para os estados serem definidos antes de permitir auto-busca
       setTimeout(() => setIsLoadingInitialData(false), 100);
@@ -87,14 +100,15 @@ const EnderecoCompleto = ({ onChange, disabled, entity, value }: FormFieldProps 
   const onChangeRef = React.useRef(onChange);
   onChangeRef.current = onChange;
 
+  // Sempre que os campos mudarem, atualizar o objeto de endereço
   React.useEffect(() => {
     if (initialized) {
       const enderecoAtualizado = {
-        uf: selectedUF,
-        cidade: selectedCidade,
-        cep,
-        logradouro,
-        bairro
+        uf: selectedUF || '',
+        cidade: selectedCidade || '',
+        cep: cep || '',
+        logradouro: logradouro || '',
+        bairro: bairro || ''
       };
       onChangeRef.current(enderecoAtualizado);
     }
