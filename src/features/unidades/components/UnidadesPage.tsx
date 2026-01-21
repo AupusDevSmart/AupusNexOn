@@ -22,6 +22,7 @@ import type {
   Unidade,
   UnidadeFilters,
 } from '../types';
+import { useUserStore } from '@/store/useUserStore';
 
 const initialFilters: UnidadeFilters = {
   search: '',
@@ -34,6 +35,7 @@ const initialFilters: UnidadeFilters = {
 export function UnidadesPage() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { isAdmin } = useUserStore();
   const [unidades, setUnidades] = useState<Unidade[]>([]);
   const [totalUnidades, setTotalUnidades] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -281,14 +283,16 @@ export function UnidadesPage() {
                   <span className="hidden sm:inline">Atualizar</span>
                 </Button>
 
-                <Button
-                  onClick={() => openModal('create')}
-                  disabled={loading}
-                  className="flex-1 sm:flex-none bg-blue-600 hover:bg-blue-700 text-white"
-                >
-                  <Plus className="h-4 w-4 sm:mr-2" />
-                  <span className="hidden sm:inline">Nova Instalação</span>
-                </Button>
+                {isAdmin() && (
+                  <Button
+                    onClick={() => openModal('create')}
+                    disabled={loading}
+                    className="flex-1 sm:flex-none bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    <Plus className="h-4 w-4 sm:mr-2" />
+                    <span className="hidden sm:inline">Nova Instalação</span>
+                  </Button>
+                )}
               </div>
             </div>
           </div>
@@ -302,7 +306,7 @@ export function UnidadesPage() {
                 loading={loading}
                 pagination={pagination}
                 onPageChange={handlePageChange}
-                onEdit={handleEdit}
+                onEdit={isAdmin() ? handleEdit : undefined}
                 onView={handleView}
                 emptyMessage="Nenhuma instalação encontrada"
               />

@@ -11,6 +11,7 @@ import { useEstados } from '@/hooks/useIBGE';
 interface EstadoSelectProps {
   value?: string;
   onValueChange?: (value: string) => void;
+  onEstadoChange?: (estado: { id: string; nome: string; sigla: string }) => void; // ✅ Callback com dados completos
   placeholder?: string;
   className?: string;
   disabled?: boolean;
@@ -19,11 +20,32 @@ interface EstadoSelectProps {
 export function EstadoSelect({
   value,
   onValueChange,
+  onEstadoChange,
   placeholder = "Selecione um estado",
   className = "",
   disabled = false
 }: EstadoSelectProps) {
   const { estados, loading, error } = useEstados();
+
+  // ✅ Handler que chama ambos os callbacks
+  const handleEstadoChange = (estadoId: string) => {
+    // Chamar callback tradicional (para compatibilidade)
+    if (onValueChange) {
+      onValueChange(estadoId);
+    }
+
+    // Chamar callback com dados completos
+    if (onEstadoChange) {
+      const estadoSelecionado = estados.find(e => e.id.toString() === estadoId);
+      if (estadoSelecionado) {
+        onEstadoChange({
+          id: estadoId,
+          nome: estadoSelecionado.nome,
+          sigla: estadoSelecionado.sigla
+        });
+      }
+    }
+  };
 
   const estadosOptions = useMemo(() => {
     return estados.map(estado => ({
@@ -41,9 +63,9 @@ export function EstadoSelect({
   }
 
   return (
-    <Select 
-      value={value} 
-      onValueChange={onValueChange}
+    <Select
+      value={value || undefined} // ✅ Garantir que seja undefined (não string vazia) para placeholder funcionar
+      onValueChange={handleEstadoChange}
       disabled={disabled || loading}
     >
       <SelectTrigger className={className}>

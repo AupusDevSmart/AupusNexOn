@@ -8,6 +8,7 @@ import { Equipamento } from '../types';
 // Definir o tipo para as props de ações customizadas
 interface TableActionsProps {
   onGerenciarComponentes?: (equipamento: Equipamento) => void;
+  isAdmin?: boolean;
 }
 
 export const getEquipamentosTableColumns = (actions?: TableActionsProps): TableColumn<Equipamento>[] => [
@@ -148,7 +149,7 @@ export const getEquipamentosTableColumns = (actions?: TableActionsProps): TableC
                 {equipamento.totalComponentes || 0}
               </Badge>
             </div>
-            {actions?.onGerenciarComponentes && (
+            {actions?.onGerenciarComponentes && actions?.isAdmin && (
               <Button
                 variant="outline"
                 size="sm"

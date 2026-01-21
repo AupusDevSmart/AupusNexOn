@@ -3,11 +3,13 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Search, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 import { useViaCEP } from '@/hooks/useViaCEP';
+import { useIBGEMapper, useCidadeMapper } from '@/hooks/useIBGEMapper';
 
 interface CEPInputProps {
   value?: string;
   onChange?: (value: string) => void;
   onEnderecoChange?: (endereco: {
+    cep?: string;  // ✅ Adicionar CEP na resposta
     endereco: string;
     bairro: string;
     cidade: string;
@@ -30,12 +32,17 @@ export function CEPInput({
   disabled = false,
   autoSearch = true
 }: CEPInputProps) {
-  const [cepValue, setCepValue] = useState(value);
+  const [cepValue, setCepValue] = useState(value || ''); // ✅ Garantir que nunca seja undefined
   const { endereco, loading, error, buscarCEP, limparEndereco } = useViaCEP();
+
+  // ✅ Hooks para mapear cidade/estado para IDs do IBGE
+  const { getEstadoBySigla } = useIBGEMapper();
+  const [estadoIdParaCidade, setEstadoIdParaCidade] = useState<number | null>(null);
+  const { getCidadeIdByNome } = useCidadeMapper(estadoIdParaCidade);
 
   // Sincronizar com valor externo
   useEffect(() => {
-    setCepValue(value);
+    setCepValue(value || ''); // ✅ Garantir que nunca seja undefined
   }, [value]);
 
   // Formatar CEP enquanto digita
@@ -56,41 +63,88 @@ export function CEPInput({
 
   const handleCEPChange = (novoCEP: string) => {
     const cepFormatado = formatarCEP(novoCEP);
+    console.log('🔍 CEP digitado:', novoCEP, '→ Formatado:', cepFormatado, '(length:', cepFormatado.length, ')');
     setCepValue(cepFormatado);
-    
+
     if (onChange) {
       onChange(cepFormatado);
     }
 
-    // Limpar endereço anterior se CEP for alterado
-    if (endereco && cepFormatado !== endereco.cep) {
+    // Limpar endereço anterior APENAS se o CEP foi modificado e ficou incompleto
+    // Não limpar quando o CEP está completo (9 caracteres), pois pode estar carregando
+    if (endereco && cepFormatado !== endereco.cep && cepFormatado.length < 9) {
       limparEndereco();
     }
 
     // Busca automática quando CEP estiver completo
     if (autoSearch && cepFormatado.length === 9) {
+      console.log('✅ CEP completo! Iniciando busca automática...');
       handleBuscarCEP(cepFormatado);
     }
   };
 
   const handleBuscarCEP = async (cep?: string) => {
     const cepParaBuscar = cep || cepValue;
-    
+
+    console.log('📞 Buscando CEP:', cepParaBuscar);
+
     if (!cepParaBuscar || cepParaBuscar.length < 9) {
+      console.log('⚠️ CEP incompleto, cancelando busca');
       return;
     }
 
     const resultado = await buscarCEP(cepParaBuscar);
-    
+
+    console.log('📦 Resultado da busca:', resultado);
+
     if (resultado && onEnderecoChange) {
-      // Converter dados do ViaCEP para o formato esperado
-      onEnderecoChange({
-        endereco: resultado.logradouro || '',
-        bairro: resultado.bairro || '',
-        cidade: resultado.localidade || '',
-        estado: resultado.uf || '',
-        // TODO: Mapear UF para estadoId e localidade para cidadeId se necessário
-      });
+      // ✅ Mapear UF para estadoId e localidade para cidadeId
+      const estadoData = getEstadoBySigla(resultado.uf || '');
+      const estadoId = estadoData ? estadoData.id.toString() : undefined;
+
+      console.log('🗺️ Estado encontrado:', estadoData);
+
+      // Atualizar estado ID para buscar cidades
+      if (estadoData) {
+        setEstadoIdParaCidade(estadoData.id);
+
+        // Aguardar um pouco para o hook useCidadeMapper carregar as cidades
+        setTimeout(() => {
+          const cidadeId = getCidadeIdByNome(resultado.localidade || '');
+          console.log('🏙️ Cidade encontrada ID:', cidadeId, 'para:', resultado.localidade);
+
+          console.log('📮 Chamando onEnderecoChange com:', {
+            cep: cepParaBuscar,
+            endereco: resultado.logradouro || '',
+            bairro: resultado.bairro || '',
+            cidade: resultado.localidade || '',
+            estado: resultado.uf || '',
+            estadoId,
+            cidadeId: cidadeId || undefined,
+          });
+
+          onEnderecoChange({
+            cep: cepParaBuscar,
+            endereco: resultado.logradouro || '',
+            bairro: resultado.bairro || '',
+            cidade: resultado.localidade || '',
+            estado: resultado.uf || '',
+            estadoId,
+            cidadeId: cidadeId || undefined,
+          });
+        }, 500); // Delay para garantir que as cidades foram carregadas
+      } else {
+        // Se não encontrou o estado, enviar sem IDs
+        console.log('📮 Chamando onEnderecoChange sem IDs (estado não encontrado)');
+
+        onEnderecoChange({
+          cep: cepParaBuscar,
+          endereco: resultado.logradouro || '',
+          bairro: resultado.bairro || '',
+          cidade: resultado.localidade || '',
+          estado: resultado.uf || '',
+        });
+      }
     }
   };
 

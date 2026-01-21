@@ -177,12 +177,12 @@ export const transformApiToFrontend = (apiEquipamento: EquipamentoApiResponse): 
 
 // NOVA TRANSFORMAÇÃO: Frontend -> API (SEM PERDER DADOS)
 export const transformFrontendToApi = (equipamento: any): CreateEquipamentoApiData => {
-  console.log('TRANSFORM: Dados de entrada:', equipamento);
+  // console.log('TRANSFORM: Dados de entrada:', equipamento);
 
   // Se já vem no formato da API (do modal), usar direto
   // Verificar por unidade_id OU planta_id (nova estrutura ou antiga)
   if (equipamento.classificacao && (equipamento.unidade_id || equipamento.planta_id)) {
-    console.log('TRANSFORM: Dados já estão no formato da API');
+    // console.log('TRANSFORM: Dados já estão no formato da API');
     return equipamento as CreateEquipamentoApiData;
   }
 
@@ -247,8 +247,8 @@ export const transformFrontendToApi = (equipamento: any): CreateEquipamentoApiDa
     // Dados técnicos
     dados_tecnicos: equipamento.dados_tecnicos || equipamento.dadosTecnicos
   };
-  
-  console.log('TRANSFORM: Dados de saída:', apiData);
+
+  // console.log('TRANSFORM: Dados de saída:', apiData);
   return apiData;
 };
 
@@ -356,17 +356,17 @@ export function useEquipamentos(): UseEquipamentosReturn {
     try {
       setLoading(true);
       setError(null);
-      
-      console.log('HOOK: Criando equipamento com dados:', data);
-      
+
+      // console.log('HOOK: Criando equipamento com dados:', data);
+
       const apiData = transformFrontendToApi(data);
-      console.log('HOOK: Dados transformados para API:', apiData);
-      
+      // console.log('HOOK: Dados transformados para API:', apiData);
+
       const response = await equipamentosApi.create(apiData);
-      console.log('HOOK: Resposta da API:', response);
-      
+      // console.log('HOOK: Resposta da API:', response);
+
       const equipamento = transformApiToFrontend(response);
-      console.log('HOOK: Equipamento transformado:', equipamento);
+      // console.log('HOOK: Equipamento transformado:', equipamento);
       
       // Atualizar lista local
       setEquipamentos(prev => [equipamento, ...prev]);
@@ -428,16 +428,16 @@ export function useEquipamentos(): UseEquipamentosReturn {
       setLoading(true);
       setError(null);
 
-      console.log('🔍 [HOOK] getEquipamento chamado com ID:', id);
+      // console.log('🔍 [HOOK] getEquipamento chamado com ID:', id);
       const response = await equipamentosApi.findOne(id);
-      console.log('📦 [HOOK] Resposta da API (response):', response);
-      console.log('📦 [HOOK] response.id:', response.id);
-      console.log('📦 [HOOK] response.nome:', response.nome);
-      console.log('📦 [HOOK] response.tipo_equipamento:', response.tipo_equipamento);
-      console.log('📦 [HOOK] response.dados_tecnicos:', response.dados_tecnicos);
+      // console.log('📦 [HOOK] Resposta da API (response):', response);
+      // console.log('📦 [HOOK] response.id:', response.id);
+      // console.log('📦 [HOOK] response.nome:', response.nome);
+      // console.log('📦 [HOOK] response.tipo_equipamento:', response.tipo_equipamento);
+      // console.log('📦 [HOOK] response.dados_tecnicos:', response.dados_tecnicos);
 
       const transformed = transformApiToFrontend(response);
-      console.log('✨ [HOOK] Equipamento transformado:', transformed);
+      // console.log('✨ [HOOK] Equipamento transformado:', transformed);
 
       return transformed;
 
@@ -486,14 +486,14 @@ export function useEquipamentos(): UseEquipamentosReturn {
       const equipamentosArray = response.data.data || response.data;
 
       // DEBUG: Verificar primeiro equipamento UC para ver campos disponíveis
-      const primeiroUC = equipamentosArray.find((eq: any) => eq.classificacao === 'UC');
-      if (primeiroUC) {
-        console.log('🔍 [DEBUG] Primeiro UC completo:', primeiroUC);
-        console.log('✅ [DEBUG] equipamentos_filhos (CORRETO):', primeiroUC.equipamentos_filhos);
-        console.log('✅ [DEBUG] equipamentos_filhos.length:', primeiroUC.equipamentos_filhos?.length);
-        console.log('📊 [DEBUG] totalComponentes (backend):', primeiroUC.totalComponentes);
-        console.log('📊 [DEBUG] Contagem FINAL que será usada:', primeiroUC.equipamentos_filhos?.length || primeiroUC.totalComponentes || 0);
-      }
+      // const primeiroUC = equipamentosArray.find((eq: any) => eq.classificacao === 'UC');
+      // if (primeiroUC) {
+      //   console.log('🔍 [DEBUG] Primeiro UC completo:', primeiroUC);
+      //   console.log('✅ [DEBUG] equipamentos_filhos (CORRETO):', primeiroUC.equipamentos_filhos);
+      //   console.log('✅ [DEBUG] equipamentos_filhos.length:', primeiroUC.equipamentos_filhos?.length);
+      //   console.log('📊 [DEBUG] totalComponentes (backend):', primeiroUC.totalComponentes);
+      //   console.log('📊 [DEBUG] Contagem FINAL que será usada:', primeiroUC.equipamentos_filhos?.length || primeiroUC.totalComponentes || 0);
+      // }
 
       const equipamentosTransformados = equipamentosArray.map(transformApiToFrontend);
 
@@ -603,17 +603,17 @@ export function useEquipamentos(): UseEquipamentosReturn {
       setLoading(true);
       setError(null);
 
-      console.log('🔍 [GERENCIAR] Buscando componentes para UC:', ucId);
+      // console.log('🔍 [GERENCIAR] Buscando componentes para UC:', ucId);
       const response = await equipamentosApi.findComponentesParaGerenciar(ucId);
-      console.log('📦 [GERENCIAR] Resposta COMPLETA da API:', response);
-      console.log('📦 [GERENCIAR] response.data:', response.data);
-      console.log('📦 [GERENCIAR] response.data.componentes:', response.data?.componentes);
-      console.log('📦 [GERENCIAR] response.data.equipamentoUC:', response.data?.equipamentoUC);
+      // console.log('📦 [GERENCIAR] Resposta COMPLETA da API:', response);
+      // console.log('📦 [GERENCIAR] response.data:', response.data);
+      // console.log('📦 [GERENCIAR] response.data.componentes:', response.data?.componentes);
+      // console.log('📦 [GERENCIAR] response.data.equipamentoUC:', response.data?.equipamentoUC);
 
       // A API retorna: { success: true, data: { equipamentoUC: {...}, componentes: [...] } }
       const componentes = response.data?.componentes || [];
       const componentesTransformados = componentes.map(transformApiToFrontend);
-      console.log('✅ [GERENCIAR] Componentes transformados:', componentesTransformados);
+      // console.log('✅ [GERENCIAR] Componentes transformados:', componentesTransformados);
 
       return {
         equipamentoUC: response.data?.equipamentoUC || null,

@@ -1,5 +1,6 @@
 // src/features/usuarios/components/usuario-modal.tsx
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 import { BaseModal } from '@/components/common/base-modal/BaseModal';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -13,7 +14,6 @@ import {
   Leaf,
   Settings,
   AlertCircle,
-  CheckCircle,
   Trash2
 } from 'lucide-react';
 import { Usuario, ModalMode, UsuarioFormData } from '../types';
@@ -58,72 +58,65 @@ export function UsuarioModal({
     updateUsuario,
     deleteUsuario,
     usuarioToFormData,
+    usuarioToFormDataAsync,
     error,
     clearError
   } = useUsuarios();
 
-  // Estado local para feedback
-  const [submitError, setSubmitError] = useState<string | null>(null);
-  const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
+  // Estado local
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // ✅ Estado para armazenar dados do usuário com IDs do IBGE
+  const [entityWithIds, setEntityWithIds] = useState<UsuarioFormData | Usuario | null>(null);
+  const [loadingIds, setLoadingIds] = useState(false);
+
   const handleSubmit = async (data: any) => {
-    console.log('🚀 Iniciando handleSubmit do modal');
-    console.log('📝 Dados do usuário para salvar:', data);
-    console.log('🔧 Mode:', mode);
-    console.log('👤 Usuário atual:', usuario);
-    
     // Limpar erros anteriores
-    setSubmitError(null);
-    setSubmitSuccess(null);
     clearError();
-    
+
     try {
       let resultado;
-      
+
       if (isCreateMode) {
-        console.log('✨ Criando novo usuário...');
         resultado = await createUsuario(data as UsuarioFormData);
-        console.log('✅ Usuário criado com sucesso:', resultado);
-        setSubmitSuccess(`Usuário ${resultado.nome} criado com sucesso! Senha padrão: ${resultado.senhaTemporaria || 'Aupus123!'}`);
+
+        // ✅ Toast de sucesso
+        toast.success('Usuário criado com sucesso!', {
+          description: `${resultado.nome} foi criado. Senha padrão: ${resultado.senhaTemporaria || 'Aupus123!'}`,
+          duration: 5000,
+        });
       } else if (isEditMode && usuario) {
-        console.log('📝 Atualizando usuário existente...');
         resultado = await updateUsuario(usuario.id, data as Partial<UsuarioFormData>);
-        console.log('✅ Usuário atualizado com sucesso:', resultado);
-        setSubmitSuccess(`Usuário ${resultado.nome} atualizado com sucesso!`);
+
+        // ✅ Toast de sucesso
+        toast.success('Usuário atualizado!', {
+          description: `${resultado.nome} foi atualizado com sucesso.`,
+          duration: 4000,
+        });
       }
-      
-      // Aguardar um momento para mostrar a mensagem
-      setTimeout(() => {
-        console.log('🎉 Chamando onSuccess');
-        onSuccess();
-      }, 2000);
-      
+
+      // Fechar modal e recarregar dados
+      onSuccess();
+
     } catch (error: any) {
-      console.error('❌ Erro no handleSubmit:', error);
-      console.error('❌ Erro completo (response):', error?.response);
-      console.error('❌ Erro completo (response.data):', error?.response?.data);
-      console.error('❌ Detalhes do erro:', {
-        status: error?.response?.status,
-        statusText: error?.response?.statusText,
-        data: error?.response?.data,
-        message: error?.message
-      });
 
       // Pegar a mensagem de erro da resposta da API se disponível
       const errorMessage = error?.response?.data?.error?.message ||
                           error?.response?.data?.message ||
                           error?.message ||
                           'Erro desconhecido ao salvar usuário';
-      setSubmitError(errorMessage);
-      // Não re-lançar o erro - já tratamos mostrando a mensagem
+
+      // ✅ Toast de erro
+      toast.error('Erro ao salvar usuário', {
+        description: errorMessage,
+        duration: 6000,
+      });
     }
   };
 
   const handleGerenciarPlantas = () => {
     if (usuario && onGerenciarPlantas) {
-      console.log('Abrindo gerenciamento de plantas para:', usuario.nome);
       onGerenciarPlantas(usuario);
     }
   };
@@ -132,27 +125,32 @@ export function UsuarioModal({
     if (!usuario) return;
 
     setIsDeleting(true);
-    setSubmitError(null);
 
     try {
-      console.log('🗑️ Deletando usuário:', usuario.id);
       await deleteUsuario(usuario.id);
-      setSubmitSuccess(`Usuário ${usuario.nome} deletado com sucesso!`);
-      setShowDeleteDialog(false);
 
-      // Aguardar um momento para mostrar a mensagem antes de fechar
-      setTimeout(() => {
-        onSuccess();
-        onClose();
-      }, 1500);
+      // ✅ Toast de sucesso
+      toast.success('Usuário deletado!', {
+        description: `${usuario.nome} foi removido do sistema.`,
+        duration: 4000,
+      });
+
+      setShowDeleteDialog(false);
+      onSuccess();
+      onClose();
     } catch (error: any) {
-      console.error('❌ Erro ao deletar usuário:', error);
       // Pegar a mensagem de erro da resposta da API se disponível
       const errorMessage = error?.response?.data?.error?.message ||
                           error?.response?.data?.message ||
                           error?.message ||
                           'Erro ao deletar usuário';
-      setSubmitError(errorMessage);
+
+      // ✅ Toast de erro
+      toast.error('Erro ao deletar usuário', {
+        description: errorMessage,
+        duration: 6000,
+      });
+
       setShowDeleteDialog(false);
     } finally {
       setIsDeleting(false);
@@ -205,19 +203,34 @@ export function UsuarioModal({
     }
   ];
 
-  // ✅ MAPEAR DADOS DO USUÁRIO PARA FORM DATA QUANDO NECESSÁRIO
-  const entityForModal = usuario && (isViewMode || isEditMode) 
-    ? usuarioToFormData(usuario)
-    : usuario;
+  // ✅ BUSCAR IDs DO IBGE QUANDO CARREGAR USUÁRIO PARA EDIÇÃO/VISUALIZAÇÃO
+  useEffect(() => {
+    const loadUserDataWithIds = async () => {
+      if (usuario && (isViewMode || isEditMode)) {
+        setLoadingIds(true);
+        try {
+          // Usar versão assíncrona para buscar IDs do IBGE se necessário
+          const formData = await usuarioToFormDataAsync(usuario);
+          setEntityWithIds(formData);
+        } catch (error) {
+          // Fallback para versão síncrona
+          setEntityWithIds(usuarioToFormData(usuario));
+        } finally {
+          setLoadingIds(false);
+        }
+      } else {
+        setEntityWithIds(usuario);
+      }
+    };
 
-  // console.log('👤 Usuário original:', usuario);
-  // console.log('📝 Dados mapeados para o modal:', entityForModal);
+    loadUserDataWithIds();
+  }, [usuario, isViewMode, isEditMode, usuarioToFormDataAsync, usuarioToFormData]);
 
   return (
     <BaseModal
       isOpen={isOpen}
       mode={mode}
-      entity={entityForModal as any}
+      entity={entityWithIds as any}
       title={getModalTitle()}
       icon={getModalIcon()}
       formFields={usuariosFormFields}
@@ -226,40 +239,6 @@ export function UsuarioModal({
       onSubmit={handleSubmit}
       width="w-[95vw] sm:w-[600px] lg:w-[700px] xl:w-[800px]"
     >
-      {/* FEEDBACK DE ERRO - Responsivo */}
-      {(submitError || error) && (
-        <div className="mb-3 md:mb-4 p-3 md:p-4 bg-red-50 border border-red-200 rounded-lg dark:bg-red-950 dark:border-red-800">
-          <div className="flex items-start gap-2 md:gap-3">
-            <AlertCircle className="h-4 w-4 md:h-5 md:w-5 text-red-600 mt-0.5 shrink-0" />
-            <div className="min-w-0 flex-1">
-              <h4 className="font-medium text-red-900 dark:text-red-100 text-sm md:text-base">
-                Erro ao salvar usuário
-              </h4>
-              <p className="text-xs md:text-sm text-red-700 dark:text-red-300 mt-1 break-words">
-                {submitError || error}
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* FEEDBACK DE SUCESSO - Responsivo */}
-      {submitSuccess && (
-        <div className="mb-3 md:mb-4 p-3 md:p-4 bg-green-50 border border-green-200 rounded-lg dark:bg-green-950 dark:border-green-800">
-          <div className="flex items-start gap-2 md:gap-3">
-            <CheckCircle className="h-4 w-4 md:h-5 md:w-5 text-green-600 mt-0.5 shrink-0" />
-            <div className="min-w-0 flex-1">
-              <h4 className="font-medium text-green-900 dark:text-green-100 text-sm md:text-base">
-                Sucesso!
-              </h4>
-              <p className="text-xs md:text-sm text-green-700 dark:text-green-300 mt-1 break-words">
-                {submitSuccess}
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* BOTÃO DE DELETAR - Apenas no modo de edição */}
       {isEditMode && usuario && (
         <div className="mb-4 p-4 border border-red-200 dark:border-red-800 rounded-lg bg-red-50 dark:bg-red-950">

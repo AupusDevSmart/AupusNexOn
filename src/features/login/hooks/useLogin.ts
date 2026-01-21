@@ -25,13 +25,17 @@ export function useLogin() {
     setError(null);
 
     try {
-      console.log('🔐 [USE LOGIN] Iniciando login...');
+      // console.log('🔐 [USE LOGIN] Iniciando login...');
 
       // Chama o serviço de autenticação
       const response = await AuthService.login(credentials);
 
-      console.log('✅ [USE LOGIN] Login bem-sucedido');
-      console.log('📦 [USE LOGIN] Resposta:', response);
+      // console.log('✅ [USE LOGIN] Login bem-sucedido');
+      // console.log('📦 [USE LOGIN] Resposta completa:', response);
+      // console.log('📦 [USE LOGIN] response.user:', response.user);
+      // console.log('🔐 [USE LOGIN] response.user.roles:', response.user?.roles);
+      // console.log('🔐 [USE LOGIN] Tipo de roles:', typeof response.user?.roles, Array.isArray(response.user?.roles) ? 'é array' : 'não é array');
+      // console.log('📜 [USE LOGIN] response.user.all_permissions:', response.user?.all_permissions);
 
       // Verifica se recebeu os dados do usuário
       if (!response.user) {
@@ -43,11 +47,15 @@ export function useLogin() {
         ? response.user.all_permissions.map((p) => p.name)
         : [];
 
+      // console.log('📜 [USE LOGIN] Permissões extraídas:', permissoes);
+
       // Atualiza o store com dados do usuário e permissões
       setUser({
         ...response.user,
         acessivel: permissoes,
       } as any);
+
+      // console.log('💾 [USE LOGIN] Usuário salvo no store com roles:', response.user.roles);
 
       // Exibe mensagem de sucesso
       toast.success('Login realizado com sucesso!', {

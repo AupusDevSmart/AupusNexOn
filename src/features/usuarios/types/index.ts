@@ -230,6 +230,60 @@ const extractPermissionNames = (permissions: UserPermission[] | string[] | undef
 };
 
 // ✅ UTILITÁRIOS PARA CONVERSÃO - CORRIGIDOS
+
+/**
+ * Versão assíncrona que tenta converter nomes de cidade/estado para IDs do IBGE
+ */
+export const mapUsuarioToFormDataAsync = async (usuario: Usuario): Promise<UsuarioFormData> => {
+  const baseFormData = mapUsuarioToFormData(usuario);
+
+  // Se já tem IDs, retornar
+  if (baseFormData.estadoId && baseFormData.cidadeId) {
+    return baseFormData;
+  }
+
+  // Tentar buscar IDs do IBGE se tiver apenas nomes
+  try {
+    let estadoId = baseFormData.estadoId as string | undefined;
+    let cidadeId = baseFormData.cidadeId as string | undefined;
+
+    // Buscar estadoId pela sigla se necessário
+    if (!estadoId && baseFormData.estado) {
+      const response = await fetch('https://servicodados.ibge.gov.br/api/v1/localidades/estados');
+      const estados = await response.json();
+      const estado = estados.find((e: any) =>
+        e.sigla.toLowerCase() === baseFormData.estado?.toLowerCase()
+      );
+      if (estado) {
+        estadoId = estado.id.toString();
+      }
+    }
+
+    // Buscar cidadeId pelo nome se necessário e tiver estadoId
+    if (!cidadeId && baseFormData.cidade && estadoId) {
+      const response = await fetch(
+        `https://servicodados.ibge.gov.br/api/v1/localidades/estados/${estadoId}/municipios`
+      );
+      const cidades = await response.json();
+      const cidade = cidades.find((c: any) =>
+        c.nome.toLowerCase() === baseFormData.cidade?.toLowerCase()
+      );
+      if (cidade) {
+        cidadeId = cidade.id.toString();
+      }
+    }
+
+    return {
+      ...baseFormData,
+      estadoId,
+      cidadeId,
+    };
+  } catch (error) {
+    console.error('❌ Erro ao buscar IDs do IBGE:', error);
+    return baseFormData;
+  }
+};
+
 export const mapUsuarioToFormData = (usuario: Usuario): UsuarioFormData => {
   console.log('🔄 [mapUsuarioToFormData] Mapeando usuário para form:', {
     id: usuario.id,
@@ -324,11 +378,8 @@ export const mapFormDataToCreateDto = async (formData: UsuarioFormData) => {
   if (formData.instagram) dto.instagram = formData.instagram;
   if (formData.cpfCnpj) dto.cpfCnpj = formData.cpfCnpj;
 
-  // ✅ CORREÇÃO: Enviar cidadeId e estadoId se disponíveis
-  if (formData.cidadeId) dto.cidadeId = String(formData.cidadeId);
-  if (formData.estadoId) dto.estadoId = String(formData.estadoId);
-
-  // Manter cidade e estado como strings para compatibilidade
+  // ✅ CORREÇÃO: Backend espera NOMES (strings), não IDs
+  // Enviar apenas cidade e estado como strings
   if (formData.cidade) dto.cidade = formData.cidade;
   if (formData.estado) dto.estado = formData.estado;
 

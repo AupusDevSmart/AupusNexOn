@@ -10,6 +10,7 @@ import {
   UsuarioRole,
   mapFormDataToCreateDto,
   mapUsuarioToFormData,
+  mapUsuarioToFormDataAsync,
   ChangePasswordDto,
   ResetPasswordDto
 } from '../types';
@@ -41,7 +42,7 @@ class UsuariosApiService {
 
     const url = `/usuarios?${params}`;
     const response = await api.get(url, {
-      timeout: 10000, // 10 segundos timeout
+      timeout: 30000, // 30 segundos timeout (aumentado devido a complexidade da query)
     });
 
     const data = response.data;
@@ -452,6 +453,11 @@ export function useUsuarios() {
     return mapUsuarioToFormData(usuario);
   }, []);
 
+  // ✅ VERSÃO ASSÍNCRONA para buscar IDs do IBGE quando necessário
+  const usuarioToFormDataAsync = useCallback(async (usuario: Usuario): Promise<UsuarioFormData> => {
+    return mapUsuarioToFormDataAsync(usuario);
+  }, []);
+
   // ==========================================
   // 🔐 FUNÇÕES DE PERMISSÕES
   // ==========================================
@@ -560,9 +566,10 @@ export function useUsuarios() {
 
     // ✅ UTILITÁRIOS
     usuarioToFormData,
+    usuarioToFormDataAsync,
     clearError: () => setError(null),
     isEmptyResult: usuarios.length === 0 && !loading,
-    
+
     // 🧪 TESTE E DEBUG
     testApiConnection,
   };

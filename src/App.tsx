@@ -45,7 +45,7 @@ export default function App() {
           <TooltipProvider>
             <RouterProvider router={appRoutes} />
             <Toaster />
-            <SonnerToaster richColors position="top-right" />
+            <SonnerToaster richColors position="bottom-right" />
           </TooltipProvider>
         </QueryClientProvider>
       </ThemeProvider>

@@ -152,6 +152,7 @@ interface EquipamentoUCModalProps {
   entity?: Equipamento | null;
   onClose: () => void;
   onSubmit: (data: any) => void;
+  onDelete?: (equipamento: Equipamento) => void;
 }
 
 export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
@@ -159,7 +160,8 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
   mode,
   entity,
   onClose,
-  onSubmit
+  onSubmit,
+  onDelete
 }) => {
   const { getEquipamento } = useEquipamentos();
 
@@ -1499,29 +1501,51 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
     }
 
     return (
-      <div className="flex justify-end gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onClose}
-          disabled={loading}
-          className="h-9"
-        >
-          <X className="h-4 w-4 mr-2" />
-          {isReadonly ? 'Fechar' : 'Cancelar'}
-        </Button>
+      <div className="flex justify-between gap-2">
+        {/* Botão de Excluir à esquerda - apenas em modo edit */}
+        <div>
+          {mode === 'edit' && entity && onDelete && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                onClose(); // Fechar modal primeiro
+                onDelete(entity); // Depois abrir AlertDialog
+              }}
+              disabled={loading}
+              className="h-9 text-destructive hover:text-destructive hover:bg-destructive/10"
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Excluir
+            </Button>
+          )}
+        </div>
 
-        {!isReadonly && (
+        {/* Botões de ação à direita */}
+        <div className="flex gap-2">
           <Button
-            onClick={handleSubmit}
-            disabled={loading}
+            variant="outline"
             size="sm"
+            onClick={onClose}
+            disabled={loading}
             className="h-9"
           >
-            <Save className="h-4 w-4 mr-2" />
-            {isCreating ? 'Criar Equipamento' : 'Salvar Alterações'}
+            <X className="h-4 w-4 mr-2" />
+            {isReadonly ? 'Fechar' : 'Cancelar'}
           </Button>
-        )}
+
+          {!isReadonly && (
+            <Button
+              onClick={handleSubmit}
+              disabled={loading}
+              size="sm"
+              className="h-9"
+            >
+              <Save className="h-4 w-4 mr-2" />
+              {isCreating ? 'Criar Equipamento' : 'Salvar Alterações'}
+            </Button>
+          )}
+        </div>
       </div>
     );
   };

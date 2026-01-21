@@ -317,7 +317,7 @@ export function PlantasPage() {
             </div>
             
             <div className="flex gap-2 shrink-0">
-              <Button 
+              <Button
                 variant="outline"
                 onClick={handleRefresh}
                 disabled={loading}
@@ -326,14 +326,16 @@ export function PlantasPage() {
                 <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                 Atualizar
               </Button>
-              
-              <Button
-                onClick={() => openModal('create')}
-                className="bg-primary hover:bg-primary/90"
-              >
-                <Plus className="mr-2 h-4 w-4" />
-                Nova Planta
-              </Button>
+
+              {isAdmin() && (
+                <Button
+                  onClick={() => openModal('create')}
+                  className="bg-primary hover:bg-primary/90"
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Nova Planta
+                </Button>
+              )}
             </div>
           </div>
 
@@ -366,7 +368,7 @@ export function PlantasPage() {
               loading={loading}
               onPageChange={handlePageChange}
               onView={handleView}
-              onEdit={handleEdit}
+              onEdit={isAdmin() ? handleEdit : undefined}
               emptyMessage={
                 filteredByProprietario && proprietarioInfo
                   ? `Nenhuma planta encontrada para ${proprietarioInfo.nome}.`

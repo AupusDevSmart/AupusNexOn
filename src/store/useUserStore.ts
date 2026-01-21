@@ -38,7 +38,14 @@ export const useUserStore = create(
 
       clearUser: () => set({ user: null, acessivel: [] }),
 
-      getUserRole: () => get().user?.roles?.[0]?.name || '',
+      getUserRole: () => {
+        const roles = get().user?.roles;
+        if (!roles || roles.length === 0) return '';
+
+        // ✅ Suportar tanto string quanto objeto
+        const firstRole = roles[0];
+        return typeof firstRole === 'string' ? firstRole : firstRole?.name || '';
+      },
 
       isSuperAdmin: () => get().getUserRole() === 'super_admin',
 
@@ -49,7 +56,7 @@ export const useUserStore = create(
     }),
     {
       name: 'user-storage',
-      version: 3,
+      version: 4, // ✅ Incrementado para forçar recriação do cache
       storage: createJSONStorage(() => localStorage),
     },
   ),

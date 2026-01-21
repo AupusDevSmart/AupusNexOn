@@ -192,11 +192,27 @@ const PermissoesSelector = ({ value, onChange, disabled }: any) => {
 };
 
 // Componente para seleção de estado com IBGE
-const EstadoSelector = ({ value, onChange, disabled }: any) => {
+const EstadoSelector = ({ value, onChange, disabled, onMultipleChange }: any) => {
+  const handleEstadoChange = (estado: { id: string; nome: string; sigla: string }) => {
+
+    // Atualizar estadoId (para o CidadeSelect depender)
+    if (onChange) {
+      onChange(estado.id);
+    }
+
+    // ✅ Atualizar campo de estado (nome) para enviar ao backend
+    if (onMultipleChange) {
+      onMultipleChange({
+        estadoId: estado.id,
+        estado: estado.sigla // Backend espera a sigla (ex: "GO", "SP")
+      });
+    }
+  };
+
   return (
     <EstadoSelect
       value={value}
-      onValueChange={onChange}
+      onEstadoChange={handleEstadoChange}
       disabled={disabled}
       placeholder="Selecione um estado"
     />
@@ -204,11 +220,27 @@ const EstadoSelector = ({ value, onChange, disabled }: any) => {
 };
 
 // Componente para seleção de cidade com IBGE
-const CidadeSelector = ({ value, onChange, disabled, estadoId }: any) => {
+const CidadeSelector = ({ value, onChange, disabled, estadoId, onMultipleChange }: any) => {
+  const handleCidadeChange = (cidade: { id: string; nome: string }) => {
+
+    // Atualizar cidadeId
+    if (onChange) {
+      onChange(cidade.id);
+    }
+
+    // ✅ Atualizar campo de cidade (nome) para enviar ao backend
+    if (onMultipleChange) {
+      onMultipleChange({
+        cidadeId: cidade.id,
+        cidade: cidade.nome // Backend espera o nome da cidade
+      });
+    }
+  };
+
   return (
     <CidadeSelect
       value={value}
-      onValueChange={onChange}
+      onCidadeChange={handleCidadeChange}
       estadoId={estadoId ? parseInt(estadoId) : null}
       disabled={disabled}
       placeholder="Selecione uma cidade"
@@ -227,10 +259,18 @@ const CEPSelector = ({ value, onChange, disabled, onMultipleChange }: any) => {
         endereco.bairro
       ].filter(Boolean).join(' - ');
 
-      onMultipleChange({
+      // ✅ Incluir TODOS os dados do endereço + IDs do IBGE
+      const dataToSend = {
+        cep: endereco.cep || value, // Priorizar o CEP que veio da busca
         endereco: enderecoCompleto || endereco.endereco,
-        // Nota: cidade e estado ficam nos selects IBGE separados
-      });
+        // ✅ Incluir dados de estado e cidade do ViaCEP + IDs do IBGE
+        estado: endereco.estado, // Sigla (ex: "GO")
+        estadoId: endereco.estadoId, // ID do IBGE (ex: "52")
+        cidade: endereco.cidade, // Nome (ex: "Goiânia")
+        cidadeId: endereco.cidadeId, // ID do IBGE (ex: "5208707")
+      };
+
+      onMultipleChange(dataToSend);
     }
   };
 

@@ -72,6 +72,7 @@ import type { PlantaResponse } from '@/services/plantas.services';
 import type { Unidade } from '@/services/unidades.services';
 import { equipamentosApi } from '@/services/equipamentos.services';
 import { DiagramasService } from '@/services/diagramas.services';
+import { useUserStore } from '@/store/useUserStore';
 
 // Tipos - CORRIGIDOS com interfaces locais caso os imports falhem
 import type { ComponenteDU } from "@/types/dtos/sinoptico-ativo";
@@ -1768,6 +1769,7 @@ export function SinopticoAtivoPage() {
   const { ativoId: ativoIdRaw } = useParams<{ ativoId?: string }>();
   const navigate = useNavigate();
   const location = useLocation();
+  const { isAdmin } = useUserStore();
 
   // Limpar espaços em branco do ID da URL
   const ativoId = ativoIdRaw?.trim();
@@ -4157,7 +4159,7 @@ export function SinopticoAtivoPage() {
                         : 'bg-slate-50 dark:bg-slate-900 h-full'
                     }`}
                   >
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 pb-2 border-b flex-shrink-0 bg-slate-50 dark:bg-slate-900 gap-3">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 pb-2 border-b flex-shrink-0 bg-slate-50 dark:bg-black gap-3">
                       <div>
                         <h3 className="text-base sm:text-lg font-semibold text-foreground flex items-center gap-2">
                           <Network className="h-4 w-4 sm:h-5 sm:w-5" />
@@ -4187,7 +4189,7 @@ export function SinopticoAtivoPage() {
                             </>
                           )}
                         </Button>
-                        {!diagramaFullscreen && (
+                        {!diagramaFullscreen && isAdmin() && (
                           <>
                             <Button
                               variant="outline"
@@ -4205,7 +4207,7 @@ export function SinopticoAtivoPage() {
                     </div>
 
                     <div
-                      className={`flex-1 relative w-full overflow-auto !bg-slate-50 dark:!bg-slate-900 ${
+                      className={`flex-1 relative w-full overflow-auto !bg-slate-50 dark:!bg-black ${
                         diagramaFullscreen ? 'h-[calc(100vh-73px)]' : ''
                       }`}
                       ref={canvasRef}
@@ -4242,7 +4244,7 @@ export function SinopticoAtivoPage() {
             {/* Modo Edição - Tela Cheia */}
             {modoEdicao && (
               <Card className="flex flex-col min-h-[900px] bg-slate-50 dark:bg-slate-900">
-                <div className="flex items-center justify-between p-4 pb-2 border-b flex-shrink-0 bg-slate-50 dark:bg-slate-900">
+                <div className="flex items-center justify-between p-4 pb-2 border-b flex-shrink-0 bg-slate-50 dark:bg-black">
                   <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
                     <Network className="h-5 w-5" />
                     Diagrama Unifilar
@@ -4285,7 +4287,7 @@ export function SinopticoAtivoPage() {
                   </div>
                 </div>
 
-                <div className="relative flex-1 min-h-[580px] bg-slate-50 dark:bg-slate-900 overflow-visible" ref={canvasRef}>
+                <div className="relative flex-1 min-h-[580px] bg-slate-50 dark:bg-black overflow-visible" ref={canvasRef}>
                   {/* GRID DE FUNDO - MODO EDIÇÃO (25px fixo, opacidade 100%) */}
                   {canvasRef.current && (
                     <DiagramGrid

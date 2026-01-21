@@ -20,6 +20,7 @@ import {
   ConcessionariaResponse,
   FindAllConcessionariasParams
 } from '@/services/concessionarias.services';
+import { useUserStore } from '@/store/useUserStore';
 
 const initialFilters: ConcessionariasFilters = {
   search: '',
@@ -71,6 +72,8 @@ const transformAPIToFormData = (concessionaria: ConcessionariaResponse): any => 
 };
 
 export function ConcessionariasPage() {
+  const { isAdmin } = useUserStore();
+
   // Estados locais
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [concessionarias, setConcessionarias] = useState<ConcessionariaResponse[]>([]);
@@ -334,14 +337,16 @@ export function ConcessionariasPage() {
                 Atualizar
               </Button>
 
-              <Button
-                onClick={() => openModal('create')}
-                className="bg-primary hover:bg-primary/90"
-                disabled={isSubmitting}
-              >
-                <Plus className="mr-2 h-4 w-4" />
-                Nova Concessionária
-              </Button>
+              {isAdmin() && (
+                <Button
+                  onClick={() => openModal('create')}
+                  className="bg-primary hover:bg-primary/90"
+                  disabled={isSubmitting}
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Nova Concessionária
+                </Button>
+              )}
             </div>
           </div>
 
@@ -367,7 +372,7 @@ export function ConcessionariasPage() {
               loading={loading}
               onPageChange={handlePageChange}
               onView={handleView}
-              onEdit={handleEdit}
+              onEdit={isAdmin() ? handleEdit : undefined}
               emptyMessage={
                 filters.search
                   ? `Nenhuma concessionária encontrada para "${filters.search}".`

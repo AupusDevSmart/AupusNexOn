@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Check User Storage</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            background: #1e1e1e;
+            color: #d4d4d4;
+        }
+        pre {
+            background: #252526;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .success { background: #0e5e0e; color: #4ec94e; }
+        .error { background: #5e0e0e; color: #f48771; }
+        .warning { background: #5e4a0e; color: #f4c471; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Verificação do localStorage - User Storage</h1>
+
+    <div id="output"></div>
+
+    <script>
+        const output = document.getElementById('output');
+
+        try {
+            // Pegar dados do localStorage
+            const userStorage = localStorage.getItem('user-storage');
+
+            if (!userStorage) {
+                output.innerHTML = '<div class="error">❌ Nenhum dado de usuário encontrado no localStorage!</div>';
+            } else {
+                const parsed = JSON.parse(userStorage);
+
+                output.innerHTML = `
+                    <div class="success">✅ Dados encontrados no localStorage</div>
+
+                    <h2>📦 Dados Completos:</h2>
+                    <pre>${JSON.stringify(parsed, null, 2)}</pre>
+
+                    <h2>👤 Informações do Usuário:</h2>
+                    <pre>Nome: ${parsed.state?.user?.nome || 'N/A'}
+Email: ${parsed.state?.user?.email || 'N/A'}
+ID: ${parsed.state?.user?.id || 'N/A'}</pre>
+
+                    <h2>🔐 Informações de Roles:</h2>
+                    <pre>Roles: ${JSON.stringify(parsed.state?.user?.roles, null, 2) || 'N/A'}
+Tipo de roles: ${Array.isArray(parsed.state?.user?.roles) ? 'Array' : typeof parsed.state?.user?.roles}
+Primeiro role: ${JSON.stringify(parsed.state?.user?.roles?.[0], null, 2) || 'N/A'}
+Role name: ${parsed.state?.user?.roles?.[0]?.name || 'N/A'}</pre>
+
+                    <h2>🎯 Teste da Função isAdmin():</h2>
+                    <pre>Role atual: ${parsed.state?.user?.roles?.[0]?.name || 'Nenhuma'}
+É admin?: ${parsed.state?.user?.roles?.[0]?.name === 'admin' || parsed.state?.user?.roles?.[0]?.name === 'super_admin' ? '✅ SIM' : '❌ NÃO'}</pre>
+
+                    <h2>📜 Permissões:</h2>
+                    <pre>${JSON.stringify(parsed.state?.acessivel, null, 2) || 'N/A'}</pre>
+                `;
+            }
+        } catch (error) {
+            output.innerHTML = `<div class="error">❌ Erro ao ler localStorage: ${error.message}</div>`;
+        }
+    </script>
+</body>
+</html>

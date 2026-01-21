@@ -1,12 +1,23 @@
 // src/features/equipamentos/components/EquipamentosPage.tsx - CORRIGIDO
 import { useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import { Layout } from '@/components/common/Layout';
 import { TitleCard } from '@/components/common/title-card';
 import { BaseTable } from '@/components/common/base-table/BaseTable';
 import { BaseFilters } from '@/components/common/base-filters/BaseFilters';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Wrench, ArrowLeft, AlertCircle } from 'lucide-react';
 import { Equipamento, EquipamentosFilters } from '../types';
 import { getEquipamentosTableColumns } from '../config/table-config';
@@ -99,6 +110,11 @@ export function EquipamentosPage() {
   const [modalGerenciarUARs, setModalGerenciarUARs] = useState({
     isOpen: false,
     equipamentoUC: null as Equipamento | null
+  });
+
+  const [deleteDialog, setDeleteDialog] = useState({
+    isOpen: false,
+    equipamento: null as Equipamento | null
   });
 
   // ============================================================================
@@ -396,17 +412,39 @@ export function EquipamentosPage() {
     }
   };
 
-  const handleDelete = async (equipamento: Equipamento) => {
-    if (!confirm(`Tem certeza que deseja remover ${equipamento.nome}?`)) {
-      return;
-    }
+  const handleDelete = (equipamento: Equipamento) => {
+    setDeleteDialog({
+      isOpen: true,
+      equipamento
+    });
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteDialog.equipamento) return;
 
     try {
-      await deleteEquipamento(equipamento.id); // USA ID STRING DIRETAMENTE
-      console.log('Equipamento removido com sucesso');
-    } catch (error) {
-      console.error('Erro ao remover equipamento:', error);
-      alert('Erro ao remover equipamento. Verifique se não há componentes vinculados.');
+      await deleteEquipamento(deleteDialog.equipamento.id);
+
+      toast.success('Equipamento removido!', {
+        description: `${deleteDialog.equipamento.nome} foi removido com sucesso.`,
+        duration: 4000,
+      });
+
+      // Recarregar dados
+      await loadEquipamentos(filters);
+
+    } catch (error: any) {
+      const errorMessage = error?.response?.data?.error?.message ||
+                          error?.response?.data?.message ||
+                          error?.message ||
+                          'Erro desconhecido ao remover equipamento';
+
+      toast.error('Erro ao remover equipamento', {
+        description: errorMessage,
+        duration: 6000,
+      });
+    } finally {
+      setDeleteDialog({ isOpen: false, equipamento: null });
     }
   };
 
@@ -426,7 +464,8 @@ export function EquipamentosPage() {
   // PREPARAR COLUNAS DA TABELA
   // ============================================================================
   const tableColumns = getEquipamentosTableColumns({
-    onGerenciarComponentes: handleGerenciarComponentes
+    onGerenciarComponentes: handleGerenciarComponentes,
+    isAdmin: isAdmin()
   });
 
   // Preparar dados de paginação
@@ -545,17 +584,19 @@ export function EquipamentosPage() {
             </div>
 
             {/* Botões de Ação - responsivos */}
-            <div className="flex flex-col sm:flex-row gap-2 w-full">
-              <Button
-                onClick={() => openUCModal('create')}
-                className="w-full sm:w-auto h-9"
-                disabled={loading}
-              >
-                <Wrench className="mr-2 h-4 w-4" />
-                <span className="hidden sm:inline">Novo Equipamento UC</span>
-                <span className="sm:hidden">Novo UC</span>
-              </Button>
-            </div>
+            {isAdmin() && (
+              <div className="flex flex-col sm:flex-row gap-2 w-full">
+                <Button
+                  onClick={() => openUCModal('create')}
+                  className="w-full sm:w-auto h-9"
+                  disabled={loading}
+                >
+                  <Wrench className="mr-2 h-4 w-4" />
+                  <span className="hidden sm:inline">Novo Equipamento UC</span>
+                  <span className="sm:hidden">Novo UC</span>
+                </Button>
+              </div>
+            )}
           </div>
 
           <div className="flex-1 min-h-0">
@@ -566,10 +607,10 @@ export function EquipamentosPage() {
               loading={loading}
               onPageChange={handlePageChange}
               onView={handleView}
-              onEdit={handleEdit}
-              onDelete={handleDelete}
+              onEdit={isAdmin() ? handleEdit : undefined}
+              onDelete={isAdmin() ? handleDelete : undefined}
               emptyMessage={
-                plantaInfo 
+                plantaInfo
                   ? `Nenhum equipamento encontrado para ${plantaInfo.nome}.`
                   : "Nenhum equipamento encontrado."
               }
@@ -589,6 +630,7 @@ export function EquipamentosPage() {
           entity={modalUC.entity}
           onClose={closeUCModal}
           onSubmit={handleSubmitUC}
+          onDelete={handleDelete}
         />
 
         {/* Modal para Componentes UAR */}
@@ -608,6 +650,38 @@ export function EquipamentosPage() {
           onClose={closeGerenciarUARsModal}
           onSave={handleSalvarUARs}
         />
+
+        {/* AlertDialog para confirmação de exclusão */}
+        <AlertDialog open={deleteDialog.isOpen} onOpenChange={(open) => !open && setDeleteDialog({ isOpen: false, equipamento: null })}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
+              <AlertDialogDescription>
+                Tem certeza que deseja remover o equipamento <strong>{deleteDialog.equipamento?.nome}</strong>?
+                {deleteDialog.equipamento?.classificacao === 'UC' && deleteDialog.equipamento?.totalComponentes > 0 && (
+                  <>
+                    <br /><br />
+                    <span className="text-amber-600 dark:text-amber-400 font-medium">
+                      Este equipamento possui {deleteDialog.equipamento.totalComponentes} componente(s) UAR vinculado(s).
+                      Eles também serão removidos.
+                    </span>
+                  </>
+                )}
+                <br /><br />
+                Esta ação não pode ser desfeita.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDeleteConfirm}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Remover
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </Layout.Main>
     </Layout>
   );
