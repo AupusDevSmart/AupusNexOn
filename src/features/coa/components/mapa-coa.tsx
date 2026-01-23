@@ -165,15 +165,9 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
         };
 
         const getTipoIcon = (tipo?: string) => {
-          if (!tipo) return "⚡";
-          if (tipo.toLowerCase().includes("solar") || tipo.toLowerCase().includes("ufv")) {
-            return "☀️";
-          } else if (tipo.toLowerCase().includes("carga")) {
-            return "⚡";
-          } else if (tipo.toLowerCase().includes("transform")) {
-            return "🔌";
-          }
-          return "⚙️";
+          // Removido: emojis infantis
+          // Agora usa apenas círculos coloridos sem ícone
+          return "";
         };
 
         const isSelected = unidadeSelecionada?.id === unidade.id;
@@ -468,6 +462,18 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
 
           {unidadeSelecionada && (
             <div className="space-y-4">
+              {/* Nome da Planta */}
+              {unidadeSelecionada.plantaNome && (
+                <div>
+                  <span className="text-xs font-medium text-muted-foreground uppercase">
+                    Planta
+                  </span>
+                  <p className="text-sm font-medium">
+                    {unidadeSelecionada.plantaNome}
+                  </p>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <span className="text-xs font-medium text-muted-foreground uppercase">

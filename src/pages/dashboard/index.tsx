@@ -428,7 +428,12 @@ export function DashboardPage() {
                   {/* Mapa - 4/6 da largura (alinha com os 4 primeiros cards) */}
                   <div className="lg:col-span-4 h-full">
                     <MapaCoa
-                      unidades={data.plantas.flatMap(planta => planta.unidades)}
+                      unidades={data.plantas.flatMap(planta =>
+                        planta.unidades.map(unidade => ({
+                          ...unidade,
+                          plantaNome: planta.nome
+                        }))
+                      )}
                       onUnidadeClick={(unidadeId) => {
                         console.log('🖱️ [DASHBOARD] Unidade clicada:', unidadeId);
                         // Buscar dados completos da unidade e planta para passar via state
@@ -501,7 +506,7 @@ export function DashboardPage() {
                     <Card className="flex flex-col h-[calc(50vh-8rem)]">
                     <CardHeader className="flex-shrink-0">
                       <CardTitle className="text-sm sm:text-base flex items-center gap-2">
-                        <span>☀️ USINAS FOTOVOLTAICAS</span>
+                        <span>USINAS FOTOVOLTAICAS</span>
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="flex-1 overflow-hidden">
@@ -589,7 +594,7 @@ export function DashboardPage() {
                                     <td className="text-center py-2 px-2">
                                       <Badge variant="outline">{fatorCarga.toFixed(0)}</Badge>
                                     </td>
-                                    <td className="text-center py-2 px-2">☀️</td>
+                                    <td className="text-center py-2 px-2">-</td>
                                     <td className="text-center py-2 px-2">
                                       <div className={`w-3 h-3 rounded-full mx-auto ${
                                         unidade.status === 'ONLINE' ? 'bg-green-500' :
@@ -629,7 +634,7 @@ export function DashboardPage() {
                   <Card className="flex flex-col h-[calc(50vh-8rem)]">
                     <CardHeader className="flex-shrink-0">
                       <CardTitle className="text-sm sm:text-base flex items-center gap-2">
-                        <span>⚡ CARGAS MONITORADAS</span>
+                        <span>CARGAS MONITORADAS</span>
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="flex-1 overflow-hidden">
@@ -717,7 +722,7 @@ export function DashboardPage() {
                                     <td className="text-center py-2 px-2">
                                       <Badge variant="outline">{fatorCarga.toFixed(0)}</Badge>
                                     </td>
-                                    <td className="text-center py-2 px-2">⚡</td>
+                                    <td className="text-center py-2 px-2">-</td>
                                     <td className="text-center py-2 px-2">
                                       <div className={`w-3 h-3 rounded-full mx-auto ${
                                         unidade.status === 'ONLINE' ? 'bg-green-500' :

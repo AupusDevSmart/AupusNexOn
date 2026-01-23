@@ -39,6 +39,7 @@ export interface UnidadeResumo {
   };
   cidade?: string;
   estado?: string;
+  plantaNome?: string; // ✅ NOVO: Nome da planta que contém esta unidade
   potenciaInstalada: number; // ✅ NOVO: Potência instalada/cadastrada da unidade (kW)
   metricas: {
     potenciaAtual: number;
