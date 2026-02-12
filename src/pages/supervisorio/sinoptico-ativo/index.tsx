@@ -74,6 +74,10 @@ import { equipamentosApi } from '@/services/equipamentos.services';
 import { DiagramasService } from '@/services/diagramas.services';
 import { useUserStore } from '@/store/useUserStore';
 
+// 🆕 V2: Imports do diagrama refatorado
+import { DiagramV2Wrapper } from '@/features/supervisorio/v2/DiagramV2Wrapper';
+import { useDiagramStore } from '@/features/supervisorio/v2/hooks/useDiagramStore';
+
 // Tipos - CORRIGIDOS com interfaces locais caso os imports falhem
 import type { ComponenteDU } from "@/types/dtos/sinoptico-ativo";
 
@@ -1787,7 +1791,7 @@ export function SinopticoAtivoPage() {
   // ✅ IMPORTANTE: Atualizar título IMEDIATAMENTE quando recebe dados via state
   useEffect(() => {
     if (stateFromNavigation?.unidade?.nome) {
-      console.log('🎯 [SINÓPTICO] Recebeu dados via state, atualizando título:', stateFromNavigation.unidade.nome);
+      // Log removido;
       document.title = `Sinóptico - ${stateFromNavigation.unidade.nome}`;
     }
   }, [stateFromNavigation]);
@@ -1812,20 +1816,11 @@ export function SinopticoAtivoPage() {
 
   // Atualizar título da página quando unidade carrega
   useEffect(() => {
-    console.log('📝 [SINÓPTICO] useEffect título executado:', {
-      unidadeNome: unidadeAtual?.nome,
-      unidadeId
-    });
-
     if (unidadeAtual?.nome) {
-      console.log('✅ [SINÓPTICO] Atualizando título com nome:', unidadeAtual.nome);
       document.title = `Sinóptico - ${unidadeAtual.nome}`;
     } else if (unidadeId) {
-      // Enquanto carrega, mostrar "Carregando..." ao invés do ID
-      console.log('⏳ [SINÓPTICO] Atualizando título para "Carregando..."');
       document.title = 'Sinóptico - Carregando...';
     } else {
-      console.log('📄 [SINÓPTICO] Atualizando título para "Sinóptico"');
       document.title = 'Sinóptico';
     }
 
@@ -1840,7 +1835,7 @@ export function SinopticoAtivoPage() {
     const carregarUnidade = async () => {
       if (!unidadeId) return;
 
-      console.log('🔄 [SINÓPTICO] Verificando necessidade de carregar unidade:', unidadeId);
+      // Log removido;
 
       try {
         const response = await api.get(`/unidades/${unidadeId}`);
@@ -1856,7 +1851,7 @@ export function SinopticoAtivoPage() {
           plantaId: unidadeData.planta_id || unidadeData.plantaId,
         };
 
-        console.log('✅ [SINÓPTICO] Unidade carregada:', unidadeFormatada.nome);
+        // Log removido;
         setUnidadeAtual(unidadeFormatada);
 
         // Carregar planta se tiver plantaId
@@ -1864,7 +1859,7 @@ export function SinopticoAtivoPage() {
           try {
             const plantaResponse = await api.get(`/plantas/${unidadeData.planta_id}`);
             const plantaData = plantaResponse.data?.data || plantaResponse.data;
-            console.log('✅ [SINÓPTICO] Planta carregada:', plantaData.nome);
+            // Log removido;
             setPlantaAtual(plantaData);
           } catch (err) {
             console.error('❌ Erro ao carregar planta:', err);
@@ -1880,7 +1875,7 @@ export function SinopticoAtivoPage() {
 
   const reloadDiagrama = useCallback(async () => {
     if (!unidadeId) return;
-    console.log('🔄 Recarregando diagrama da unidade:', unidadeId);
+    // Log removido;
     await loadDiagramaFromBackend();
   }, [unidadeId]);
 
@@ -1895,7 +1890,7 @@ export function SinopticoAtivoPage() {
   // OTIMIZAÇÃO: Log simplificado sem stack trace
   useEffect(() => {
     if (import.meta.env.DEV) {
-      console.log('🔄 [STATE] connections:', connections.length);
+      // Log removido;
     }
   }, [connections]);
 
@@ -1903,7 +1898,7 @@ export function SinopticoAtivoPage() {
   const loadDiagramaFromBackend = useCallback(async () => {
     if (!unidadeId) return;
 
-    console.log('📡 Carregando diagrama e equipamentos do backend para unidade:', unidadeId);
+    // Log removido;
     setLoadingDiagrama(true);
     setErrorDiagrama(null);
 
@@ -1922,7 +1917,7 @@ export function SinopticoAtivoPage() {
           : Array.isArray(equipamentosResponse)
             ? equipamentosResponse
             : [];
-      console.log('✅ Equipamentos carregados:', equipamentosData.length);
+      // Log removido;
       setEquipamentos(equipamentosData);
 
       if (diagramaAtivo) {
@@ -1949,8 +1944,8 @@ export function SinopticoAtivoPage() {
               nome: eq.nome,
               tag: eq.tag,
               posicao: {
-                x: eq.posicao?.x || 0,
-                y: eq.posicao?.y || 0,
+                x: eq.posicao_x ?? eq.posicao?.x ?? eq.posicaoX ?? 0,
+                y: eq.posicao_y ?? eq.posicao?.y ?? eq.posicaoY ?? 0,
               },
               rotacao: eq.rotacao || 0,
               label_position: eq.label_position || 'bottom',
@@ -1996,7 +1991,7 @@ export function SinopticoAtivoPage() {
           setComponentes(componentesCarregados);
           setConnections(conexoesCarregadas);
           if (import.meta.env.DEV) {
-            console.log('✅ Diagrama:', componentesCarregados.length, 'componentes,', conexoesCarregadas.length, 'conexões');
+            // Log removido;
           }
         } catch (err) {
           if (import.meta.env.DEV) {
@@ -2048,7 +2043,7 @@ export function SinopticoAtivoPage() {
   // OTIMIZAÇÃO: Log simplificado
   useEffect(() => {
     if (import.meta.env.DEV && componenteSelecionado) {
-      console.log('🔄 Selecionado:', componenteSelecionado.nome);
+      // Log removido;
     }
   }, [componenteSelecionado]);
 
@@ -2079,7 +2074,7 @@ export function SinopticoAtivoPage() {
   // OTIMIZAÇÃO: Log simplificado
   useEffect(() => {
     if (import.meta.env.DEV && componenteEditando) {
-      console.log('🔄 Editando:', componenteEditando);
+      // Log removido;
     }
   }, [componenteEditando]);
 
@@ -2650,29 +2645,13 @@ export function SinopticoAtivoPage() {
   // Função principal de clique em componente - CORRIGIDO + MQTT + Multi-seleção
   const handleComponenteClick = useCallback(
     (componente: ComponenteDU, event?: React.MouseEvent) => {
-      console.log('🖱️ [CLICK] Componente clicado:', {
-        id: componente.id,
-        tipo: componente.tipo,
-        nome: componente.nome,
-        modoEdicao,
-        diagramaFullscreen,
-        dados: componente.dados
-      });
+      // Log removido
 
       if (modoEdicao) {
-        console.log('✏️ [MODO EDIÇÃO] Componente clicado no modo edição:', {
-          modoFerramenta,
-          componenteId: componente.id,
-          componenteNome: componente.nome
-        });
-
         if (modoFerramenta === "selecionar") {
-          console.log('🎯 [EDIÇÃO] setComponenteEditando sendo chamado com:', componente.id);
           setComponenteEditando(componente.id);
-          console.log('✅ [EDIÇÃO] setComponenteEditando executado');
         } else if (modoFerramenta === "conectar" && event) {
           const port = determineClickPort(event);
-          console.log('🔌 [EDIÇÃO] Iniciando conexão:', { from: componente.id, port });
           startConnection(componente.id, port);
         }
         return;
@@ -2681,19 +2660,15 @@ export function SinopticoAtivoPage() {
       // Lógica de seleção múltipla removida
       // A seleção de equipamentos para agregação é feita via modal de configuração
 
-      console.log('✅ [SET] setComponenteSelecionado sendo chamado com:', {
-        id: componente.id,
-        nome: componente.nome,
-        tipo: componente.tipo
-      });
+      // Log removido
       setComponenteSelecionado(componente);
-      console.log('🎯 [SET] setComponenteSelecionado executado');
+      // Log removido;
 
       // Detectar Inversor com MQTT Habilitado
       if (componente.tipo === 'INVERSOR' &&
           componente.dados?.mqtt_habilitado === true &&
           componente.dados?.equipamento_id) {
-        console.log('🔌 [MODAL] Abrindo InversorMqttDataModal para:', componente.dados.equipamento_id);
+        // Log removido;
         setSelectedInversorMqttId(componente.dados.equipamento_id);
         setInversorMqttModalOpen(true);
         return;
@@ -2701,7 +2676,7 @@ export function SinopticoAtivoPage() {
 
       // ❌ DESABILITADO: Pivo modal não funciona completamente ainda
       // if (componente.tipo === 'PIVO' && componente.dados?.equipamento_id) {
-      //   console.log('🚜 [MODAL] Abrindo PivoModal para:', componente.dados.equipamento_id);
+      // Log removido;
       //   setSelectedPivoId(componente.dados.equipamento_id);
       //   setPivoModalOpen(true);
       //   return;
@@ -2712,18 +2687,18 @@ export function SinopticoAtivoPage() {
 
       // ✅ HABILITADO: Apenas M160 e INVERSOR funcionam completamente
       if (tag.includes('M160') || componente.tipo === 'M160' || componente.tipo === 'METER_M160') {
-        console.log('📊 [MODAL] Abrindo M160Modal');
+        // Log removido;
         setModalAberto('M160');
       }
       // ❌ DESABILITADO: Outros modais não funcionam completamente ainda
       // else if (tag.includes('a966/state') && !tag.includes('LANDIS')) {
-      //   console.log('📊 [MODAL] Abrindo A966Modal');
+      // Log removido;
       //   setModalAberto('A966');
       // } else if (tag.includes('LANDIS')) {
-      //   console.log('📊 [MODAL] Abrindo LandisModal');
+      // Log removido;
       //   setModalAberto('LANDIS_E750');
       // } else {
-      //   console.log('📊 [MODAL] Abrindo modal padrão para tipo:', componente.tipo);
+      // Log removido;
       //   setModalAberto(componente.tipo);
       // }
     },
@@ -2967,14 +2942,7 @@ export function SinopticoAtivoPage() {
     // Limpar espaços em branco do ID (pode vir do banco de dados com espaços)
     const unidadeIdLimpo = novaUnidadeId.trim();
 
-    // console.log('🏭 [SINÓPTICO] Unidade selecionada:', {
-    //   nome: unidade.nome,
-    //   id: unidadeIdLimpo,
-    //   demandaGeracao: unidade.demandaGeracao,
-    //   demandaCarga: unidade.demandaCarga,
-    //   tipo: unidade.tipo,
-    //   potencia: unidade.potencia,
-    // });
+    // Log removido
 
     setUnidadeId(unidadeIdLimpo);
     setPlantaAtual(planta);
@@ -2999,36 +2967,36 @@ export function SinopticoAtivoPage() {
 
   // Função para remover conexão
   const removerConexao = (connectionId: string) => {
-    console.log('═══════════════════════════════════════════════════');
-    console.log('🗑️ [removerConexao] INICIANDO REMOÇÃO');
-    console.log('═══════════════════════════════════════════════════');
-    console.log('Connection ID a remover:', connectionId);
-    console.log('Total de conexões ANTES:', connections.length);
-    console.log('IDs das conexões ANTES:', connections.map(c => c.id));
+    // Log removido;
+    // Log removido;
+    // Log removido;
+    // Log removido;
+    // Log removido;
+    // Log removido;
 
     const novasConexoes = connections.filter((conn) => {
       const manter = conn.id !== connectionId;
       if (!manter) {
-        console.log('❌ Removendo conexão:', conn.id);
+        // Log removido;
       }
       return manter;
     });
 
-    console.log('Total de conexões DEPOIS do filtro:', novasConexoes.length);
-    console.log('IDs das conexões DEPOIS:', novasConexoes.map(c => c.id));
-    console.log('Conexões removidas:', connections.length - novasConexoes.length);
+    // Log removido;
+    // Log removido;
+    // Log removido;
 
-    console.log('📝 Chamando setConnections com', novasConexoes.length, 'conexões...');
+    // Log removido;
     setConnections(novasConexoes);
-    console.log('✅ setConnections CHAMADO!');
+    // Log removido;
 
     // Verificar após 100ms se o estado realmente mudou
     setTimeout(() => {
-      console.log('⏱️ [Verificação após 100ms] Total de conexões:', connections.length);
+      // Log removido;
     }, 100);
 
-    console.log('⚠️ NÃO ESQUEÇA DE SALVAR O DIAGRAMA!');
-    console.log('═══════════════════════════════════════════════════');
+    // Log removido;
+    // Log removido;
   };
 
   // Funções de edição de componentes
@@ -3080,12 +3048,12 @@ export function SinopticoAtivoPage() {
         }
 
         updateDiagram([...componentes, novoComponente]);
-        console.log('✅ Equipamento adicionado ao diagrama:', equipamento.nome);
+        // Log removido;
       }
     } else if (tipo === 'BARRAMENTO' || tipo === 'PONTO') {
       // Componentes visuais: criar no backend primeiro
       try {
-        console.log('🔧 Criando componente virtual:', { tipo, unidadeId });
+        // Log removido
         const { equipamentosApi } = await import('@/services/equipamentos.services');
         const equipamentoVirtual = await equipamentosApi.criarComponenteVisual(
           unidadeId,
@@ -3093,7 +3061,7 @@ export function SinopticoAtivoPage() {
           `${tipo} ${componentes.filter(c => c.tipo === tipo).length + 1}`
         );
 
-        console.log('📦 Resposta do backend:', equipamentoVirtual);
+        // Log removido;
 
         // A resposta vem como { success: true, data: { id, nome, ... }, meta: {...} }
         const equipamentoData = equipamentoVirtual?.data;
@@ -3121,7 +3089,7 @@ export function SinopticoAtivoPage() {
           },
         };
 
-        console.log('✅ Componente virtual criado:', novoComponente);
+        // Log removido;
         updateDiagram([...componentes, novoComponente]);
       } catch (err: any) {
         console.error('❌ Erro ao criar componente virtual:', err);
@@ -3145,7 +3113,7 @@ export function SinopticoAtivoPage() {
 
   // Handler para equipamento criado via modal de criação rápida
   const handleEquipamentoCriado = async (equipamento: any) => {
-    console.log('🎉 [CRIAÇÃO RÁPIDA] Equipamento criado:', equipamento);
+    // Log removido;
 
     try {
       // Recarregar lista de equipamentos para incluir o novo
@@ -3199,12 +3167,12 @@ export function SinopticoAtivoPage() {
 
       updateDiagram([...componentes, novoComponente]);
 
-      console.log('✅ [CRIAÇÃO RÁPIDA] Equipamento adicionado ao diagrama:', novoComponente);
+      // Log removido;
 
       // ✅ SALVAR DIAGRAMA IMEDIATAMENTE NO BACKEND
       try {
         await salvarDiagramaNoBackend([...componentes, novoComponente], connections);
-        console.log('✅ [CRIAÇÃO RÁPIDA] Diagrama salvo no backend');
+        // Log removido;
       } catch (saveError) {
         console.error('❌ [CRIAÇÃO RÁPIDA] Erro ao salvar diagrama:', saveError);
         alert('Equipamento criado mas houve erro ao salvar no diagrama. Tente salvar manualmente.');
@@ -3230,11 +3198,11 @@ export function SinopticoAtivoPage() {
       try {
         const { DiagramasService } = await import('@/services/diagramas.services');
         await DiagramasService.removeEquipamento(diagramaIdAtual, componente.dados.equipamento_id);
-        console.log('✅ Equipamento removido do diagrama no backend:', componente.dados.equipamento_id);
+        // Log removido;
       } catch (err: any) {
         console.error('❌ Erro ao remover equipamento do backend:', err);
         // Não reverter a remoção local, apenas avisar
-        console.warn('⚠️ Equipamento removido localmente mas falha no backend. Salve novamente para sincronizar.');
+        // Log removido;
       }
     }
   };
@@ -3307,7 +3275,7 @@ export function SinopticoAtivoPage() {
 
           updateDiagram([...componentes, junctionNode], newConnections);
 
-          console.log("✅ Junction invisível criado:", junctionNode.id);
+          // Log removido;
         }
       }
     },
@@ -3329,7 +3297,7 @@ export function SinopticoAtivoPage() {
     );
 
     if (!confirmar) {
-      console.log('❌ Salvamento cancelado pelo usuário');
+      // Log removido;
       return;
     }
 
@@ -3337,13 +3305,13 @@ export function SinopticoAtivoPage() {
     setIsSavingDiagrama(true);
 
     try {
-      console.log('💾 Salvando diagrama no backend...');
-      console.log('📊 Componentes:', componentes.length);
-      console.log('🔗 Conexões:', connections.length);
+      // Log removido;
+      // Log removido;
+      // Log removido;
 
       // Permitir salvar diagrama vazio
       if (componentes.length === 0) {
-        console.log('ℹ️ Salvando diagrama vazio (sem componentes)');
+        // Log removido;
       }
 
       // Importar o serviço dinamicamente
@@ -3352,27 +3320,27 @@ export function SinopticoAtivoPage() {
       let diagramaId: string;
 
       // Buscar diagrama ativo existente para esta unidade
-      console.log('🔍 Buscando diagrama ativo para a unidade...');
+      // Log removido;
       const diagramaAtivo = await DiagramasService.getActiveDiagrama(unidadeId);
 
       if (diagramaAtivo) {
-        console.log('✅ Diagrama ativo encontrado:', diagramaAtivo.id);
-        console.log('🗑️ Para limpar conexões duplicadas, use: DELETE FROM equipamentos_conexoes WHERE diagrama_id = \'' + diagramaAtivo.id + '\';');
+        // Log removido;
+        // Log removido;');
         diagramaId = diagramaAtivo.id.trim();
 
         // Limpar equipamentos e conexões existentes antes de salvar os novos
-        console.log('🧹 Limpando equipamentos e conexões antigas do diagrama...');
+        // Log removido;
         // Como não temos endpoint de limpar tudo, vamos reutilizar o diagrama existente
         // O backend deve ter lógica para substituir ou atualizar
       } else {
         // Criar novo diagrama apenas se não existir nenhum ativo
-        console.log('🆕 Nenhum diagrama ativo encontrado. Criando novo diagrama...');
+        // Log removido;
         const novoDiagrama = await DiagramasService.createDiagrama({
           unidadeId: unidadeId,
           nome: `Diagrama - ${unidadeAtual?.nome || 'Unidade'}`,
           ativo: true,
         });
-        console.log('✅ Novo diagrama criado:', novoDiagrama);
+        // Log removido;
         diagramaId = novoDiagrama?.id?.trim() || '';
 
         if (!diagramaId) {
@@ -3382,7 +3350,7 @@ export function SinopticoAtivoPage() {
 
       // Atualizar nome e tag APENAS dos equipamentos que foram modificados
       if (equipamentosModificados.size > 0) {
-        console.log(`📝 Atualizando ${equipamentosModificados.size} equipamentos modificados...`);
+        // Log removido;
         const { equipamentosApi } = await import('@/services/equipamentos.services');
 
         for (const equipamentoId of equipamentosModificados) {
@@ -3409,10 +3377,10 @@ export function SinopticoAtivoPage() {
             // Só fazer update se houver algo para atualizar
             if (Object.keys(updateData).length > 0) {
               await equipamentosApi.update(equipamentoId, updateData);
-              console.log(`✅ Equipamento ${equipamentoId} atualizado:`, updateData);
+              // Log removido;
             }
           } catch (err: any) {
-            console.warn(`⚠️ Erro ao atualizar equipamento ${equipamentoId}:`, err.message);
+            // Log removido;
             // Continuar mesmo se houver erro (não bloquear salvamento do diagrama)
           }
         }
@@ -3420,7 +3388,7 @@ export function SinopticoAtivoPage() {
         // Limpar o set de equipamentos modificados após salvar
         setEquipamentosModificados(new Set());
       } else {
-        console.log('ℹ️ Nenhum equipamento teve nome/tag modificado');
+        // Log removido;
       }
 
       // TODOS os componentes agora têm equipamento_id (incluindo BARRAMENTO/PONTO)
@@ -3431,7 +3399,7 @@ export function SinopticoAtivoPage() {
           const equipamentoId = comp.dados.equipamento_id?.trim();
 
           if (!equipamentoId) {
-            console.warn('⚠️ Componente sem equipamento_id válido:', comp);
+            // Log removido;
             return null;
           }
 
@@ -3451,26 +3419,35 @@ export function SinopticoAtivoPage() {
         })
         .filter(Boolean); // Remove nulls
 
-      console.log(`📦 Salvando ${equipamentosParaSalvar.length} equipamentos (incluindo virtuais) no diagrama ${diagramaId}...`);
+      // Log removido;
 
       // Log detalhado dos IDs para debug
       if (equipamentosParaSalvar.length > 0 && import.meta.env.DEV) {
-        console.log('📋 IDs dos equipamentos a salvar:');
+        // Log removido;
+
+// Desabilitar logs de debug em produção
+const noop = () => {};
+if (import.meta.env.PROD) {
+  console.log = noop;
+  console.info = noop;
+  console.debug = noop;
+}
+
         equipamentosParaSalvar.forEach((eq: any, idx: number) => {
-          console.log(`   [${idx + 1}] ${eq.equipamentoId}`);
+          // Log removido;
         });
       }
 
       // ✅ OTIMIZAÇÃO: Remover equipamentos e conexões antigas EM PARALELO
-      console.log('🧹 [PARALELO] Limpando equipamentos e conexões antigas...');
+      // Log removido;
       try {
         await Promise.all([
           DiagramasService.removeAllEquipamentos(diagramaId),
           DiagramasService.removeAllConnections(diagramaId)
         ]);
-        console.log('✅ [PARALELO] Equipamentos e conexões antigas removidos');
+        // Log removido;
       } catch (err: any) {
-        console.warn('⚠️ Erro ao limpar dados antigos (pode ser que não existam):', err.message);
+        // Log removido;
       }
 
       // ✅ Adicionar novos equipamentos (se houver)
@@ -3480,22 +3457,22 @@ export function SinopticoAtivoPage() {
             diagramaId,
             equipamentosParaSalvar
           );
-          console.log('✅ Equipamentos salvos:', resultadoEquipamentos);
+          // Log removido;
         } catch (err: any) {
           console.error('❌ Erro ao salvar equipamentos:', err);
           throw new Error(`Erro ao salvar equipamentos: ${err.message}`);
         }
       } else {
-        console.log('ℹ️ Diagrama vazio salvo (nenhum equipamento)');
+        // Log removido;
       }
 
       if (connections.length > 0) {
-        console.log(`🔗 Salvando ${connections.length} conexões novas...`);
+        // Log removido;
 
         // Helper function para converter ID visual para ID real do equipamento
         const getEquipamentoIdReal = (visualId: string | undefined): string | null => {
           if (!visualId) {
-            console.warn('⚠️ visualId is undefined');
+            // Log removido;
             return null;
           }
 
@@ -3520,17 +3497,14 @@ export function SinopticoAtivoPage() {
           const targetId = getEquipamentoIdReal(conn.target || conn.to);
 
           if (!sourceId || !targetId) {
-            console.warn('⚠️ Conexão ignorada (sem equipamento_id em um dos lados):', {
-              from: conn.from || conn.source,
-              to: conn.to || conn.target
-            });
+            // Log removido;
             return false;
           }
 
           return true;
         });
 
-        console.log(`✅ ${conexoesValidas.length} conexões válidas de ${connections.length} totais`);
+        // Log removido;
 
         const conexoesParaSalvar = conexoesValidas.map(conn => ({
           origem: {
@@ -3548,7 +3522,7 @@ export function SinopticoAtivoPage() {
           },
         }));
 
-        console.log('📤 Preparando para salvar conexões...');
+        // Log removido;
 
         if (conexoesParaSalvar.length > 0) {
           try {
@@ -3556,7 +3530,7 @@ export function SinopticoAtivoPage() {
             const BATCH_SIZE = 50;
 
             if (conexoesParaSalvar.length > BATCH_SIZE) {
-              console.log(`🔄 Processando ${conexoesParaSalvar.length} conexões em lotes de ${BATCH_SIZE}...`);
+              // Log removido;
 
               // Dividir em lotes
               const batches = [];
@@ -3571,7 +3545,7 @@ export function SinopticoAtivoPage() {
                 const startBatch = i + 1;
                 const endBatch = Math.min(i + PARALLEL_BATCHES, batches.length);
 
-                console.log(`📦 Salvando lotes ${startBatch}-${endBatch} de ${batches.length} em paralelo...`);
+                // Log removido;
 
                 await Promise.all(
                   parallelBatches.map((batch, idx) =>
@@ -3581,22 +3555,22 @@ export function SinopticoAtivoPage() {
                 );
               }
 
-              console.log(`✅ Todas as ${conexoesParaSalvar.length} conexões salvas em ${batches.length} lotes`);
+              // Log removido;
             } else {
               // Poucas conexões, salvar tudo de uma vez
-              console.log(`📤 Enviando ${conexoesParaSalvar.length} conexões em um único lote...`);
+              // Log removido;
               const resultadoConexoes = await DiagramasService.createConexoesBulk(
                 diagramaId,
                 conexoesParaSalvar
               );
-              console.log('✅ Conexões salvas:', resultadoConexoes);
+              // Log removido;
             }
           } catch (err: any) {
             console.error('❌ Erro ao salvar conexões:', err);
             throw new Error(`Erro ao salvar conexões: ${err.message}`);
           }
         } else {
-          console.warn('⚠️ Nenhuma conexão válida para salvar');
+          // Log removido;
         }
       }
 
@@ -3618,41 +3592,29 @@ export function SinopticoAtivoPage() {
     }
   }, [unidadeId, componentes, connections, unidadeAtual]); 
     
-  // LOADING STATE - Não renderizar até selecionar unidade e carregar
-  if (!diagramaCarregado || !unidadeId) {
+  // LOADING STATE - Apenas mostrar se não houver unidade selecionada
+  // O DiagramV2 gerencia seu próprio loading interno
+  if (!unidadeId) {
     return (
       <Layout>
         <Layout.Main>
           <div className="flex flex-col items-center justify-center h-full w-full gap-6">
-            {!unidadeId ? (
-              // Mensagem para selecionar unidade
-              <div className="text-center max-w-md">
-                <Building className="h-16 w-16 text-blue-500 mx-auto mb-4" />
-                <h2 className="text-2xl font-semibold text-gray-900 mb-2">
-                  Selecione uma Unidade
-                </h2>
-                <p className="text-gray-600 mb-6">
-                  Para visualizar o diagrama sinóptico, primeiro escolha uma planta e depois uma unidade.
-                </p>
-                <button
-                  onClick={() => setModalSelecionarUnidade(true)}
-                  className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-lg hover:shadow-xl"
-                >
-                  Selecionar Planta e Unidade
-                </button>
-              </div>
-            ) : (
-              // Loading de diagrama
-              <div className="text-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                <p className="text-lg text-gray-700">Carregando diagrama...</p>
-                {unidadeAtual?.nome && (
-                  <p className="text-sm text-gray-500 mt-2">
-                    Unidade: {unidadeAtual.nome}
-                  </p>
-                )}
-              </div>
-            )}
+            {/* Mensagem para selecionar unidade */}
+            <div className="text-center max-w-md">
+              <Building className="h-16 w-16 text-blue-500 mx-auto mb-4" />
+              <h2 className="text-2xl font-semibold text-gray-900 mb-2">
+                Selecione uma Unidade
+              </h2>
+              <p className="text-gray-600 mb-6">
+                Para visualizar o diagrama sinóptico, primeiro escolha uma planta e depois uma unidade.
+              </p>
+              <button
+                onClick={() => setModalSelecionarUnidade(true)}
+                className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-lg hover:shadow-xl"
+              >
+                Selecionar Planta e Unidade
+              </button>
+            </div>
           </div>
         </Layout.Main>
 
@@ -3670,7 +3632,7 @@ export function SinopticoAtivoPage() {
 
   return (
     <Layout>
-      <Layout.Main>
+      <Layout.Main className="!p-0 !gap-0 !overflow-hidden">
         {/* Loading Overlay para salvamento */}
         {isSavingDiagrama && (
           <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center">
@@ -3695,9 +3657,9 @@ export function SinopticoAtivoPage() {
           </div>
         )}
 
-        <div className="w-full max-w-full space-y-3">
+        <div className="w-full h-full flex flex-col">
           {/* Header */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 p-2 sm:p-4">
+          <div className="flex-none flex flex-col sm:flex-row items-start sm:items-center gap-3 p-4 border-b">
             <Button
               variant="outline"
               size="sm"
@@ -3713,11 +3675,7 @@ export function SinopticoAtivoPage() {
               <h1 className="text-lg sm:text-2xl font-bold text-foreground">
                 <span className="hidden sm:inline">Sinóptico: </span>
                 {(() => {
-                  console.log('🎨 [SINÓPTICO] Renderizando header:', {
-                    unidadeAtual: unidadeAtual?.nome || 'null',
-                    plantaAtual: plantaAtual?.nome || 'null',
-                    unidadeId
-                  });
+                  // Log removido
 
                   if (unidadeAtual) {
                     return (
@@ -3746,13 +3704,52 @@ export function SinopticoAtivoPage() {
             <div className="text-xs text-muted-foreground hidden lg:block">
               Componentes: {componentes.length} | Equipamentos: {Array.isArray(equipamentos) ? equipamentos.length : 0}
             </div>
+
           </div>
 
-          {/* Indicadores - Comentados temporariamente (não podem ser calculados corretamente ainda) */}
-          {/* <SinopticoIndicadores indicadores={indicadores} /> */}
+          {/* 🆕 V2: Diagrama refatorado (sempre ativo) */}
+          {unidadeId && (
+            <div className="flex-1 min-h-0">
+              <DiagramV2Wrapper
+                unidadeIdFromUrl={unidadeId}
+                modoEdicao={false}
+                availableEquipments={equipamentos}
+                onComponenteClick={(comp) => {
+                  // ✅ Modo visualizar: apenas abre modal, sem seleção visual
 
-          {/* Barra de Ferramentas - SÓ APARECE NO MODO EDIÇÃO */}
-          {modoEdicao && (
+                  const tag = comp.tag || '';
+                  const tipo = comp.tipo || '';
+
+                  if (tag.includes('M160') || tipo === 'M160' || tipo === 'METER_M160') {
+                    // M160Modal precisa do componenteSelecionado para funcionar
+                    const componenteV1: ComponenteDU = {
+                      id: comp.id,
+                      tipo: comp.tipo,
+                      nome: comp.nome,
+                      tag: comp.tag,
+                      posicao: { x: comp.posicaoX, y: comp.posicaoY },
+                      status: comp.status?.toUpperCase() as any || 'NORMAL',
+                      dados: comp.dados || {},
+                    };
+                    setComponenteSelecionado(componenteV1);
+                    setModalAberto('M160');
+                  } else if (tipo === 'INVERSOR' || tipo.includes('INVERSOR')) {
+                    // InversorMqttDataModal usa apenas o ID
+                    setSelectedInversorMqttId(comp.id);
+                    setInversorMqttModalOpen(true);
+                  }
+                }}
+              />
+            </div>
+          )}
+
+          {/* V1: Diagrama legado (desativado - usando apenas V2) */}
+          <div style={{ display: 'none' }}>
+            {/* Indicadores - Comentados temporariamente (não podem ser calculados corretamente ainda) */}
+            {/* <SinopticoIndicadores indicadores={indicadores} /> */}
+
+            {/* Barra de Ferramentas - SÓ APARECE NO MODO EDIÇÃO */}
+            {modoEdicao && (
             <div className="mb-6 relative z-50">
               <Card className="p-4 bg-white dark:bg-gray-900 shadow-lg">
                 <div className="flex flex-wrap items-center gap-4">
@@ -3940,11 +3937,7 @@ export function SinopticoAtivoPage() {
 
                 {/* Info do Componente Selecionado */}
                 {(() => {
-                  console.log('📊 [RENDER] Info do Componente Selecionado:', {
-                    componenteEditando,
-                    hasComponenteEditando: !!componenteEditando,
-                    componenteEncontrado: componentes.find(c => c.id === componenteEditando)
-                  });
+                  // Log removido
                   return null;
                 })()}
                 {componenteEditando && (() => {
@@ -4112,13 +4105,7 @@ export function SinopticoAtivoPage() {
           <div className="w-full h-[calc(100vh-120px)] flex flex-col">
             {!modoEdicao && (() => {
               const valorContratadoReal = unidadeAtual?.demandaGeracao || 2300;
-              // console.log('📊 [GRÁFICO DEMANDA] Renderizando com:', {
-              //   valorContratado: valorContratadoReal,
-              //   unidadeNome: unidadeAtual?.nome,
-              //   demandaGeracao: unidadeAtual?.demandaGeracao,
-              //   demandaCarga: unidadeAtual?.demandaCarga,
-              //   usandoFallback: !unidadeAtual?.demandaGeracao,
-              // });
+              // Log removido
 
               // Verificar se há pelo menos um gráfico visível para adaptar layout
               const temGraficosVisiveis = unidadeAtual && (
@@ -4559,12 +4546,7 @@ export function SinopticoAtivoPage() {
                                 }`}
                                 style={style as React.CSSProperties}
                                 onClick={(e) => {
-                                  console.log('PORTA CLICADA:', {
-                                    componente: componente.id,
-                                    port,
-                                    connecting,
-                                    modoFerramenta
-                                  });
+                                  // Log removido
                                   e.preventDefault();
                                   e.stopPropagation();
                                   startConnection(
@@ -4904,6 +4886,7 @@ export function SinopticoAtivoPage() {
           onEquipamentoCriado={handleEquipamentoCriado}
           unidadeId={unidadeId}
         />
+          </div>
 
       </Layout.Main>
     </Layout>

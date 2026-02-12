@@ -85,6 +85,14 @@ export const navigationLinks: Array<NavigationLink> = [
         label: "Sinóptico do Ativo",
         hint: "Visualização detalhada dos ativos",
       },
+      {
+        key: "supervisorio-sinoptico-v2",
+        featureKey: "supervisorio",
+        path: "/supervisorio/sinoptico-v2",
+        icon: Cpu,
+        label: "Diagrama Unifilar V2",
+        hint: "Diagrama unifilar refatorado (arquitetura modular)",
+      },
     ],
   },
   // Financeiro - OCULTO

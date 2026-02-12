@@ -14,6 +14,7 @@ export interface CreateEquipamentoApiData {
   fabricante?: string;
   modelo?: string;
   numero_serie?: string;
+  tag?: string;
   criticidade: '1' | '2' | '3' | '4' | '5';
   tipo_equipamento?: string;
   em_operacao?: 'sim' | 'nao';
@@ -31,6 +32,8 @@ export interface CreateEquipamentoApiData {
   localizacao_especifica?: string;
   observacoes?: string;
   mcpse?: boolean;
+  mqtt_habilitado?: boolean;
+  topico_mqtt?: string;
   tuc?: string;
   a1?: string;
   a2?: string;
@@ -58,6 +61,7 @@ export interface EquipamentoApiResponse {
   fabricante?: string;
   modelo?: string;
   numero_serie?: string;
+  tag?: string;
   criticidade: '1' | '2' | '3' | '4' | '5';
   tipo_equipamento?: string;
   em_operacao?: string;
@@ -75,6 +79,8 @@ export interface EquipamentoApiResponse {
   localizacao_especifica?: string;
   observacoes?: string;
   mcpse?: boolean;
+  mqtt_habilitado?: boolean;
+  topico_mqtt?: string;
   tuc?: string;
   a1?: string;
   a2?: string;
@@ -85,7 +91,7 @@ export interface EquipamentoApiResponse {
   created_at: Date;
   updated_at: Date;
   deleted_at?: Date;
-  
+
   // Relacionamentos
   planta?: {
     id: string;
@@ -115,6 +121,26 @@ export interface EquipamentoApiResponse {
     unidade?: string;
   }[];
   totalComponentes?: number;
+
+  // ✅ Tipo de equipamento (via relação tipo_equipamento_rel)
+  tipoEquipamento?: {
+    id: string;
+    codigo: string;  // Ex: "INVERSOR_FRONIUS", "M160_SCHNEIDER"
+    nome: string;
+    categoria?: any;
+    largura_padrao?: number;
+    altura_padrao?: number;
+    icone_svg?: string;
+  };
+  tipo_equipamento_rel?: {
+    id: string;
+    codigo: string;
+    nome: string;
+    categoria?: any;
+    largura_padrao?: number;
+    altura_padrao?: number;
+    icone_svg?: string;
+  };
 }
 
 export interface EquipamentosQueryParams {

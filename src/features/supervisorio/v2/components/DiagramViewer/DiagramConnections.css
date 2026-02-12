@@ -1,0 +1,51 @@
+/**
+ * DIAGRAM CONNECTIONS - Estilos
+ */
+
+.diagram-connections {
+  pointer-events: none; /* Não bloquear cliques em equipamentos */
+}
+
+/* Conexões normais */
+.connection-line {
+  transition: stroke 0.2s ease, stroke-width 0.2s ease;
+  pointer-events: stroke; /* Permitir click na linha */
+  cursor: pointer;
+}
+
+.connection-line:hover {
+  stroke-width: 3;
+  opacity: 0.8;
+}
+
+.connection-line.selected {
+  stroke: #3B82F6;
+  stroke-width: 3;
+}
+
+/* Barramento */
+.barramento-line {
+  stroke-linecap: round;
+  pointer-events: stroke;
+  cursor: pointer;
+  transition: stroke-width 0.2s ease;
+}
+
+.barramento-line:hover {
+  stroke-width: 4;
+  opacity: 0.8;
+}
+
+/* Animação de seleção (opcional) */
+.connection-line.selected {
+  animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}

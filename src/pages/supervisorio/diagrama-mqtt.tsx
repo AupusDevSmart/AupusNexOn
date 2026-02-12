@@ -2,7 +2,7 @@ import { Layout } from "@/components/common/Layout";
 import { TitleCard } from "@/components/common/title-card";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { SinopticoDiagrama } from "@/features/supervisorio/components/sinoptico-diagrama";
+import { DiagramV2Wrapper } from "@/features/supervisorio/v2/DiagramV2Wrapper";
 import { M160Modal } from "@/features/supervisorio/components/m160-modal";
 import { A966Modal } from "@/features/supervisorio/components/a966-modal";
 import { LandisGyrModal } from "@/features/supervisorio/components/landisgyr-modal";
@@ -101,10 +101,10 @@ export default function DiagramaMQTT() {
           </div>
         </Card>
 
-        {/* Diagrama */}
+        {/* Diagrama V2 - Novo Sistema */}
         <Card className="p-6">
           <div className="bg-muted/30 rounded-lg border-2 border-dashed border-muted-foreground/20 min-h-[600px] relative">
-            <SinopticoDiagrama
+            <DiagramV2Wrapper
               componentes={componentesMQTT}
               onComponenteClick={handleComponenteClick}
               mostrarGrid={true}

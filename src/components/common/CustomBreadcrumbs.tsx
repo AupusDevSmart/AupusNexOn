@@ -31,6 +31,15 @@ interface BreadcrumbConfigItem {
 import React, { useEffect, useRef, useState } from 'react';
 import { api } from '@/config/api';
 
+// Desabilitar logs de debug em produção
+const noop = () => {};
+if (import.meta.env.PROD) {
+  console.log = noop;
+  console.info = noop;
+  console.debug = noop;
+}
+
+
 export function CustomBreadcrumbs({ className = '' }: { className?: string }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -198,54 +207,27 @@ export function CustomBreadcrumbs({ className = '' }: { className?: string }) {
       const unidadeIdOriginal = match[1];
       const unidadeId = decodeURIComponent(unidadeIdOriginal).trim();
 
-      console.log('🔍 [BREADCRUMB] Processando:', {
-        unidadeIdOriginal,
-        unidadeId,
-        temLocationState: !!location.state,
-        locationState: location.state,
-        cacheAtual: unidadeNomesRef.current
-      });
-
       // ✅ PRIORIDADE 1: Verificar se veio via state (do dashboard)
       const stateFromNavigation = location.state as { unidade?: { nome?: string } } | undefined;
       if (stateFromNavigation?.unidade?.nome) {
-        console.log('✅ [BREADCRUMB] Usando nome do state:', stateFromNavigation.unidade.nome);
-        // Atualizar ref e state
-        if (unidadeNomesRef.current[unidadeId] !== stateFromNavigation.unidade.nome) {
-          console.log('💾 [BREADCRUMB] Salvando no cache:', stateFromNavigation.unidade.nome);
-          unidadeNomesRef.current = {
-            ...unidadeNomesRef.current,
-            [unidadeId]: stateFromNavigation.unidade.nome
-          };
-          setUnidadeNomes(unidadeNomesRef.current);
-        } else {
-          console.log('⏭️ [BREADCRUMB] Já está no cache, pulando');
-        }
+        const nome = stateFromNavigation.unidade.nome;
+        setUnidadeNomes(prev => ({ ...prev, [unidadeId]: nome }));
+        unidadeNomesRef.current[unidadeId] = nome;
         return;
-      } else {
-        console.log('⚠️ [BREADCRUMB] Não encontrou nome no state');
       }
 
-      // ✅ PRIORIDADE 2: Se já temos o nome em cache (ref), não buscar novamente
+      // ✅ PRIORIDADE 2: Verificar se já está no cache
       if (unidadeNomesRef.current[unidadeId]) {
-        console.log('✅ [BREADCRUMB] Usando nome do cache:', unidadeNomesRef.current[unidadeId]);
         return;
       }
 
-      // ✅ PRIORIDADE 3: Buscar nome da unidade do backend
-      console.log('🔄 [BREADCRUMB] Buscando nome da unidade do backend...');
+      // ✅ PRIORIDADE 3: Buscar na API
       api.get(`/unidades/${unidadeId}`)
         .then(response => {
-          const unidadeData = response.data?.data || response.data;
-          const nome = unidadeData?.nome || unidadeData?.name;
-
+          const nome = response.data?.data?.nome || response.data?.nome;
           if (nome) {
-            console.log('✅ [BREADCRUMB] Nome carregado do backend:', nome);
-            unidadeNomesRef.current = {
-              ...unidadeNomesRef.current,
-              [unidadeId]: nome
-            };
-            setUnidadeNomes(unidadeNomesRef.current);
+            setUnidadeNomes(prev => ({ ...prev, [unidadeId]: nome }));
+            unidadeNomesRef.current[unidadeId] = nome;
           }
         })
         .catch(err => {
@@ -272,28 +254,17 @@ export function CustomBreadcrumbs({ className = '' }: { className?: string }) {
         const decodedSegment = decodeURIComponent(segment).trim();
         let label = formatLabel(decodedSegment);
 
-        console.log('🔍 [BREADCRUMB] Verificando segmento:', {
-          segment,
-          decodedSegment,
-          prevSegment,
-          index,
-          pathSegments,
-          temNoCache: !!unidadeNomesRef.current[decodedSegment],
-          cache: unidadeNomesRef.current
-        });
+        // Log removido
 
         // ✅ CORRIGIDO: Usar unidadeNomesRef.current ao invés de unidadeNomes
         // para ter sempre o valor mais atualizado, mesmo antes do re-render
         if (prevSegment === 'sinoptico-ativo' && unidadeNomesRef.current[decodedSegment]) {
           label = unidadeNomesRef.current[decodedSegment];
-          console.log('🏷️ [BREADCRUMB] Renderizando com nome:', label);
-        } else if (prevSegment === 'sinoptico-ativo') {
-          console.log('⚠️ [BREADCRUMB] Renderizando com ID formatado:', decodedSegment, 'cache:', unidadeNomesRef.current);
         }
 
         breadcrumbItems.push({
           path: currentPath,
-          label: label,
+          label,
         });
       }
 

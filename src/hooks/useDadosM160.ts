@@ -2,6 +2,15 @@ import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/config/api';
 
+// Desabilitar logs de debug em produção
+const noop = () => {};
+if (import.meta.env.PROD) {
+  console.log = noop;
+  console.info = noop;
+  console.debug = noop;
+}
+
+
 interface DadosM160 {
   timestamp: string;
   tensaoA: number;
@@ -36,15 +45,15 @@ export function useDadosM160(unidadeId?: string, equipamentoId?: string) {
           }
         });
 
-        console.log('📊 [useDadosM160] Resposta completa da API:', response);
-        console.log('📊 [useDadosM160] response.data:', response.data);
-        console.log('📊 [useDadosM160] response.data.data:', response.data?.data);
-        console.log('📊 [useDadosM160] response.data.data.data:', response.data?.data?.data);
+        // console.log('📊 [useDadosM160] Resposta completa da API:', response);
+        // console.log('📊 [useDadosM160] response.data:', response.data);
+        // console.log('📊 [useDadosM160] response.data.data:', response.data?.data);
+        // console.log('📊 [useDadosM160] response.data.data.data:', response.data?.data?.data);
 
         // A API de equipamentos retorna: { success: true, data: { data: [...], pagination: {...} } }
         const equipamentos = response.data?.data?.data || [];
-        console.log('📊 [useDadosM160] Equipamentos extraídos:', equipamentos);
-        console.log('📊 [useDadosM160] É array?', Array.isArray(equipamentos));
+        // console.log('📊 [useDadosM160] Equipamentos extraídos:', equipamentos);
+        // console.log('📊 [useDadosM160] É array?', Array.isArray(equipamentos));
 
         if (!Array.isArray(equipamentos)) {
           console.error('❌ [useDadosM160] equipamentos não é um array:', equipamentos);
@@ -55,11 +64,11 @@ export function useDadosM160(unidadeId?: string, equipamentoId?: string) {
         // ✅ CORRIGIDO: Ordem de fallback correta (tipo_equipamento_rel é a fonte autoritativa)
         const equipamentosM160 = equipamentos.filter((eq: any) => {
           const codigo = eq.tipo_equipamento_rel?.codigo || eq.tipoEquipamento?.codigo || '';
-          console.log(`📊 [useDadosM160] Equipamento ${eq.nome}: código=${codigo}`);
+          // console.log(`📊 [useDadosM160] Equipamento ${eq.nome}: código=${codigo}`);
           return codigo === 'M160' || codigo === 'M-160' || codigo === 'METER_M160' || codigo === 'MEDIDOR';
         });
 
-        console.log('📊 [useDadosM160] Equipamentos M-160 filtrados:', equipamentosM160);
+        // console.log('📊 [useDadosM160] Equipamentos M-160 filtrados:', equipamentosM160);
 
         // ✅ CORRIGIDO: Ordem de fallback correta em todos os campos
         return equipamentosM160.map((eq: any) => ({

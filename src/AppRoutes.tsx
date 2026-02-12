@@ -56,6 +56,13 @@ const SinopticoPage = lazy(() =>
   }))
 );
 
+// ✅ Sinóptico V2 (Refatorado)
+const SinopticoV2Page = lazy(() =>
+  import("@/pages/supervisorio/sinoptico-v2").then((module) => ({
+    default: module.SinopticoAtivoV2Page,
+  }))
+);
+
 // ✅ COA Antigo (Layout Original com Mock)
 const CoaAntigoPage = lazy(() =>
   import("@/pages/supervisorio/coa-com-mock-completo").then((module) => ({
@@ -232,6 +239,27 @@ export const appRoutes = createBrowserRouter([
           <FeatureWrapper feature="supervisorio">
             <Suspense fallback={<div>Carregando...</div>}>
               <SinopticoPage />
+            </Suspense>
+          </FeatureWrapper>
+        ),
+      },
+      // ✅ Sinóptico V2 (Refatorado) - Nova arquitetura modular
+      {
+        path: "supervisorio/sinoptico-v2",
+        element: (
+          <FeatureWrapper feature="supervisorio">
+            <Suspense fallback={<div>Carregando...</div>}>
+              <SinopticoV2Page />
+            </Suspense>
+          </FeatureWrapper>
+        ),
+      },
+      {
+        path: "supervisorio/sinoptico-v2/:ativoId",
+        element: (
+          <FeatureWrapper feature="supervisorio">
+            <Suspense fallback={<div>Carregando...</div>}>
+              <SinopticoV2Page />
             </Suspense>
           </FeatureWrapper>
         ),

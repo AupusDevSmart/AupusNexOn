@@ -3,6 +3,15 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@/config/api';
 import type { ConfiguracaoDemanda, EquipamentoConfig } from '@/features/supervisorio/components/ConfiguracaoDemandaModal';
 
+// Desabilitar logs de debug em produção
+const noop = () => {};
+if (import.meta.env.PROD) {
+  console.log = noop;
+  console.info = noop;
+  console.debug = noop;
+}
+
+
 interface DadosDemanda {
   timestamp: string;
   potencia: number; // kW
@@ -128,53 +137,34 @@ export function useDadosDemanda(configuracao: ConfiguracaoDemanda, unidadeId?: s
 
       const equipamentosSelecionados = configuracao.equipamentos.filter(e => e.selecionado);
 
-      // console.log('🔍 [DEMANDA] Equipamentos selecionados:', equipamentosSelecionados.length);
-
-      if (equipamentosSelecionados.length === 0) {
-        return null;
-      }
+      if (equipamentosSelecionados.length === 0) return null;
 
       try {
-        // Buscar dados de cada equipamento selecionado
         const promises = equipamentosSelecionados.map(async (equip) => {
           try {
-            // console.log(`📊 [DEMANDA] Buscando dados do equipamento: ${equip.nome} (${equip.id})`);
             const response = await api.get(`/equipamentos-dados/${equip.id}/grafico-dia`);
-
-            // console.log(`📊 [DEMANDA] Resposta do equipamento ${equip.nome}:`, {
-            //   hasData: !!response.data,
-            //   hasDataData: !!response.data?.data,
-            //   hasDados: !!response.data?.dados,
-            //   dataDataLength: response.data?.data?.dados?.length,
-            //   dadosLength: response.data?.dados?.length
-            // });
 
             // A resposta vem em response.data.data quando encapsulada
             const responseData = response.data?.data || response.data;
 
             // Aceitar dados mesmo que a potência seja zero (inversores à noite, etc.)
             if (responseData && responseData.dados && responseData.dados.length > 0) {
-              // console.log(`✅ [DEMANDA] Equipamento ${equip.nome} retornou ${responseData.dados.length} pontos`);
               return {
                 id: equip.id,
-                tipo: equip.tipo,
+                multiplicador: equip.multiplicador || 1,
                 fluxoEnergia: equip.fluxoEnergia,
-                multiplicador: equip.multiplicador,
                 dados: responseData.dados
               };
             }
-            // console.log(`⚠️ [DEMANDA] Equipamento ${equip.nome} sem dados válidos`);
             return null;
           } catch (error) {
-            // Erro silencioso - equipamento sem dados
-            console.error(`❌ [DEMANDA] Erro ao buscar dados do equipamento ${equip.nome}:`, error);
+            console.error(`Erro ao buscar dados do equipamento ${equip.nome}:`, error);
             return null;
           }
         });
 
         const resultados = await Promise.all(promises);
         const resultadosValidos = resultados.filter(r => r !== null);
-        // console.log(`📊 [DEMANDA] Total de equipamentos com dados: ${resultadosValidos.length}/${equipamentosSelecionados.length}`);
         return resultadosValidos;
       } catch (error) {
         console.error('Erro ao buscar dados do agrupamento:', error);
@@ -189,91 +179,45 @@ export function useDadosDemanda(configuracao: ConfiguracaoDemanda, unidadeId?: s
 
   // Calcular energia do dia a partir dos equipamentos
   const calcularEnergiaDia = useCallback((dadosEquipamentos: any[]) => {
-    console.log('🔋 [ENERGIA DIA] Iniciando cálculo:', {
-      totalEquipamentos: dadosEquipamentos?.length || 0
-    });
-
     if (!dadosEquipamentos || dadosEquipamentos.length === 0) {
-      console.log('⚠️ [ENERGIA DIA] Nenhum equipamento disponível');
-      return { energiaTotal: 0, detalhes: 'Nenhum equipamento disponível' };
+      return { energiaTotal: 0, detalhes: 'Nenhum dado disponível' };
     }
 
     let energiaTotal = 0;
     const detalhesEquipamentos: string[] = [];
 
-    dadosEquipamentos.forEach((equip) => {
-      if (!equip || !equip.dados) {
-        console.log('⚠️ [ENERGIA DIA] Equipamento sem dados:', equip?.tipo || 'desconhecido');
-        return;
-      }
+    dadosEquipamentos.forEach((equipDados: any) => {
+      if (!equipDados || !equipDados.dados) return;
 
-      // O dado já vem direto (não é um array)
-      const dadoMaisRecente = equip.dados;
+      const dadosReais = equipDados.dados;
       let energiaEquipamento = 0;
-
-      // O endpoint /latest retorna { equipamento, dado }
-      // Precisamos acessar dado.dados para chegar nos dados reais
-      const dadosReais = dadoMaisRecente.dado?.dados || dadoMaisRecente.dados || dadoMaisRecente;
-
-      console.log('🔍 [ENERGIA DIA] Analisando equipamento:', {
-        tipo: equip.tipo,
-        fluxo: equip.fluxoEnergia,
-        temDadoDados: !!dadoMaisRecente.dado?.dados,
-        dadosReais: {
-          hasPhf: dadosReais.Dados?.phf !== undefined,
-          phf: dadosReais.Dados?.phf,
-          hasEnergyDailyYield: dadosReais.energy?.daily_yield !== undefined,
-          energyDailyYield: dadosReais.energy?.daily_yield,
-          keys: Object.keys(dadosReais)
-        }
-      });
 
       // Extrair energia baseado no tipo de equipamento
       // M160: campo Dados.phf (energia acumulada em kWh)
       if (dadosReais.Dados?.phf !== undefined) {
         energiaEquipamento = dadosReais.Dados.phf; // kWh
-        console.log('✅ [ENERGIA DIA] Encontrou Dados.phf:', energiaEquipamento);
       }
-      // Inversor: campo energy.daily_yield (energia do dia em Wh, converter para kWh) - estrutura MQTT
-      else if (dadosReais.energy?.daily_yield !== undefined) {
-        energiaEquipamento = dadosReais.energy.daily_yield / 1000; // Converter Wh para kWh
-        console.log('✅ [ENERGIA DIA] Encontrou energy.daily_yield (Wh):', dadosReais.energy.daily_yield, '→ kWh:', energiaEquipamento);
-      }
-      // Inversor: campo daily_yield direto (energia do dia em kWh)
-      else if (dadosReais.daily_yield !== undefined) {
-        energiaEquipamento = dadosReais.daily_yield; // kWh
-        console.log('✅ [ENERGIA DIA] Encontrou daily_yield:', energiaEquipamento);
-      }
-      // Outros possíveis campos de energia
+      // Inversor: campo energia_dia_kwh
       else if (dadosReais.energia_dia_kwh !== undefined) {
-        energiaEquipamento = dadosReais.energia_dia_kwh; // kWh
-        console.log('✅ [ENERGIA DIA] Encontrou energia_dia_kwh:', energiaEquipamento);
-      } else {
-        console.log('❌ [ENERGIA DIA] Nenhum campo de energia encontrado');
+        energiaEquipamento = dadosReais.energia_dia_kwh;
+      }
+      // Outros formatos possíveis
+      else if (dadosReais.energy?.day_total !== undefined) {
+        energiaEquipamento = dadosReais.energy.day_total;
       }
 
-      if (energiaEquipamento > 0) {
-        // Aplicar sinal baseado no fluxo de energia
-        if (equip.fluxoEnergia === 'GERACAO') {
-          energiaTotal += energiaEquipamento; // Positivo
-          detalhesEquipamentos.push(`${equip.tipo}: +${energiaEquipamento.toFixed(2)} kWh (Geração)`);
-          console.log('➕ [ENERGIA DIA] Adicionado GERAÇÃO:', energiaEquipamento);
-        } else if (equip.fluxoEnergia === 'CONSUMO') {
-          energiaTotal -= energiaEquipamento; // Negativo
-          detalhesEquipamentos.push(`${equip.tipo}: -${energiaEquipamento.toFixed(2)} kWh (Consumo)`);
-          console.log('➖ [ENERGIA DIA] Subtraído CONSUMO:', energiaEquipamento);
-        } else if (equip.fluxoEnergia === 'BIDIRECIONAL') {
-          // Para bidirecional, assumir que valores positivos são geração
-          energiaTotal += energiaEquipamento;
-          detalhesEquipamentos.push(`${equip.tipo}: ${energiaEquipamento >= 0 ? '+' : ''}${energiaEquipamento.toFixed(2)} kWh (Bidirecional)`);
-          console.log('↔️ [ENERGIA DIA] Adicionado BIDIRECIONAL:', energiaEquipamento);
-        }
+      // Aplicar sinal baseado no fluxo de energia
+      if (equipDados.fluxoEnergia === 'GERACAO') {
+        energiaTotal += energiaEquipamento; // Soma (positivo)
+      } else if (equipDados.fluxoEnergia === 'CONSUMO') {
+        energiaTotal -= energiaEquipamento; // Subtrai (negativo)
+      } else if (equipDados.fluxoEnergia === 'BIDIRECIONAL') {
+        energiaTotal += energiaEquipamento; // Bidirecional mantém sinal do equipamento
       }
-    });
 
-    console.log('📊 [ENERGIA DIA] Resultado final:', {
-      energiaTotal,
-      detalhes: detalhesEquipamentos
+      if (energiaEquipamento !== 0) {
+        detalhesEquipamentos.push(`${equipDados.tipo}: ${energiaEquipamento.toFixed(2)} kWh`);
+      }
     });
 
     return {
@@ -286,17 +230,10 @@ export function useDadosDemanda(configuracao: ConfiguracaoDemanda, unidadeId?: s
 
   // Processar dados do agrupamento
   const processarAgrupamento = useCallback((dadosEquipamentos: any[]) => {
-    // console.log('🔧 [DEMANDA] Processando agrupamento:', {
-    //   totalEquipamentos: dadosEquipamentos?.length || 0,
-    //   equipamentos: dadosEquipamentos?.map(e => ({ id: e.id, tipo: e.tipo, totalDados: e.dados?.length }))
-    // });
-
     if (!dadosEquipamentos || dadosEquipamentos.length === 0) {
-      // console.log('⚠️ [DEMANDA] Nenhum equipamento com dados para processar');
-      return null;
+      return [];
     }
 
-    // Criar mapa de timestamps únicos
     const mapaTimestamps = new Map<string, DadosDemanda>();
 
     dadosEquipamentos.forEach((equip) => {
@@ -377,12 +314,7 @@ export function useDadosDemanda(configuracao: ConfiguracaoDemanda, unidadeId?: s
         potencia: d.potencia / 1000 // Converter de W para kW para o gráfico
       }));
 
-    // console.log('✅ [DEMANDA] Dados processados:', {
-    //   totalPontos: dadosProcessados.length,
-    //   primeiroTimestamp: dadosProcessados[0]?.timestamp,
-    //   ultimoTimestamp: dadosProcessados[dadosProcessados.length - 1]?.timestamp,
-    //   amostraPrimeiro: dadosProcessados[0]
-    // });
+    // Log removido
 
     // Aplicar fator de perdas se configurado
     if (configuracao.aplicarPerdas && configuracao.fatorPerdas > 0) {

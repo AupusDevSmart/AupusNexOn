@@ -1,0 +1,47 @@
+/**
+ * EQUIPMENT NODE - Estilos
+ */
+
+.equipment-node {
+  transition: opacity 0.2s ease;
+}
+
+.equipment-node:hover {
+  opacity: 0.9;
+}
+
+.equipment-node.dragging {
+  opacity: 0.7;
+  cursor: grabbing !important;
+}
+
+/* Label */
+.equipment-label {
+  font-weight: 500;
+  user-select: none;
+}
+
+/* Portas */
+.equipment-port {
+  transition: all 0.15s ease;
+}
+
+.equipment-port:hover {
+  r: 6;
+  fill: #60A5FA;
+}
+
+.equipment-port:active {
+  r: 5;
+}
+
+/* Selection box animation */
+.selection-box {
+  animation: dash 0.5s linear infinite;
+}
+
+@keyframes dash {
+  to {
+    stroke-dashoffset: -12;
+  }
+}

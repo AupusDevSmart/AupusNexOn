@@ -2,6 +2,15 @@
 import { useState, useEffect } from 'react';
 import { categoriasEquipamentosApi, type CategoriaEquipamento } from '@/services/tipos-equipamentos.services';
 
+// Desabilitar logs de debug em produção
+const noop = () => {};
+if (import.meta.env.PROD) {
+  console.log = noop;
+  console.info = noop;
+  console.debug = noop;
+}
+
+
 export interface UseCategoriasReturn {
   categorias: CategoriaEquipamento[];
   loading: boolean;
@@ -22,12 +31,12 @@ export const useCategorias = (): UseCategoriasReturn => {
     try {
       setLoading(true);
       setError(null);
-      console.log('🔍 [useCategorias] Iniciando fetch de categorias...');
+      // console.log('🔍 [useCategorias] Iniciando fetch de categorias...');
       const data = await categoriasEquipamentosApi.getAll();
-      console.log('✅ [useCategorias] Categorias recebidas:', data);
+      // console.log('✅ [useCategorias] Categorias recebidas:', data);
 
       if (!Array.isArray(data) || data.length === 0) {
-        console.warn('⚠️ [useCategorias] Nenhuma categoria retornada pela API');
+        // console.warn('⚠️ [useCategorias] Nenhuma categoria retornada pela API');
         setError('Nenhuma categoria encontrada. Verifique se as categorias foram criadas no banco de dados.');
       }
 

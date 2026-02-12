@@ -26,6 +26,15 @@ import { useDadosM160 } from "@/hooks/useDadosM160";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/config/api";
 
+// Desabilitar logs de debug em produção
+const noop = () => {};
+if (import.meta.env.PROD) {
+  console.log = noop;
+  console.info = noop;
+  console.debug = noop;
+}
+
+
 interface SinopticoGraficosV2Props {
   unidadeId?: string;
   dadosPotencia?: DadosGrafico[];
@@ -371,12 +380,7 @@ export function SinopticoGraficosV2({
 
   // Log para debug da energia do dia
   useEffect(() => {
-    console.log('📊 [GRÁFICO] Energia do dia recebida:', {
-      energiaDia,
-      temValor: energiaDia !== undefined,
-      diferenteDeZero: energiaDia !== 0,
-      vaiMostrar: energiaDia !== undefined && energiaDia !== 0
-    });
+    // Log removido
   }, [energiaDia]);
 
   // Salvar configuração na API
@@ -931,7 +935,7 @@ export function SinopticoGraficosV2({
               </div>
             </div>
           ) : (
-            <div className="bg-slate-700 dark:bg-black p-4 rounded-lg">
+            <div className="bg-card p-4 rounded-lg border">
               <ResponsiveContainer width="100%" height={300}>
                 <LineChart data={dadosFormatadosTensao}>
                   <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
@@ -1111,7 +1115,7 @@ export function SinopticoGraficosV2({
               </div>
             </div>
           ) : (
-            <div className="bg-slate-700 dark:bg-black p-4 rounded-lg">
+            <div className="bg-card p-4 rounded-lg border">
               <ResponsiveContainer width="100%" height={300}>
                 <LineChart data={dadosFormatadosFP}>
                   <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
@@ -1404,7 +1408,7 @@ export function SinopticoGraficosV2({
                 <p className="text-sm text-muted-foreground">Sem dados de tensão</p>
               </div>
             ) : (
-              <div className="bg-slate-700 dark:bg-black p-4 rounded-lg h-full">
+              <div className="bg-card p-4 rounded-lg border h-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={dadosFormatadosTensao}>
                     <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
@@ -1561,7 +1565,7 @@ export function SinopticoGraficosV2({
                 <p className="text-sm text-muted-foreground">Sem dados de fator de potência</p>
               </div>
             ) : (
-              <div className="bg-slate-700 dark:bg-black p-4 rounded-lg h-full">
+              <div className="bg-card p-4 rounded-lg border h-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={dadosFormatadosFP}>
                     <CartesianGrid strokeDasharray="3 3" className="opacity-30" />

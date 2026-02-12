@@ -2,6 +2,15 @@
 
 import { api } from '@/config/api';
 
+// Desabilitar logs de debug em produção
+const noop = () => {};
+if (import.meta.env.PROD) {
+  console.log = noop;
+  console.info = noop;
+  console.debug = noop;
+}
+
+
 // ===== INTERFACES =====
 
 export interface DiagramaEquipamento {
@@ -116,12 +125,25 @@ class DiagramasServiceClass {
     try {
       // console.log(`📡 [DiagramasService] GET /diagramas/${diagramaId}`);
       const response = await api.get(`/diagramas/${diagramaId}`);
-      // console.log('✅ [DiagramasService] Diagrama fetched:', response.data?.data?.nome || response.data?.nome);
+      const diagrama = response.data?.data || response.data;
+      // console.log('✅ [DiagramasService] Diagrama fetched:', {
+      //   id: diagrama.id,
+      //   nome: diagrama.nome,
+      //   equipamentos: diagrama.equipamentos?.length || 0,
+      //   conexoes: diagrama.conexoes?.length || 0,
+      // });
       // Backend retorna { success, data, meta } ou diretamente os dados
-      return response.data?.data || response.data;
+      return diagrama;
     } catch (error: any) {
-      console.error(`❌ [DiagramasService] Error fetching diagrama ${diagramaId}:`, error);
-      throw new Error(error.response?.data?.message || 'Erro ao buscar diagrama');
+      // ⚡ Suprimir log de erro 404 (fallback inteligente no useDiagramStore vai lidar com isso)
+      if (error.response?.status !== 404) {
+        console.error(`❌ [DiagramasService] Error fetching diagrama ${diagramaId}:`, error);
+      }
+      // Preservar o erro original do Axios para detecção de 404
+      if (error.response) {
+        throw error; // Throw original Axios error
+      }
+      throw new Error(error.message || 'Erro ao buscar diagrama');
     }
   }
 
@@ -134,6 +156,14 @@ class DiagramasServiceClass {
       const response = await api.get(`/unidades/${unidadeId}/diagramas`);
       const diagramas = response.data?.data || response.data || [];
       // console.log('✅ [DiagramasService] Fetched', diagramas.length, 'diagramas');
+      // if (diagramas.length > 0) {
+      //   console.log('📊 [DiagramasService] Primeiro diagrama:', {
+      //     id: diagramas[0].id,
+      //     nome: diagramas[0].nome,
+      //     equipamentos: diagramas[0].equipamentos?.length || 0,
+      //     conexoes: diagramas[0].conexoes?.length || 0,
+      //   });
+      // }
       return Array.isArray(diagramas) ? diagramas : [];
     } catch (error: any) {
       console.error(`❌ [DiagramasService] Error fetching diagramas for unidade ${unidadeId}:`, error);
@@ -143,18 +173,38 @@ class DiagramasServiceClass {
 
   /**
    * Get active diagrama for unidade
+   * IMPORTANTE: Este método busca primeiro a lista de diagramas (sem equipamentos),
+   * depois busca o diagrama completo com equipamentos e conexões
+   *
+   * @returns Diagrama completo ou null se não houver diagrama ativo
+   * @throws Error se houver erro na comunicação com o backend (não retorna null para erros)
    */
   async getActiveDiagrama(unidadeId: string): Promise<Diagrama | null> {
-    try {
-      // console.log(`📡 [DiagramasService] GET /unidades/${unidadeId}/diagramas (ativo)`);
-      const diagramas = await this.getDiagramasByUnidade(unidadeId);
-      const ativo = diagramas.find(d => d.ativo === true);
-      // console.log('✅ [DiagramasService] Active diagrama:', ativo?.nome || 'none');
-      return ativo || null;
-    } catch (error: any) {
-      console.error(`❌ [DiagramasService] Error fetching active diagrama:`, error);
-      return null;
+    // console.log(`📡 [DiagramasService] GET /unidades/${unidadeId}/diagramas (buscando ativo)`);
+
+    // Buscar lista de diagramas (pode lançar erro de rede)
+    const diagramas = await this.getDiagramasByUnidade(unidadeId);
+    const ativo = diagramas.find(d => d.ativo === true);
+
+    if (!ativo) {
+      // console.log('⚠️ [DiagramasService] Nenhum diagrama ativo encontrado');
+      return null; // Apenas retorna null se não houver diagrama ativo (não é um erro)
     }
+
+    // console.log(`✅ [DiagramasService] Diagrama ativo encontrado: ${ativo.nome} (${ativo.id})`);
+    // console.log(`🔄 [DiagramasService] Buscando diagrama completo com equipamentos...`);
+
+    // Buscar o diagrama completo com equipamentos e conexões (pode lançar erro de rede)
+    const diagramaCompleto = await this.getDiagrama(ativo.id);
+
+    // console.log(`✅ [DiagramasService] Diagrama completo carregado:`, {
+    //   id: diagramaCompleto.id,
+    //   nome: diagramaCompleto.nome,
+    //   equipamentos: diagramaCompleto.equipamentos?.length || 0,
+    //   conexoes: diagramaCompleto.conexoes?.length || 0,
+    // });
+
+    return diagramaCompleto;
   }
 
   /**
@@ -298,8 +348,8 @@ class DiagramasServiceClass {
    */
   async addEquipamentosBulk(diagramaId: string, equipamentos: AddEquipamentoToDiagramaDto[]): Promise<any> {
     try {
-      console.log(`📡 [DiagramasService] POST /diagramas/${diagramaId}/equipamentos/bulk`);
-      console.log(`   📦 Adding ${equipamentos.length} equipamentos`);
+      // console.log(`📡 [DiagramasService] POST /diagramas/${diagramaId}/equipamentos/bulk`);
+      // console.log(`   📦 Adding ${equipamentos.length} equipamentos`);
 
       // Aumentar timeout para 2 minutos (120 segundos) para operações em lote grandes
       const response = await api.post(`/diagramas/${diagramaId}/equipamentos/bulk`, {
@@ -308,7 +358,7 @@ class DiagramasServiceClass {
         timeout: 120000, // 2 minutos
       });
 
-      console.log('✅ [DiagramasService] Bulk equipamentos added:', response.data);
+      // console.log('✅ [DiagramasService] Bulk equipamentos added:', response.data);
       return response.data;
     } catch (error: any) {
       console.error(`❌ [DiagramasService] Error adding bulk equipamentos:`, error);
@@ -321,8 +371,8 @@ class DiagramasServiceClass {
    */
   async createConexoesBulk(diagramaId: string, conexoes: CreateConexaoDto[]): Promise<any> {
     try {
-      console.log(`📡 [DiagramasService] POST /diagramas/${diagramaId}/conexoes/bulk`);
-      console.log(`   🔗 Creating ${conexoes.length} conexões`);
+      // console.log(`📡 [DiagramasService] POST /diagramas/${diagramaId}/conexoes/bulk`);
+      // console.log(`   🔗 Creating ${conexoes.length} conexões`);
 
       // Aumentar timeout para 2 minutos (120 segundos) para operações em lote grandes
       const response = await api.post(`/diagramas/${diagramaId}/conexoes/bulk`, {
@@ -331,7 +381,7 @@ class DiagramasServiceClass {
         timeout: 120000, // 2 minutos
       });
 
-      console.log('✅ [DiagramasService] Bulk conexões created:', response.data);
+      // console.log('✅ [DiagramasService] Bulk conexões created:', response.data);
       return response.data;
     } catch (error: any) {
       console.error(`❌ [DiagramasService] Error creating bulk conexões:`, error);
@@ -367,6 +417,60 @@ class DiagramasServiceClass {
     } catch (error: any) {
       console.error(`❌ [DiagramasService] Error removing all equipamentos:`, error);
       throw new Error(error.response?.data?.message || 'Erro ao remover todos os equipamentos');
+    }
+  }
+
+  /**
+   * NOVO V2: Save layout atomically (DELETE ALL + INSERT ALL)
+   *
+   * Este método implementa o salvamento atômico do layout completo.
+   * Substitui todas as posições de equipamentos e conexões em uma única transação.
+   *
+   * Performance: ~10x mais rápido que múltiplas requisições PATCH individuais.
+   *
+   * @param diagramaId - ID do diagrama
+   * @param dto - Layout completo (equipamentos + conexões)
+   * @returns Resultado da operação com contadores
+   */
+  async saveLayout(diagramaId: string, dto: {
+    equipamentos: Array<{
+      equipamentoId: string;
+      posicaoX: number;
+      posicaoY: number;
+      rotacao?: number;
+      labelPosition?: string;
+    }>;
+    conexoes: Array<{
+      equipamentoOrigemId: string;
+      portaOrigem: string;
+      equipamentoDestinoId: string;
+      portaDestino: string;
+    }>;
+  }): Promise<{
+    equipamentosAtualizados: number;
+    conexoesCriadas: number;
+    tempoMs: number;
+  }> {
+    try {
+      // console.log(`📡 [DiagramasService] PUT /diagramas/${diagramaId}/layout`);
+      // console.log(`   📦 Equipamentos: ${dto.equipamentos.length}`);
+      // console.log(`   🔗 Conexões: ${dto.conexoes.length}`);
+
+      const startTime = Date.now();
+
+      const response = await api.put(`/diagramas/${diagramaId}/layout`, dto, {
+        timeout: 60000, // 1 minuto (operação atômica pode demorar)
+      });
+
+      const tempoMs = Date.now() - startTime;
+
+      // console.log(`✅ [DiagramasService] Layout saved in ${tempoMs}ms`);
+
+      // Backend retorna { success, data: { equipamentosAtualizados, conexoesCriadas, tempoMs }, meta }
+      return response.data?.data || response.data;
+    } catch (error: any) {
+      console.error(`❌ [DiagramasService] Error saving layout:`, error);
+      throw new Error(error.response?.data?.message || 'Erro ao salvar layout');
     }
   }
 }

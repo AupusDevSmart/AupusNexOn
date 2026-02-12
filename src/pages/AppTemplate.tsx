@@ -26,14 +26,14 @@ export function AppTemplate() {
         <div className="flex h-screen w-screen overflow-hidden bg-secondary">
           <AppSidebar />
           <SidebarInset className="flex flex-col w-full h-full bg-secondary">
-            <header className="flex items-center justify-between bg-secondary">
+            <header className="flex-none flex items-center justify-between bg-secondary">
               <div className="flex h-12 items-center gap-2 px-4 bg-secondary">
                 <SidebarTrigger className="w-4 h-4 mr-2" />
                 <CustomBreadcrumbs />
               </div>
               <NotificacoesSheet />
             </header>
-            <main className="flex-1 overflow-y-auto overflow-x-hidden bg-secondary mx-auto w-full items-center justify-center">
+            <main className="flex-1 overflow-hidden bg-secondary mx-auto w-full flex items-center justify-center min-h-0">
               <Outlet />
             </main>
             <CommandPallete />
