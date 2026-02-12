@@ -4,9 +4,7 @@
  */
 import React from 'react';
 import { IconWrapper } from './IconWrapper';
-
-// Importar PNG diretamente como URL
-const pivoPng = '/src/assets/images/pivot-transparente.png';
+import pivoSvg from '../../../../../assets/images/pivot-transparente.svg';
 
 interface PivoIconProps {
   width?: number;
@@ -23,7 +21,7 @@ export const PivoIcon: React.FC<PivoIconProps> = ({
 }) => {
   return (
     <IconWrapper
-      src={pivoPng}
+      src={pivoSvg}
       alt="Pivô"
       width={width}
       height={height}
