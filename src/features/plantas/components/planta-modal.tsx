@@ -200,12 +200,12 @@ export function PlantaModal({
       key: 'endereco',
       title: 'Endereço',
       fields: ['endereco']
-    },
-    {
-      key: 'gestao',
-      title: 'Gestão',
-      fields: ['gestaoEquipamentos']
     }
+    // {
+    //   key: 'gestao',
+    //   title: 'Gestão',
+    //   fields: ['gestaoEquipamentos']
+    // }
   ];
 
   // Preparar entidade para o modal

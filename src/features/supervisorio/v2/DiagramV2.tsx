@@ -344,7 +344,7 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
 
   if (isLoading) {
     return (
-      <div className="w-full h-full flex items-center justify-center bg-background">
+      <div className="w-full h-full flex items-center justify-center bg-white dark:bg-black">
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin"></div>
           <p className="text-sm text-muted-foreground">Carregando diagrama...</p>
@@ -357,7 +357,7 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
   if (error && errorType === 'not_found') {
     return (
       <>
-        <div className="w-full h-full flex items-center justify-center bg-background">
+        <div className="w-full h-full flex items-center justify-center bg-white dark:bg-black">
           <div className="flex flex-col items-center text-center max-w-md px-4">
             <div className="mb-4 text-muted-foreground">
               <svg
@@ -462,7 +462,7 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
   // Erro genérico
   if (error) {
     return (
-      <div className="w-full h-full flex items-center justify-center bg-background">
+      <div className="w-full h-full flex items-center justify-center bg-white dark:bg-black">
         <div className="flex flex-col items-center text-center max-w-md px-4">
           <div className="mb-4 text-destructive">
             <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -488,7 +488,7 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
 
   if (!diagrama) {
     return (
-      <div className="w-full h-full flex items-center justify-center bg-background">
+      <div className="w-full h-full flex items-center justify-center bg-white dark:bg-black">
         <p className="text-muted-foreground">Nenhum diagrama carregado</p>
       </div>
     );
@@ -577,7 +577,7 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
       </div>
 
       {/* Container principal com sidebar (se modo edição) */}
-      <div className="flex-1 flex overflow-hidden relative">
+      <div className="flex-1 flex relative" style={{ overflow: 'visible' }}>
         {/* Viewport com diagrama */}
         <DiagramViewport onBackgroundClick={onBackgroundClick}>
           {/* Camada 1: Conexões (atrás dos equipamentos) */}

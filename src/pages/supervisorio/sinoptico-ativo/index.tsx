@@ -3719,8 +3719,32 @@ if (import.meta.env.PROD) {
 
                   const tag = comp.tag || '';
                   const tipo = comp.tipo || '';
+                  const nome = comp.nome || '';
 
-                  if (tag.includes('M160') || tipo === 'M160' || tipo === 'METER_M160') {
+                  console.log('[DiagramV2] Equipment clicked:', {
+                    id: comp.id,
+                    nome: comp.nome,
+                    tag,
+                    tipo,
+                    categoria: comp.categoria,
+                    tipoEquipamento: comp.dados?.tipo_equipamento,
+                    tipoEquipamentoCodigo: comp.dados?.tipoEquipamento?.codigo,
+                    dados: comp.dados
+                  });
+
+                  // Verificar se é M160 por tipo, tag, nome, categoria OU tipo_equipamento
+                  const isM160 =
+                    tag.includes('M160') ||
+                    tipo === 'M160' ||
+                    tipo === 'METER_M160' ||
+                    tipo.includes('M160') ||
+                    nome.includes('M160') ||
+                    comp.categoria?.includes('M160') ||
+                    comp.dados?.tipo_equipamento?.includes('M160') ||
+                    comp.dados?.tipoEquipamento?.codigo?.includes('M160');
+
+                  if (isM160) {
+                    console.log('[DiagramV2] Opening M160 modal');
                     // M160Modal precisa do componenteSelecionado para funcionar
                     const componenteV1: ComponenteDU = {
                       id: comp.id,
@@ -3737,6 +3761,10 @@ if (import.meta.env.PROD) {
                     // InversorMqttDataModal usa apenas o ID
                     setSelectedInversorMqttId(comp.id);
                     setInversorMqttModalOpen(true);
+                  } else if (tipo === 'PIVO' || tipo.includes('PIVO') || nome.includes('Pivô') || nome.includes('Pivo')) {
+                    // Abrir modal de pivô
+                    setSelectedPivoId(comp.id);
+                    setPivoModalOpen(true);
                   }
                 }}
               />

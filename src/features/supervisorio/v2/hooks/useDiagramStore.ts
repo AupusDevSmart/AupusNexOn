@@ -445,6 +445,23 @@ export const useDiagramStore = create<DiagramStore>()(
             .map((eq: any) => {
               const pos = posicoesMap.get(eq.id.trim())!;
 
+              // 🔍 DEBUG: Log detalhado do equipamento P666
+              if (eq.nome?.includes('P666') || eq.tag?.includes('P666')) {
+                console.log('[loadDiagrama] 🔍 DEBUG P666 - Dados do equipamento:', {
+                  id: eq.id,
+                  nome: eq.nome,
+                  tag: eq.tag,
+                  tipo_equipamento: eq.tipo_equipamento,
+                  tipo_equipamento_id: eq.tipo_equipamento_id,
+                  tipoEquipamento: eq.tipoEquipamento,
+                  tipo_equipamento_rel: eq.tipo_equipamento_rel,
+                  mqtt_habilitado: eq.mqtt_habilitado,
+                  topico_mqtt: eq.topico_mqtt,
+                  tipo_equipamento_rel_completo: JSON.stringify(eq.tipo_equipamento_rel, null, 2),
+                  tipoEquipamento_completo: JSON.stringify(eq.tipoEquipamento, null, 2),
+                });
+              }
+
               return {
                 id: eq.id.trim(), // Normalizar ID
                 nome: eq.nome,

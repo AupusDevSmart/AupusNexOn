@@ -25,6 +25,7 @@ import { useDadosDemanda } from "@/hooks/useDadosDemanda";
 import { useDadosM160 } from "@/hooks/useDadosM160";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/config/api";
+import { useTheme } from "@/components/theme-provider";
 
 // Desabilitar logs de debug em produção
 const noop = () => {};
@@ -184,6 +185,7 @@ export function SinopticoGraficosV2({
   valorContratado = 2500,
   percentualAdicional = 5,
 }: SinopticoGraficosV2Props) {
+  const { theme } = useTheme();
   const [modalOpen, setModalOpen] = useState(false);
   const [modalExpandidoOpen, setModalExpandidoOpen] = useState(false);
 
@@ -193,6 +195,10 @@ export function SinopticoGraficosV2({
   const [fasesFP, setFasesFP] = useState({ A: true, B: true, C: true });
   const [modalTensaoOpen, setModalTensaoOpen] = useState(false);
   const [modalFPOpen, setModalFPOpen] = useState(false);
+
+  // Determinar cor da linha de demanda baseada no tema
+  const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  const corLinhaDemanda = isDark ? '#ffffff' : '#000000';
 
   // OTIMIZAÇÃO: Buscar configuração da API com prioridade alta
   const { data: configData, refetch: refetchConfig } = useQuery({
@@ -647,50 +653,28 @@ export function SinopticoGraficosV2({
           </div>
         </CardHeader>
         <CardContent className="p-2">
-          {/* Alerta de Dados Desatualizados/Sem Dados */}
+          {/* Alerta de Dados Desatualizados/Sem Dados - Discreto */}
           {qualidadeDados.status !== 'OK' && (
-            <div className={`mb-4 p-4 rounded-lg border-l-4 ${
-              qualidadeDados.status === 'SEM_DADOS'
-                ? 'bg-red-50 dark:bg-red-950/20 border-red-500'
-                : qualidadeDados.status === 'DESATUALIZADO'
-                ? 'bg-orange-50 dark:bg-orange-950/20 border-orange-500'
-                : 'bg-yellow-50 dark:bg-yellow-950/20 border-yellow-500'
-            }`}>
-              <div className="flex items-start gap-3">
-                <AlertTriangle className={`h-5 w-5 mt-0.5 ${qualidadeDados.cor}`} />
+            <div className="mb-3 p-2 rounded-md bg-muted/40">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-3.5 w-3.5 text-muted-foreground/70" />
                 <div className="flex-1">
-                  <h4 className={`text-sm font-semibold ${qualidadeDados.cor} mb-1`}>
-                    {qualidadeDados.status === 'SEM_DADOS'
-                      ? '⚠️ Nenhum Dado Disponível'
-                      : qualidadeDados.status === 'DESATUALIZADO'
-                      ? '⚠️ Dados Desatualizados'
-                      : '⚠️ Dados Incompletos'}
-                  </h4>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-xs text-muted-foreground">
                     {qualidadeDados.status === 'SEM_DADOS' && (
-                      <>
-                        Não há dados salvos no banco de dados para os equipamentos selecionados.
-                        <br />
-                        <strong>Possíveis causas:</strong> Serviço MQTT desconectado, equipamentos offline, ou falha no servidor.
-                      </>
+                      <>Nenhum dado disponível</>
                     )}
                     {qualidadeDados.status === 'DESATUALIZADO' && (
-                      <>
-                        Os dados estão desatualizados. {qualidadeDados.mensagem}
-                        <br />
-                        <strong>Possível causa:</strong> Conexão MQTT interrompida ou equipamentos offline.
-                      </>
+                      <>Dados desatualizados. {qualidadeDados.mensagem}</>
                     )}
                     {qualidadeDados.status === 'PARCIAL' && (
-                      <>
-                        Apenas {qualidadeDados.mensagem.split(': ')[1]} dos dados esperados estão disponíveis nas últimas 24h.
-                        <br />
-                        <strong>Possível causa:</strong> Falhas intermitentes na conexão MQTT ou nos equipamentos.
-                      </>
+                      <>Cobertura parcial: {qualidadeDados.mensagem.split(': ')[1]}</>
                     )}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    💡 <strong>Sugestão:</strong> Verifique se o serviço backend está rodando e se os equipamentos estão conectados ao MQTT.
+                    {' · '}
+                    <span className="text-muted-foreground/60">
+                      {qualidadeDados.status === 'SEM_DADOS' && 'Verifique serviço MQTT'}
+                      {qualidadeDados.status === 'DESATUALIZADO' && 'Conexão MQTT interrompida ou equipamentos offline'}
+                      {qualidadeDados.status === 'PARCIAL' && 'Falhas intermitentes na conexão'}
+                    </span>
                   </p>
                 </div>
               </div>
@@ -746,39 +730,38 @@ export function SinopticoGraficosV2({
                 iconType="line"
               />
 
-              {/* Linha 1: Demanda Real (Potência) */}
+              {/* Linha 1: Demanda Real (Potência) - Preto no light, branco no dark */}
               <Line
                 type="monotone"
                 dataKey="potencia"
                 name="Demanda Real"
-                stroke="#eab308"
+                stroke={corLinhaDemanda}
                 strokeWidth={2}
                 dot={false}
                 activeDot={{ r: 4 }}
                 connectNulls={true}
               />
 
-              {/* Linha 2: Valor Contratado */}
+              {/* Linha 2: Valor Contratado - Discreto */}
               <Line
                 type="monotone"
                 dataKey="valorContratado"
                 name="Valor Contratado"
-                stroke="#22c55e"
-                strokeWidth={2}
+                stroke="#9ca3af"
+                strokeWidth={1.5}
                 strokeDasharray="5 5"
                 dot={false}
               />
 
-              {/* Linha 3: Valor Contratado + Adicional */}
+              {/* Linha 3: Valor Contratado + Adicional - Discreto */}
               <Line
                 type="monotone"
                 dataKey="valorAdicional"
                 name={`Contratado + ${percentualAdicional}%`}
-                stroke="#3b82f6"
-                strokeWidth={2}
+                stroke="#6b7280"
+                strokeWidth={1.5}
                 strokeDasharray="5 5"
                 dot={false}
-                legendType="none"
               />
             </LineChart>
           </ResponsiveContainer>
@@ -1253,41 +1236,41 @@ export function SinopticoGraficosV2({
                   <Brush
                     dataKey="hora"
                     height={30}
-                    stroke="#8884d8"
+                    stroke="hsl(var(--muted-foreground) / 0.3)"
                     fill="hsl(var(--muted))"
                     travellerWidth={10}
                   />
 
-                  {/* Linha 1: Demanda Real (Potência) */}
+                  {/* Linha 1: Demanda Real (Potência) - Preto no light, branco no dark */}
                   <Line
                     type="monotone"
                     dataKey="potencia"
                     name="Demanda Real"
-                    stroke="#eab308"
+                    stroke={corLinhaDemanda}
                     strokeWidth={2}
                     dot={false}
                     activeDot={{ r: 4 }}
                     connectNulls={true}
                   />
 
-                  {/* Linha 2: Valor Contratado */}
+                  {/* Linha 2: Valor Contratado - Discreto */}
                   <Line
                     type="monotone"
                     dataKey="valorContratado"
                     name="Valor Contratado"
-                    stroke="#22c55e"
-                    strokeWidth={2}
+                    stroke="#9ca3af"
+                    strokeWidth={1.5}
                     strokeDasharray="5 5"
                     dot={false}
                   />
 
-                  {/* Linha 3: Valor Contratado + Adicional */}
+                  {/* Linha 3: Valor Contratado + Adicional - Discreto */}
                   <Line
                     type="monotone"
                     dataKey="valorAdicional"
                     name={`Contratado + ${percentualAdicional}%`}
-                    stroke="#3b82f6"
-                    strokeWidth={2}
+                    stroke="#6b7280"
+                    strokeWidth={1.5}
                     strokeDasharray="5 5"
                     dot={false}
                   />
@@ -1429,7 +1412,7 @@ export function SinopticoGraficosV2({
                   <Brush
                     dataKey="hora"
                     height={30}
-                    stroke="#3b82f6"
+                    stroke="hsl(var(--muted-foreground) / 0.3)"
                     fill="hsl(var(--muted))"
                     travellerWidth={10}
                   />
@@ -1586,7 +1569,7 @@ export function SinopticoGraficosV2({
                   <Brush
                     dataKey="hora"
                     height={30}
-                    stroke="#8b5cf6"
+                    stroke="hsl(var(--muted-foreground) / 0.3)"
                     fill="hsl(var(--muted))"
                     travellerWidth={10}
                   />

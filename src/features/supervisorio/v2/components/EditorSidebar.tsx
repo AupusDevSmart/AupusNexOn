@@ -6,9 +6,9 @@
  * - Lista de equipamentos com ações (editar/deletar)
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Zap } from 'lucide-react';
+import { Zap, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useDiagramStore } from '../hooks/useDiagramStore';
 import type { Equipment } from '../types/diagram.types';
 
@@ -38,6 +38,9 @@ export const EditorSidebar: React.FC<EditorSidebarProps> = ({
   const equipamentos = useDiagramStore(state => state.equipamentos);
   const selectedIds = useDiagramStore(state => state.editor.selectedEquipmentIds);
 
+  // Estado para controlar se a sidebar está expandida
+  const [isExpanded, setIsExpanded] = useState(true);
+
   // Filtrar equipamentos da unidade que NÃO estão no diagrama
   const equipamentosDisponiveis = React.useMemo(() => {
     // Criar Set com IDs normalizados (trim) dos equipamentos no diagrama
@@ -52,7 +55,38 @@ export const EditorSidebar: React.FC<EditorSidebarProps> = ({
   }, [availableEquipments, equipamentos]);
 
   return (
-    <div className="w-60 border-l bg-background flex-shrink-0 flex flex-col overflow-hidden">
+    <div
+      className={`border-l bg-background flex-shrink-0 flex flex-col transition-all duration-300 relative ${
+        isExpanded ? 'w-96' : 'w-12'
+      }`}
+      style={{ zIndex: 1000, overflow: 'visible' }}
+    >
+      {/* Botão de Toggle - Posicionado na borda esquerda da sidebar */}
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="absolute -left-3.5 top-4 h-7 w-7 rounded-full border-2 border-border bg-background hover:bg-accent flex items-center justify-center shadow-lg hover:shadow-xl transition-colors"
+        style={{ zIndex: 9999 }}
+        title={isExpanded ? 'Recolher sidebar' : 'Expandir sidebar'}
+      >
+        {isExpanded ? (
+          <ChevronRight className="h-4 w-4" />
+        ) : (
+          <ChevronLeft className="h-4 w-4" />
+        )}
+      </button>
+
+      {/* Conteúdo quando recolhido - ícones verticais */}
+      {!isExpanded && (
+        <div className="flex flex-col items-center gap-4 pt-16 px-2">
+          <div className="text-muted-foreground/50 rotate-90 text-xs whitespace-nowrap font-semibold">
+            FERRAMENTAS
+          </div>
+        </div>
+      )}
+
+      {/* Conteúdo da sidebar - só mostra quando expandido */}
+      {isExpanded && (
+        <>
       {/* Seção: Adicionar Equipamento */}
       <div className="px-4 py-3 border-b">
         <h3 className="text-xs font-semibold text-foreground mb-2">Adicionar Equipamento</h3>
@@ -205,6 +239,8 @@ export const EditorSidebar: React.FC<EditorSidebarProps> = ({
           </div>
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 };

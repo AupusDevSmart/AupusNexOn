@@ -60,10 +60,10 @@ export const EQUIPMENT_SIZES = {
   QUADRO_DISTRIBUICAO: { width: 2, height: 2 },
 
   // Transformadores - 2x3 (80x120px - vertical)
-  TRANSFORMADOR: { width: 2, height: 4 },
-  TRAFO_REBAIXADOR: { width: 2, height: 4 },
-  TRAFO: { width: 2, height: 4 },
-  TRAFO_ELEVADOR: { width: 2, height: 4 },
+  TRANSFORMADOR: { width: 2, height: 2 },
+  TRAFO_REBAIXADOR: { width: 2, height: 2 },
+  TRAFO: { width: 2, height: 2 },
+  TRAFO_ELEVADOR: { width: 2, height: 2 },
 
   // Medidores - TODOS 2x2 (80x80px)
   MEDIDOR: { width: 2, height: 2 },
