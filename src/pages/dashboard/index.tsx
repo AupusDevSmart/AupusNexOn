@@ -122,8 +122,8 @@ export function DashboardPage() {
             energiaHoje: unidade.metricas.energiaHoje,
             potenciaAtual: unidade.metricas.potenciaAtual
           });
-        } else if (unidade.tipo === 'Carga') {
-          // CARGA
+        } else if (unidade.tipo === 'Carga' || unidade.tipo === 'OUTRO') {
+          // CARGA (inclui tipo 'Carga' e 'OUTRO' - híbridas, pivôs, etc)
           potenciaCargaInstantanea += unidade.metricas.potenciaAtual;
           energiaConsumidaHoje += unidade.metricas.energiaHoje;
           unidadesConsumidoras++;
@@ -656,8 +656,8 @@ export function DashboardPage() {
                           <tbody>
                             {(() => {
                               const todasUnidades = data.plantas.flatMap(planta => planta.unidades);
-                              // Filtrar CARGAS: tipo === 'Carga'
-                              const cargas = todasUnidades.filter(unidade => unidade.tipo === 'Carga');
+                              // Filtrar CARGAS: tipo === 'Carga' OU tipo === 'OUTRO' (híbridas, pivôs, etc)
+                              const cargas = todasUnidades.filter(unidade => unidade.tipo === 'Carga' || unidade.tipo === 'OUTRO');
                               console.log('[Dashboard] Cargas filtradas:', cargas.length, cargas.map(u => ({ nome: u.nome, tipo: u.tipo })));
 
                               if (cargas.length === 0) {

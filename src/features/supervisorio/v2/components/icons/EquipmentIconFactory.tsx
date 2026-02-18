@@ -172,12 +172,17 @@ const ICON_MAP: Record<string, IconComponent> = {
 
   // Disjuntores (tipos antigos)
   'DISJUNTOR': DisjuntorIcon,
+  'DISJUNTOR_FECHADO': DisjuntorIcon,  // ← FIX: Usar DisjuntorIcon (mesmo do BT) ao invés de MedidorIcon
+  'DISJUNTOR_ABERTO': DisjuntorIcon,   // ← FIX: Usar DisjuntorIcon (mesmo do BT) ao invés de MedidorIcon
   'DISJUNTOR_GERAL': DisjuntorIcon,
   'DISJUNTOR_TERMICO': DisjuntorIcon,
   'DISJUNTOR_MAGNETOTERMICO': DisjuntorIcon,
 
   // Transformadores (tipos antigos)
   'TRANSFORMADOR': TransformadorIcon,
+  'TSA': TransformadorIcon,  // ← FIX: Transformador de Serviço Auxiliar
+  'TRANSFORMADOR_DE_SERVICO_AUXILIAR': TransformadorIcon,
+  'TRANSFORMADOR_SERVICO_AUXILIAR': TransformadorIcon,
   'TRAFO': TransformadorIcon,
   'TRAFO_REBAIXADOR': TransformadorIcon,
   'TRAFO_ELEVADOR': TransformadorIcon,
@@ -203,9 +208,24 @@ const ICON_MAP: Record<string, IconComponent> = {
   // Outros tipos antigos
   'MOTOR': MotorEletricoIcon,
   'PAINEL_SOLAR': ModulosPVIcon,
+
+  // Chaves (tipos antigos)
   'CHAVE_ABERTA': ChaveIcon,
+  'CHAVE_FECHADA': ChaveIcon,  // ← FIX: Chave Seccionadora Fechada
   'CHAVE_FUSIVEL': ChaveIcon,
+
+  // Equipamentos genéricos/diversos (sem ícone específico - usando MedidorIcon temporariamente)
   'BARRAMENTO': MedidorIcon,
+  'BANCO_BATERIAS': MedidorIcon,
+  'BOTOEIRA': MedidorIcon,
+  'PAINEL_PMT': MedidorIcon,
+  'PONTO': JunctionPointIcon,  // Ponto de junção
+  'RETIFICADOR': MedidorIcon,
+  'SALA_COMANDO': MedidorIcon,
+  'CFTV': MedidorIcon,
+  'TELECOM': MedidorIcon,
+  'SCADA': MedidorIcon,
+  'SKID': MedidorIcon,
 
   // Rede concessionária (tipos antigos)
   'REDE_CONCESSIONARIA': RedeConcessionariaIcon,
