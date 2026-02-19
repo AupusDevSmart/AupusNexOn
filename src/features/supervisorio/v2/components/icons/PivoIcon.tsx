@@ -1,6 +1,6 @@
 /**
  * PIVÔ ICON
- * Usa IconWrapper para ajuste automático
+ * Usa imagem SVG estática do pivô
  */
 import React from 'react';
 import { IconWrapper } from './IconWrapper';
@@ -12,6 +12,9 @@ interface PivoIconProps {
   color?: string;
   strokeWidth?: number;
   className?: string;
+  status?: "NORMAL" | "ALARME" | "FALHA" | "DESLIGADO";
+  operando?: boolean;
+  onClick?: () => void;
 }
 
 export const PivoIcon: React.FC<PivoIconProps> = ({

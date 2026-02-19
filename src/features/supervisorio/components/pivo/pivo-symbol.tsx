@@ -22,7 +22,7 @@ export function PivoSymbol({
         fill: "fill-red-500",
       };
     }
-    
+
     // Se está aberto, usar cor baseada no status
     if (estado === "ABERTO") {
       if (status === "ALARME") {
@@ -53,6 +53,9 @@ export function PivoSymbol({
 
   const currentClasses = getStatusClasses();
 
+  // Verificar se deve animar (operando E status normal/alarme)
+  const deveAnimar = operando && (status === "NORMAL" || status === "ALARME");
+
   return (
     <svg
       width="48"
@@ -70,7 +73,19 @@ export function PivoSymbol({
         strokeWidth="2"
         strokeDasharray="4,2"
         opacity={estado === "FECHADO" ? "0.6" : "0.3"}
-      />
+      >
+        {/* Animação do círculo externo quando operando */}
+        {deveAnimar && (
+          <animateTransform
+            attributeName="transform"
+            type="rotate"
+            from="0 30 30"
+            to="360 30 30"
+            dur="8s"
+            repeatCount="indefinite"
+          />
+        )}
+      </circle>
 
       {/* Círculo intermediário */}
       <circle
@@ -94,11 +109,19 @@ export function PivoSymbol({
         strokeWidth="1.5"
       />
 
-      {/*  VISUAL INVERTIDO: FECHADO = ANIMADO, ABERTO = ESTÁTICO */}
-      {estado === "FECHADO" ? (
-        // Pivô Fechado: Braço COM animação e gotas (operando)
-        <g transform={`rotate(${rotacao} 30 30)`}>
-          {/* Braço do pivô */}
+      {/* Braço do pivô - Com animação quando operando */}
+      {deveAnimar ? (
+        <g>
+          <animateTransform
+            attributeName="transform"
+            type="rotate"
+            from="0 30 30"
+            to="360 30 30"
+            dur="20s"
+            repeatCount="indefinite"
+          />
+
+          {/* Braço */}
           <line
             x1="30"
             y1="30"
@@ -109,57 +132,44 @@ export function PivoSymbol({
             strokeLinecap="round"
           />
 
-          {/* Seta rotativa - SEMPRE ANIMADA quando fechado */}
+          {/* Seta na ponta */}
           <path
             d="M 50 26 L 54 30 L 50 34"
             className={currentClasses.stroke}
             strokeWidth="2"
             fill="none"
             strokeLinecap="round"
-          >
-            <animateTransform
-              attributeName="transform"
-              type="rotate"
-              from="0 54 30"
-              to="360 54 30"
-              dur="2s"
+          />
+
+          {/* Gotas de água */}
+          <circle cx="38" cy="30" r="1.5" className="fill-blue-400">
+            <animate
+              attributeName="opacity"
+              values="1;0.3;1"
+              dur="1s"
               repeatCount="indefinite"
             />
-          </path>
-
-          {/* Gotas de água - SEMPRE ANIMADAS quando fechado */}
-          <>
-            <circle cx="38" cy="30" r="1.5" className="fill-blue-400">
-              <animate
-                attributeName="opacity"
-                values="1;0.3;1"
-                dur="1s"
-                repeatCount="indefinite"
-              />
-            </circle>
-            <circle cx="44" cy="30" r="1.5" className="fill-blue-400">
-              <animate
-                attributeName="opacity"
-                values="0.3;1;0.3"
-                dur="1s"
-                repeatCount="indefinite"
-              />
-            </circle>
-            <circle cx="50" cy="30" r="1.5" className="fill-blue-400">
-              <animate
-                attributeName="opacity"
-                values="1;0.3;1"
-                dur="1s"
-                repeatCount="indefinite"
-              />
-            </circle>
-          </>
-
+          </circle>
+          <circle cx="44" cy="30" r="1.5" className="fill-blue-400">
+            <animate
+              attributeName="opacity"
+              values="0.3;1;0.3"
+              dur="1s"
+              repeatCount="indefinite"
+            />
+          </circle>
+          <circle cx="50" cy="30" r="1.5" className="fill-blue-400">
+            <animate
+              attributeName="opacity"
+              values="1;0.3;1"
+              dur="1s"
+              repeatCount="indefinite"
+            />
+          </circle>
         </g>
       ) : (
-        // Pivô Aberto: Braço SEM animação (estático/parado)
         <g>
-          {/* Braço do pivô ESTÁTICO */}
+          {/* Braço estático */}
           <line
             x1="30"
             y1="30"
@@ -170,7 +180,7 @@ export function PivoSymbol({
             strokeLinecap="round"
           />
 
-          {/* Seta estática (sem animação) */}
+          {/* Seta estática */}
           <path
             d="M 50 26 L 54 30 L 50 34"
             className={currentClasses.stroke}
@@ -178,20 +188,18 @@ export function PivoSymbol({
             fill="none"
             strokeLinecap="round"
           />
-
-          {/* SEM gotas quando aberto */}
         </g>
       )}
 
-      {/* LED de status - PISCA APENAS QUANDO FECHADO */}
-      <circle 
-        cx="52" 
-        cy="8" 
-        r="5" 
-        className={currentClasses.fill} 
+      {/* LED de status - PISCA quando operando */}
+      <circle
+        cx="52"
+        cy="8"
+        r="5"
+        className={currentClasses.fill}
         opacity="0.9"
       >
-        {estado === "FECHADO" && (
+        {deveAnimar && (
           <animate
             attributeName="opacity"
             values="0.9;0.4;0.9"
@@ -201,18 +209,18 @@ export function PivoSymbol({
         )}
       </circle>
 
-      {/* Label */}
+      {/* Label - Mostra "ON" quando operando */}
       <text
         x="30"
         y="32"
         textAnchor="middle"
         dominantBaseline="middle"
-        fontSize="8"
+        fontSize="7"
         fontWeight="700"
         className="fill-background"
         style={{ pointerEvents: "none" }}
       >
-        {estado === "FECHADO" ? "PF" : "PV"}
+        {deveAnimar ? "ON" : "PV"}
       </text>
     </svg>
   );

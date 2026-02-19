@@ -4708,17 +4708,31 @@ if (import.meta.env.PROD) {
               setSelectedPivoId(null);
             }}
             dados={{
+              // Seção 1 - Informações
+              data: new Date().toLocaleDateString('pt-BR'),
+              hora: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+              tempoEstimado: 8.5,
+              lamina: 12.5,
+              direcao: pivoStates[selectedPivoId]?.setorAtual || 0,
+              destino: 270,
+              programa: "Programa 1 - Irrigação Noturna",
+
+              // Seção 2 - Medidores
+              tensao: pivoStates[selectedPivoId]?.status !== "DESLIGADO" ? 220 : 0,
+              pressao: pivoStates[selectedPivoId]?.operando ? 3.5 : 0,
+              horimetro: 1234.5,
+
+              // Seção 3 - Status
+              pressaoOk: pivoStates[selectedPivoId]?.operando || false,
+              bombaLigada: pivoStates[selectedPivoId]?.operando || false,
+              aguaOk: pivoStates[selectedPivoId]?.operando || false,
+              canhaoLigado: pivoStates[selectedPivoId]?.operando || false,
+              sistemaLiberado: true,
+              energiaOk: pivoStates[selectedPivoId]?.status !== "DESLIGADO",
+
+              // Geral
               status: pivoStates[selectedPivoId]?.status || "DESLIGADO",
               operando: pivoStates[selectedPivoId]?.operando || false,
-              velocidadeRotacao: pivoStates[selectedPivoId]?.velocidadeRotacao || 0,
-              pressaoAgua: pivoStates[selectedPivoId]?.operando ? 3.5 : 0,
-              vazaoAgua: pivoStates[selectedPivoId]?.operando ? 120 : 0,
-              areaIrrigada: 50,
-              tempoOperacao: pivoStates[selectedPivoId]?.tempoOperacao || "0h 00min",
-              setorAtual: pivoStates[selectedPivoId]?.setorAtual || 0,
-              umidadeSolo: 65,
-              modoOperacao: pivoStates[selectedPivoId]?.modoOperacao || "MANUAL",
-              ultimaManutencao: "15/11/2024"
             } as DadosPivo}
             nomeComponente={componenteSelecionado?.nome || "Pivô Central"}
             // Funções de controle simuladas
