@@ -827,7 +827,7 @@ export function SinopticoGraficosV2({
             {/* Select M160 */}
             <div className="flex items-center gap-2">
               <Label htmlFor="m160-tensao" className="text-sm min-w-[80px]">
-                M160:
+                Medidor:
               </Label>
               <Select value={m160Selecionado} onValueChange={setM160Selecionado}>
                 <SelectTrigger id="m160-tensao" className="w-[250px]">
@@ -836,7 +836,7 @@ export function SinopticoGraficosV2({
                 <SelectContent>
                   {equipamentosM160.map((eq) => (
                     <SelectItem key={eq.id} value={eq.id}>
-                      {eq.nome}
+                      {eq.tag || eq.nome}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -942,7 +942,7 @@ export function SinopticoGraficosV2({
                     name="Tensão Fase A"
                     stroke="#ef4444"
                     strokeWidth={2}
-                    dot={{ r: 2 }}
+                    dot={false}
                     activeDot={{ r: 5 }}
                     connectNulls={true}
                   />
@@ -954,7 +954,7 @@ export function SinopticoGraficosV2({
                     name="Tensão Fase B"
                     stroke="#ffffff"
                     strokeWidth={2}
-                    dot={{ r: 2 }}
+                    dot={false}
                     activeDot={{ r: 5 }}
                     connectNulls={true}
                   />
@@ -966,7 +966,7 @@ export function SinopticoGraficosV2({
                     name="Tensão Fase C"
                     stroke="#3b82f6"
                     strokeWidth={2}
-                    dot={{ r: 2 }}
+                    dot={false}
                     activeDot={{ r: 5 }}
                     connectNulls={true}
                   />
@@ -1007,7 +1007,7 @@ export function SinopticoGraficosV2({
             {/* Select M160 */}
             <div className="flex items-center gap-2">
               <Label htmlFor="m160-fp" className="text-sm min-w-[80px]">
-                M160:
+                Medidor:
               </Label>
               <Select value={m160Selecionado} onValueChange={setM160Selecionado}>
                 <SelectTrigger id="m160-fp" className="w-[250px]">
@@ -1016,7 +1016,7 @@ export function SinopticoGraficosV2({
                 <SelectContent>
                   {equipamentosM160.map((eq) => (
                     <SelectItem key={eq.id} value={eq.id}>
-                      {eq.nome}
+                      {eq.tag || eq.nome}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1122,7 +1122,7 @@ export function SinopticoGraficosV2({
                     name="FP Fase A"
                     stroke="#ef4444"
                     strokeWidth={2}
-                    dot={{ r: 2 }}
+                    dot={false}
                     activeDot={{ r: 5 }}
                     connectNulls={true}
                   />
@@ -1134,7 +1134,7 @@ export function SinopticoGraficosV2({
                     name="FP Fase B"
                     stroke="#ffffff"
                     strokeWidth={2}
-                    dot={{ r: 2 }}
+                    dot={false}
                     activeDot={{ r: 5 }}
                     connectNulls={true}
                   />
@@ -1146,7 +1146,7 @@ export function SinopticoGraficosV2({
                     name="FP Fase C"
                     stroke="#3b82f6"
                     strokeWidth={2}
-                    dot={{ r: 2 }}
+                    dot={false}
                     activeDot={{ r: 5 }}
                     connectNulls={true}
                   />
@@ -1318,7 +1318,7 @@ export function SinopticoGraficosV2({
               {/* Select M160 */}
               <div className="flex items-center gap-2">
                 <Label htmlFor="m160-tensao-modal" className="text-sm min-w-[80px]">
-                  M160:
+                  Medidor:
                 </Label>
                 <Select value={m160Selecionado} onValueChange={setM160Selecionado}>
                   <SelectTrigger id="m160-tensao-modal" className="w-[250px]">
@@ -1327,7 +1327,7 @@ export function SinopticoGraficosV2({
                   <SelectContent>
                     {equipamentosM160.map((eq) => (
                       <SelectItem key={eq.id} value={eq.id}>
-                        {eq.nome}
+                        {eq.tag || eq.nome}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -1475,7 +1475,7 @@ export function SinopticoGraficosV2({
               {/* Select M160 */}
               <div className="flex items-center gap-2">
                 <Label htmlFor="m160-fp-modal" className="text-sm min-w-[80px]">
-                  M160:
+                  Medidor:
                 </Label>
                 <Select value={m160Selecionado} onValueChange={setM160Selecionado}>
                   <SelectTrigger id="m160-fp-modal" className="w-[250px]">
@@ -1484,7 +1484,7 @@ export function SinopticoGraficosV2({
                   <SelectContent>
                     {equipamentosM160.map((eq) => (
                       <SelectItem key={eq.id} value={eq.id}>
-                        {eq.nome}
+                        {eq.tag || eq.nome}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -1581,7 +1581,7 @@ export function SinopticoGraficosV2({
                       name="FP Fase A"
                       stroke="#ef4444"
                       strokeWidth={2}
-                      dot={{ r: 2 }}
+                      dot={false}
                       activeDot={{ r: 5 }}
                     />
                   )}
@@ -1592,7 +1592,7 @@ export function SinopticoGraficosV2({
                       name="FP Fase B"
                       stroke="#ffffff"
                       strokeWidth={2}
-                      dot={{ r: 2 }}
+                      dot={false}
                       activeDot={{ r: 5 }}
                     />
                   )}
@@ -1603,7 +1603,7 @@ export function SinopticoGraficosV2({
                       name="FP Fase C"
                       stroke="#3b82f6"
                       strokeWidth={2}
-                      dot={{ r: 2 }}
+                      dot={false}
                       activeDot={{ r: 5 }}
                     />
                   )}

@@ -24,6 +24,7 @@ interface DadosM160 {
 interface EquipamentoM160 {
   id: string;
   nome: string;
+  tag?: string;
   tipo: string;
 }
 
@@ -73,7 +74,8 @@ export function useDadosM160(unidadeId?: string, equipamentoId?: string) {
         // ✅ CORRIGIDO: Ordem de fallback correta em todos os campos
         return equipamentosM160.map((eq: any) => ({
           id: eq.id?.trim(),
-          nome: eq.nome || eq.tag || 'M-160',
+          nome: eq.nome || 'M-160',
+          tag: eq.tag,
           tipo: eq.tipo_equipamento_rel?.codigo || eq.tipoEquipamento?.codigo || 'M-160'
         }));
       } catch (error) {

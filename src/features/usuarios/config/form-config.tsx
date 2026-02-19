@@ -24,13 +24,21 @@ const RoleSelector = ({ value, onChange, disabled }: any) => {
   const { roles, loading, error } = useRoles();
 
   // ✅ IMPORTAR useUserStore para verificar role do usuário logado
-  const { user } = useUserStore();
-  const currentUserRole = user?.roles?.[0] || user?.role;
+  const { user, getUserRole } = useUserStore();
+  const currentUserRole = getUserRole();
 
   // ✅ FILTRAR ROLES: Se usuário logado é proprietário, mostrar apenas "operador"
   let availableRoles = roles;
   if (currentUserRole === 'propietario' || currentUserRole === 'proprietario') {
-    availableRoles = roles.filter(role => role.value === 'operador');
+    availableRoles = roles.filter(role =>
+      role.value === 'operador' ||
+      role.value.toLowerCase() === 'operador'
+    );
+
+    // Se não encontrou "operador", mostrar mensagem de erro
+    if (availableRoles.length === 0) {
+      console.warn('⚠️ Role "operador" não encontrado na lista de roles disponíveis:', roles);
+    }
   }
 
   if (loading) {
@@ -48,6 +56,17 @@ const RoleSelector = ({ value, onChange, disabled }: any) => {
       <div className="flex items-center p-3 border border-red-200 rounded-md bg-red-50">
         <div className="text-sm text-red-600">
           ❌ Erro ao carregar tipos de usuário: {error}
+        </div>
+      </div>
+    );
+  }
+
+  // ✅ Verificar se proprietário não tem roles disponíveis (quando operador não existe)
+  if ((currentUserRole === 'propietario' || currentUserRole === 'proprietario') && availableRoles.length === 0) {
+    return (
+      <div className="flex items-center p-3 border border-amber-200 rounded-md bg-amber-50 dark:bg-amber-950 dark:border-amber-800">
+        <div className="text-sm text-amber-700 dark:text-amber-300">
+          ⚠️ Você só pode cadastrar usuários com o tipo "Operador". Entre em contato com o administrador para configurar este tipo de usuário no sistema.
         </div>
       </div>
     );

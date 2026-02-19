@@ -33,6 +33,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { useTheme } from '@/components/theme-provider';
+import { useUserStore } from '@/store/useUserStore';
 import type { Equipment, Theme } from './types/diagram.types';
 
 interface AvailableEquipment {
@@ -80,6 +81,9 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
   const selectedIds = useDiagramStore(state => state.editor.selectedEquipmentIds);
   const selectedConnectionIds = useDiagramStore(state => state.editor.selectedConnectionIds);
   const removeConexao = useDiagramStore(state => state.removeConexao);
+
+  // Verificação de permissões
+  const { isAdmin } = useUserStore();
 
   // Tema global da aplicação
   const { theme: appTheme } = useTheme();
@@ -378,29 +382,35 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
             </div>
             <h3 className="text-lg font-semibold mb-2">Diagrama não encontrado</h3>
             <p className="text-muted-foreground mb-1">Esta unidade ainda não possui um diagrama unifilar.</p>
-            <p className="text-sm text-muted-foreground mb-6">Crie um novo diagrama para começar a adicionar equipamentos e conexões.</p>
+            {isAdmin() ? (
+              <p className="text-sm text-muted-foreground mb-6">Crie um novo diagrama para começar a adicionar equipamentos e conexões.</p>
+            ) : (
+              <p className="text-sm text-muted-foreground mb-6">Entre em contato com um administrador para criar o diagrama.</p>
+            )}
 
-            <Button
-              onClick={() => setShowCreateModal(true)}
-              size="lg"
-              className="mt-6"
-            >
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="mr-2"
+            {isAdmin() && (
+              <Button
+                onClick={() => setShowCreateModal(true)}
+                size="lg"
+                className="mt-6"
               >
-                <line x1="12" y1="5" x2="12" y2="19"></line>
-                <line x1="5" y1="12" x2="19" y2="12"></line>
-              </svg>
-              Criar Novo Diagrama
-            </Button>
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="mr-2"
+                >
+                  <line x1="12" y1="5" x2="12" y2="19"></line>
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+                Criar Novo Diagrama
+              </Button>
+            )}
           </div>
         </div>
 
@@ -523,32 +533,34 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
             <span>Ajustar Zoom</span>
           </Button>
 
-          {/* Toggle Edit/View Mode */}
-          <Button
-            onClick={() => setCurrentMode(currentMode === 'edit' ? 'view' : 'edit')}
-            variant={currentMode === 'edit' ? 'secondary' : 'ghost'}
-            size="sm"
-            className="h-8 gap-2"
-            title={currentMode === 'view' ? 'Ativar modo de edição' : 'Sair do modo de edição'}
-          >
-            {currentMode === 'view' ? (
-              <>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M12 20h9"></path>
-                  <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
-                </svg>
-                <span>Editar</span>
-              </>
-            ) : (
-              <>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M9 11l-6 6v3h3l6-6m0 0l3-3m-3 3l3-3m2-5l-3 3m0 0l-3-3"></path>
-                  <line x1="18" y1="13" x2="6" y2="1"></line>
-                </svg>
-                <span>Sair da Edição</span>
-              </>
-            )}
-          </Button>
+          {/* Toggle Edit/View Mode - Apenas para admin ou super_admin */}
+          {isAdmin() && (
+            <Button
+              onClick={() => setCurrentMode(currentMode === 'edit' ? 'view' : 'edit')}
+              variant={currentMode === 'edit' ? 'secondary' : 'ghost'}
+              size="sm"
+              className="h-8 gap-2"
+              title={currentMode === 'view' ? 'Ativar modo de edição' : 'Sair do modo de edição'}
+            >
+              {currentMode === 'view' ? (
+                <>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M12 20h9"></path>
+                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+                  </svg>
+                  <span>Editar</span>
+                </>
+              ) : (
+                <>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M9 11l-6 6v3h3l6-6m0 0l3-3m-3 3l3-3m2-5l-3 3m0 0l-3-3"></path>
+                    <line x1="18" y1="13" x2="6" y2="1"></line>
+                  </svg>
+                  <span>Sair da Edição</span>
+                </>
+              )}
+            </Button>
+          )}
 
           {/* Indicador de alterações não salvas */}
           {isDirty && (
