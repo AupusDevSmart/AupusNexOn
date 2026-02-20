@@ -34,6 +34,8 @@ import type { Equipment } from './types/diagram.types';
 import { SinopticoGraficosV2 } from '../components/sinoptico-graficos-v2';
 import { Button } from '@/components/ui/button';
 import { BarChart3 } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '@/config/api';
 
 // ============================================================================
 // TIPOS LEGADOS (Compatibilidade)
@@ -142,6 +144,28 @@ export const DiagramV2Wrapper: React.FC<DiagramV2WrapperProps> = ({
   // Estado para mostrar/ocultar gráficos - SEMPRE começa OCULTO
   const [showGraficos, setShowGraficos] = useState(false);
 
+  // Buscar demanda contratada da unidade
+  const { data: unidadeData } = useQuery({
+    queryKey: ['unidade-demanda', diagrama?.unidadeId],
+    queryFn: async () => {
+      if (!diagrama?.unidadeId) return null;
+      console.log('🔍 [DiagramV2Wrapper] Buscando unidade:', diagrama.unidadeId);
+      const response = await api.get(`/unidades/${diagrama.unidadeId}`);
+      console.log('🔍 [DiagramV2Wrapper] Response completa:', response.data);
+      console.log('🔍 [DiagramV2Wrapper] response.data.data:', response.data?.data);
+      console.log('🔍 [DiagramV2Wrapper] demanda_geracao:', response.data?.data?.demanda_geracao || response.data?.demanda_geracao);
+      return response.data?.data || response.data;
+    },
+    enabled: !!diagrama?.unidadeId,
+    refetchInterval: false,
+    staleTime: 0, // ✅ Sempre buscar dados frescos
+    cacheTime: 0, // ✅ Não manter cache
+  });
+
+  // Extrair demanda contratada (demandaGeracao em camelCase da API)
+  const demandaContratada = unidadeData?.demandaGeracao ? parseFloat(unidadeData.demandaGeracao.toString()) : 2500;
+  console.log('📊 [DiagramV2Wrapper] unidadeData:', unidadeData);
+  console.log('📊 [DiagramV2Wrapper] Demanda final:', demandaContratada, '(demandaGeracao:', unidadeData?.demandaGeracao, ')');
 
   const setEquipamentos = (equipamentos: Equipment[]) => {
     const store = useDiagramStore.getState();
@@ -375,7 +399,7 @@ export const DiagramV2Wrapper: React.FC<DiagramV2WrapperProps> = ({
           <div className="xl:col-span-1 flex flex-col gap-4 overflow-y-auto overflow-x-hidden pr-2" style={{ maxHeight: '100%' }}>
             <SinopticoGraficosV2
               unidadeId={unidadeIdParaGraficos}
-              valorContratado={2500}
+              valorContratado={demandaContratada}
               percentualAdicional={5}
             />
           </div>

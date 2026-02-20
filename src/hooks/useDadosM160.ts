@@ -126,9 +126,10 @@ export function useDadosM160(unidadeId?: string, equipamentoId?: string) {
         tensaoA: dados.Va || 0,
         tensaoB: dados.Vb || 0,
         tensaoC: dados.Vc || 0,
-        fatorPotenciaA: dados.FPA || 0,
-        fatorPotenciaB: dados.FPB || 0,
-        fatorPotenciaC: dados.FPC || 0,
+        // ✅ Suportar AMBOS os formatos: FPA (legado maiúsculo) e FPa (novo minúsculo)
+        fatorPotenciaA: dados.FPa || dados.FPA || 0,
+        fatorPotenciaB: dados.FPb || dados.FPB || 0,
+        fatorPotenciaC: dados.FPc || dados.FPC || 0,
       };
     });
 

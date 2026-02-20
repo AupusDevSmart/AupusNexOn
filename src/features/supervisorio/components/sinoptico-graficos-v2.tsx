@@ -404,7 +404,7 @@ export function SinopticoGraficosV2({
         intervalo_atualizacao: novaConfig.intervaloAtualizacao,
         aplicar_perdas: novaConfig.aplicarPerdas,
         fator_perdas: novaConfig.fatorPerdas,
-        valor_contratado: valorContratado,
+        valor_contratado: novaConfig.demandaContratada || valorContratado, // ✅ Usar valor do modal
         percentual_adicional: percentualAdicional
       };
 

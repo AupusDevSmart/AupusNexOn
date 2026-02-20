@@ -118,7 +118,8 @@ export function M160Modal({ isOpen, onClose, componenteData }: M160ModalProps) {
 
   // Converter dados MQTT para formato M160Reading
   const dadosM160: M160Reading = useMemo(() => {
-    if (!mqttData?.payload?.Dados) {
+    // ✅ ATUALIZADO: JSON agora vem direto no payload (não mais em payload.Dados)
+    if (!mqttData?.payload) {
       return {
         voltage: { L1: 0, L2: 0, L3: 0, LN: 0 },
         current: { L1: 0, L2: 0, L3: 0, N: 0 },
@@ -141,7 +142,7 @@ export function M160Modal({ isOpen, onClose, componenteData }: M160ModalProps) {
       };
     }
 
-    const d = mqttData.payload.Dados;
+    const d = mqttData.payload; // ✅ MUDOU: dados direto no payload
 
     // ✅ CORREÇÃO CRÍTICA: M160 fornece Pt (ativa), Qt (reativa) e St (aparente) diretamente!
     // Não precisa calcular - usar os valores totais que já vêm no JSON
@@ -186,19 +187,20 @@ export function M160Modal({ isOpen, onClose, componenteData }: M160ModalProps) {
         L3: Pc, // Potência fase C (W)
       },
       frequency: d.freq || 60.0, // ✅ CORRIGIDO: Usar frequência real do payload
-      powerFactor: d.FPA || 0,
-      powerFactorB: d.FPB || 0,
-      powerFactorC: d.FPC || 0,
+      // ✅ Suportar AMBOS os formatos: FPa (novo minúsculo) e FPA (legado maiúsculo)
+      powerFactor: d.FPa || d.FPA || 0,
+      powerFactorB: d.FPb || d.FPB || 0,
+      powerFactorC: d.FPc || d.FPC || 0,
       powerFactorTotal: fatorPotenciaTotal, // ✅ FP Total = Pt/St
       thd: {
         voltage: 0, // THD não disponível no M160
         current: 0  // THD não disponível no M160
       },
       energy: {
-        activeImport: d.phf || mqttData.payload.energia_kwh || 0, // ✅ PHF ou energia_kwh
+        activeImport: d.phf || d.energia_kwh || 0, // ✅ PHF ou energia_kwh
         activeExport: d.phr || 0, // ✅ Energia ativa exportada
-        reactiveImport: d.qhfi || 0, // ✅ Energia reativa indutiva
-        reactiveExport: d.qhfr || 0, // ✅ Energia reativa capacitiva
+        reactiveImport: d.qhfi || d.consumo_qhf || 0, // ✅ Energia reativa indutiva (qhfi ou consumo_qhf)
+        reactiveExport: d.qhfr || d.consumo_qhr || 0, // ✅ Energia reativa capacitiva (qhfr ou consumo_qhr)
       },
     };
   }, [mqttData]);
@@ -619,34 +621,49 @@ export function M160Modal({ isOpen, onClose, componenteData }: M160ModalProps) {
                       />
                     </div>
 
-                    {/* Linha 2: Demanda, Irrigante, Resumo */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                      <CardCusto
-                        tipo="DEMANDA"
-                        energia_kwh={custosData.consumo.demanda_contratada_kw || 0}
-                        custo={custosData.custos.custo_demanda}
-                        tarifa={
-                          custosData.tarifas_aplicadas.find((t) => t.tipo_horario === 'DEMANDA')?.tarifa_total ||
-                          undefined
-                        }
-                      />
-
-                      {/* Irrigante ou placeholder */}
-                      {isIrrigante && custosData.irrigante ? (
+                    {/* Linha 2: Demanda + Resumo (com ou sem Irrigante) */}
+                    {isIrrigante && custosData.irrigante ? (
+                      // COM IRRIGANTE: Grid 3 colunas (Demanda, Irrigante, Resumo)
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                        <CardCusto
+                          tipo="DEMANDA"
+                          energia_kwh={custosData.consumo.demanda_contratada_kw || 0}
+                          custo={custosData.custos.custo_demanda}
+                          tarifa={
+                            custosData.tarifas_aplicadas.find((t) => t.tipo_horario === 'DEMANDA')?.tarifa_total ||
+                            undefined
+                          }
+                        />
                         <IndicadorIrrigante irrigante={custosData.irrigante} />
-                      ) : (
-                        <div />
-                      )}
-
-                      {/* Resumo Total */}
-                      <CardResumoTotal
-                        energia_total_kwh={custosData.consumo.energia_total_kwh}
-                        custo_total={custosData.custos.custo_total}
-                        custo_medio_kwh={custosData.custos.custo_medio_kwh}
-                        demanda_maxima_kw={custosData.consumo.demanda_maxima_kw}
-                        demanda_contratada_kw={custosData.consumo.demanda_contratada_kw}
-                      />
-                    </div>
+                        <CardResumoTotal
+                          energia_total_kwh={custosData.consumo.energia_total_kwh}
+                          custo_total={custosData.custos.custo_total}
+                          custo_medio_kwh={custosData.custos.custo_medio_kwh}
+                          demanda_maxima_kw={custosData.consumo.demanda_maxima_kw}
+                          demanda_contratada_kw={custosData.consumo.demanda_contratada_kw}
+                        />
+                      </div>
+                    ) : (
+                      // SEM IRRIGANTE: Grid 2 colunas (Demanda, Resumo)
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        <CardCusto
+                          tipo="DEMANDA"
+                          energia_kwh={custosData.consumo.demanda_contratada_kw || 0}
+                          custo={custosData.custos.custo_demanda}
+                          tarifa={
+                            custosData.tarifas_aplicadas.find((t) => t.tipo_horario === 'DEMANDA')?.tarifa_total ||
+                            undefined
+                          }
+                        />
+                        <CardResumoTotal
+                          energia_total_kwh={custosData.consumo.energia_total_kwh}
+                          custo_total={custosData.custos.custo_total}
+                          custo_medio_kwh={custosData.custos.custo_medio_kwh}
+                          demanda_maxima_kw={custosData.consumo.demanda_maxima_kw}
+                          demanda_contratada_kw={custosData.consumo.demanda_contratada_kw}
+                        />
+                      </div>
+                    )}
                   </div>
                 ) : (
                   // GRUPO B: Grid compacto em 3 colunas

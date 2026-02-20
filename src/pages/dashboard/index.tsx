@@ -643,8 +643,7 @@ export function DashboardPage() {
                           <thead>
                             <tr className="border-b">
                               <th className="text-left py-2 px-2 font-medium">Nome</th>
-                              <th className="text-center py-2 px-2 font-medium">Potência</th>
-                              <th className="text-center py-2 px-2 font-medium">Potência Inst.</th>
+                              <th className="text-center py-2 px-2 font-medium">Energia Consumida</th>
                               <th className="text-center py-2 px-2 font-medium">FC</th>
                               <th className="text-center py-2 px-2 font-medium">Clima</th>
                               <th className="text-center py-2 px-2 font-medium">Status</th>
@@ -663,7 +662,7 @@ export function DashboardPage() {
                               if (cargas.length === 0) {
                                 return (
                                   <tr>
-                                    <td colSpan={9} className="text-center py-4 text-muted-foreground">
+                                    <td colSpan={8} className="text-center py-4 text-muted-foreground">
                                       Nenhuma carga encontrada
                                     </td>
                                   </tr>
@@ -700,24 +699,9 @@ export function DashboardPage() {
                                     <td className="py-2 px-2 font-medium">{unidade.nome}</td>
                                     <td className="text-center py-2 px-2">
                                       <div className="flex flex-col items-center gap-1">
-                                        <div className="flex items-center gap-2 w-full">
-                                          <span className="text-xs font-medium whitespace-nowrap">{consumoPercent}%</span>
-                                          <div className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                                            <div
-                                              className={`h-full rounded-full transition-all ${
-                                                consumoPercent >= 90 ? 'bg-red-500' :
-                                                consumoPercent >= 70 ? 'bg-yellow-500' :
-                                                'bg-green-500'
-                                              }`}
-                                              style={{ width: `${Math.min(consumoPercent, 100)}%` }}
-                                            />
-                                          </div>
-                                        </div>
-                                        <span className="text-xs text-muted-foreground">{unidade.metricas.potenciaAtual.toFixed(1)} MW</span>
+                                        <span className="text-sm font-bold">{unidade.metricas.energiaHoje.toFixed(1)} kWh</span>
+                                        <span className="text-xs text-muted-foreground">Energia do dia</span>
                                       </div>
-                                    </td>
-                                    <td className="text-center py-2 px-2">
-                                      <Badge variant="outline">0%</Badge>
                                     </td>
                                     <td className="text-center py-2 px-2">
                                       <Badge variant="outline">{fatorCarga.toFixed(0)}</Badge>
