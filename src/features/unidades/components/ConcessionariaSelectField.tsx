@@ -134,7 +134,7 @@ export function ConcessionariaSelectField({
       onValueChange={handleChange}
       disabled={disabled || loading}
     >
-      <SelectTrigger id="concessionariaId">
+      <SelectTrigger id="concessionariaId" className="select-minimal">
         <SelectValue
           placeholder={loading ? "Carregando concessionárias..." : concessionarias.length === 0 ? "Nenhuma concessionária disponível" : "Selecione a concessionária"}
         />

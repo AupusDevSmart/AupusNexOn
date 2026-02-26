@@ -53,7 +53,10 @@ export function AnexosConcessionariaField({
   }, [value]);
 
   // Ícone baseado no tipo de arquivo
-  const getFileIcon = (mimeType: string) => {
+  const getFileIcon = (mimeType?: string) => {
+    if (!mimeType) {
+      return <File className="h-4 w-4" />;
+    }
     if (mimeType.startsWith('image/')) {
       return <ImageIcon className="h-4 w-4" />;
     }
@@ -298,12 +301,11 @@ export function AnexosConcessionariaField({
               className="hidden"
               disabled={uploading}
             />
-            <Button
+            <button
               type="button"
-              variant="outline"
-              size="sm"
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
+              className="btn-minimal-outline"
             >
               {uploading ? (
                 <>
@@ -316,7 +318,7 @@ export function AnexosConcessionariaField({
                   Adicionar Anexo
                 </>
               )}
-            </Button>
+            </button>
           </div>
         )}
       </div>
@@ -402,13 +404,13 @@ export function AnexosConcessionariaField({
           })}
         </div>
       ) : (
-        <div className="text-center py-8 border-2 border-dashed rounded-lg">
-          <File className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-          <p className="text-sm text-muted-foreground">
+        <div className="text-center py-8 border-2 border-dashed rounded-lg dark:bg-black dark:border-gray-600">
+          <File className="h-8 w-8 text-muted-foreground mx-auto mb-2 dark:text-white" />
+          <p className="text-sm text-muted-foreground dark:text-white">
             Nenhum anexo adicionado ainda.
           </p>
           {!isViewMode && (
-            <p className="text-xs text-muted-foreground mt-1">
+            <p className="text-xs text-muted-foreground dark:text-gray-300 mt-1">
               Formatos aceitos: PDF, PNG, JPG, DOC, XLS (máx. 10MB)
             </p>
           )}

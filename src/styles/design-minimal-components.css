@@ -1,0 +1,404 @@
+/**
+ * DESIGN MINIMALISTA - COMPONENTES
+ *
+ * Classes utilitárias que você aplica ONDE QUISER
+ * NÃO afeta o resto do sistema
+ */
+
+/* ========================================
+   INPUTS MINIMALISTAS
+   ======================================== */
+.input-minimal {
+  @apply w-full h-9 rounded border border-input bg-background px-3 py-2 text-sm;
+  @apply ring-offset-background placeholder:text-muted-foreground;
+  @apply focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring;
+  @apply disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+/* Background preto no dark mode */
+.dark .input-minimal {
+  background-color: hsl(0, 0%, 0%);
+}
+
+.select-minimal {
+  @apply w-full h-9 rounded border border-input bg-background px-3 py-2 text-sm;
+  @apply ring-offset-background;
+  @apply focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring;
+  @apply disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+/* Background preto no dark mode */
+.dark .select-minimal {
+  background-color: hsl(0, 0%, 0%);
+}
+
+/* Options do select - background cinza claro no light mode */
+.select-minimal option {
+  @apply bg-muted;
+}
+
+.dark .select-minimal option {
+  @apply bg-muted;
+}
+
+.textarea-minimal {
+  @apply min-h-[80px] rounded border border-input bg-background px-3 py-2 text-sm;
+  @apply ring-offset-background placeholder:text-muted-foreground;
+  @apply focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring;
+  @apply disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+/* Background preto no dark mode */
+.dark .textarea-minimal {
+  background-color: hsl(0, 0%, 0%);
+}
+
+/* ========================================
+   BUTTONS MINIMALISTAS
+   ======================================== */
+.btn-minimal {
+  @apply h-9 rounded px-4 text-sm font-medium;
+  @apply inline-flex items-center justify-center;
+  @apply ring-offset-background transition-colors;
+  @apply focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring;
+  @apply disabled:pointer-events-none disabled:opacity-50;
+}
+
+.btn-minimal-primary {
+  @apply btn-minimal bg-primary text-primary-foreground hover:opacity-90;
+}
+
+.btn-minimal-outline {
+  @apply btn-minimal border border-input bg-background hover:bg-accent hover:text-accent-foreground;
+}
+
+/* Background preto no dark mode */
+.dark .btn-minimal-outline {
+  background-color: hsl(0, 0%, 0%);
+}
+
+.btn-minimal-ghost {
+  @apply btn-minimal hover:bg-accent hover:text-accent-foreground;
+}
+
+.btn-minimal-destructive {
+  @apply btn-minimal bg-destructive text-destructive-foreground hover:opacity-90;
+}
+
+/* ========================================
+   CARDS MINIMALISTAS
+   ======================================== */
+.card-minimal {
+  @apply rounded border border-border bg-card text-card-foreground;
+  @apply shadow-sm transition-shadow;
+  @apply hover:shadow-md;
+}
+
+.card-minimal-flat {
+  @apply rounded border border-border bg-card text-card-foreground;
+}
+
+/* ========================================
+   TABLES MINIMALISTAS
+   ======================================== */
+.table-minimal {
+  @apply w-full;
+}
+
+/* Background preto no dark mode */
+.dark .table-minimal {
+  background-color: hsl(0, 0%, 0%);
+}
+
+/* Remover bordas */
+.table-minimal thead {
+  border: none;
+}
+
+.table-minimal thead tr {
+  @apply bg-muted bg-opacity-50;
+}
+
+/* Thead preto no dark mode */
+.dark .table-minimal thead tr {
+  background-color: hsl(0, 0%, 0%);
+}
+
+.table-minimal thead th {
+  @apply h-10 px-4 text-left align-middle text-sm font-normal text-muted-foreground;
+  @apply whitespace-nowrap;
+  border: none;
+}
+
+.table-minimal tbody tr {
+  @apply transition-colors;
+  border: none;
+}
+
+.table-minimal tbody tr:hover {
+  @apply bg-muted bg-opacity-30;
+}
+
+.table-minimal tbody td {
+  @apply h-12 px-4 align-middle text-sm font-normal;
+  border: none;
+}
+
+/* ========================================
+   BADGES MINIMALISTAS
+   ======================================== */
+.badge-minimal {
+  @apply inline-flex items-center rounded px-2 py-0.5 text-xs font-medium;
+  @apply border border-current;
+  @apply transition-colors;
+}
+
+/* ========================================
+   ALERTS MINIMALISTAS
+   ======================================== */
+.alert-minimal {
+  @apply relative w-full rounded border px-4 py-3 text-sm;
+  @apply flex items-center gap-3;
+}
+
+/* Remover o translate-y do shadcn que desalinha o texto */
+.alert-minimal > div,
+.alert-minimal [role="alert"] > div {
+  transform: none !important;
+}
+
+.alert-info {
+  @apply text-info;
+  border-color: hsl(var(--info) / 0.2);
+  background-color: hsl(var(--info) / 0.05);
+}
+
+.alert-success {
+  @apply text-success;
+  border-color: hsl(var(--success) / 0.2);
+  background-color: hsl(var(--success) / 0.05);
+}
+
+.alert-warning {
+  @apply text-warning;
+  border-color: hsl(var(--warning) / 0.2);
+  background-color: hsl(var(--warning) / 0.05);
+}
+
+.alert-destructive {
+  @apply text-destructive;
+  border-color: hsl(var(--destructive) / 0.2);
+  background-color: hsl(var(--destructive) / 0.05);
+}
+
+/* ========================================
+   FORMS MINIMALISTAS
+   ======================================== */
+.form-minimal {
+  @apply space-y-4;
+}
+
+.form-minimal .form-group {
+  @apply space-y-2;
+}
+
+.form-minimal label {
+  @apply text-sm font-medium leading-none;
+  @apply peer-disabled:cursor-not-allowed peer-disabled:opacity-70;
+}
+
+.form-minimal .form-error {
+  @apply text-xs text-destructive;
+}
+
+.form-minimal .form-description {
+  @apply text-xs text-muted-foreground;
+}
+
+/* ========================================
+   SCROLLBAR MINIMALISTA
+   ======================================== */
+.scrollbar-minimal::-webkit-scrollbar {
+  @apply w-2 h-2;
+}
+
+.scrollbar-minimal::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+.scrollbar-minimal::-webkit-scrollbar-thumb {
+  @apply bg-border rounded;
+}
+
+.scrollbar-minimal::-webkit-scrollbar-thumb:hover {
+  @apply bg-border opacity-80;
+}
+
+/* ========================================
+   CONTAINERS MINIMALISTAS
+   ======================================== */
+.page-minimal {
+  @apply min-h-screen bg-background text-foreground;
+}
+
+.page-header-minimal {
+  @apply border-b border-border bg-card backdrop-blur-sm;
+  @apply sticky top-0 z-10;
+  background-color: hsl(var(--card) / 0.5);
+}
+
+.page-content-minimal {
+  @apply container mx-auto px-6 py-8;
+}
+
+.section-minimal {
+  @apply space-y-4;
+}
+
+/* ========================================
+   SEPARATORS MINIMALISTAS
+   ======================================== */
+.separator-minimal {
+  @apply h-px bg-border;
+}
+
+.separator-minimal-vertical {
+  @apply w-px bg-border;
+}
+
+/* ========================================
+   LOADING STATES
+   ======================================== */
+.skeleton-minimal {
+  @apply animate-pulse rounded bg-muted;
+}
+
+/* ========================================
+   RESPONSIVE UTILITIES
+   ======================================== */
+.grid-minimal-2 {
+  @apply grid grid-cols-1 gap-4;
+  @apply md:grid-cols-2;
+}
+
+.grid-minimal-3 {
+  @apply grid grid-cols-1 gap-4;
+  @apply md:grid-cols-2 lg:grid-cols-3;
+}
+
+.grid-minimal-4 {
+  @apply grid grid-cols-1 gap-4;
+  @apply sm:grid-cols-2 lg:grid-cols-4;
+}
+
+/* ========================================
+   GRID COM COLUNAS IGUAIS
+   ======================================== */
+/* Forçar colunas de largura igual (não usar minmax) */
+.grid-equal-cols-2 {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+}
+
+/* ========================================
+   FOCUS VISIBLE
+   ======================================== */
+.focus-minimal {
+  @apply focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring;
+  @apply focus-visible:ring-offset-2 focus-visible:ring-offset-background;
+}
+
+/* ========================================
+   COMBOBOX (Command Component)
+   ======================================== */
+/* Corrigir backgrounds coloridos do Command para cinza neutro */
+[cmdk-root] {
+  @apply bg-popover text-popover-foreground;
+}
+
+[cmdk-group] {
+  @apply bg-transparent;
+}
+
+[cmdk-item] {
+  @apply bg-transparent;
+}
+
+[cmdk-item][data-selected="true"] {
+  @apply bg-muted text-foreground;
+}
+
+[cmdk-item]:hover {
+  @apply bg-muted text-foreground;
+}
+
+/* Input do Command */
+[cmdk-input] {
+  @apply bg-transparent;
+}
+
+/* ========================================
+   DARK MODE - INPUTS E SELECTS PRETOS
+   ======================================== */
+/* Garantir que todos os inputs shadcn também fiquem pretos no dark mode */
+.dark input[type="text"],
+.dark input[type="email"],
+.dark input[type="password"],
+.dark input[type="number"],
+.dark input[type="search"],
+.dark textarea,
+.dark select {
+  background-color: hsl(0, 0%, 0%) !important;
+}
+
+/* Combobox (Button com role combobox) também preto no dark mode */
+.dark button[role="combobox"] {
+  background-color: hsl(0, 0%, 0%) !important;
+}
+
+/* SelectTrigger do shadcn também preto no dark mode */
+.dark [role="combobox"],
+.dark button[data-state] {
+  background-color: hsl(0, 0%, 0%) !important;
+}
+
+/* ========================================
+   CHECKBOX MINIMALISTA COM CONTRASTE
+   ======================================== */
+/* Forçar estilos do checkbox para garantir visibilidade */
+button[role="checkbox"] {
+  /* Light mode: fundo branco com borda escura */
+  border: 2px solid hsl(0, 0%, 40%) !important;
+  background-color: white !important;
+  width: 20px !important;
+  height: 20px !important;
+}
+
+.dark button[role="checkbox"] {
+  /* Dark mode: fundo cinza claro com borda clara */
+  border: 2px solid hsl(0, 0%, 60%) !important;
+  background-color: hsl(0, 0%, 44%) !important;
+}
+
+/* Checked state */
+button[role="checkbox"][data-state="checked"] {
+  /* Light mode: fundo preto com check branco */
+  background-color: black !important;
+  border-color: black !important;
+}
+
+.dark button[role="checkbox"][data-state="checked"] {
+  /* Dark mode: fundo branco com check preto */
+  background-color: white !important;
+  border-color: white !important;
+}
+
+/* Check icon */
+button[role="checkbox"] svg {
+  color: white;
+  stroke-width: 3px;
+}
+
+.dark button[role="checkbox"][data-state="checked"] svg {
+  color: black !important;
+}

@@ -121,6 +121,7 @@ export interface UnidadeFilters {
   limit?: number;
   search?: string;
   plantaId?: string; // Backend espera camelCase
+  proprietarioId?: string; // Filtro por proprietário (apenas admin/super_admin)
   tipo?: TipoUnidade;
   status?: StatusUnidade;
   estado?: string;

@@ -63,7 +63,7 @@ export function EstadoSelectField({
       onValueChange={handleChange}
       disabled={disabled || loading}
     >
-      <SelectTrigger id="estado">
+      <SelectTrigger id="estado" className="select-minimal">
         <SelectValue
           placeholder={loading ? "Carregando estados..." : "Selecione o estado"}
         />

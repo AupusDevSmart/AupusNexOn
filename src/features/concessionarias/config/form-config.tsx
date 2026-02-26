@@ -38,11 +38,13 @@ export const concessionariasFormFields: FormField[] = [
     label: 'Tarifas por Subgrupo',
     type: 'custom',
     component: TarifasFormField,
+    colSpan: 2, // Ocupa 2 colunas
   } as any,
   {
     key: 'anexos',
     label: 'Anexos',
     type: 'custom',
     component: AnexosConcessionariaField,
+    colSpan: 2, // Ocupa 2 colunas
   } as any
 ];

@@ -5,7 +5,6 @@ import { TitleCard } from '@/components/common/title-card';
 import { BaseTable } from '@/components/common/base-table/BaseTable';
 import { BaseFilters } from '@/components/common/base-filters/BaseFilters';
 import { BaseModal } from '@/components/common/base-modal/BaseModal';
-import { Button } from '@/components/ui/button';
 import { Plus, Zap, RefreshCw, Filter } from 'lucide-react';
 import { useGenericModal } from '@/hooks/useGenericModal';
 import { toast } from '@/hooks/use-toast';
@@ -178,21 +177,39 @@ export function ConcessionariasPage() {
     }
   };
 
-  // ✅ HANDLER: Visualizar concessionária
+  // ✅ HANDLER: Visualizar concessionária (abertura otimista)
   const handleView = async (concessionaria: ConcessionariaResponse) => {
     console.log('👁️ [CONCESSIONARIAS PAGE] Visualizando concessionária:', concessionaria.id);
-    const detailedConcessionaria = await fetchConcessionariaDetails(concessionaria.id);
-    if (detailedConcessionaria) {
-      openModal('view', detailedConcessionaria);
+
+    // Abrir modal IMEDIATAMENTE com dados básicos
+    openModal('view', concessionaria);
+
+    // Carregar detalhes em background
+    try {
+      const detailedConcessionaria = await fetchConcessionariaDetails(concessionaria.id);
+      if (detailedConcessionaria) {
+        openModal('view', detailedConcessionaria);
+      }
+    } catch (error) {
+      closeModal();
     }
   };
 
-  // ✅ HANDLER: Editar concessionária
+  // ✅ HANDLER: Editar concessionária (abertura otimista)
   const handleEdit = async (concessionaria: ConcessionariaResponse) => {
     console.log('✏️ [CONCESSIONARIAS PAGE] Editando concessionária:', concessionaria.id);
-    const detailedConcessionaria = await fetchConcessionariaDetails(concessionaria.id);
-    if (detailedConcessionaria) {
-      openModal('edit', detailedConcessionaria);
+
+    // Abrir modal IMEDIATAMENTE com dados básicos
+    openModal('edit', concessionaria);
+
+    // Carregar detalhes em background
+    try {
+      const detailedConcessionaria = await fetchConcessionariaDetails(concessionaria.id);
+      if (detailedConcessionaria) {
+        openModal('edit', detailedConcessionaria);
+      }
+    } catch (error) {
+      closeModal();
     }
   };
 
@@ -316,37 +333,50 @@ export function ConcessionariasPage() {
             description="Gerencie as concessionárias de energia e suas tarifas"
           />
 
-          {/* ✅ Filtros e Ações */}
-          <div className="flex flex-col lg:flex-row gap-4 mb-6">
+          {/* Filtros e Ações */}
+          <div className="flex flex-col gap-3 mb-4">
+            {/* Linha 1: Busca por Nome */}
             <div className="flex-1">
               <BaseFilters
                 filters={filters}
-                config={filterConfig}
+                config={[filterConfig[0]]} // Campo de busca
                 onFilterChange={handleFilterChange}
               />
             </div>
 
-            <div className="flex gap-2 shrink-0">
-              <Button
-                variant="outline"
-                onClick={handleRefresh}
-                disabled={loading}
-                className="border-gray-300 text-gray-700 hover:bg-gray-50"
-              >
-                <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-                Atualizar
-              </Button>
+            {/* Linha 2: Select de Estado + Botões */}
+            <div className="flex flex-col sm:flex-row sm:gap-1.5 gap-2 w-full items-start sm:items-center">
+              {/* Select de Estado */}
+              <div className="w-full sm:w-[250px]">
+                <BaseFilters
+                  filters={filters}
+                  config={[filterConfig[1]]} // Select de estados
+                  onFilterChange={handleFilterChange}
+                />
+              </div>
 
-              {isAdmin() && (
-                <Button
-                  onClick={() => openModal('create')}
-                  className="bg-primary hover:bg-primary/90"
-                  disabled={isSubmitting}
+              {/* Botões de Ação */}
+              <div className="flex flex-row gap-2 w-full sm:w-auto sm:ml-auto">
+                <button
+                  onClick={handleRefresh}
+                  disabled={loading}
+                  className="btn-minimal-outline flex-1 sm:flex-none"
                 >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Nova Concessionária
-                </Button>
-              )}
+                  <RefreshCw className={`h-4 w-4 sm:mr-2 ${loading ? 'animate-spin' : ''}`} />
+                  <span className="hidden sm:inline">Atualizar</span>
+                </button>
+
+                {isAdmin() && (
+                  <button
+                    onClick={() => openModal('create')}
+                    disabled={isSubmitting}
+                    className="btn-minimal-primary flex-1 sm:flex-none"
+                  >
+                    <Plus className="h-4 w-4 sm:mr-2" />
+                    <span className="hidden sm:inline">Nova Concessionária</span>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
@@ -383,7 +413,7 @@ export function ConcessionariasPage() {
           </div>
         </div>
 
-        {/* ✅ Modal integrado */}
+        {/* Modal integrado */}
         <BaseModal
           isOpen={modalState.isOpen}
           mode={modalState.mode}
@@ -393,7 +423,6 @@ export function ConcessionariasPage() {
           formFields={concessionariasFormFields}
           onClose={closeModal}
           onSubmit={handleSubmit}
-          width="w-[700px]"
 
           loading={isSubmitting}
           loadingText={modalState.mode === 'create' ? "Cadastrando concessionária..." : "Salvando alterações..."}

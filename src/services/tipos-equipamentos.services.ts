@@ -153,6 +153,25 @@ class TiposEquipamentosApiService {
       return [];
     }
   }
+
+  /**
+   * Criar novo tipo de equipamento (modelo)
+   */
+  async create(data: {
+    codigo: string;
+    nome: string;
+    categoriaId: string;
+    fabricante: string;
+    descricao?: string;
+  }): Promise<TipoEquipamento | null> {
+    try {
+      const response = await api.post<{ success: boolean; data: TipoEquipamento }>(this.baseEndpoint, data);
+      return response.data?.data || null;
+    } catch (error) {
+      console.error('❌ [TIPOS-EQUIPAMENTOS] Erro ao criar tipo:', error);
+      throw error; // Re-throw para mostrar erro ao usuário
+    }
+  }
 }
 
 // ============================================================================

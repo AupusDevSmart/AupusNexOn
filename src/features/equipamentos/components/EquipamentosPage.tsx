@@ -566,37 +566,37 @@ export function EquipamentosPage() {
               </Alert>
             )}
 
-            {/* Filtros - CORRIGIDO: removido prop loading */}
-            <div className="w-full">
-              <BaseFilters
-                filters={filters}
-                config={createEquipamentosFilterConfig(
-                  proprietarios,
-                  plantas,
-                  loadingProprietarios,
-                  loadingPlantas,
-                  unidades,
-                  loadingUnidades,
-                  isAdmin() // Mostrar filtro de proprietário apenas para admins
-                )}
-                onFilterChange={handleFilterChange}
-              />
-            </div>
+            {/* Filtros e Botões */}
+            <div className="flex flex-col lg:flex-row gap-3 lg:items-start">
+              {/* Filtros */}
+              <div className="flex-1">
+                <BaseFilters
+                  filters={filters}
+                  config={createEquipamentosFilterConfig(
+                    proprietarios,
+                    plantas,
+                    loadingProprietarios,
+                    loadingPlantas,
+                    unidades,
+                    loadingUnidades,
+                    isAdmin() // Mostrar filtro de proprietário apenas para admins
+                  )}
+                  onFilterChange={handleFilterChange}
+                />
+              </div>
 
-            {/* Botões de Ação - responsivos */}
-            {isAdmin() && (
-              <div className="flex flex-col sm:flex-row gap-2 w-full">
-                <Button
+              {/* Botões de Ação */}
+              {isAdmin() && (
+                <button
                   onClick={() => openUCModal('create')}
-                  className="w-full sm:w-auto h-9"
+                  className="btn-minimal-primary w-full lg:w-auto whitespace-nowrap"
                   disabled={loading}
                 >
                   <Wrench className="mr-2 h-4 w-4" />
-                  <span className="hidden sm:inline">Novo Equipamento UC</span>
-                  <span className="sm:hidden">Novo UC</span>
-                </Button>
-              </div>
-            )}
+                  <span>Novo Equipamento UC</span>
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="flex-1 min-h-0">

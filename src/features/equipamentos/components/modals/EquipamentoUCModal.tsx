@@ -1,150 +1,40 @@
 // src/features/equipamentos/components/modals/EquipamentoUCModal.tsx - LAYOUT LIMPO
 import React, { useState, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
 } from '@/components/ui/select';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Wrench, Save, X, AlertCircle, Loader2, Eye, Edit2, Plus, Trash2, Check, ChevronsUpDown } from 'lucide-react';
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
+import { Combobox } from '@/components/ui/combobox';
+import { Wrench, Save, X, AlertCircle, Loader2, Eye, Edit2, Plus, Trash2 } from 'lucide-react';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { cn } from "@/lib/utils";
 import { Equipamento } from '../../types';
 import { useSelectionData } from '../../hooks/useSelectionData';
 import { useEquipamentos } from '../../hooks/useEquipamentos';
 import { useLocationCascade } from '../../hooks/useLocationCascade';
-import { tiposEquipamentosApi, type TipoEquipamentoModal, type TipoEquipamento } from '@/services/tipos-equipamentos.services';
+import { tiposEquipamentosApi, categoriasEquipamentosApi, type TipoEquipamentoModal, type TipoEquipamento } from '@/services/tipos-equipamentos.services';
 import { useCategorias } from '@/hooks/useCategorias';
 import { useModelos } from '@/hooks/useModelos';
 import { getUnidadeById } from '@/services/unidades.services';
 import { PlantasService } from '@/services/plantas.services';
 import type { Unidade } from '@/features/unidades/types';
 import type { PlantaResponse, ProprietarioBasico } from '@/services/plantas.services';
-
-/**
- * Componente SearchableSelect para seleção com busca
- */
-interface SearchableSelectProps {
-  value: string;
-  onChange: (value: string) => void;
-  options: Array<{ value: string; label: string; categoria?: string }>;
-  placeholder?: string;
-  disabled?: boolean;
-}
-
-const SearchableSelect: React.FC<SearchableSelectProps> = ({
-  value,
-  onChange,
-  options,
-  placeholder = "Selecione...",
-  disabled = false
-}) => {
-  const [open, setOpen] = useState(false);
-  const [searchValue, setSearchValue] = useState("");
-
-  // Filtrar opções baseado na busca
-  const filteredOptions = options.filter((option) => {
-    const search = searchValue.toLowerCase();
-    return (
-      option.label.toLowerCase().includes(search) ||
-      option.value.toLowerCase().includes(search) ||
-      (option.categoria && option.categoria.toLowerCase().includes(search))
-    );
-  });
-
-  // Prevenir propagação do evento de scroll para o Dialog
-  const handleWheel = (e: React.WheelEvent) => {
-    e.stopPropagation();
-  };
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          className="w-full justify-between"
-          disabled={disabled}
-        >
-          {value
-            ? options.find((option) => option.value === value)?.label
-            : placeholder}
-          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent
-        className="w-[400px] p-0 z-[99999]"
-        align="start"
-        side="bottom"
-        sideOffset={5}
-        onWheel={handleWheel}
-      >
-        <Command shouldFilter={false}>
-          <CommandInput
-            placeholder="Buscar..."
-            value={searchValue}
-            onValueChange={setSearchValue}
-          />
-          <CommandList className="max-h-[300px] overflow-y-auto">
-            <CommandEmpty>Nenhum resultado encontrado.</CommandEmpty>
-            <CommandGroup>
-              {filteredOptions.map((option) => (
-                <CommandItem
-                  key={option.value}
-                  value={option.value}
-                  onSelect={() => {
-                    onChange(option.value);
-                    setOpen(false);
-                    setSearchValue("");
-                  }}
-                >
-                  <Check
-                    className={cn(
-                      "mr-2 h-4 w-4",
-                      value === option.value ? "opacity-100" : "opacity-0"
-                    )}
-                  />
-                  {option.label}
-                  {option.categoria && (
-                    <span className="ml-2 text-xs text-muted-foreground">
-                      ({option.categoria})
-                    </span>
-                  )}
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
-  );
-};
 
 interface EquipamentoUCModalProps {
   isOpen: boolean;
@@ -181,11 +71,22 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
   const [modeloSelecionado, setModeloSelecionado] = useState<TipoEquipamento | null>(null);
 
   // Hooks para buscar categorias e modelos
-  const { categorias, loading: loadingCategorias } = useCategorias();
-  const { modelos, loading: loadingModelos } = useModelos({
+  const { categorias, loading: loadingCategorias, refetch: refetchCategorias } = useCategorias();
+  const { modelos, loading: loadingModelos, refetch: refetchModelos } = useModelos({
     categoriaId: categoriaIdSelecionada || undefined,
     autoFetch: !!categoriaIdSelecionada,
   });
+
+  // ✅ NOVO: Estados para criar categoria/modelo on-the-fly
+  const [popoverCategoriaOpen, setPopoverCategoriaOpen] = useState(false);
+  const [novaCategoriaNome, setNovaCategoriaNome] = useState('');
+  const [loadingNovaCategoria, setLoadingNovaCategoria] = useState(false);
+
+  const [popoverModeloOpen, setPopoverModeloOpen] = useState(false);
+  const [novoModeloNome, setNovoModeloNome] = useState('');
+  const [novoModeloCodigo, setNovoModeloCodigo] = useState('');
+  const [novoModeloFabricante, setNovoModeloFabricante] = useState('');
+  const [loadingNovoModelo, setLoadingNovoModelo] = useState(false);
 
   // Estados para tipos de equipamentos da API (manter para compatibilidade)
   const [tiposEquipamentos, setTiposEquipamentos] = useState<TipoEquipamentoModal[]>([]);
@@ -600,6 +501,108 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
     });
   };
 
+  // ✅ NOVO: Handler para criar nova categoria
+  const handleCriarCategoria = async () => {
+    if (!novaCategoriaNome.trim()) {
+      setError('Nome da categoria é obrigatório');
+      return;
+    }
+
+    try {
+      setLoadingNovaCategoria(true);
+      setError(null);
+
+      const novaCategoria = await categoriasEquipamentosApi.create(novaCategoriaNome.trim());
+
+      if (novaCategoria) {
+        // Atualizar lista de categorias
+        await refetchCategorias();
+
+        // Selecionar automaticamente a nova categoria
+        setCategoriaIdSelecionada(novaCategoria.id);
+
+        // Auto-preencher nome do equipamento
+        setFormData((prev: any) => ({
+          ...prev,
+          nome: novaCategoria.nome,
+        }));
+
+        // Limpar e fechar popover
+        setNovaCategoriaNome('');
+        setPopoverCategoriaOpen(false);
+
+        console.log('✅ [MODAL] Nova categoria criada:', novaCategoria);
+      }
+    } catch (err: any) {
+      console.error('❌ [MODAL] Erro ao criar categoria:', err);
+      setError(err.response?.data?.message || 'Erro ao criar nova categoria');
+    } finally {
+      setLoadingNovaCategoria(false);
+    }
+  };
+
+  // ✅ NOVO: Handler para criar novo modelo
+  const handleCriarModelo = async () => {
+    if (!novoModeloNome.trim()) {
+      setError('Nome do modelo é obrigatório');
+      return;
+    }
+
+    if (!novoModeloCodigo.trim()) {
+      setError('Código do modelo é obrigatório');
+      return;
+    }
+
+    if (!novoModeloFabricante.trim()) {
+      setError('Fabricante é obrigatório');
+      return;
+    }
+
+    if (!categoriaIdSelecionada) {
+      setError('Selecione uma categoria primeiro');
+      return;
+    }
+
+    try {
+      setLoadingNovoModelo(true);
+      setError(null);
+
+      const novoModelo = await tiposEquipamentosApi.create({
+        codigo: novoModeloCodigo.trim(),
+        nome: novoModeloNome.trim(),
+        fabricante: novoModeloFabricante.trim(),
+        categoriaId: categoriaIdSelecionada,
+      });
+
+      if (novoModelo) {
+        // Atualizar lista de modelos
+        await refetchModelos();
+
+        // Selecionar automaticamente o novo modelo
+        setModeloSelecionado(novoModelo);
+        setFormData((prev: any) => ({
+          ...prev,
+          tipoEquipamento: novoModelo.codigo,
+          tipoEquipamentoId: novoModelo.id,
+          fabricante: novoModelo.fabricante,
+        }));
+
+        // Limpar e fechar popover
+        setNovoModeloNome('');
+        setNovoModeloCodigo('');
+        setNovoModeloFabricante('');
+        setPopoverModeloOpen(false);
+
+        console.log('✅ [MODAL] Novo modelo criado:', novoModelo);
+      }
+    } catch (err: any) {
+      console.error('❌ [MODAL] Erro ao criar modelo:', err);
+      setError(err.response?.data?.message || 'Erro ao criar novo modelo');
+    } finally {
+      setLoadingNovoModelo(false);
+    }
+  };
+
   const handleSubmit = async () => {
     setLoading(true);
     try {
@@ -734,8 +737,8 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
     };
 
     return (
-      <DialogHeader className="space-y-3">
-        <DialogTitle className="flex items-center gap-2 text-lg">
+      <SheetHeader className="space-y-3">
+        <SheetTitle className="flex items-center gap-2 text-lg">
           {icons[mode]}
           {titles[mode]}
           {mode === 'view' && formData.nome && (
@@ -743,8 +746,8 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
               {formData.nome}
             </Badge>
           )}
-        </DialogTitle>
-      </DialogHeader>
+        </SheetTitle>
+      </SheetHeader>
     );
   };
 
@@ -754,13 +757,14 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
         Dados Básicos
       </h3>
       
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid-equal-cols-2 gap-x-2 gap-y-4">
         {/* Nome */}
         <div className="space-y-2">
           <label className="text-sm font-medium">
             Nome do Equipamento <span className="text-red-500">*</span>
           </label>
-          <Input
+          <input
+            className="input-minimal"
             value={formData.nome || ''}
             onChange={(e) => handleInputChange('nome', e.target.value)}
             placeholder="Ex: Sistema de Controle Principal"
@@ -778,22 +782,71 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
               {modeloSelecionado?.categoria?.nome || 'Não informado'}
             </div>
           ) : (
-            <Select
-              value={categoriaIdSelecionada}
-              onValueChange={handleCategoriaChange}
-              disabled={loadingCategorias}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder={loadingCategorias ? 'Carregando...' : 'Selecione a categoria'} />
-              </SelectTrigger>
-              <SelectContent>
-                {categorias.map((cat) => (
-                  <SelectItem key={cat.id} value={cat.id}>
-                    {cat.nome}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex gap-2">
+              <Combobox
+                options={categorias.map(cat => ({ value: cat.id, label: cat.nome }))}
+                value={categoriaIdSelecionada}
+                onValueChange={handleCategoriaChange}
+                placeholder={loadingCategorias ? 'Carregando...' : 'Selecione a categoria'}
+                searchPlaceholder="Buscar categoria..."
+                emptyText="Nenhuma categoria encontrada."
+                disabled={loadingCategorias}
+                className="flex-1"
+              />
+
+              {/* Botão para criar nova categoria */}
+              <Popover open={popoverCategoriaOpen} onOpenChange={setPopoverCategoriaOpen}>
+                <PopoverTrigger asChild>
+                  <button className="btn-minimal-outline h-9 px-3 shrink-0" title="Nova Categoria" type="button">
+                    <Plus className="h-4 w-4" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80" align="end">
+                  <div className="space-y-3">
+                    <h4 className="font-semibold text-sm">Nova Categoria</h4>
+                    <input
+                      className="input-minimal"
+                      placeholder="Nome da categoria"
+                      value={novaCategoriaNome}
+                      onChange={(e) => setNovaCategoriaNome(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleCriarCategoria();
+                        }
+                      }}
+                    />
+                    <div className="flex gap-2 justify-end">
+                      <button
+                        type="button"
+                        className="btn-minimal-outline h-8 text-xs"
+                        onClick={() => {
+                          setNovaCategoriaNome('');
+                          setPopoverCategoriaOpen(false);
+                        }}
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-minimal-primary h-8 text-xs"
+                        onClick={handleCriarCategoria}
+                        disabled={loadingNovaCategoria || !novaCategoriaNome.trim()}
+                      >
+                        {loadingNovaCategoria ? (
+                          <>
+                            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                            Criando...
+                          </>
+                        ) : (
+                          'Criar'
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
           )}
         </div>
 
@@ -817,22 +870,102 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
               Carregando modelos...
             </div>
           ) : (
-            <Select
-              value={formData.tipoEquipamentoId}
-              onValueChange={handleModeloChange}
-              disabled={!categoriaIdSelecionada || loadingModelos}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione o modelo" />
-              </SelectTrigger>
-              <SelectContent>
-                {modelos.map((modelo) => (
-                  <SelectItem key={modelo.id} value={modelo.id}>
-                    {modelo.nome} | {modelo.fabricante}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex gap-2">
+              <Combobox
+                options={modelos.map(modelo => ({
+                  value: modelo.id,
+                  label: `${modelo.nome} | ${modelo.fabricante}`
+                }))}
+                value={formData.tipoEquipamentoId || ''}
+                onValueChange={handleModeloChange}
+                placeholder={loadingModelos ? 'Carregando...' : 'Selecione o modelo'}
+                searchPlaceholder="Buscar modelo..."
+                emptyText="Nenhum modelo encontrado."
+                disabled={!categoriaIdSelecionada || loadingModelos}
+                className="flex-1"
+              />
+
+              {/* Botão para criar novo modelo */}
+              <Popover open={popoverModeloOpen} onOpenChange={setPopoverModeloOpen}>
+                <PopoverTrigger asChild>
+                  <button className="btn-minimal-outline h-9 px-3 shrink-0" title="Novo Modelo" type="button">
+                    <Plus className="h-4 w-4" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80" align="end">
+                  <div className="space-y-3">
+                    <h4 className="font-semibold text-sm">Novo Modelo</h4>
+                    <div className="space-y-2">
+                      <input
+                        className="input-minimal"
+                        placeholder="Nome do modelo"
+                        value={novoModeloNome}
+                        onChange={(e) => setNovoModeloNome(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && novoModeloNome.trim() && novoModeloCodigo.trim() && novoModeloFabricante.trim()) {
+                            e.preventDefault();
+                            handleCriarModelo();
+                          }
+                        }}
+                      />
+                      <input
+                        className="input-minimal"
+                        placeholder="Código (ex: INV-001)"
+                        value={novoModeloCodigo}
+                        onChange={(e) => setNovoModeloCodigo(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && novoModeloNome.trim() && novoModeloCodigo.trim() && novoModeloFabricante.trim()) {
+                            e.preventDefault();
+                            handleCriarModelo();
+                          }
+                        }}
+                      />
+                      <input
+                        className="input-minimal"
+                        placeholder="Fabricante"
+                        value={novoModeloFabricante}
+                        onChange={(e) => setNovoModeloFabricante(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && novoModeloNome.trim() && novoModeloCodigo.trim() && novoModeloFabricante.trim()) {
+                            e.preventDefault();
+                            handleCriarModelo();
+                          }
+                        }}
+                      />
+                    </div>
+                    <div className="flex gap-2 justify-end">
+                      <button
+                        type="button"
+                        className="btn-minimal-outline h-8 text-xs"
+                        onClick={() => {
+                          setNovoModeloNome('');
+                          setNovoModeloCodigo('');
+                          setNovoModeloFabricante('');
+                          setPopoverModeloOpen(false);
+                        }}
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-minimal-primary h-8 text-xs"
+                        onClick={handleCriarModelo}
+                        disabled={loadingNovoModelo || !novoModeloNome.trim() || !novoModeloCodigo.trim() || !novoModeloFabricante.trim()}
+                      >
+                        {loadingNovoModelo ? (
+                          <>
+                            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                            Criando...
+                          </>
+                        ) : (
+                          'Criar'
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
           )}
         </div>
 
@@ -852,7 +985,8 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
         {/* Número de Série */}
         <div className="space-y-2">
           <label className="text-sm font-medium">Número de Série</label>
-          <Input
+          <input
+            className="input-minimal"
             value={formData.numeroSerie || ''}
             onChange={(e) => handleInputChange('numeroSerie', e.target.value)}
             placeholder="Ex: ABC123456"
@@ -863,7 +997,8 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
         {/* TAG */}
         <div className="space-y-2">
           <label className="text-sm font-medium">TAG</label>
-          <Input
+          <input
+            className="input-minimal"
             value={formData.tag || ''}
             onChange={(e) => handleInputChange('tag', e.target.value)}
             placeholder="Ex: TAG-001"
@@ -1062,7 +1197,8 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
       {/* Localização específica - Sempre visível */}
       <div className="space-y-2">
         <label className="text-sm font-medium">Localização Específica</label>
-        <Input
+        <input
+          className="input-minimal"
           value={formData.localizacao || ''}
           onChange={(e) => handleInputChange('localizacao', e.target.value)}
           placeholder="Ex: Sala de controle, Painel A, etc."
@@ -1084,16 +1220,14 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
             Dados Técnicos
           </h3>
           {!isReadonly && (
-            <Button
+            <button
               type="button"
-              variant="outline"
-              size="sm"
               onClick={adicionarDadoPersonalizado}
-              className="text-xs"
+              className="btn-minimal-outline text-xs"
             >
               <Plus className="h-3 w-3 mr-1" />
               Adicionar Campo
-            </Button>
+            </button>
           )}
         </div>
 
@@ -1110,8 +1244,8 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
                 </span>
               </div>
             )}
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+            <div className="grid-equal-cols-2 gap-x-2 gap-y-4">
               {dadosTecnicos.map((dado: any, index: number) => (
                 <div key={index} className="space-y-2">
                   <label className="text-sm font-medium">
@@ -1144,7 +1278,8 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
                           </SelectContent>
                         </Select>
                       ) : (
-                        <Input
+                        <input
+                          className="input-minimal"
                           type={dado.tipo === 'number' ? 'number' : 'text'}
                           value={dado.valor}
                           onChange={(e) => handleDadoTecnicoChange(index, 'valor', e.target.value)}
@@ -1181,14 +1316,15 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
                         {dado.campo}
                       </div>
                     ) : (
-                      <Input
+                      <input
+                        className="input-minimal"
                         value={dado.campo}
                         onChange={(e) => handleDadoPersonalizadoChange(index, 'campo', e.target.value)}
                         placeholder="Nome do campo"
                       />
                     )}
                   </div>
-                  
+
                   <div className="col-span-4">
                     <label className="text-sm font-medium">Valor</label>
                     {isReadonly ? (
@@ -1196,7 +1332,8 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
                         {dado.valor}
                       </div>
                     ) : (
-                      <Input
+                      <input
+                        className="input-minimal"
                         value={dado.valor}
                         onChange={(e) => handleDadoPersonalizadoChange(index, 'valor', e.target.value)}
                         placeholder="Valor"
@@ -1233,7 +1370,8 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
                         {dado.unidade}
                       </div>
                     ) : (
-                      <Input
+                      <input
+                        className="input-minimal"
                         value={dado.unidade}
                         onChange={(e) => handleDadoPersonalizadoChange(index, 'unidade', e.target.value)}
                         placeholder="Ex: V, A"
@@ -1243,15 +1381,13 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
 
                   {!isReadonly && (
                     <div className="col-span-1">
-                      <Button
+                      <button
                         type="button"
-                        variant="outline"
-                        size="sm"
                         onClick={() => removerDadoPersonalizado(index)}
-                        className="text-red-600 hover:text-red-700"
+                        className="btn-minimal-outline h-9 text-red-600 hover:text-red-700"
                       >
                         <Trash2 className="h-3 w-3" />
-                      </Button>
+                      </button>
                     </div>
                   )}
                 </div>
@@ -1288,7 +1424,8 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
         {/* Valor Contábil */}
         <div className="space-y-2">
           <label className="text-sm font-medium">Valor Contábil (R$)</label>
-          <Input
+          <input
+            className="input-minimal"
             type="number"
             step="0.01"
             value={formData.valorContabil || ''}
@@ -1301,7 +1438,8 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
         {/* Data de Imobilização */}
         <div className="space-y-2">
           <label className="text-sm font-medium">Data de Imobilização</label>
-          <Input
+          <input
+            className="input-minimal"
             type="date"
             value={formData.dataImobilizacao || ''}
             onChange={(e) => handleInputChange('dataImobilizacao', e.target.value)}
@@ -1358,7 +1496,8 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
             {/* TUC */}
             <div className="space-y-2">
               <label className="text-sm font-medium">TUC (min)</label>
-              <Input
+              <input
+                className="input-minimal"
                 type="text"
                 value={formData.tuc || ''}
                 onChange={(e) => handleInputChange('tuc', e.target.value)}
@@ -1370,7 +1509,8 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
             {/* A1 */}
             <div className="space-y-2">
               <label className="text-sm font-medium">A1</label>
-              <Input
+              <input
+                className="input-minimal"
                 type="text"
                 value={formData.a1 || ''}
                 onChange={(e) => handleInputChange('a1', e.target.value)}
@@ -1382,7 +1522,8 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
             {/* A2 */}
             <div className="space-y-2">
               <label className="text-sm font-medium">A2</label>
-              <Input
+              <input
+                className="input-minimal"
                 type="text"
                 value={formData.a2 || ''}
                 onChange={(e) => handleInputChange('a2', e.target.value)}
@@ -1394,7 +1535,8 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
             {/* A3 */}
             <div className="space-y-2">
               <label className="text-sm font-medium">A3</label>
-              <Input
+              <input
+                className="input-minimal"
                 type="text"
                 value={formData.a3 || ''}
                 onChange={(e) => handleInputChange('a3', e.target.value)}
@@ -1406,7 +1548,8 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
             {/* A4 */}
             <div className="space-y-2">
               <label className="text-sm font-medium">A4</label>
-              <Input
+              <input
+                className="input-minimal"
                 type="text"
                 value={formData.a4 || ''}
                 onChange={(e) => handleInputChange('a4', e.target.value)}
@@ -1418,7 +1561,8 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
             {/* A5 */}
             <div className="space-y-2">
               <label className="text-sm font-medium">A5</label>
-              <Input
+              <input
+                className="input-minimal"
                 type="text"
                 value={formData.a5 || ''}
                 onChange={(e) => handleInputChange('a5', e.target.value)}
@@ -1430,7 +1574,8 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
             {/* A6 */}
             <div className="space-y-2">
               <label className="text-sm font-medium">A6</label>
-              <Input
+              <input
+                className="input-minimal"
                 type="text"
                 value={formData.a6 || ''}
                 onChange={(e) => handleInputChange('a6', e.target.value)}
@@ -1472,7 +1617,8 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
             <label className="text-sm font-medium">
               Tópico MQTT <span className="text-red-500">*</span>
             </label>
-            <Input
+            <input
+              className="input-minimal"
               type="text"
               value={formData.topicoMqtt || ''}
               onChange={(e) => handleInputChange('topicoMqtt', e.target.value)}
@@ -1492,10 +1638,10 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
     if (loading) {
       return (
         <div className="flex justify-center">
-          <Button disabled size="sm" className="h-9">
+          <button disabled className="btn-minimal-outline h-9">
             <Loader2 className="h-4 w-4 animate-spin mr-2" />
             Carregando...
-          </Button>
+          </button>
         </div>
       );
     }
@@ -1505,45 +1651,40 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
         {/* Botão de Excluir à esquerda - apenas em modo edit */}
         <div>
           {mode === 'edit' && entity && onDelete && (
-            <Button
-              variant="outline"
-              size="sm"
+            <button
               onClick={() => {
                 onClose(); // Fechar modal primeiro
                 onDelete(entity); // Depois abrir AlertDialog
               }}
               disabled={loading}
-              className="h-9 text-destructive hover:text-destructive hover:bg-destructive/10"
+              className="btn-minimal-outline h-9 text-destructive hover:text-destructive hover:bg-destructive/10"
             >
               <Trash2 className="h-4 w-4 mr-2" />
               Excluir
-            </Button>
+            </button>
           )}
         </div>
 
         {/* Botões de ação à direita */}
         <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
+          <button
             onClick={onClose}
             disabled={loading}
-            className="h-9"
+            className="btn-minimal-outline h-9"
           >
             <X className="h-4 w-4 mr-2" />
             {isReadonly ? 'Fechar' : 'Cancelar'}
-          </Button>
+          </button>
 
           {!isReadonly && (
-            <Button
+            <button
               onClick={handleSubmit}
               disabled={loading}
-              size="sm"
-              className="h-9"
+              className="btn-minimal-primary h-9"
             >
               <Save className="h-4 w-4 mr-2" />
               {isCreating ? 'Criar Equipamento' : 'Salvar Alterações'}
-            </Button>
+            </button>
           )}
         </div>
       </div>
@@ -1554,8 +1695,8 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
   // RENDER PRINCIPAL
   // ============================================================================
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col gap-0 p-0">
+    <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <SheetContent className="w-full sm:max-w-4xl overflow-hidden flex flex-col gap-0 p-0">
         <div className="border-b px-6 py-4">
           {renderHeader()}
         </div>
@@ -1599,7 +1740,7 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
         <div className="border-t px-6 py-3 bg-muted/20">
           {renderActions()}
         </div>
-      </DialogContent>
-    </Dialog>
+      </SheetContent>
+    </Sheet>
   );
 };

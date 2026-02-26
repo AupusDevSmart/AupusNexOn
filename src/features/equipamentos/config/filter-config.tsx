@@ -12,14 +12,7 @@ export const createEquipamentosFilterConfig = (
   loadingUnidades = false,
   showProprietarioFilter = true
 ): FilterConfig[] => {
-  const baseFilters: FilterConfig[] = [
-    {
-      key: 'search',
-      type: 'search',
-      placeholder: 'Buscar por nome, modelo, fabricante...',
-      className: 'lg:min-w-80'
-    }
-  ];
+  const baseFilters: FilterConfig[] = [];
 
   // Adicionar filtro de proprietário apenas para admins
   if (showProprietarioFilter) {
@@ -29,59 +22,37 @@ export const createEquipamentosFilterConfig = (
       label: 'Proprietário',
       placeholder: loadingProprietarios ? 'Carregando proprietários...' : 'Todos os Proprietários',
       options: proprietarios,
-      className: 'min-w-48',
       disabled: loadingProprietarios
     });
   }
 
-  // Adicionar restante dos filtros
-  baseFilters.push(
-    {
-      key: 'plantaId',
-      type: 'select',
-      label: 'Planta',
-      placeholder: loadingPlantas ? 'Carregando plantas...' : 'Todas as Plantas',
-      options: plantas,
-      className: 'min-w-48',
-      disabled: loadingPlantas
-    },
-    {
-      key: 'unidadeId',
-      type: 'select',
-      label: 'Unidade',
-      placeholder: loadingUnidades ? 'Carregando unidades...' : 'Todas as Unidades',
-      options: unidades,
-      className: 'min-w-48',
-      disabled: loadingUnidades
-    },
-    {
-      key: 'classificacao',
-      type: 'select',
-      label: 'Classificação',
-      placeholder: 'Todas as Classificações',
-      options: [
-        { value: 'all', label: 'Todas as Classificações' },
-        { value: 'UC', label: 'UC (Equipamentos)' },
-        { value: 'UAR', label: 'UAR (Componentes)' }
-      ],
-      className: 'min-w-40'
-    },
-    {
-      key: 'criticidade',
-      type: 'select',
-      label: 'Criticidade',
-      placeholder: 'Todas as Criticidades',
-      options: [
-        { value: 'all', label: 'Todas as Criticidades' },
-        { value: '5', label: '5 (Muito Alta)' },
-        { value: '4', label: '4 (Alta)' },
-        { value: '3', label: '3 (Média)' },
-        { value: '2', label: '2 (Baixa)' },
-        { value: '1', label: '1 (Muito Baixa)' }
-      ],
-      className: 'min-w-40'
-    }
-  );
+  // Adicionar planta
+  baseFilters.push({
+    key: 'plantaId',
+    type: 'select',
+    label: 'Planta',
+    placeholder: loadingPlantas ? 'Carregando plantas...' : 'Todas as Plantas',
+    options: plantas,
+    disabled: loadingPlantas
+  });
+
+  // Adicionar unidade (penúltimo)
+  baseFilters.push({
+    key: 'unidadeId',
+    type: 'select',
+    label: 'Unidade',
+    placeholder: loadingUnidades ? 'Carregando unidades...' : 'Todas as Unidades',
+    options: unidades,
+    disabled: loadingUnidades
+  });
+
+  // Adicionar busca por último
+  baseFilters.push({
+    key: 'search',
+    type: 'search',
+    placeholder: 'Buscar por nome, modelo, fabricante...',
+    className: 'lg:col-span-2'
+  });
 
   return baseFilters;
 };

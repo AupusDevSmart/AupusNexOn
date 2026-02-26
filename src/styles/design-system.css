@@ -1,0 +1,240 @@
+/**
+ * DESIGN SYSTEM - AUPUS NEXON
+ * Tema minimalista, profissional e discreto
+ */
+
+@layer base {
+  :root {
+    /* ===== CORES NEUTRAS (Light Mode) ===== */
+    --background: 0 0% 100%;           /* Branco puro */
+    --foreground: 0 0% 5%;             /* Preto quase puro */
+
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 5%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 5%;
+
+    /* Primária: Cinza escuro profissional */
+    --primary: 0 0% 15%;               /* Cinza muito escuro */
+    --primary-foreground: 0 0% 98%;
+
+    /* Secundária: Cinza médio */
+    --secondary: 0 0% 96%;             /* Cinza muito claro */
+    --secondary-foreground: 0 0% 15%;
+
+    /* Muted: Backgrounds sutis */
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 45%;
+
+    /* Accent: Destaque mínimo */
+    --accent: 0 0% 96%;
+    --accent-foreground: 0 0% 15%;
+
+    /* Destructive: Vermelho discreto */
+    --destructive: 0 70% 45%;          /* Vermelho escuro */
+    --destructive-foreground: 0 0% 98%;
+
+    /* Borders: Linhas muito sutis */
+    --border: 0 0% 90%;                /* Cinza claro */
+    --input: 0 0% 90%;
+    --ring: 0 0% 15%;
+
+    /* States: Avisos discretos */
+    --warning: 38 92% 45%;             /* Laranja escuro */
+    --warning-foreground: 0 0% 98%;
+
+    --success: 142 71% 35%;            /* Verde escuro */
+    --success-foreground: 0 0% 98%;
+
+    --info: 221 83% 45%;               /* Azul escuro */
+    --info-foreground: 0 0% 98%;
+
+    /* ===== RADII - Menos arredondado ===== */
+    --radius: 0.25rem;                 /* 4px - muito discreto */
+  }
+
+  .dark {
+    /* ===== CORES NEUTRAS (Dark Mode) - Azul Marinho Escuro ===== */
+    --background: 220 30% 8%;          /* Azul marinho bem escuro */
+    --foreground: 0 0% 95%;            /* Branco quase puro */
+
+    --card: 220 28% 10%;               /* Azul marinho escuro para cards */
+    --card-foreground: 0 0% 95%;
+
+    --popover: 220 28% 10%;
+    --popover-foreground: 0 0% 95%;
+
+    /* Primária: Cinza claro */
+    --primary: 0 0% 90%;
+    --primary-foreground: 0 0% 10%;
+
+    /* Secundária: Azul marinho médio */
+    --secondary: 220 25% 15%;
+    --secondary-foreground: 0 0% 90%;
+
+    /* Muted: Backgrounds sutis com tom azul */
+    --muted: 220 22% 15%;
+    --muted-foreground: 0 0% 60%;
+
+    /* Accent: Destaque mínimo azulado */
+    --accent: 220 22% 15%;
+    --accent-foreground: 0 0% 90%;
+
+    /* Destructive: Vermelho discreto */
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 0 0% 98%;
+
+    /* Borders: Linhas sutis azuladas */
+    --border: 220 18% 20%;
+    --input: 220 18% 20%;
+    --ring: 220 60% 60%;
+
+    /* States: Avisos discretos */
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 98%;
+
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 98%;
+
+    --info: 221 83% 53%;
+    --info-foreground: 0 0% 98%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/* ===== CUSTOMIZAÇÕES PROFISSIONAIS ===== */
+
+/* Inputs mais finos e menos arredondados */
+@layer components {
+  /* Input padrão */
+  .input-minimal {
+    @apply h-9 rounded border border-input bg-background px-3 py-1 text-sm;
+    @apply ring-offset-background placeholder:text-muted-foreground;
+    @apply focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring;
+    @apply disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  /* Select mais fino */
+  .select-minimal {
+    @apply h-9 rounded border border-input bg-background px-3 py-1 text-sm;
+    @apply ring-offset-background focus:outline-none focus:ring-1 focus:ring-ring;
+  }
+
+  /* Button profissional */
+  .button-minimal {
+    @apply inline-flex h-9 items-center justify-center rounded px-4 py-2;
+    @apply text-sm font-medium ring-offset-background;
+    @apply transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring;
+    @apply disabled:pointer-events-none disabled:opacity-50;
+  }
+
+  /* Card discreto */
+  .card-minimal {
+    @apply rounded border border-border bg-card text-card-foreground;
+  }
+
+  /* Badge discreto */
+  .badge-minimal {
+    @apply inline-flex items-center rounded px-2 py-0.5 text-xs font-medium;
+    @apply border border-border bg-muted text-muted-foreground;
+  }
+
+  /* Table profissional */
+  .table-minimal {
+    @apply w-full border-collapse text-sm;
+  }
+
+  .table-minimal thead {
+    @apply border-b border-border;
+  }
+
+  .table-minimal th {
+    @apply h-10 px-4 text-left font-medium text-muted-foreground;
+  }
+
+  .table-minimal td {
+    @apply h-12 px-4 align-middle;
+  }
+
+  .table-minimal tbody tr {
+    @apply border-b border-border transition-colors;
+    @apply hover:bg-muted/50;
+  }
+
+  /* Sheet overlay sutil */
+  .sheet-overlay {
+    @apply fixed inset-0 z-50 bg-black/20 backdrop-blur-[2px];
+    @apply data-[state=open]:animate-in data-[state=closed]:animate-out;
+    @apply data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0;
+  }
+
+  /* Alert discreto */
+  .alert-minimal {
+    @apply relative w-full rounded border px-4 py-3 text-sm;
+  }
+
+  .alert-minimal.alert-info {
+    @apply border-info/20 bg-info/5 text-info-foreground;
+  }
+
+  .alert-minimal.alert-warning {
+    @apply border-warning/20 bg-warning/5 text-warning-foreground;
+  }
+
+  .alert-minimal.alert-success {
+    @apply border-success/20 bg-success/5 text-success-foreground;
+  }
+
+  .alert-minimal.alert-destructive {
+    @apply border-destructive/20 bg-destructive/5 text-destructive-foreground;
+  }
+}
+
+/* ===== ANIMAÇÕES SUTIS ===== */
+@layer utilities {
+  /* Transições profissionais */
+  .transition-minimal {
+    @apply transition-all duration-200 ease-in-out;
+  }
+
+  /* Hover sutil */
+  .hover-lift {
+    @apply transition-transform duration-200 hover:-translate-y-0.5;
+  }
+
+  /* Focus sutil */
+  .focus-minimal {
+    @apply focus:outline-none focus:ring-1 focus:ring-ring focus:ring-offset-1;
+  }
+}
+
+/* ===== SCROLLBAR DISCRETA ===== */
+@layer utilities {
+  /* Scrollbar customizada */
+  .scrollbar-minimal::-webkit-scrollbar {
+    @apply w-2 h-2;
+  }
+
+  .scrollbar-minimal::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  .scrollbar-minimal::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-border;
+  }
+
+  .scrollbar-minimal::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/30;
+  }
+}

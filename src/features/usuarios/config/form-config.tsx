@@ -375,13 +375,6 @@ export const usuariosFormFields: FormField[] = [
     group: 'informacoes_basicas'
   },
   {
-    key: 'instagram',
-    label: 'Instagram',
-    type: 'text',
-    placeholder: '@usuario',
-    group: 'informacoes_basicas'
-  },
-  {
     key: 'cpfCnpj',
     label: 'CPF/CNPJ',
     type: 'text',
@@ -454,6 +447,7 @@ export const usuariosFormFields: FormField[] = [
     type: 'custom',
     required: false,
     render: PermissoesSelector,
-    group: 'permissoes'
+    group: 'permissoes',
+    colSpan: 2 // Ocupa largura total
   }
 ];

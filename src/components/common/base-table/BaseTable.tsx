@@ -121,7 +121,7 @@ export function BaseTable<T extends BaseEntity>({
   return (
     <div className="border rounded-md bg-card flex flex-col h-full">
       <div className="overflow-auto flex-1">
-        <Table>
+        <Table className="table-minimal">
           <TableHeader>
             <TableRow>
               {columns.map((column, index) => (
@@ -267,14 +267,13 @@ export function BaseTable<T extends BaseEntity>({
           </div>
           
           <div className="flex items-center space-x-2">
-            <Button 
-              variant="outline" 
-              size="sm" 
+            <button
+              className="btn-minimal-outline h-8 w-8 p-0 flex items-center justify-center overflow-visible"
               onClick={() => onPageChange(pagination.page - 1)}
               disabled={pagination.page === 1}
             >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
+              <ChevronLeft className="h-4 w-4 shrink-0" />
+            </button>
             
             <div className="flex items-center space-x-1">
               {Array.from({ length: pagination.totalPages }, (_, i) => i + 1)
@@ -288,40 +287,35 @@ export function BaseTable<T extends BaseEntity>({
                     return (
                       <React.Fragment key={`ellipsis-${page}`}>
                         <span className="px-2 text-muted-foreground">...</span>
-                        <Button
-                          variant={pagination.page === page ? "default" : "outline"}
-                          size="sm"
+                        <button
+                          className={pagination.page === page ? "btn-minimal-primary w-8 h-8 p-0 flex items-center justify-center" : "btn-minimal-outline w-8 h-8 p-0 flex items-center justify-center"}
                           onClick={() => onPageChange(page)}
-                          className="w-8 h-8 p-0"
                         >
                           {page}
-                        </Button>
+                        </button>
                       </React.Fragment>
                     );
                   }
                   
                   return (
-                    <Button
+                    <button
                       key={page}
-                      variant={pagination.page === page ? "default" : "outline"}
-                      size="sm"
+                      className={pagination.page === page ? "btn-minimal-primary w-8 h-8 p-0 flex items-center justify-center" : "btn-minimal-outline w-8 h-8 p-0 flex items-center justify-center"}
                       onClick={() => onPageChange(page)}
-                      className="w-8 h-8 p-0"
                     >
                       {page}
-                    </Button>
+                    </button>
                   );
                 })}
             </div>
             
-            <Button 
-              variant="outline" 
-              size="sm" 
+            <button
+              className="btn-minimal-outline h-8 w-8 p-0 flex items-center justify-center overflow-visible"
               onClick={() => onPageChange(pagination.page + 1)}
               disabled={pagination.page === pagination.totalPages}
             >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
+              <ChevronRight className="h-4 w-4 shrink-0" />
+            </button>
           </div>
         </div>
       )}

@@ -170,8 +170,8 @@ export const navigationLinks: Array<NavigationLink> = [
         featureKey: "UnidadesConsumidoras",
         path: "/cadastros/unidades",
         icon: Building2,
-        label: "Unidades",
-        hint: "Gerenciar Unidades Consumidoras",
+        label: "Instalações",
+        hint: "Gerenciar Instalações",
       },
       {
         key: "cadastros-equipamentos",

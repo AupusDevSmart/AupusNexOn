@@ -59,6 +59,7 @@ export interface FilterUnidadeDto {
   status?: StatusUnidadeNexon;
   estado?: string;
   plantaId?: string;
+  proprietarioId?: string; // ✅ Filtro por proprietário (apenas admin/super_admin)
   page?: number;
   limit?: number;
   orderBy?: string;

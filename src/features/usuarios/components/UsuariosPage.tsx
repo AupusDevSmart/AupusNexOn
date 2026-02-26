@@ -76,20 +76,20 @@ export function UsuariosPage() {
           />
 
           {/* Filtros e Botão de Cadastrar */}
-          <div className="flex flex-col gap-3 md:gap-4 mb-4 md:mb-6">
-            <div className="w-full">
+          <div className="flex flex-col lg:flex-row gap-3 md:gap-4 mb-4 md:mb-6 lg:items-start">
+            <div className="flex-1">
               <UsuariosFilters
                 filters={filters}
                 onFilterChange={handleFilterChange}
               />
             </div>
-            <Button
+            <button
               onClick={() => handleOpenModal('create')}
-              className="bg-primary hover:bg-primary/90 w-full sm:w-auto sm:self-end"
+              className="btn-minimal-primary w-full lg:w-auto lg:mt-0 whitespace-nowrap"
             >
               <Plus className="mr-2 h-4 w-4" />
               <span>Novo Usuário</span>
-            </Button>
+            </button>
           </div>
 
           {/* Tabela */}

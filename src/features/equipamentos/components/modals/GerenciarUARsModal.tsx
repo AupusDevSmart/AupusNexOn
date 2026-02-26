@@ -1,26 +1,21 @@
 // src/features/equipamentos/components/modals/GerenciarUARsModal.tsx - REFATORADO PARA USAR COMPONENTEUARMODAL
 import React, { useState, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 import {
   Component,
-  Wrench,
   Save,
   Plus,
   Edit,
   Trash2,
   Eye,
-  Calendar,
-  MapPin,
-  Settings,
   AlertCircle,
   Loader2
 } from 'lucide-react';
@@ -41,10 +36,10 @@ export const GerenciarUARsModal: React.FC<GerenciarUARsModalProps> = ({
   onClose,
   onSave
 }) => {
-  const { 
-    loading, 
+  const {
+    loading,
     error,
-    fetchComponentesParaGerenciar 
+    fetchComponentesParaGerenciar
   } = useEquipamentos();
 
   const [uarsLista, setUarsLista] = useState<Equipamento[]>([]);
@@ -235,15 +230,13 @@ export const GerenciarUARsModal: React.FC<GerenciarUARsModalProps> = ({
         <h3 className="text-sm font-semibold text-foreground tracking-tight">
           Componentes UAR ({uarsLista.length})
         </h3>
-        <Button
+        <button
           onClick={handleAdicionarUAR}
-          size="sm"
-          variant="outline"
-          className="h-9 gap-2"
+          className="btn-minimal-outline h-9 gap-2"
         >
           <Plus className="h-4 w-4" />
           Adicionar UAR
-        </Button>
+        </button>
       </div>
 
       {loadingData && (
@@ -269,10 +262,10 @@ export const GerenciarUARsModal: React.FC<GerenciarUARsModalProps> = ({
           <p className="text-xs text-muted-foreground/70 mb-6">
             Este equipamento ainda não possui componentes UAR cadastrados
           </p>
-          <Button onClick={handleAdicionarUAR} variant="outline" size="sm" className="h-9">
+          <button onClick={handleAdicionarUAR} className="btn-minimal-outline h-9">
             <Plus className="h-4 w-4 mr-2" />
             Adicionar Primeiro UAR
-          </Button>
+          </button>
         </div>
       )}
 
@@ -324,33 +317,27 @@ export const GerenciarUARsModal: React.FC<GerenciarUARsModalProps> = ({
                   </div>
 
                   <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Button
-                      variant="ghost"
-                      size="sm"
+                    <button
                       onClick={() => handleVisualizarUAR(uar)}
-                      className="h-8 w-8 p-0 hover:bg-muted"
+                      className="btn-minimal-ghost h-8 w-8 p-0"
                       title="Visualizar detalhes"
                     >
                       <Eye className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
+                    </button>
+                    <button
                       onClick={() => handleEditarUAR(uar)}
-                      className="h-8 w-8 p-0 hover:bg-muted"
+                      className="btn-minimal-ghost h-8 w-8 p-0"
                       title="Editar"
                     >
                       <Edit className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
+                    </button>
+                    <button
                       onClick={() => handleRemoverUAR(uar.id)}
-                      className="h-8 w-8 p-0 hover:bg-destructive/10 hover:text-destructive"
+                      className="btn-minimal-ghost h-8 w-8 p-0 hover:bg-destructive/10 hover:text-destructive"
                       title="Remover"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                    </button>
                   </div>
                 </div>
               </div>
@@ -365,19 +352,19 @@ export const GerenciarUARsModal: React.FC<GerenciarUARsModalProps> = ({
 
   return (
     <>
-      <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col gap-0 p-0">
-          <DialogHeader className="border-b px-6 py-4 space-y-2">
-            <DialogTitle className="text-base font-semibold flex items-center gap-2">
+      <Sheet open={isOpen} onOpenChange={onClose}>
+        <SheetContent className="w-full sm:max-w-4xl overflow-hidden flex flex-col gap-0 p-0">
+          <SheetHeader className="border-b px-6 py-4 space-y-2">
+            <SheetTitle className="text-base font-semibold flex items-center gap-2">
               <Component className="h-4 w-4 text-muted-foreground" />
               Gerenciar Componentes UAR
-            </DialogTitle>
-            <DialogDescription className="text-xs text-muted-foreground">
+            </SheetTitle>
+            <SheetDescription className="text-xs text-muted-foreground">
               <span className="font-medium text-foreground">{equipamentoUC.nome}</span>
               {equipamentoUC.fabricante && <span className="text-muted-foreground/70"> • {equipamentoUC.fabricante}</span>}
               {equipamentoUC.modelo && <span className="text-muted-foreground/70"> • {equipamentoUC.modelo}</span>}
-            </DialogDescription>
-          </DialogHeader>
+            </SheetDescription>
+          </SheetHeader>
 
           {/* Alerta de erro global */}
           {error && (
@@ -399,13 +386,12 @@ export const GerenciarUARsModal: React.FC<GerenciarUARsModalProps> = ({
             </div>
 
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={onClose} className="h-9">
+              <button className="btn-minimal-outline h-9" onClick={onClose}>
                 Cancelar
-              </Button>
-              <Button
+              </button>
+              <button
                 onClick={handleSalvarTodos}
-                size="sm"
-                className="h-9"
+                className="btn-minimal-primary h-9"
                 disabled={loading}
               >
                 {loading ? (
@@ -414,11 +400,11 @@ export const GerenciarUARsModal: React.FC<GerenciarUARsModalProps> = ({
                   <Save className="h-4 w-4 mr-2" />
                 )}
                 Salvar Alterações
-              </Button>
+              </button>
             </div>
           </div>
-        </DialogContent>
-      </Dialog>
+        </SheetContent>
+      </Sheet>
 
       {/* Modal detalhado para criar/editar/visualizar UAR */}
       <ComponenteUARModal

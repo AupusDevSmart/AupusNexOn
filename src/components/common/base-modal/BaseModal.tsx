@@ -373,20 +373,18 @@ export function BaseModal<T extends BaseEntity>({
         onClick={handleBackdropClick}
       />
       
-      <div className="fixed inset-0 z-50 pointer-events-none">
+      <div className="fixed inset-0 z-50 pointer-events-none flex items-center justify-end">
         <div
           ref={modalRef}
           className={cn(
-            "absolute bg-background shadow-2xl pointer-events-auto",
-            "transform transition-all duration-300 ease-in-out",
-            isOpen ? "translate-x-0 opacity-100" : "translate-x-full opacity-0",
+            "bg-background shadow-2xl pointer-events-auto",
+            "transform transition-transform duration-300 ease-in-out",
+            isOpen ? "translate-x-0" : "translate-x-full",
             "overflow-hidden flex flex-col",
             // Mobile: fullscreen
-            "top-0 left-0 right-0 bottom-0 w-full h-full",
-            // Tablet e Desktop: sidebar direita com largura configurável
-            "md:top-0 md:right-0 md:left-auto md:bottom-0 md:h-full md:border-l md:border-border",
-            // Aplicar largura customizada apenas em telas maiores
-            width.replace('w-', 'md:w-')
+            "w-full h-full",
+            // Desktop: sidebar direita com 50vw
+            "md:w-[50vw] md:h-full md:border-l md:border-border"
           )}
         >
           <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b px-6 py-4 shrink-0">

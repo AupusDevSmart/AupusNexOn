@@ -27,40 +27,39 @@ export function BaseFilters<T extends BaseFiltersType>({
   };
 
   return (
-    <div className="flex flex-col gap-4 w-full">
-      {/* Campo de busca sempre em linha separada no mobile */}
-      {config.filter(filterConfig => filterConfig.type === 'search').map((filterConfig) => {
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 w-full">
+      {/* Todos os filtros na mesma linha responsiva */}
+      {config.map((filterConfig) => {
         const IconComponent = (filterConfig as any).icon;
-        
-        return (
-          <div key={filterConfig.key} className={`w-full ${filterConfig.className || ''}`}>
-            <div className="relative">
-              <Input 
-                placeholder={filterConfig.placeholder || `Filtrar por ${filterConfig.label?.toLowerCase()}...`}
-                className="pl-9"
-                value={String(filters[filterConfig.key as keyof T] || '')}
-                onChange={(e) => handleFilterChange(filterConfig.key, e.target.value)}
-                disabled={filterConfig.disabled}
-              />
-              {IconComponent ? (
-                <IconComponent className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              ) : (
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              )}
-            </div>
-          </div>
-        );
-      })}
-      
-      {/* Filtros select em grid responsivo */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 w-full">
-        {config.filter(filterConfig => filterConfig.type === 'select').map((filterConfig) => {
-          const IconComponent = (filterConfig as any).icon;
-          
+
+        // Renderizar filtro de busca/text
+        if (filterConfig.type === 'search' || filterConfig.type === 'text') {
           return (
             <div key={filterConfig.key} className={`w-full ${filterConfig.className || ''}`}>
-              <Select 
-                value={String(filters[filterConfig.key as keyof T] || 'all')} 
+              <div className="relative">
+                <Input
+                  placeholder={filterConfig.placeholder || `Filtrar por ${filterConfig.label?.toLowerCase()}...`}
+                  className="pl-9"
+                  value={String(filters[filterConfig.key as keyof T] || '')}
+                  onChange={(e) => handleFilterChange(filterConfig.key, e.target.value)}
+                  disabled={filterConfig.disabled}
+                />
+                {IconComponent ? (
+                  <IconComponent className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                ) : (
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                )}
+              </div>
+            </div>
+          );
+        }
+
+        // Renderizar filtro select
+        if (filterConfig.type === 'select') {
+          return (
+            <div key={filterConfig.key} className={`w-full ${filterConfig.className || ''}`}>
+              <Select
+                value={String(filters[filterConfig.key as keyof T] || 'all')}
                 onValueChange={(value) => handleFilterChange(filterConfig.key, value === 'all' ? 'all' : value)}
                 disabled={filterConfig.disabled}
               >
@@ -78,15 +77,14 @@ export function BaseFilters<T extends BaseFiltersType>({
               </Select>
             </div>
           );
-        })}
-        
-        {/* ✅ ADICIONADO: Suporte para filtros custom */}
-        {config.filter(filterConfig => filterConfig.type === 'custom').map((filterConfig) => {
+        }
+
+        // Renderizar filtro custom
+        if (filterConfig.type === 'custom') {
           if (!filterConfig.render) {
-            // console.warn(`Filtro custom "${filterConfig.key}" não tem função render definida`);
             return null;
           }
-          
+
           return (
             <div key={filterConfig.key} className={`w-full ${filterConfig.className || ''}`}>
               {filterConfig.render({
@@ -96,32 +94,26 @@ export function BaseFilters<T extends BaseFiltersType>({
               })}
             </div>
           );
-        })}
-      </div>
-      
-      {/* Outros tipos de filtro (text, date, etc.) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 w-full">
-        {config.filter(filterConfig => !['search', 'select', 'custom'].includes(filterConfig.type)).map((filterConfig) => {
-          const IconComponent = (filterConfig as any).icon;
-          
-          return (
-            <div key={filterConfig.key} className={`w-full ${filterConfig.className || ''}`}>
-              <div className="relative">
-                <Input 
-                  type={filterConfig.type === 'date' ? 'date' : 'text'}
-                  placeholder={filterConfig.placeholder || `Filtrar por ${filterConfig.label?.toLowerCase()}...`}
-                  className={IconComponent ? "pl-9" : ""}
-                  value={String(filters[filterConfig.key as keyof T] || '')}
-                  onChange={(e) => handleFilterChange(filterConfig.key, e.target.value)}
-                />
-                {IconComponent && (
-                  <IconComponent className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                )}
-              </div>
+        }
+
+        // Renderizar outros tipos (date, etc.)
+        return (
+          <div key={filterConfig.key} className={`w-full ${filterConfig.className || ''}`}>
+            <div className="relative">
+              <Input
+                type={filterConfig.type === 'date' ? 'date' : 'text'}
+                placeholder={filterConfig.placeholder || `Filtrar por ${filterConfig.label?.toLowerCase()}...`}
+                className={IconComponent ? "pl-9" : ""}
+                value={String(filters[filterConfig.key as keyof T] || '')}
+                onChange={(e) => handleFilterChange(filterConfig.key, e.target.value)}
+              />
+              {IconComponent && (
+                <IconComponent className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              )}
             </div>
-          );
-        })}
-      </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

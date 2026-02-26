@@ -314,7 +314,7 @@ export function BaseForm({
             onChange={(e) => handleFieldChange(field.key, e.target.value)}
             disabled={fieldDisabled}
             placeholder={field.placeholder}
-            className={error ? 'border-red-500' : ''}
+            className={cn('input-minimal', error ? 'border-red-500' : '')}
           />
         );
       
@@ -326,7 +326,7 @@ export function BaseForm({
             onChange={(e) => handleFieldChange(field.key, e.target.value)}
             disabled={fieldDisabled}
             placeholder={field.placeholder}
-            className={error ? 'border-red-500' : ''}
+            className={cn('input-minimal', error ? 'border-red-500' : '')}
             min={field.min}
             max={field.max}
           />
@@ -340,7 +340,7 @@ export function BaseForm({
             onChange={(e) => handleFieldChange(field.key, e.target.value)}
             disabled={fieldDisabled}
             placeholder={field.placeholder}
-            className={error ? 'border-red-500' : ''}
+            className={cn('input-minimal', error ? 'border-red-500' : '')}
           />
         );
       
@@ -377,7 +377,7 @@ export function BaseForm({
             }}
             disabled={fieldDisabled}
           >
-            <SelectTrigger className={error ? 'border-red-500' : ''}>
+            <SelectTrigger className={cn('select-minimal', error ? 'border-red-500' : '')}>
               <SelectValue placeholder={field.placeholder || `Selecione ${field.label}`} />
             </SelectTrigger>
             <SelectContent>
@@ -415,12 +415,8 @@ export function BaseForm({
             onChange={(e) => handleFieldChange(field.key, e.target.value)}
             disabled={fieldDisabled}
             className={cn(
-              "w-full px-3 py-2 border rounded-md transition-colors",
-              "bg-background text-foreground",
-              "border-input hover:border-ring",
-              "focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent",
-              "disabled:opacity-50 disabled:cursor-not-allowed",
-              error && "border-destructive focus:ring-destructive"
+              'input-minimal',
+              error && 'border-red-500'
             )}
             required={field.required}
           />
@@ -529,7 +525,8 @@ export function BaseForm({
         }
 
         const currentGroup = groups?.find(g => g.key === groupName);
-        const useGridLayout = (currentGroup as any)?.layout === 'grid';
+        // ✅ Grid é o padrão - só desativa se explicitamente definir layout: 'single'
+        const useGridLayout = (currentGroup as any)?.layout !== 'single';
 
         return (
           <div key={groupName}>
@@ -543,17 +540,19 @@ export function BaseForm({
               </div>
             )}
 
-            <div className={useGridLayout ? "grid grid-cols-1 sm:grid-cols-2 gap-4" : "grid grid-cols-1 gap-4"}>
+            <div className={useGridLayout ? "grid-equal-cols-2 gap-x-2 gap-y-4" : "grid grid-cols-1 gap-4"}>
               {groupFields.map((field) => {
                 const colSpan = (field as any).colSpan || 1;
 
-                // Classe responsiva para colSpan
-                const colSpanClass = colSpan === 2 ? 'sm:col-span-2' : '';
+                // Classe responsiva para colSpan com grid
+                const colSpanClass = colSpan === 2 ? 'col-span-full' : '';
+                const colSpanStyle = useGridLayout && colSpan === 2 ? { gridColumn: '1 / -1' } : undefined;
 
                 return (
                   <div
                     key={field.key}
                     className={colSpanClass}
+                    style={colSpanStyle}
                   >
                     {field.type !== 'checkbox' && (
                       <Label htmlFor={field.key} className="text-sm font-medium">

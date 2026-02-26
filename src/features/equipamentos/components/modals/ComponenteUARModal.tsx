@@ -1,12 +1,4 @@
 // src/features/equipamentos/components/modals/ComponenteUARModal.tsx - CORRIGIDO PARA API
-import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -14,12 +6,19 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Component, Save, Wrench, X, AlertCircle, Loader2 } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Combobox } from '@/components/ui/combobox';
+import { Component, Save, Wrench, X, AlertCircle, Loader2, Plus } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { Equipamento } from '../../types';
-import { tiposEquipamentosApi, type TipoEquipamentoModal, type TipoEquipamento } from '@/services/tipos-equipamentos.services';
+import { tiposEquipamentosApi, categoriasEquipamentosApi, type TipoEquipamentoModal, type TipoEquipamento } from '@/services/tipos-equipamentos.services';
 import { useCategorias } from '@/hooks/useCategorias';
 import { useModelos } from '@/hooks/useModelos';
 
@@ -53,11 +52,22 @@ export const ComponenteUARModal: React.FC<ComponenteUARModalProps> = ({
   const [modeloSelecionado, setModeloSelecionado] = useState<TipoEquipamento | null>(null);
 
   // ✅ NOVO: Hooks para categorias e modelos
-  const { categorias, loading: loadingCategorias } = useCategorias();
-  const { modelos, loading: loadingModelos } = useModelos({
+  const { categorias, loading: loadingCategorias, refetch: refetchCategorias } = useCategorias();
+  const { modelos, loading: loadingModelos, refetch: refetchModelos } = useModelos({
     categoriaId: categoriaIdSelecionada || undefined,
     autoFetch: !!categoriaIdSelecionada
   });
+
+  // ✅ NOVO: Estados para criar categoria/modelo on-the-fly
+  const [popoverCategoriaOpen, setPopoverCategoriaOpen] = useState(false);
+  const [novaCategoriaNome, setNovaCategoriaNome] = useState('');
+  const [loadingNovaCategoria, setLoadingNovaCategoria] = useState(false);
+
+  const [popoverModeloOpen, setPopoverModeloOpen] = useState(false);
+  const [novoModeloNome, setNovoModeloNome] = useState('');
+  const [novoModeloCodigo, setNovoModeloCodigo] = useState('');
+  const [novoModeloFabricante, setNovoModeloFabricante] = useState('');
+  const [loadingNovoModelo, setLoadingNovoModelo] = useState(false);
 
   // Helper para buscar tipo de equipamento
   const getTipoEquipamento = (codigo: string): TipoEquipamentoModal | undefined => {
@@ -194,6 +204,108 @@ export const ComponenteUARModal: React.FC<ComponenteUARModalProps> = ({
     }
   };
 
+  // ✅ NOVO: Handler para criar nova categoria
+  const handleCriarCategoria = async () => {
+    if (!novaCategoriaNome.trim()) {
+      setError('Nome da categoria é obrigatório');
+      return;
+    }
+
+    try {
+      setLoadingNovaCategoria(true);
+      setError(null);
+
+      const novaCategoria = await categoriasEquipamentosApi.create(novaCategoriaNome.trim());
+
+      if (novaCategoria) {
+        // Atualizar lista de categorias
+        await refetchCategorias();
+
+        // Selecionar automaticamente a nova categoria
+        setCategoriaIdSelecionada(novaCategoria.id);
+
+        // Auto-preencher nome do componente
+        setFormData((prev: any) => ({
+          ...prev,
+          nome: novaCategoria.nome,
+        }));
+
+        // Limpar e fechar popover
+        setNovaCategoriaNome('');
+        setPopoverCategoriaOpen(false);
+
+        console.log('✅ [MODAL UAR] Nova categoria criada:', novaCategoria);
+      }
+    } catch (err: any) {
+      console.error('❌ [MODAL UAR] Erro ao criar categoria:', err);
+      setError(err.response?.data?.message || 'Erro ao criar nova categoria');
+    } finally {
+      setLoadingNovaCategoria(false);
+    }
+  };
+
+  // ✅ NOVO: Handler para criar novo modelo
+  const handleCriarModelo = async () => {
+    if (!novoModeloNome.trim()) {
+      setError('Nome do modelo é obrigatório');
+      return;
+    }
+
+    if (!novoModeloCodigo.trim()) {
+      setError('Código do modelo é obrigatório');
+      return;
+    }
+
+    if (!novoModeloFabricante.trim()) {
+      setError('Fabricante é obrigatório');
+      return;
+    }
+
+    if (!categoriaIdSelecionada) {
+      setError('Selecione uma categoria primeiro');
+      return;
+    }
+
+    try {
+      setLoadingNovoModelo(true);
+      setError(null);
+
+      const novoModelo = await tiposEquipamentosApi.create({
+        codigo: novoModeloCodigo.trim(),
+        nome: novoModeloNome.trim(),
+        fabricante: novoModeloFabricante.trim(),
+        categoriaId: categoriaIdSelecionada,
+      });
+
+      if (novoModelo) {
+        // Atualizar lista de modelos
+        await refetchModelos();
+
+        // Selecionar automaticamente o novo modelo
+        setModeloSelecionado(novoModelo);
+        setFormData((prev: any) => ({
+          ...prev,
+          tipoComponente: novoModelo.codigo,
+          tipoEquipamentoId: novoModelo.id,
+          fabricante: novoModelo.fabricante,
+        }));
+
+        // Limpar e fechar popover
+        setNovoModeloNome('');
+        setNovoModeloCodigo('');
+        setNovoModeloFabricante('');
+        setPopoverModeloOpen(false);
+
+        console.log('✅ [MODAL UAR] Novo modelo criado:', novoModelo);
+      }
+    } catch (err: any) {
+      console.error('❌ [MODAL UAR] Erro ao criar modelo:', err);
+      setError(err.response?.data?.message || 'Erro ao criar novo modelo');
+    } finally {
+      setLoadingNovoModelo(false);
+    }
+  };
+
   // TEMPORÁRIO: Mostrar TODOS os tipos para testar
   // TODO: Restaurar filtro após configurar categorias corretas no backend
   const tiposComponentesUAR = tiposEquipamentos;
@@ -230,9 +342,9 @@ export const ComponenteUARModal: React.FC<ComponenteUARModalProps> = ({
         <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
           {tipoEqp.label}
         </h4>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid-equal-cols-2 gap-x-2 gap-y-4">
           {tipoEqp.camposTecnicos.map((campo) => (
-            <div key={campo.campo}>
+            <div key={campo.campo} className="space-y-1.5">
               <label className="text-sm font-medium">
                 {campo.campo}
                 {campo.obrigatorio && <span className="text-red-500 ml-1">*</span>}
@@ -243,8 +355,8 @@ export const ComponenteUARModal: React.FC<ComponenteUARModalProps> = ({
                   {formData[campo.campo] || <span className="text-gray-400">Não informado</span>}
                 </div>
               ) : campo.tipo === 'select' && campo.opcoes ? (
-                <Select 
-                  value={formData[campo.campo] || ''} 
+                <Select
+                  value={formData[campo.campo] || ''}
                   onValueChange={(value) => handleFieldChange(campo.campo, value)}
                 >
                   <SelectTrigger>
@@ -257,7 +369,8 @@ export const ComponenteUARModal: React.FC<ComponenteUARModalProps> = ({
                   </SelectContent>
                 </Select>
               ) : (
-                <Input
+                <input
+                  className="input-minimal"
                   type={campo.tipo === 'number' ? 'number' : 'text'}
                   placeholder={`${campo.campo}${campo.unidade ? ` (${campo.unidade})` : ''}`}
                   value={formData[campo.campo] || ''}
@@ -379,16 +492,16 @@ export const ComponenteUARModal: React.FC<ComponenteUARModalProps> = ({
   const isReadOnly = mode === 'view';
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-[1000px] max-h-[90vh] overflow-hidden flex flex-col gap-0 p-0">
-        <DialogHeader className="border-b px-6 py-4 space-y-2">
-          <DialogTitle className="text-base font-semibold flex items-center gap-2">
+    <Sheet open={isOpen} onOpenChange={onClose}>
+      <SheetContent className="w-full sm:max-w-[1000px] overflow-hidden flex flex-col gap-0 p-0">
+        <SheetHeader className="border-b px-6 py-4 space-y-2">
+          <SheetTitle className="text-base font-semibold flex items-center gap-2">
             <Component className="h-4 w-4 text-muted-foreground" />
             {mode === 'create' ? 'Novo Componente UAR' :
              mode === 'edit' ? 'Editar Componente UAR' :
              'Visualizar Componente UAR'}
-          </DialogTitle>
-        </DialogHeader>
+          </SheetTitle>
+        </SheetHeader>
 
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
           {/* Erro de validação */}
@@ -426,12 +539,13 @@ export const ComponenteUARModal: React.FC<ComponenteUARModalProps> = ({
           {/* ============================================================================ */}
           <div className="space-y-4">
             <h3 className="text-sm font-semibold text-foreground pb-2 border-b">Dados do Componente</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid-equal-cols-2 gap-x-2 gap-y-4">
               {/* Coluna 1 */}
               <div className="space-y-4">
-                <div>
+                <div className="space-y-1.5">
                   <label className="text-sm font-medium">Nome <span className="text-red-500">*</span></label>
-                  <Input
+                  <input
+                    className="input-minimal"
                     value={formData.nome || ''}
                     onChange={(e) => handleFieldChange('nome', e.target.value)}
                     disabled={isReadOnly}
@@ -440,93 +554,213 @@ export const ComponenteUARModal: React.FC<ComponenteUARModalProps> = ({
                 </div>
 
                 {/* ✅ NOVO: Categoria Select */}
-                <div>
+                <div className="space-y-1.5">
                   <label className="text-sm font-medium">Categoria <span className="text-red-500">*</span></label>
                   {isReadOnly ? (
                     <div className="p-2 bg-gray-50 dark:bg-gray-800 rounded border text-sm">
                       {modeloSelecionado?.categoria?.nome || 'Não informado'}
                     </div>
                   ) : (
-                    <Select
-                      value={categoriaIdSelecionada}
-                      onValueChange={handleCategoriaChange}
-                      disabled={loadingCategorias}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder={loadingCategorias ? "Carregando..." : "Selecione a categoria"} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {loadingCategorias ? (
-                          <div className="flex items-center justify-center p-2">
-                            <Loader2 className="h-4 w-4 animate-spin" />
+                    <div className="flex gap-2">
+                      <Combobox
+                        options={categorias.map(cat => ({ value: cat.id, label: cat.nome }))}
+                        value={categoriaIdSelecionada}
+                        onValueChange={handleCategoriaChange}
+                        placeholder={loadingCategorias ? "Carregando..." : "Selecione a categoria"}
+                        searchPlaceholder="Buscar categoria..."
+                        emptyText="Nenhuma categoria encontrada."
+                        disabled={loadingCategorias}
+                        className="flex-1"
+                      />
+
+                      {/* Botão para criar nova categoria */}
+                      <Popover open={popoverCategoriaOpen} onOpenChange={setPopoverCategoriaOpen}>
+                        <PopoverTrigger asChild>
+                          <button className="btn-minimal-outline h-9 px-3 shrink-0" title="Nova Categoria" type="button">
+                            <Plus className="h-4 w-4" />
+                          </button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-80" align="end">
+                          <div className="space-y-3">
+                            <h4 className="font-semibold text-sm">Nova Categoria</h4>
+                            <input
+                              className="input-minimal"
+                              placeholder="Nome da categoria"
+                              value={novaCategoriaNome}
+                              onChange={(e) => setNovaCategoriaNome(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  handleCriarCategoria();
+                                }
+                              }}
+                            />
+                            <div className="flex gap-2 justify-end">
+                              <button
+                                type="button"
+                                className="btn-minimal-outline h-8 text-xs"
+                                onClick={() => {
+                                  setNovaCategoriaNome('');
+                                  setPopoverCategoriaOpen(false);
+                                }}
+                              >
+                                Cancelar
+                              </button>
+                              <button
+                                type="button"
+                                className="btn-minimal-primary h-8 text-xs"
+                                onClick={handleCriarCategoria}
+                                disabled={loadingNovaCategoria || !novaCategoriaNome.trim()}
+                              >
+                                {loadingNovaCategoria ? (
+                                  <>
+                                    <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                    Criando...
+                                  </>
+                                ) : (
+                                  'Criar'
+                                )}
+                              </button>
+                            </div>
                           </div>
-                        ) : (
-                          categorias.map(cat => (
-                            <SelectItem key={cat.id} value={cat.id}>
-                              {cat.nome}
-                            </SelectItem>
-                          ))
-                        )}
-                      </SelectContent>
-                    </Select>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
                   )}
                 </div>
 
                 {/* ✅ NOVO: Modelo Select (filtered by categoria) */}
-                <div>
+                <div className="space-y-1.5">
                   <label className="text-sm font-medium">Modelo <span className="text-red-500">*</span></label>
                   {isReadOnly ? (
                     <div className="p-2 bg-gray-50 dark:bg-gray-800 rounded border text-sm">
                       {modeloSelecionado?.nome || 'Não informado'}
                     </div>
+                  ) : !categoriaIdSelecionada ? (
+                    <div className="p-2 bg-muted/50 rounded border text-xs text-muted-foreground flex items-center gap-2">
+                      <AlertCircle className="h-3.5 w-3.5" />
+                      Selecione uma categoria primeiro
+                    </div>
+                  ) : loadingModelos ? (
+                    <div className="p-2 flex items-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Carregando modelos...
+                    </div>
                   ) : (
-                    <Select
-                      value={formData.tipoEquipamentoId || ''}
-                      onValueChange={handleModeloChange}
-                      disabled={!categoriaIdSelecionada || loadingModelos}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder={
-                          !categoriaIdSelecionada ? "Selecione uma categoria primeiro" :
-                          loadingModelos ? "Carregando..." :
-                          "Selecione o modelo"
-                        } />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {loadingModelos ? (
-                          <div className="flex items-center justify-center p-2">
-                            <Loader2 className="h-4 w-4 animate-spin" />
+                    <div className="flex gap-2">
+                      <Combobox
+                        options={modelos.map(modelo => ({
+                          value: modelo.id,
+                          label: `${modelo.nome} | ${modelo.fabricante}`
+                        }))}
+                        value={formData.tipoEquipamentoId || ''}
+                        onValueChange={handleModeloChange}
+                        placeholder="Selecione o modelo"
+                        searchPlaceholder="Buscar modelo..."
+                        emptyText="Nenhum modelo encontrado."
+                        disabled={!categoriaIdSelecionada || loadingModelos}
+                        className="flex-1"
+                      />
+
+                      {/* Botão para criar novo modelo */}
+                      <Popover open={popoverModeloOpen} onOpenChange={setPopoverModeloOpen}>
+                        <PopoverTrigger asChild>
+                          <button className="btn-minimal-outline h-9 px-3 shrink-0" title="Novo Modelo" type="button">
+                            <Plus className="h-4 w-4" />
+                          </button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-80" align="end">
+                          <div className="space-y-3">
+                            <h4 className="font-semibold text-sm">Novo Modelo</h4>
+                            <div className="space-y-2">
+                              <input
+                                className="input-minimal"
+                                placeholder="Nome do modelo"
+                                value={novoModeloNome}
+                                onChange={(e) => setNovoModeloNome(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' && novoModeloNome.trim() && novoModeloCodigo.trim() && novoModeloFabricante.trim()) {
+                                    e.preventDefault();
+                                    handleCriarModelo();
+                                  }
+                                }}
+                              />
+                              <input
+                                className="input-minimal"
+                                placeholder="Código (ex: INV-001)"
+                                value={novoModeloCodigo}
+                                onChange={(e) => setNovoModeloCodigo(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' && novoModeloNome.trim() && novoModeloCodigo.trim() && novoModeloFabricante.trim()) {
+                                    e.preventDefault();
+                                    handleCriarModelo();
+                                  }
+                                }}
+                              />
+                              <input
+                                className="input-minimal"
+                                placeholder="Fabricante"
+                                value={novoModeloFabricante}
+                                onChange={(e) => setNovoModeloFabricante(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' && novoModeloNome.trim() && novoModeloCodigo.trim() && novoModeloFabricante.trim()) {
+                                    e.preventDefault();
+                                    handleCriarModelo();
+                                  }
+                                }}
+                              />
+                            </div>
+                            <div className="flex gap-2 justify-end">
+                              <button
+                                type="button"
+                                className="btn-minimal-outline h-8 text-xs"
+                                onClick={() => {
+                                  setNovoModeloNome('');
+                                  setNovoModeloCodigo('');
+                                  setNovoModeloFabricante('');
+                                  setPopoverModeloOpen(false);
+                                }}
+                              >
+                                Cancelar
+                              </button>
+                              <button
+                                type="button"
+                                className="btn-minimal-primary h-8 text-xs"
+                                onClick={handleCriarModelo}
+                                disabled={loadingNovoModelo || !novoModeloNome.trim() || !novoModeloCodigo.trim() || !novoModeloFabricante.trim()}
+                              >
+                                {loadingNovoModelo ? (
+                                  <>
+                                    <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                    Criando...
+                                  </>
+                                ) : (
+                                  'Criar'
+                                )}
+                              </button>
+                            </div>
                           </div>
-                        ) : modelos.length === 0 ? (
-                          <div className="p-2 text-sm text-muted-foreground text-center">
-                            Nenhum modelo encontrado
-                          </div>
-                        ) : (
-                          modelos.map(modelo => (
-                            <SelectItem key={modelo.id} value={modelo.id}>
-                              {modelo.nome} | {modelo.fabricante}
-                            </SelectItem>
-                          ))
-                        )}
-                      </SelectContent>
-                    </Select>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
                   )}
                 </div>
 
                 {/* ✅ NOVO: Fabricante (read-only, auto-filled from modelo) */}
-                <div>
+                <div className="space-y-1.5">
                   <label className="text-sm font-medium">Fabricante</label>
-                  <Input
+                  <input
+                    className="input-minimal bg-gray-50 dark:bg-gray-800"
                     value={formData.fabricante || ''}
                     disabled={true}
                     placeholder="Selecionado automaticamente do modelo"
-                    className="bg-gray-50 dark:bg-gray-800"
                   />
                 </div>
 
-                <div>
+                <div className="space-y-1.5">
                   <label className="text-sm font-medium">Número de Série</label>
-                  <Input
+                  <input
+                    className="input-minimal"
                     value={formData.numeroSerie || ''}
                     onChange={(e) => handleFieldChange('numeroSerie', e.target.value)}
                     disabled={isReadOnly}
@@ -537,16 +771,17 @@ export const ComponenteUARModal: React.FC<ComponenteUARModalProps> = ({
 
               {/* Coluna 2 */}
               <div className="space-y-4">
-                <div>
+                <div className="space-y-1.5">
                   <label className="text-sm font-medium">Data de Instalação</label>
-                  <Input 
+                  <input
+                    className="input-minimal"
                     type="date"
-                    value={formData.dataInstalacao || ''} 
+                    value={formData.dataInstalacao || ''}
                     onChange={(e) => handleFieldChange('dataInstalacao', e.target.value)}
                     disabled={isReadOnly}
                   />
                 </div>
-                <div>
+                <div className="space-y-1.5">
                   <label className="text-sm font-medium">Criticidade</label>
                   <Select value={formData.criticidade || ''} onValueChange={(value) => handleFieldChange('criticidade', value)} disabled={isReadOnly}>
                     <SelectTrigger>
@@ -561,18 +796,20 @@ export const ComponenteUARModal: React.FC<ComponenteUARModalProps> = ({
                     </SelectContent>
                   </Select>
                 </div>
-                <div>
+                <div className="space-y-1.5">
                   <label className="text-sm font-medium">Localização Específica</label>
-                  <Input
+                  <input
+                    className="input-minimal"
                     value={formData.localizacaoEspecifica || ''}
                     onChange={(e) => handleFieldChange('localizacaoEspecifica', e.target.value)}
                     disabled={isReadOnly}
                     placeholder="Ex: Lado direito, Entrada principal..."
                   />
                 </div>
-                <div>
+                <div className="space-y-1.5">
                   <label className="text-sm font-medium">Fornecedor</label>
-                  <Input
+                  <input
+                    className="input-minimal"
                     value={formData.fornecedor || ''}
                     onChange={(e) => handleFieldChange('fornecedor', e.target.value)}
                     disabled={isReadOnly}
@@ -597,31 +834,34 @@ export const ComponenteUARModal: React.FC<ComponenteUARModalProps> = ({
           <div className="space-y-4">
             <h3 className="text-sm font-semibold text-foreground pb-2 border-b">Valores Financeiros</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
+              <div className="space-y-1.5">
                 <label className="text-sm font-medium">Valor Imobilizado</label>
-                <Input 
+                <input
+                  className="input-minimal"
                   type="number"
-                  value={formData.valorImobilizado || ''} 
+                  value={formData.valorImobilizado || ''}
                   onChange={(e) => handleFieldChange('valorImobilizado', parseFloat(e.target.value) || 0)}
                   disabled={isReadOnly}
                   placeholder="0,00"
                 />
               </div>
-              <div>
+              <div className="space-y-1.5">
                 <label className="text-sm font-medium">Valor de Depreciação</label>
-                <Input 
+                <input
+                  className="input-minimal"
                   type="number"
-                  value={formData.valorDepreciacao || ''} 
+                  value={formData.valorDepreciacao || ''}
                   onChange={(e) => handleFieldChange('valorDepreciacao', parseFloat(e.target.value) || 0)}
                   disabled={isReadOnly}
                   placeholder="0,00"
                 />
               </div>
-              <div>
+              <div className="space-y-1.5">
                 <label className="text-sm font-medium">Valor Contábil</label>
-                <Input 
+                <input
+                  className="input-minimal"
                   type="number"
-                  value={formData.valorContabil || ''} 
+                  value={formData.valorContabil || ''}
                   onChange={(e) => handleFieldChange('valorContabil', parseFloat(e.target.value) || 0)}
                   disabled={isReadOnly}
                   placeholder="0,00"
@@ -633,30 +873,28 @@ export const ComponenteUARModal: React.FC<ComponenteUARModalProps> = ({
           {/* ============================================================================ */}
           {/* OBSERVAÇÕES ADICIONAIS */}
           {/* ============================================================================ */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Observações</label>
-            <Textarea
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium block">Observações</label>
+            <textarea
+              className="textarea-minimal h-20 resize-none w-full"
               value={formData.observacoes || ''}
               onChange={(e) => handleFieldChange('observacoes', e.target.value)}
               disabled={isReadOnly}
               placeholder="Observações adicionais sobre o componente"
-              rows={3}
-              className="resize-none"
             />
           </div>
         </div>
 
         {/* Footer com botões */}
         <div className="border-t px-6 py-3 flex justify-end gap-2 bg-muted/20">
-          <Button variant="outline" size="sm" onClick={onClose} disabled={isSubmitting} className="h-9">
+          <button className="btn-minimal-outline h-9" onClick={onClose} disabled={isSubmitting}>
             <X className="h-4 w-4 mr-2" />
             {isReadOnly ? 'Fechar' : 'Cancelar'}
-          </Button>
+          </button>
           {mode !== 'view' && (
-            <Button
+            <button
               onClick={handleSubmit}
-              size="sm"
-              className="h-9"
+              className="btn-minimal-primary h-9"
               disabled={isSubmitting}
             >
               {isSubmitting ? (
@@ -670,10 +908,10 @@ export const ComponenteUARModal: React.FC<ComponenteUARModalProps> = ({
                   {mode === 'create' ? 'Criar Componente' : 'Salvar Alterações'}
                 </>
               )}
-            </Button>
+            </button>
           )}
         </div>
-      </DialogContent>
-    </Dialog>
+      </SheetContent>
+    </Sheet>
   );
 };

@@ -8,6 +8,7 @@ import { X, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ConcessionariaSelectField } from '../components/ConcessionariaSelectField';
+import { Combobox } from '@/components/ui/combobox-minimal';
 
 /**
  * Componente para exibir Proprietário (read-only)
@@ -75,22 +76,39 @@ const PlantaSelector = ({ value, onChange, disabled, mode }: FormFieldProps) => 
     );
   }
 
+  // Modo create: usar Combobox pesquisável
+  const plantasOptions = plantas.map(planta => ({
+    value: planta.id,
+    label: planta.nome
+  }));
+
+  if (loading) {
+    return (
+      <div className="w-full h-9 px-3 py-2 border border-input bg-muted rounded text-sm text-muted-foreground flex items-center">
+        Carregando plantas...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="w-full h-9 px-3 py-2 border border-red-300 bg-red-50 rounded text-sm text-red-600 flex items-center">
+        Erro ao carregar plantas
+      </div>
+    );
+  }
+
   return (
-    <select
-      value={value as string || ''}
-      onChange={(e) => onChange(e.target.value)}
-      disabled={disabled || loading}
-      className="w-full px-3 py-2 border border-input bg-background text-foreground rounded-md focus:ring-2 focus:ring-ring focus:border-transparent"
-    >
-      <option value="">
-        {loading ? 'Carregando plantas...' : error ? 'Erro ao carregar plantas' : 'Selecione uma planta'}
-      </option>
-      {plantas.map((planta) => (
-        <option key={planta.id} value={planta.id}>
-          {planta.nome} {planta.localizacao ? `- ${planta.localizacao}` : ''}
-        </option>
-      ))}
-    </select>
+    <Combobox
+      options={plantasOptions}
+      value={value as string}
+      onValueChange={onChange}
+      placeholder="Selecione uma planta"
+      searchPlaceholder="Buscar planta..."
+      emptyText="Nenhuma planta encontrada"
+      disabled={disabled}
+      className="w-full"
+    />
   );
 };
 
@@ -290,8 +308,8 @@ export const unidadesFormFields: FormField[] = [
     required: true,
     defaultValue: StatusUnidade.ATIVO,
     options: [
-      { value: StatusUnidade.ATIVO, label: '✅ Ativo' },
-      { value: StatusUnidade.INATIVO, label: '❌ Inativo' },
+      { value: StatusUnidade.ATIVO, label: 'Ativo' },
+      { value: StatusUnidade.INATIVO, label: 'Inativo' },
     ],
   },
   {

@@ -14,6 +14,7 @@ import { toast } from '@/hooks/use-toast';
 import { unidadesTableColumns } from '../config/table-config';
 import { createUnidadesFilterConfig } from '../config/filter-config';
 import { usePlantas } from '../hooks/usePlantas';
+import { useProprietarios } from '../hooks/useProprietarios';
 import {
   getAllUnidades,
   getUnidadeById,
@@ -44,6 +45,9 @@ export function UnidadesPage() {
   // Hook para plantas
   const { plantas, loading: loadingPlantas, error: plantasError } = usePlantas();
 
+  // Hook para proprietários (busca TODOS os usuários com roles permitidas)
+  const { proprietarios, loading: loadingProprietarios } = useProprietarios();
+
   // Modal state
   const {
     modalState,
@@ -53,8 +57,14 @@ export function UnidadesPage() {
 
   // Configuração dinâmica de filtros
   const filterConfig = useMemo(() => {
-    return createUnidadesFilterConfig(plantas, loadingPlantas);
-  }, [plantas, loadingPlantas]);
+    return createUnidadesFilterConfig(
+      plantas,
+      loadingPlantas,
+      proprietarios,
+      loadingProprietarios,
+      isAdmin() // Mostrar filtro de proprietário apenas para admin/super_admin
+    );
+  }, [plantas, loadingPlantas, proprietarios, loadingProprietarios, isAdmin]);
 
   // Buscar unidades da API
   const fetchUnidades = async (currentFilters: UnidadeFilters) => {
@@ -147,8 +157,11 @@ export function UnidadesPage() {
 
   // Handler: Abrir modal de edição
   const handleEdit = async (unidade: Unidade) => {
+    // Abre modal IMEDIATAMENTE com dados básicos
+    openModal('edit', unidade);
+
     try {
-      console.log('📝 [UNIDADES PAGE] Abrindo edição da unidade:', unidade.id);
+      console.log('📝 [UNIDADES PAGE] Carregando dados detalhados da unidade:', unidade.id);
       const detailedUnidade = await getUnidadeById(unidade.id);
       console.log('📦 [UNIDADES PAGE] Dados detalhados carregados:', detailedUnidade);
       console.log('🔑 [UNIDADES PAGE] plantaId:', detailedUnidade.plantaId);
@@ -159,9 +172,11 @@ export function UnidadesPage() {
         cidade: detailedUnidade.cidade,
         estado: detailedUnidade.estado
       });
+      // Atualiza modal com dados completos
       openModal('edit', detailedUnidade);
     } catch (error: any) {
       console.error('❌ [UNIDADES PAGE] Erro ao carregar unidade:', error);
+      closeModal(); // Fecha o modal em caso de erro
       toast({
         title: "Erro ao carregar instalação",
         description: error.message,
@@ -172,8 +187,11 @@ export function UnidadesPage() {
 
   // Handler: Visualizar unidade
   const handleView = async (unidade: Unidade) => {
+    // Abre modal IMEDIATAMENTE com dados básicos
+    openModal('view', unidade);
+
     try {
-      console.log('👁️ [UNIDADES PAGE] Abrindo visualização da unidade:', unidade.id);
+      console.log('👁️ [UNIDADES PAGE] Carregando dados detalhados da unidade:', unidade.id);
       const detailedUnidade = await getUnidadeById(unidade.id);
       console.log('📦 [UNIDADES PAGE - VIEW] Dados carregados:', detailedUnidade);
       console.log('📍 [UNIDADES PAGE - VIEW] Coordenadas:', {
@@ -181,9 +199,11 @@ export function UnidadesPage() {
         longitude: detailedUnidade.longitude
       });
       console.log('🔌 [UNIDADES PAGE - VIEW] Pontos de medição:', detailedUnidade.pontosMedicao);
+      // Atualiza modal com dados completos
       openModal('view', detailedUnidade);
     } catch (error: any) {
       console.error('❌ [UNIDADES PAGE] Erro ao carregar unidade:', error);
+      closeModal(); // Fecha o modal em caso de erro
       toast({
         title: "Erro ao carregar instalação",
         description: error.message,
@@ -250,50 +270,37 @@ export function UnidadesPage() {
           />
 
           {/* Filtros e Ações */}
-          <div className="flex flex-col gap-3 mb-4">
-            {/* Linha 1: Busca */}
-            <div className="w-full">
+          <div className="flex flex-col lg:flex-row gap-3 mb-4 lg:items-start">
+            {/* Filtros */}
+            <div className="flex-1">
               <BaseFilters
                 filters={filters}
-                config={[filterConfig[0]]} // Apenas o campo de busca
+                config={filterConfig}
                 onFilterChange={handleFilterChange}
               />
             </div>
 
-            {/* Linha 2: Filtro de Plantas + Botões de Ação */}
-            <div className="flex flex-col sm:flex-row gap-2 w-full items-start sm:items-center">
-              {/* Filtro de Plantas */}
-              <div className="flex-1 w-full sm:w-auto sm:min-w-[250px]">
-                <BaseFilters
-                  filters={filters}
-                  config={[filterConfig[1]]} // Apenas o select de plantas
-                  onFilterChange={handleFilterChange}
-                />
-              </div>
+            {/* Botões de Ação */}
+            <div className="flex flex-row gap-2 w-full lg:w-auto">
+              <button
+                onClick={handleRefresh}
+                disabled={loading}
+                className="btn-minimal-outline flex-1 lg:flex-none whitespace-nowrap"
+              >
+                <RefreshCw className={`h-4 w-4 lg:mr-2 ${loading ? 'animate-spin' : ''}`} />
+                <span className="hidden lg:inline">Atualizar</span>
+              </button>
 
-              {/* Botões de Ação */}
-              <div className="flex flex-row gap-2 w-full sm:w-auto sm:ml-auto">
-                <Button
-                  variant="outline"
-                  onClick={handleRefresh}
+              {isAdmin() && (
+                <button
+                  onClick={() => openModal('create')}
                   disabled={loading}
-                  className="flex-1 sm:flex-none border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300"
+                  className="btn-minimal-primary flex-1 lg:flex-none whitespace-nowrap"
                 >
-                  <RefreshCw className={`h-4 w-4 sm:mr-2 ${loading ? 'animate-spin' : ''}`} />
-                  <span className="hidden sm:inline">Atualizar</span>
-                </Button>
-
-                {isAdmin() && (
-                  <Button
-                    onClick={() => openModal('create')}
-                    disabled={loading}
-                    className="flex-1 sm:flex-none bg-blue-600 hover:bg-blue-700 text-white"
-                  >
-                    <Plus className="h-4 w-4 sm:mr-2" />
-                    <span className="hidden sm:inline">Nova Instalação</span>
-                  </Button>
-                )}
-              </div>
+                  <Plus className="h-4 w-4 lg:mr-2" />
+                  <span className="hidden lg:inline">Nova Instalação</span>
+                </button>
+              )}
             </div>
           </div>
 

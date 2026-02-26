@@ -77,10 +77,10 @@ export function TarifasFormField({ value = {}, onChange, disabled = false }: Tar
   return (
     <div className="space-y-4">
       {/* Cabeçalho informativo */}
-      <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg dark:bg-blue-950 dark:border-blue-800">
-        <Info className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
-        <div className="text-xs text-blue-800 dark:text-blue-200">
-          <p className="font-medium mb-1">Você pode preencher tarifas de múltiplos subgrupos</p>
+      <div className="flex items-start gap-2 p-3 rounded-lg bg-muted/50">
+        <Info className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+        <div className="text-xs text-muted-foreground">
+          <p className="mb-1">Você pode preencher tarifas de múltiplos subgrupos</p>
           <p>Clique em cada subgrupo abaixo para expandir e preencher suas tarifas. {totalPreenchidos > 0 && `(${totalPreenchidos} preenchido${totalPreenchidos > 1 ? 's' : ''})`}</p>
         </div>
       </div>
@@ -95,8 +95,9 @@ export function TarifasFormField({ value = {}, onChange, disabled = false }: Tar
             <div
               key={subgrupo.id}
               className={cn(
-                'border rounded-lg overflow-hidden transition-colors',
-                temValores ? 'border-green-300 bg-green-50/50 dark:bg-green-950/20 dark:border-green-800' : 'border-gray-200 dark:border-gray-700'
+                'border rounded overflow-hidden transition-colors',
+                'dark:bg-black',
+                temValores ? 'border-green-300 bg-green-50/50 dark:border-green-800' : 'border-gray-300 dark:border-gray-600'
               )}
             >
               {/* Header do Accordion */}

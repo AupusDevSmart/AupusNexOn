@@ -94,13 +94,12 @@ export const createPlantasFilterConfig = (proprietarios: ProprietarioBasico[]): 
     key: 'search',
     type: 'search',
     placeholder: 'Buscar por nome, CNPJ ou localização...',
-    className: 'lg:min-w-80'
+    className: 'lg:col-span-2'
   },
   {
     key: 'proprietarioId',
     type: 'select',
     label: 'Proprietário',
-    className: 'min-w-64',
     options: generateProprietarioOptions(proprietarios)
   }
 ];
@@ -111,13 +110,12 @@ export const plantasFilterConfig: FilterConfig[] = [
     key: 'search',
     type: 'search',
     placeholder: 'Buscar por nome, CNPJ ou localização...',
-    className: 'lg:min-w-80'
+    className: 'lg:col-span-2'
   },
   {
     key: 'proprietarioId',
     type: 'select',
     label: 'Proprietário',
-    className: 'min-w-64',
     options: [
       { value: 'all', label: 'Carregando proprietários...' }
     ]

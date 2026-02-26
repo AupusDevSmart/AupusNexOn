@@ -94,6 +94,13 @@ const CadastroConcessionariasPage = lazy(() =>
   import("@/pages/cadastros/concessionarias")
 );
 
+// ✅ Lazy load para Design System Test Page
+const DesignSystemTestPage = lazy(() =>
+  import("@/pages/DesignSystemTest").then((module) => ({
+    default: module.DesignSystemTest,
+  }))
+);
+
 export const appRoutes = createBrowserRouter([
   // ✅ Rota pública de login
   {
@@ -335,7 +342,15 @@ export const appRoutes = createBrowserRouter([
           </FeatureWrapper>
         ),
       },
-      // ✅ CORRIGIDO: Rota para Editor de Diagrama com lazy loading correto
+      // ✅ Design System Test Page (Para visualizar componentes minimalistas)
+      {
+        path: "design-system-test",
+        element: (
+          <Suspense fallback={<div>Carregando...</div>}>
+            <DesignSystemTestPage />
+          </Suspense>
+        ),
+      },
     ],
   },
 

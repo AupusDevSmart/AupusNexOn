@@ -126,17 +126,14 @@ export function TarifasSubgrupoTable({
       </div>
 
       {subgrupo.id !== 'B' && (
-        <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg dark:bg-blue-950 dark:border-blue-800">
-          <div className="flex gap-2">
-            <Info className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
-            <div className="text-xs text-blue-800 dark:text-blue-200">
-              <p className="font-medium mb-1">Legendas:</p>
-              <ul className="space-y-0.5">
-                <li><strong>TUSD:</strong> Tarifa de Uso do Sistema de Distribuição</li>
-                <li><strong>TE:</strong> Tarifa de Energia</li>
-                <li><strong>D:</strong> Demanda | <strong>P:</strong> Ponta | <strong>FP:</strong> Fora Ponta</li>
-              </ul>
-            </div>
+        <div className="mt-4">
+          <div className="text-xs text-muted-foreground">
+            <p className="mb-1">Legendas:</p>
+            <p className="space-y-0.5">
+              TUSD: Tarifa de Uso do Sistema de Distribuição •
+              TE: Tarifa de Energia •
+              D: Demanda • P: Ponta • FP: Fora Ponta
+            </p>
           </div>
         </div>
       )}

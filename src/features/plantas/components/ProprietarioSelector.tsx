@@ -100,7 +100,7 @@ export function ProprietarioSelector({ value, onChange, disabled }: Proprietario
         value={value || ''} // ✅ Usar string vazia como fallback
         onChange={handleChange}
         disabled={disabled || proprietarios.length === 0}
-        className="w-full px-3 py-2 border border-input bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent max-h-[200px] overflow-y-auto"
+        className="select-minimal"
         required
         size={1}
       >
@@ -117,40 +117,6 @@ export function ProprietarioSelector({ value, onChange, disabled }: Proprietario
           </option>
         ))}
       </select>
-
-      {/* ✅ Informações do proprietário selecionado */}
-      {selectedProprietario && (
-        <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
-          <div className="flex items-center gap-2 mb-2">
-            {selectedProprietario.tipo === 'pessoa_fisica' ? (
-              <User className="h-4 w-4 text-blue-600" />
-            ) : (
-              <Building2 className="h-4 w-4 text-blue-600" />
-            )}
-            <span className="text-sm font-medium text-blue-900">
-              {selectedProprietario.tipo === 'pessoa_fisica' ? 'Pessoa Física' : 'Pessoa Jurídica'}
-            </span>
-          </div>
-          
-          <div className="space-y-1 text-xs text-blue-700">
-            <div>
-              <span className="font-medium">Nome:</span> {selectedProprietario.nome}
-            </div>
-            <div>
-              <span className="font-medium">
-                {selectedProprietario.tipo === 'pessoa_fisica' ? 'CPF:' : 'CNPJ:'}
-              </span> {selectedProprietario.cpf_cnpj}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ✅ Informação sobre quantidade de proprietários */}
-      {proprietarios.length > 0 && (
-        <p className="text-xs text-muted-foreground">
-          {proprietarios.length} proprietário{proprietarios.length !== 1 ? 's' : ''} disponível{proprietarios.length !== 1 ? 'is' : ''}
-        </p>
-      )}
 
       {/* ✅ Aviso se não houver proprietários */}
       {proprietarios.length === 0 && !loading && !error && (

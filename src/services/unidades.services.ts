@@ -22,6 +22,7 @@ class UnidadesService {
 
       if (filtros?.search) params.append('search', filtros.search);
       if (filtros?.plantaId) params.append('plantaId', filtros.plantaId);
+      if (filtros?.proprietarioId) params.append('proprietarioId', filtros.proprietarioId); // ✅ ADICIONADO
       if (filtros?.tipo) params.append('tipo', filtros.tipo);
       if (filtros?.status) params.append('status', filtros.status);
       if (filtros?.estado) params.append('estado', filtros.estado);
@@ -31,6 +32,7 @@ class UnidadesService {
       if (filtros?.orderDirection) params.append('orderDirection', filtros.orderDirection);
 
       console.log('🔍 [UnidadesService] Enviando requisição com params:', params.toString());
+      console.log('🔍 [UnidadesService] proprietarioId no filtro:', filtros?.proprietarioId);
 
       const response = await api.get(`${this.baseUrl}?${params.toString()}`);
 

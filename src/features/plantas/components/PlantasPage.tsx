@@ -48,7 +48,7 @@ export function PlantasPage() {
       key: 'search',
       type: 'search' as const,
       placeholder: 'Buscar por nome, CNPJ ou localização...',
-      className: 'lg:min-w-80'
+      className: 'lg:col-span-2'
     };
 
     // Se não for admin, mostrar apenas busca
@@ -64,7 +64,6 @@ export function PlantasPage() {
           key: 'proprietarioId',
           type: 'select' as const,
           label: 'Proprietário',
-          className: 'min-w-64',
           options: [
             {
               value: 'all',
@@ -210,21 +209,37 @@ export function PlantasPage() {
     }
   };
 
-  // ✅ HANDLER: Visualizar planta
+  // ✅ HANDLER: Visualizar planta (otimista)
   const handleView = async (planta: PlantaResponse) => {
     console.log('👁️ [PLANTAS PAGE] Visualizando planta:', planta.id);
-    const detailedPlanta = await fetchPlantaDetails(planta.id);
-    if (detailedPlanta) {
-      openModal('view', detailedPlanta);
+    // Abrir modal IMEDIATAMENTE com dados básicos
+    openModal('view', planta);
+    // Carregar detalhes em background
+    try {
+      const detailedPlanta = await fetchPlantaDetails(planta.id);
+      if (detailedPlanta) {
+        openModal('view', detailedPlanta);
+      }
+    } catch (error) {
+      // Se falhar ao buscar detalhes, fechar modal
+      closeModal();
     }
   };
 
-  // ✅ HANDLER: Editar planta
+  // ✅ HANDLER: Editar planta (otimista)
   const handleEdit = async (planta: PlantaResponse) => {
     console.log('✏️ [PLANTAS PAGE] Editando planta:', planta.id);
-    const detailedPlanta = await fetchPlantaDetails(planta.id);
-    if (detailedPlanta) {
-      openModal('edit', detailedPlanta);
+    // Abrir modal IMEDIATAMENTE com dados básicos
+    openModal('edit', planta);
+    // Carregar detalhes em background
+    try {
+      const detailedPlanta = await fetchPlantaDetails(planta.id);
+      if (detailedPlanta) {
+        openModal('edit', detailedPlanta);
+      }
+    } catch (error) {
+      // Se falhar ao buscar detalhes, fechar modal
+      closeModal();
     }
   };
 
@@ -307,34 +322,35 @@ export function PlantasPage() {
           )}
           
           {/* ✅ Filtros e Ações */}
-          <div className="flex flex-col lg:flex-row gap-4 mb-6">
+          <div className="flex flex-col lg:flex-row gap-3 mb-4 lg:items-start">
+            {/* Filtros */}
             <div className="flex-1">
-              <BaseFilters 
+              <BaseFilters
                 filters={filters}
                 config={filterConfig}
                 onFilterChange={handleFilterChange}
               />
             </div>
-            
-            <div className="flex gap-2 shrink-0">
-              <Button
-                variant="outline"
+
+            {/* Botões */}
+            <div className="flex flex-row gap-2 w-full lg:w-auto">
+              <button
                 onClick={handleRefresh}
                 disabled={loading}
-                className="border-gray-300 text-gray-700 hover:bg-gray-50"
+                className="btn-minimal-outline flex-1 lg:flex-none whitespace-nowrap"
               >
-                <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-                Atualizar
-              </Button>
+                <RefreshCw className={`h-4 w-4 lg:mr-2 ${loading ? 'animate-spin' : ''}`} />
+                <span className="hidden lg:inline">Atualizar</span>
+              </button>
 
               {isAdmin() && (
-                <Button
+                <button
                   onClick={() => openModal('create')}
-                  className="bg-primary hover:bg-primary/90"
+                  className="btn-minimal-primary flex-1 lg:flex-none whitespace-nowrap"
                 >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Nova Planta
-                </Button>
+                  <Plus className="h-4 w-4 lg:mr-2" />
+                  <span className="hidden lg:inline">Nova Planta</span>
+                </button>
               )}
             </div>
           </div>

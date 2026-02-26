@@ -275,20 +275,14 @@ export function UsuarioModal({
             Informações de Acesso
           </h3>
 
-          <div className="bg-blue-50 rounded-lg p-3 md:p-4 border border-blue-200 dark:bg-blue-950 dark:border-blue-800">
-            <div className="flex items-start gap-2 md:gap-3">
-              <Shield className="h-4 w-4 md:h-5 md:w-5 text-blue-600 mt-0.5 shrink-0" />
-              <div className="space-y-1.5 md:space-y-2 min-w-0 flex-1">
-                <h4 className="font-medium text-blue-900 dark:text-blue-100 text-sm md:text-base">
-                  Senha Padrão
-                </h4>
-                <p className="text-xs md:text-sm text-blue-700 dark:text-blue-300 break-words">
-                  O usuário será criado com a senha padrão: <code className="bg-blue-100 dark:bg-blue-900 px-1 rounded font-mono text-xs">Aupus123!</code>
-                </p>
-                <p className="text-xs md:text-sm text-blue-700 dark:text-blue-300">
-                  No primeiro acesso, o usuário será obrigatoriamente solicitado a alterar sua senha.
-                </p>
-              </div>
+          <div className="p-3 md:p-4">
+            <div className="text-xs md:text-sm text-muted-foreground space-y-1">
+              <p>
+                O usuário será criado com a senha padrão: <code className="font-mono">Aupus123!</code>
+              </p>
+              <p>
+                No primeiro acesso, o usuário será obrigatoriamente solicitado a alterar sua senha.
+              </p>
             </div>
           </div>
         </div>

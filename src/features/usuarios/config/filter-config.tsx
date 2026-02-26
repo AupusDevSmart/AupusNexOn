@@ -7,7 +7,8 @@ export const usuariosFilterConfig: FilterConfig[] = [
     key: 'search',
     label: 'Buscar',
     type: 'text',
-    placeholder: 'Pesquisar por nome, email, telefone ou CPF/CNPJ...'
+    placeholder: 'Pesquisar por nome, email, telefone ou CPF/CNPJ...',
+    className: 'lg:col-span-2'
   },
   {
     key: 'status',
@@ -30,22 +31,5 @@ export const usuariosFilterConfig: FilterConfig[] = [
       { value: UsuarioRole.VENDEDOR, label: 'Vendedor' },
       { value: UsuarioRole.CONSULTOR, label: 'Consultor' }
     ]
-  },
-  {
-    key: 'cidade',
-    label: 'Cidade',
-    type: 'text',
-    placeholder: 'Filtrar por cidade'
-  },
-  {
-    key: 'estado',
-    label: 'Estado',
-    type: 'text',
-    placeholder: 'Filtrar por estado'
-  },
-  {
-    key: 'includeInactive',
-    label: 'Incluir Inativos',
-    type: 'checkbox'
   }
 ];

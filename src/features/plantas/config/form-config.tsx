@@ -9,6 +9,7 @@ import { useNavigate } from 'react-router-dom';
 import { ProprietarioSelector } from '../components/ProprietarioSelector';
 import { useEstadosIBGE, useCidadesIBGE, formatarCEP, validarCEP } from '@/hooks/useEstadosIBGE';
 import { useViaCEP } from '@/hooks/useViaCEP';
+import { cn } from '@/lib/utils';
 
 // ✅ COMPONENTE: CNPJ com máscara personalizada
 const CNPJFieldComponent = ({ value, onChange, disabled, hasError }: FormFieldProps) => {
@@ -150,27 +151,25 @@ const EnderecoCompleto = ({ onChange, disabled, entity, value }: FormFieldProps 
   }, [cep, lastCEP, initialized, isLoadingInitialData]);
 
   return (
-    <div className="space-y-4">
-      {/* Campo CEP com busca automática */}
-      <div className="space-y-2">
+    <div className="flex flex-wrap gap-x-2 gap-y-4">
+      {/* Campo CEP com busca automática - FULL WIDTH */}
+      <div className="w-full space-y-2">
         <label className="text-sm font-medium">CEP</label>
         <div className="flex gap-2">
-          <Input
+          <input
             type="text"
             placeholder="00000-000"
             value={cep}
             onChange={(e) => handleCEPChange(e.target.value)}
             disabled={disabled}
             maxLength={9}
-            className={errorCEP ? 'border-red-500' : ''}
+            className={cn('input-minimal', errorCEP && 'border-red-500')}
           />
-          <Button
+          <button
             type="button"
-            variant="outline"
-            size="sm"
             onClick={handleBuscarCEP}
             disabled={disabled || !validarCEP(cep) || loadingCEP}
-            className="shrink-0"
+            className="btn-minimal-outline shrink-0"
           >
             {loadingCEP ? (
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current" />
@@ -178,9 +177,9 @@ const EnderecoCompleto = ({ onChange, disabled, entity, value }: FormFieldProps 
               <Settings className="h-4 w-4" />
             )}
             {loadingCEP ? 'Buscando...' : 'Buscar'}
-          </Button>
+          </button>
         </div>
-        
+
         {errorCEP && (
           <p className="text-xs text-red-600">
             ⚠️ {errorCEP}
@@ -188,79 +187,78 @@ const EnderecoCompleto = ({ onChange, disabled, entity, value }: FormFieldProps 
         )}
       </div>
 
-      {/* Grid com Logradouro e Bairro */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Logradouro <span className="text-red-500">*</span></label>
-          <Input
-            type="text"
-            placeholder="Ex: Av. Industrial, 1000"
-            value={logradouro}
-            onChange={(e) => setLogradouro(e.target.value)}
-            disabled={disabled}
-            required
-          />
-        </div>
-
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Bairro</label>
-          <Input
-            type="text"
-            placeholder="Ex: Distrito Industrial"
-            value={bairro}
-            onChange={(e) => setBairro(e.target.value)}
-            disabled={disabled}
-          />
-        </div>
+      {/* Logradouro - 50% */}
+      <div className="basis-full sm:basis-[calc(50%-4px)] flex-shrink-0 flex-grow-0 space-y-2">
+        <label className="text-sm font-medium">Logradouro <span className="text-red-500">*</span></label>
+        <input
+          type="text"
+          placeholder="Ex: Av. Industrial, 1000"
+          value={logradouro}
+          onChange={(e) => setLogradouro(e.target.value)}
+          disabled={disabled}
+          required
+          className="input-minimal"
+        />
       </div>
 
-      {/* Grid com UF e Cidade */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <label className="text-sm font-medium">UF <span className="text-red-500">*</span></label>
-          <select
-            value={selectedUF}
-            onChange={(e) => handleUFChange(e.target.value)}
-            disabled={disabled || loadingEstados}
-            className="w-full px-3 py-2 border border-input bg-background rounded-md"
-            required
-          >
-            <option value="">
-              {loadingEstados ? "Carregando estados..." : "Selecione um estado"}
-            </option>
-            {estados.map((estado) => (
-              <option key={estado.id} value={estado.sigla}>
-                {estado.sigla} - {estado.nome}
-              </option>
-            ))}
-          </select>
-          
-        </div>
+      {/* Bairro - 50% */}
+      <div className="basis-full sm:basis-[calc(50%-4px)] flex-shrink-0 flex-grow-0 space-y-2">
+        <label className="text-sm font-medium">Bairro</label>
+        <input
+          type="text"
+          placeholder="Ex: Distrito Industrial"
+          value={bairro}
+          onChange={(e) => setBairro(e.target.value)}
+          disabled={disabled}
+          className="input-minimal"
+        />
+      </div>
 
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Cidade <span className="text-red-500">*</span></label>
-          <select
-            value={selectedCidade}
-            onChange={(e) => setSelectedCidade(e.target.value)}
-            disabled={disabled || loadingCidades || !selectedUF}
-            className="w-full px-3 py-2 border border-input bg-background rounded-md"
-            required
-          >
-            <option value="">
-              {!selectedUF 
-                ? "Selecione um estado primeiro" 
-                : loadingCidades 
-                ? "Carregando cidades..." 
-                : "Selecione uma cidade"
-              }
+      {/* UF - 50% */}
+      <div className="basis-full sm:basis-[calc(50%-4px)] flex-shrink-0 flex-grow-0 space-y-2">
+        <label className="text-sm font-medium">UF <span className="text-red-500">*</span></label>
+        <select
+          value={selectedUF}
+          onChange={(e) => handleUFChange(e.target.value)}
+          disabled={disabled || loadingEstados}
+          className="select-minimal"
+          required
+        >
+          <option value="">
+            {loadingEstados ? "Carregando estados..." : "Selecione um estado"}
+          </option>
+          {estados.map((estado) => (
+            <option key={estado.id} value={estado.sigla}>
+              {estado.sigla} - {estado.nome}
             </option>
-            {cidades.map((cidade) => (
-              <option key={cidade.id} value={cidade.nome}>
-                {cidade.nome}
-              </option>
-            ))}
-          </select>
-        </div>
+          ))}
+        </select>
+      </div>
+
+      {/* Cidade - 50% */}
+      <div className="basis-full sm:basis-[calc(50%-4px)] flex-shrink-0 flex-grow-0 space-y-2">
+        <label className="text-sm font-medium">Cidade <span className="text-red-500">*</span></label>
+        <select
+          value={selectedCidade}
+          onChange={(e) => setSelectedCidade(e.target.value)}
+          disabled={disabled || loadingCidades || !selectedUF}
+          className="select-minimal"
+          required
+        >
+          <option value="">
+            {!selectedUF
+              ? "Selecione um estado primeiro"
+              : loadingCidades
+              ? "Carregando cidades..."
+              : "Selecione uma cidade"
+            }
+          </option>
+          {cidades.map((cidade) => (
+            <option key={cidade.id} value={cidade.nome}>
+              {cidade.nome}
+            </option>
+          ))}
+        </select>
       </div>
     </div>
   );
@@ -314,11 +312,9 @@ const GestaoEquipamentosButton = ({ entity, mode }: { entity?: any; mode?: 'crea
           )}
         </div>
         
-        <Button
+        <button
           type="button"
-          variant="outline"
-          size="sm"
-          className="border-green-300 text-green-700 hover:bg-green-100 dark:border-green-700 dark:text-green-300 dark:hover:bg-green-800 shrink-0 ml-4"
+          className="btn-minimal-outline border-green-300 text-green-700 hover:bg-green-100 dark:border-green-700 dark:text-green-300 dark:hover:bg-green-800 shrink-0 ml-4"
           onClick={handleOpenEquipamentos}
           disabled={mode === 'create' && !entity?.id}
         >
@@ -333,7 +329,7 @@ const GestaoEquipamentosButton = ({ entity, mode }: { entity?: any; mode?: 'crea
               Ir para Equipamentos
             </>
           )}
-        </Button>
+        </button>
       </div>
       
       {mode === 'create' && (
@@ -427,6 +423,7 @@ export const plantasFormFields: FormField[] = [
     label: 'Endereço Completo',
     type: 'custom',
     required: true,
+    colSpan: 2,
     render: EnderecoCompleto,
     validation: (value) => {
       if (!value || typeof value !== 'object') {
