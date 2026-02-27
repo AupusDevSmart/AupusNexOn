@@ -571,7 +571,7 @@ export function CadastroUnidadesPage() {
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-1">
                             <MapPin className="h-3 w-3" />
-                            {unidade.localizacao.cidade}, {unidade.localizacao.estado}
+                            {unidade.localizacao?.cidade || '-'}, {unidade.localizacao?.estado || '-'}
                           </div>
                         </td>
                         <td className="py-3 px-4">
