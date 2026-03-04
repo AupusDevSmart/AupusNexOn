@@ -46,6 +46,21 @@ function intervaloParaJanela(minutos: number): string {
 }
 
 export function InversorGraficoDia({ data, loading, height = 400, equipamentoId }: InversorGraficoDiaProps) {
+  // Detecta dark mode observando a classe no <html>
+  const [isDark, setIsDark] = useState(() => document.documentElement.classList.contains('dark'));
+  useEffect(() => {
+    const obs = new MutationObserver(() =>
+      setIsDark(document.documentElement.classList.contains('dark'))
+    );
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => obs.disconnect();
+  }, []);
+
+  // Cores fixas por tema — sem CSS variables (que não funcionam corretamente no SVG aqui)
+  const C = isDark
+    ? { main: '#e2e8f0', secondary: '#94a3b8', fill: '#e2e8f0', grid: '#334155', axis: '#94a3b8' }
+    : { main: '#1e293b', secondary: '#64748b', fill: '#1e293b', grid: '#e2e8f0', axis: '#64748b' };
+
   // Range do brush sobre o overview (índices no array overviewChartData)
   const [brushRange, setBrushRange] = useState<{ start: number; end: number }>({ start: 0, end: 0 });
   // Janela de zoom em timestamps ISO — null = mostrando overview completo
@@ -271,26 +286,26 @@ export function InversorGraficoDia({ data, loading, height = 400, equipamentoId 
         )}
         <ResponsiveContainer width="100%" height={focusHeight}>
           <ComposedChart data={focusChartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-            <XAxis dataKey="hora" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} />
-            <YAxis tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
-              label={{ value: 'kW', angle: -90, position: 'insideLeft', fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
+            <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
+            <XAxis dataKey="hora" tick={{ fill: C.axis, fontSize: 11 }} />
+            <YAxis tick={{ fill: C.axis, fontSize: 11 }}
+              label={{ value: 'kW', angle: -90, position: 'insideLeft', fill: C.axis, fontSize: 11 }}
               domain={[0, 'auto']} />
             <Tooltip
               contentStyle={tooltipStyle}
-              labelStyle={{ color: 'hsl(var(--foreground))', fontSize: '13px', fontWeight: '700', marginBottom: '6px' }}
+              labelStyle={{ color: C.main, fontSize: '13px', fontWeight: '700', marginBottom: '6px' }}
               formatter={tooltipContent}
             />
             <Legend wrapperStyle={{ fontSize: '12px' }} />
             {focusChartData.some(d => d.potencia_max !== undefined) && (
-              <Area type="monotone" dataKey="potencia_max" stroke="none" fill="hsl(var(--foreground))" fillOpacity={0.06} name="Faixa" legendType="none" />
+              <Area type="monotone" dataKey="potencia_max" stroke="none" fill={C.fill} fillOpacity={0.06} name="Faixa" legendType="none" />
             )}
-            <Line type="monotone" dataKey="potencia" stroke="hsl(var(--foreground))" strokeWidth={2} dot={false} name="Potência" isAnimationActive={false} connectNulls={false} />
+            <Line type="monotone" dataKey="potencia" stroke={C.main} strokeWidth={2} dot={false} name="Potência" isAnimationActive={false} connectNulls={false} />
             {focusChartData.some(d => d.potencia_max !== undefined) && (
-              <Line type="monotone" dataKey="potencia_max" stroke="hsl(var(--muted-foreground))" strokeWidth={1} strokeDasharray="4 4" dot={false} name="Máxima" isAnimationActive={false} />
+              <Line type="monotone" dataKey="potencia_max" stroke={C.secondary} strokeWidth={1} strokeDasharray="4 4" dot={false} name="Máxima" isAnimationActive={false} />
             )}
             {focusChartData.some(d => d.potencia_min !== undefined) && (
-              <Line type="monotone" dataKey="potencia_min" stroke="hsl(var(--muted-foreground))" strokeWidth={1} strokeDasharray="4 4" dot={false} name="Mínima" isAnimationActive={false} />
+              <Line type="monotone" dataKey="potencia_min" stroke={C.secondary} strokeWidth={1} strokeDasharray="4 4" dot={false} name="Mínima" isAnimationActive={false} />
             )}
           </ComposedChart>
         </ResponsiveContainer>
@@ -325,9 +340,9 @@ export function InversorGraficoDia({ data, loading, height = 400, equipamentoId 
               <Area
                 type="monotone"
                 dataKey="potencia"
-                stroke="hsl(var(--muted-foreground))"
+                stroke={C.secondary}
                 strokeWidth={1}
-                fill="hsl(var(--foreground))"
+                fill={C.fill}
                 fillOpacity={0.12}
                 dot={false}
                 isAnimationActive={false}
@@ -335,8 +350,8 @@ export function InversorGraficoDia({ data, loading, height = 400, equipamentoId 
               <Brush
                 dataKey="hora"
                 height={24}
-                stroke="hsl(var(--foreground))"
-                fill="hsl(var(--muted))"
+                stroke={C.secondary}
+                fill={isDark ? '#1e293b' : '#f1f5f9'}
                 travellerWidth={8}
                 startIndex={brushRange.start}
                 endIndex={brushRange.end}
