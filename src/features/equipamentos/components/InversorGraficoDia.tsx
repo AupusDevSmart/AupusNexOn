@@ -55,15 +55,33 @@ export function InversorGraficoDia({ data, loading, height = 400, equipamentoId 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Dados do overview: dia inteiro em 30min (recebidos via prop)
+  // Padeia com pontos nulos de 00:00 até o primeiro dado para forçar o eixo X a iniciar na meia-noite
   const overviewChartData = useMemo(() => {
-    if (!data?.dados) return [];
-    return data.dados.map((point) => ({
+    if (!data?.dados || data.dados.length === 0) return [];
+
+    const pontos = data.dados.map((point) => ({
       timestamp: new Date(point.timestamp).getTime(),
       hora: format(new Date(point.timestamp), 'HH:mm'),
       potencia: point.potencia_kw,
       potencia_min: point.potencia_min,
       potencia_max: point.potencia_max,
     }));
+
+    // Garante que o primeiro ponto seja 00:00 do dia
+    const primeiroTs = pontos[0].timestamp;
+    const meiaNoit = new Date(primeiroTs);
+    meiaNoit.setHours(0, 0, 0, 0);
+    if (primeiroTs > meiaNoit.getTime()) {
+      pontos.unshift({
+        timestamp: meiaNoit.getTime(),
+        hora: '00:00',
+        potencia: null as any,
+        potencia_min: undefined,
+        potencia_max: undefined,
+      });
+    }
+
+    return pontos;
   }, [data]);
 
   // Inicializa brush ao carregar overview
@@ -265,14 +283,14 @@ export function InversorGraficoDia({ data, loading, height = 400, equipamentoId 
             />
             <Legend wrapperStyle={{ fontSize: '12px' }} />
             {focusChartData.some(d => d.potencia_max !== undefined) && (
-              <Area type="monotone" dataKey="potencia_max" stroke="none" fill="hsl(var(--primary))" fillOpacity={0.08} name="Faixa" legendType="none" />
+              <Area type="monotone" dataKey="potencia_max" stroke="none" fill="#f97316" fillOpacity={0.12} name="Faixa" legendType="none" />
             )}
-            <Line type="monotone" dataKey="potencia" stroke="hsl(var(--primary))" strokeWidth={2.5} dot={false} name="Potência" isAnimationActive={false} connectNulls />
+            <Line type="monotone" dataKey="potencia" stroke="#f97316" strokeWidth={2.5} dot={false} name="Potência" isAnimationActive={false} connectNulls={false} />
             {focusChartData.some(d => d.potencia_max !== undefined) && (
-              <Line type="monotone" dataKey="potencia_max" stroke="hsl(var(--primary))" strokeWidth={1} strokeDasharray="4 4" strokeOpacity={0.5} dot={false} name="Máxima" isAnimationActive={false} />
+              <Line type="monotone" dataKey="potencia_max" stroke="#f97316" strokeWidth={1} strokeDasharray="4 4" strokeOpacity={0.6} dot={false} name="Máxima" isAnimationActive={false} />
             )}
             {focusChartData.some(d => d.potencia_min !== undefined) && (
-              <Line type="monotone" dataKey="potencia_min" stroke="hsl(var(--primary))" strokeWidth={1} strokeDasharray="4 4" strokeOpacity={0.5} dot={false} name="Mínima" isAnimationActive={false} />
+              <Line type="monotone" dataKey="potencia_min" stroke="#f97316" strokeWidth={1} strokeDasharray="4 4" strokeOpacity={0.6} dot={false} name="Mínima" isAnimationActive={false} />
             )}
           </ComposedChart>
         </ResponsiveContainer>
@@ -286,13 +304,14 @@ export function InversorGraficoDia({ data, loading, height = 400, equipamentoId 
               <path d="M21 3H3v7h18V3z"/><path d="M21 14H3v7h18v-7z"/><path d="M12 10v4"/><path d="M8 10v4"/><path d="M16 10v4"/>
             </svg>
             {isZoomed
-              ? <><span className="text-primary font-medium">Zoom {intervaloExibido}min/ponto</span> · Scroll ou arraste para ajustar</>
+              ? <><span style={{ color: '#f97316' }} className="font-medium">Zoom {intervaloExibido}min/ponto</span> · Scroll ou arraste para ajustar</>
               : <>Visão geral · {intervaloExibido}min/ponto · <span className="font-medium">Arraste ou scroll para zoom</span></>}
           </div>
           {isZoomed && (
             <button
               onClick={handleResetZoom}
-              className="text-xs text-primary hover:text-primary/80 font-medium flex items-center gap-1 transition-colors"
+              className="text-xs font-medium flex items-center gap-1 transition-colors hover:opacity-70"
+              style={{ color: '#f97316' }}
             >
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>
@@ -307,17 +326,17 @@ export function InversorGraficoDia({ data, loading, height = 400, equipamentoId 
               <Area
                 type="monotone"
                 dataKey="potencia"
-                stroke="hsl(var(--primary))"
+                stroke="#f97316"
                 strokeWidth={1.5}
-                fill="hsl(var(--primary))"
-                fillOpacity={0.2}
+                fill="#f97316"
+                fillOpacity={0.25}
                 dot={false}
                 isAnimationActive={false}
               />
               <Brush
                 dataKey="hora"
                 height={24}
-                stroke="hsl(var(--primary))"
+                stroke="#f97316"
                 fill="hsl(var(--muted))"
                 travellerWidth={8}
                 startIndex={brushRange.start}
