@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { api } from '@/config/api'; // Using authenticated API instance
+import { api } from '@/config/api';
 
 interface GraficoDiaData {
   data: string;
   total_pontos: number;
+  intervalo_minutos?: number;
   dados: Array<{
     timestamp: string;
     hora: string;
@@ -42,16 +43,13 @@ interface GraficoAnoData {
   }>;
 }
 
-export function useGraficoDia(equipamentoId: string | null, data?: string) {
+export function useGraficoDia(equipamentoId: string | null, data?: string, intervalo?: string) {
   const [graficoDia, setGraficoDia] = useState<GraficoDiaData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    console.log('📊 [useGraficoDia] Hook called with:', { equipamentoId, data });
-
     if (!equipamentoId) {
-      console.log('📊 [useGraficoDia] No equipamentoId provided, skipping fetch');
       setGraficoDia(null);
       return;
     }
@@ -60,44 +58,24 @@ export function useGraficoDia(equipamentoId: string | null, data?: string) {
       setLoading(true);
       setError(null);
       try {
-        const params = data ? { data } : {};
-        const url = `/equipamentos-dados/${equipamentoId}/grafico-dia`;
-        console.log('📊 [GRAFICO DIA] Buscando dados de:', url);
-        console.log('📊 [GRAFICO DIA] Params:', params);
+        const params: Record<string, string> = {};
+        if (data) params.data = data;
+        if (intervalo) params.intervalo = intervalo;
 
-        const response = await api.get(url, {
-          params
-        });
+        const response = await api.get(`/equipamentos-dados/${equipamentoId}/grafico-dia`, { params });
 
-        console.log('📊 [GRAFICO DIA] Response status:', response.status);
-        console.log('📊 [GRAFICO DIA] Response headers:', response.headers);
-        console.log('📊 [GRAFICO DIA] Response data type:', typeof response.data);
-        console.log('📊 [GRAFICO DIA] Response completa:', response.data);
-
-        // Verificar se recebemos dados válidos
         if (!response.data) {
-          console.error('❌ [GRAFICO DIA] Resposta vazia do servidor');
           setError('Resposta vazia do servidor');
           setGraficoDia(null);
           return;
         }
 
-        // API pode retornar dados em diferentes formatos
-        let graficoDados = response.data;
-
-        // Se a resposta tem a estrutura { success, data, meta }
-        if (response.data.hasOwnProperty('data')) {
-          graficoDados = response.data.data;
-        }
-
-        console.log('📊 [GRAFICO DIA] Dados extraídos:', graficoDados);
-        console.log('📊 [GRAFICO DIA] Tipo dos dados:', typeof graficoDados);
-        console.log('📊 [GRAFICO DIA] Tem dados.dados?', graficoDados?.dados);
+        const graficoDados = response.data.hasOwnProperty('data') && response.data.hasOwnProperty('success')
+          ? response.data.data
+          : response.data;
 
         setGraficoDia(graficoDados);
       } catch (err: any) {
-        console.error('❌ [GRAFICO DIA] Erro ao buscar:', err);
-        console.error('❌ [GRAFICO DIA] Response:', err.response);
         setError(err.response?.data?.message || 'Erro ao carregar gráfico do dia');
         setGraficoDia(null);
       } finally {
@@ -106,7 +84,7 @@ export function useGraficoDia(equipamentoId: string | null, data?: string) {
     };
 
     fetchGraficoDia();
-  }, [equipamentoId, data]);
+  }, [equipamentoId, data, intervalo]);
 
   return { data: graficoDia, loading, error };
 }
@@ -127,22 +105,10 @@ export function useGraficoMes(equipamentoId: string | null, mes?: string) {
       setError(null);
       try {
         const params = mes ? { mes } : {};
-        const url = `/equipamentos-dados/${equipamentoId}/grafico-mes`;
-        console.log('📊 [GRAFICO MES] Buscando dados de:', url);
-        console.log('📊 [GRAFICO MES] Params:', params);
-
-        const response = await api.get(url, { params });
-
-        console.log('📊 [GRAFICO MES] Response status:', response.status);
-        console.log('📊 [GRAFICO MES] Response completa:', response.data);
-
-        // API retorna { success, data, meta } - extrair apenas data
+        const response = await api.get(`/equipamentos-dados/${equipamentoId}/grafico-mes`, { params });
         const graficoDados = response.data.data || response.data;
-        console.log('📊 [GRAFICO MES] Dados extraídos:', graficoDados);
         setGraficoMes(graficoDados);
       } catch (err: any) {
-        console.error('❌ [GRAFICO MES] Erro ao buscar:', err);
-        console.error('❌ [GRAFICO MES] Response:', err.response);
         setError(err.response?.data?.message || 'Erro ao carregar gráfico do mês');
         setGraficoMes(null);
       } finally {
@@ -172,22 +138,10 @@ export function useGraficoAno(equipamentoId: string | null, ano?: string) {
       setError(null);
       try {
         const params = ano ? { ano } : {};
-        const url = `/equipamentos-dados/${equipamentoId}/grafico-ano`;
-        console.log('📊 [GRAFICO ANO] Buscando dados de:', url);
-        console.log('📊 [GRAFICO ANO] Params:', params);
-
-        const response = await api.get(url, { params });
-
-        console.log('📊 [GRAFICO ANO] Response status:', response.status);
-        console.log('📊 [GRAFICO ANO] Response completa:', response.data);
-
-        // API retorna { success, data, meta } - extrair apenas data
+        const response = await api.get(`/equipamentos-dados/${equipamentoId}/grafico-ano`, { params });
         const graficoDados = response.data.data || response.data;
-        console.log('📊 [GRAFICO ANO] Dados extraídos:', graficoDados);
         setGraficoAno(graficoDados);
       } catch (err: any) {
-        console.error('❌ [GRAFICO ANO] Erro ao buscar:', err);
-        console.error('❌ [GRAFICO ANO] Response:', err.response);
         setError(err.response?.data?.message || 'Erro ao carregar gráfico do ano');
         setGraficoAno(null);
       } finally {

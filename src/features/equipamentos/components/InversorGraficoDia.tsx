@@ -1,6 +1,5 @@
-import { useMemo } from 'react';
+import { useMemo, useCallback, useRef } from 'react';
 import {
-  LineChart,
   Line,
   XAxis,
   YAxis,
@@ -10,13 +9,15 @@ import {
   ResponsiveContainer,
   Area,
   ComposedChart,
+  Brush,
 } from 'recharts';
 import { format } from 'date-fns';
-import { formatEnergy, formatPower, getEnergyValue, getPowerValue } from '@/utils/formatEnergy';
+import { formatEnergy, formatPower, getPowerValue } from '@/utils/formatEnergy';
 
 interface GraficoDiaData {
   data: string;
   total_pontos: number;
+  intervalo_minutos?: number;
   dados: Array<{
     timestamp: string;
     hora: string;
@@ -32,25 +33,24 @@ interface InversorGraficoDiaProps {
   data: GraficoDiaData | null;
   loading: boolean;
   height?: number;
+  onIntervaloChange?: (intervalo: string) => void;
 }
 
-export function InversorGraficoDia({ data, loading, height = 400 }: InversorGraficoDiaProps) {
-  console.log('🔵 [InversorGraficoDia] Renderizando com:', {
-    hasData: !!data,
-    loading,
-    dadosLength: data?.dados?.length,
-    data
-  });
+// Mapeia % do range visível para o intervalo ideal
+function calcularIntervaloIdeal(percentualVisivel: number): string {
+  if (percentualVisivel > 75) return '30';
+  if (percentualVisivel > 25) return '15';
+  if (percentualVisivel > 5) return '5';
+  return '1';
+}
+
+export function InversorGraficoDia({ data, loading, height = 400, onIntervaloChange }: InversorGraficoDiaProps) {
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ultimoIntervaloRef = useRef<string>('30');
 
   const chartData = useMemo(() => {
-    if (!data?.dados) {
-      console.log('⚠️ [InversorGraficoDia] Sem dados para processar');
-      return [];
-    }
+    if (!data?.dados) return [];
 
-    console.log('📊 [InversorGraficoDia] Processando dados:', data.dados.length, 'pontos');
-
-    // Filtrar apenas dados de hoje (00:00 até agora)
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
     const inicioDeHoje = hoje.getTime();
@@ -60,7 +60,7 @@ export function InversorGraficoDia({ data, loading, height = 400 }: InversorGraf
       return timestamp >= inicioDeHoje;
     });
 
-    const processed = dadosDeHoje.map((point) => ({
+    return dadosDeHoje.map((point) => ({
       timestamp: new Date(point.timestamp).getTime(),
       hora: format(new Date(point.timestamp), 'HH:mm'),
       potencia: point.potencia_kw,
@@ -68,8 +68,6 @@ export function InversorGraficoDia({ data, loading, height = 400 }: InversorGraf
       potencia_max: point.potencia_max,
       leituras: point.num_leituras,
     }));
-    console.log('✅ [InversorGraficoDia] Dados processados:', processed.length, 'pontos (apenas de hoje)');
-    return processed;
   }, [data]);
 
   const stats = useMemo(() => {
@@ -77,7 +75,6 @@ export function InversorGraficoDia({ data, loading, height = 400 }: InversorGraf
       return { max: 0, min: 0, avg: 0, energia: 0 };
     }
 
-    // Filtrar apenas valores não-null para estatísticas
     const potenciasValidas = chartData
       .map(d => d.potencia)
       .filter((p): p is number => p !== null && p !== undefined);
@@ -89,12 +86,33 @@ export function InversorGraficoDia({ data, loading, height = 400 }: InversorGraf
     const max = Math.max(...potenciasValidas);
     const min = Math.min(...potenciasValidas);
     const avg = potenciasValidas.reduce((acc, val) => acc + val, 0) / potenciasValidas.length;
-
-    // Energia total (soma da potência média de cada minuto * intervalo em horas)
-    const energia = potenciasValidas.reduce((acc, val) => acc + val, 0) / 60; // kWh
+    const intervaloHoras = (data?.intervalo_minutos || 30) / 60;
+    const energia = potenciasValidas.reduce((acc, val) => acc + val, 0) * intervaloHoras;
 
     return { max, min, avg, energia };
-  }, [chartData]);
+  }, [chartData, data?.intervalo_minutos]);
+
+  // Callback do Brush com debounce - calcula intervalo ideal baseado no zoom
+  const handleBrushChange = useCallback((brushRange: { startIndex?: number; endIndex?: number }) => {
+    if (!onIntervaloChange || !chartData.length) return;
+    if (brushRange.startIndex === undefined || brushRange.endIndex === undefined) return;
+
+    const totalPontos = chartData.length;
+    const pontosVisiveis = brushRange.endIndex - brushRange.startIndex + 1;
+    const percentualVisivel = (pontosVisiveis / totalPontos) * 100;
+
+    const novoIntervalo = calcularIntervaloIdeal(percentualVisivel);
+
+    // Só dispara se o intervalo mudou
+    if (novoIntervalo === ultimoIntervaloRef.current) return;
+
+    // Debounce de 500ms para evitar excesso de requests
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      ultimoIntervaloRef.current = novoIntervalo;
+      onIntervaloChange(novoIntervalo);
+    }, 500);
+  }, [onIntervaloChange, chartData.length]);
 
   if (loading) {
     return (
@@ -112,9 +130,11 @@ export function InversorGraficoDia({ data, loading, height = 400 }: InversorGraf
     );
   }
 
+  const intervaloAtual = data.intervalo_minutos || 30;
+
   return (
     <div className="space-y-4">
-      {/* Estatísticas - Design Minimalista */}
+      {/* Estatísticas */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="text-center p-3 border rounded-lg">
           <div className="text-xs text-muted-foreground mb-1">Energia Total</div>
@@ -134,7 +154,7 @@ export function InversorGraficoDia({ data, loading, height = 400 }: InversorGraf
         </div>
       </div>
 
-      {/* Gráfico de Linha */}
+      {/* Gráfico com Brush para zoom progressivo */}
       <ResponsiveContainer width="100%" height={height}>
         <ComposedChart
           data={chartData}
@@ -177,7 +197,7 @@ export function InversorGraficoDia({ data, loading, height = 400 }: InversorGraf
               fontWeight: '700',
               marginBottom: '12px'
             }}
-            formatter={(value: number, name: string, props: any) => {
+            formatter={(value: number, name: string) => {
               const powerData = getPowerValue(value);
 
               if (name === 'potencia' || name === 'Potência Média') {
@@ -245,7 +265,6 @@ export function InversorGraficoDia({ data, loading, height = 400 }: InversorGraf
             connectNulls={true}
           />
 
-          {/* Linhas de min/max se disponíveis */}
           {chartData.some(d => d.potencia_max !== undefined) && (
             <Line
               type="monotone"
@@ -270,11 +289,20 @@ export function InversorGraficoDia({ data, loading, height = 400 }: InversorGraf
               isAnimationActive={false}
             />
           )}
+
+          {/* Brush para zoom progressivo - arraste para selecionar range */}
+          <Brush
+            dataKey="hora"
+            height={30}
+            stroke="hsl(var(--primary))"
+            fill="hsl(var(--muted))"
+            onChange={handleBrushChange}
+          />
         </ComposedChart>
       </ResponsiveContainer>
 
       <div className="text-center text-xs text-muted-foreground">
-        Data: {data.data} | Agregação: 1 minuto
+        Data: {data.data} | Resolução: {intervaloAtual} min | Arraste a barra inferior para zoom (busca mais detalhes automaticamente)
       </div>
     </div>
   );

@@ -8,6 +8,7 @@ import { useGraficoDia, useGraficoMes, useGraficoAno } from '@/hooks/useInversor
 import { InversorGraficoDia } from './InversorGraficoDia';
 import { InversorGraficoMes } from './InversorGraficoMes';
 import { InversorGraficoAno } from './InversorGraficoAno';
+import { useState } from 'react';
 import { Loader2, Zap, Thermometer, Activity, Shield, Clock, AlertTriangle, BarChart3, Calendar, RefreshCw, TrendingUp } from 'lucide-react';
 import { formatEnergy, formatPowerGeneric, formatCurrent, formatVoltage, formatResistance, formatTime } from '@/utils/formatEnergy';
 
@@ -34,10 +35,16 @@ export function InversorMqttDataModal({ equipamentoId, open, onOpenChange }: Inv
 
   const { data, loading, error, lastUpdate, refetch } = useEquipamentoMqttData(cleanId);
 
-  // Hooks para os 3 gráficos
-  const graficoDia = useGraficoDia(cleanId);
-  const graficoMes = useGraficoMes(cleanId);
-  const graficoAno = useGraficoAno(cleanId);
+  // Tab ativa para lazy loading - só busca dados quando a tab é selecionada
+  const [activeTab, setActiveTab] = useState('dia');
+
+  // Estado do intervalo controlado pelo zoom do gráfico do dia
+  const [intervaloMin, setIntervaloMin] = useState('30');
+
+  // Lazy loading: só busca quando a tab está ativa
+  const graficoDia = useGraficoDia(activeTab === 'dia' ? cleanId : null, undefined, intervaloMin);
+  const graficoMes = useGraficoMes(activeTab === 'mes' ? cleanId : null);
+  const graficoAno = useGraficoAno(activeTab === 'ano' ? cleanId : null);
 
   if (loading && !data) {
     return (
@@ -113,7 +120,7 @@ export function InversorMqttDataModal({ equipamentoId, open, onOpenChange }: Inv
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <Tabs defaultValue="dia" className="w-full">
+                <Tabs defaultValue="dia" className="w-full" onValueChange={setActiveTab}>
                   <TabsList className="grid w-full grid-cols-3">
                     <TabsTrigger value="dia" className="flex items-center gap-2">
                       <Calendar className="h-4 w-4" />
@@ -134,6 +141,7 @@ export function InversorMqttDataModal({ equipamentoId, open, onOpenChange }: Inv
                       data={graficoDia.data}
                       loading={graficoDia.loading}
                       height={350}
+                      onIntervaloChange={setIntervaloMin}
                     />
                   </TabsContent>
 
@@ -286,7 +294,7 @@ export function InversorMqttDataModal({ equipamentoId, open, onOpenChange }: Inv
               <CardTitle className="text-base font-medium">Análise de Geração</CardTitle>
             </CardHeader>
             <CardContent>
-              <Tabs defaultValue="dia" className="w-full">
+              <Tabs defaultValue="dia" className="w-full" onValueChange={setActiveTab}>
                 <TabsList className="grid w-full grid-cols-3">
                   <TabsTrigger value="dia">Dia</TabsTrigger>
                   <TabsTrigger value="mes">Mês</TabsTrigger>
@@ -298,6 +306,7 @@ export function InversorMqttDataModal({ equipamentoId, open, onOpenChange }: Inv
                     data={graficoDia.data}
                     loading={graficoDia.loading}
                     height={350}
+                    onIntervaloChange={setIntervaloMin}
                   />
                 </TabsContent>
 
