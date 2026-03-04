@@ -285,12 +285,12 @@ export function InversorGraficoDia({ data, loading, height = 400, equipamentoId 
             {focusChartData.some(d => d.potencia_max !== undefined) && (
               <Area type="monotone" dataKey="potencia_max" stroke="none" fill="hsl(var(--foreground))" fillOpacity={0.06} name="Faixa" legendType="none" />
             )}
-            <Line type="monotone" dataKey="potencia" stroke="hsl(var(--foreground))" strokeOpacity={0.85} strokeWidth={2} dot={false} name="Potência" isAnimationActive={false} connectNulls={false} />
+            <Line type="monotone" dataKey="potencia" stroke="hsl(var(--foreground))" strokeWidth={2} dot={false} name="Potência" isAnimationActive={false} connectNulls={false} />
             {focusChartData.some(d => d.potencia_max !== undefined) && (
-              <Line type="monotone" dataKey="potencia_max" stroke="hsl(var(--foreground))" strokeWidth={1} strokeDasharray="4 4" strokeOpacity={0.35} dot={false} name="Máxima" isAnimationActive={false} />
+              <Line type="monotone" dataKey="potencia_max" stroke="hsl(var(--muted-foreground))" strokeWidth={1} strokeDasharray="4 4" dot={false} name="Máxima" isAnimationActive={false} />
             )}
             {focusChartData.some(d => d.potencia_min !== undefined) && (
-              <Line type="monotone" dataKey="potencia_min" stroke="hsl(var(--foreground))" strokeWidth={1} strokeDasharray="4 4" strokeOpacity={0.35} dot={false} name="Mínima" isAnimationActive={false} />
+              <Line type="monotone" dataKey="potencia_min" stroke="hsl(var(--muted-foreground))" strokeWidth={1} strokeDasharray="4 4" dot={false} name="Mínima" isAnimationActive={false} />
             )}
           </ComposedChart>
         </ResponsiveContainer>
@@ -325,8 +325,7 @@ export function InversorGraficoDia({ data, loading, height = 400, equipamentoId 
               <Area
                 type="monotone"
                 dataKey="potencia"
-                stroke="hsl(var(--foreground))"
-                strokeOpacity={0.6}
+                stroke="hsl(var(--muted-foreground))"
                 strokeWidth={1}
                 fill="hsl(var(--foreground))"
                 fillOpacity={0.12}
