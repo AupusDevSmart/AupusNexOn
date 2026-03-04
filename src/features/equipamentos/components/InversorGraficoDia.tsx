@@ -283,14 +283,14 @@ export function InversorGraficoDia({ data, loading, height = 400, equipamentoId 
             />
             <Legend wrapperStyle={{ fontSize: '12px' }} />
             {focusChartData.some(d => d.potencia_max !== undefined) && (
-              <Area type="monotone" dataKey="potencia_max" stroke="none" fill="#f97316" fillOpacity={0.12} name="Faixa" legendType="none" />
+              <Area type="monotone" dataKey="potencia_max" stroke="none" fill="hsl(var(--foreground))" fillOpacity={0.06} name="Faixa" legendType="none" />
             )}
-            <Line type="monotone" dataKey="potencia" stroke="#f97316" strokeWidth={2.5} dot={false} name="Potência" isAnimationActive={false} connectNulls={false} />
+            <Line type="monotone" dataKey="potencia" stroke="hsl(var(--foreground))" strokeOpacity={0.85} strokeWidth={2} dot={false} name="Potência" isAnimationActive={false} connectNulls={false} />
             {focusChartData.some(d => d.potencia_max !== undefined) && (
-              <Line type="monotone" dataKey="potencia_max" stroke="#f97316" strokeWidth={1} strokeDasharray="4 4" strokeOpacity={0.6} dot={false} name="Máxima" isAnimationActive={false} />
+              <Line type="monotone" dataKey="potencia_max" stroke="hsl(var(--foreground))" strokeWidth={1} strokeDasharray="4 4" strokeOpacity={0.35} dot={false} name="Máxima" isAnimationActive={false} />
             )}
             {focusChartData.some(d => d.potencia_min !== undefined) && (
-              <Line type="monotone" dataKey="potencia_min" stroke="#f97316" strokeWidth={1} strokeDasharray="4 4" strokeOpacity={0.6} dot={false} name="Mínima" isAnimationActive={false} />
+              <Line type="monotone" dataKey="potencia_min" stroke="hsl(var(--foreground))" strokeWidth={1} strokeDasharray="4 4" strokeOpacity={0.35} dot={false} name="Mínima" isAnimationActive={false} />
             )}
           </ComposedChart>
         </ResponsiveContainer>
@@ -304,14 +304,13 @@ export function InversorGraficoDia({ data, loading, height = 400, equipamentoId 
               <path d="M21 3H3v7h18V3z"/><path d="M21 14H3v7h18v-7z"/><path d="M12 10v4"/><path d="M8 10v4"/><path d="M16 10v4"/>
             </svg>
             {isZoomed
-              ? <><span style={{ color: '#f97316' }} className="font-medium">Zoom {intervaloExibido}min/ponto</span> · Scroll ou arraste para ajustar</>
+              ? <><span className="text-foreground font-medium">Zoom {intervaloExibido}min/ponto</span> · Scroll ou arraste para ajustar</>
               : <>Visão geral · {intervaloExibido}min/ponto · <span className="font-medium">Arraste ou scroll para zoom</span></>}
           </div>
           {isZoomed && (
             <button
               onClick={handleResetZoom}
-              className="text-xs font-medium flex items-center gap-1 transition-colors hover:opacity-70"
-              style={{ color: '#f97316' }}
+              className="text-xs font-medium flex items-center gap-1 text-foreground transition-colors hover:opacity-60"
             >
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>
@@ -326,17 +325,18 @@ export function InversorGraficoDia({ data, loading, height = 400, equipamentoId 
               <Area
                 type="monotone"
                 dataKey="potencia"
-                stroke="#f97316"
-                strokeWidth={1.5}
-                fill="#f97316"
-                fillOpacity={0.25}
+                stroke="hsl(var(--foreground))"
+                strokeOpacity={0.6}
+                strokeWidth={1}
+                fill="hsl(var(--foreground))"
+                fillOpacity={0.12}
                 dot={false}
                 isAnimationActive={false}
               />
               <Brush
                 dataKey="hora"
                 height={24}
-                stroke="#f97316"
+                stroke="hsl(var(--foreground))"
                 fill="hsl(var(--muted))"
                 travellerWidth={8}
                 startIndex={brushRange.start}

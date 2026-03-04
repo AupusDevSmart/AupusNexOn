@@ -43,7 +43,13 @@ interface GraficoAnoData {
   }>;
 }
 
-export function useGraficoDia(equipamentoId: string | null, data?: string, intervalo?: string) {
+export function useGraficoDia(
+  equipamentoId: string | null,
+  data?: string,
+  intervalo?: string,
+  inicio?: string, // ISO datetime - janela de zoom
+  fim?: string,    // ISO datetime - janela de zoom
+) {
   const [graficoDia, setGraficoDia] = useState<GraficoDiaData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -61,6 +67,8 @@ export function useGraficoDia(equipamentoId: string | null, data?: string, inter
         const params: Record<string, string> = {};
         if (data) params.data = data;
         if (intervalo) params.intervalo = intervalo;
+        if (inicio) params.inicio = inicio;
+        if (fim) params.fim = fim;
 
         const response = await api.get(`/equipamentos-dados/${equipamentoId}/grafico-dia`, { params });
 
@@ -84,7 +92,7 @@ export function useGraficoDia(equipamentoId: string | null, data?: string, inter
     };
 
     fetchGraficoDia();
-  }, [equipamentoId, data, intervalo]);
+  }, [equipamentoId, data, intervalo, inicio, fim]);
 
   return { data: graficoDia, loading, error };
 }
