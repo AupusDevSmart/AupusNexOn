@@ -1,4 +1,4 @@
-import { useMemo, useCallback, useRef } from 'react';
+import { useMemo, useCallback, useRef, useState, useEffect } from 'react';
 import {
   Line,
   XAxis,
@@ -13,6 +13,7 @@ import {
 } from 'recharts';
 import { format } from 'date-fns';
 import { formatEnergy, formatPower, getPowerValue } from '@/utils/formatEnergy';
+import { useGraficoDia } from '@/hooks/useInversorGraficos';
 
 interface GraficoDiaData {
   data: string;
@@ -30,114 +31,201 @@ interface GraficoDiaData {
 }
 
 interface InversorGraficoDiaProps {
-  data: GraficoDiaData | null;
+  data: GraficoDiaData | null;      // overview: 30min, dia inteiro
   loading: boolean;
   height?: number;
-  onIntervaloChange?: (intervalo: string) => void;
+  equipamentoId?: string | null;    // para buscar detail internamente
 }
 
-// Mapeia % do range visível para o intervalo ideal
-function calcularIntervaloIdeal(percentualVisivel: number): string {
-  if (percentualVisivel > 75) return '30';
-  if (percentualVisivel > 25) return '15';
-  if (percentualVisivel > 5) return '5';
-  return '1';
+// Determina intervalo ideal pelo tamanho da janela visível (em minutos)
+function intervaloParaJanela(minutos: number): string {
+  if (minutos <= 30) return '1';
+  if (minutos <= 120) return '5';
+  if (minutos <= 360) return '15';
+  return '30';
 }
 
-export function InversorGraficoDia({ data, loading, height = 400, onIntervaloChange }: InversorGraficoDiaProps) {
+export function InversorGraficoDia({ data, loading, height = 400, equipamentoId }: InversorGraficoDiaProps) {
+  // Range do brush sobre o overview (índices no array overviewChartData)
+  const [brushRange, setBrushRange] = useState<{ start: number; end: number }>({ start: 0, end: 0 });
+  // Janela de zoom em timestamps ISO — null = mostrando overview completo
+  const [zoomWindow, setZoomWindow] = useState<{ inicio: string; fim: string; intervalo: string } | null>(null);
+
+  const contextContainerRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const ultimoIntervaloRef = useRef<string>('30');
 
-  const chartData = useMemo(() => {
+  // Dados do overview: dia inteiro em 30min (recebidos via prop)
+  const overviewChartData = useMemo(() => {
     if (!data?.dados) return [];
-
-    const hoje = new Date();
-    hoje.setHours(0, 0, 0, 0);
-    const inicioDeHoje = hoje.getTime();
-
-    const dadosDeHoje = data.dados.filter(point => {
-      const timestamp = new Date(point.timestamp).getTime();
-      return timestamp >= inicioDeHoje;
-    });
-
-    return dadosDeHoje.map((point) => ({
+    return data.dados.map((point) => ({
       timestamp: new Date(point.timestamp).getTime(),
       hora: format(new Date(point.timestamp), 'HH:mm'),
       potencia: point.potencia_kw,
       potencia_min: point.potencia_min,
       potencia_max: point.potencia_max,
-      leituras: point.num_leituras,
     }));
   }, [data]);
 
+  // Inicializa brush ao carregar overview
+  useEffect(() => {
+    if (overviewChartData.length > 0) {
+      setBrushRange({ start: 0, end: overviewChartData.length - 1 });
+    }
+  }, [overviewChartData.length]);
+
+  // Busca interna de detalhe — só dispara quando zoomWindow está definido
+  const detail = useGraficoDia(
+    zoomWindow && equipamentoId ? equipamentoId : null,
+    undefined,
+    zoomWindow?.intervalo,
+    zoomWindow?.inicio,
+    zoomWindow?.fim,
+  );
+
+  // Dados do gráfico de foco: detalhe se disponível, senão slice do overview
+  const focusChartData = useMemo(() => {
+    if (detail.data?.dados && detail.data.dados.length > 0) {
+      return detail.data.dados.map((point) => ({
+        timestamp: new Date(point.timestamp).getTime(),
+        hora: format(new Date(point.timestamp), 'HH:mm'),
+        potencia: point.potencia_kw,
+        potencia_min: point.potencia_min,
+        potencia_max: point.potencia_max,
+      }));
+    }
+    // Enquanto detalhe carrega (ou se não há zoom), mostra slice do overview
+    if (overviewChartData.length === 0) return [];
+    return overviewChartData.slice(brushRange.start, brushRange.end + 1);
+  }, [detail.data, overviewChartData, brushRange]);
+
   const stats = useMemo(() => {
-    if (!chartData || chartData.length === 0) {
-      return { max: 0, min: 0, avg: 0, energia: 0 };
+    const pts = focusChartData.map(d => d.potencia).filter((p): p is number => p != null);
+    if (!pts.length) return { max: 0, avg: 0, energia: 0 };
+    const intervaloH = ((detail.data?.intervalo_minutos ?? data?.intervalo_minutos ?? 30)) / 60;
+    return {
+      max: Math.max(...pts),
+      avg: pts.reduce((a, b) => a + b, 0) / pts.length,
+      energia: pts.reduce((a, b) => a + b, 0) * intervaloH,
+    };
+  }, [focusChartData, detail.data?.intervalo_minutos, data?.intervalo_minutos]);
+
+  // Calcula zoom window a partir dos índices do brush no overview
+  const aplicarZoom = useCallback((startIdx: number, endIdx: number) => {
+    if (!overviewChartData.length) return;
+
+    const startTs = overviewChartData[startIdx]?.timestamp;
+    const endTs = overviewChartData[endIdx]?.timestamp;
+    if (!startTs || !endTs) return;
+
+    const totalPontos = overviewChartData.length;
+    const pontosVisiveis = endIdx - startIdx + 1;
+    const percentual = (pontosVisiveis / totalPontos) * 100;
+
+    if (percentual >= 90) {
+      // Volta ao overview
+      setZoomWindow(null);
+      return;
     }
 
-    const potenciasValidas = chartData
-      .map(d => d.potencia)
-      .filter((p): p is number => p !== null && p !== undefined);
+    const minutosVisiveis = (endTs - startTs) / 60000;
+    const intervalo = intervaloParaJanela(minutosVisiveis);
 
-    if (potenciasValidas.length === 0) {
-      return { max: 0, min: 0, avg: 0, energia: 0 };
-    }
+    setZoomWindow({
+      inicio: new Date(startTs).toISOString(),
+      fim: new Date(endTs).toISOString(),
+      intervalo,
+    });
+  }, [overviewChartData]);
 
-    const max = Math.max(...potenciasValidas);
-    const min = Math.min(...potenciasValidas);
-    const avg = potenciasValidas.reduce((acc, val) => acc + val, 0) / potenciasValidas.length;
-    const intervaloHoras = (data?.intervalo_minutos || 30) / 60;
-    const energia = potenciasValidas.reduce((acc, val) => acc + val, 0) * intervaloHoras;
+  // Callback do brush (drag manual)
+  const handleBrushChange = useCallback((range: { startIndex?: number; endIndex?: number }) => {
+    if (range.startIndex === undefined || range.endIndex === undefined) return;
+    setBrushRange({ start: range.startIndex, end: range.endIndex });
 
-    return { max, min, avg, energia };
-  }, [chartData, data?.intervalo_minutos]);
-
-  // Callback do Brush com debounce - calcula intervalo ideal baseado no zoom
-  const handleBrushChange = useCallback((brushRange: { startIndex?: number; endIndex?: number }) => {
-    if (!onIntervaloChange || !chartData.length) return;
-    if (brushRange.startIndex === undefined || brushRange.endIndex === undefined) return;
-
-    const totalPontos = chartData.length;
-    const pontosVisiveis = brushRange.endIndex - brushRange.startIndex + 1;
-    const percentualVisivel = (pontosVisiveis / totalPontos) * 100;
-
-    const novoIntervalo = calcularIntervaloIdeal(percentualVisivel);
-
-    // Só dispara se o intervalo mudou
-    if (novoIntervalo === ultimoIntervaloRef.current) return;
-
-    // Debounce de 500ms para evitar excesso de requests
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      ultimoIntervaloRef.current = novoIntervalo;
-      onIntervaloChange(novoIntervalo);
+      aplicarZoom(range.startIndex!, range.endIndex!);
     }, 500);
-  }, [onIntervaloChange, chartData.length]);
+  }, [aplicarZoom]);
+
+  // Scroll sobre o gráfico de contexto ajusta o brush (zoom)
+  const handleWheel = useCallback((e: WheelEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const total = overviewChartData.length;
+    if (total < 2) return;
+
+    const { start, end } = brushRange;
+    const visivel = end - start;
+    const fator = e.deltaY > 0 ? 1.25 : 0.8; // baixo = zoom out, cima = zoom in
+    const novoVisivel = Math.max(2, Math.min(total - 1, Math.round(visivel * fator)));
+
+    const centro = Math.round((start + end) / 2);
+    const novoStart = Math.max(0, centro - Math.floor(novoVisivel / 2));
+    const novoEnd = Math.min(total - 1, novoStart + novoVisivel - 1);
+
+    setBrushRange({ start: novoStart, end: novoEnd });
+
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      aplicarZoom(novoStart, novoEnd);
+    }, 500);
+  }, [brushRange, overviewChartData.length, aplicarZoom]);
+
+  useEffect(() => {
+    const el = contextContainerRef.current;
+    if (!el) return;
+    el.addEventListener('wheel', handleWheel, { passive: false });
+    return () => el.removeEventListener('wheel', handleWheel);
+  }, [handleWheel]);
+
+  const isZoomed = !!zoomWindow;
+  const intervaloExibido = isZoomed
+    ? (detail.data?.intervalo_minutos ?? zoomWindow?.intervalo ?? '?')
+    : (data?.intervalo_minutos ?? 30);
+
+  const handleResetZoom = () => {
+    setZoomWindow(null);
+    setBrushRange({ start: 0, end: overviewChartData.length - 1 });
+  };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full text-muted-foreground">
-        Carregando dados do dia...
-      </div>
-    );
+    return <div className="flex items-center justify-center h-full text-muted-foreground">Carregando dados do dia...</div>;
   }
 
-  if (!data || chartData.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-full text-muted-foreground">
-        Nenhum dado disponível para este dia
-      </div>
-    );
+  if (!data || overviewChartData.length === 0) {
+    return <div className="flex items-center justify-center h-full text-muted-foreground">Nenhum dado disponível para este dia</div>;
   }
 
-  const intervaloAtual = data.intervalo_minutos || 30;
+  const focusHeight = height - 110;
+
+  const tooltipContent = (value: number, name: string) => {
+    const powerData = getPowerValue(value);
+    if (name === 'potencia' || name === 'Potência') {
+      return [<div className="space-y-1"><div className="flex items-baseline gap-2"><span className="text-3xl font-black">{powerData.value}</span><span className="text-xl font-bold text-muted-foreground">{powerData.unit}</span></div><div className="text-sm text-muted-foreground">Potência</div></div>, ''];
+    }
+    if (name === 'potencia_max' || name === 'Máxima') return [<div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Máxima:</span><span className="font-bold">{formatPower(value)}</span></div>, ''];
+    if (name === 'potencia_min' || name === 'Mínima') return [<div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Mínima:</span><span className="font-bold">{formatPower(value)}</span></div>, ''];
+    return [formatPower(value), name];
+  };
+
+  const tooltipStyle = {
+    backgroundColor: 'hsl(var(--card))',
+    border: '2px solid hsl(var(--border))',
+    borderRadius: '12px',
+    boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+    padding: '12px',
+    minWidth: '200px',
+    opacity: 1,
+  };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* Estatísticas */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-3 gap-3">
         <div className="text-center p-3 border rounded-lg">
-          <div className="text-xs text-muted-foreground mb-1">Energia Total</div>
+          <div className="text-xs text-muted-foreground mb-1">Energia</div>
           <div className="text-lg font-semibold">{formatEnergy(stats.energia)}</div>
         </div>
         <div className="text-center p-3 border rounded-lg">
@@ -148,161 +236,97 @@ export function InversorGraficoDia({ data, loading, height = 400, onIntervaloCha
           <div className="text-xs text-muted-foreground mb-1">Pico</div>
           <div className="text-lg font-semibold">{formatPower(stats.max)}</div>
         </div>
-        <div className="text-center p-3 border rounded-lg">
-          <div className="text-xs text-muted-foreground mb-1">Pontos</div>
-          <div className="text-lg font-semibold">{data.total_pontos}</div>
-        </div>
       </div>
 
-      {/* Gráfico com Brush para zoom progressivo */}
-      <ResponsiveContainer width="100%" height={height}>
-        <ComposedChart
-          data={chartData}
-          margin={{
-            top: 5,
-            right: 30,
-            left: 20,
-            bottom: 5,
-          }}
-        >
-          <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-          <XAxis
-            dataKey="hora"
-            className="text-xs"
-            tick={{ fill: 'currentColor' }}
-            label={{ value: 'Hora do Dia', position: 'insideBottom', offset: -5 }}
-          />
-          <YAxis
-            className="text-xs"
-            tick={{ fill: 'currentColor' }}
-            label={{ value: 'Potência (kW)', angle: -90, position: 'insideLeft' }}
-            domain={[0, 'auto']}
-          />
-          <Tooltip
-            wrapperClassName="chart-tooltip-opaque"
-            contentStyle={{
-              backgroundColor: 'hsl(var(--card))',
-              backgroundImage: 'linear-gradient(to bottom, hsl(var(--card)), hsl(var(--card)))',
-              backdropFilter: 'none',
-              opacity: 1,
-              border: '3px solid hsl(var(--primary))',
-              borderRadius: '16px',
-              boxShadow: '0 15px 50px rgba(0, 0, 0, 0.4)',
-              padding: '16px',
-              minWidth: '280px'
-            }}
-            labelStyle={{
-              color: 'hsl(var(--foreground))',
-              fontSize: '16px',
-              fontWeight: '700',
-              marginBottom: '12px'
-            }}
-            formatter={(value: number, name: string) => {
-              const powerData = getPowerValue(value);
-
-              if (name === 'potencia' || name === 'Potência Média') {
-                return [
-                  <div className="space-y-1">
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-3xl font-black">
-                        {powerData.value}
-                      </span>
-                      <span className="text-xl font-bold text-muted-foreground">
-                        {powerData.unit}
-                      </span>
-                    </div>
-                    <div className="text-sm text-muted-foreground">Potência Média</div>
-                  </div>,
-                  ''
-                ];
-              }
-
-              if (name === 'potencia_max' || name === 'Máxima') {
-                return [
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Máxima:</span>
-                    <span className="font-bold">{formatPower(value)}</span>
-                  </div>,
-                  ''
-                ];
-              }
-
-              if (name === 'potencia_min' || name === 'Mínima') {
-                return [
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Mínima:</span>
-                    <span className="font-bold">{formatPower(value)}</span>
-                  </div>,
-                  ''
-                ];
-              }
-
-              return [formatPower(value), name];
-            }}
-          />
-          <Legend />
-
-          {/* Área entre min e max */}
-          {chartData.some(d => d.potencia_min !== undefined) && (
-            <Area
-              type="monotone"
-              dataKey="potencia_max"
-              stroke="none"
-              fill="hsl(var(--muted))"
-              fillOpacity={0.3}
-              name="Faixa de Variação"
+      {/* Gráfico de foco — exibe a janela selecionada */}
+      <div className="relative">
+        {detail.loading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-background/70 z-10 rounded-lg">
+            <div className="flex items-center gap-2 bg-card border rounded-lg px-3 py-2 text-xs font-medium shadow-md">
+              <svg className="animate-spin h-3 w-3 text-primary" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+              </svg>
+              Carregando resolução {intervaloExibido}min...
+            </div>
+          </div>
+        )}
+        <ResponsiveContainer width="100%" height={focusHeight}>
+          <ComposedChart data={focusChartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+            <XAxis dataKey="hora" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} />
+            <YAxis tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
+              label={{ value: 'kW', angle: -90, position: 'insideLeft', fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
+              domain={[0, 'auto']} />
+            <Tooltip
+              contentStyle={tooltipStyle}
+              labelStyle={{ color: 'hsl(var(--foreground))', fontSize: '13px', fontWeight: '700', marginBottom: '6px' }}
+              formatter={tooltipContent}
             />
+            <Legend wrapperStyle={{ fontSize: '12px' }} />
+            {focusChartData.some(d => d.potencia_max !== undefined) && (
+              <Area type="monotone" dataKey="potencia_max" stroke="none" fill="hsl(var(--primary))" fillOpacity={0.08} name="Faixa" legendType="none" />
+            )}
+            <Line type="monotone" dataKey="potencia" stroke="hsl(var(--primary))" strokeWidth={2.5} dot={false} name="Potência" isAnimationActive={false} connectNulls />
+            {focusChartData.some(d => d.potencia_max !== undefined) && (
+              <Line type="monotone" dataKey="potencia_max" stroke="hsl(var(--primary))" strokeWidth={1} strokeDasharray="4 4" strokeOpacity={0.5} dot={false} name="Máxima" isAnimationActive={false} />
+            )}
+            {focusChartData.some(d => d.potencia_min !== undefined) && (
+              <Line type="monotone" dataKey="potencia_min" stroke="hsl(var(--primary))" strokeWidth={1} strokeDasharray="4 4" strokeOpacity={0.5} dot={false} name="Mínima" isAnimationActive={false} />
+            )}
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Gráfico de contexto — miniatura do dia com brush */}
+      <div className="border rounded-lg p-2 bg-muted/20">
+        <div className="flex items-center justify-between mb-1 px-1">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 3H3v7h18V3z"/><path d="M21 14H3v7h18v-7z"/><path d="M12 10v4"/><path d="M8 10v4"/><path d="M16 10v4"/>
+            </svg>
+            {isZoomed
+              ? <><span className="text-primary font-medium">Zoom {intervaloExibido}min/ponto</span> · Scroll ou arraste para ajustar</>
+              : <>Visão geral · {intervaloExibido}min/ponto · <span className="font-medium">Arraste ou scroll para zoom</span></>}
+          </div>
+          {isZoomed && (
+            <button
+              onClick={handleResetZoom}
+              className="text-xs text-primary hover:text-primary/80 font-medium flex items-center gap-1 transition-colors"
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>
+              </svg>
+              Restaurar
+            </button>
           )}
-
-          <Line
-            type="monotone"
-            dataKey="potencia"
-            stroke="#6b7280"
-            strokeWidth={2}
-            dot={false}
-            name="Potência Média"
-            isAnimationActive={false}
-            connectNulls={true}
-          />
-
-          {chartData.some(d => d.potencia_max !== undefined) && (
-            <Line
-              type="monotone"
-              dataKey="potencia_max"
-              stroke="#9ca3af"
-              strokeWidth={1}
-              strokeDasharray="3 3"
-              dot={false}
-              name="Máxima"
-              isAnimationActive={false}
-            />
-          )}
-          {chartData.some(d => d.potencia_min !== undefined) && (
-            <Line
-              type="monotone"
-              dataKey="potencia_min"
-              stroke="#9ca3af"
-              strokeWidth={1}
-              strokeDasharray="3 3"
-              dot={false}
-              name="Mínima"
-              isAnimationActive={false}
-            />
-          )}
-
-          {/* Brush para zoom progressivo - arraste para selecionar range */}
-          <Brush
-            dataKey="hora"
-            height={30}
-            stroke="hsl(var(--primary))"
-            fill="hsl(var(--muted))"
-            onChange={handleBrushChange}
-          />
-        </ComposedChart>
-      </ResponsiveContainer>
-
-      <div className="text-center text-xs text-muted-foreground">
-        Data: {data.data} | Resolução: {intervaloAtual} min | Arraste a barra inferior para zoom (busca mais detalhes automaticamente)
+        </div>
+        <div ref={contextContainerRef} style={{ touchAction: 'none', cursor: 'col-resize' }}>
+          <ResponsiveContainer width="100%" height={65}>
+            <ComposedChart data={overviewChartData} margin={{ top: 2, right: 30, left: 20, bottom: 0 }}>
+              <Area
+                type="monotone"
+                dataKey="potencia"
+                stroke="hsl(var(--primary))"
+                strokeWidth={1.5}
+                fill="hsl(var(--primary))"
+                fillOpacity={0.2}
+                dot={false}
+                isAnimationActive={false}
+              />
+              <Brush
+                dataKey="hora"
+                height={24}
+                stroke="hsl(var(--primary))"
+                fill="hsl(var(--muted))"
+                travellerWidth={8}
+                startIndex={brushRange.start}
+                endIndex={brushRange.end}
+                onChange={handleBrushChange}
+              />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
       </div>
     </div>
   );
