@@ -327,29 +327,16 @@ export const useDiagramStore = create<DiagramStore>()(
           const { equipamentosApi } = await import('@/services/equipamentos.services');
           const { DiagramasService } = await import('@/services/diagramas.services');
 
-          // Buscar diagrama com fallback
-          let diagramaRaw;
-          try {
-            // Tenta buscar diretamente por ID
-            diagramaRaw = await DiagramasService.getDiagrama(diagramaIdOrUnidadeId);
-          } catch (err: any) {
-            // Se der 404, tentar buscar diagrama ativo da unidade
-            if (err?.response?.status === 404) {
-              diagramaRaw = await DiagramasService.getActiveDiagrama(diagramaIdOrUnidadeId);
+          // Buscar diagrama ativo da unidade
+          const diagramaRaw = await DiagramasService.getActiveDiagrama(diagramaIdOrUnidadeId);
 
-              if (!diagramaRaw) {
-                // Não existe diagrama ativo - lançar erro NOT_FOUND
-                set({
-                  isLoading: false,
-                  error: 'Diagrama não encontrado',
-                  errorType: 'not_found',
-                });
-                return;
-              }
-            } else {
-              // Outro tipo de erro
-              throw err;
-            }
+          if (!diagramaRaw) {
+            set({
+              isLoading: false,
+              error: 'Diagrama não encontrado',
+              errorType: 'not_found',
+            });
+            return;
           }
 
           console.log('[loadDiagrama] 🔍 DEBUG - DiagramaRaw do backend:', {

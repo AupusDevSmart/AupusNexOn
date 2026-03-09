@@ -67,7 +67,7 @@ export function Combobox({
           aria-expanded={open}
           disabled={disabled}
           className={cn(
-            "w-full justify-between font-normal h-9",
+            "w-full justify-between font-normal h-9 !rounded-sm",
             !selectedOption && "text-muted-foreground",
             className
           )}
@@ -78,7 +78,7 @@ export function Combobox({
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+      <PopoverContent className="w-[--radix-popover-trigger-width] p-0 rounded-sm" align="start">
         <Command shouldFilter={false}>
           <CommandInput
             placeholder={searchPlaceholder}

@@ -161,47 +161,56 @@ export function BaseForm({
   };
 
   const visibleFields = fields.filter((field) => {
+    // ✅ CORREÇÃO: Acumular todas as condições em vez de retornar imediatamente
+    let shouldShow = true;
+
     // Check conditionalRender (new property for dynamic visibility)
     if ((field as any).conditionalRender) {
       try {
-        return (field as any).conditionalRender(data);
+        shouldShow = shouldShow && (field as any).conditionalRender(data);
       } catch (error) {
         console.warn('Erro ao avaliar conditionalRender:', field.key, error);
         return false;
       }
     }
 
+    // Check showOnlyOnMode
     if ((field as any).showOnlyOnMode && mode) {
       const showOnlyOnMode = Array.isArray((field as any).showOnlyOnMode)
         ? (field as any).showOnlyOnMode
         : [(field as any).showOnlyOnMode];
-      return showOnlyOnMode.includes(mode);
+      shouldShow = shouldShow && showOnlyOnMode.includes(mode);
     }
 
+    // Check hideOnMode
     if ((field as any).hideOnMode && mode) {
       const hideOnMode = Array.isArray((field as any).hideOnMode)
         ? (field as any).hideOnMode
         : [(field as any).hideOnMode];
-      return !hideOnMode.includes(mode);
+      shouldShow = shouldShow && !hideOnMode.includes(mode);
     }
 
+    // Check showOnlyWhen
     if ((field as any).showOnlyWhen) {
       const condition = (field as any).showOnlyWhen;
       const dependentFieldValue = data[condition.field];
-      return dependentFieldValue === condition.value;
+      const conditionMet = dependentFieldValue === condition.value;
+
+      shouldShow = shouldShow && conditionMet;
     }
 
+    // Check condition function
     if ((field as any).condition) {
       const conditionFn = (field as any).condition;
       try {
-        return conditionFn(entity, data);
+        shouldShow = shouldShow && conditionFn(entity, data);
       } catch (error) {
         // console.warn('Erro ao avaliar condição do campo:', field.key, error);
-        return true;
+        shouldShow = shouldShow && true;
       }
     }
 
-    return true;
+    return shouldShow;
   });
 
   const shouldShowGroup = (group: any): boolean => {
@@ -471,6 +480,11 @@ export function BaseForm({
         if (field.component) {
           const CustomComponent = field.component;
 
+          // ✅ CORREÇÃO: Processar componentProps se for uma função
+          const computedComponentProps = typeof (field as any).componentProps === 'function'
+            ? (field as any).componentProps(data)
+            : (field as any).componentProps || {};
+
           // ✅ Props especiais para OrigemOSSelector corrigidas
           let specialProps = {};
           if (field.key === 'origem') {
@@ -489,7 +503,7 @@ export function BaseForm({
                 handleFieldChange(field.key, newValue);
               }}
               disabled={fieldDisabled}
-              {...field.componentProps}
+              {...computedComponentProps}
               {...specialProps}
             />
           );
@@ -525,8 +539,8 @@ export function BaseForm({
         }
 
         const currentGroup = groups?.find(g => g.key === groupName);
-        // ✅ Grid é o padrão - só desativa se explicitamente definir layout: 'single'
-        const useGridLayout = (currentGroup as any)?.layout !== 'single';
+        // ✅ Grid é o padrão - só desativa se explicitamente definir layout: 'single' ou fullWidth: true
+        const useGridLayout = (currentGroup as any)?.layout !== 'single' && !(currentGroup as any)?.fullWidth;
 
         return (
           <div key={groupName}>

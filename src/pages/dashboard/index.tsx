@@ -35,30 +35,6 @@ import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useNavigate } from "react-router-dom";
 
-// Dados mockados para gráfico de performance por região
-const performancePorRegiao = [
-  { regiao: "Sudeste", geracao: 75.8, meta: 80, eficiencia: 94.2 },
-  { regiao: "Nordeste", geracao: 68.4, meta: 70, eficiencia: 92.1 },
-  { regiao: "Centro-Oeste", geracao: 18.1, meta: 20, eficiencia: 93.2 },
-  { regiao: "Sul", geracao: 12.3, meta: 15, eficiencia: 89.7 },
-  { regiao: "Norte", geracao: 8.9, meta: 10, eficiencia: 91.4 },
-];
-
-// Dados mockados para cargas monitoradas
-const cargasMonitoradas = [
-  { nome: "Fábrica ABC", tipo: "Industrial", consumo: "12.3 MW", status: "Normal" },
-  { nome: "Shopping XYZ", tipo: "Comercial", consumo: "8.7 MW", status: "Normal" },
-  { nome: "Hospital Central", tipo: "Hospitalar", consumo: "5.2 MW", status: "Alerta" },
-  { nome: "Data Center Alpha", tipo: "Tecnologia", consumo: "9.5 MW", status: "Normal" },
-];
-
-// Dados mockados para eventos recentes
-const eventosRecentes = [
-  { mensagem: "UFV Bahia - Sistema em TRIP - Técnico despachado", hora: "11:15", tipo: "critico" },
-  { mensagem: "UFV São Paulo - Manutenção preventiva iniciada", hora: "10:30", tipo: "info" },
-  { mensagem: "UFV Ceará - Performance acima da meta por 48h consecutivas", hora: "09:45", tipo: "sucesso" },
-  { mensagem: "Subestação RJ Norte - Temperatura elevada detectada", hora: "08:22", tipo: "alerta" },
-];
 
 /**
  * Página COA (Centro de Operações Avançadas) com Dados Reais

@@ -41,8 +41,8 @@ export const transformApiToFrontend = (apiEquipamento: EquipamentoApiResponse): 
     // Dados básicos
     nome: apiEquipamento.nome || '',
     classificacao: apiEquipamento.classificacao || 'UC',
-    // TODO: Atualizar para unidade_id quando backend for migrado para nova estrutura
-    unidadeId: apiEquipamento.planta_id, // Temporariamente usando planta_id até backend suportar unidades
+    unidadeId: apiEquipamento.unidade_id, // Agora usando unidade_id corretamente
+    plantaId: apiEquipamento.planta_id,
     proprietarioId: apiEquipamento.proprietario_id,
     equipamentoPaiId: apiEquipamento.equipamento_pai_id,
     

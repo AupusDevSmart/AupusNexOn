@@ -130,13 +130,13 @@ export function BaseModal<T extends BaseEntity>({
 
   // ✅ CORREÇÃO PRINCIPAL: useEffect simplificado que não reseta dados
   useEffect(() => {
-    console.log('🔄 BaseModal: useEffect triggered - isOpen:', isOpen, 'initialized:', isInitializedRef.current);
-    console.log('🔄 BaseModal: entity recebida:', entity);
-    console.log('🔄 BaseModal: mode:', mode);
+    // console.log('🔄 BaseModal: useEffect triggered - isOpen:', isOpen, 'initialized:', isInitializedRef.current);
+    // console.log('🔄 BaseModal: entity recebida:', entity);
+    // console.log('🔄 BaseModal: mode:', mode);
 
     if (!isOpen) {
       // Modal fechado - limpar estado completamente
-      console.log('🧹 BaseModal: Modal fechado, limpando estado');
+      // console.log('🧹 BaseModal: Modal fechado, limpando estado');
       setFormData({});
       initialDataRef.current = {};
       setErrors({});
@@ -151,38 +151,38 @@ export function BaseModal<T extends BaseEntity>({
     const shouldReinitialize = currentEntityId && initialDataRef.current.id !== currentEntityId;
 
     if (isInitializedRef.current && !shouldReinitialize) {
-      console.log('🔄 BaseModal: Já inicializado e entity não mudou, ignorando');
+      // console.log('🔄 BaseModal: Já inicializado e entity não mudou, ignorando');
       return;
     }
 
     if (shouldReinitialize) {
-      console.log('🔄 BaseModal: Entity mudou, reinicializando dados');
+      // console.log('🔄 BaseModal: Entity mudou, reinicializando dados');
     }
 
     // Modal aberto - processar dados APENAS uma vez
     let initialData: any = {};
 
     if (entity && (isViewMode || isEditMode)) {
-      console.log('📖 BaseModal: Modo view/edit, carregando entity:', entity);
-      console.log('🔑 BaseModal: entity.concessionariaId ANTES normalização:', (entity as any).concessionariaId);
+      // console.log('📖 BaseModal: Modo view/edit, carregando entity:', entity);
+      // console.log('🔑 BaseModal: entity.concessionariaId ANTES normalização:', (entity as any).concessionariaId);
       // ✅ CORREÇÃO: Normalizar entity para converter strings vazias em undefined
       initialData = normalizeEntityData(entity);
-      console.log('✨ BaseModal: Entity normalizada:', initialData);
-      console.log('🔑 BaseModal: initialData.concessionariaId APÓS normalização:', initialData.concessionariaId);
+      // console.log('✨ BaseModal: Entity normalizada:', initialData);
+      // console.log('🔑 BaseModal: initialData.concessionariaId APÓS normalização:', initialData.concessionariaId);
     } else if (entity && isCreateMode) {
-      console.log('🆕 BaseModal: Modo create com entity inicial:', entity);
+      // console.log('🆕 BaseModal: Modo create com entity inicial:', entity);
       const baseData = createInitialData();
       // ✅ CORREÇÃO: Normalizar entity antes de mesclar
       const normalizedEntity = normalizeEntityData(entity);
       initialData = { ...baseData, ...normalizedEntity };
-      console.log('✨ BaseModal: Entity normalizada (create):', initialData);
+      // console.log('✨ BaseModal: Entity normalizada (create):', initialData);
     } else if (isCreateMode) {
-      console.log('🆕 BaseModal: Modo create vazio');
+      // console.log('🆕 BaseModal: Modo create vazio');
       initialData = createInitialData();
     }
 
-    console.log('📝 BaseModal: Definindo formData inicial para:', initialData);
-    console.log('🔑 BaseModal: formData.concessionariaId que será setado:', initialData.concessionariaId);
+    // console.log('📝 BaseModal: Definindo formData inicial para:', initialData);
+    // console.log('🔑 BaseModal: formData.concessionariaId que será setado:', initialData.concessionariaId);
     setFormData(initialData);
     initialDataRef.current = initialData;
     setErrors({});
@@ -341,9 +341,9 @@ export function BaseModal<T extends BaseEntity>({
   const handleFormDataChange = useCallback((newData: any) => {
     // console.log('📝 BaseModal: FormData alterado:', newData);
     // console.log('🔍 BaseModal: Origem atual:', newData.origem);
-    console.log('🔄 BaseModal: handleFormDataChange chamado');
-    console.log('🔑 BaseModal: concessionariaId no newData:', newData.concessionariaId);
-    console.log('🔍 BaseModal: Tipo:', typeof newData.concessionariaId);
+    // console.log('🔄 BaseModal: handleFormDataChange chamado');
+    // console.log('🔑 BaseModal: concessionariaId no newData:', newData.concessionariaId);
+    // console.log('🔍 BaseModal: Tipo:', typeof newData.concessionariaId);
 
     setFormData(newData);
 

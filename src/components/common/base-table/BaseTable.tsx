@@ -119,7 +119,16 @@ export function BaseTable<T extends BaseEntity>({
   }
 
   return (
-    <div className="border rounded-md bg-card flex flex-col h-full">
+    <div className="border rounded-md bg-card flex flex-col h-full relative">
+      {/* Loading overlay discreto - aparece sobre a tabela */}
+      {loading && (
+        <div className="absolute inset-0 bg-background/50 backdrop-blur-[2px] z-10 flex items-center justify-center rounded-md">
+          <div className="flex items-center gap-3 bg-card border rounded-lg px-4 py-3 shadow-lg">
+            <div className="animate-spin h-5 w-5 border-2 border-primary border-t-transparent rounded-full"></div>
+            <span className="text-sm text-muted-foreground">Atualizando...</span>
+          </div>
+        </div>
+      )}
       <div className="overflow-auto flex-1">
         <Table className="table-minimal">
           <TableHeader>
@@ -196,52 +205,19 @@ export function BaseTable<T extends BaseEntity>({
                         {/* NOVA: Ações customizadas */}
                         {visibleCustomActions.length > 0 && (
                           <>
-                            {/* Mostrar primeiras 2 ações como botões diretos */}
-                            {visibleCustomActions.slice(0, 2).map((action) => (
+                            {/* Mostrar todas as ações como botões diretos sem fundo */}
+                            {visibleCustomActions.map((action) => (
                               <Button
                                 key={action.key}
-                                variant={action.variant || "ghost"}
+                                variant="ghost"
                                 size="icon"
-                                className="h-8 w-8"
+                                className="h-8 w-8 hover:bg-transparent hover:text-primary"
                                 onClick={() => action.handler(entity)}
                                 title={action.label}
                               >
                                 {action.icon}
                               </Button>
                             ))}
-                            
-                            {/* Se tiver mais de 2 ações, mostrar dropdown */}
-                            {visibleCustomActions.length > 2 && (
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8"
-                                  >
-                                    <MoreHorizontal className="h-4 w-4" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  {visibleCustomActions.slice(2).map((action) => (
-                                    <DropdownMenuItem
-                                      key={action.key}
-                                      onClick={() => action.handler(entity)}
-                                      className={
-                                        action.variant === 'destructive' 
-                                          ? 'text-red-600 focus:text-red-600' 
-                                          : ''
-                                      }
-                                    >
-                                      {action.icon && (
-                                        <span className="mr-2">{action.icon}</span>
-                                      )}
-                                      {action.label}
-                                    </DropdownMenuItem>
-                                  ))}
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            )}
                           </>
                         )}
                       </div>

@@ -1,13 +1,14 @@
 // src/components/common/base-filters/BaseFilters.tsx - ATUALIZADO
 import React from 'react';
 import { Input } from '@/components/ui/input';
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
 } from '@/components/ui/select';
+import { Combobox } from '@/components/ui/combobox';
 import { Search } from 'lucide-react';
 import { FilterConfig, type BaseFilters as BaseFiltersType } from '@/types/base';
 
@@ -27,7 +28,7 @@ export function BaseFilters<T extends BaseFiltersType>({
   };
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 w-full">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 w-full">
       {/* Todos os filtros na mesma linha responsiva */}
       {config.map((filterConfig) => {
         const IconComponent = (filterConfig as any).icon;
@@ -75,6 +76,23 @@ export function BaseFilters<T extends BaseFiltersType>({
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+          );
+        }
+
+        // Renderizar filtro combobox (select com busca)
+        if (filterConfig.type === 'combobox') {
+          return (
+            <div key={filterConfig.key} className={`w-full ${filterConfig.className || ''}`}>
+              <Combobox
+                options={filterConfig.options || []}
+                value={String(filters[filterConfig.key as keyof T] || 'all')}
+                onValueChange={(value) => handleFilterChange(filterConfig.key, value || 'all')}
+                placeholder={filterConfig.placeholder || filterConfig.label}
+                searchPlaceholder={`Buscar ${filterConfig.label?.toLowerCase()}...`}
+                emptyText="Nenhum resultado encontrado"
+                disabled={filterConfig.disabled}
+              />
             </div>
           );
         }
