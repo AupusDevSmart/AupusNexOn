@@ -46,6 +46,21 @@ function intervaloParaJanela(minutos: number): string {
 }
 
 export function InversorGraficoDia({ data, loading, height = 400, equipamentoId }: InversorGraficoDiaProps) {
+  // Detecta dark mode observando a classe no <html>
+  const [isDark, setIsDark] = useState(() => document.documentElement.classList.contains('dark'));
+  useEffect(() => {
+    const obs = new MutationObserver(() =>
+      setIsDark(document.documentElement.classList.contains('dark'))
+    );
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => obs.disconnect();
+  }, []);
+
+  // Cores fixas por tema — sem CSS variables (que não funcionam corretamente no SVG aqui)
+  const C = isDark
+    ? { main: '#e2e8f0', secondary: '#94a3b8', fill: '#e2e8f0', grid: '#334155', axis: '#94a3b8' }
+    : { main: '#1e293b', secondary: '#64748b', fill: '#1e293b', grid: '#e2e8f0', axis: '#64748b' };
+
   // Range do brush sobre o overview (índices no array overviewChartData)
   const [brushRange, setBrushRange] = useState<{ start: number; end: number }>({ start: 0, end: 0 });
   // Janela de zoom em timestamps ISO — null = mostrando overview completo
@@ -55,15 +70,33 @@ export function InversorGraficoDia({ data, loading, height = 400, equipamentoId 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Dados do overview: dia inteiro em 30min (recebidos via prop)
+  // Padeia com pontos nulos de 00:00 até o primeiro dado para forçar o eixo X a iniciar na meia-noite
   const overviewChartData = useMemo(() => {
-    if (!data?.dados) return [];
-    return data.dados.map((point) => ({
+    if (!data?.dados || data.dados.length === 0) return [];
+
+    const pontos = data.dados.map((point) => ({
       timestamp: new Date(point.timestamp).getTime(),
       hora: format(new Date(point.timestamp), 'HH:mm'),
       potencia: point.potencia_kw,
       potencia_min: point.potencia_min,
       potencia_max: point.potencia_max,
     }));
+
+    // Garante que o primeiro ponto seja 00:00 do dia
+    const primeiroTs = pontos[0].timestamp;
+    const meiaNoit = new Date(primeiroTs);
+    meiaNoit.setHours(0, 0, 0, 0);
+    if (primeiroTs > meiaNoit.getTime()) {
+      pontos.unshift({
+        timestamp: meiaNoit.getTime(),
+        hora: '00:00',
+        potencia: null as any,
+        potencia_min: undefined,
+        potencia_max: undefined,
+      });
+    }
+
+    return pontos;
   }, [data]);
 
   // Inicializa brush ao carregar overview
@@ -253,26 +286,26 @@ export function InversorGraficoDia({ data, loading, height = 400, equipamentoId 
         )}
         <ResponsiveContainer width="100%" height={focusHeight}>
           <ComposedChart data={focusChartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-            <XAxis dataKey="hora" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} />
-            <YAxis tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
-              label={{ value: 'kW', angle: -90, position: 'insideLeft', fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
+            <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
+            <XAxis dataKey="hora" tick={{ fill: C.axis, fontSize: 11 }} />
+            <YAxis tick={{ fill: C.axis, fontSize: 11 }}
+              label={{ value: 'kW', angle: -90, position: 'insideLeft', fill: C.axis, fontSize: 11 }}
               domain={[0, 'auto']} />
             <Tooltip
               contentStyle={tooltipStyle}
-              labelStyle={{ color: 'hsl(var(--foreground))', fontSize: '13px', fontWeight: '700', marginBottom: '6px' }}
+              labelStyle={{ color: C.main, fontSize: '13px', fontWeight: '700', marginBottom: '6px' }}
               formatter={tooltipContent}
             />
             <Legend wrapperStyle={{ fontSize: '12px' }} />
             {focusChartData.some(d => d.potencia_max !== undefined) && (
-              <Area type="monotone" dataKey="potencia_max" stroke="none" fill="hsl(var(--primary))" fillOpacity={0.08} name="Faixa" legendType="none" />
+              <Area type="monotone" dataKey="potencia_max" stroke="none" fill={C.fill} fillOpacity={0.06} name="Faixa" legendType="none" />
             )}
-            <Line type="monotone" dataKey="potencia" stroke="hsl(var(--primary))" strokeWidth={2.5} dot={false} name="Potência" isAnimationActive={false} connectNulls />
+            <Line type="monotone" dataKey="potencia" stroke={C.main} strokeWidth={2} dot={false} name="Potência" isAnimationActive={false} connectNulls={false} />
             {focusChartData.some(d => d.potencia_max !== undefined) && (
-              <Line type="monotone" dataKey="potencia_max" stroke="hsl(var(--primary))" strokeWidth={1} strokeDasharray="4 4" strokeOpacity={0.5} dot={false} name="Máxima" isAnimationActive={false} />
+              <Line type="monotone" dataKey="potencia_max" stroke={C.secondary} strokeWidth={1} strokeDasharray="4 4" dot={false} name="Máxima" isAnimationActive={false} />
             )}
             {focusChartData.some(d => d.potencia_min !== undefined) && (
-              <Line type="monotone" dataKey="potencia_min" stroke="hsl(var(--primary))" strokeWidth={1} strokeDasharray="4 4" strokeOpacity={0.5} dot={false} name="Mínima" isAnimationActive={false} />
+              <Line type="monotone" dataKey="potencia_min" stroke={C.secondary} strokeWidth={1} strokeDasharray="4 4" dot={false} name="Mínima" isAnimationActive={false} />
             )}
           </ComposedChart>
         </ResponsiveContainer>
@@ -286,13 +319,13 @@ export function InversorGraficoDia({ data, loading, height = 400, equipamentoId 
               <path d="M21 3H3v7h18V3z"/><path d="M21 14H3v7h18v-7z"/><path d="M12 10v4"/><path d="M8 10v4"/><path d="M16 10v4"/>
             </svg>
             {isZoomed
-              ? <><span className="text-primary font-medium">Zoom {intervaloExibido}min/ponto</span> · Scroll ou arraste para ajustar</>
+              ? <><span className="text-foreground font-medium">Zoom {intervaloExibido}min/ponto</span> · Scroll ou arraste para ajustar</>
               : <>Visão geral · {intervaloExibido}min/ponto · <span className="font-medium">Arraste ou scroll para zoom</span></>}
           </div>
           {isZoomed && (
             <button
               onClick={handleResetZoom}
-              className="text-xs text-primary hover:text-primary/80 font-medium flex items-center gap-1 transition-colors"
+              className="text-xs font-medium flex items-center gap-1 text-foreground transition-colors hover:opacity-60"
             >
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>
@@ -307,18 +340,18 @@ export function InversorGraficoDia({ data, loading, height = 400, equipamentoId 
               <Area
                 type="monotone"
                 dataKey="potencia"
-                stroke="hsl(var(--primary))"
-                strokeWidth={1.5}
-                fill="hsl(var(--primary))"
-                fillOpacity={0.2}
+                stroke={C.secondary}
+                strokeWidth={1}
+                fill={C.fill}
+                fillOpacity={0.12}
                 dot={false}
                 isAnimationActive={false}
               />
               <Brush
                 dataKey="hora"
                 height={24}
-                stroke="hsl(var(--primary))"
-                fill="hsl(var(--muted))"
+                stroke={C.secondary}
+                fill={isDark ? '#1e293b' : '#f1f5f9'}
                 travellerWidth={8}
                 startIndex={brushRange.start}
                 endIndex={brushRange.end}

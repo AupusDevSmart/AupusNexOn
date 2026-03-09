@@ -8,7 +8,7 @@ import { useGraficoDia, useGraficoMes, useGraficoAno } from '@/hooks/useInversor
 import { InversorGraficoDia } from './InversorGraficoDia';
 import { InversorGraficoMes } from './InversorGraficoMes';
 import { InversorGraficoAno } from './InversorGraficoAno';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Loader2, Zap, Thermometer, Activity, Shield, Clock, AlertTriangle, BarChart3, Calendar, RefreshCw, TrendingUp } from 'lucide-react';
 import { formatEnergy, formatPowerGeneric, formatCurrent, formatVoltage, formatResistance, formatTime } from '@/utils/formatEnergy';
 
@@ -38,11 +38,16 @@ export function InversorMqttDataModal({ equipamentoId, open, onOpenChange }: Inv
   // Tab ativa para lazy loading - só busca dados quando a tab é selecionada
   const [activeTab, setActiveTab] = useState('dia');
 
-  // Estado do intervalo controlado pelo zoom do gráfico do dia
-  const [intervaloMin, setIntervaloMin] = useState('30');
+  // Meia-noite do dia atual no fuso local (não UTC) — resolve o problema de timezone
+  const midnightLocal = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d.toISOString();
+  }, []);
+  const nowISO = useMemo(() => new Date().toISOString(), []);
 
-  // Lazy loading: só busca quando a tab está ativa
-  const graficoDia = useGraficoDia(activeTab === 'dia' ? cleanId : null, undefined, intervaloMin);
+  // Overview: sempre 30min, dia inteiro — o detalhe de zoom é gerenciado internamente por InversorGraficoDia
+  const graficoDia = useGraficoDia(activeTab === 'dia' ? cleanId : null, undefined, '30', midnightLocal, nowISO);
   const graficoMes = useGraficoMes(activeTab === 'mes' ? cleanId : null);
   const graficoAno = useGraficoAno(activeTab === 'ano' ? cleanId : null);
 
@@ -141,7 +146,7 @@ export function InversorMqttDataModal({ equipamentoId, open, onOpenChange }: Inv
                       data={graficoDia.data}
                       loading={graficoDia.loading}
                       height={350}
-                      onIntervaloChange={setIntervaloMin}
+                      equipamentoId={cleanId}
                     />
                   </TabsContent>
 
@@ -306,7 +311,7 @@ export function InversorMqttDataModal({ equipamentoId, open, onOpenChange }: Inv
                     data={graficoDia.data}
                     loading={graficoDia.loading}
                     height={350}
-                    onIntervaloChange={setIntervaloMin}
+                    equipamentoId={cleanId}
                   />
                 </TabsContent>
 
