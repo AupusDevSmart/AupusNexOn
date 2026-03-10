@@ -118,20 +118,44 @@ export function useDadosM160(unidadeId?: string, equipamentoId?: string) {
       return;
     }
 
+    // 🔍 DEBUG: Log para ver estrutura dos dados
+    console.log('🔍 [useDadosM160] Dados recebidos:', dadosM160.length, 'pontos');
+    if (dadosM160.length > 0) {
+      console.log('🔍 [useDadosM160] Primeiro item:', JSON.stringify(dadosM160[0], null, 2));
+      console.log('🔍 [useDadosM160] Chaves do primeiro item:', Object.keys(dadosM160[0]));
+    }
+
     const dadosProcessados: DadosM160[] = dadosM160.map((item: any) => {
-      const dados = item.Dados || {};
+      // ✅ CORRIGIDO: O campo é 'dados' (minúsculo), não 'Dados'
+      const dados = item.dados || item.Dados || {};
+
+      // 🔍 DEBUG: Log para ver estrutura dos dados
+      if (!item.dados && !item.Dados) {
+        console.warn('⚠️ [useDadosM160] Item sem campo dados/Dados:', item);
+      } else {
+        // Log dos campos disponíveis no primeiro item
+        if (dadosM160.indexOf(item) === 0) {
+          console.log('🔍 [useDadosM160] Campos disponíveis em dados:', Object.keys(dados));
+        }
+      }
 
       return {
-        timestamp: item.timestamp || item.hora,
-        tensaoA: dados.Va || 0,
-        tensaoB: dados.Vb || 0,
-        tensaoC: dados.Vc || 0,
-        // ✅ Suportar AMBOS os formatos: FPA (legado maiúsculo) e FPa (novo minúsculo)
-        fatorPotenciaA: dados.FPa || dados.FPA || 0,
-        fatorPotenciaB: dados.FPb || dados.FPB || 0,
-        fatorPotenciaC: dados.FPc || dados.FPC || 0,
+        timestamp: item.timestamp || item.hora || item.timestamp_dados,
+        // ✅ CORRIGIDO: Tentar múltiplas variações de nomes de campo
+        tensaoA: dados.Va || dados.va || dados.VoltageA || dados.voltageA || 0,
+        tensaoB: dados.Vb || dados.vb || dados.VoltageB || dados.voltageB || 0,
+        tensaoC: dados.Vc || dados.vc || dados.VoltageC || dados.voltageC || 0,
+        // ✅ Suportar múltiplas variações para fator de potência
+        fatorPotenciaA: dados.FPa || dados.FPA || dados.fpa || dados.PowerFactorA || dados.powerFactorA || 0,
+        fatorPotenciaB: dados.FPb || dados.FPB || dados.fpb || dados.PowerFactorB || dados.powerFactorB || 0,
+        fatorPotenciaC: dados.FPc || dados.FPC || dados.fpc || dados.PowerFactorC || dados.powerFactorC || 0,
       };
     });
+
+    console.log('🔍 [useDadosM160] Dados processados:', dadosProcessados.length, 'pontos');
+    if (dadosProcessados.length > 0) {
+      console.log('🔍 [useDadosM160] Primeiro ponto processado:', dadosProcessados[0]);
+    }
 
     setDados(dadosProcessados);
 

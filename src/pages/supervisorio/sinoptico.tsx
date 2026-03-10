@@ -263,8 +263,8 @@ const MedidorEnergiaModal = ({ isOpen, onClose, dados }: { isOpen: boolean; onCl
             <span className="font-medium">Fator de Potência</span>
             <div className="text-right">
               <div className="text-xl font-bold text-blue-600">{dados.fatorPotencia}</div>
-              <Badge variant={dados.fatorPotencia > 0.92 ? "default" : "destructive"}>
-                {dados.fatorPotencia > 0.92 ? "Normal" : "Baixo"}
+              <Badge variant={Math.abs(dados.fatorPotencia) > 0.92 ? "default" : "destructive"}>
+                {Math.abs(dados.fatorPotencia) > 0.92 ? "Normal" : "Baixo"}
               </Badge>
             </div>
           </div>

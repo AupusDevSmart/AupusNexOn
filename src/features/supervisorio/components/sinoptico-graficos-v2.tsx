@@ -1105,7 +1105,7 @@ export function SinopticoGraficosV2({
                   <XAxis dataKey="hora" fontSize={12} />
                 <YAxis
                   fontSize={12}
-                  domain={[0.75, 1.0]}
+                  domain={[-1.0, 1.0]}
                   label={{
                     value: "FP",
                     angle: -90,
@@ -1152,11 +1152,22 @@ export function SinopticoGraficosV2({
                   />
                 )}
 
-                {/* Linha de limite mínimo 0.92 */}
+                {/* Linha de limite superior +0.92 */}
                 <Line
                   type="monotone"
                   dataKey={() => 0.92}
-                  name="Limite Mínimo (0.92)"
+                  name="Limite Superior (+0.92)"
+                  stroke="#f97316"
+                  strokeWidth={2}
+                  strokeDasharray="5 5"
+                  dot={false}
+                />
+
+                {/* Linha de limite inferior -0.92 */}
+                <Line
+                  type="monotone"
+                  dataKey={() => -0.92}
+                  name="Limite Inferior (-0.92)"
                   stroke="#f97316"
                   strokeWidth={2}
                   strokeDasharray="5 5"
@@ -1555,7 +1566,7 @@ export function SinopticoGraficosV2({
                     <XAxis dataKey="hora" fontSize={12} />
                   <YAxis
                     fontSize={12}
-                    domain={[0.75, 1.0]}
+                    domain={[-1.0, 1.0]}
                     label={{
                       value: "FP",
                       angle: -90,
@@ -1608,11 +1619,22 @@ export function SinopticoGraficosV2({
                     />
                   )}
 
-                  {/* Linha de limite mínimo 0.92 */}
+                  {/* Linha de limite superior +0.92 */}
                   <Line
                     type="monotone"
                     dataKey={() => 0.92}
-                    name="Limite Mínimo (0.92)"
+                    name="Limite Superior (+0.92)"
+                    stroke="#f97316"
+                    strokeWidth={2}
+                    strokeDasharray="5 5"
+                    dot={false}
+                  />
+
+                  {/* Linha de limite inferior -0.92 */}
+                  <Line
+                    type="monotone"
+                    dataKey={() => -0.92}
+                    name="Limite Inferior (-0.92)"
                     stroke="#f97316"
                     strokeWidth={2}
                     strokeDasharray="5 5"

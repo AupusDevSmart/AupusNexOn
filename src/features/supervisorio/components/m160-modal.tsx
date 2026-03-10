@@ -19,7 +19,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { DateTimeInput } from '@/components/ui/datetime-input';
-import { Gauge, WifiOff, Loader2, DollarSign, Activity, Calendar, RefreshCw, Zap } from 'lucide-react';
+import { Gauge, WifiOff, Loader2, DollarSign, Activity, Calendar, RefreshCw, Zap, AlertTriangle } from 'lucide-react';
 import { useEquipamentoMqttData } from '@/hooks/useEquipamentoMqttData';
 import { useCustosEnergia } from '@/hooks/useCustosEnergia';
 import type { PeriodoTipo } from '@/types/dtos/custos-energia-dto';
@@ -220,12 +220,14 @@ export function M160Modal({ isOpen, onClose, componenteData }: M160ModalProps) {
             </div>
             {/* Indicador de Status de Conexão com Detecção de Dados Desatualizados */}
             {dataStatus.isStale ? (
-              <Badge variant="destructive" className="text-[10px] px-2 py-0">
-                ⚠️ Desatualizado ({dataStatus.timeText})
+              <Badge variant="destructive" className="text-[10px] px-2 py-0 flex items-center gap-1">
+                <AlertTriangle className="h-3 w-3" />
+                Desatualizado ({dataStatus.timeText})
               </Badge>
             ) : isConnected ? (
-              <Badge variant="outline" className="text-[10px] px-2 py-0">
-                🟢 Tempo Real
+              <Badge variant="outline" className="text-[10px] px-2 py-0 flex items-center gap-1">
+                <Activity className="h-3 w-3 text-green-500" />
+                Tempo Real
               </Badge>
             ) : (
               <Badge variant="outline" className="text-[10px] px-2 py-0">
@@ -275,25 +277,35 @@ export function M160Modal({ isOpen, onClose, componenteData }: M160ModalProps) {
             {/* Alerta de Dados Desatualizados */}
             {dataStatus.isStale && !error && (
               <div className="p-3 border border-amber-500/50 rounded-md bg-amber-500/10">
-                <p className="text-sm font-semibold text-amber-600 dark:text-amber-500">
-                  ⚠️ Dados desatualizados há {dataStatus.timeText.replace(' atrás', '')}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Última atualização: {lastUpdate?.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) || 'N/A'}
-                </p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Os dados em tempo real estão sendo mostrados da última leitura. Verifique a conexão MQTT.
-                </p>
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-500 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-amber-600 dark:text-amber-500">
+                      Dados desatualizados há {dataStatus.timeText.replace(' atrás', '')}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Última atualização: {lastUpdate?.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) || 'N/A'}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Os dados em tempo real estão sendo mostrados da última leitura. Verifique a conexão MQTT.
+                    </p>
+                  </div>
+                </div>
               </div>
             )}
 
             {/* Mostrar erro se houver */}
             {error && (
               <div className="bg-red-500/10 border border-red-500/50 rounded-md p-3">
-                <p className="text-sm text-red-500">⚠️ Erro de conexão: {error}</p>
-                <p className="text-xs text-red-400 mt-1">
-                  Verifique se o backend está rodando em http://localhost:3000
-                </p>
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="h-4 w-4 text-red-500 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-sm text-red-500">Erro de conexão: {error}</p>
+                    <p className="text-xs text-red-400 mt-1">
+                      Verifique se o backend está rodando em http://localhost:3000
+                    </p>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -414,52 +426,57 @@ export function M160Modal({ isOpen, onClose, componenteData }: M160ModalProps) {
                     <div className="text-center space-y-2">
                       <div className="text-2xl font-semibold">{dadosM160.powerFactor.toFixed(3)}</div>
                       <div className="text-xs text-muted-foreground">Fase A</div>
-                      <Badge variant={dadosM160.powerFactor < 0.92 ? 'destructive' : 'outline'} className="text-xs">
-                        {dadosM160.powerFactor < 0.92 ? 'Baixo' : 'OK'}
+                      <Badge variant={Math.abs(dadosM160.powerFactor) < 0.92 ? 'destructive' : 'outline'} className="text-xs">
+                        {Math.abs(dadosM160.powerFactor) < 0.92 ? 'Baixo' : 'OK'}
                       </Badge>
                     </div>
                     <div className="text-center space-y-2">
                       <div className="text-2xl font-semibold">{dadosM160.powerFactorB?.toFixed(3) || '0.000'}</div>
                       <div className="text-xs text-muted-foreground">Fase B</div>
                       <Badge
-                        variant={(dadosM160.powerFactorB || 0) < 0.92 ? 'destructive' : 'outline'}
+                        variant={Math.abs(dadosM160.powerFactorB || 0) < 0.92 ? 'destructive' : 'outline'}
                         className="text-xs"
                       >
-                        {(dadosM160.powerFactorB || 0) < 0.92 ? 'Baixo' : 'OK'}
+                        {Math.abs(dadosM160.powerFactorB || 0) < 0.92 ? 'Baixo' : 'OK'}
                       </Badge>
                     </div>
                     <div className="text-center space-y-2">
                       <div className="text-2xl font-semibold">{dadosM160.powerFactorC?.toFixed(3) || '0.000'}</div>
                       <div className="text-xs text-muted-foreground">Fase C</div>
                       <Badge
-                        variant={(dadosM160.powerFactorC || 0) < 0.92 ? 'destructive' : 'outline'}
+                        variant={Math.abs(dadosM160.powerFactorC || 0) < 0.92 ? 'destructive' : 'outline'}
                         className="text-xs"
                       >
-                        {(dadosM160.powerFactorC || 0) < 0.92 ? 'Baixo' : 'OK'}
+                        {Math.abs(dadosM160.powerFactorC || 0) < 0.92 ? 'Baixo' : 'OK'}
                       </Badge>
                     </div>
                     <div className="text-center space-y-2">
                       <div className="text-2xl font-semibold">{dadosM160.powerFactorTotal?.toFixed(3) || '0.000'}</div>
                       <div className="text-xs text-muted-foreground">Total (Pt/St)</div>
                       <Badge
-                        variant={(dadosM160.powerFactorTotal || 0) < 0.92 ? 'destructive' : 'outline'}
+                        variant={Math.abs(dadosM160.powerFactorTotal || 0) < 0.92 ? 'destructive' : 'outline'}
                         className="text-xs"
                       >
-                        {(dadosM160.powerFactorTotal || 0) < 0.92 ? 'Baixo' : 'OK'}
+                        {Math.abs(dadosM160.powerFactorTotal || 0) < 0.92 ? 'Baixo' : 'OK'}
                       </Badge>
                     </div>
                   </div>
 
                   {/* Alerta de FP Baixo - Minimalista */}
-                  {(dadosM160.powerFactor < 0.92 ||
-                    (dadosM160.powerFactorB || 0) < 0.92 ||
-                    (dadosM160.powerFactorC || 0) < 0.92 ||
-                    (dadosM160.powerFactorTotal || 0) < 0.92) && (
+                  {(Math.abs(dadosM160.powerFactor) < 0.92 ||
+                    Math.abs(dadosM160.powerFactorB || 0) < 0.92 ||
+                    Math.abs(dadosM160.powerFactorC || 0) < 0.92 ||
+                    Math.abs(dadosM160.powerFactorTotal || 0) < 0.92) && (
                     <div className="mt-3 p-2 border border-destructive/50 rounded-md bg-destructive/5">
-                      <p className="text-xs font-medium">⚠️ FP abaixo de 0.92</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        Risco de multa. Considere correção com capacitores.
-                      </p>
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle className="h-3.5 w-3.5 text-destructive flex-shrink-0 mt-0.5" />
+                        <div className="flex-1">
+                          <p className="text-xs font-medium text-destructive">Fator de potência abaixo de 0.92</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Risco de cobrança adicional pela concessionária. Considere correção com banco de capacitores.
+                          </p>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </CardContent>
@@ -554,7 +571,10 @@ export function M160Modal({ isOpen, onClose, componenteData }: M160ModalProps) {
             {/* Erro */}
             {custosError && !custosLoading && (
               <div className="bg-red-500/10 border border-red-500/50 rounded-md p-4">
-                <p className="text-sm text-red-500">⚠️ Erro ao carregar custos: {custosError}</p>
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="h-4 w-4 text-red-500 flex-shrink-0 mt-0.5" />
+                  <p className="text-sm text-red-500">Erro ao carregar custos: {custosError}</p>
+                </div>
               </div>
             )}
 
