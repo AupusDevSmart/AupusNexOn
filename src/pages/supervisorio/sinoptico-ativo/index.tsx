@@ -1830,48 +1830,45 @@ export function SinopticoAtivoPage() {
     };
   }, [unidadeAtual, unidadeId]);
 
+  // Callback para recarregar unidade (usado pelo componente de gráficos)
+  const reloadUnidade = useCallback(async () => {
+    if (!unidadeId) return;
+
+    try {
+      const response = await api.get(`/unidades/${unidadeId}`);
+      const unidadeData = response.data?.data || response.data;
+
+      // Converter snake_case para camelCase
+      const unidadeFormatada: Unidade = {
+        ...unidadeData,
+        demandaGeracao: unidadeData.demanda_geracao || unidadeData.demandaGeracao,
+        demandaCarga: unidadeData.demanda_carga || unidadeData.demandaCarga,
+        tipoUnidade: unidadeData.tipo_unidade || unidadeData.tipoUnidade,
+        concessionariaId: unidadeData.concessionaria_id || unidadeData.concessionariaId,
+        plantaId: unidadeData.planta_id || unidadeData.plantaId,
+      };
+
+      setUnidadeAtual(unidadeFormatada);
+
+      // Carregar planta se tiver plantaId
+      if (unidadeData.planta_id) {
+        try {
+          const plantaResponse = await api.get(`/plantas/${unidadeData.planta_id}`);
+          const plantaData = plantaResponse.data?.data || plantaResponse.data;
+          setPlantaAtual(plantaData);
+        } catch (err) {
+          console.error('❌ Erro ao carregar planta:', err);
+        }
+      }
+    } catch (error) {
+      console.error('❌ [SINÓPTICO] Erro ao carregar unidade:', error);
+    }
+  }, [unidadeId]);
+
   // Carregar dados da unidade quando o componente monta ou quando unidadeId muda
   useEffect(() => {
-    const carregarUnidade = async () => {
-      if (!unidadeId) return;
-
-      // Log removido;
-
-      try {
-        const response = await api.get(`/unidades/${unidadeId}`);
-        const unidadeData = response.data?.data || response.data;
-
-        // Converter snake_case para camelCase
-        const unidadeFormatada: Unidade = {
-          ...unidadeData,
-          demandaGeracao: unidadeData.demanda_geracao || unidadeData.demandaGeracao,
-          demandaCarga: unidadeData.demanda_carga || unidadeData.demandaCarga,
-          tipoUnidade: unidadeData.tipo_unidade || unidadeData.tipoUnidade,
-          concessionariaId: unidadeData.concessionaria_id || unidadeData.concessionariaId,
-          plantaId: unidadeData.planta_id || unidadeData.plantaId,
-        };
-
-        // Log removido;
-        setUnidadeAtual(unidadeFormatada);
-
-        // Carregar planta se tiver plantaId
-        if (unidadeData.planta_id) {
-          try {
-            const plantaResponse = await api.get(`/plantas/${unidadeData.planta_id}`);
-            const plantaData = plantaResponse.data?.data || plantaResponse.data;
-            // Log removido;
-            setPlantaAtual(plantaData);
-          } catch (err) {
-            console.error('❌ Erro ao carregar planta:', err);
-          }
-        }
-      } catch (error) {
-        console.error('❌ [SINÓPTICO] Erro ao carregar unidade:', error);
-      }
-    };
-
-    carregarUnidade();
-  }, [unidadeId]);
+    reloadUnidade();
+  }, [reloadUnidade]);
 
   const reloadDiagrama = useCallback(async () => {
     if (!unidadeId) return;
@@ -4160,6 +4157,7 @@ if (import.meta.env.PROD) {
                     }
                     valorContratado={valorContratadoReal}
                     percentualAdicional={5}
+                    onConfigSaved={reloadUnidade}
                   />
                 </div>
                 )}

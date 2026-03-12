@@ -57,16 +57,21 @@ export function BaseFilters<T extends BaseFiltersType>({
 
         // Renderizar filtro select
         if (filterConfig.type === 'select') {
+          const currentValue = String(filters[filterConfig.key as keyof T] || 'all');
+          const selectedOption = filterConfig.options?.find(opt => String(opt.value) === currentValue);
+
           return (
             <div key={filterConfig.key} className={`w-full ${filterConfig.className || ''}`}>
               <Select
-                value={String(filters[filterConfig.key as keyof T] || 'all')}
+                value={currentValue}
                 onValueChange={(value) => handleFilterChange(filterConfig.key, value === 'all' ? 'all' : value)}
                 disabled={filterConfig.disabled}
               >
                 <SelectTrigger className="w-full">
                   {IconComponent && <IconComponent className="h-4 w-4 mr-2" />}
-                  <SelectValue placeholder={filterConfig.placeholder || filterConfig.label} />
+                  <SelectValue>
+                    {selectedOption?.label || filterConfig.placeholder || filterConfig.label}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {filterConfig.options?.map((option) => (

@@ -42,6 +42,7 @@ interface SinopticoGraficosV2Props {
   dadosTensao?: DadosGrafico[];
   valorContratado?: number;
   percentualAdicional?: number;
+  onConfigSaved?: () => void; // ✅ NOVO: Callback para notificar quando configuração for salva
 }
 
 // Função para formatar dados para o gráfico
@@ -184,6 +185,7 @@ export function SinopticoGraficosV2({
   dadosTensao,
   valorContratado = 2500,
   percentualAdicional = 5,
+  onConfigSaved, // ✅ NOVO: Callback para notificar quando configuração for salva
 }: SinopticoGraficosV2Props) {
   const { theme } = useTheme();
   const [modalOpen, setModalOpen] = useState(false);
@@ -420,15 +422,17 @@ export function SinopticoGraficosV2({
       // Atualizar estado local imediatamente
       setConfiguracao(novaConfig);
 
-      // Recarregar da API
-      setTimeout(() => refetchConfig(), 500);
-
       // Fechar modal
       setModalOpen(false);
 
-      // Se alterou a demanda contratada, recarregar a página para atualizar o gráfico
-      if (novaConfig.demandaContratada !== undefined) {
-        setTimeout(() => window.location.reload(), 600);
+      // ✅ SOLUÇÃO: Recarregar apenas os dados do gráfico usando refetch do React Query
+      // Isso evita recarregar toda a página
+      await refetchConfig();
+      await refetchEquipamentos();
+
+      // ✅ NOVO: Notificar a página pai que a configuração foi salva (para recarregar unidade se necessário)
+      if (onConfigSaved) {
+        onConfigSaved();
       }
     } catch (error) {
       console.error('Erro ao salvar configuração:', error);

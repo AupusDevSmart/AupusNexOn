@@ -129,8 +129,8 @@ export function BaseTable<T extends BaseEntity>({
           </div>
         </div>
       )}
-      <div className="overflow-auto flex-1">
-        <Table className="table-minimal">
+      <div className="overflow-x-auto overflow-y-auto flex-1">
+        <Table className="table-minimal min-w-full">
           <TableHeader>
             <TableRow>
               {columns.map((column, index) => (
