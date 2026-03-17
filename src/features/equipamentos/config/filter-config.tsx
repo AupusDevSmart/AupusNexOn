@@ -18,9 +18,11 @@ export const createEquipamentosFilterConfig = (
   if (showProprietarioFilter) {
     baseFilters.push({
       key: 'proprietarioId',
-      type: 'select',
+      type: 'combobox',
       label: 'Proprietário',
       placeholder: loadingProprietarios ? 'Carregando proprietários...' : 'Todos os Proprietários',
+      searchPlaceholder: 'Buscar proprietário...',
+      emptyText: 'Nenhum proprietário encontrado',
       options: proprietarios,
       disabled: loadingProprietarios
     });
@@ -29,9 +31,11 @@ export const createEquipamentosFilterConfig = (
   // Adicionar planta
   baseFilters.push({
     key: 'plantaId',
-    type: 'select',
+    type: 'combobox',
     label: 'Planta',
     placeholder: loadingPlantas ? 'Carregando plantas...' : 'Todas as Plantas',
+    searchPlaceholder: 'Buscar planta...',
+    emptyText: 'Nenhuma planta encontrada',
     options: plantas,
     disabled: loadingPlantas
   });
@@ -39,9 +43,11 @@ export const createEquipamentosFilterConfig = (
   // Adicionar unidade (penúltimo)
   baseFilters.push({
     key: 'unidadeId',
-    type: 'select',
+    type: 'combobox',
     label: 'Unidade',
     placeholder: loadingUnidades ? 'Carregando unidades...' : 'Todas as Unidades',
+    searchPlaceholder: 'Buscar unidade...',
+    emptyText: 'Nenhuma unidade encontrada',
     options: unidades,
     disabled: loadingUnidades
   });

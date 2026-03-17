@@ -63,7 +63,7 @@ export function UsuariosPage() {
     }
 
     // Navegar para plantas filtradas
-    navigate(`/plantas?usuarioId=${usuario.id}&usuarioNome=${encodeURIComponent(usuario.nome)}`);
+    navigate(`/plantas?proprietarioId=${usuario.id}&proprietarioNome=${encodeURIComponent(usuario.nome)}`);
   };
 
   return (

@@ -70,12 +70,14 @@ export interface TableColumn<T = any> {
 export interface FilterConfig {
   key: string;
   label?: string;
-  type: 'text' | 'select' | 'checkbox' | 'date' | 'search';
+  type: 'text' | 'select' | 'checkbox' | 'date' | 'search' | 'combobox';
   placeholder?: string;
   options?: Array<{ value: string | number; label: string }>;
   disabled?: boolean;
   icon?: LucideIcon;
   className?: string;
+  searchPlaceholder?: string; // Para combobox
+  emptyText?: string; // Para combobox
 }
 
 /**

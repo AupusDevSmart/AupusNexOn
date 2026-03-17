@@ -125,22 +125,31 @@ export function PlantasPage() {
     }
   };
 
-  // ✅ EFEITO: Aplicar filtros da URL quando a página carrega
+  // ✅ EFEITO: Aplicar filtros da URL quando a página carrega OU quando a URL muda
   useEffect(() => {
     const urlParams = new URLSearchParams(location.search);
     const proprietarioId = urlParams.get('proprietarioId');
 
+    console.log('🔗 [PLANTAS PAGE] URL mudou:', {
+      search: location.search,
+      proprietarioId,
+      currentFilters: filters
+    });
+
     if (proprietarioId) {
-      console.log(`🔗 [PLANTAS PAGE] Filtro da URL: proprietário ${proprietarioId}`);
-      
+      console.log(`🔗 [PLANTAS PAGE] Aplicando filtro da URL: proprietário ${proprietarioId}`);
+
       const newFilters = {
         ...initialFilters,
         proprietarioId: proprietarioId,
       };
-      
+
+      console.log('🔗 [PLANTAS PAGE] Novos filtros:', newFilters);
       setFilters(newFilters);
       fetchPlantas(newFilters);
     } else {
+      console.log('🔗 [PLANTAS PAGE] Sem proprietário na URL, resetando filtros');
+      setFilters(initialFilters);
       fetchPlantas(initialFilters);
     }
   }, [location.search]);
@@ -275,51 +284,10 @@ export function PlantasPage() {
     <Layout>
       <Layout.Main>
         <div className="flex flex-col h-full w-full">
-          {/* ✅ Header com informações do filtro de proprietário */}
-          {filteredByProprietario ? (
-            <div className="mb-6">
-              <div className="flex items-center gap-2 mb-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleBackToUsuarios}
-                  className="text-muted-foreground hover:text-foreground"
-                >
-                  <ArrowLeft className="h-4 w-4 mr-1" />
-                  Voltar aos Usuários
-                </Button>
-              </div>
-              
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 dark:bg-blue-950 dark:border-blue-800">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Factory className="h-5 w-5 text-blue-600" />
-                    <div>
-                      <h2 className="font-semibold text-blue-900 dark:text-blue-100">
-                        Plantas de {proprietarioInfo.nome}
-                      </h2>
-                      <p className="text-sm text-blue-700 dark:text-blue-300">
-                        Visualizando {plantas.length} {plantas.length === 1 ? 'planta' : 'plantas'} deste proprietário
-                      </p>
-                    </div>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleClearProprietarioFilter}
-                    className="border-blue-200 text-blue-700 hover:bg-blue-100 dark:border-blue-700 dark:text-blue-300 dark:hover:bg-blue-800"
-                  >
-                    Ver Todas as Plantas
-                  </Button>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <TitleCard
-              title="Plantas"
-              description="Gerencie as plantas cadastradas no sistema"
-            />
-          )}
+          <TitleCard
+            title="Plantas"
+            description="Gerencie as plantas cadastradas no sistema"
+          />
           
           {/* ✅ Filtros e Ações */}
           <div className="flex flex-col lg:flex-row gap-3 mb-4 lg:items-start">

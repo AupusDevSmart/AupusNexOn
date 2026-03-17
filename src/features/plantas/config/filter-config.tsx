@@ -65,17 +65,14 @@ export const generateProprietarioOptions = (proprietarios: ProprietarioBasico[])
   proprietarios.forEach((proprietario) => {
     const temCpfCnpj = proprietario.cpf_cnpj && !proprietario.cpf_cnpj.includes('não informado');
     const isPF = proprietario.tipo === 'pessoa_fisica';
-    const icon = isPF ? '👤' : '🏢';
     const tipoLabel = isPF ? 'PF' : 'PJ';
-    
-    let label = `${icon} ${proprietario.nome}`;
-    
+
+    let label = proprietario.nome;
+
     if (temCpfCnpj) {
       label += ` (${proprietario.cpf_cnpj.substring(0, 8)}...)`;
-    } else {
-      label += ' ⚠️';
     }
-    
+
     // Adicionar indicador de tipo
     label += ` - ${tipoLabel}`;
 
@@ -98,8 +95,11 @@ export const createPlantasFilterConfig = (proprietarios: ProprietarioBasico[]): 
   },
   {
     key: 'proprietarioId',
-    type: 'select',
+    type: 'combobox',
     label: 'Proprietário',
+    placeholder: 'Todos os proprietários',
+    searchPlaceholder: 'Buscar proprietário...',
+    emptyText: 'Nenhum proprietário encontrado',
     options: generateProprietarioOptions(proprietarios)
   }
 ];
@@ -114,10 +114,14 @@ export const plantasFilterConfig: FilterConfig[] = [
   },
   {
     key: 'proprietarioId',
-    type: 'select',
+    type: 'combobox',
     label: 'Proprietário',
+    placeholder: 'Carregando proprietários...',
+    searchPlaceholder: 'Buscar proprietário...',
+    emptyText: 'Nenhum proprietário encontrado',
     options: [
       { value: 'all', label: 'Carregando proprietários...' }
-    ]
+    ],
+    disabled: true
   }
 ];

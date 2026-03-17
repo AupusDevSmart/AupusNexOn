@@ -18,7 +18,7 @@ export function TeamSwitcher() {
     navigate('/');
   };
 
-  const logoSrc = theme === 'dark' ? '/logoaupus.png' : '/logoaupus-blue.jpg';
+  const logoSrc = theme === 'dark' ? '/logoaupus.svg' : '/logo-aupus-blue.png';
   const textColorClass = theme === 'dark' ? 'text-white' : 'text-black';
 
   return (
@@ -37,7 +37,7 @@ export function TeamSwitcher() {
               onError={(e) => {
                 console.error('Erro ao carregar logo:', logoSrc);
                 // Fallback: tenta carregar a logo padrão SVG
-                (e.target as HTMLImageElement).src = '/logoaupus.svg';
+                (e.target as HTMLImageElement).src = logoSrc;
               }}
             />
             <span className={`font-semibold text-sm md:text-base ${textColorClass}`}>

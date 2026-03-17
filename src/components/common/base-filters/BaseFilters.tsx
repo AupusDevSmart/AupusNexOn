@@ -94,8 +94,8 @@ export function BaseFilters<T extends BaseFiltersType>({
                 value={String(filters[filterConfig.key as keyof T] || 'all')}
                 onValueChange={(value) => handleFilterChange(filterConfig.key, value || 'all')}
                 placeholder={filterConfig.placeholder || filterConfig.label}
-                searchPlaceholder={`Buscar ${filterConfig.label?.toLowerCase()}...`}
-                emptyText="Nenhum resultado encontrado"
+                searchPlaceholder={filterConfig.searchPlaceholder || `Buscar ${filterConfig.label?.toLowerCase()}...`}
+                emptyText={filterConfig.emptyText || "Nenhum resultado encontrado"}
                 disabled={filterConfig.disabled}
               />
             </div>

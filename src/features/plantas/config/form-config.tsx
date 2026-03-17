@@ -390,7 +390,7 @@ export const plantasFormFields: FormField[] = [
       <ProprietarioSelector
         value={value as string | null}
         onChange={onChange}
-        disabled={disabled || mode === 'edit'}
+        disabled={disabled}
       />
     ),
     validation: (value) => {

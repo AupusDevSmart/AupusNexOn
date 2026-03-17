@@ -193,6 +193,7 @@ export interface UnidadeEquipamentosResponse {
  */
 export interface UnidadeFormData {
   plantaId: string;
+  proprietarioId?: string; // ✅ ID do proprietário (para filtrar plantas)
   nome: string;
   tipo: TipoUnidade;
   estado: string;
@@ -324,6 +325,7 @@ export const unidadeToFormData = (unidade: Unidade): UnidadeFormData => {
 
   return {
     plantaId: unidade.plantaId,
+    proprietarioId: unidade.planta?.proprietario?.id || undefined, // ✅ ID do proprietário da planta
     nome: unidade.nome,
     tipo: unidade.tipo,
     estado: unidade.estado,

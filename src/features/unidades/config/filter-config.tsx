@@ -64,9 +64,11 @@ export const createUnidadesFilterConfig = (
   if (showProprietarioFilter) {
     filters.push({
       key: 'proprietarioId',
-      type: 'select',
+      type: 'combobox',
       label: 'Proprietário',
       placeholder: loadingProprietarios ? 'Carregando proprietários...' : 'Todos os proprietários',
+      searchPlaceholder: 'Buscar proprietário...',
+      emptyText: 'Nenhum proprietário encontrado',
       options: generateProprietarioOptions(proprietarios),
       disabled: loadingProprietarios,
       icon: User,
@@ -76,9 +78,11 @@ export const createUnidadesFilterConfig = (
   // Adicionar filtro de planta
   filters.push({
     key: 'plantaId',
-    type: 'select',
+    type: 'combobox',
     label: 'Planta',
     placeholder: loadingPlantas ? 'Carregando plantas...' : 'Todas as plantas',
+    searchPlaceholder: 'Buscar planta...',
+    emptyText: 'Nenhuma planta encontrada',
     options: generatePlantaOptions(plantas),
     disabled: loadingPlantas,
     icon: Factory,
@@ -97,9 +101,11 @@ export const unidadesFilterConfig: FilterConfig[] = [
   },
   {
     key: 'plantaId',
-    type: 'select',
+    type: 'combobox',
     label: 'Planta',
     placeholder: 'Carregando plantas...',
+    searchPlaceholder: 'Buscar planta...',
+    emptyText: 'Nenhuma planta encontrada',
     options: [{ value: 'all', label: 'Carregando plantas...' }],
     disabled: true,
     icon: Factory,

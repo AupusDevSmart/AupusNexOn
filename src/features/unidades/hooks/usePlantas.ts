@@ -1,12 +1,13 @@
 // src/features/unidades/hooks/usePlantas.ts
 
 import { useState, useEffect } from 'react';
-import { PlantasService } from '@/services/plantas.services';
+import { PlantasService, ProprietarioBasico } from '@/services/plantas.services';
 
 export interface PlantaOption {
   id: string;
   nome: string;
   localizacao?: string;
+  proprietario?: ProprietarioBasico; // ✅ CRÍTICO: Necessário para filtrar por proprietário
 }
 
 export const usePlantas = () => {
@@ -28,9 +29,11 @@ export const usePlantas = () => {
         id: planta.id,
         nome: planta.nome,
         localizacao: planta.localizacao,
+        proprietario: planta.proprietario, // ✅ CRÍTICO: Incluir proprietário para filtrar
       }));
 
       console.log('✅ [USE PLANTAS] Plantas carregadas:', plantasData.length);
+      console.log('🔍 [USE PLANTAS] Exemplo de planta com proprietário:', plantasData[0]);
       setPlantas(plantasData);
     } catch (err: any) {
       console.error('❌ [USE PLANTAS] Erro:', err);

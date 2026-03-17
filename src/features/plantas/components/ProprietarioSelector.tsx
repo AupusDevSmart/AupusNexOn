@@ -1,13 +1,14 @@
-// src/features/plantas/components/ProprietarioSelector.tsx - ATUALIZADO
+// src/features/plantas/components/ProprietarioSelector.tsx - ATUALIZADO COM COMBOBOX
 import React, { useEffect, useState } from 'react';
 import { Building2, User, Loader2, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Combobox, ComboboxOption } from '@/components/ui/combobox';
 import { PlantasService } from '@/services/plantas.services';
 import { ProprietarioBasico } from '../types';
 
 interface ProprietarioSelectorProps {
-  value: string | null; // ✅ Mudado de number para string
-  onChange: (value: string | null) => void; // ✅ Mudado de number para string
+  value: string | null;
+  onChange: (value: string | null) => void;
   disabled?: boolean;
 }
 
@@ -15,6 +16,7 @@ export function ProprietarioSelector({ value, onChange, disabled }: Proprietario
   const [proprietarios, setProprietarios] = useState<ProprietarioBasico[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [currentProprietario, setCurrentProprietario] = useState<ProprietarioBasico | null>(null);
 
   // ✅ Carregar proprietários da API
   useEffect(() => {
@@ -22,10 +24,51 @@ export function ProprietarioSelector({ value, onChange, disabled }: Proprietario
       try {
         setLoading(true);
         setError(null);
-        
+
         const data = await PlantasService.getProprietarios();
         setProprietarios(data);
-        
+
+        // ✅ Se há um value, buscar o proprietário atual (pode não estar na lista inicial)
+        if (value) {
+          const proprietarioNaLista = data.find(p => p.id === value);
+          if (proprietarioNaLista) {
+            setCurrentProprietario(proprietarioNaLista);
+          } else {
+            // ✅ Se o proprietário atual não está na lista, buscar seus dados
+            try {
+              const planta = await PlantasService.getAllPlantas({
+                proprietarioId: value,
+                page: 1,
+                limit: 1
+              });
+
+              if (planta.data[0]?.proprietario) {
+                const prop = planta.data[0].proprietario;
+                setCurrentProprietario({
+                  id: prop.id,
+                  nome: prop.nome,
+                  cpf_cnpj: prop.cpfCnpj || ''
+                });
+
+                // Adicionar à lista se não estiver presente
+                const proprietarioJaExiste = data.some(p => p.id === prop.id);
+                if (!proprietarioJaExiste) {
+                  setProprietarios(prev => [
+                    {
+                      id: prop.id,
+                      nome: prop.nome,
+                      cpf_cnpj: prop.cpfCnpj || ''
+                    },
+                    ...prev
+                  ]);
+                }
+              }
+            } catch (err) {
+              console.warn('⚠️ [PROPRIETARIO SELECTOR] Não foi possível carregar proprietário atual:', err);
+            }
+          }
+        }
+
       } catch (err: any) {
         console.error('❌ [PROPRIETARIO SELECTOR] Erro ao carregar proprietários:', err);
         setError(err.message || 'Erro ao carregar proprietários');
@@ -35,26 +78,31 @@ export function ProprietarioSelector({ value, onChange, disabled }: Proprietario
     };
 
     fetchProprietarios();
-  }, []);
+  }, [value]);
+
+  // ✅ Converter proprietários para opções do combobox
+  const comboboxOptions: ComboboxOption[] = React.useMemo(() => {
+    return proprietarios.map(p => ({
+      value: p.id,
+      label: `${p.nome} - ${p.cpf_cnpj}`
+    }));
+  }, [proprietarios]);
 
   // ✅ Handler para mudança de seleção
-  const handleChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
-    const selectedValue = event.target.value;
-    onChange(selectedValue === '' ? null : selectedValue); // ✅ String ou null
+  const handleChange = (selectedValue: string) => {
+    onChange(selectedValue === '' ? null : selectedValue);
   };
 
   // ✅ Handler para recarregar proprietários
   const handleReload = () => {
     setProprietarios([]);
+    setCurrentProprietario(null);
     setLoading(true);
     setError(null);
-    
-    // Re-executar o useEffect
-    window.location.reload = window.location.reload;
-  };
 
-  // ✅ Encontrar proprietário selecionado
-  const selectedProprietario = proprietarios.find(p => p.id === value);
+    // Re-executar o useEffect forçando uma re-renderização
+    window.location.reload();
+  };
 
   if (loading) {
     return (
@@ -96,27 +144,15 @@ export function ProprietarioSelector({ value, onChange, disabled }: Proprietario
 
   return (
     <div className="space-y-2">
-      <select
-        value={value || ''} // ✅ Usar string vazia como fallback
-        onChange={handleChange}
+      <Combobox
+        options={comboboxOptions}
+        value={value || ''}
+        onValueChange={handleChange}
+        placeholder="Selecione um proprietário"
+        searchPlaceholder="Buscar por nome ou CPF/CNPJ..."
+        emptyText="Nenhum proprietário encontrado"
         disabled={disabled || proprietarios.length === 0}
-        className="select-minimal"
-        required
-        size={1}
-      >
-        <option value="">
-          {proprietarios.length === 0
-            ? "Nenhum proprietário encontrado"
-            : "Selecione um proprietário"
-          }
-        </option>
-
-        {proprietarios.map((proprietario) => (
-          <option key={proprietario.id} value={proprietario.id}>
-            {proprietario.nome} - {proprietario.cpf_cnpj}
-          </option>
-        ))}
-      </select>
+      />
 
       {/* ✅ Aviso se não houver proprietários */}
       {proprietarios.length === 0 && !loading && !error && (

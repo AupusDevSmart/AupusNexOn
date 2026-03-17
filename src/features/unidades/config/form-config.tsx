@@ -11,36 +11,189 @@ import { ConcessionariaSelectField } from '../components/ConcessionariaSelectFie
 import { Combobox } from '@/components/ui/combobox-minimal';
 
 /**
- * Componente para exibir Proprietário (read-only)
+ * Componente para selecionar/exibir Proprietário
  */
-const ProprietarioDisplay = ({ entity, mode }: FormFieldProps) => {
-  // Não mostrar em modo create
-  if (mode === 'create' || !entity?.planta?.proprietario) {
-    return null;
+const ProprietarioSelector = ({ value, onChange, disabled, mode, entity }: FormFieldProps) => {
+  const { plantas, loading: loadingPlantas } = usePlantas();
+  const [proprietarios, setProprietarios] = React.useState<Array<{id: string, nome: string, email: string}>>([]);
+  const [currentProprietario, setCurrentProprietario] = React.useState<{id: string, nome: string, email: string} | null>(null);
+
+  // 🔍 DEBUG: Ver o que está chegando
+  React.useEffect(() => {
+    console.log('🔍 [ProprietarioSelector] DEBUG:', {
+      value,
+      mode,
+      hasEntity: !!entity,
+      hasPlanta: !!entity?.planta,
+      hasProprietario: !!entity?.planta?.proprietario,
+      proprietario: entity?.planta?.proprietario
+    });
+  }, [value, mode, entity]);
+
+  // Extrair proprietários únicos das plantas E adicionar o atual se necessário
+  React.useEffect(() => {
+    if (plantas.length > 0) {
+      const proprietariosUnicos = plantas
+        .filter(p => p.proprietario)
+        .reduce((acc, planta) => {
+          const prop = planta.proprietario!;
+          if (!acc.find(p => p.id === prop.id)) {
+            acc.push({
+              id: prop.id,
+              nome: prop.nome,
+              email: prop.email
+            });
+          }
+          return acc;
+        }, [] as Array<{id: string, nome: string, email: string}>);
+
+      setProprietarios(proprietariosUnicos);
+
+      // Se há um proprietário na entidade (modo edit), garantir que ele está na lista
+      if (mode === 'edit' && entity?.planta?.proprietario) {
+        const propAtual = entity.planta.proprietario;
+        setCurrentProprietario(propAtual);
+
+        console.log('✅ [ProprietarioSelector] Proprietário atual encontrado:', propAtual);
+
+        // Se o proprietário atual não está na lista, adicioná-lo
+        if (!proprietariosUnicos.find(p => p.id === propAtual.id)) {
+          console.log('➕ [ProprietarioSelector] Adicionando proprietário atual à lista');
+          setProprietarios(prev => [propAtual, ...prev]);
+        }
+
+        // ✅ CRÍTICO: Setar o valor inicial se ainda não foi setado
+        if (!value && onChange) {
+          console.log('🎯 [ProprietarioSelector] Setando valor inicial:', propAtual.id);
+          onChange(propAtual.id);
+        }
+      }
+    }
+  }, [plantas, entity, mode, value, onChange]);
+
+  // Modo view: apenas exibir
+  if (mode === 'view') {
+    const proprietario = entity?.planta?.proprietario;
+    if (!proprietario) return null;
+
+    return (
+      <div className="w-full px-3 py-2 border border-border bg-muted rounded-md">
+        <div className="flex flex-col">
+          <span className="font-medium text-foreground">{proprietario.nome}</span>
+          <span className="text-sm text-muted-foreground">{proprietario.email}</span>
+        </div>
+      </div>
+    );
   }
 
-  const proprietario = entity.planta.proprietario;
+  // Modo create e edit: permitir seleção via combobox
+  const proprietariosOptions = proprietarios.map(p => ({
+    value: p.id,
+    label: p.nome
+  }));
+
+  if (loadingPlantas) {
+    return (
+      <div className="w-full h-9 px-3 py-2 border border-input bg-muted rounded text-sm text-muted-foreground flex items-center">
+        Carregando proprietários...
+      </div>
+    );
+  }
 
   return (
-    <div className="w-full px-3 py-2 border border-border bg-muted rounded-md">
-      <div className="flex flex-col">
-        <span className="font-medium text-foreground">{proprietario.nome}</span>
-        <span className="text-sm text-muted-foreground">{proprietario.email}</span>
-      </div>
-    </div>
+    <Combobox
+      options={proprietariosOptions}
+      value={value as string || ''}
+      onValueChange={onChange}
+      placeholder="Selecione um proprietário"
+      searchPlaceholder="Buscar proprietário..."
+      emptyText="Nenhum proprietário encontrado"
+      disabled={disabled}
+      className="w-full"
+    />
   );
 };
 
 /**
  * Componente para seleção de Planta
  */
-const PlantaSelector = ({ value, onChange, disabled, mode }: FormFieldProps) => {
+const PlantaSelector = ({ value, onChange, disabled, mode, formData }: FormFieldProps) => {
   const { plantas, loading, error } = usePlantas();
+  const previousProprietarioRef = React.useRef<string | undefined>();
 
-  // Encontrar a planta selecionada para exibir no modo view/edit
+  // 🔍 DEBUG: Ver o que está chegando
+  React.useEffect(() => {
+    console.log('🔍 [PlantaSelector] DEBUG:', {
+      value,
+      mode,
+      proprietarioId: formData?.proprietarioId,
+      totalPlantas: plantas.length,
+      formData
+    });
+  }, [value, mode, formData, plantas.length]);
+
+  // Encontrar a planta selecionada para exibir
   const plantaSelecionada = plantas.find(p => p.id === value);
 
-  // No modo view ou edit, mostrar a planta de forma read-only
+  // Filtrar plantas pelo proprietário selecionado (se houver)
+  const plantasFiltradas = React.useMemo(() => {
+    // No modo CREATE: sempre filtrar se houver proprietário selecionado
+    if (mode === 'create' && formData?.proprietarioId) {
+      const filtered = plantas.filter(p => p.proprietario?.id === formData.proprietarioId);
+      console.log('🔍 [PlantaSelector] Filtrando plantas (modo create):', {
+        proprietarioId: formData.proprietarioId,
+        total: filtered.length,
+        plantas: filtered.map(p => ({ id: p.id, nome: p.nome, proprietarioId: p.proprietario?.id }))
+      });
+      return filtered;
+    }
+
+    // No modo EDIT: filtrar apenas se proprietário foi alterado manualmente
+    const proprietarioFoiAlterado = previousProprietarioRef.current !== undefined;
+    if (mode === 'edit' && formData?.proprietarioId && proprietarioFoiAlterado) {
+      const filtered = plantas.filter(p => p.proprietario?.id === formData.proprietarioId);
+      console.log('🔍 [PlantaSelector] Filtrando plantas (modo edit, proprietário alterado):', {
+        proprietarioId: formData.proprietarioId,
+        total: filtered.length,
+        plantas: filtered.map(p => ({ id: p.id, nome: p.nome, proprietarioId: p.proprietario?.id }))
+      });
+      return filtered;
+    }
+
+    // No carregamento inicial do modo edit (sem proprietário ou sem alteração), mostrar todas
+    console.log('🔍 [PlantaSelector] Mostrando TODAS as plantas (total:', plantas.length, ')');
+    return plantas;
+  }, [plantas, formData?.proprietarioId, mode]);
+
+  // ✅ CRÍTICO: Limpar planta selecionada quando proprietário mudar e a planta não pertencer a ele
+  React.useEffect(() => {
+    const currentProprietarioId = formData?.proprietarioId;
+
+    // Se o proprietário mudou (não é a primeira renderização)
+    if (previousProprietarioRef.current !== undefined &&
+        currentProprietarioId &&
+        previousProprietarioRef.current !== currentProprietarioId) {
+
+      console.log('🔄 [PlantaSelector] Proprietário MUDOU de', previousProprietarioRef.current, 'para', currentProprietarioId);
+
+      // Verificar se a planta atual pertence ao novo proprietário
+      const plantaAtualPertenceAoNovoProprietario = plantasFiltradas.some(p => p.id === value);
+
+      if (!plantaAtualPertenceAoNovoProprietario && onChange && value) {
+        console.log('🗑️ [PlantaSelector] Planta atual não pertence ao novo proprietário, limpando');
+        onChange(''); // Limpar seleção
+      } else {
+        console.log('✅ [PlantaSelector] Planta atual pertence ao novo proprietário, mantendo');
+      }
+    } else if (previousProprietarioRef.current === undefined && currentProprietarioId) {
+      console.log('🎯 [PlantaSelector] Primeira vez setando proprietário:', currentProprietarioId);
+    }
+
+    // Atualizar a referência para rastrear mudanças futuras
+    previousProprietarioRef.current = currentProprietarioId;
+  }, [formData?.proprietarioId, value, plantasFiltradas, onChange, mode]);
+
+  // No modo view, mostrar a planta de forma read-only
   if (mode === 'view') {
     return (
       <div className="w-full px-3 py-2 border border-border bg-muted rounded-md text-foreground">
@@ -58,28 +211,10 @@ const PlantaSelector = ({ value, onChange, disabled, mode }: FormFieldProps) => 
     );
   }
 
-  if (mode === 'edit') {
-    return (
-      <div className="w-full px-3 py-2 border border-border bg-muted rounded-md text-muted-foreground cursor-not-allowed">
-        {plantaSelecionada ? (
-          <span>
-            <strong className="text-foreground">{plantaSelecionada.nome}</strong>
-            {plantaSelecionada.localizacao && (
-              <span className="text-muted-foreground"> - {plantaSelecionada.localizacao}</span>
-            )}
-            <span className="ml-2 text-xs text-muted-foreground">(não é possível alterar a planta)</span>
-          </span>
-        ) : (
-          <span className="text-muted-foreground italic">Planta não encontrada</span>
-        )}
-      </div>
-    );
-  }
-
-  // Modo create: usar Combobox pesquisável
-  const plantasOptions = plantas.map(planta => ({
+  // Modo create/edit: usar Combobox pesquisável
+  const plantasOptions = plantasFiltradas.map(planta => ({
     value: planta.id,
-    label: planta.nome
+    label: `${planta.nome}${planta.localizacao ? ` - ${planta.localizacao}` : ''}`
   }));
 
   if (loading) {
@@ -98,17 +233,39 @@ const PlantaSelector = ({ value, onChange, disabled, mode }: FormFieldProps) => 
     );
   }
 
+  // Verificar se o proprietário foi selecionado
+  const temProprietarioSelecionado = !!formData?.proprietarioId;
+  const proprietarioFoiAlterado = previousProprietarioRef.current !== undefined &&
+                                   previousProprietarioRef.current !== formData?.proprietarioId;
+
+  // No modo CREATE, desabilitar se não houver proprietário selecionado
+  const isDisabled = disabled || (mode === 'create' && !formData?.proprietarioId);
+
   return (
-    <Combobox
-      options={plantasOptions}
-      value={value as string}
-      onValueChange={onChange}
-      placeholder="Selecione uma planta"
-      searchPlaceholder="Buscar planta..."
-      emptyText="Nenhuma planta encontrada"
-      disabled={disabled}
-      className="w-full"
-    />
+    <div className="space-y-2">
+      <Combobox
+        options={plantasOptions}
+        value={value as string}
+        onValueChange={onChange}
+        placeholder={mode === 'create' && !formData?.proprietarioId ? "Selecione um proprietário primeiro" : "Selecione uma planta"}
+        searchPlaceholder="Buscar planta..."
+        emptyText="Nenhuma planta encontrada"
+        disabled={isDisabled}
+        className="w-full"
+      />
+      {/* Aviso: Nenhuma planta encontrada para o proprietário */}
+      {temProprietarioSelecionado && plantasFiltradas.length === 0 && (
+        <p className="text-xs text-amber-600">
+          ⚠️ Nenhuma planta encontrada para o proprietário selecionado. Selecione outro proprietário.
+        </p>
+      )}
+      {/* Aviso: Planta selecionada não pertence ao proprietário (só no edit quando mudar) */}
+      {mode === 'edit' && proprietarioFoiAlterado && temProprietarioSelecionado && value && plantasFiltradas.length > 0 && !plantasFiltradas.some(p => p.id === value) && (
+        <p className="text-xs text-amber-600">
+          ⚠️ A planta selecionada não pertence ao proprietário escolhido. Por favor, selecione outra planta.
+        </p>
+      )}
+    </div>
   );
 };
 
@@ -246,10 +403,10 @@ const PontosMedicaoManager = ({ value, onChange, disabled, mode }: FormFieldProp
  */
 export const unidadesFormFields: FormField[] = [
   {
-    key: 'proprietario',
-    label: 'Proprietário da Planta',
+    key: 'proprietarioId',
+    label: 'Proprietário',
     type: 'custom',
-    render: ProprietarioDisplay,
+    render: ProprietarioSelector,
     required: false,
     colSpan: 2, // Ocupa 2 colunas
   },

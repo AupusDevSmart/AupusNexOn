@@ -151,7 +151,7 @@ export function UnidadeModal({
     {
       key: 'informacoes_basicas',
       title: 'Informações Gerais',
-      fields: ['proprietario', 'plantaId', 'nome', 'numeroUc', 'tipo', 'potencia', 'status'],
+      fields: ['proprietarioId', 'plantaId', 'nome', 'numeroUc', 'tipo', 'potencia', 'status'],
       layout: 'grid' // Indica que deve usar grid
     },
     {
