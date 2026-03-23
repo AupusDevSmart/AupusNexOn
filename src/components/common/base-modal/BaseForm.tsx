@@ -13,6 +13,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
 import { DateTimePicker } from '@/components/ui/datetime-picker';
+import { Combobox } from '@/components/ui/combobox';
 import { cn } from '@/lib/utils';
 import { FormField, ModalMode, BaseEntity, ModalEntity } from '@/types/base';
 import { parse, format, isValid } from 'date-fns';
@@ -397,6 +398,32 @@ export function BaseForm({
               ))}
             </SelectContent>
           </Select>
+        );
+
+      case 'combobox':
+        // Get options dynamically if getOptions is defined, otherwise use static options
+        const comboboxOptions = (field as any).getOptions
+          ? (field as any).getOptions(data)
+          : field.options || [];
+
+        // Ensure value is string or undefined
+        const comboboxValue = value !== undefined && value !== null && value !== '' && String(value).trim() !== ''
+          ? String(value)
+          : undefined;
+
+        return (
+          <Combobox
+            options={comboboxOptions}
+            value={comboboxValue}
+            onValueChange={(newValue) => {
+              handleFieldChange(field.key, newValue || undefined);
+            }}
+            placeholder={field.placeholder || `Selecione ${field.label}`}
+            searchPlaceholder={(field as any).searchPlaceholder || `Buscar ${field.label?.toLowerCase()}...`}
+            emptyText={(field as any).emptyText || "Nenhum resultado encontrado"}
+            disabled={fieldDisabled}
+            className={cn(error ? 'border-red-500' : '')}
+          />
         );
 
       case 'checkbox':
