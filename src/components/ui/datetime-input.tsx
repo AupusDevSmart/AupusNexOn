@@ -58,7 +58,9 @@ export function DateTimeInput({
       }).formatToParts(date);
 
       const get = (type: string) => parts.find(p => p.type === type)?.value || '00';
-      return `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}`;
+      // Intl pode retornar hora "24" para meia-noite — corrigir para "00"
+      const hour = get('hour') === '24' ? '00' : get('hour');
+      return `${get('year')}-${get('month')}-${get('day')}T${hour}:${get('minute')}`;
     } catch (error) {
       console.error('Erro ao converter data:', error);
       return '';
