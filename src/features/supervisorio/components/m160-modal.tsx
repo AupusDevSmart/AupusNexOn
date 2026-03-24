@@ -38,24 +38,21 @@ export function M160Modal({ isOpen, onClose, componenteData }: M160ModalProps) {
   // Estado dos filtros de custos
   const [periodoCustos, setPeriodoCustos] = useState<PeriodoTipo>('dia');
 
-  // Estados para período customizado — datas em Brasília (UTC-3)
+  // Estados para período customizado
+  // O banco armazena BRT como se fosse UTC, então enviar valores BRT com sufixo Z
   const [timestampInicio, setTimestampInicio] = useState<string>(() => {
     const now = new Date();
-    // Obter data atual em Brasília como YYYY-MM-DD
     const brasilDateStr = now.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
-    // 7 dias atrás, 00:00 Brasília
     const [y, m, d] = brasilDateStr.split('-').map(Number);
-    const seteDiasAtras = new Date(y, m - 1, d - 7);
-    const yy = seteDiasAtras.getFullYear();
-    const mm = String(seteDiasAtras.getMonth() + 1).padStart(2, '0');
-    const dd = String(seteDiasAtras.getDate()).padStart(2, '0');
-    return new Date(`${yy}-${mm}-${dd}T00:00:00-03:00`).toISOString();
+    const seteDiasAtras = new Date(Date.UTC(y, m - 1, d - 7, 0, 0, 0, 0));
+    return seteDiasAtras.toISOString();
   });
 
   const [timestampFim, setTimestampFim] = useState<string>(() => {
     const now = new Date();
     const brasilDateStr = now.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
-    return new Date(`${brasilDateStr}T23:59:59-03:00`).toISOString();
+    const [y, m, d] = brasilDateStr.split('-').map(Number);
+    return new Date(Date.UTC(y, m - 1, d, 23, 59, 59, 999)).toISOString();
   });
 
   // ============================================

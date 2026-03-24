@@ -38,7 +38,8 @@ export function DateTimeInput({
   className,
   disabled = false,
 }: DateTimeInputProps) {
-  // Converter ISO 8601 para formato datetime-local (YYYY-MM-DDTHH:mm) em horário de Brasília
+  // Converter ISO 8601 para formato datetime-local (YYYY-MM-DDTHH:mm)
+  // O banco armazena BRT como se fosse UTC, então exibir os componentes UTC diretamente
   const toDatetimeLocal = (isoString: string): string => {
     if (!isoString) return '';
 
@@ -46,34 +47,28 @@ export function DateTimeInput({
       const date = new Date(isoString);
       if (isNaN(date.getTime())) return '';
 
-      // Extrair componentes no fuso de Brasília
-      const parts = new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'America/Sao_Paulo',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-      }).formatToParts(date);
+      // Usar componentes UTC (que na verdade são BRT no banco)
+      const year = date.getUTCFullYear();
+      const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(date.getUTCDate()).padStart(2, '0');
+      const hours = String(date.getUTCHours()).padStart(2, '0');
+      const minutes = String(date.getUTCMinutes()).padStart(2, '0');
 
-      const get = (type: string) => parts.find(p => p.type === type)?.value || '00';
-      // Intl pode retornar hora "24" para meia-noite — corrigir para "00"
-      const hour = get('hour') === '24' ? '00' : get('hour');
-      return `${get('year')}-${get('month')}-${get('day')}T${hour}:${get('minute')}`;
+      return `${year}-${month}-${day}T${hours}:${minutes}`;
     } catch (error) {
       console.error('Erro ao converter data:', error);
       return '';
     }
   };
 
-  // Converter formato datetime-local para ISO 8601 (interpretar como horário de Brasília)
+  // Converter formato datetime-local para ISO 8601
+  // O banco armazena timestamps em BRT sem timezone, então enviar o valor literal como UTC
   const fromDatetimeLocal = (datetimeLocal: string): string => {
     if (!datetimeLocal) return '';
 
     try {
-      // datetimeLocal é "YYYY-MM-DDTHH:mm" sem timezone — interpretar como Brasília (UTC-3)
-      return new Date(datetimeLocal + ':00-03:00').toISOString();
+      // Enviar como UTC literal (o banco armazena BRT como se fosse UTC)
+      return new Date(datetimeLocal + ':00Z').toISOString();
     } catch (error) {
       console.error('Erro ao parsear data:', error);
       return '';
@@ -99,7 +94,7 @@ export function DateTimeInput({
       if (isNaN(date.getTime())) return '';
 
       return date.toLocaleString('pt-BR', {
-        timeZone: 'America/Sao_Paulo',
+        timeZone: 'UTC',
         day: '2-digit',
         month: '2-digit',
         year: 'numeric',
