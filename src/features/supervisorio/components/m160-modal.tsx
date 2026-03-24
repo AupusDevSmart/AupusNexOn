@@ -39,17 +39,21 @@ export function M160Modal({ isOpen, onClose, componenteData }: M160ModalProps) {
   const [periodoCustos, setPeriodoCustos] = useState<PeriodoTipo>('dia');
 
   // Estados para período customizado
+  // Usar offset de Brasília (-3h) para garantir que o dia correto é usado
   const [timestampInicio, setTimestampInicio] = useState<string>(() => {
     const now = new Date();
-    now.setDate(now.getDate() - 7);
-    now.setHours(0, 0, 0, 0);
-    return now.toISOString();
+    const brasilDate = new Date(now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+    brasilDate.setDate(brasilDate.getDate() - 7);
+    brasilDate.setHours(0, 0, 0, 0);
+    // Converter de volta para UTC adicionando 3h (BRT = UTC-3)
+    return new Date(brasilDate.getTime() + 3 * 60 * 60 * 1000).toISOString();
   });
 
   const [timestampFim, setTimestampFim] = useState<string>(() => {
     const now = new Date();
-    now.setHours(23, 59, 59, 999);
-    return now.toISOString();
+    const brasilDate = new Date(now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+    brasilDate.setHours(23, 59, 59, 999);
+    return new Date(brasilDate.getTime() + 3 * 60 * 60 * 1000).toISOString();
   });
 
   // ============================================
