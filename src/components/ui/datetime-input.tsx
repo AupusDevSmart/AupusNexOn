@@ -38,7 +38,7 @@ export function DateTimeInput({
   className,
   disabled = false,
 }: DateTimeInputProps) {
-  // Converter ISO 8601 para formato datetime-local (YYYY-MM-DDTHH:mm)
+  // Converter ISO 8601 para formato datetime-local (YYYY-MM-DDTHH:mm) em horário de Brasília
   const toDatetimeLocal = (isoString: string): string => {
     if (!isoString) return '';
 
@@ -46,30 +46,32 @@ export function DateTimeInput({
       const date = new Date(isoString);
       if (isNaN(date.getTime())) return '';
 
-      // Formato: YYYY-MM-DDTHH:mm
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const day = String(date.getDate()).padStart(2, '0');
-      const hours = String(date.getHours()).padStart(2, '0');
-      const minutes = String(date.getMinutes()).padStart(2, '0');
+      // Extrair componentes no fuso de Brasília
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Sao_Paulo',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      }).formatToParts(date);
 
-      return `${year}-${month}-${day}T${hours}:${minutes}`;
+      const get = (type: string) => parts.find(p => p.type === type)?.value || '00';
+      return `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}`;
     } catch (error) {
       console.error('Erro ao converter data:', error);
       return '';
     }
   };
 
-  // Converter formato datetime-local para ISO 8601
+  // Converter formato datetime-local para ISO 8601 (interpretar como horário de Brasília)
   const fromDatetimeLocal = (datetimeLocal: string): string => {
     if (!datetimeLocal) return '';
 
     try {
-      // datetime-local não tem timezone, assumir local
-      const date = new Date(datetimeLocal);
-      if (isNaN(date.getTime())) return '';
-
-      return date.toISOString();
+      // datetimeLocal é "YYYY-MM-DDTHH:mm" sem timezone — interpretar como Brasília (UTC-3)
+      return new Date(datetimeLocal + ':00-03:00').toISOString();
     } catch (error) {
       console.error('Erro ao parsear data:', error);
       return '';
@@ -95,6 +97,7 @@ export function DateTimeInput({
       if (isNaN(date.getTime())) return '';
 
       return date.toLocaleString('pt-BR', {
+        timeZone: 'America/Sao_Paulo',
         day: '2-digit',
         month: '2-digit',
         year: 'numeric',
