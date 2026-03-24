@@ -56,6 +56,12 @@ const SinopticoPage = lazy(() =>
   }))
 );
 
+const SelecionarUnidadePage = lazy(() =>
+  import("@/pages/supervisorio/selecionar-unidade").then((module) => ({
+    default: module.SelecionarUnidadePage,
+  }))
+);
+
 // ✅ Sinóptico V2 (Refatorado)
 const SinopticoV2Page = lazy(() =>
   import("@/pages/supervisorio/sinoptico-v2").then((module) => ({
@@ -67,6 +73,13 @@ const SinopticoV2Page = lazy(() =>
 const CoaAntigoPage = lazy(() =>
   import("@/pages/supervisorio/coa-com-mock-completo").then((module) => ({
     default: module.COAPage,
+  }))
+);
+
+// ✅ IoT - Sinóptico
+const IotPage = lazy(() =>
+  import("@/pages/supervisorio/iot").then((module) => ({
+    default: module.IotPage,
   }))
 );
 
@@ -225,7 +238,7 @@ export const appRoutes = createBrowserRouter([
         element: (
           <FeatureWrapper feature="supervisorio">
             <Suspense fallback={<div>Carregando...</div>}>
-              <SinopticoPage />
+              <SelecionarUnidadePage />
             </Suspense>
           </FeatureWrapper>
         ),
@@ -235,7 +248,7 @@ export const appRoutes = createBrowserRouter([
         element: (
           <FeatureWrapper feature="supervisorio">
             <Suspense fallback={<div>Carregando...</div>}>
-              <SinopticoPage />
+              <SelecionarUnidadePage />
             </Suspense>
           </FeatureWrapper>
         ),
@@ -267,6 +280,17 @@ export const appRoutes = createBrowserRouter([
           <FeatureWrapper feature="supervisorio">
             <Suspense fallback={<div>Carregando...</div>}>
               <SinopticoV2Page />
+            </Suspense>
+          </FeatureWrapper>
+        ),
+      },
+      // ✅ IoT - Sinóptico
+      {
+        path: "supervisorio/iot",
+        element: (
+          <FeatureWrapper feature="supervisorio">
+            <Suspense fallback={<div>Carregando...</div>}>
+              <IotPage />
             </Suspense>
           </FeatureWrapper>
         ),
