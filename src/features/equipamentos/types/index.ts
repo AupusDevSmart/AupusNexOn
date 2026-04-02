@@ -195,6 +195,7 @@ export interface EquipamentosFilters extends BaseFiltersType {
   criticidade: string;
   classificacao: string;
   equipamentoPaiId?: string;
+  semPlano?: boolean; // Filtrar apenas equipamentos sem plano de manutenção
   page?: number;
   limit?: number;
   search?: string;

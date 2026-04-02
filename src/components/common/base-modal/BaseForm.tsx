@@ -124,8 +124,9 @@ export function BaseForm({
     const preservedFields = ['status', 'criticidade', 'categoria', 'tipo_manutencao'];
     const preserved: Record<string, unknown> = {};
 
+    // Apenas preservar campos que NÃO estão sendo atualizados explicitamente
     preservedFields.forEach(field => {
-      if (data[field] !== undefined && data[field] !== null && data[field] !== '') {
+      if (!(field in updates) && data[field] !== undefined && data[field] !== null && data[field] !== '') {
         preserved[field] = data[field];
       }
     });
@@ -290,6 +291,7 @@ export function BaseForm({
       error,
       mode,
       entity,
+      field, // Expose field definition to custom renders (options, etc.)
       formData: data, // Add formData for conditional logic
       geral: getValue('geral'),
       recorrente: getValue('recorrente'),

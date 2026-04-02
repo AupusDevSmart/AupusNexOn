@@ -152,6 +152,7 @@ export interface EquipamentosQueryParams {
   classificacao?: 'UC' | 'UAR';
   criticidade?: '1' | '2' | '3' | '4' | '5';
   equipamento_pai_id?: string;
+  semPlano?: boolean;
   orderBy?: 'nome' | 'criticidade' | 'created_at' | 'fabricante' | 'valor_contabil';
   orderDirection?: 'asc' | 'desc';
 }

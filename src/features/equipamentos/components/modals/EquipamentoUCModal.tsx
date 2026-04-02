@@ -1116,22 +1116,18 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
             <label className="text-sm font-medium">
               Proprietário <span className="text-red-500">*</span>
             </label>
-            <Select
+            <Combobox
+              options={locationCascade.proprietarios.map((prop) => ({
+                value: prop.id,
+                label: prop.nome || 'Sem nome',
+              }))}
               value={locationCascade.selectedProprietarioId}
               onValueChange={locationCascade.handleProprietarioChange}
+              placeholder={locationCascade.loadingProprietarios ? 'Carregando...' : 'Selecione o proprietário'}
+              searchPlaceholder="Buscar proprietário..."
+              emptyText="Nenhum proprietário encontrado."
               disabled={locationCascade.loadingProprietarios}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder={locationCascade.loadingProprietarios ? 'Carregando...' : 'Selecione o proprietário'} />
-              </SelectTrigger>
-              <SelectContent>
-                {locationCascade.proprietarios.map((prop) => (
-                  <SelectItem key={prop.id} value={prop.id}>
-                    {prop.nome}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            />
           </div>
 
           {/* Planta */}
@@ -1139,28 +1135,22 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
             <label className="text-sm font-medium">
               Planta <span className="text-red-500">*</span>
             </label>
-            <Select
+            <Combobox
+              options={locationCascade.plantas.map((planta) => ({
+                value: planta.id,
+                label: planta.nome,
+              }))}
               value={locationCascade.selectedPlantaId}
               onValueChange={locationCascade.handlePlantaChange}
+              placeholder={
+                locationCascade.loadingPlantas ? 'Carregando plantas...' :
+                !locationCascade.selectedProprietarioId ? 'Primeiro selecione um proprietário' :
+                'Selecione a planta'
+              }
+              searchPlaceholder="Buscar planta..."
+              emptyText="Nenhuma planta encontrada."
               disabled={locationCascade.loadingPlantas || !locationCascade.selectedProprietarioId}
-            >
-              <SelectTrigger>
-                <SelectValue
-                  placeholder={
-                    locationCascade.loadingPlantas ? 'Carregando plantas...' :
-                    !locationCascade.selectedProprietarioId ? 'Primeiro selecione um proprietário' :
-                    'Selecione a planta'
-                  }
-                />
-              </SelectTrigger>
-              <SelectContent>
-                {locationCascade.plantas.map((planta) => (
-                  <SelectItem key={planta.id} value={planta.id}>
-                    {planta.nome}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            />
           </div>
 
           {/* Unidade */}
@@ -1168,28 +1158,22 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
             <label className="text-sm font-medium">
               Unidade <span className="text-red-500">*</span>
             </label>
-            <Select
+            <Combobox
+              options={locationCascade.unidades.map((unidade) => ({
+                value: unidade.id,
+                label: `${unidade.nome} - ${unidade.tipo}`,
+              }))}
               value={locationCascade.selectedUnidadeId}
               onValueChange={locationCascade.handleUnidadeChange}
+              placeholder={
+                locationCascade.loadingUnidades ? 'Carregando unidades...' :
+                !locationCascade.selectedPlantaId ? 'Primeiro selecione uma planta' :
+                'Selecione a unidade'
+              }
+              searchPlaceholder="Buscar unidade..."
+              emptyText="Nenhuma unidade encontrada."
               disabled={locationCascade.loadingUnidades || !locationCascade.selectedPlantaId}
-            >
-              <SelectTrigger>
-                <SelectValue
-                  placeholder={
-                    locationCascade.loadingUnidades ? 'Carregando unidades...' :
-                    !locationCascade.selectedPlantaId ? 'Primeiro selecione uma planta' :
-                    'Selecione a unidade'
-                  }
-                />
-              </SelectTrigger>
-              <SelectContent>
-                {locationCascade.unidades.map((unidade) => (
-                  <SelectItem key={unidade.id} value={unidade.id}>
-                    {unidade.nome} - {unidade.tipo}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            />
           </div>
         </div>
       )}

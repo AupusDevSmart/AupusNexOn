@@ -32,8 +32,8 @@ export const useLocationCascade = (initialData?: LocationData) => {
       setLoadingProprietarios(true);
       setError(null);
 
-      // Buscar TODOS os usuários com roles válidas (não apenas os que têm plantas)
-      const proprietariosList = await PlantasService.getProprietarios();
+      // Buscar apenas proprietários que possuem plantas com unidades
+      const proprietariosList = await PlantasService.getProprietarios(true);
       setProprietarios(proprietariosList);
 
       console.log('✅ [useLocationCascade] Proprietários carregados:', proprietariosList.length);

@@ -175,21 +175,18 @@ class PlantasServiceClass {
   /**
    * Get proprietarios (usuarios with roles: admin, gerente, or proprietário)
    */
-  async getProprietarios(): Promise<ProprietarioBasico[]> {
+  async getProprietarios(comUnidades?: boolean): Promise<ProprietarioBasico[]> {
     try {
-      console.log('📡 [PlantasService] GET /usuarios (proprietarios) - buscando TODOS os usuarios');
+      console.log('📡 [PlantasService] GET /plantas/proprietarios - buscando proprietários');
 
-      // Buscar TODOS os usuários com roles válidas (não apenas os que têm plantas)
-      const response = await api.get('/usuarios', {
+      const response = await api.get('/plantas/proprietarios', {
         params: {
-          roles: ['admin', 'gerente', 'proprietario'].join(','),
-          limit: 1000 // Get all proprietarios
+          ...(comUnidades ? { comUnidades: 'true' } : {}),
         }
       });
 
-      // A API retorna { success: true, data: { data: [...usuarios], pagination: {} } }
-      const usuariosData = response.data.data || response.data;
-      const usuarios = usuariosData.data || usuariosData || [];
+      // A API retorna via ResponseInterceptor: { success, data: [...] }
+      const usuarios = response.data?.data || response.data || [];
 
       console.log('🔍 [PlantasService] Response structure:', {
         hasData: !!response.data,

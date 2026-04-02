@@ -282,7 +282,7 @@ class CategoriasEquipamentosApiService {
       return response.data?.data || null;
     } catch (error) {
       console.error('❌ [CATEGORIAS-EQUIPAMENTOS] Erro ao criar categoria:', error);
-      return null;
+      throw error;
     }
   }
 

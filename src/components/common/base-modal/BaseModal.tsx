@@ -54,19 +54,72 @@ export function BaseModal<T extends BaseEntity>({
   onAfterSubmit,
   onValidationError
 }: BaseModalProps<T>) {
-  const [formData, setFormData] = useState<any>({});
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  
-  // ✅ CORREÇÃO: Refs para controle de inicialização
-  const initialDataRef = useRef<any>({});
-  const modalRef = useRef<HTMLDivElement>(null);
-  const isInitializedRef = useRef(false); // ← NOVO: Controla se já foi inicializado
-
   const isViewMode = mode === 'view';
   const isEditMode = mode === 'edit';
   const isCreateMode = mode === 'create';
+
+  // Computar dados iniciais sincronamente para evitar flash de campos vazios
+  const computeInitialData = useCallback((entityData: any, formFieldsList: FormField[], viewOrEdit: boolean, create: boolean) => {
+    const normalize = (data: any): any => {
+      const normalized: any = {};
+      Object.keys(data).forEach(key => {
+        const value = data[key];
+        if (value === '' || value === null) {
+          normalized[key] = undefined;
+        } else if (typeof value === 'object' && !Array.isArray(value) && value !== null) {
+          normalized[key] = normalize(value);
+        } else {
+          normalized[key] = value;
+        }
+      });
+      return normalized;
+    };
+
+    if (entityData && viewOrEdit) {
+      return normalize(entityData);
+    } else if (entityData && create) {
+      const base: any = {};
+      formFieldsList.forEach(field => {
+        if (field.key.includes('.')) {
+          const [parent, child] = field.key.split('.');
+          if (!base[parent]) base[parent] = {};
+          base[parent][child] = '';
+        } else if (field.type === 'custom' && field.key === 'endereco') {
+          base[field.key] = { uf: '', cidade: '', cep: '', logradouro: '', bairro: '' };
+        } else {
+          base[field.key] = '';
+        }
+      });
+      return { ...base, ...normalize(entityData) };
+    } else if (create) {
+      const base: any = {};
+      formFieldsList.forEach(field => {
+        if (field.key.includes('.')) {
+          const [parent, child] = field.key.split('.');
+          if (!base[parent]) base[parent] = {};
+          base[parent][child] = '';
+        } else if (field.type === 'custom' && field.key === 'endereco') {
+          base[field.key] = { uf: '', cidade: '', cep: '', logradouro: '', bairro: '' };
+        } else {
+          base[field.key] = '';
+        }
+      });
+      return base;
+    }
+    return {};
+  }, []);
+
+  const [formData, setFormData] = useState<any>(() =>
+    computeInitialData(entity, formFields, isViewMode || isEditMode, isCreateMode)
+  );
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+
+  // ✅ CORREÇÃO: Refs para controle de inicialização
+  const initialDataRef = useRef<any>(formData);
+  const modalRef = useRef<HTMLDivElement>(null);
+  const isInitializedRef = useRef(Object.keys(formData).length > 0);
   const isLoading = loading || isSubmitting;
 
   const getSubmitButtonText = useCallback(() => {
@@ -199,26 +252,60 @@ export function BaseModal<T extends BaseEntity>({
     }
   }, [formData, isViewMode]);
 
+  const isFieldVisible = useCallback((field: any, data: any): boolean => {
+    let shouldShow = true;
+
+    if (field.conditionalRender) {
+      try { shouldShow = shouldShow && field.conditionalRender(data); }
+      catch { return false; }
+    }
+
+    if (field.showOnlyOnMode && mode) {
+      const modes = Array.isArray(field.showOnlyOnMode) ? field.showOnlyOnMode : [field.showOnlyOnMode];
+      shouldShow = shouldShow && modes.includes(mode);
+    }
+
+    if (field.hideOnMode && mode) {
+      const modes = Array.isArray(field.hideOnMode) ? field.hideOnMode : [field.hideOnMode];
+      shouldShow = shouldShow && !modes.includes(mode);
+    }
+
+    if (field.showOnlyWhen) {
+      const dependentValue = data[field.showOnlyWhen.field];
+      shouldShow = shouldShow && (dependentValue === field.showOnlyWhen.value);
+    }
+
+    if (field.condition) {
+      try { shouldShow = shouldShow && field.condition(entity, data); }
+      catch { /* keep current shouldShow */ }
+    }
+
+    return shouldShow;
+  }, [mode, entity]);
+
   const validateFields = useCallback((data: any): Record<string, string> => {
     const newErrors: Record<string, string> = {};
-    
+
     formFields.forEach(field => {
+      // Only validate fields that are currently visible
+      if (!isFieldVisible(field, data)) return;
+
       if (field.required) {
-        const value = field.key.includes('.') 
+        const value = field.key.includes('.')
           ? data[field.key.split('.')[0]]?.[field.key.split('.')[1]]
           : data[field.key];
-        
+
         if (!value || String(value).trim() === '') {
           newErrors[field.key] = `${field.label} é obrigatório`;
         }
       }
-      
+
       if (field.validation) {
         const value = field.key.includes('.')
           ? data[field.key.split('.')[0]]?.[field.key.split('.')[1]]
           : data[field.key];
 
-        const error = field.validation(value, data); // Pass formData as second parameter
+        const error = field.validation(value, data);
         if (error) {
           newErrors[field.key] = error;
         }
@@ -226,7 +313,7 @@ export function BaseModal<T extends BaseEntity>({
     });
 
     return newErrors;
-  }, [formFields]);
+  }, [formFields, isFieldVisible]);
 
   const handleSubmit = useCallback(async (e?: React.FormEvent) => {
     if (e) e.preventDefault();

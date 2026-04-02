@@ -476,7 +476,8 @@ export function useEquipamentos(): UseEquipamentosReturn {
         // Hierarquia: unidade > planta > proprietário (com trim para evitar espaços)
         unidade_id: hasUnidade ? filters.unidadeId?.trim() : undefined,
         planta_id: hasUnidade ? undefined : (hasPlanta ? filters.plantaId?.trim() : undefined),
-        proprietario_id: (hasUnidade || hasPlanta) ? undefined : (hasProprietario ? filters.proprietarioId?.trim() : undefined)
+        proprietario_id: (hasUnidade || hasPlanta) ? undefined : (hasProprietario ? filters.proprietarioId?.trim() : undefined),
+        semPlano: filters?.semPlano || undefined
       };
       
       const response = await equipamentosApi.findAll(params);
