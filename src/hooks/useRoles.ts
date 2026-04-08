@@ -51,16 +51,17 @@ export function useRoles(): UseRolesReturn {
         // Mapeamento de nomes técnicos para labels amigáveis
         const labelMapping: Record<string, string> = {
           'super_admin': 'Super Admin',
-          'admin': 'Administrador',
+          'admin': 'Admin',
           'gerente': 'Gerente',
-          'vendedor': 'Vendedor',
-          'consultor': 'Consultor',
+          'analista': 'Analista',
           'proprietario': 'Proprietário',
           'propietario': 'Proprietário',
+          'operador': 'Operador',
+          'vendedor': 'Vendedor',
+          'consultor': 'Consultor',
           'corretor': 'Corretor',
           'cativo': 'Cativo',
           'associado': 'Associado',
-          'operador': 'Operador',
         };
 
         // Transform backend data to expected format

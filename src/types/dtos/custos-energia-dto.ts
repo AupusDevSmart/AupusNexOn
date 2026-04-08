@@ -3,7 +3,7 @@
  * Endpoint: /api/v1/equipamentos-dados/:id/custos-energia
  */
 
-export type PeriodoTipo = 'dia' | 'mes' | 'custom'; // ✅ NOVO: período customizado
+export type PeriodoTipo = 'dia' | 'mes' | 'custom';
 
 export type TipoHorario = 'PONTA' | 'FORA_PONTA' | 'RESERVADO' | 'IRRIGANTE' | 'DEMANDA';
 
@@ -54,6 +54,17 @@ export interface CustosDto {
   custo_demanda: number;
   custo_total: number;
   custo_medio_kwh: number;
+  custo_total_sem_tributos: number;
+  fator_tributos: number;
+  fator_perdas?: number;
+}
+
+export interface TributosDto {
+  icms: number;
+  pis: number;
+  cofins: number;
+  perdas: number;
+  fator_multiplicador: number;
 }
 
 export interface IrriganteInfoDto {
@@ -69,14 +80,32 @@ export interface CustosEnergiaResponseDto {
   unidade: UnidadeResumoDto;
   concessionaria: ConcessionariaResumoDto;
   tarifas_aplicadas: TarifaAplicadaDto[];
+  tarifa_fonte: 'CONCESSIONARIA' | 'PERSONALIZADA';
   consumo: ConsumoDto;
   custos: CustosDto;
+  tributos: TributosDto;
   irrigante?: IrriganteInfoDto;
 }
 
 export interface CustosEnergiaQueryParams {
   periodo?: PeriodoTipo;
-  data?: string; // formato ISO 8601 (YYYY-MM-DD) - usado com periodo=dia ou periodo=mes
-  timestamp_inicio?: string; // formato ISO 8601 completo - usado com periodo=custom
-  timestamp_fim?: string; // formato ISO 8601 completo - usado com periodo=custom
+  data?: string;
+  timestamp_inicio?: string;
+  timestamp_fim?: string;
+}
+
+export interface ConfiguracaoCustoDto {
+  icms: number;
+  pis: number;
+  cofins: number;
+  perdas: number;
+  usa_tarifa_personalizada: boolean;
+  tusd_p: number | null;
+  te_p: number | null;
+  tusd_fp: number | null;
+  te_fp: number | null;
+  tusd_d: number | null;
+  te_d: number | null;
+  tusd_b: number | null;
+  te_b: number | null;
 }

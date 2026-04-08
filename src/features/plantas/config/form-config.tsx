@@ -62,6 +62,7 @@ const EnderecoCompleto = ({ onChange, disabled, entity, value }: FormFieldProps 
   const [lastCEP, setLastCEP] = React.useState('');
   const [initialized, setInitialized] = React.useState(false);
   const [isLoadingInitialData, setIsLoadingInitialData] = React.useState(false);
+  const pendingCidadeRef = React.useRef<string | null>(null);
 
   const { estados, loading: loadingEstados } = useEstadosIBGE();
   const estadoSelecionado = estados.find(e => e.sigla === selectedUF);
@@ -78,6 +79,7 @@ const EnderecoCompleto = ({ onChange, disabled, entity, value }: FormFieldProps 
       if (endereco && typeof endereco === 'object') {
         setSelectedUF(endereco.uf || '');
         setSelectedCidade(endereco.cidade || '');
+        pendingCidadeRef.current = endereco.cidade || null;
         setCep(endereco.cep || '');
         setLastCEP(endereco.cep || ''); // Marcar CEP inicial para evitar auto-busca
         setLogradouro(endereco.logradouro || '');
@@ -97,6 +99,20 @@ const EnderecoCompleto = ({ onChange, disabled, entity, value }: FormFieldProps 
       setTimeout(() => setIsLoadingInitialData(false), 100);
     }
   }, [value, entity?.endereco, initialized]);
+
+  // Reconciliar cidade pendente após lista de cidades carregar
+  React.useEffect(() => {
+    if (pendingCidadeRef.current && cidades.length > 0 && !loadingCidades) {
+      const cidadeDesejada = pendingCidadeRef.current;
+      const cidadeEncontrada = cidades.find(
+        c => c.nome.toLowerCase() === cidadeDesejada.toLowerCase()
+      );
+      if (cidadeEncontrada) {
+        setSelectedCidade(cidadeEncontrada.nome);
+      }
+      pendingCidadeRef.current = null;
+    }
+  }, [cidades, loadingCidades]);
 
   const onChangeRef = React.useRef(onChange);
   onChangeRef.current = onChange;
@@ -134,8 +150,10 @@ const EnderecoCompleto = ({ onChange, disabled, entity, value }: FormFieldProps 
     if (endereco) {
       setLogradouro(endereco.logradouro);
       setBairro(endereco.bairro);
-      setSelectedCidade(endereco.localidade); // ViaCEP retorna "localidade" (nome da cidade)
       setSelectedUF(endereco.uf);
+      // Cidade será reconciliada após cidades do novo UF carregarem
+      pendingCidadeRef.current = endereco.localidade;
+      setSelectedCidade(endereco.localidade);
     }
   };
 

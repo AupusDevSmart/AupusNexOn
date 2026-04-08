@@ -60,7 +60,9 @@ class UsuariosApiService {
 
   async findOne(id: string): Promise<Usuario> {
     const response = await api.get(`/usuarios/${id}`);
-    return this.mapApiResponseToUsuario(response.data);
+    // ResponseInterceptor retorna { success, data: {...usuario} }
+    const usuario = response.data?.data || response.data;
+    return this.mapApiResponseToUsuario(usuario);
   }
 
   async create(data: UsuarioFormData): Promise<Usuario> {
@@ -69,14 +71,17 @@ class UsuariosApiService {
     console.log('📤 [UsuariosApiService] DTO enviado para API:', createDto);
 
     const response = await api.post('/usuarios', createDto);
-    const result = response.data;
+    // ResponseInterceptor retorna { success, data: {...usuario} }
+    const result = response.data?.data || response.data;
     return this.mapApiResponseToUsuario(result);
   }
 
   async update(id: string, data: Partial<UsuarioFormData>): Promise<Usuario> {
     const updateDto = await mapFormDataToCreateDto(data as UsuarioFormData);
     const response = await api.patch(`/usuarios/${id}`, updateDto);
-    return this.mapApiResponseToUsuario(response.data);
+    // ResponseInterceptor retorna { success, data: {...usuario} }
+    const result = response.data?.data || response.data;
+    return this.mapApiResponseToUsuario(result);
   }
 
   async remove(id: string): Promise<{ message: string }> {

@@ -33,6 +33,7 @@ const transformFormDataToAPI = (data: any): CreateConcessionariaDto | UpdateConc
   const transformedData: any = {
     nome: (data.nome || '').trim(),
     estado: (data.estado || '').toUpperCase(),
+    numero_reh: (data.numero_reh || '').trim() || undefined,
     data_inicio: data.data_inicio,
     data_validade: data.data_validade,
   };
@@ -59,7 +60,8 @@ const transformAPIToFormData = (concessionaria: ConcessionariaResponse): any => 
     id: concessionaria.id,
     nome: concessionaria.nome,
     estado: concessionaria.estado || '',
-    data_inicio: concessionaria.data_inicio.split('T')[0], // Converter para formato YYYY-MM-DD
+    numero_reh: concessionaria.numero_reh || '',
+    data_inicio: concessionaria.data_inicio.split('T')[0],
     data_validade: concessionaria.data_validade.split('T')[0],
     tarifas: {
       a4_verde: concessionaria.a4_verde,

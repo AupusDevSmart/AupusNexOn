@@ -1,17 +1,18 @@
-import React, { useMemo } from 'react';
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
 } from '@/components/ui/select';
 import { useCidades } from '@/hooks/useIBGE';
 
 interface CidadeSelectProps {
   value?: string;
+  displayValue?: string;
   onValueChange?: (value: string) => void;
-  onCidadeChange?: (cidade: { id: string; nome: string }) => void; // ✅ Callback com dados completos
+  onCidadeChange?: (cidade: { id: string; nome: string }) => void;
   estadoId: number | null;
   placeholder?: string;
   className?: string;
@@ -20,6 +21,7 @@ interface CidadeSelectProps {
 
 export function CidadeSelect({
   value,
+  displayValue,
   onValueChange,
   onCidadeChange,
   estadoId,
@@ -29,14 +31,20 @@ export function CidadeSelect({
 }: CidadeSelectProps) {
   const { cidades, loading, error } = useCidades(estadoId);
 
-  // ✅ Handler que chama ambos os callbacks
-  const handleCidadeChange = (cidadeId: string) => {
-    // Chamar callback tradicional (para compatibilidade)
+  // Se tem displayValue mas não tem value (ID IBGE), tentar resolver pelo nome
+  const resolvedValue = useMemo(() => {
+    if (value) return value;
+    if (!displayValue || cidades.length === 0) return undefined;
+    const match = cidades.find(
+      c => c.nome.toLowerCase() === displayValue.toLowerCase()
+    );
+    return match ? match.id.toString() : undefined;
+  }, [value, displayValue, cidades]);
+
+  const handleCidadeChange = useCallback((cidadeId: string) => {
     if (onValueChange) {
       onValueChange(cidadeId);
     }
-
-    // Chamar callback com dados completos
     if (onCidadeChange) {
       const cidadeSelecionada = cidades.find(c => c.id.toString() === cidadeId);
       if (cidadeSelecionada) {
@@ -46,7 +54,16 @@ export function CidadeSelect({
         });
       }
     }
-  };
+  }, [cidades, onValueChange, onCidadeChange]);
+
+  // Auto-propagar o ID resolvido para o form quando displayValue é usado
+  const didAutoResolve = useRef(false);
+  useEffect(() => {
+    if (resolvedValue && !value && !didAutoResolve.current) {
+      didAutoResolve.current = true;
+      handleCidadeChange(resolvedValue);
+    }
+  }, [resolvedValue, value, handleCidadeChange]);
 
   const cidadesOptions = useMemo(() => {
     return cidades.map(cidade => ({
@@ -80,13 +97,13 @@ export function CidadeSelect({
 
   return (
     <Select
-      value={value || undefined} // ✅ Garantir que seja undefined (não string vazia) para placeholder funcionar
+      value={resolvedValue || undefined}
       onValueChange={handleCidadeChange}
       disabled={disabled || loading}
     >
       <SelectTrigger className={className}>
-        <SelectValue 
-          placeholder={loading ? "Carregando cidades..." : placeholder} 
+        <SelectValue
+          placeholder={loading ? "Carregando cidades..." : placeholder}
         />
       </SelectTrigger>
       <SelectContent>

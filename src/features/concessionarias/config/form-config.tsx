@@ -20,8 +20,14 @@ export const concessionariasFormFields: FormField[] = [
     required: true,
   } as any,
   {
+    key: 'numero_reh',
+    label: 'REH (Resolucao Homologatoria)',
+    type: 'text',
+    placeholder: 'Ex: 3.166/2024',
+  },
+  {
     key: 'data_inicio',
-    label: 'Data de Início da Vigência',
+    label: 'Data de Inicio da Vigencia',
     type: 'date',
     placeholder: 'dd/mm/aaaa',
     required: true,

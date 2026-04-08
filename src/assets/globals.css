@@ -2,6 +2,24 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Switch - cores visiveis em light e dark mode */
+.aupus-switch[data-state="unchecked"] {
+  background-color: hsl(0, 0%, 78%) !important;
+}
+.aupus-switch[data-state="checked"] {
+  background-color: #059669 !important;
+}
+.aupus-switch[data-state="unchecked"] span,
+.aupus-switch[data-state="checked"] span {
+  background-color: #ffffff !important;
+}
+.dark .aupus-switch[data-state="unchecked"] {
+  background-color: hsl(0, 0%, 35%) !important;
+}
+.dark .aupus-switch[data-state="checked"] {
+  background-color: #34d399 !important;
+}
+
 @layer base {
   :root {
     --background: hsl(0, 0%, 100%);
@@ -564,4 +582,5 @@
     background-image: none !important;
     opacity: 1 !important;
   }
+
 }

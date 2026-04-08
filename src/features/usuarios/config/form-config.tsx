@@ -27,18 +27,19 @@ const RoleSelector = ({ value, onChange, disabled }: any) => {
   const { user, getUserRole } = useUserStore();
   const currentUserRole = getUserRole();
 
-  // ✅ FILTRAR ROLES: Se usuário logado é proprietário, mostrar apenas "operador"
-  let availableRoles = roles;
+  // Roles permitidas no sistema
+  const allowedRoles = ['super_admin', 'admin', 'gerente', 'analista', 'proprietario', 'operador'];
+
+  // Filtrar apenas roles permitidas
+  let availableRoles = roles.filter(role =>
+    allowedRoles.includes(role.value.toLowerCase())
+  );
+
+  // Se usuário logado é proprietário, mostrar apenas "operador"
   if (currentUserRole === 'propietario' || currentUserRole === 'proprietario') {
-    availableRoles = roles.filter(role =>
-      role.value === 'operador' ||
+    availableRoles = availableRoles.filter(role =>
       role.value.toLowerCase() === 'operador'
     );
-
-    // Se não encontrou "operador", mostrar mensagem de erro
-    if (availableRoles.length === 0) {
-      console.warn('⚠️ Role "operador" não encontrado na lista de roles disponíveis:', roles);
-    }
   }
 
   if (loading) {
@@ -211,7 +212,7 @@ const PermissoesSelector = ({ value, onChange, disabled }: any) => {
 };
 
 // Componente para seleção de estado com IBGE
-const EstadoSelector = ({ value, onChange, disabled, onMultipleChange }: any) => {
+const EstadoSelector = ({ value, onChange, disabled, onMultipleChange, formData }: any) => {
   const handleEstadoChange = (estado: { id: string; nome: string; sigla: string }) => {
 
     // Atualizar estadoId (para o CidadeSelect depender)
@@ -231,6 +232,7 @@ const EstadoSelector = ({ value, onChange, disabled, onMultipleChange }: any) =>
   return (
     <EstadoSelect
       value={value}
+      displayValue={formData?.estado}
       onEstadoChange={handleEstadoChange}
       disabled={disabled}
       placeholder="Selecione um estado"
@@ -239,7 +241,7 @@ const EstadoSelector = ({ value, onChange, disabled, onMultipleChange }: any) =>
 };
 
 // Componente para seleção de cidade com IBGE
-const CidadeSelector = ({ value, onChange, disabled, estadoId, onMultipleChange }: any) => {
+const CidadeSelector = ({ value, onChange, disabled, estadoId, onMultipleChange, formData }: any) => {
   const handleCidadeChange = (cidade: { id: string; nome: string }) => {
 
     // Atualizar cidadeId
@@ -259,6 +261,7 @@ const CidadeSelector = ({ value, onChange, disabled, estadoId, onMultipleChange 
   return (
     <CidadeSelect
       value={value}
+      displayValue={formData?.cidade}
       onCidadeChange={handleCidadeChange}
       estadoId={estadoId ? parseInt(estadoId) : null}
       disabled={disabled}

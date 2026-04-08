@@ -1,17 +1,18 @@
-import React, { useMemo } from 'react';
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
 } from '@/components/ui/select';
 import { useEstados } from '@/hooks/useIBGE';
 
 interface EstadoSelectProps {
   value?: string;
+  displayValue?: string;
   onValueChange?: (value: string) => void;
-  onEstadoChange?: (estado: { id: string; nome: string; sigla: string }) => void; // ✅ Callback com dados completos
+  onEstadoChange?: (estado: { id: string; nome: string; sigla: string }) => void;
   placeholder?: string;
   className?: string;
   disabled?: boolean;
@@ -19,6 +20,7 @@ interface EstadoSelectProps {
 
 export function EstadoSelect({
   value,
+  displayValue,
   onValueChange,
   onEstadoChange,
   placeholder = "Selecione um estado",
@@ -27,14 +29,21 @@ export function EstadoSelect({
 }: EstadoSelectProps) {
   const { estados, loading, error } = useEstados();
 
-  // ✅ Handler que chama ambos os callbacks
-  const handleEstadoChange = (estadoId: string) => {
-    // Chamar callback tradicional (para compatibilidade)
+  // Se tem displayValue mas não tem value (ID IBGE), tentar resolver pelo nome/sigla
+  const resolvedValue = useMemo(() => {
+    if (value) return value;
+    if (!displayValue || estados.length === 0) return undefined;
+    const match = estados.find(
+      e => e.sigla.toLowerCase() === displayValue.toLowerCase() ||
+           e.nome.toLowerCase() === displayValue.toLowerCase()
+    );
+    return match ? match.id.toString() : undefined;
+  }, [value, displayValue, estados]);
+
+  const handleEstadoChange = useCallback((estadoId: string) => {
     if (onValueChange) {
       onValueChange(estadoId);
     }
-
-    // Chamar callback com dados completos
     if (onEstadoChange) {
       const estadoSelecionado = estados.find(e => e.id.toString() === estadoId);
       if (estadoSelecionado) {
@@ -45,7 +54,16 @@ export function EstadoSelect({
         });
       }
     }
-  };
+  }, [estados, onValueChange, onEstadoChange]);
+
+  // Auto-propagar o ID resolvido para o form quando displayValue é usado
+  const didAutoResolve = useRef(false);
+  useEffect(() => {
+    if (resolvedValue && !value && !didAutoResolve.current) {
+      didAutoResolve.current = true;
+      handleEstadoChange(resolvedValue);
+    }
+  }, [resolvedValue, value, handleEstadoChange]);
 
   const estadosOptions = useMemo(() => {
     return estados.map(estado => ({
@@ -64,13 +82,13 @@ export function EstadoSelect({
 
   return (
     <Select
-      value={value || undefined} // ✅ Garantir que seja undefined (não string vazia) para placeholder funcionar
+      value={resolvedValue || undefined}
       onValueChange={handleEstadoChange}
       disabled={disabled || loading}
     >
       <SelectTrigger className={className}>
-        <SelectValue 
-          placeholder={loading ? "Carregando estados..." : placeholder} 
+        <SelectValue
+          placeholder={loading ? "Carregando estados..." : placeholder}
         />
       </SelectTrigger>
       <SelectContent>

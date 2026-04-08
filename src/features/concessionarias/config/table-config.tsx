@@ -31,15 +31,20 @@ export const concessionariasTableColumns: TableColumn<ConcessionariaResponse>[] 
   },
   {
     key: 'vigencia',
-    label: 'Vigência',
+    label: 'Vigencia',
     render: (concessionaria) => (
       <div className="space-y-1">
+        {concessionaria.numero_reh && (
+          <div className="text-xs font-medium text-muted-foreground">
+            REH {concessionaria.numero_reh}
+          </div>
+        )}
         <div className="flex items-center gap-2 text-sm">
           <Calendar className="h-3 w-3 text-muted-foreground" />
           <span>{formatDate(concessionaria.data_inicio)}</span>
         </div>
         <div className="text-xs text-muted-foreground">
-          até {formatDate(concessionaria.data_validade)}
+          ate {formatDate(concessionaria.data_validade)}
         </div>
         <div className="mt-1">
           {isVigenciaAtiva(concessionaria.data_inicio, concessionaria.data_validade) ? (

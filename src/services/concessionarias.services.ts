@@ -44,6 +44,7 @@ export interface ConcessionariaResponse {
   id: string;
   nome: string;
   estado: string;
+  numero_reh?: string | null;
   data_inicio: string;
   data_validade: string;
   a4_verde: TarifasA4Verde;
@@ -66,6 +67,7 @@ export interface FindAllConcessionariasParams {
 export interface CreateConcessionariaDto {
   nome: string;
   estado: string;
+  numero_reh?: string;
   data_inicio: string;
   data_validade: string;
   a4_verde?: TarifasA4Verde;

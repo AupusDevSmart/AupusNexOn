@@ -189,11 +189,25 @@ class EquipamentosDadosService {
       timestamp_fim?: string;
     }
   ) {
-    // Limpar espaços em branco do ID
     const cleanId = equipamentoId.trim();
     const response = await api.get(`/equipamentos-dados/${cleanId}/custos-energia`, {
       params,
     });
+    return response.data;
+  }
+
+  async getConfiguracaoCusto(equipamentoId: string) {
+    const cleanId = equipamentoId.trim();
+    const response = await api.get(`/equipamentos-dados/${cleanId}/configuracao-custo`);
+    return response.data;
+  }
+
+  async upsertConfiguracaoCusto(
+    equipamentoId: string,
+    data: Record<string, any>,
+  ) {
+    const cleanId = equipamentoId.trim();
+    const response = await api.put(`/equipamentos-dados/${cleanId}/configuracao-custo`, data);
     return response.data;
   }
 

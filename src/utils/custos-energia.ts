@@ -1,28 +1,28 @@
 /**
- * Utilitários para formatação de dados de custos de energia
+ * Utilitarios para formatacao de dados de custos de energia
  */
 
 import type { TipoHorario } from '@/types/dtos/custos-energia-dto';
 
 /**
- * Formata valor monetário em Real (R$)
+ * Formata valor monetario em Real (R$) com 2 casas decimais
  */
 export function formatarMoeda(valor: number): string {
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
     currency: 'BRL',
     minimumFractionDigits: 2,
-    maximumFractionDigits: 6,
+    maximumFractionDigits: 2,
   }).format(valor);
 }
 
 /**
- * Formata energia em kWh
+ * Formata energia em kWh com 2 casas decimais
  */
 export function formatarEnergia(kwh: number): string {
   return new Intl.NumberFormat('pt-BR', {
     minimumFractionDigits: 2,
-    maximumFractionDigits: 6,
+    maximumFractionDigits: 2,
   }).format(kwh);
 }
 
@@ -32,12 +32,12 @@ export function formatarEnergia(kwh: number): string {
 export function formatarDemanda(kw: number): string {
   return new Intl.NumberFormat('pt-BR', {
     minimumFractionDigits: 2,
-    maximumFractionDigits: 4,
+    maximumFractionDigits: 2,
   }).format(kw);
 }
 
 /**
- * Formata tarifa em R$/kWh
+ * Formata tarifa em R$/kWh (mantém 4 casas para precisao)
  */
 export function formatarTarifa(tarifa: number): string {
   return new Intl.NumberFormat('pt-BR', {
@@ -56,7 +56,14 @@ export function formatarPercentual(valor: number): string {
 }
 
 /**
- * Retorna cor para tipo de horário
+ * Formata aliquota decimal como percentual (0.18 -> "18,00%")
+ */
+export function formatarAliquota(valor: number): string {
+  return `${(valor * 100).toFixed(2).replace('.', ',')}%`;
+}
+
+/**
+ * Retorna cor para tipo de horario
  */
 export function getCorTipoHorario(tipo: TipoHorario): string {
   const cores: Record<TipoHorario, string> = {
@@ -70,29 +77,28 @@ export function getCorTipoHorario(tipo: TipoHorario): string {
 }
 
 /**
- * Retorna cor de fundo para tipo de horário (minimalista)
+ * Retorna cor de fundo para tipo de horario (minimalista)
  */
 export function getBgCorTipoHorario(tipo: TipoHorario): string {
-  // Retorna apenas borda padrão sem cores
   return '';
 }
 
 /**
- * Retorna ícone (emoji) para tipo de horário
+ * Retorna icone para tipo de horario
  */
 export function getIconeTipoHorario(tipo: TipoHorario): string {
   const icones: Record<TipoHorario, string> = {
-    PONTA: '🔴',
-    FORA_PONTA: '🔵',
-    RESERVADO: '🟣',
-    IRRIGANTE: '🟢',
-    DEMANDA: '🟠',
+    PONTA: '',
+    FORA_PONTA: '',
+    RESERVADO: '',
+    IRRIGANTE: '',
+    DEMANDA: '',
   };
-  return icones[tipo] || '⚪';
+  return icones[tipo] || '';
 }
 
 /**
- * Retorna label amigável para tipo de horário
+ * Retorna label amigavel para tipo de horario
  */
 export function getLabelTipoHorario(tipo: TipoHorario): string {
   const labels: Record<TipoHorario, string> = {
@@ -106,13 +112,13 @@ export function getLabelTipoHorario(tipo: TipoHorario): string {
 }
 
 /**
- * Retorna descrição para tipo de horário
+ * Retorna descricao para tipo de horario
  */
 export function getDescricaoTipoHorario(tipo: TipoHorario): string {
   const descricoes: Record<TipoHorario, string> = {
-    PONTA: '17h-20h (Seg-Sex)',
-    FORA_PONTA: 'Demais horários',
-    RESERVADO: 'HR = FP na tarifa Verde',
+    PONTA: '18h-21h (Todos os dias)',
+    FORA_PONTA: '06h-18h / 21h-21:30',
+    RESERVADO: '21:30-06:00 (HR = FP Verde)',
     IRRIGANTE: '21:30-06:00 (80% desc. TE)',
     DEMANDA: 'Demanda contratada',
   };
