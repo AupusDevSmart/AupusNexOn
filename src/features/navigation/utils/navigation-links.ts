@@ -17,6 +17,7 @@ import {
   Factory,
   Database,
   Boxes,
+  FileText,
 } from "lucide-react";
 
 export type NavigationLink = {
@@ -84,6 +85,13 @@ export const navigationLinks: Array<NavigationLink> = [
         icon: Cpu,
         label: "Sinóptico do Ativo",
         hint: "Visualização detalhada dos ativos",
+      },
+      {
+        key: "supervisorio-logs-mqtt",
+        path: "/logs/logs-mqtt",
+        icon: FileText,
+        label: "Logs MQTT",
+        hint: "Logs gerados pelas regras MQTT",
       },
       // {
       //   key: "supervisorio-sinoptico-v2",
@@ -188,6 +196,13 @@ export const navigationLinks: Array<NavigationLink> = [
         icon: Zap,
         label: "Concessionárias",
         hint: "Gerenciar Concessionárias de Energia",
+      },
+      {
+        key: "cadastros-regras-logs",
+        path: "/cadastros/regras-logs",
+        icon: ScrollText,
+        label: "Regras de Logs",
+        hint: "Cadastrar regras de logs MQTT",
       },
     ],
   },

@@ -9,8 +9,8 @@ export function useFilteredNavigationLinks() {
     // if (!acessivel) return [];
     return links
       .filter((link) => {
-        // Verifica a feature key (permissão)
-        if (!link.featureKey) return false;
+        // Se não tem featureKey, sempre mostra (sem restrição de permissão)
+        if (!link.featureKey) return true;
 
         // Verifica a feature flag (se definida)
         if (link.featureFlag) {

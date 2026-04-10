@@ -153,6 +153,7 @@ export interface EquipamentosQueryParams {
   criticidade?: '1' | '2' | '3' | '4' | '5';
   equipamento_pai_id?: string;
   semPlano?: boolean;
+  mqtt_habilitado?: boolean;
   orderBy?: 'nome' | 'criticidade' | 'created_at' | 'fabricante' | 'valor_contabil';
   orderDirection?: 'asc' | 'desc';
 }

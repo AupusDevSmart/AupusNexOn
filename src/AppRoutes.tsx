@@ -107,6 +107,14 @@ const CadastroConcessionariasPage = lazy(() =>
   import("@/pages/cadastros/concessionarias")
 );
 
+const CadastroRegrasLogsPage = lazy(() =>
+  import("@/pages/cadastros/regras-logs")
+);
+
+const LogsMqttPage = lazy(() =>
+  import("@/pages/logs/logs-mqtt")
+);
+
 // ✅ Lazy load para Design System Test Page
 const DesignSystemTestPage = lazy(() =>
   import("@/pages/DesignSystemTest").then((module) => ({
@@ -364,6 +372,22 @@ export const appRoutes = createBrowserRouter([
               <CadastroConcessionariasPage />
             </Suspense>
           </FeatureWrapper>
+        ),
+      },
+      {
+        path: "cadastros/regras-logs",
+        element: (
+          <Suspense fallback={<div>Carregando...</div>}>
+            <CadastroRegrasLogsPage />
+          </Suspense>
+        ),
+      },
+      {
+        path: "logs/logs-mqtt",
+        element: (
+          <Suspense fallback={<div>Carregando...</div>}>
+            <LogsMqttPage />
+          </Suspense>
         ),
       },
       // ✅ Design System Test Page (Para visualizar componentes minimalistas)
