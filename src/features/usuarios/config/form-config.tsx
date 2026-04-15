@@ -80,14 +80,9 @@ const RoleSelector = ({ value, onChange, disabled }: any) => {
   if (disabled) {
     return (
       <div className="flex items-center p-3 border rounded-md bg-muted/30">
-        <div className="flex flex-col">
-          <span className="font-medium text-sm">
-            {currentRole ? currentRole.label : value || 'Não definido'}
-          </span>
-          <span className="text-xs text-muted-foreground">
-            Role: {value || 'N/A'}
-          </span>
-        </div>
+        <span className="font-medium text-sm">
+          {currentRole ? currentRole.label : value || 'Não definido'}
+        </span>
       </div>
     );
   }
@@ -109,10 +104,7 @@ const RoleSelector = ({ value, onChange, disabled }: any) => {
       <SelectContent>
         {availableRoles.map(role => (
           <SelectItem key={role.value} value={role.value}>
-            <div className="flex flex-col">
-              <span className="font-medium">{role.label}</span>
-              <span className="text-xs text-muted-foreground">Valor: {role.value}</span>
-            </div>
+            <span className="font-medium">{role.label}</span>
           </SelectItem>
         ))}
       </SelectContent>

@@ -54,6 +54,9 @@ export const transformApiToFrontend = (apiEquipamento: EquipamentoApiResponse): 
     tipo: ((apiEquipamento as any).tipo_equipamento_rel?.id || apiEquipamento.tipo_equipamento_id || apiEquipamento.tipo_equipamento)?.trim(),
     tipoEquipamento: ((apiEquipamento as any).tipo_equipamento_rel?.id || apiEquipamento.tipo_equipamento_id || apiEquipamento.tipo_equipamento)?.trim(), // Alias para compatibilidade com modal
 
+    // Status
+    status: (apiEquipamento as any).status || 'Ativo',
+
     // Estados operacionais
     emOperacao: apiEquipamento.em_operacao as 'sim' | 'nao' | undefined,
     tipoDepreciacao: apiEquipamento.tipo_depreciacao as 'linear' | 'uso' | undefined,
@@ -205,6 +208,9 @@ export const transformFrontendToApi = (equipamento: any): CreateEquipamentoApiDa
     numero_serie: equipamento.numero_serie || equipamento.numeroSerie,
     tipo_equipamento_id: (equipamento.tipo_equipamento_id || equipamento.tipoEquipamento || equipamento.tipo)?.trim(),
     
+    // Status
+    status: equipamento.status,
+
     // Estados operacionais
     em_operacao: equipamento.em_operacao || equipamento.emOperacao,
     tipo_depreciacao: equipamento.tipo_depreciacao || equipamento.tipoDepreciacao,

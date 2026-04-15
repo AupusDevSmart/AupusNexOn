@@ -27,13 +27,26 @@ export const getEquipamentosTableColumns = (): TableColumn<Equipamento>[] => [
 
   {
     key: 'classificacao',
-    label: 'Status',
+    label: 'Classificação',
     render: (equipamento) => (
       <Badge
         variant="outline"
         className="text-xs"
       >
         {equipamento.classificacao}
+      </Badge>
+    )
+  },
+
+  {
+    key: 'status',
+    label: 'Status',
+    render: (equipamento) => (
+      <Badge
+        variant="outline"
+        className={`text-xs ${equipamento.status === 'Ativo' ? 'border-emerald-300 text-emerald-700 dark:border-emerald-700 dark:text-emerald-400' : 'border-red-300 text-red-700 dark:border-red-700 dark:text-red-400'}`}
+      >
+        {equipamento.status || 'Ativo'}
       </Badge>
     )
   },

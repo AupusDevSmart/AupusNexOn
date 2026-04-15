@@ -15,6 +15,7 @@ export interface CreateEquipamentoApiData {
   modelo?: string;
   numero_serie?: string;
   tag?: string;
+  status?: string;
   criticidade: '1' | '2' | '3' | '4' | '5';
   tipo_equipamento?: string;
   em_operacao?: 'sim' | 'nao';
@@ -62,6 +63,7 @@ export interface EquipamentoApiResponse {
   modelo?: string;
   numero_serie?: string;
   tag?: string;
+  status?: string;
   criticidade: '1' | '2' | '3' | '4' | '5';
   tipo_equipamento?: string;
   em_operacao?: string;

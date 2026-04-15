@@ -95,6 +95,9 @@ export interface Equipamento extends BaseEntity {
   tipo?: string;
   tipoEquipamento?: string;
   
+  // Status
+  status?: 'Ativo' | 'Inativo';
+
   // Estados operacionais
   emOperacao?: 'sim' | 'nao';
   tipoDepreciacao?: 'linear' | 'uso';
@@ -159,6 +162,7 @@ export interface EquipamentoFormData {
   criticidade: '1' | '2' | '3' | '4' | '5';
   tipo?: string;
   tipoEquipamento?: string;
+  status?: 'Ativo' | 'Inativo';
   emOperacao?: 'sim' | 'nao';
   tipoDepreciacao?: 'linear' | 'uso';
   dataImobilizacao?: string;

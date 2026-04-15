@@ -234,6 +234,7 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
         localizacao: dadosCompletos.localizacao || '',
         valorContabil: dadosCompletos.valorContabil || '',
         dataImobilizacao: dadosCompletos.dataImobilizacao || '',
+        status: dadosCompletos.status || 'Ativo',
         emOperacao: dadosCompletos.emOperacao || '',
         // Campos MQTT
         mqttHabilitado: dadosCompletos.mqttHabilitado || dadosCompletos.mqtt_habilitado || false,
@@ -368,6 +369,7 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
       localizacao: '',
       valorContabil: '',
       dataImobilizacao: '',
+      status: 'Ativo',
       emOperacao: 'sim',
       // Campos MQTT
       mqttHabilitado: false,
@@ -712,6 +714,7 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
         criticidade: formData.criticidade,
         tipo_equipamento: formData.tipoEquipamento,  // Código (compatibilidade)
         tipo_equipamento_id: tipoEqpSelecionado?.id,  // ID do tipo (correto)
+        status: formData.status || 'Ativo',
         em_operacao: formData.emOperacao,
         data_imobilizacao: dataImobilizacaoFormatted,
         valor_contabil: formData.valorContabil ? parseFloat(formData.valorContabil) : undefined,
@@ -1455,6 +1458,24 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
             onChange={(e) => handleInputChange('dataImobilizacao', e.target.value)}
             disabled={isReadonly}
           />
+        </div>
+
+        {/* Status */}
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Status</label>
+          <Select
+            value={formData.status || 'Ativo'}
+            onValueChange={(value) => handleInputChange('status', value)}
+            disabled={isReadonly}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Ativo">Ativo</SelectItem>
+              <SelectItem value="Inativo">Inativo</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         {/* Em Operação */}
