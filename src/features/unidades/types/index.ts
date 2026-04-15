@@ -59,8 +59,11 @@ export interface Unidade {
   demandaCarga?: number;
   demandaGeracao?: number;
   concessionariaId?: string;
-  numeroUc?: string; // ✅ Número da Unidade Consumidora
-  tensaoNominal?: number; // Tensão nominal em V
+  numeroUc?: string;
+  tensaoNominal?: string;
+  sazonal?: boolean;
+  industrial?: boolean;
+  geracao?: boolean;
 
   // Timestamps
   createdAt: string;
@@ -72,6 +75,8 @@ export interface Unidade {
     id: string;
     nome: string;
     localizacao?: string;
+    cidade?: string;
+    uf?: string;
     proprietario?: {
       id: string;
       nome: string;
@@ -103,7 +108,11 @@ export interface CreateUnidadeDto {
   demanda_carga?: number;
   demanda_geracao?: number;
   concessionaria_id?: string;
-  numero_uc?: string; // ✅ Número da Unidade Consumidora
+  numero_uc?: string;
+  tensao_nominal?: string;
+  sazonal?: boolean;
+  industrial?: boolean;
+  geracao?: boolean;
 }
 
 /**
@@ -209,8 +218,12 @@ export interface UnidadeFormData {
   tipoUnidade?: TipoUnidadeEnergia;
   demandaCarga?: number | string;
   demandaGeracao?: number | string;
-  concessionariaId?: string | undefined; // Explicitly allow undefined
-  numeroUc?: string; // ✅ Número da Unidade Consumidora
+  concessionariaId?: string | undefined;
+  numeroUc?: string;
+  tensaoNominal?: string;
+  sazonal?: boolean;
+  industrial?: boolean;
+  geracao?: boolean;
 }
 
 // ===== UTILITÁRIOS DE CONVERSÃO =====
@@ -262,13 +275,21 @@ export const formDataToDto = (formData: UnidadeFormData): CreateUnidadeDto => {
     cidade: formData.cidade,
     latitude: typeof formData.latitude === 'string' ? parseFloat(formData.latitude) : formData.latitude,
     longitude: typeof formData.longitude === 'string' ? parseFloat(formData.longitude) : formData.longitude,
-    potencia: typeof formData.potencia === 'string' ? parseFloat(formData.potencia) : formData.potencia,
+    potencia: formData.potencia ? (typeof formData.potencia === 'string' ? parseFloat(formData.potencia) : formData.potencia) : 0,
     status: formData.status,
     irrigante: formData.irrigante,
     grupo: formData.grupo,
     subgrupo: formData.subgrupo,
     tipo_unidade: formData.tipoUnidade,
+    sazonal: formData.sazonal,
+    industrial: formData.industrial,
+    geracao: formData.geracao,
   };
+
+  // Adicionar tensao_nominal se houver valor
+  if (formData.tensaoNominal) {
+    dto.tensao_nominal = formData.tensaoNominal;
+  }
 
   // ✅ CORREÇÃO: Adicionar propriedades opcionais apenas se tiverem valor
   // Isso evita que undefined seja enviado e removido pelo JSON.stringify/axios
@@ -341,8 +362,12 @@ export const unidadeToFormData = (unidade: Unidade): UnidadeFormData => {
     tipoUnidade: unidade.tipoUnidade,
     demandaCarga: unidade.demandaCarga,
     demandaGeracao: unidade.demandaGeracao,
-    concessionariaId: unidade.concessionariaId || undefined, // Convert empty string or null to undefined
-    numeroUc: unidade.numeroUc || undefined, // ✅ Número da Unidade Consumidora
+    concessionariaId: unidade.concessionariaId || undefined,
+    numeroUc: unidade.numeroUc || undefined,
+    tensaoNominal: unidade.tensaoNominal || undefined,
+    sazonal: unidade.sazonal || false,
+    industrial: unidade.industrial || false,
+    geracao: unidade.geracao || false,
   };
 };
 
@@ -366,8 +391,12 @@ export const defaultUnidadeFormValues: UnidadeFormData = {
   tipoUnidade: undefined,
   demandaCarga: '',
   demandaGeracao: '',
-  concessionariaId: undefined, // undefined instead of empty string
-  numeroUc: '', // ✅ Número da Unidade Consumidora
+  concessionariaId: undefined,
+  numeroUc: '',
+  tensaoNominal: undefined,
+  sazonal: false,
+  industrial: false,
+  geracao: false,
 };
 
 // Estados do Brasil

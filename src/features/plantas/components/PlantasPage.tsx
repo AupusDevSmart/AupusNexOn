@@ -24,7 +24,7 @@ const initialFilters: PlantasFilters = {
   search: '',
   proprietarioId: 'all',
   page: 1,
-  limit: 10
+  limit: 15
 };
 
 export function PlantasPage() {

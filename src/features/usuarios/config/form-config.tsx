@@ -201,11 +201,6 @@ const PermissoesSelector = ({ value, onChange, disabled }: any) => {
             ⚠️ {error}
           </span>
         )}
-        {!error && Object.keys(permissoesPorCategoria).length > 0 && (
-          <span className="text-green-600 ml-2">
-            ✅ Usando categorização do backend
-          </span>
-        )}
       </div>
     </div>
   );

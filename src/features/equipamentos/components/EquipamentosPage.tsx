@@ -29,7 +29,6 @@ import { useUserStore } from '@/store/useUserStore';
 // Modais separados
 import { EquipamentoUCModal } from './modals/EquipamentoUCModal';
 import { ComponenteUARModal } from './modals/ComponenteUARModal';
-import { GerenciarUARsModal } from './modals/GerenciarUARsModal';
 
 const initialFilters: EquipamentosFilters = {
   search: '',
@@ -107,10 +106,6 @@ export function EquipamentosPage() {
     equipamentoPai: null as Equipamento | null
   });
 
-  const [modalGerenciarUARs, setModalGerenciarUARs] = useState({
-    isOpen: false,
-    equipamentoUC: null as Equipamento | null
-  });
 
   const [deleteDialog, setDeleteDialog] = useState({
     isOpen: false,
@@ -332,44 +327,12 @@ export function EquipamentosPage() {
   };
 
   // ============================================================================
-  // HANDLERS PARA GESTÃO DE COMPONENTES
+  // HANDLER PARA SALVAR UARs (usado pelo EquipamentoUCModal)
   // ============================================================================
-  const handleGerenciarComponentes = async (equipamento: Equipamento) => {
-    if (equipamento.classificacao !== 'UC') {
-      alert('Apenas equipamentos UC podem ter componentes UAR!');
-      return;
-    }
-
-    setModalGerenciarUARs({
-      isOpen: true,
-      equipamentoUC: equipamento
-    });
-  };
-
-  const closeGerenciarUARsModal = () => {
-    setModalGerenciarUARs({
-      isOpen: false,
-      equipamentoUC: null
-    });
-  };
-
-  const handleSalvarUARs = async (uars: Equipamento[]) => {
-    try {
-      if (!modalGerenciarUARs.equipamentoUC) return;
-
-      const ucId = modalGerenciarUARs.equipamentoUC.id; // USA ID STRING DIRETAMENTE
-      const result = await salvarComponentesUARLote(ucId, uars);
-      
-      console.log(result.message);
-      alert(`${result.componentes.length} componente(s) UAR salvos com sucesso!`);
-      
-      // Recarregar dados para mostrar os componentes atualizados
-      await loadEquipamentos(filters);
-      
-    } catch (error) {
-      console.error('Erro ao salvar UARs:', error);
-      alert('Erro ao salvar componentes. Tente novamente.');
-    }
+  const handleSalvarUARs = async (ucId: string, uars: Equipamento[]) => {
+    const result = await salvarComponentesUARLote(ucId, uars);
+    console.log(result.message);
+    await loadEquipamentos(filters);
   };
 
   // ============================================================================
@@ -463,10 +426,7 @@ export function EquipamentosPage() {
   // ============================================================================
   // PREPARAR COLUNAS DA TABELA
   // ============================================================================
-  const tableColumns = getEquipamentosTableColumns({
-    onGerenciarComponentes: handleGerenciarComponentes,
-    isAdmin: isAdmin()
-  });
+  const tableColumns = getEquipamentosTableColumns();
 
   // Preparar dados de paginação
   const pagination = {
@@ -631,6 +591,7 @@ export function EquipamentosPage() {
           onClose={closeUCModal}
           onSubmit={handleSubmitUC}
           onDelete={handleDelete}
+          onSaveUARs={handleSalvarUARs}
         />
 
         {/* Modal para Componentes UAR */}
@@ -641,14 +602,6 @@ export function EquipamentosPage() {
           equipamentoPai={modalUAR.equipamentoPai}
           onClose={closeUARModal}
           onSubmit={handleSubmitUAR}
-        />
-
-        {/* Modal para Gerenciar UARs de uma UC */}
-        <GerenciarUARsModal
-          isOpen={modalGerenciarUARs.isOpen}
-          equipamentoUC={modalGerenciarUARs.equipamentoUC}
-          onClose={closeGerenciarUARsModal}
-          onSave={handleSalvarUARs}
         />
 
         {/* AlertDialog para confirmação de exclusão */}

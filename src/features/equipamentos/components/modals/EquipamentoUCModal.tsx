@@ -18,13 +18,14 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Combobox } from '@/components/ui/combobox';
-import { Wrench, Save, X, AlertCircle, Loader2, Eye, Edit2, Plus, Trash2 } from 'lucide-react';
+import { Wrench, Save, X, AlertCircle, Loader2, Eye, Edit2, Plus, Trash2, Component } from 'lucide-react';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Equipamento } from '../../types';
+import { ComponenteUARModal } from './ComponenteUARModal';
 import { useSelectionData } from '../../hooks/useSelectionData';
 import { useEquipamentos } from '../../hooks/useEquipamentos';
 import { useLocationCascade } from '../../hooks/useLocationCascade';
@@ -43,6 +44,7 @@ interface EquipamentoUCModalProps {
   onClose: () => void;
   onSubmit: (data: any) => void;
   onDelete?: (equipamento: Equipamento) => void;
+  onSaveUARs?: (ucId: string, uars: Equipamento[]) => Promise<void>;
 }
 
 export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
@@ -51,9 +53,10 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
   entity,
   onClose,
   onSubmit,
-  onDelete
+  onDelete,
+  onSaveUARs
 }) => {
-  const { getEquipamento } = useEquipamentos();
+  const { getEquipamento, fetchComponentesParaGerenciar, createEquipamento, updateEquipamento } = useEquipamentos();
 
   const [formData, setFormData] = useState<any>({});
   const [loading, setLoading] = useState(false);
@@ -75,6 +78,15 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
   const { modelos, loading: loadingModelos, refetch: refetchModelos } = useModelos({
     categoriaId: categoriaIdSelecionada || undefined,
     autoFetch: !!categoriaIdSelecionada,
+  });
+
+  // Estados para componentes UAR
+  const [uarsLista, setUarsLista] = useState<Equipamento[]>([]);
+  const [loadingUARs, setLoadingUARs] = useState(false);
+  const [modalUARDetalhes, setModalUARDetalhes] = useState({
+    isOpen: false,
+    mode: 'view' as 'create' | 'edit' | 'view',
+    entity: null as Equipamento | null
   });
 
   // ✅ NOVO: Estados para criar categoria/modelo on-the-fly
@@ -315,6 +327,20 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
             }
           } catch (err) {
             console.warn('⚠️ [MODAL] Erro ao carregar unidade:', err);
+          }
+        }
+
+        // 4. Carregar componentes UAR
+        if (dadosCompletos.id) {
+          try {
+            setLoadingUARs(true);
+            const result = await fetchComponentesParaGerenciar(dadosCompletos.id);
+            setUarsLista(result.componentes || []);
+          } catch (err) {
+            console.warn('[MODAL] Erro ao carregar componentes UAR:', err);
+            setUarsLista([]);
+          } finally {
+            setLoadingUARs(false);
           }
         }
       }
@@ -1054,7 +1080,7 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
                 Proprietário
               </label>
               <div className="flex items-center gap-2">
-                <div className="p-2 bg-white dark:bg-gray-800 rounded border border-blue-200 dark:border-blue-700 flex-1">
+                <div className="p-2 bg-white dark:bg-black rounded border border-border flex-1">
                   <p className="text-sm font-medium text-gray-900 dark:text-white">
                     {proprietarioDetalhes.nome}
                   </p>
@@ -1073,7 +1099,7 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
                 Planta
               </label>
               <div className="flex items-center gap-2">
-                <div className="p-2 bg-white dark:bg-gray-800 rounded border border-blue-200 dark:border-blue-700 flex-1">
+                <div className="p-2 bg-white dark:bg-black rounded border border-border flex-1">
                   <p className="text-sm font-medium text-gray-900 dark:text-white">
                     {plantaDetalhes.nome}
                   </p>
@@ -1093,7 +1119,7 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
                 Unidade
               </label>
               <div className="flex items-center gap-2">
-                <div className="p-2 bg-white dark:bg-gray-800 rounded border border-blue-200 dark:border-blue-700 flex-1">
+                <div className="p-2 bg-white dark:bg-black rounded border border-border flex-1">
                   <p className="text-sm font-medium text-gray-900 dark:text-white">
                     {unidadeDetalhes.nome}
                   </p>
@@ -1618,6 +1644,165 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
     </div>
   );
 
+  // ============================================================================
+  // HANDLERS UAR
+  // ============================================================================
+  const handleSubmitUARModal = async (data: any) => {
+    if (modalUARDetalhes.mode === 'create') {
+      const novoUAR: Equipamento = {
+        id: `temp_${Date.now()}`,
+        nome: data.nome,
+        classificacao: 'UAR',
+        tipo: data.tipo_equipamento || data.tipoEquipamento,
+        tipoEquipamento: data.tipo_equipamento || data.tipoEquipamento,
+        modelo: data.modelo,
+        fabricante: data.fabricante,
+        numeroSerie: data.numero_serie,
+        criticidade: data.criticidade,
+        dataInstalacao: data.data_instalacao,
+        localizacaoEspecifica: data.localizacao_especifica,
+        dadosTecnicos: data.dados_tecnicos,
+        equipamentoPaiId: entity!.id,
+        unidade: entity!.unidade,
+        proprietarioId: entity!.proprietarioId,
+        planta: entity!.planta,
+        proprietario: entity!.proprietario,
+        criadoEm: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        totalComponentes: 0
+      };
+      setUarsLista(prev => [...prev, novoUAR]);
+    } else if (modalUARDetalhes.mode === 'edit') {
+      setUarsLista(prev => prev.map(uar =>
+        uar.id === modalUARDetalhes.entity?.id
+          ? { ...uar, nome: data.nome, fabricante: data.fabricante, modelo: data.modelo, criticidade: data.criticidade, updatedAt: new Date().toISOString() }
+          : uar
+      ));
+    }
+    setModalUARDetalhes({ isOpen: false, mode: 'view', entity: null });
+  };
+
+  const handleRemoverUAR = (uarId: string) => {
+    if (confirm('Tem certeza que deseja remover este componente UAR?')) {
+      setUarsLista(prev => prev.filter(uar => uar.id !== uarId));
+    }
+  };
+
+  const handleSalvarUARs = async () => {
+    if (!entity || !onSaveUARs) return;
+    try {
+      await onSaveUARs(entity.id, uarsLista);
+    } catch (err) {
+      console.error('Erro ao salvar UARs:', err);
+    }
+  };
+
+  const renderComponentesUAR = () => {
+    if (mode === 'create') return null;
+
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between pb-2 border-b">
+          <h3 className="text-sm font-semibold text-foreground">
+            Componentes UAR ({uarsLista.length})
+          </h3>
+          {!isReadonly && (
+            <button
+              type="button"
+              onClick={() => setModalUARDetalhes({ isOpen: true, mode: 'create', entity: null })}
+              className="btn-minimal-outline h-8 text-xs gap-1.5"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Adicionar
+            </button>
+          )}
+        </div>
+
+        {loadingUARs && (
+          <div className="flex items-center justify-center py-6">
+            <Loader2 className="h-5 w-5 animate-spin mr-2 text-muted-foreground" />
+            <span className="text-sm text-muted-foreground">Carregando componentes...</span>
+          </div>
+        )}
+
+        {!loadingUARs && uarsLista.length === 0 && (
+          <div className="text-center py-8 rounded-lg border border-dashed border-muted-foreground/20">
+            <Component className="h-8 w-8 mx-auto mb-2 text-muted-foreground/30 stroke-1" />
+            <p className="text-xs text-muted-foreground/60">Nenhum componente UAR</p>
+          </div>
+        )}
+
+        {!loadingUARs && uarsLista.length > 0 && (
+          <div className="space-y-1.5">
+            {uarsLista.map((uar) => (
+              <div key={uar.id} className="group flex items-center justify-between gap-3 p-3 rounded-md border border-border/40 hover:border-border hover:shadow-sm transition-all bg-card">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <span className="text-sm font-medium truncate">{uar.nome}</span>
+                    <Badge variant="outline" className="text-[10px] shrink-0">
+                      Crit. {uar.criticidade}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    {uar.fabricante && <span>{uar.fabricante}</span>}
+                    {uar.modelo && <span>{uar.modelo}</span>}
+                    {(uar.tipo || uar.tipoEquipamento) && <span>{uar.tipo || uar.tipoEquipamento}</span>}
+                  </div>
+                </div>
+
+                <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setModalUARDetalhes({ isOpen: true, mode: 'view', entity: uar })}
+                    className="btn-minimal-ghost h-7 w-7 p-0"
+                    title="Visualizar"
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                  </button>
+                  {!isReadonly && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setModalUARDetalhes({ isOpen: true, mode: 'edit', entity: uar })}
+                        className="btn-minimal-ghost h-7 w-7 p-0"
+                        title="Editar"
+                      >
+                        <Edit2 className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoverUAR(uar.id)}
+                        className="btn-minimal-ghost h-7 w-7 p-0 hover:bg-destructive/10 hover:text-destructive"
+                        title="Remover"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Botão salvar UARs - apenas em modo edit com alterações */}
+        {!isReadonly && uarsLista.length > 0 && onSaveUARs && (
+          <div className="flex justify-end pt-2">
+            <button
+              type="button"
+              onClick={handleSalvarUARs}
+              className="btn-minimal-outline h-8 text-xs gap-1.5"
+            >
+              <Save className="h-3.5 w-3.5" />
+              Salvar Componentes
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const renderActions = () => {
     if (loading) {
       return (
@@ -1718,6 +1903,10 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
             <Separator />
 
             {renderInformacoesComplementares()}
+
+            <Separator />
+
+            {renderComponentesUAR()}
           </div>
         </div>
 
@@ -1725,6 +1914,16 @@ export const EquipamentoUCModal: React.FC<EquipamentoUCModalProps> = ({
           {renderActions()}
         </div>
       </SheetContent>
+
+      {/* Modal aninhado para detalhes de UAR */}
+      <ComponenteUARModal
+        isOpen={modalUARDetalhes.isOpen}
+        mode={modalUARDetalhes.mode}
+        entity={modalUARDetalhes.entity}
+        equipamentoPai={entity ? { id: entity.id, nome: entity.nome } : undefined}
+        onClose={() => setModalUARDetalhes({ isOpen: false, mode: 'view', entity: null })}
+        onSubmit={handleSubmitUARModal}
+      />
     </Sheet>
   );
 };

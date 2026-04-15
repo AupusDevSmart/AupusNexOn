@@ -3,12 +3,13 @@
 import React, { useState } from 'react';
 import { FormField, FormFieldProps } from '@/types/base';
 import { usePlantas } from '../hooks/usePlantas';
-import { TipoUnidade, StatusUnidade, ESTADOS_BRASIL, GrupoUnidade, SubgrupoUnidade, TipoUnidadeEnergia } from '../types';
+import { TipoUnidade, StatusUnidade, GrupoUnidade, SubgrupoUnidade } from '../types';
 import { X, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ConcessionariaSelectField } from '../components/ConcessionariaSelectField';
 import { Combobox } from '@/components/ui/combobox-minimal';
+import { Checkbox } from '@/components/ui/checkbox';
 
 /**
  * Componente para selecionar/exibir Proprietário
@@ -117,7 +118,7 @@ const ProprietarioSelector = ({ value, onChange, disabled, mode, entity }: FormF
 /**
  * Componente para seleção de Planta
  */
-const PlantaSelector = ({ value, onChange, disabled, mode, formData }: FormFieldProps) => {
+const PlantaSelector = ({ value, onChange, disabled, mode, formData, onMultipleChange }: FormFieldProps) => {
   const { plantas, loading, error } = usePlantas();
   const previousProprietarioRef = React.useRef<string | undefined>();
 
@@ -241,12 +242,26 @@ const PlantaSelector = ({ value, onChange, disabled, mode, formData }: FormField
   // No modo CREATE, desabilitar se não houver proprietário selecionado
   const isDisabled = disabled || (mode === 'create' && !formData?.proprietarioId);
 
+  // Auto-fill estado/cidade when planta changes
+  const handlePlantaChange = (plantaId: string) => {
+    const planta = plantas.find(p => p.id === plantaId);
+    if (planta && onMultipleChange) {
+      onMultipleChange({
+        plantaId: plantaId,
+        estado: planta.uf || '',
+        cidade: planta.cidade || '',
+      });
+    } else {
+      onChange(plantaId);
+    }
+  };
+
   return (
     <div className="space-y-2">
       <Combobox
         options={plantasOptions}
         value={value as string}
-        onValueChange={onChange}
+        onValueChange={handlePlantaChange}
         placeholder={mode === 'create' && !formData?.proprietarioId ? "Selecione um proprietário primeiro" : "Selecione uma planta"}
         searchPlaceholder="Buscar planta..."
         emptyText="Nenhuma planta encontrada"
@@ -446,17 +461,20 @@ export const unidadesFormFields: FormField[] = [
     ],
   },
   {
-    key: 'potencia',
-    label: 'Potência (kW)',
-    type: 'number',
-    required: true,
-    placeholder: 'Ex: 100.5',
-    validation: (value) => {
-      if (!value) return 'Potência é obrigatória';
-      const num = parseFloat(value as string);
-      if (isNaN(num) || num <= 0) return 'Potência deve ser maior que zero';
-      return null;
-    },
+    key: 'tensaoNominal',
+    label: 'Tensão Nominal',
+    type: 'select',
+    required: false,
+    options: [
+      { value: '0,22 kV', label: '0,22 kV' },
+      { value: '0,38 kV', label: '0,38 kV' },
+      { value: '4,16 kV', label: '4,16 kV' },
+      { value: '13,8 kV', label: '13,8 kV' },
+      { value: '23,2 kV', label: '23,2 kV' },
+      { value: '34,5 kV', label: '34,5 kV' },
+      { value: '69 kV', label: '69 kV' },
+      { value: '138 kV', label: '138 kV' },
+    ],
   },
   {
     key: 'status',
@@ -468,20 +486,6 @@ export const unidadesFormFields: FormField[] = [
       { value: StatusUnidade.ATIVO, label: 'Ativo' },
       { value: StatusUnidade.INATIVO, label: 'Inativo' },
     ],
-  },
-  {
-    key: 'estado',
-    label: 'Estado',
-    type: 'select',
-    required: true,
-    options: ESTADOS_BRASIL,
-  },
-  {
-    key: 'cidade',
-    label: 'Cidade',
-    type: 'text',
-    required: true,
-    placeholder: 'Ex: São Paulo',
   },
   {
     key: 'latitude',
@@ -510,19 +514,95 @@ export const unidadesFormFields: FormField[] = [
     },
   },
   {
-    key: 'pontosMedicao',
-    label: 'Pontos de Medição',
+    key: 'perfil',
+    label: 'Perfil',
     type: 'custom',
     required: false,
-    render: PontosMedicaoManager,
-    colSpan: 2, // Ocupa 2 colunas
-  },
-  {
-    key: 'irrigante',
-    label: 'É Irrigante?',
-    type: 'checkbox',
-    required: false,
-    defaultValue: false,
+    colSpan: 2,
+    render: ({ value, onChange, disabled, mode, formData, onMultipleChange }: FormFieldProps) => {
+      const irrigante = formData?.irrigante || false;
+      const sazonal = formData?.sazonal || false;
+      const industrial = formData?.industrial || false;
+      const geracao = formData?.geracao || false;
+      const isView = mode === 'view';
+
+      const handleCheck = (field: string, checked: boolean) => {
+        if (!onMultipleChange) return;
+
+        const updates: Record<string, any> = { [field]: checked };
+
+        // Se marcar industrial, desmarcar sazonal
+        if (field === 'industrial' && checked) {
+          updates.sazonal = false;
+        }
+        // Se marcar sazonal, desmarcar industrial
+        if (field === 'sazonal' && checked) {
+          updates.industrial = false;
+        }
+
+        onMultipleChange(updates);
+      };
+
+      if (isView) {
+        const labels = [];
+        if (irrigante) labels.push('Irrigante');
+        if (sazonal) labels.push('Sazonal');
+        if (industrial) labels.push('Industrial');
+        if (geracao) labels.push('Geração');
+
+        return (
+          <div className="flex flex-wrap gap-2">
+            {labels.length > 0 ? labels.map(l => (
+              <span key={l} className="px-2.5 py-1 text-xs font-medium rounded-md border border-border bg-muted text-foreground">
+                {l}
+              </span>
+            )) : (
+              <span className="text-sm text-muted-foreground">Nenhum perfil selecionado</span>
+            )}
+          </div>
+        );
+      }
+
+      return (
+        <div className="grid grid-cols-2 gap-3">
+          <label className="flex items-center gap-2.5 p-2.5 rounded-md border border-border hover:bg-muted/50 cursor-pointer transition-colors">
+            <Checkbox
+              checked={irrigante}
+              onCheckedChange={(checked) => handleCheck('irrigante', !!checked)}
+              disabled={disabled}
+            />
+            <span className="text-sm">Irrigante</span>
+          </label>
+
+          <label className={`flex items-center gap-2.5 p-2.5 rounded-md border border-border hover:bg-muted/50 cursor-pointer transition-colors ${industrial ? 'opacity-50' : ''}`}>
+            <Checkbox
+              checked={sazonal}
+              onCheckedChange={(checked) => handleCheck('sazonal', !!checked)}
+              disabled={disabled || industrial}
+            />
+            <span className="text-sm">Sazonal</span>
+          </label>
+
+          <label className={`flex items-center gap-2.5 p-2.5 rounded-md border border-border hover:bg-muted/50 cursor-pointer transition-colors ${sazonal ? 'opacity-50' : ''}`}>
+            <Checkbox
+              checked={industrial}
+              onCheckedChange={(checked) => handleCheck('industrial', !!checked)}
+              disabled={disabled || sazonal}
+            />
+            <span className="text-sm">Industrial</span>
+          </label>
+
+          <label className="flex items-center gap-2.5 p-2.5 rounded-md border border-border hover:bg-muted/50 cursor-pointer transition-colors">
+            <Checkbox
+              checked={geracao}
+              onCheckedChange={(checked) => handleCheck('geracao', !!checked)}
+              disabled={disabled}
+            />
+            <span className="text-sm">Geração</span>
+          </label>
+        </div>
+      );
+    },
   },
   {
     key: 'grupo',
@@ -539,9 +619,9 @@ export const unidadesFormFields: FormField[] = [
     label: 'Subgrupo Tarifário',
     type: 'select',
     required: false,
-    options: [], // Será preenchido dinamicamente
+    options: [],
     conditionalRender: (formData: any) => {
-      return !!formData.grupo; // Só mostrar se grupo foi selecionado
+      return !!formData.grupo;
     },
     getOptions: (formData: any) => {
       if (formData.grupo === GrupoUnidade.B) {
@@ -558,39 +638,17 @@ export const unidadesFormFields: FormField[] = [
     },
   },
   {
-    key: 'tipoUnidade',
-    label: 'Classificação de Consumo',
-    type: 'select',
-    required: false,
-    options: [
-      { value: TipoUnidadeEnergia.CARGA, label: 'Carga (Apenas Consumo)' },
-      { value: TipoUnidadeEnergia.GERACAO, label: 'Geração (Apenas Produção)' },
-      { value: TipoUnidadeEnergia.CARGA_E_GERACAO, label: 'Carga e Geração (Consumo e Produção)' },
-    ],
-    colSpan: 2, // Ocupa 2 colunas
-  },
-  {
     key: 'demandaCarga',
     label: 'Demanda de Carga (kW)',
     type: 'number',
     required: false,
     placeholder: 'Ex: 150.5',
-    validation: (value, formData: any) => {
-      const tipoUnidade = formData?.tipoUnidade;
+    validation: (value) => {
       if (value) {
         const num = parseFloat(value as string);
         if (isNaN(num) || num < 0) return 'Demanda de carga deve ser maior ou igual a zero';
       }
       return null;
-    },
-    helpText: (formData: any) => {
-      const tipo = formData?.tipoUnidade;
-      if (tipo === TipoUnidadeEnergia.CARGA) {
-        return 'Este campo é importante para unidades de Carga';
-      } else if (tipo === TipoUnidadeEnergia.CARGA_E_GERACAO) {
-        return 'Preencha este campo para unidades com Carga e Geração';
-      }
-      return 'Preencha se aplicável';
     },
   },
   {
@@ -599,22 +657,12 @@ export const unidadesFormFields: FormField[] = [
     type: 'number',
     required: false,
     placeholder: 'Ex: 200.0',
-    validation: (value, formData: any) => {
-      const tipoUnidade = formData?.tipoUnidade;
+    validation: (value) => {
       if (value) {
         const num = parseFloat(value as string);
         if (isNaN(num) || num < 0) return 'Demanda de geração deve ser maior ou igual a zero';
       }
       return null;
-    },
-    helpText: (formData: any) => {
-      const tipo = formData?.tipoUnidade;
-      if (tipo === TipoUnidadeEnergia.GERACAO) {
-        return 'Este campo é importante para unidades de Geração';
-      } else if (tipo === TipoUnidadeEnergia.CARGA_E_GERACAO) {
-        return 'Preencha este campo para unidades com Carga e Geração';
-      }
-      return 'Preencha se aplicável';
     },
   },
   {

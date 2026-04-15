@@ -111,10 +111,12 @@ export function UnidadesPage() {
     }
   };
 
-  // Aplicar filtros da URL quando a página carrega
+  // Aplicar filtros da URL quando a página carrega (aguarda plantas carregarem para o combobox funcionar)
   useEffect(() => {
+    if (loadingPlantas) return;
+
     const urlParams = new URLSearchParams(location.search);
-    const plantaId = urlParams.get('plantaId');
+    const plantaId = urlParams.get('plantaId')?.trim();
 
     if (plantaId) {
       console.log(`🔗 [UNIDADES PAGE] Filtro da URL: planta ${plantaId}`);
@@ -126,7 +128,7 @@ export function UnidadesPage() {
 
       setFilters(newFilters);
     }
-  }, [location.search]);
+  }, [location.search, loadingPlantas]);
 
   // Carregar unidades quando filtros mudarem
   useEffect(() => {

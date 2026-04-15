@@ -18,7 +18,7 @@ export const plantasTableColumns: TableColumn<PlantaApiResponse>[] = [
     render: (planta) => (
       <div className="space-y-1">
         <a
-          href={`/cadastros/unidades?plantaId=${planta.id}&plantaNome=${encodeURIComponent(planta.nome)}`}
+          href={`/cadastros/unidades?plantaId=${planta.id?.trim()}&plantaNome=${encodeURIComponent(planta.nome)}`}
           className="flex items-center gap-2 font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline group"
           title={`Ver unidades de ${planta.nome}`}
         >
@@ -28,9 +28,6 @@ export const plantasTableColumns: TableColumn<PlantaApiResponse>[] = [
           </span>
           <ExternalLink className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
         </a>
-        <div className="text-xs font-mono text-muted-foreground">
-          CNPJ: {planta.cnpj}
-        </div>
       </div>
     )
   },
@@ -42,14 +39,9 @@ export const plantasTableColumns: TableColumn<PlantaApiResponse>[] = [
         <Building2 className="h-4 w-4 text-gray-500" />
         <div className="min-w-0 flex-1">
           {planta.proprietario ? (
-            <div className="space-y-1">
-              <span className="text-sm truncate block max-w-40" title={planta.proprietario.nome}>
-                {planta.proprietario.nome}
-              </span>
-              <div className="text-xs text-muted-foreground">
-                {planta.proprietario.tipo === 'pessoa_fisica' ? 'CPF' : 'CNPJ'}: {planta.proprietario.cpf_cnpj}
-              </div>
-            </div>
+            <span className="text-sm truncate block max-w-40" title={planta.proprietario.nome}>
+              {planta.proprietario.nome}
+            </span>
           ) : (
             <span className="text-sm text-muted-foreground">
               Proprietário não informado
@@ -60,33 +52,13 @@ export const plantasTableColumns: TableColumn<PlantaApiResponse>[] = [
     )
   },
   {
-    key: 'endereco_localizacao',
-    label: 'Localização',
-    render: (planta) => (
-      <div className="space-y-1">
-        <div className="flex items-center gap-2">
-          <MapPin className="h-3 w-3 text-muted-foreground" />
-          <span className="text-sm">
-            {planta.endereco.cidade}/{planta.endereco.uf}
-          </span>
-        </div>
-        {planta.localizacao && (
-          <div className="text-xs text-muted-foreground truncate max-w-32" title={planta.localizacao}>
-            {planta.localizacao}
-          </div>
-        )}
-      </div>
-    )
-  },
-  {
-    key: 'horario_funcionamento',
-    label: 'Funcionamento',
-    hideOnMobile: true,
+    key: 'cidade',
+    label: 'Cidade',
     render: (planta) => (
       <div className="flex items-center gap-2">
-        <Clock className="h-3 w-3 text-muted-foreground" />
+        <MapPin className="h-3 w-3 text-muted-foreground" />
         <span className="text-sm">
-          {planta.horarioFuncionamento || 'Não informado'}
+          {planta.endereco.cidade}/{planta.endereco.uf}
         </span>
       </div>
     )
@@ -95,27 +67,15 @@ export const plantasTableColumns: TableColumn<PlantaApiResponse>[] = [
     key: 'endereco_completo',
     label: 'Endereço',
     hideOnTablet: true,
-    render: (planta) => (
-      <div className="space-y-1">
-        <div className="text-sm">
-          {planta.endereco.logradouro && (
-            <div className="truncate max-w-48" title={planta.endereco.logradouro}>
-              {planta.endereco.logradouro}
-            </div>
-          )}
-        </div>
-        <div className="text-xs text-muted-foreground space-y-0.5">
-          {planta.endereco.bairro && (
-            <div className="truncate" title={planta.endereco.bairro}>
-              {planta.endereco.bairro}
-            </div>
-          )}
-          {planta.endereco.cep && (
-            <div>CEP: {planta.endereco.cep}</div>
-          )}
-        </div>
-      </div>
-    )
+    render: (planta) => {
+      const parts = [planta.endereco.logradouro, planta.endereco.bairro, planta.endereco.cep].filter(Boolean);
+      const full = parts.join(', ');
+      return (
+        <span className="text-sm truncate max-w-64 block" title={full}>
+          {full || '-'}
+        </span>
+      );
+    }
   }
 ];
 
@@ -144,7 +104,7 @@ export const plantasTableConfig = {
   
   // Configuração de paginação padrão
   defaultPagination: {
-    limit: 10,
+    limit: 15,
     page: 1
   },
   

@@ -7,7 +7,9 @@ export interface PlantaOption {
   id: string;
   nome: string;
   localizacao?: string;
-  proprietario?: ProprietarioBasico; // ✅ CRÍTICO: Necessário para filtrar por proprietário
+  cidade?: string;
+  uf?: string;
+  proprietario?: ProprietarioBasico;
 }
 
 export const usePlantas = () => {
@@ -29,7 +31,9 @@ export const usePlantas = () => {
         id: planta.id,
         nome: planta.nome,
         localizacao: planta.localizacao,
-        proprietario: planta.proprietario, // ✅ CRÍTICO: Incluir proprietário para filtrar
+        cidade: planta.endereco?.cidade,
+        uf: planta.endereco?.uf,
+        proprietario: planta.proprietario,
       }));
 
       console.log('✅ [USE PLANTAS] Plantas carregadas:', plantasData.length);

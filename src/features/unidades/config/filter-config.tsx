@@ -21,7 +21,7 @@ export const generatePlantaOptions = (plantas: PlantaOption[]) => {
     }
 
     options.push({
-      value: planta.id,
+      value: planta.id?.trim(),
       label: label,
     });
   });
@@ -35,7 +35,7 @@ export const generateProprietarioOptions = (proprietarios: ProprietarioOption[])
 
   proprietarios.forEach((proprietario) => {
     options.push({
-      value: proprietario.id,
+      value: proprietario.id?.trim(),
       label: proprietario.nome,
     });
   });
