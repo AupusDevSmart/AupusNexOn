@@ -9,18 +9,13 @@ import {
   TableRow 
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+
+
 import { 
   Eye, 
   Edit3, 
   ChevronLeft,
-  ChevronRight,
-  MoreHorizontal
+  ChevronRight
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { BaseEntity, TableColumn, Pagination } from '@/types/base';

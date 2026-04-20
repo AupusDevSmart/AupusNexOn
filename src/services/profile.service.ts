@@ -10,7 +10,7 @@ export class ProfileService {
     try {
       const response = await api.patch(`/usuarios/${userId}`, data);
       // Backend retorna { success: true, data: {...}, meta: {...} }
-      return response.data?.data || response.data;
+      return response.data;
     } catch (error: any) {
       console.error('Erro ao atualizar perfil:', error);
       throw error;
@@ -23,7 +23,7 @@ export class ProfileService {
   async changePassword(userId: string, data: ChangePasswordDto): Promise<void> {
     try {
       const response = await api.patch(`/usuarios/${userId}/change-password`, data);
-      return response.data?.data || response.data;
+      return response.data;
     } catch (error: any) {
       console.error('Erro ao alterar senha:', error);
       throw error;
@@ -44,7 +44,7 @@ export class ProfileService {
         },
       });
 
-      return response.data?.data || response.data;
+      return response.data;
     } catch (error: any) {
       console.error('Erro ao fazer upload da imagem:', error);
       throw error;

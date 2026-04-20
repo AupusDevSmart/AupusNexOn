@@ -43,8 +43,8 @@ export function CentrosCustoTable({
   onSelectedItemsChange, 
   onEditItem,
   onViewItem,
-  allCentros 
-}: CentrosCustoTableProps): JSX.Element {
+  allCentros
+}: CentrosCustoTableProps): React.JSX.Element {
   // Estado para ordenação
   const [sortConfig, setSortConfig] = useState<SortConfig>({
     key: 'codigo',
@@ -128,7 +128,7 @@ export function CentrosCustoTable({
     centrosPaginados.every(centro => selectedItems.includes(centro.id));
 
   // Renderização do status
-  const renderStatus = (status: CentroCusto['status']): JSX.Element => {
+  const renderStatus = (status: CentroCusto['status']): React.JSX.Element => {
     switch (status) {
       case 'ativo':
         return (
@@ -148,7 +148,7 @@ export function CentrosCustoTable({
   };
 
   // Renderização do tipo
-  const renderTipo = (tipo: CentroCusto['tipo']): JSX.Element => {
+  const renderTipo = (tipo: CentroCusto['tipo']): React.JSX.Element => {
     const config = {
       administrativo: { label: 'Administrativo', color: 'bg-blue-50 text-blue-700 border-blue-200' },
       operacional: { label: 'Operacional', color: 'bg-purple-50 text-purple-700 border-purple-200' },

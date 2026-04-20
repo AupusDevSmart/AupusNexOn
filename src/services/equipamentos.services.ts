@@ -8,9 +8,11 @@ import { api } from '@/config/api';
 export interface CreateEquipamentoApiData {
   nome: string;
   classificacao: 'UC' | 'UAR';
+  unidade_id?: string;
   planta_id?: string;
   proprietario_id?: string;
   equipamento_pai_id?: string;
+  tipo_equipamento_id?: string;
   fabricante?: string;
   modelo?: string;
   numero_serie?: string;
@@ -56,9 +58,11 @@ export interface EquipamentoApiResponse {
   id: string;
   nome: string;
   classificacao: 'UC' | 'UAR';
+  unidade_id?: string;
   planta_id?: string;
   proprietario_id?: string;
   equipamento_pai_id?: string;
+  tipo_equipamento_id?: string;
   fabricante?: string;
   modelo?: string;
   numero_serie?: string;
@@ -94,7 +98,27 @@ export interface EquipamentoApiResponse {
   updated_at: Date;
   deleted_at?: Date;
 
+  // Campos opcionais relacionados ao layout do diagrama
+  posicao_x?: number;
+  posicao_y?: number;
+  rotacao?: number;
+  propriedades?: Record<string, any>;
+
   // Relacionamentos
+  unidade?: {
+    id: string;
+    nome: string;
+    planta?: {
+      id: string;
+      nome: string;
+      proprietario?: {
+        id: string;
+        nome: string;
+        cpf_cnpj: string;
+        tipo: 'pessoa_fisica' | 'pessoa_juridica';
+      };
+    };
+  };
   planta?: {
     id: string;
     nome: string;
@@ -151,6 +175,7 @@ export interface EquipamentosQueryParams {
   search?: string;
   unidade_id?: string;
   planta_id?: string;
+  proprietario_id?: string;
   classificacao?: 'UC' | 'UAR';
   criticidade?: '1' | '2' | '3' | '4' | '5';
   equipamento_pai_id?: string;
@@ -281,13 +306,13 @@ export class EquipamentosApiService {
 
   async findOne(id: string): Promise<EquipamentoApiResponse> {
     console.log('🌐 [API SERVICE] findOne chamado para ID:', id);
-    const response = await api.get<{ success: boolean; data: EquipamentoApiResponse; meta?: any }>(`${this.baseEndpoint}/${id}`);
+    const response = await api.get<EquipamentoApiResponse>(`${this.baseEndpoint}/${id}`);
     console.log('🌐 [API SERVICE] Resposta completa (response):', response);
     console.log('🌐 [API SERVICE] response.data:', response.data);
-    console.log('🌐 [API SERVICE] response.data.data (os dados reais):', response.data.data);
+    console.log('🌐 [API SERVICE] response.data (os dados reais):', response.data);
 
     // ✅ CORRIGIDO: A API retorna { success, data, meta }, precisamos retornar apenas o "data" interno
-    const equipamento = response.data.data || response.data;
+    const equipamento = response.data;
     console.log('✅ [API SERVICE] Equipamento extraído:', equipamento);
     console.log('✅ [API SERVICE] equipamento.id:', equipamento?.id);
     console.log('✅ [API SERVICE] equipamento.nome:', equipamento?.nome);
@@ -399,3 +424,17 @@ export class EquipamentosApiService {
 
 // Instância única do serviço
 export const equipamentosApi = new EquipamentosApiService();
+
+// ============================================================================
+// ALIASES DE COMPATIBILIDADE
+// ============================================================================
+// Alias para compatibilidade com imports que usam `EquipamentosService`
+export const EquipamentosService = {
+  getEquipamentosByUnidade: (unidadeId: string, params?: EquipamentosQueryParams) =>
+    equipamentosApi.findByUnidade(unidadeId, params),
+  updateEquipamento: (id: string, data: UpdateEquipamentoApiData) =>
+    equipamentosApi.update(id, data),
+};
+
+// Alias de tipo (Equipamento == EquipamentoApiResponse)
+export type Equipamento = EquipamentoApiResponse;

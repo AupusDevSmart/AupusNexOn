@@ -17,7 +17,6 @@ import { LancamentoFormSection } from '@/features/financeiro/components/lancamen
 import { DateInput } from '@/features/financeiro/components/date-input';
 import { MoneyInput } from '@/features/financeiro/components/money-input';
 import { FieldLabel } from '@/features/financeiro/components/field-label';
-import { ToggleSwitch } from '@/features/financeiro/components/toggle-switch';
 import { FormTabs } from '@/features/financeiro/components/form-tabs';
 import { FormActions } from '@/features/financeiro/components/form-actions';
 import { SearchableCombobox, SearchableComboboxWithManual } from '@/features/financeiro/components/searchable-combobox';
@@ -133,7 +132,7 @@ export function CadastrarReceitaPage() {
       }
     } else if (config.tipoFim === 'data' && config.dataFim) {
       const dataFim = new Date(config.dataFim);
-      let dataAtual = new Date(dataInicio);
+      const dataAtual = new Date(dataInicio);
       
       while (dataAtual <= dataFim) {
         datas.push(new Date(dataAtual));
@@ -175,7 +174,7 @@ export function CadastrarReceitaPage() {
       vencimento: data.toISOString().split('T')[0],
       // Se for recorrente, adicionar sufixo no ID/descrição
       ...(recorrenciaConfig.tipo === 'recorrente' && {
-        descricao: `${formData.descricao || 'Receita'} - Parcela ${index + 1}/${datasGeradas.length}`,
+        descricao: `${(formData as any).descricao || 'Receita'} - Parcela ${index + 1}/${datasGeradas.length}`,
         numeroParcelaAtual: index + 1,
         totalParcelas: datasGeradas.length,
         recorrenciaId: `recorrencia_${Date.now()}` // ID para agrupar as parcelas

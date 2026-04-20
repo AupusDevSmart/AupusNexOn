@@ -50,13 +50,21 @@ export interface ComponenteDU {
     | "DISJUNTOR_FECHADO"
     | "DISJUNTOR_ABERTO"
     | "CHAVE_FUSIVEL"
-    | "BARRAMENTO";
+    | "BARRAMENTO"
+    | string;
   nome: string;
   posicao: { x: number; y: number };
-  status: "NORMAL" | "ALARME" | "FALHA";
+  status: "NORMAL" | "ALARME" | "FALHA" | string;
   dados: any; // Dados específicos do componente
   label_position?: string; // Posição do label: top, bottom, left, right
   label_offset?: { x: number; y: number }; // Offset customizado em pixels para posicionamento livre
+  // Campos opcionais usados no fluxo diagrama <-> equipamentos
+  tag?: string;
+  rotacao?: number;
+  equipamentoId?: string;
+  fabricante?: string;
+  modelo?: string;
+  numeroSerie?: string;
 }
 
 // Interfaces para modais específicos

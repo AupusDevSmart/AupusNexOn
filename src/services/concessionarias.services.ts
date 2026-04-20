@@ -97,7 +97,7 @@ class ConcessionariasServiceClass {
       const response = await api.get(`/concessionarias?${queryParams.toString()}`);
 
       // Normalize response
-      const responseData = response.data?.data || response.data;
+      const responseData = response.data;
       const data = responseData?.data || responseData || [];
       const pagination = responseData?.pagination || response.data?.pagination || {
         page: params.page || 1,
@@ -122,9 +122,9 @@ class ConcessionariasServiceClass {
   async getConcessionaria(id: string): Promise<ConcessionariaResponse> {
     try {
       console.log(`📡 [ConcessionariasService] GET /concessionarias/${id}`);
-      const response = await api.get<{ success: boolean; data: ConcessionariaResponse; meta?: any }>(`/concessionarias/${id}`);
+      const response = await api.get<ConcessionariaResponse>(`/concessionarias/${id}`);
 
-      const concessionaria = response.data.data || response.data;
+      const concessionaria = response.data;
       console.log('✅ [ConcessionariasService] Concessionaria fetched:', concessionaria?.nome);
 
       return concessionaria;
@@ -140,9 +140,9 @@ class ConcessionariasServiceClass {
   async createConcessionaria(dto: CreateConcessionariaDto): Promise<ConcessionariaResponse> {
     try {
       console.log('📡 [ConcessionariasService] POST /concessionarias', dto);
-      const response = await api.post<{ success: boolean; data: ConcessionariaResponse; meta?: any }>('/concessionarias', dto);
+      const response = await api.post<ConcessionariaResponse>('/concessionarias', dto);
 
-      const concessionaria = response.data.data || response.data;
+      const concessionaria = response.data;
       console.log('✅ [ConcessionariasService] Concessionaria created:', concessionaria?.id);
 
       return concessionaria;
@@ -158,9 +158,9 @@ class ConcessionariasServiceClass {
   async updateConcessionaria(id: string, dto: UpdateConcessionariaDto): Promise<ConcessionariaResponse> {
     try {
       console.log(`📡 [ConcessionariasService] PATCH /concessionarias/${id}`, dto);
-      const response = await api.patch<{ success: boolean; data: ConcessionariaResponse; meta?: any }>(`/concessionarias/${id}`, dto);
+      const response = await api.patch<ConcessionariaResponse>(`/concessionarias/${id}`, dto);
 
-      const concessionaria = response.data.data || response.data;
+      const concessionaria = response.data;
       console.log('✅ [ConcessionariasService] Concessionaria updated:', concessionaria?.id);
 
       return concessionaria;
@@ -197,7 +197,7 @@ class ConcessionariasServiceClass {
         formData.append('descricao', descricao);
       }
 
-      const response = await api.post<{ success: boolean; data: AnexoConcessionaria }>(
+      const response = await api.post<AnexoConcessionaria>(
         `/concessionarias/${concessionariaId}/anexos`,
         formData,
         {
@@ -207,7 +207,7 @@ class ConcessionariasServiceClass {
         }
       );
 
-      const anexo = response.data.data || response.data;
+      const anexo = response.data;
       console.log('✅ [ConcessionariasService] Anexo uploaded:', anexo?.id);
 
       return anexo;
@@ -223,11 +223,11 @@ class ConcessionariasServiceClass {
   async getAnexos(concessionariaId: string): Promise<AnexoConcessionaria[]> {
     try {
       console.log(`📡 [ConcessionariasService] GET /concessionarias/${concessionariaId}/anexos`);
-      const response = await api.get<{ success: boolean; data: AnexoConcessionaria[] }>(
+      const response = await api.get<AnexoConcessionaria[]>(
         `/concessionarias/${concessionariaId}/anexos`
       );
 
-      const anexos = response.data.data || response.data || [];
+      const anexos = response.data || [];
       console.log('✅ [ConcessionariasService] Anexos fetched:', anexos.length);
 
       return Array.isArray(anexos) ? anexos : [];

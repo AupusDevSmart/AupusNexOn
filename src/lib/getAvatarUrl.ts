@@ -1,3 +1,4 @@
+import { env } from '@/config/env';
 /**
  * Constrói a URL completa do avatar do usuário
  * @param avatarUrl - URL parcial ou completa do avatar
@@ -12,7 +13,7 @@ export function getAvatarUrl(avatarUrl: string | null | undefined): string | nul
   }
 
   // Constrói a URL completa baseada no ambiente
-  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
+  const apiUrl = env.VITE_API_URL;
   const baseUrl = apiUrl.replace(/\/api\/v1$/, '');
 
   // Garante que não haja barras duplas

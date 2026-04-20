@@ -1,4 +1,5 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
+import { env } from '@/config/env';
 import { io, Socket } from 'socket.io-client';
 
 interface MqttMessage {
@@ -46,7 +47,7 @@ export const useMqttWebSocket = (topic: string): UseMqttWebSocketReturn => {
     }
 
     // TODO: Pegar do env ou config
-    const WEBSOCKET_URL = import.meta.env.VITE_WEBSOCKET_URL || 'http://localhost:3000';
+    const WEBSOCKET_URL = env.VITE_WEBSOCKET_URL;
 
     console.log(`🔌 Conectando ao WebSocket: ${WEBSOCKET_URL}/mqtt`);
 
@@ -131,7 +132,7 @@ export const useMqttWebSocketAll = (): UseMqttWebSocketReturn => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const WEBSOCKET_URL = import.meta.env.VITE_WEBSOCKET_URL || 'http://localhost:3000';
+    const WEBSOCKET_URL = env.VITE_WEBSOCKET_URL;
 
     const newSocket = io(`${WEBSOCKET_URL}/mqtt`, {
       transports: ['websocket', 'polling'],

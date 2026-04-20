@@ -34,6 +34,7 @@ export function RegraLogModal({ isOpen, mode, regra, onClose, onSuccess }: Regra
         mensagem: data.mensagem,
         severidade: data.severidade || 'MEDIA',
         cooldown_minutos: Number(data.cooldown_minutos) || 5,
+        ativo: data.ativo !== false,
       };
 
       if (mode === 'create') {

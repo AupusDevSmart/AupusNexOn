@@ -1,5 +1,5 @@
 // src/features/equipamentos/hooks/useEquipamentoFilters.ts - FILTROS DINÂMICOS
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { selectionDataService } from '@/services/selection-data.services';
 import { PlantasService } from '@/services/plantas.services';
 import { getUnidadesByPlanta, getAllUnidades, getUnidadesByProprietario } from '@/services/unidades.services';
@@ -209,7 +209,8 @@ export function useEquipamentoFilters(): UseEquipamentoFiltersReturn {
           hasMore = false;
         } else {
           todasUnidades = [...todasUnidades, ...unidadesPage.data];
-          hasMore = unidadesPage.pagination.page < unidadesPage.pagination.totalPages;
+          const paginationInfo = (unidadesPage as unknown as { pagination?: { page: number; totalPages: number } }).pagination;
+          hasMore = paginationInfo ? paginationInfo.page < paginationInfo.totalPages : unidadesPage.page < unidadesPage.totalPages;
           page++;
         }
       }
@@ -220,7 +221,7 @@ export function useEquipamentoFilters(): UseEquipamentoFiltersReturn {
           .sort((a, b) => a.nome.localeCompare(b.nome))
           .map(unidade => ({
             value: unidade.id,
-            label: `${unidade.nome} - ${unidade.tipo} (${unidade.planta?.nome || 'Sem planta'})`
+            label: `${unidade.nome} - ${unidade.tipo} (${(unidade as any).planta?.nome || 'Sem planta'})`
           }))
       ];
 
@@ -304,7 +305,7 @@ export function useEquipamentoFilters(): UseEquipamentoFiltersReturn {
           .sort((a, b) => a.nome.localeCompare(b.nome))
           .map(unidade => ({
             value: unidade.id,
-            label: `${unidade.nome} - ${unidade.tipo} (${unidade.planta?.nome || 'Sem planta'})`
+            label: `${unidade.nome} - ${unidade.tipo} (${(unidade as any).planta?.nome || 'Sem planta'})`
           }))
       ];
 

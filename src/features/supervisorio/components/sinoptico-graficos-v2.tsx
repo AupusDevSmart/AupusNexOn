@@ -2,7 +2,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -229,7 +228,7 @@ export function SinopticoGraficosV2({
           };
 
           // Guardar os IDs selecionados para processar depois
-          config.equipamentosIds = apiData.equipamentos_ids || [];
+          (config as any).equipamentosIds = apiData.equipamentos_ids || [];
 
           return config;
         }
@@ -275,8 +274,7 @@ export function SinopticoGraficosV2({
           }
         });
 
-        // A resposta vem em response.data.data.data (aninhamento triplo)
-        const equipamentosArray = response.data?.data?.data || [];
+        const equipamentosArray = response.data?.data || [];
 
         if (equipamentosArray && equipamentosArray.length > 0) {
         // Mapear para formato do modal

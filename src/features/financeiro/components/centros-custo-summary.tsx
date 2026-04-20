@@ -2,7 +2,7 @@
 import React from 'react';
 import { Card } from '@/components/ui/card';
 import { Building2, TrendingUp, DollarSign, Users } from 'lucide-react';
-import { CentroCusto, SummaryData } from '@/types/dtos/financeiro';
+import { CentroCusto, CentrosCustoSummaryData as SummaryData } from '@/types/dtos/financeiro';
 
 interface CentrosCustoSummaryProps {
   centros: CentroCusto[];
@@ -16,7 +16,7 @@ interface SummaryCardProps {
   icon: React.ReactNode;
 }
 
-export function CentrosCustoSummary({ centros = [] }: CentrosCustoSummaryProps): JSX.Element {
+export function CentrosCustoSummary({ centros = [] }: CentrosCustoSummaryProps): React.JSX.Element {
   // Calcular métricas dos centros de custo
   const summaryData: SummaryData = centros.reduce((acc, centro) => {
     // Contadores por status
@@ -86,7 +86,7 @@ export function CentrosCustoSummary({ centros = [] }: CentrosCustoSummaryProps):
   );
 }
 
-function SummaryCard({ title, value, subtitle, variant, icon }: SummaryCardProps): JSX.Element {
+function SummaryCard({ title, value, subtitle, variant, icon }: SummaryCardProps): React.JSX.Element {
   // Mapear variantes para cores
   const variantClasses = {
     success: "text-green-500",

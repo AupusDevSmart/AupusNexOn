@@ -59,12 +59,15 @@ export interface Diagrama {
 }
 
 export interface CreateDiagramaDto {
-  unidadeId: string;
+  unidadeId?: string;
+  /** @deprecated usar unidadeId (compatibilidade com chamadas legadas que usam snake_case) */
+  unidade_id?: string;
   nome: string;
   versao?: string;
   descricao?: string;
   ativo?: boolean;
   configuracoes?: any;
+  svg_data?: any;
 }
 
 export interface UpdateDiagramaDto extends Partial<CreateDiagramaDto> {}
@@ -125,7 +128,7 @@ class DiagramasServiceClass {
     try {
       // console.log(`📡 [DiagramasService] GET /diagramas/${diagramaId}`);
       const response = await api.get(`/diagramas/${diagramaId}`);
-      const diagrama = response.data?.data || response.data;
+      const diagrama = response.data;
       // console.log('✅ [DiagramasService] Diagrama fetched:', {
       //   id: diagrama.id,
       //   nome: diagrama.nome,
@@ -152,9 +155,9 @@ class DiagramasServiceClass {
    */
   async getDiagramasByUnidade(unidadeId: string): Promise<Diagrama[]> {
     try {
-      // console.log(`📡 [DiagramasService] GET /unidades/${unidadeId}/diagramas`);
-      const response = await api.get(`/unidades/${unidadeId}/diagramas`);
-      const diagramas = response.data?.data || response.data || [];
+      // console.log(`📡 [DiagramasService] GET /diagramas/by-unidade/${unidadeId}`);
+      const response = await api.get(`/diagramas/by-unidade/${unidadeId}`);
+      const diagramas = response.data || [];
       // console.log('✅ [DiagramasService] Fetched', diagramas.length, 'diagramas');
       // if (diagramas.length > 0) {
       //   console.log('📊 [DiagramasService] Primeiro diagrama:', {
@@ -180,7 +183,7 @@ class DiagramasServiceClass {
    * @throws Error se houver erro na comunicação com o backend (não retorna null para erros)
    */
   async getActiveDiagrama(unidadeId: string): Promise<Diagrama | null> {
-    // console.log(`📡 [DiagramasService] GET /unidades/${unidadeId}/diagramas (buscando ativo)`);
+    // console.log(`📡 [DiagramasService] GET /diagramas/by-unidade/${unidadeId} (buscando ativo)`);
 
     // Buscar lista de diagramas (pode lançar erro de rede)
     const diagramas = await this.getDiagramasByUnidade(unidadeId);
@@ -214,8 +217,8 @@ class DiagramasServiceClass {
     try {
       // console.log('📡 [DiagramasService] POST /diagramas', dto);
       const response = await api.post('/diagramas', dto);
-      // console.log('✅ [DiagramasService] Diagrama created:', response.data?.data?.id);
-      return response.data.data; // Backend retorna { success, data, meta }
+      // console.log('✅ [DiagramasService] Diagrama created:', response.data?.id);
+      return response.data;
     } catch (error: any) {
       console.error('❌ [DiagramasService] Error creating diagrama:', error);
       throw new Error(error.response?.data?.message || 'Erro ao criar diagrama');
@@ -467,7 +470,7 @@ class DiagramasServiceClass {
       // console.log(`✅ [DiagramasService] Layout saved in ${tempoMs}ms`);
 
       // Backend retorna { success, data: { equipamentosAtualizados, conexoesCriadas, tempoMs }, meta }
-      return response.data?.data || response.data;
+      return response.data;
     } catch (error: any) {
       console.error(`❌ [DiagramasService] Error saving layout:`, error);
       throw new Error(error.response?.data?.message || 'Erro ao salvar layout');

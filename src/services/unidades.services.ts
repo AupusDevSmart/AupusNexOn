@@ -39,12 +39,12 @@ class UnidadesService {
       console.log('📨 [UnidadesService] Resposta da API:', {
         status: response.status,
         hasData: !!response.data,
-        hasNestedData: !!response.data?.data,
+        hasNestedData: !!response.data,
         dataKeys: response.data ? Object.keys(response.data) : []
       });
 
       // A API retorna { success: true, data: { data: [], pagination: {} } }
-      return response.data.data || response.data;
+      return response.data;
     } catch (error) {
       console.error('❌ [UnidadesService] Erro ao listar unidades:', error);
       throw error;
@@ -56,7 +56,7 @@ class UnidadesService {
     try {
       const response = await api.get(`${this.baseUrl}/${id}`);
       // Busca por ID retorna o objeto diretamente dentro de data
-      return response.data.data || response.data;
+      return response.data;
     } catch (error) {
       console.error('❌ [UnidadesService] Erro ao buscar unidade:', error);
       throw error;
@@ -78,7 +78,7 @@ class UnidadesService {
       const response = await api.post(this.baseUrl, dados);
 
       console.log('✅ [FRONTEND SERVICE - CREATE] Resposta recebida');
-      const result = response.data.data || response.data;
+      const result = response.data;
       console.log('🔑 [FRONTEND SERVICE - CREATE] concessionariaId na resposta:', result.concessionariaId);
       console.log('🏁 [FRONTEND SERVICE - CREATE] ===== FIM =====');
 
@@ -100,7 +100,7 @@ class UnidadesService {
       // Exibir sucesso
       alert('Unidade atualizada com sucesso!');
 
-      return response.data.data || response.data;
+      return response.data;
     } catch (error) {
       console.error('❌ [UnidadesService] Erro ao atualizar unidade:', error);
       throw error;
@@ -124,7 +124,7 @@ class UnidadesService {
   async obterEstatisticas(): Promise<UnidadeStats> {
     try {
       const response = await api.get(`${this.baseUrl}/stats`);
-      return response.data.data || response.data;
+      return response.data;
     } catch (error) {
       console.error('❌ [UnidadesService] Erro ao obter estatísticas:', error);
       throw error;
@@ -136,7 +136,7 @@ class UnidadesService {
     try {
       const response = await api.post(`${this.baseUrl}/import`, unidades);
 
-      const result = (response.data.data || response.data) as ImportResult;
+      const result = response.data as ImportResult;
 
       // Exibir resultado da importação
       const message = `Importação concluída!\n` +
@@ -229,14 +229,14 @@ class UnidadesService {
       // Tentar endpoint específico primeiro
       try {
         const response = await api.get(`${this.baseUrl}/planta/${cleanPlantaId}`);
-        const data = response.data.data || response.data;
+        const data = response.data;
         return Array.isArray(data) ? data : [];
       } catch (err) {
         // Fallback: usar endpoint geral com filtro
         console.log('⚠️ [UnidadesService] Endpoint /planta não disponível, usando filtro');
         const response = await api.get(`${this.baseUrl}?plantaId=${cleanPlantaId}&limit=100`);
 
-        const responseData = response.data.data || response.data;
+        const responseData = response.data;
         const data = responseData.data || responseData || [];
 
         return Array.isArray(data) ? data : [];
@@ -257,7 +257,7 @@ class UnidadesService {
       // Usar endpoint geral com filtro de proprietário
       const response = await api.get(`${this.baseUrl}?proprietarioId=${cleanProprietarioId}&limit=1000`);
 
-      const responseData = response.data.data || response.data;
+      const responseData = response.data;
       const data = responseData.data || responseData || [];
 
       console.log(`✅ [UnidadesService] ${Array.isArray(data) ? data.length : 0} unidades encontradas`);
@@ -276,7 +276,7 @@ class UnidadesService {
       console.log(`📡 [UnidadesService] Buscando estatísticas da unidade ${cleanId}`);
 
       const response = await api.get(`${this.baseUrl}/${cleanId}/estatisticas`);
-      return response.data.data || response.data;
+      return response.data;
     } catch (error: any) {
       console.error(`❌ [UnidadesService] Erro ao buscar estatísticas da unidade ${id}:`, error);
       throw error;
@@ -298,7 +298,7 @@ class UnidadesService {
       if (filters?.search) params.append('search', filters.search);
 
       const response = await api.get(`${this.baseUrl}/${cleanId}/equipamentos?${params.toString()}`);
-      return response.data.data || response.data;
+      return response.data;
     } catch (error: any) {
       console.error(`❌ [UnidadesService] Erro ao buscar equipamentos da unidade ${id}:`, error);
       throw error;

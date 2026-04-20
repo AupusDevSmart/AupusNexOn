@@ -29,7 +29,7 @@ export function FluxoCaixaFilters({
   selectedModule,
   onModuleChange,
   modulos
-}: FluxoCaixaFiltersProps): JSX.Element {
+}: FluxoCaixaFiltersProps): React.JSX.Element {
   const anos: { value: string; label: string }[] = [
     { value: '2024', label: '2024' },
     { value: '2023', label: '2023' },

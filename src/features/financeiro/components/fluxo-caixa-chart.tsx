@@ -9,7 +9,7 @@ interface FluxoCaixaChartProps {
   data: FluxoCaixaData[];
 }
 
-export function FluxoCaixaChart({ data }: FluxoCaixaChartProps): JSX.Element {
+export function FluxoCaixaChart({ data }: FluxoCaixaChartProps): React.JSX.Element {
   const [chartType, setChartType] = useState<ChartType>('line');
   
   // Calcular totais para os cards laterais

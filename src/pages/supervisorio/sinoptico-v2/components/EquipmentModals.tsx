@@ -117,9 +117,10 @@ export function EquipmentModals({
     case 'INVERSOR':
       return (
         <InversorModal
-          isOpen={true}
+          open={true}
           onClose={onClose}
-          componenteData={componenteData}
+          dados={componenteData.dados as unknown as Parameters<typeof InversorModal>[0]['dados']}
+          nomeComponente={componenteData.nome}
         />
       );
 
@@ -135,54 +136,60 @@ export function EquipmentModals({
     case 'M300':
       return (
         <M300Modal
-          isOpen={true}
+          open={true}
           onClose={onClose}
-          componenteData={componenteData}
+          dados={componenteData.dados as unknown as Parameters<typeof M300Modal>[0]['dados']}
+          nomeComponente={componenteData.nome}
         />
       );
 
     case 'LANDIS':
       return (
         <LandisGyrModal
-          isOpen={true}
+          open={true}
           onClose={onClose}
           componenteData={componenteData}
+          nomeComponente={componenteData.nome}
         />
       );
 
     case 'TRANSFORMADOR':
       return (
         <TransformadorModal
-          isOpen={true}
+          open={true}
           onClose={onClose}
-          componenteData={componenteData}
+          dados={componenteData.dados as unknown as Parameters<typeof TransformadorModal>[0]['dados']}
+          nomeComponente={componenteData.nome}
         />
       );
 
     case 'DISJUNTOR':
       return (
         <DisjuntorModal
-          isOpen={true}
+          open={true}
           onClose={onClose}
-          componenteData={componenteData}
+          dados={componenteData.dados as unknown as Parameters<typeof DisjuntorModal>[0]['dados']}
+          nomeComponente={componenteData.nome}
         />
       );
 
     case 'PIVO':
       return (
         <PivoModal
-          isOpen={true}
+          open={true}
           onClose={onClose}
-          componenteData={componenteData}
+          dados={componenteData.dados as unknown as Parameters<typeof PivoModal>[0]['dados']}
+          nomeComponente={componenteData.nome}
         />
       );
 
     case 'A966':
       return (
         <A966Modal
-          isOpen={true}
+          open={true}
           onClose={onClose}
           componenteData={componenteData}
+          nomeComponente={componenteData.nome}
         />
       );
 

@@ -94,19 +94,16 @@ export function useCustosEnergia({
 
       console.log('✅ [useCustosEnergia] Resposta recebida:', response);
 
-      // A resposta pode vir com wrapper { success: true, data: {...} }
-      // ou diretamente como o objeto de dados
+      // Service retorna response.data ja desempacotado pelo interceptor
       let custosData: CustosEnergiaResponseDto;
 
-      if (response.success && response.data) {
-        // Resposta com wrapper global
-        custosData = response.data;
-      } else if (response.periodo && response.custos) {
-        // Resposta direta (já é o objeto de custos)
+      if (response?.periodo && response?.custos) {
         custosData = response;
+      } else if (response?.data?.periodo && response?.data?.custos) {
+        custosData = response.data;
       } else {
-        console.error('❌ [useCustosEnergia] Formato de resposta inesperado:', response);
-        throw new Error('Formato de resposta inválido');
+        console.error('[useCustosEnergia] Formato inesperado:', response);
+        throw new Error('Formato de resposta invalido');
       }
 
       console.log('✅ [useCustosEnergia] Dados de custos processados:', custosData);

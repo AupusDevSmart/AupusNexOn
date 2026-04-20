@@ -1,7 +1,6 @@
 // src/features/plantas/config/filter-config.tsx - VERSÃO SIMPLIFICADA
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { FilterConfig } from '@/types/base';
-import { User, Building2 } from 'lucide-react';
 import { PlantasService, ProprietarioBasico } from '@/services/plantas.services';
 
 // ✅ HOOK: Para usar os proprietários em outros lugares

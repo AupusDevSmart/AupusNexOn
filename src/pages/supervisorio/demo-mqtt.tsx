@@ -55,8 +55,7 @@ export function DemoMqttPage() {
 
   return (
     <Layout
-      title="Demo MQTT - Dados em Tempo Real"
-      breadcrumbs={[{ label: "Supervisório" }, { label: "Demo MQTT" }]}
+      {...({ title: "Demo MQTT - Dados em Tempo Real", breadcrumbs: [{ label: "Supervisório" }, { label: "Demo MQTT" }] } as any)}
     >
       <div className="space-y-6">
         <TitleCard

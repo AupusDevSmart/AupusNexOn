@@ -3,6 +3,8 @@ import React from 'react';
 interface TitleCardProps {
   title: string;
   description?: string;
+  subtitle?: string;
+  hiddenSelect?: boolean;
   children?: React.ReactNode;
 }
 

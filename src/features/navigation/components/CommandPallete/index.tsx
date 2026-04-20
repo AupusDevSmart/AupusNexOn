@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useNavigate } from "react-router-dom";
 
 import { useFilteredNavigationLinks } from "@/features/navigation/utils/useFilteredNavigationLinks";
 
@@ -14,6 +15,7 @@ import { nanoid } from "nanoid";
 
 export function CommandPallete() {
   const [open, setOpen] = React.useState(false);
+  const navigate = useNavigate();
   const navigationLinks = useFilteredNavigationLinks();
 
   React.useEffect(() => {

@@ -1,7 +1,7 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/config/api';
-import type { ConfiguracaoDemanda, EquipamentoConfig } from '@/features/supervisorio/components/ConfiguracaoDemandaModal';
+import type { ConfiguracaoDemanda } from '@/features/supervisorio/components/ConfiguracaoDemandaModal';
 
 // Desabilitar logs de debug em produção
 const noop = () => {};
@@ -144,8 +144,7 @@ export function useDadosDemanda(configuracao: ConfiguracaoDemanda, unidadeId?: s
           try {
             const response = await api.get(`/equipamentos-dados/${equip.id}/grafico-dia`);
 
-            // A resposta vem em response.data.data quando encapsulada
-            const responseData = response.data?.data || response.data;
+            const responseData = response.data;
 
             // Aceitar dados mesmo que a potência seja zero (inversores à noite, etc.)
             if (responseData && responseData.dados && responseData.dados.length > 0) {

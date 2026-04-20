@@ -1,12 +1,8 @@
-import { ChevronsUpDown, Building } from "lucide-react";
 import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  useSidebar,
 } from "@/components/ui/sidebar";
-import { useQueryClient } from "@tanstack/react-query";
-import { useConcessionariasStore } from "@/store/useConcessionariasStore";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "@/components/theme-provider"; // Ajuste o caminho conforme sua implementação
 

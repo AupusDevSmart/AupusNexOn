@@ -1,24 +1,14 @@
 //@ts-nocheck
-import { useRef, useCallback } from "react";
-import { useInfiniteQuery, useMutation, useQueryClient } from "react-query";
-import { ArrowDownToLine, Bell, CheckCheck, X } from "lucide-react";
+import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
   SheetClose,
   SheetContent,
-  SheetTrigger,
 } from "@/components/ui/sheet";
-import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Card,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { api } from "@/config/api";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+
 
 type Notificacao = {
   id: string;

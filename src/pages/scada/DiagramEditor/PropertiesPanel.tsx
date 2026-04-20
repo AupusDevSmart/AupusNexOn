@@ -1,4 +1,4 @@
-import { Equipment, LabelPosition } from "@/types/equipment";
+import { Equipment } from "@/types/equipment";
 import React from "react";
 import { ArrowUp, ArrowDown, ArrowLeft, ArrowRight } from "lucide-react";
 

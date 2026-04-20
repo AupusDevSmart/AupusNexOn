@@ -1,7 +1,7 @@
 // src/hooks/useUserPermissions.ts
 
 import { useState, useEffect, useCallback } from 'react';
-import { userPermissionsService, UserPermissionsResponse, UserPermissionsSummary } from '@/services/user-permissions.service';
+import { userPermissionsService } from '@/services/user-permissions.service';
 
 export interface Role {
   id: number;

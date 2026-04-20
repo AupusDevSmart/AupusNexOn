@@ -6,7 +6,6 @@
  */
 
 import React from 'react';
-import { ICON } from '../../utils/diagramConstants';
 
 interface QGBTIconProps {
   width?: number;

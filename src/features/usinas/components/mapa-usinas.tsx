@@ -221,7 +221,7 @@ export function MapaUsinas({
       </div>
 
       {/* CSS para animação e z-index do Leaflet */}
-      <style jsx>{`
+      <style {...({ jsx: 'true' } as any)}>{`
         @keyframes pulse {
           0% {
             transform: scale(1);

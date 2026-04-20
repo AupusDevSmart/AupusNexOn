@@ -1,17 +1,13 @@
-import { ChartColumnBig } from "@/components/icons/ChartColumnBig";
 import { ChartNoAxesColumn } from "@/components/icons/ChartNoAxesColumn";
 import { Permissao } from "@/types/dtos/usuarios-dto";
 import { featureFlags, type FeatureFlags } from "@/config/feature-flags";
 import {
   type LucideIcon,
   Activity,
-  BookUser,
   Building2,
   Cpu,
-  Magnet,
   Monitor,
   ScrollText,
-  SquareActivity,
   Zap,
   Users,
   Factory,

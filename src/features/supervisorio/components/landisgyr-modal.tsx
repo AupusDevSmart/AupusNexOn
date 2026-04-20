@@ -8,7 +8,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Gauge, WifiOff, Loader2 } from "lucide-react";
-import { useMqttWebSocket } from "@/hooks/useMqttWebSocket";
 import { useMemo } from "react";
 
 interface LandisGyrModalProps {

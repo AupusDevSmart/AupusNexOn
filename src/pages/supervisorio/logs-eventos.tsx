@@ -26,17 +26,15 @@ import {
   AlertCircle,
   AlertTriangle,
   CheckCircle,
-  CheckSquare,
   Clock,
   Download,
   Eye,
-  Filter,
   Info,
   Link,
   RefreshCw,
   XCircle,
 } from "lucide-react";
-import { useState } from "react";
+import React, { useState } from "react";
 import { parse, format } from "date-fns";
 
 // Tipos
@@ -382,7 +380,7 @@ export function LogsEventosPage() {
   const getStatusBadge = (status: string) => {
     const variants: Record<
       string,
-      { className: string; icon: JSX.Element; label: string }
+      { className: string; icon: React.JSX.Element; label: string }
     > = {
       aberto: {
         className: "bg-red-100 text-red-700 border-red-200",

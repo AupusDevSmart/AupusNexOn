@@ -1,6 +1,6 @@
 // src/features/plantas/hooks/usePlantas.ts
 import { useState, useCallback } from 'react';
-import { PlantasService, PlantaResponse, FindAllPlantasParams } from '@/services/plantas.services';
+import { PlantasService, PlantaResponse } from '@/services/plantas.services';
 
 interface SimplePlanta {
   id: string;

@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
-import { Layout } from "@/features/layout/components/layout";
+import React, { useMemo } from "react";
+import { Layout } from "@/components/common/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Zap,
@@ -10,7 +10,6 @@ import {
   AlertTriangle,
   Activity,
   RefreshCw,
-  WifiOff,
   Clock,
   Map
 } from "lucide-react";

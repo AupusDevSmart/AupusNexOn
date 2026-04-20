@@ -10,6 +10,7 @@ import { TooltipProvider } from "./components/ui/tooltip";
 
 import { appRoutes } from "./AppRoutes";
 import { ThemeProvider } from "./components/theme-provider";
+import { NexOnSharedPagesProvider } from "./shared-pages-adapter";
 import { FIFTEEN_MINUTES, FIVE_MINUTES } from "./config/constants";
 //import React from "react";
 //import { configureAxios } from "./config/api";
@@ -42,11 +43,13 @@ export default function App() {
               buttonPosition="bottom-right"
             />
           )} */}
-          <TooltipProvider>
-            <RouterProvider router={appRoutes} />
-            <Toaster />
-            <SonnerToaster richColors position="bottom-right" />
-          </TooltipProvider>
+          <NexOnSharedPagesProvider>
+            <TooltipProvider>
+              <RouterProvider router={appRoutes} />
+              <Toaster />
+              <SonnerToaster richColors position="bottom-right" />
+            </TooltipProvider>
+          </NexOnSharedPagesProvider>
         </QueryClientProvider>
       </ThemeProvider>
     </>

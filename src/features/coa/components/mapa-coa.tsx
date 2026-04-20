@@ -15,10 +15,7 @@ import {
   Minus,
   Plus,
   RotateCcw,
-  MapPin,
-  Zap,
-  AlertTriangle,
-  WifiOff
+  MapPin
 } from "lucide-react";
 import { UnidadeResumo } from "../api/coa-api";
 

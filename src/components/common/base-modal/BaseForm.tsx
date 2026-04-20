@@ -609,8 +609,7 @@ export function BaseForm({
                     </div>
                     
                     {errors[field.key] && (
-                      <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
-                        <span>⚠️</span>
+                      <p className="text-xs text-red-500 mt-1">
                         {errors[field.key]}
                       </p>
                     )}

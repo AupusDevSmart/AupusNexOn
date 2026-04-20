@@ -1,6 +1,5 @@
 import { useState, useMemo } from 'react';
 import type { M160Reading } from '@/components/equipment/M160/M160.types';
-import M160Multimeter from '@/components/equipment/M160/M160Multimeter';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -148,7 +147,7 @@ export function M160Modal({ isOpen, onClose, componenteData }: M160ModalProps) {
       };
     }
 
-    const d = mqttData.payload;
+    const d = mqttData.payload as unknown as Record<string, number | undefined>;
     const Pa = d.Pa || 0;
     const Pb = d.Pb || 0;
     const Pc = d.Pc || 0;

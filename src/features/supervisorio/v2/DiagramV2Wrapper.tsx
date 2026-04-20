@@ -159,13 +159,14 @@ export const DiagramV2Wrapper: React.FC<DiagramV2WrapperProps> = ({
     enabled: !!diagrama?.unidadeId,
     refetchInterval: false,
     staleTime: 0, // ✅ Sempre buscar dados frescos
-    cacheTime: 0, // ✅ Não manter cache
+    gcTime: 0, // ✅ Não manter cache (cacheTime foi renomeado para gcTime em TanStack v5)
   });
 
   // Extrair demanda contratada (demandaGeracao em camelCase da API)
-  const demandaContratada = unidadeData?.demandaGeracao ? parseFloat(unidadeData.demandaGeracao.toString()) : 2500;
+  const unidadeTyped = unidadeData as { demandaGeracao?: number | string } | null | undefined;
+  const demandaContratada = unidadeTyped?.demandaGeracao ? parseFloat(unidadeTyped.demandaGeracao.toString()) : 2500;
   console.log('📊 [DiagramV2Wrapper] unidadeData:', unidadeData);
-  console.log('📊 [DiagramV2Wrapper] Demanda final:', demandaContratada, '(demandaGeracao:', unidadeData?.demandaGeracao, ')');
+  console.log('📊 [DiagramV2Wrapper] Demanda final:', demandaContratada, '(demandaGeracao:', unidadeTyped?.demandaGeracao, ')');
 
   const setEquipamentos = (equipamentos: Equipment[]) => {
     const store = useDiagramStore.getState();
@@ -421,7 +422,7 @@ export const DiagramV2Wrapper: React.FC<DiagramV2WrapperProps> = ({
                 tipo: equipment.tipo,
                 posicao: { x: equipment.posicaoX, y: equipment.posicaoY },
                 status: equipment.status,
-                dados: equipment.dados,
+                dados: (equipment as unknown as { dados?: Record<string, unknown> }).dados,
               };
               onComponenteClick(legacyComponente);
             } : undefined}

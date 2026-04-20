@@ -8,7 +8,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { CategoriaAuditoria } from "@/types/dtos/logs-eventos";
 
 interface LogsAuditoriaFilterProps {
   value: string;

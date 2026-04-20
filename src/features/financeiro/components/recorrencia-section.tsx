@@ -46,7 +46,7 @@ function gerarDatasRecorrencia(config: RecorrenciaConfig): Date[] {
     }
   } else if (config.tipoFim === 'data' && config.dataFim) {
     const dataFim = new Date(config.dataFim);
-    let dataAtual = new Date(dataInicio);
+    const dataAtual = new Date(dataInicio);
     
     while (dataAtual <= dataFim) {
       datas.push(new Date(dataAtual));
@@ -209,7 +209,7 @@ export function RecorrenciaSection({ config, onChange, tipo }: RecorrenciaSectio
                     <DateInput
                       value={config.dataFim || ''}
                       onChange={(value) => handleChange('dataFim', value)}
-                      min={config.dataInicio}
+                      {...({ min: config.dataInicio } as any)}
                     />
                   </div>
                 )}

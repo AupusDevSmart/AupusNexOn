@@ -2,7 +2,6 @@ import api from '@/config/api';
 import {
   LoginDto,
   AuthResponseDto,
-  RefreshTokenDto,
   RefreshTokenResponseDto,
 } from '@/types/dtos/auth-dto';
 import { UsuarioDTO } from '@/types/dtos/usuarios-dto';
@@ -32,7 +31,7 @@ export const AuthService = {
 
       // O backend retorna { success: true, data: {...}, meta: {...} }
       // Extrair os dados do wrapper
-      const authData = response.data?.data || response.data;
+      const authData = response.data;
 
       // Salva tokens no localStorage
       this.setTokens(authData.access_token, authData.refresh_token);
@@ -61,7 +60,7 @@ export const AuthService = {
       });
 
       // O backend retorna { success: true, data: {...}, meta: {...} }
-      const tokenData = response.data?.data || response.data;
+      const tokenData = response.data;
 
       // Salva novos tokens
       this.setTokens(tokenData.access_token, tokenData.refresh_token);
@@ -100,7 +99,7 @@ export const AuthService = {
     try {
       const response = await api.get<any>('/auth/me');
       // O backend retorna { success: true, data: {...}, meta: {...} }
-      return response.data?.data || response.data;
+      return response.data;
     } catch (error: any) {
       console.error('❌ [AUTH SERVICE] Erro ao buscar usuário atual:', error);
       throw error;

@@ -1,4 +1,5 @@
 import axios, { InternalAxiosRequestConfig } from 'axios';
+import { env } from '@/config/env';
 import { useUserStore } from '@/store/useUserStore';
 import { AuthService } from '@/services/auth.service';
 import qs from 'qs';
@@ -7,7 +8,7 @@ import qs from 'qs';
  * Instância configurada do Axios para comunicação com a API
  */
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1',
+  baseURL: env.VITE_API_URL,
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
@@ -76,7 +77,13 @@ api.interceptors.request.use(
  * Trata erro 401 e tenta renovar o token automaticamente
  */
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Desempacota resposta padrao da API: { success: true, data: {...}, meta: {...} }
+    if (response.data && response.data.success && response.data.data !== undefined) {
+      return { ...response, data: response.data.data };
+    }
+    return response;
+  },
   async (error) => {
     const originalRequest = error.config;
 

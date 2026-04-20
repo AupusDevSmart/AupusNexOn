@@ -325,9 +325,10 @@ export const regrasLogsFormFields: FormField[] = [
     label: 'Operador',
     type: 'custom',
     required: true,
+    defaultValue: '<',
     render: OperadorSelector,
     group: 'configuracao',
-  },
+  } as any,
   {
     key: 'valor',
     label: 'Valor',
@@ -350,9 +351,10 @@ export const regrasLogsFormFields: FormField[] = [
     label: 'Severidade',
     type: 'custom',
     required: true,
+    defaultValue: 'MEDIA',
     render: SeveridadeSelector,
     group: 'configuracao',
-  },
+  } as any,
   {
     key: 'cooldown_minutos',
     label: 'Cooldown (minutos)',
@@ -363,6 +365,13 @@ export const regrasLogsFormFields: FormField[] = [
     placeholder: '5',
     group: 'configuracao',
   },
+  {
+    key: 'ativo',
+    label: 'Ativo',
+    type: 'checkbox',
+    defaultValue: true,
+    group: 'configuracao',
+  } as any,
 ];
 
 export const regrasLogsFormGroups = [
@@ -374,6 +383,6 @@ export const regrasLogsFormGroups = [
   {
     key: 'configuracao',
     title: 'Configuracao da Regra',
-    fields: ['nome', 'operador', 'valor', 'mensagem', 'severidade', 'cooldown_minutos'],
+    fields: ['nome', 'operador', 'valor', 'mensagem', 'severidade', 'cooldown_minutos', 'ativo'],
   },
 ];

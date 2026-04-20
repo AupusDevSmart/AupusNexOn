@@ -100,7 +100,7 @@ export const useLocationCascade = (initialData?: LocationData) => {
       setError(null);
 
       const unidadesData = await getUnidadesByPlanta(plantaId);
-      setUnidades(unidadesData || []);
+      setUnidades((unidadesData as any) || []);
 
     } catch (err) {
       console.error('Erro ao carregar unidades:', err);

@@ -35,7 +35,7 @@ export function CentrosCustoModal({
   onSave,
   editingItem,
   centrosPai
-}: CentrosCustoModalProps): JSX.Element {
+}: CentrosCustoModalProps): React.JSX.Element {
   const [formData, setFormData] = useState<CentroCustoFormData>({
     codigo: '',
     nome: '',

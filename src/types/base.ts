@@ -1,6 +1,6 @@
 // src/types/base.ts - Base types for common components
 
-import { ReactNode } from 'react';
+import React, { ReactNode } from 'react';
 import { LucideIcon } from 'lucide-react';
 
 /**
@@ -31,8 +31,10 @@ export interface FormFieldProps {
 export interface FormField {
   key: string;
   label: string;
-  type: 'text' | 'email' | 'number' | 'select' | 'checkbox' | 'textarea' | 'custom' | 'password' | 'date' | 'time' | 'datetime-local';
+  type: 'text' | 'email' | 'number' | 'select' | 'checkbox' | 'textarea' | 'custom' | 'password' | 'date' | 'time' | 'datetime-local' | 'combobox';
   required?: boolean;
+  colSpan?: number;
+  condition?: (formData: any) => boolean;
   placeholder?: string;
   defaultValue?: any;
   options?: Array<{ value: string | number; label: string }>;
@@ -62,6 +64,19 @@ export interface TableColumn<T = any> {
   hideOnTablet?: boolean;
   width?: string;
   align?: 'left' | 'center' | 'right';
+  className?: string;
+}
+
+export type CustomAction<T = any> = TableAction<T>;
+
+export interface TableAction<T = any> {
+  key: string;
+  label: string;
+  handler?: (entity: T) => void;
+  onClick?: (entity: T) => void;
+  condition?: (entity: T) => boolean;
+  icon?: ReactNode | React.ComponentType<any>;
+  variant?: 'default' | 'destructive' | 'outline' | 'secondary' | 'ghost' | 'link';
 }
 
 /**
@@ -70,7 +85,7 @@ export interface TableColumn<T = any> {
 export interface FilterConfig {
   key: string;
   label?: string;
-  type: 'text' | 'select' | 'checkbox' | 'date' | 'search' | 'combobox';
+  type: 'text' | 'select' | 'checkbox' | 'date' | 'search' | 'combobox' | 'custom';
   placeholder?: string;
   options?: Array<{ value: string | number; label: string }>;
   disabled?: boolean;
@@ -78,6 +93,7 @@ export interface FilterConfig {
   className?: string;
   searchPlaceholder?: string; // Para combobox
   emptyText?: string; // Para combobox
+  render?: (props: any) => ReactNode;
 }
 
 /**

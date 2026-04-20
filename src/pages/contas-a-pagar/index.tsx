@@ -157,8 +157,7 @@ export function ContasAPagarPage() {
       Toast({
         title: "Sucesso!",
         description: locationState.message,
-        variant: "success",
-      });
+      } as any);
       
       // Limpar o state para evitar que a mensagem apareça novamente
       window.history.replaceState({}, document.title);
@@ -215,7 +214,7 @@ export function ContasAPagarPage() {
         
         {/* Resumo */}
         <div className="mb-6">
-          <ContasAPagarSummary contas={contasFiltradas} />
+          <ContasAPagarSummary contas={contasFiltradas as any} />
         </div>
         
         {/* Filtros */}

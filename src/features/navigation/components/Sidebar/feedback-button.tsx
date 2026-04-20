@@ -31,9 +31,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation } from "@tanstack/react-query";
-import { toast } from "@/components/ui/use-toast";
-import { api } from "@/config/api";
 
 // Define the form schema using zod
 const feedbackSchema = z.object({

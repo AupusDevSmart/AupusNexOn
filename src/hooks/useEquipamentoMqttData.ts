@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { env } from '@/config/env';
 import { io, Socket } from 'socket.io-client';
 import equipamentosDadosService, {
   type EquipamentoDadoLatest,
@@ -32,8 +33,8 @@ export function useEquipamentoMqttData(equipamentoId: string | null) {
       console.log(`🔄 [useEquipamentoMqttData] Buscando dados para equipamento ${cleanId}`);
       const response = await equipamentosDadosService.getLatest(cleanId);
       console.log('✅ [useEquipamentoMqttData] Resposta completa:', response);
-      console.log('✅ [useEquipamentoMqttData] Dados extraídos:', response.data);
-      const responseData = response.data || response;
+      console.log('✅ [useEquipamentoMqttData] Dados extraídos:', (response as any).data);
+      const responseData = (response as any).data || response;
       setData(responseData);
       // ✅ CORREÇÃO: Usar timestamp_dados real ao invés da hora atual
       const timestampDados = responseData?.dado?.timestamp_dados;
@@ -68,7 +69,7 @@ export function useEquipamentoMqttData(equipamentoId: string | null) {
     // Conectar ao WebSocket
     // IMPORTANTE: NestJS usa Socket.IO com path padrão `/socket.io` e namespace `/ws/diagramas`
     // Então conectamos ao servidor base e especificamos o namespace na URL
-    const WS_URL = import.meta.env.VITE_WEBSOCKET_URL || 'http://localhost:3000';
+    const WS_URL = env.VITE_WEBSOCKET_URL;
     const namespace = '/ws/diagramas';
     const fullUrl = `${WS_URL}${namespace}`;
 

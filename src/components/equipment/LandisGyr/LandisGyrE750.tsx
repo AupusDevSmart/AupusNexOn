@@ -11,10 +11,9 @@ import {
   TrendingUp,
   Wifi,
 } from "lucide-react";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import {
   LandisGyrE750DisplayInfo,
-  LandisGyrE750NavigationState,
   LandisGyrE750Props,
 } from "./LandisGyr.types";
 

@@ -1,7 +1,6 @@
 // src/features/unidades/hooks/useUnidades.ts
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
 import {
   getAllUnidades,
   getUnidadesByPlanta,
@@ -14,7 +13,6 @@ import {
 } from '@/services/unidades.services';
 import type {
   UnidadeFilters,
-  CreateUnidadeDto,
   UpdateUnidadeDto,
 } from '@/features/unidades/types';
 
@@ -32,7 +30,7 @@ export const useUnidades = (filters?: UnidadeFilters) => {
     refetch,
   } = useQuery({
     queryKey: ['unidades', filters],
-    queryFn: () => getAllUnidades(filters),
+    queryFn: () => getAllUnidades(filters as unknown as import('@/types/unidades').FilterUnidadeDto),
     staleTime: 1000 * 60 * 5, // 5 minutos
   });
 
@@ -63,7 +61,7 @@ export const useUnidades = (filters?: UnidadeFilters) => {
 
   return {
     unidades: unidadesData?.data || [],
-    pagination: unidadesData?.pagination,
+    pagination: (unidadesData as unknown as { pagination?: { page: number; limit: number; total: number; pages: number } })?.pagination,
     isLoading,
     error,
     refetch,

@@ -1,10 +1,9 @@
-import { useState, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Layout } from '@/components/common/Layout';
 import { TitleCard } from '@/components/common/title-card';
 import { FluxoCaixaFilters } from '@/features/financeiro/components/fluxo-caixa-filters';
 import { FluxoCaixaSummary } from '@/features/financeiro/components/fluxo-caixa-summary';
 import { FluxoCaixaChart } from '@/features/financeiro/components/fluxo-caixa-chart';
-import { FluxoCaixaTable } from '@/features/financeiro/components/fluxo-caixa-table';
 import { Button } from '@/components/ui/button';
 import { Download, RefreshCw } from 'lucide-react';
 import type { FluxoCaixaData, FluxoCaixaDetailed, ModuloOption } from '@/types/dtos/financeiro';
@@ -75,7 +74,7 @@ const modulos: ModuloOption[] = [
   { value: 'projetos', label: 'Projetos (elaboração e execução)' }
 ];
 
-export function FluxoDeCaixaPage(): JSX.Element {
+export function FluxoDeCaixaPage(): React.JSX.Element {
   const [selectedYear, setSelectedYear] = useState<string>('2024');
   const [selectedMonth, setSelectedMonth] = useState<string>('all');
   const [selectedModule, setSelectedModule] = useState<string>('all');
@@ -83,7 +82,7 @@ export function FluxoDeCaixaPage(): JSX.Element {
   // Filtrar dados com base nos filtros selecionados
   const dadosFiltrados = useMemo(() => {
     let chartData = [...mockData.monthly];
-    let tableData = [...mockData.detailed];
+    const tableData = [...mockData.detailed];
 
     // Filtrar por módulo se específico
     if (selectedModule !== 'all') {

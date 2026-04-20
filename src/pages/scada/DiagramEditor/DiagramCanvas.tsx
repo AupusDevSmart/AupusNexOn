@@ -81,11 +81,11 @@ export const DiagramCanvas: React.FC<DiagramCanvasProps> = ({
             id={eq.id}
             name={eq.data.name}
             readings={
-              eq.data.readings || {
+              (eq.data.readings || {
                 voltage: {},
                 current: {},
                 power: {},
-              }
+              }) as unknown as import("@/components/equipment/M300/M300.types").M300Reading
             }
             status={eq.data.status}
             displayMode={eq.data.displayMode as any}
@@ -99,13 +99,13 @@ export const DiagramCanvas: React.FC<DiagramCanvasProps> = ({
             id={eq.id}
             name={eq.data.name}
             readings={
-              eq.data.readings || {
+              (eq.data.readings || {
                 voltage: {},
                 current: {},
                 power: {},
                 energy: {},
                 thd: {},
-              }
+              }) as unknown as import("@/components/equipment/M160/M160.types").M160Reading
             }
             status={eq.data.status}
             displayMode={eq.data.displayMode as any}
@@ -119,7 +119,7 @@ export const DiagramCanvas: React.FC<DiagramCanvasProps> = ({
             id={eq.id}
             name={eq.data.name}
             readings={
-              eq.data.readings || {
+              (eq.data.readings || {
                 voltage: {},
                 current: {},
                 energy: {},
@@ -127,7 +127,7 @@ export const DiagramCanvas: React.FC<DiagramCanvasProps> = ({
                 communication: {},
                 system: {},
                 loadProfile: {},
-              }
+              }) as unknown as import("@/components/equipment/LandisGyr/LandisGyr.types").LandisGyrE750Reading
             }
             status={eq.data.status as any}
             displayMode={eq.data.displayMode as any}
@@ -149,7 +149,7 @@ export const DiagramCanvas: React.FC<DiagramCanvasProps> = ({
           <A966Gateway
             id={eq.id}
             name={eq.data.name}
-            readings={{
+            readings={({
               inputs: eq.data.readings?.inputs || {},
               outputs: eq.data.readings?.outputs || {},
               systemStatus: eq.data.readings?.systemStatus || {},
@@ -157,7 +157,7 @@ export const DiagramCanvas: React.FC<DiagramCanvasProps> = ({
                 connectionType: "ethernet",
               },
               iotStatus: eq.data.readings?.iotStatus || {},
-            }}
+            }) as unknown as import("@/components/equipment/A966/A966.types").A966Reading}
             status={eq.data.status}
             displayMode={eq.data.displayMode as any}
             scale={0.8}

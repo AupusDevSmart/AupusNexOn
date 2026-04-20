@@ -13,7 +13,6 @@ import { useDiagramStore } from '../../hooks/useDiagramStore';
 import { VisualConnection, Barramento } from '../../types/diagram.types';
 import {
   pointsToSvgPathRounded,
-  pointsToSvgPath,
 } from '../../utils/orthogonalRouting';
 import { getBarramentoPath } from '../../utils/barramentoDetector';
 import { CONNECTION, getThemeColors, pixelsToGrid, gridToPixels } from '../../utils/diagramConstants';

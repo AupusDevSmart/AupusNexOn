@@ -28,7 +28,7 @@ export function CentrosCustoFilters({
   onStatusFilterChange,
   tipoFilter,
   onTipoFilterChange
-}: CentrosCustoFiltersProps): JSX.Element {
+}: CentrosCustoFiltersProps): React.JSX.Element {
   return (
     <div className="flex flex-wrap gap-4 items-center justify-between">
       {/* Campo de pesquisa */}

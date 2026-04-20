@@ -1,5 +1,5 @@
 // src/features/plantas/types/index.ts - ATUALIZADO PARA API
-import { BaseEntity, type BaseFilters as BaseFiltersType, ModalMode } from '@/types/base';
+import { BaseEntity, ModalMode } from '@/types/base';
 
 export interface Endereco {
   logradouro: string;

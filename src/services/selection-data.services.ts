@@ -67,7 +67,7 @@ export class SelectionDataService {
         }
       });
 
-      const usuariosData = response.data.data || response.data;
+      const usuariosData = response.data;
       const usuarios = usuariosData.data || usuariosData || [];
 
       if (usuarios.length === 0) {

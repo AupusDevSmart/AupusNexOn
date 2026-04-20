@@ -12,11 +12,18 @@ import { Toast } from '@/components/ui/toast'; // Ajuste para o caminho do seu c
 
 // Tipos
 interface Conta {
-  id: number;
+  id: string;
   vencimento: string;
   descricao: string;
   total: number;
-  situacao: 'pendente' | 'atrasado' | 'recebido';
+  situacao: 'pendente' | 'atrasado' | 'recebido' | 'cancelado';
+  cliente?: string;
+  dataEmissao?: string;
+  dataRecebimento?: string;
+  formaRecebimento?: string;
+  contaBanco?: string;
+  valorRecebido?: number;
+  observacoes?: string;
 }
 
 interface LocationState {
@@ -184,7 +191,7 @@ export function ContasAReceberPage() {
   const locationState = location.state as LocationState;
   
   const [selectedPeriod, setSelectedPeriod] = useState<string>('Abril de 2025');
-  const [selectedItems, setSelectedItems] = useState<number[]>([]);
+  const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
@@ -200,8 +207,8 @@ export function ContasAReceberPage() {
       Toast({
         title: "Sucesso!",
         description: locationState.message,
-        variant: "success",
-      });
+        variant: "default",
+      } as React.ComponentProps<typeof Toast> & { title?: string; description?: string });
       
       // Limpar o state para evitar que a mensagem apareça novamente em recarregamentos
       window.history.replaceState({}, document.title);

@@ -1,7 +1,7 @@
 // src/pages/dashboard/index.tsx - COA com Dados Reais
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo } from "react";
 import { Layout } from "@/components/common/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -10,29 +10,16 @@ import {
   TrendingUp,
   AlertTriangle,
   Activity,
-  RefreshCw,
-  WifiOff,
-  Clock,
-  Loader2
+  RefreshCw
 } from "lucide-react";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer
-} from "recharts";
+
+
 import { useCoaDashboard } from "@/features/coa/hooks/use-coa-dashboard";
 import { MapaCoa } from "@/features/coa/components/mapa-coa";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatDistanceToNow } from "date-fns";
-import { ptBR } from "date-fns/locale";
 import { useNavigate } from "react-router-dom";
 
 
@@ -524,8 +511,9 @@ export function DashboardPage() {
                                   ? Math.round((unidade.metricas.potenciaAtual / unidade.potenciaInstalada) * 100)
                                   : 0;
                                 const fatorCarga = unidade.metricas.fatorPotencia || 0;
-                                const hasTrip = unidade.status === 'OFFLINE' || unidade.status === 'FALHA';
-                                const hasAlarme = unidade.status === 'ALERTA';
+                                const statusStr = unidade.status as string;
+                                const hasTrip = statusStr === 'OFFLINE' || statusStr === 'FALHA';
+                                const hasAlarme = statusStr === 'ALERTA';
 
                                 return (
                                   <tr
@@ -651,8 +639,9 @@ export function DashboardPage() {
                                   ? Math.round((unidade.metricas.potenciaAtual / unidade.potenciaInstalada) * 100)
                                   : 0;
                                 const fatorCarga = unidade.metricas.fatorPotencia || 0;
-                                const hasTrip = unidade.status === 'OFFLINE' || unidade.status === 'FALHA';
-                                const hasAlarme = unidade.status === 'ALERTA';
+                                const statusStr = unidade.status as string;
+                                const hasTrip = statusStr === 'OFFLINE' || statusStr === 'FALHA';
+                                const hasAlarme = statusStr === 'ALERTA';
 
                                 return (
                                   <tr

@@ -51,8 +51,7 @@ export function useDadosM160(unidadeId?: string, equipamentoId?: string) {
         // console.log('📊 [useDadosM160] response.data.data:', response.data?.data);
         // console.log('📊 [useDadosM160] response.data.data.data:', response.data?.data?.data);
 
-        // A API de equipamentos retorna: { success: true, data: { data: [...], pagination: {...} } }
-        const equipamentos = response.data?.data?.data || [];
+        const equipamentos = response.data?.data || [];
         // console.log('📊 [useDadosM160] Equipamentos extraídos:', equipamentos);
         // console.log('📊 [useDadosM160] É array?', Array.isArray(equipamentos));
 
@@ -95,7 +94,7 @@ export function useDadosM160(unidadeId?: string, equipamentoId?: string) {
 
       try {
         const response = await api.get(`/equipamentos-dados/${equipamentoId}/grafico-dia`);
-        const responseData = response.data?.data || response.data;
+        const responseData = response.data;
 
         if (!responseData?.dados || responseData.dados.length === 0) {
           return null;

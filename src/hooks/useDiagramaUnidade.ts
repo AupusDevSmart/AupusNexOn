@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { DiagramasService, type Diagrama } from '@/services/diagramas.services';
 import { EquipamentosService, type Equipamento } from '@/services/equipamentos.services';
-import { getUnidadeById, type Unidade } from '@/services/unidades.services';
+import { getUnidadeById } from '@/services/unidades.services';
+import type { UnidadeNexon as Unidade } from '@/types/unidades';
 import type { ComponenteDU } from '@/types/dtos/sinoptico-ativo';
 
 interface UseDiagramaUnidadeResult {

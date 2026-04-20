@@ -1,4 +1,3 @@
-import { useUserStore } from '@/store/useUserStore';
 import { NavigationLink, navigationLinks } from './navigation-links';
 import { featureFlags } from '@/config/feature-flags';
 

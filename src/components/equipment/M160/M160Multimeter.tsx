@@ -8,7 +8,7 @@ import {
   TrendingDown,
   TrendingUp,
 } from "lucide-react";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useState } from "react";
 import { M160DisplayInfo, M160NavigationState, M160Props } from "./M160.types";
 
 // Componente Display Digital

@@ -9,7 +9,7 @@
  * - Aplica transformações CSS (translate + scale)
  */
 
-import React, { useRef, useCallback, useEffect, WheelEvent, MouseEvent } from 'react';
+import React, { useRef, useCallback, useEffect, MouseEvent } from 'react';
 import { useDiagramStore } from '../../hooks/useDiagramStore';
 import { CANVAS, GRID, VIEWPORT, getThemeColors, pixelsToGrid } from '../../utils/diagramConstants';
 import './DiagramViewport.css';

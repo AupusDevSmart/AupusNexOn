@@ -88,7 +88,7 @@ export function useUpdateProfile() {
       console.log('✅ Resposta do backend:', result);
 
       // O backend retorna { imageUrl: '/uploads/avatars/filename.jpg' }
-      const newAvatarUrl = result.imageUrl || result.avatar_url;
+      const newAvatarUrl = result.imageUrl || (result as unknown as { avatar_url?: string }).avatar_url;
       console.log('🖼️ Nova URL do avatar:', newAvatarUrl);
 
       if (newAvatarUrl) {

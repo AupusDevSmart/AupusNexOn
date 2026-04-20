@@ -12,7 +12,7 @@ import {
   TrendingUp,
   Wallet,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 
 // Mock API data - replace with real API call later
 const mockApiData = [
@@ -154,14 +154,14 @@ const fetchFluxoCaixaData = async (
   year: string
 ): Promise<FluxoCaixaDetailed[]> => {
   await new Promise((resolve) => setTimeout(resolve, 1000));
-  return mockApiData;
+  return mockApiData as unknown as FluxoCaixaDetailed[];
 };
 
 export function FluxoCaixaTable({
   apiEndpoint,
   defaultYear = "2024",
   onExport,
-}: FluxoCaixaTableProps): JSX.Element {
+}: FluxoCaixaTableProps): React.JSX.Element {
   const [data, setData] = useState<FluxoCaixaDetailed[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

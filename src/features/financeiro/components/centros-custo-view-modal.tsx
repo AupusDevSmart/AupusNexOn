@@ -10,7 +10,6 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
 import { 
   Building2, 
   User, 
@@ -36,7 +35,7 @@ export function CentrosCustoViewModal({
   onClose,
   centro,
   allCentros
-}: CentrosCustoViewModalProps): JSX.Element {
+}: CentrosCustoViewModalProps): React.JSX.Element {
   if (!centro) return <></>;
 
   // Encontrar centro pai
@@ -53,7 +52,7 @@ export function CentrosCustoViewModal({
     : 0;
 
   // Renderização do status
-  const renderStatus = (status: CentroCusto['status']): JSX.Element => {
+  const renderStatus = (status: CentroCusto['status']): React.JSX.Element => {
     switch (status) {
       case 'ativo':
         return (
@@ -73,7 +72,7 @@ export function CentrosCustoViewModal({
   };
 
   // Renderização do tipo
-  const renderTipo = (tipo: CentroCusto['tipo']): JSX.Element => {
+  const renderTipo = (tipo: CentroCusto['tipo']): React.JSX.Element => {
     const config = {
       administrativo: { label: 'Administrativo', color: 'bg-blue-50 text-blue-700 border-blue-200' },
       operacional: { label: 'Operacional', color: 'bg-purple-50 text-purple-700 border-purple-200' },

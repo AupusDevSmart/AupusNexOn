@@ -8,6 +8,10 @@ import {
   PaginatedUnidadeResponse,
   UnidadeStats,
 } from '../types/unidades';
+import type {
+  CreateUnidadeDto as CreateUnidadeDtoFeature,
+  UpdateUnidadeDto as UpdateUnidadeDtoFeature,
+} from '../features/unidades/types';
 
 // Hook para listagem de unidades
 export const useUnidades = (filtros?: FilterUnidadeDto) => {
@@ -47,13 +51,13 @@ export const useUnidadesCRUD = () => {
   const [loading, setLoading] = useState(false);
 
   const criarUnidade = async (dados: CreateUnidadeDto): Promise<UnidadeNexon | null> => {
-    if (!unidadesService.validarDadosUnidade(dados)) {
+    if (!unidadesService.validarDadosUnidade(dados as unknown as CreateUnidadeDtoFeature)) {
       return null;
     }
 
     try {
       setLoading(true);
-      const novaUnidade = await unidadesService.criarUnidade(dados);
+      const novaUnidade = await unidadesService.criarUnidade(dados as unknown as CreateUnidadeDtoFeature);
       return novaUnidade;
     } catch (error) {
       console.error('Erro ao criar unidade:', error);
@@ -67,13 +71,13 @@ export const useUnidadesCRUD = () => {
     id: string,
     dados: UpdateUnidadeDto
   ): Promise<UnidadeNexon | null> => {
-    if (!unidadesService.validarDadosUnidade(dados)) {
+    if (!unidadesService.validarDadosUnidade(dados as unknown as UpdateUnidadeDtoFeature)) {
       return null;
     }
 
     try {
       setLoading(true);
-      const unidadeAtualizada = await unidadesService.atualizarUnidade(id, dados);
+      const unidadeAtualizada = await unidadesService.atualizarUnidade(id, dados as unknown as UpdateUnidadeDtoFeature);
       return unidadeAtualizada;
     } catch (error) {
       console.error('Erro ao atualizar unidade:', error);
@@ -161,7 +165,7 @@ export const useUnidadesImportExport = () => {
   const importarUnidades = async (unidades: CreateUnidadeDto[]) => {
     try {
       setLoading(true);
-      const resultado = await unidadesService.importarUnidades(unidades);
+      const resultado = await unidadesService.importarUnidades(unidades as unknown as CreateUnidadeDtoFeature[]);
       return resultado;
     } catch (error) {
       console.error('Erro na importação:', error);

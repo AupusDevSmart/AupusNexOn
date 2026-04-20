@@ -90,7 +90,7 @@ export function BaseFilters<T extends BaseFiltersType>({
           return (
             <div key={filterConfig.key} className={`w-full ${filterConfig.className || ''}`}>
               <Combobox
-                options={filterConfig.options || []}
+                options={(filterConfig.options || []).map(o => ({ ...o, value: String(o.value) }))}
                 value={String(filters[filterConfig.key as keyof T] || 'all')}
                 onValueChange={(value) => handleFilterChange(filterConfig.key, value || 'all')}
                 placeholder={filterConfig.placeholder || filterConfig.label}

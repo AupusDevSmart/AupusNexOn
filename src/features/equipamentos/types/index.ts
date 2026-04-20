@@ -78,6 +78,7 @@ export interface Equipamento extends BaseEntity {
 
   // Relacionamentos hierárquicos - TODOS CORRIGIDOS PARA STRING
   unidadeId?: string; // NOVO: Equipamentos UC agora pertencem a Unidades
+  plantaId?: string; // Compatibilidade com estrutura antiga
   proprietarioId?: string;
   equipamentoPaiId?: string;
 
@@ -140,7 +141,18 @@ export interface Equipamento extends BaseEntity {
   
   // Dados técnicos dinâmicos
   dadosTecnicos?: DadoTecnico[];
-  
+
+  // Tipo de equipamento completo (relação com tipos_equipamentos)
+  tipoEquipamentoObj?: {
+    id?: string;
+    codigo?: string;
+    nome?: string;
+    categoria?: string;
+    larguraPadrao?: number;
+    alturaPadrao?: number;
+    iconeSvg?: string;
+  };
+
   // Componentes UAR (apenas para UC)
   componentesUAR?: Equipamento[];
   totalComponentes?: number;

@@ -42,7 +42,7 @@ export function LoginForm({ redirectTo = '/dashboard' }: LoginFormProps) {
   });
 
   const onSubmit = async (data: LoginFormData) => {
-    await login(data, redirectTo);
+    await login(data as any, redirectTo);
   };
 
   return (

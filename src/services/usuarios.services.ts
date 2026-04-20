@@ -150,11 +150,12 @@ export class UsuariosService {
         usuariosFiltrados = usuariosBasicos.filter(u => u.status === params.status);
       } else {
         // Por padrão, apenas usuários ativos
-        usuariosFiltrados = usuariosBasicos.filter(u => 
-          u.status === UsuarioStatus.ATIVO || 
-          u.status === 'ativo' || // Fallback para lowercase
-          u.status === 'Ativo'    // Fallback para capitalize
-        );
+        usuariosFiltrados = usuariosBasicos.filter(u => {
+          const status = u.status as string;
+          return status === UsuarioStatus.ATIVO ||
+            status === 'ativo' || // Fallback para lowercase
+            status === 'Ativo';    // Fallback para capitalize
+        });
       }
 
       // console.log('✅ [USUARIOS SERVICE] Usuários básicos mapeados:', usuariosFiltrados.length);
@@ -304,14 +305,12 @@ export class UsuariosService {
   static getStatusEmoji(status: UsuarioStatus | string): string {
     const statusEmojis: Record<string, string> = {
       [UsuarioStatus.ATIVO]: '✅',
-      [UsuarioStatus.INATIVO]: '❌', 
+      [UsuarioStatus.INATIVO]: '❌',
       [UsuarioStatus.PENDENTE]: '⏳',
       [UsuarioStatus.BLOQUEADO]: '🚫',
       // Fallbacks
       'ativo': '✅',
-      'Ativo': '✅',
-      'inativo': '❌',
-      'Inativo': '❌'
+      'inativo': '❌'
     };
     
     return statusEmojis[status as string] || '❓';
@@ -328,9 +327,7 @@ export class UsuariosService {
       [UsuarioStatus.BLOQUEADO]: 'text-red-800',
       // Fallbacks
       'ativo': 'text-green-600',
-      'Ativo': 'text-green-600',
-      'inativo': 'text-red-600',
-      'Inativo': 'text-red-600'
+      'inativo': 'text-red-600'
     };
     
     return statusColors[status as string] || 'text-gray-600';

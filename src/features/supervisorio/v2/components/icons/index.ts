@@ -17,7 +17,7 @@ export { CarregadorEletricoIcon } from './CarregadorEletricoIcon';
 export {
   EquipmentIconWrapper,
   getEquipmentIcon,
-  getSupportedEquipmentTypes,
+  getSupportedEquipmentCategories as getSupportedEquipmentTypes,
   hasEquipmentIcon,
   getIconStats,
 } from './EquipmentIconFactory';

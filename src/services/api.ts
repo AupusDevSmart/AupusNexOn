@@ -1,8 +1,9 @@
 import axios, { AxiosError, AxiosResponse } from 'axios';
+import { env } from '@/config/env';
 
 // Configuração base da API
 const api = axios.create({
-  baseURL: import.meta.env.VITE_WEBSOCKET_URL || 'http://localhost:3000',
+  baseURL: env.VITE_WEBSOCKET_URL,
   timeout: 30000, // Aumentar timeout para 30s
   headers: {
     'Content-Type': 'application/json',
@@ -71,7 +72,7 @@ api.interceptors.response.use(
       if (error.code === 'ECONNABORTED') {
         errorMessage = 'Timeout: A API demorou muito para responder. Verifique se a API está rodando.';
       } else if (error.code === 'ECONNREFUSED') {
-        errorMessage = 'Conexão recusada: Verifique se a API está rodando em http://localhost:3000';
+        errorMessage = 'Conexão recusada: Verifique se a API está rodando em http://localhost:3001';
       } else {
         errorMessage = 'Erro de conexão. Verifique sua internet e se a API está rodando.';
       }

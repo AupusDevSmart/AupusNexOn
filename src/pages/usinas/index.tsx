@@ -7,6 +7,8 @@ import { MapaUsinas } from '@/features/usinas/components/mapa-usinas';
 import { StatusGeral } from '@/features/usinas/components/status-geral';
 import { ModalDetalhesUsina } from '@/features/usinas/components/modal-detalhes-usina';
 
+type UsinaStatus = 'operacao' | 'alerta' | 'falha';
+
 // Dados simulados das usinas
 const usinasData = {
   metricas: {
@@ -24,21 +26,21 @@ const usinasData = {
     ultimaSincronizacao: '15:30'
   },
   usinas: [
-    { id: 1, nome: 'Usina Solar Sobradinho - BA', lat: -9.4194, lng: -40.8234, status: 'operacao', potencia: 150 },
-    { id: 2, nome: 'Usina Solar Pirapora - MG', lat: -17.3553, lng: -44.9306, status: 'alerta', potencia: 120 },
-    { id: 3, nome: 'Usina Eólica Caetité - BA', lat: -14.0688, lng: -42.5023, status: 'operacao', potencia: 200 },
-    { id: 4, nome: 'Usina Solar Brasília - DF', lat: -15.7975, lng: -47.8919, status: 'falha', potencia: 80 },
-    { id: 5, nome: 'Usina Hidrelétrica Itaipu - PR', lat: -25.4075, lng: -54.5886, status: 'operacao', potencia: 300 },
-    { id: 6, nome: 'Usina Solar Campinas - SP', lat: -22.9099, lng: -47.0626, status: 'alerta', potencia: 180 },
-    { id: 7, nome: 'Usina Eólica Parnaíba - PI', lat: -2.9038, lng: -41.7767, status: 'operacao', potencia: 220 },
-    { id: 8, nome: 'Usina Solar Salvador - BA', lat: -12.9714, lng: -38.5014, status: 'falha', potencia: 95 },
-    { id: 9, nome: 'Usina Biomassa Ribeirão Preto - SP', lat: -21.1775, lng: -47.8103, status: 'operacao', potencia: 110 },
-    { id: 10, nome: 'Usina Solar Belo Horizonte - MG', lat: -19.9167, lng: -43.9345, status: 'alerta', potencia: 160 },
-    { id: 11, nome: 'Usina Eólica Osório - RS', lat: -29.8864, lng: -50.2697, status: 'operacao', potencia: 250 },
-    { id: 12, nome: 'Usina Solar Goiânia - GO', lat: -16.6869, lng: -49.2648, status: 'operacao', potencia: 140 },
-    { id: 13, nome: 'Usina Hidrelétrica Curitiba - PR', lat: -25.4244, lng: -49.2654, status: 'falha', potencia: 280 },
-    { id: 14, nome: 'Usina Solar Fortaleza - CE', lat: -3.7319, lng: -38.5267, status: 'operacao', potencia: 170 },
-    { id: 15, nome: 'Usina Eólica Recife - PE', lat: -8.0476, lng: -34.8770, status: 'alerta', potencia: 190 }
+    { id: 1, nome: 'Usina Solar Sobradinho - BA', lat: -9.4194, lng: -40.8234, status: 'operacao' as UsinaStatus, potencia: 150 },
+    { id: 2, nome: 'Usina Solar Pirapora - MG', lat: -17.3553, lng: -44.9306, status: 'alerta' as UsinaStatus, potencia: 120 },
+    { id: 3, nome: 'Usina Eólica Caetité - BA', lat: -14.0688, lng: -42.5023, status: 'operacao' as UsinaStatus, potencia: 200 },
+    { id: 4, nome: 'Usina Solar Brasília - DF', lat: -15.7975, lng: -47.8919, status: 'falha' as UsinaStatus, potencia: 80 },
+    { id: 5, nome: 'Usina Hidrelétrica Itaipu - PR', lat: -25.4075, lng: -54.5886, status: 'operacao' as UsinaStatus, potencia: 300 },
+    { id: 6, nome: 'Usina Solar Campinas - SP', lat: -22.9099, lng: -47.0626, status: 'alerta' as UsinaStatus, potencia: 180 },
+    { id: 7, nome: 'Usina Eólica Parnaíba - PI', lat: -2.9038, lng: -41.7767, status: 'operacao' as UsinaStatus, potencia: 220 },
+    { id: 8, nome: 'Usina Solar Salvador - BA', lat: -12.9714, lng: -38.5014, status: 'falha' as UsinaStatus, potencia: 95 },
+    { id: 9, nome: 'Usina Biomassa Ribeirão Preto - SP', lat: -21.1775, lng: -47.8103, status: 'operacao' as UsinaStatus, potencia: 110 },
+    { id: 10, nome: 'Usina Solar Belo Horizonte - MG', lat: -19.9167, lng: -43.9345, status: 'alerta' as UsinaStatus, potencia: 160 },
+    { id: 11, nome: 'Usina Eólica Osório - RS', lat: -29.8864, lng: -50.2697, status: 'operacao' as UsinaStatus, potencia: 250 },
+    { id: 12, nome: 'Usina Solar Goiânia - GO', lat: -16.6869, lng: -49.2648, status: 'operacao' as UsinaStatus, potencia: 140 },
+    { id: 13, nome: 'Usina Hidrelétrica Curitiba - PR', lat: -25.4244, lng: -49.2654, status: 'falha' as UsinaStatus, potencia: 280 },
+    { id: 14, nome: 'Usina Solar Fortaleza - CE', lat: -3.7319, lng: -38.5267, status: 'operacao' as UsinaStatus, potencia: 170 },
+    { id: 15, nome: 'Usina Eólica Recife - PE', lat: -8.0476, lng: -34.8770, status: 'alerta' as UsinaStatus, potencia: 190 }
   ]
 };
 

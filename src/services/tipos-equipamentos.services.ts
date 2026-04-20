@@ -73,27 +73,9 @@ class TiposEquipamentosApiService {
         },
       });
 
-      console.log('📦 [TIPOS-EQUIPAMENTOS] Resposta da API:', response.data);
-
-      // A resposta tem estrutura: { success, data: { data: [...], meta }, meta }
-      // Precisamos acessar response.data.data.data
-      let data: TipoEquipamento[] = [];
-
-      if (Array.isArray(response.data)) {
-        // Se response.data já é array
-        data = response.data;
-      } else if (Array.isArray(response.data?.data)) {
-        // Se response.data.data é array
-        data = response.data.data;
-      } else if (Array.isArray(response.data?.data?.data)) {
-        // Se response.data.data.data é array (estrutura aninhada)
-        data = response.data.data.data;
-      }
-
+      const data: TipoEquipamento[] = Array.isArray(response.data) ? response.data : [];
       console.log('✅ [TIPOS-EQUIPAMENTOS] Tipos carregados da API:', data.length);
-
-      // Garantir que sempre retorna array
-      return Array.isArray(data) ? data : [];
+      return data;
     } catch (error) {
       console.error('❌ [TIPOS-EQUIPAMENTOS] Erro ao carregar tipos:', error);
       return []; // Retornar array vazio em caso de erro ao invés de throw
@@ -118,10 +100,10 @@ class TiposEquipamentosApiService {
    */
   async findById(id: string): Promise<TipoEquipamento | null> {
     try {
-      const response = await api.get<{ success: boolean; data: TipoEquipamento }>(
+      const response = await api.get<TipoEquipamento>(
         `${this.baseEndpoint}/${id}`
       );
-      return response.data.data || null;
+      return response.data || null;
     } catch (error) {
       console.error('❌ [TIPOS-EQUIPAMENTOS] Erro ao buscar tipo por ID:', error);
       return null;
@@ -165,8 +147,8 @@ class TiposEquipamentosApiService {
     descricao?: string;
   }): Promise<TipoEquipamento | null> {
     try {
-      const response = await api.post<{ success: boolean; data: TipoEquipamento }>(this.baseEndpoint, data);
-      return response.data?.data || null;
+      const response = await api.post<TipoEquipamento>(this.baseEndpoint, data);
+      return response.data || null;
     } catch (error) {
       console.error('❌ [TIPOS-EQUIPAMENTOS] Erro ao criar tipo:', error);
       throw error; // Re-throw para mostrar erro ao usuário
@@ -184,7 +166,7 @@ class TiposEquipamentosApiService {
 export interface TipoEquipamentoModal {
   value: string;
   label: string;
-  categoria: string;
+  categoria: string | CategoriaEquipamento;
   camposTecnicos: Array<{
     campo: string;
     tipo: 'text' | 'number' | 'select';
@@ -246,8 +228,8 @@ class CategoriasEquipamentosApiService {
 
       console.log('📦 [CATEGORIAS-EQUIPAMENTOS] Resposta da API:', response.data);
 
-      // ✅ CORRIGIDO: Extrair array de response.data.data
-      const categorias = response.data?.data || [];
+      // ✅ CORRIGIDO: Extrair array de response.data
+      const categorias = response.data || [];
       console.log('✅ [CATEGORIAS-EQUIPAMENTOS] Categorias extraídas:', categorias);
 
       // Garantir que sempre retorna array
@@ -263,10 +245,10 @@ class CategoriasEquipamentosApiService {
    */
   async findById(id: string): Promise<CategoriaEquipamento & { modelos?: TipoEquipamento[] } | null> {
     try {
-      const response = await api.get<{ success: boolean; data: CategoriaEquipamento & { modelos?: TipoEquipamento[] } }>(
+      const response = await api.get<CategoriaEquipamento & { modelos?: TipoEquipamento[] }>(
         `${this.baseEndpoint}/${id}`
       );
-      return response.data?.data || null;
+      return response.data || null;
     } catch (error) {
       console.error('❌ [CATEGORIAS-EQUIPAMENTOS] Erro ao buscar categoria por ID:', error);
       return null;
@@ -278,8 +260,8 @@ class CategoriasEquipamentosApiService {
    */
   async create(nome: string): Promise<CategoriaEquipamento | null> {
     try {
-      const response = await api.post<{ success: boolean; data: CategoriaEquipamento }>(this.baseEndpoint, { nome });
-      return response.data?.data || null;
+      const response = await api.post<CategoriaEquipamento>(this.baseEndpoint, { nome });
+      return response.data || null;
     } catch (error) {
       console.error('❌ [CATEGORIAS-EQUIPAMENTOS] Erro ao criar categoria:', error);
       throw error;
@@ -291,8 +273,8 @@ class CategoriasEquipamentosApiService {
    */
   async update(id: string, nome: string): Promise<CategoriaEquipamento | null> {
     try {
-      const response = await api.patch<{ success: boolean; data: CategoriaEquipamento }>(`${this.baseEndpoint}/${id}`, { nome });
-      return response.data?.data || null;
+      const response = await api.patch<CategoriaEquipamento>(`${this.baseEndpoint}/${id}`, { nome });
+      return response.data || null;
     } catch (error) {
       console.error('❌ [CATEGORIAS-EQUIPAMENTOS] Erro ao atualizar categoria:', error);
       return null;

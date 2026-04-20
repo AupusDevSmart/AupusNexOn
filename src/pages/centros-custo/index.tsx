@@ -165,7 +165,7 @@ const allCentrosCusto: CentroCusto[] = [
   }
 ];
 
-export function CentrosCustoPage(): JSX.Element {
+export function CentrosCustoPage(): React.JSX.Element {
   const [selectedItems, setSelectedItems] = useState<number[]>([]);
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'ativo' | 'inativo'>('all');

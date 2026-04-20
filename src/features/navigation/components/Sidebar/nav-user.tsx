@@ -5,7 +5,6 @@ import {
   Laptop2,
   UserCog
 } from "lucide-react"
-import { useEffect } from "react"
 import {
   Avatar,
   AvatarFallback,

@@ -8,7 +8,7 @@ import {
   Settings,
   Wifi,
 } from "lucide-react";
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { A966Props } from "./A966.types";
 
 // Componente Display Digital para Gateway

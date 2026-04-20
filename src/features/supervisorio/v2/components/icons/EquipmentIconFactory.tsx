@@ -270,7 +270,7 @@ export const getEquipmentIcon = (categoria: string | undefined | null): IconComp
     .trim();
 
   // Buscar ícone no mapa (primeiro tenta com underscores, depois com espaços)
-  let IconComponent = ICON_MAP[categoriaNormalizada] || ICON_MAP[categoriaNormalizada.replace(/_/g, ' ')];
+  const IconComponent = ICON_MAP[categoriaNormalizada] || ICON_MAP[categoriaNormalizada.replace(/_/g, ' ')];
 
   // Se não encontrar, retornar ícone padrão (medidor como fallback)
   if (!IconComponent) {

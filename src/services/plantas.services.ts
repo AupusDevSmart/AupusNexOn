@@ -84,7 +84,7 @@ class PlantasServiceClass {
 
       // Normalize response - handle nested data structure from backend
       // Backend returns: { success: true, data: { data: [...plantas], pagination: {...} } }
-      const responseData = response.data?.data || response.data;
+      const responseData = response.data;
       const data = responseData?.data || responseData || [];
       const pagination = responseData?.pagination || response.data?.pagination || {
         page: params.page || 1,
@@ -108,10 +108,10 @@ class PlantasServiceClass {
    */
   async getPlanta(id: string): Promise<PlantaResponse> {
     try {
-      const response = await api.get<{ success: boolean; data: PlantaResponse; meta?: any }>(`/plantas/${id}`);
+      const response = await api.get<PlantaResponse>(`/plantas/${id}`);
 
       // ✅ CORRIGIDO: A API retorna { success, data, meta }, extrair apenas o "data"
-      const planta = response.data.data || response.data;
+      const planta = response.data;
 
       return planta;
     } catch (error: any) {
@@ -126,10 +126,10 @@ class PlantasServiceClass {
   async createPlanta(dto: CreatePlantaDto): Promise<PlantaResponse> {
     try {
       console.log('📡 [PlantasService] POST /plantas', dto);
-      const response = await api.post<{ success: boolean; data: PlantaResponse; meta?: any }>('/plantas', dto);
+      const response = await api.post<PlantaResponse>('/plantas', dto);
 
       // ✅ CORRIGIDO: Extrair dados do caminho correto
-      const planta = response.data.data || response.data;
+      const planta = response.data;
       console.log('✅ [PlantasService] Planta created:', planta?.id);
 
       return planta;
@@ -145,10 +145,10 @@ class PlantasServiceClass {
   async updatePlanta(id: string, dto: UpdatePlantaDto): Promise<PlantaResponse> {
     try {
       console.log(`📡 [PlantasService] PUT /plantas/${id}`, dto);
-      const response = await api.put<{ success: boolean; data: PlantaResponse; meta?: any }>(`/plantas/${id}`, dto);
+      const response = await api.put<PlantaResponse>(`/plantas/${id}`, dto);
 
       // ✅ CORRIGIDO: Extrair dados do caminho correto
-      const planta = response.data.data || response.data;
+      const planta = response.data;
       console.log('✅ [PlantasService] Planta updated:', planta?.id);
 
       return planta;
@@ -186,12 +186,12 @@ class PlantasServiceClass {
       });
 
       // A API retorna via ResponseInterceptor: { success, data: [...] }
-      const usuarios = response.data?.data || response.data || [];
+      const usuarios = response.data || [];
 
       console.log('🔍 [PlantasService] Response structure:', {
         hasData: !!response.data,
-        hasDataData: !!response.data?.data,
-        hasDataDataData: !!response.data?.data?.data,
+        hasDataData: !!response.data,
+        hasDataDataData: !!response.data,
         usuariosLength: Array.isArray(usuarios) ? usuarios.length : 0
       });
 

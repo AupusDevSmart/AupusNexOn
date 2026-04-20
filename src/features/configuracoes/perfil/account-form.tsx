@@ -139,7 +139,7 @@ export function AccountForm() {
   }
 
   const form = useForm<ProfileFormValues>({
-    resolver: zodResolver(profileFormSchema),
+    resolver: zodResolver(profileFormSchema) as unknown as import('react-hook-form').Resolver<ProfileFormValues>,
     defaultValues,
   })
 

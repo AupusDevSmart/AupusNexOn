@@ -23,10 +23,9 @@ import {
   Point,
   PortPosition,
   Theme,
-  SaveLayoutDto,
 } from '../types/diagram.types';
 import { convertToVisualConnections } from '../utils/barramentoDetector';
-import { VIEWPORT, CANVAS } from '../utils/diagramConstants';
+import { VIEWPORT } from '../utils/diagramConstants';
 
 // ============================================================================
 // TIPOS DA STORE
@@ -291,6 +290,7 @@ const initialState: DiagramState = {
     selectedEquipmentIds: [],
     selectedConnectionIds: [],
     connectingFrom: null,
+    connectingToLine: null,
     draggingEquipmentId: null,
     dragOffset: null,
     showGrid: true,
@@ -354,7 +354,7 @@ export const useDiagramStore = create<DiagramStore>()(
 
           // Buscar TODOS os equipamentos da unidade para pegar dados completos
           // API tem limite de 100 itens por página, então fazemos paginação
-          const unidadeId = diagramaRaw.unidade_id || diagramaRaw.unidadeId;
+          const unidadeId = diagramaRaw.unidade_id || (diagramaRaw as unknown as { unidadeId?: string }).unidadeId;
 
           if (!unidadeId) {
             throw new Error('Diagrama não possui unidade_id definido');
@@ -375,12 +375,13 @@ export const useDiagramStore = create<DiagramStore>()(
             // - { data: [...] }
             let pageData: any[] = [];
 
-            if (Array.isArray(equipamentosResponse.data)) {
+            const responseAny = equipamentosResponse as unknown as { data: unknown };
+            if (Array.isArray(responseAny.data)) {
               // Formato 1: response.data é array direto
-              pageData = equipamentosResponse.data;
-            } else if (equipamentosResponse.data?.data && Array.isArray(equipamentosResponse.data.data)) {
+              pageData = responseAny.data as any[];
+            } else if ((responseAny.data as { data?: unknown })?.data && Array.isArray((responseAny.data as { data?: unknown }).data)) {
               // Formato 2: response.data.data é o array
-              pageData = equipamentosResponse.data.data;
+              pageData = (responseAny.data as { data: any[] }).data;
             } else {
               pageData = [];
             }
@@ -698,8 +699,18 @@ export const useDiagramStore = create<DiagramStore>()(
 
           // ✅ CRITICAL: Coletar todos junction points criados durante o mapeamento das conexões
           const allJunctionPoints: Equipment[] = [];
+          type RawConexao = {
+            origem?: { tipo?: string; gridPoint?: { x: number; y: number }; equipamentoId?: string; porta?: string };
+            destino?: { tipo?: string; gridPoint?: { x: number; y: number }; equipamentoId?: string; porta?: string };
+            origem_tipo?: string;
+            origem_grid_x?: number | null;
+            origem_grid_y?: number | null;
+            destino_tipo?: string;
+            destino_grid_x?: number | null;
+            destino_grid_y?: number | null;
+          };
           conexoes.forEach((_, idx) => {
-            const connRaw = (diagramaRaw.conexoes || [])[idx];
+            const connRaw = (diagramaRaw.conexoes || [])[idx] as unknown as RawConexao | undefined;
             if (!connRaw) return;
 
             // Recriar junction points usando a mesma lógica
@@ -812,14 +823,15 @@ export const useDiagramStore = create<DiagramStore>()(
           console.log('[loadDiagrama] 🔍 Total equipamentos no diagrama:', [...equipamentosEspalhados, ...junctionPointsUnicos].length);
 
           // Construir objeto diagrama completo COM junction points
+          const diagramaRawExtra = diagramaRaw as unknown as { unidadeId?: string; grupos?: Grupo[] };
           const diagrama: Diagrama = {
             id: diagramaRaw.id.trim(),
-            unidadeId: diagramaRaw.unidadeId || diagramaRaw.unidade_id,
+            unidadeId: diagramaRawExtra.unidadeId || diagramaRaw.unidade_id,
             nome: diagramaRaw.nome,
             descricao: diagramaRaw.descricao,
             equipamentos: [...equipamentosEspalhados, ...junctionPointsUnicos], // ✅ INCLUIR junction points
             conexoes,
-            grupos: diagramaRaw.grupos || [],
+            grupos: diagramaRawExtra.grupos || [],
             createdAt: new Date(diagramaRaw.created_at),
             updatedAt: new Date(diagramaRaw.updated_at),
             deletedAt: null,
@@ -889,9 +901,10 @@ export const useDiagramStore = create<DiagramStore>()(
           });
 
           // Converter para formato V2
+          const diagramaRawExtra = diagramaRaw as unknown as { unidadeId?: string };
           const diagrama: Diagrama = {
             id: diagramaRaw.id.trim(), // Remover espaços em branco
-            unidadeId: diagramaRaw.unidadeId || diagramaRaw.unidade_id,
+            unidadeId: diagramaRawExtra.unidadeId || diagramaRaw.unidade_id,
             nome: diagramaRaw.nome,
             descricao: diagramaRaw.descricao,
             equipamentos: [],
@@ -954,10 +967,11 @@ if (import.meta.env.PROD) {
             // Remover equipamentos recém-criados que ainda não foram associados ao diagrama
             // Quando um equipamento é criado via "Criar Equipamento Rápido", ele ainda não tem diagrama_id
             // Verificar tanto no objeto raiz quanto nos dados
+            const eqExtra = eq as unknown as { dados?: { diagrama_id?: string; diagramaId?: string } };
             const temDiagramaAssociado =
               eq.diagramaId ||
-              eq.dados?.diagrama_id ||
-              eq.dados?.diagramaId;
+              eqExtra.dados?.diagrama_id ||
+              eqExtra.dados?.diagramaId;
 
             if (!temDiagramaAssociado) {
               console.log('[saveLayout] ⚠️ Equipamento ignorado (não associado ao diagrama):', eq.id.trim(), eq.nome);
@@ -1081,7 +1095,7 @@ if (import.meta.env.PROD) {
           });
 
           // Chamar endpoint atômico (DELETE ALL + INSERT ALL)
-          const resultado = await DiagramasService.saveLayout(diagrama.id.trim(), dto);
+          const resultado = await DiagramasService.saveLayout(diagrama.id.trim(), dto as unknown as Parameters<typeof DiagramasService.saveLayout>[1]);
 
           // Sucesso: resetar loading e dirty flag
           set({

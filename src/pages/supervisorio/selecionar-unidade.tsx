@@ -117,7 +117,7 @@ export function SelecionarUnidadePage() {
         <div className="flex flex-col h-full w-full">
           <TitleCard
             title="Sinóptico"
-            subtitle="Selecione uma unidade para visualizar o diagrama sinóptico"
+            description="Selecione uma unidade para visualizar o diagrama sinóptico"
           />
 
           {/* Filters */}

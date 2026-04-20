@@ -9,7 +9,7 @@ import { InversorGraficoDia } from './InversorGraficoDia';
 import { InversorGraficoMes } from './InversorGraficoMes';
 import { InversorGraficoAno } from './InversorGraficoAno';
 import { useState, useMemo } from 'react';
-import { Loader2, Zap, Thermometer, Activity, Shield, Clock, AlertTriangle, BarChart3, Calendar, RefreshCw, TrendingUp } from 'lucide-react';
+import { Loader2, Zap, Thermometer, Activity, Clock, AlertTriangle, BarChart3, Calendar, RefreshCw, TrendingUp } from 'lucide-react';
 import { formatEnergy, formatPowerGeneric, formatCurrent, formatVoltage, formatResistance, formatTime } from '@/utils/formatEnergy';
 
 interface InversorMqttDataModalProps {

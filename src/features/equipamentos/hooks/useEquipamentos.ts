@@ -8,9 +8,10 @@ import {
   EquipamentosQueryParams,
   EstatisticasPlantaResponse 
 } from '@/services/equipamentos.services';
-import { 
+import {
   Equipamento,
-  EquipamentosFilters 
+  EquipamentosFilters,
+  Unidade
 } from '../types';
 
 // ============================================================================
@@ -36,7 +37,8 @@ export const transformApiToFrontend = (apiEquipamento: EquipamentoApiResponse): 
   return {
     id: apiEquipamento.id,
     criadoEm: apiEquipamento.created_at?.toString() || new Date().toISOString(),
-    atualizadoEm: apiEquipamento.updated_at?.toString() || new Date().toISOString(),
+    createdAt: apiEquipamento.created_at?.toString() || new Date().toISOString(),
+    updatedAt: apiEquipamento.updated_at?.toString() || new Date().toISOString(),
 
     // Dados básicos
     nome: apiEquipamento.nome || '',
@@ -97,7 +99,7 @@ export const transformApiToFrontend = (apiEquipamento: EquipamentoApiResponse): 
     a6: apiEquipamento.a6,
     
     // Relacionamentos
-    unidade: apiEquipamento.unidade ? {
+    unidade: apiEquipamento.unidade ? ({
       id: apiEquipamento.unidade.id,
       nome: apiEquipamento.unidade.nome || 'Unidade não informada',
       planta: apiEquipamento.unidade.planta ? {
@@ -110,7 +112,7 @@ export const transformApiToFrontend = (apiEquipamento: EquipamentoApiResponse): 
           tipo: apiEquipamento.unidade.planta.proprietario.tipo || 'pessoa_juridica'
         } : undefined
       } : undefined
-    } : undefined,
+    } as unknown as Unidade) : undefined,
 
     proprietario: apiEquipamento.proprietario ? {
       id: apiEquipamento.proprietario.id,
@@ -125,7 +127,9 @@ export const transformApiToFrontend = (apiEquipamento: EquipamentoApiResponse): 
       cnpj: '',
       proprietarioId: apiEquipamento.proprietario_id || '',
       localizacao: (apiEquipamento.planta as any).localizacao,
-      criadoEm: apiEquipamento.created_at?.toString() || new Date().toISOString()
+      criadoEm: apiEquipamento.created_at?.toString() || new Date().toISOString(),
+      createdAt: apiEquipamento.created_at?.toString() || new Date().toISOString(),
+      updatedAt: apiEquipamento.updated_at?.toString() || new Date().toISOString()
     } : undefined,
     
     equipamentoPai: apiEquipamento.equipamento_pai ? {
@@ -139,14 +143,16 @@ export const transformApiToFrontend = (apiEquipamento: EquipamentoApiResponse): 
       localizacao: (apiEquipamento.equipamento_pai as any).localizacao
     } : undefined,
     
-    componentesUAR: apiEquipamento.componentes_uar?.map(comp => ({
+    componentesUAR: (apiEquipamento.componentes_uar?.map(comp => ({
       id: comp.id,
       nome: comp.nome || 'Componente sem nome',
       classificacao: 'UAR' as const,
       criticidade: '3' as const,
       criadoEm: apiEquipamento.created_at?.toString() || new Date().toISOString(),
+      createdAt: apiEquipamento.created_at?.toString() || new Date().toISOString(),
+      updatedAt: apiEquipamento.updated_at?.toString() || new Date().toISOString(),
       totalComponentes: 0
-    })) || [],
+    })) || []) as unknown as Equipamento[],
     
     dadosTecnicos: apiEquipamento.dados_tecnicos?.map(dt => ({
       id: dt.id,
@@ -489,8 +495,8 @@ export function useEquipamentos(): UseEquipamentosReturn {
       const response = await equipamentosApi.findAll(params);
 
       // A API retorna: { success: true, data: { data: [], pagination: {} }, meta: {} }
-      // Então precisamos acessar response.data.data
-      const equipamentosArray = response.data.data || response.data;
+      // Após o interceptor desempacotar, response é { data: [], pagination: {} }
+      const equipamentosArray = response.data;
 
       // DEBUG: Verificar primeiro equipamento UC para ver campos disponíveis
       // const primeiroUC = equipamentosArray.find((eq: any) => eq.classificacao === 'UC');
@@ -511,12 +517,12 @@ export function useEquipamentos(): UseEquipamentosReturn {
       });
 
       setEquipamentos(equipamentosFiltrados);
-      setTotalPages(response.data.pagination?.pages || 0);
-      setCurrentPage(response.data.pagination?.page || 1);
+      setTotalPages(response.pagination?.pages || 0);
+      setCurrentPage(response.pagination?.page || 1);
       setTotal(equipamentosFiltrados.length); // Atualizar total com a quantidade filtrada
 
       return equipamentosFiltrados;
-      
+
     } catch (err) {
       handleError(err, 'fetchEquipamentos');
       return [];
@@ -541,7 +547,8 @@ export function useEquipamentos(): UseEquipamentosReturn {
       const response = await equipamentosApi.findByPlanta(plantaId, params);
 
       // A API retorna: { success: true, data: { data: [], pagination: {}, planta: {} }, meta: {} }
-      const equipamentosTransformados = response.data.data.map(transformApiToFrontend);
+      // Após o interceptor desempacotar, response é { data: [], pagination: {}, planta: {} }
+      const equipamentosTransformados = response.data.map(transformApiToFrontend);
 
       // Filtrar para ocultar PONTOS e BARRAMENTOS
       const equipamentosFiltrados = equipamentosTransformados.filter(eq => {
@@ -550,13 +557,13 @@ export function useEquipamentos(): UseEquipamentosReturn {
       });
 
       setEquipamentos(equipamentosFiltrados);
-      setTotalPages(response.data.pagination.pages);
-      setCurrentPage(response.data.pagination.page);
+      setTotalPages(response.pagination.pages);
+      setCurrentPage(response.pagination.page);
       setTotal(equipamentosFiltrados.length); // Atualizar total com a quantidade filtrada
 
       return {
         equipamentos: equipamentosFiltrados,
-        planta: response.data.planta
+        planta: response.planta
       };
       
     } catch (err) {
@@ -618,12 +625,13 @@ export function useEquipamentos(): UseEquipamentosReturn {
       // console.log('📦 [GERENCIAR] response.data.equipamentoUC:', response.data?.equipamentoUC);
 
       // A API retorna: { success: true, data: { equipamentoUC: {...}, componentes: [...] } }
-      const componentes = response.data?.componentes || [];
+      // Após o interceptor desempacotar, response é { equipamentoUC: {...}, componentes: [...] }
+      const componentes = response?.componentes || [];
       const componentesTransformados = componentes.map(transformApiToFrontend);
       // console.log('✅ [GERENCIAR] Componentes transformados:', componentesTransformados);
 
       return {
-        equipamentoUC: response.data?.equipamentoUC || null,
+        equipamentoUC: response?.equipamentoUC || null,
         componentes: componentesTransformados
       };
 

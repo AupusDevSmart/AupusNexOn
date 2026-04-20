@@ -18,7 +18,7 @@ interface SummaryCardProps {
   suffix?: string;
 }
 
-export function FluxoCaixaSummary({ data = [] }: FluxoCaixaSummaryProps): JSX.Element {
+export function FluxoCaixaSummary({ data = [] }: FluxoCaixaSummaryProps): React.JSX.Element {
   // Calcular resumos dos dados
   const summaryData = data.reduce((acc, item) => {
     acc.totalEntradas += item.entradas || 0;
@@ -82,7 +82,7 @@ function SummaryCard({
   showPercentage = true,
   showAsPercentage = false,
   suffix = ""
-}: SummaryCardProps): JSX.Element {
+}: SummaryCardProps): React.JSX.Element {
   const variantClasses: Record<SummaryVariant, string> = {
     danger: "text-red-600",
     success: "text-green-600", 

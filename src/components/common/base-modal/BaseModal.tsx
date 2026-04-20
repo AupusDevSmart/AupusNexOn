@@ -83,11 +83,11 @@ export function BaseModal<T extends BaseEntity>({
         if (field.key.includes('.')) {
           const [parent, child] = field.key.split('.');
           if (!base[parent]) base[parent] = {};
-          base[parent][child] = '';
+          base[parent][child] = (field as any).defaultValue ?? '';
         } else if (field.type === 'custom' && field.key === 'endereco') {
           base[field.key] = { uf: '', cidade: '', cep: '', logradouro: '', bairro: '' };
         } else {
-          base[field.key] = '';
+          base[field.key] = (field as any).defaultValue ?? '';
         }
       });
       return { ...base, ...normalize(entityData) };
@@ -97,11 +97,11 @@ export function BaseModal<T extends BaseEntity>({
         if (field.key.includes('.')) {
           const [parent, child] = field.key.split('.');
           if (!base[parent]) base[parent] = {};
-          base[parent][child] = '';
+          base[parent][child] = (field as any).defaultValue ?? '';
         } else if (field.type === 'custom' && field.key === 'endereco') {
           base[field.key] = { uf: '', cidade: '', cep: '', logradouro: '', bairro: '' };
         } else {
-          base[field.key] = '';
+          base[field.key] = (field as any).defaultValue ?? '';
         }
       });
       return base;
@@ -138,7 +138,7 @@ export function BaseModal<T extends BaseEntity>({
       if (field.key.includes('.')) {
         const [parent, child] = field.key.split('.');
         if (!initialData[parent]) initialData[parent] = {};
-        initialData[parent][child] = '';
+        initialData[parent][child] = (field as any).defaultValue ?? '';
       } else {
         // Para campos customizados (tipo 'custom'), inicializar com valor apropriado
         if (field.type === 'custom' && field.key === 'endereco') {
@@ -150,7 +150,7 @@ export function BaseModal<T extends BaseEntity>({
             bairro: ''
           };
         } else {
-          initialData[field.key] = '';
+          initialData[field.key] = (field as any).defaultValue ?? '';
         }
       }
     });

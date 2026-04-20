@@ -52,7 +52,7 @@ export interface FluxoCaixaFilters {
   module: string;
 }
 
-export interface SummaryData {
+export interface FluxoCaixaSummaryData {
   totalEntradas: number;
   totalSaidas: number;
   resultado: number;
@@ -91,7 +91,7 @@ export interface CentroCustoFormData {
   descricao: string;
 }
 
-export interface SummaryData {
+export interface CentrosCustoSummaryData {
   ativos: number;
   inativos: number;
   orcamentoTotal: number;
