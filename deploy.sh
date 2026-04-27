@@ -1,53 +1,43 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# deploy.sh - AupusNexOn (frontend Vite, servido por nginx)
+# Uso: ./deploy.sh    (rodar a partir da raiz do projeto)
+# Pre-condicoes:
+#   - working tree limpo (git status sem mudancas)
+#   - branch alinhado com origin/main
+#   - nginx serve este projeto a partir de dist/
+set -euo pipefail
 
-# ===========================================
-# Deploy Script - AupusNexOn (Frontend)
-# ===========================================
+PROJECT_NAME="AupusNexOn"
 
-set -e
+step() { printf '\n>>> %s\n' "$*"; }
+err()  { printf '\nERRO: %s\n' "$*" >&2; exit 1; }
 
-echo "🚀 Iniciando deploy do AupusNexOn..."
+cd "$(dirname "$0")"
 
-cd /var/www/AupusNexOn
+step "Verificando working tree limpo"
+if [ -n "$(git status --porcelain)" ]; then
+  echo "Mudancas locais nao commitadas detectadas:"
+  git status --short
+  err "Resolva (commit/stash/discard) antes de fazer deploy. Veja docs/PRE-DEPLOY.md."
+fi
 
-# 1. Salvar alterações locais
-echo "📦 Salvando alterações locais..."
-git stash || true
+step "git pull --ff-only origin main"
+git pull --ff-only origin main
 
-# 2. Puxar código do GitHub
-echo "⬇️  Puxando código do GitHub..."
-git pull origin main
+step "pnpm install --frozen-lockfile"
+pnpm install --frozen-lockfile
 
-# 3. Corrigir .env para produção
-echo "🔧 Configurando .env para produção..."
-sed -i 's|VITE_API_URL="http://localhost:3000/api/v1"|VITE_API_URL="https://aupus-service-api.aupusenergia.com.br/api/v1"|g' .env
-sed -i 's|VITE_WEBSOCKET_URL="http://localhost:3000"|VITE_WEBSOCKET_URL="https://aupus-service-api.aupusenergia.com.br"|g' .env
+step "Build (vite, outDir=dist.new)"
+rm -rf dist.new
+pnpm exec vite build --outDir dist.new
 
-# 4. Corrigir arquivos de API para usar variáveis de ambiente
-echo "🔧 Garantindo uso de variáveis de ambiente nos arquivos de API..."
+step "Swap atomico: dist -> dist.previous, dist.new -> dist"
+rm -rf dist.previous
+[ -d dist ] && mv dist dist.previous || true
+mv dist.new dist
 
-# Corrigir src/config/api.ts
-sed -i "s|baseURL: 'http://localhost:3000/api/v1'|baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1'|g" src/config/api.ts
+step "Estado final"
+ls -la dist | head -8
 
-# Corrigir src/services/api.ts
-sed -i "s|baseURL: 'http://localhost:3000'|baseURL: import.meta.env.VITE_WEBSOCKET_URL || 'http://localhost:3000'|g" src/services/api.ts
-
-# 5. Garantir tsconfig.json relaxado
-echo "🔧 Configurando tsconfig.json..."
-sed -i 's|"strict": true|"strict": false|g' tsconfig.json
-sed -i 's|"noUnusedLocals": true|"noUnusedLocals": false|g' tsconfig.json
-sed -i 's|"noUnusedParameters": true|"noUnusedParameters": false|g' tsconfig.json
-
-# 6. Garantir package.json com build sem tsc
-echo "🔧 Configurando package.json..."
-sed -i 's|"build": "tsc -b && vite build"|"build": "vite build"|g' package.json
-
-# 7. Build
-echo "🔨 Executando build..."
-npm run build
-
-echo ""
-echo "✅ Deploy do AupusNexOn concluído!"
-echo "📁 Arquivos gerados em: /var/www/AupusNexOn/dist"
-echo ""
-echo "🔍 Faça um hard refresh no browser (Ctrl+Shift+R) para ver as mudanças"
+printf '\nDeploy concluido. nginx ja serve a nova versao a partir de dist/.\n'
+printf 'Para rollback: rm -rf dist && mv dist.previous dist\n'

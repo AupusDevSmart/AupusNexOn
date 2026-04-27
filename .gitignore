@@ -2,7 +2,8 @@
 node_modules
 
 # Environment variables
-.env
+# .env e .env.production sao commitados de proposito: tudo em VITE_* vai para o bundle publico.
+# Overrides locais ficam em .env.local (nao commitar).
 .env.local
 .env.*.local
 
