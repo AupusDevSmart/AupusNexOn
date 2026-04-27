@@ -44,6 +44,7 @@ export interface CreateEquipamentoApiData {
   a4?: string;
   a5?: string;
   a6?: string;
+  foto_url?: string;
   dados_tecnicos?: {
     campo: string;
     valor: string;
@@ -94,6 +95,7 @@ export interface EquipamentoApiResponse {
   a4?: string;
   a5?: string;
   a6?: string;
+  foto_url?: string;
   created_at: Date;
   updated_at: Date;
   deleted_at?: Date;
@@ -417,6 +419,24 @@ export class EquipamentosApiService {
     const response = await api.get<EquipamentosListApiResponse>(
       `${this.baseEndpoint}/unidade/${unidadeId}/equipamentos`,
       { params }
+    );
+    return response.data;
+  }
+
+  async uploadFoto(id: string, file: File): Promise<{ fotoUrl: string }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await api.post<{ fotoUrl: string }>(
+      `${this.baseEndpoint}/${id.trim()}/upload-foto`,
+      formData,
+      { headers: { 'Content-Type': 'multipart/form-data' } }
+    );
+    return response.data;
+  }
+
+  async removeFoto(id: string): Promise<{ fotoUrl: null }> {
+    const response = await api.delete<{ fotoUrl: null }>(
+      `${this.baseEndpoint}/${id.trim()}/foto`
     );
     return response.data;
   }

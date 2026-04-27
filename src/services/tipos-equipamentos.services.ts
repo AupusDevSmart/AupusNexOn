@@ -66,14 +66,21 @@ class TiposEquipamentosApiService {
    */
   async getAll(params?: { categoria_id?: string; ativo?: boolean; search?: string }): Promise<TipoEquipamento[]> {
     try {
-      const response = await api.get<TipoEquipamentoResponse>(this.baseEndpoint, {
+      const response = await api.get<any>(this.baseEndpoint, {
         params: {
           categoria_id: params?.categoria_id,
           search: params?.search,
         },
       });
 
-      const data: TipoEquipamento[] = Array.isArray(response.data) ? response.data : [];
+      // Backend retorna { data: tipos[], categorias, total } — o interceptor desembrulha
+      // { success, data: {...} } pra este objeto. Tentamos array direto primeiro, depois .data.
+      const payload = response.data;
+      const data: TipoEquipamento[] = Array.isArray(payload)
+        ? payload
+        : Array.isArray(payload?.data)
+          ? payload.data
+          : [];
       console.log('✅ [TIPOS-EQUIPAMENTOS] Tipos carregados da API:', data.length);
       return data;
     } catch (error) {

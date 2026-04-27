@@ -33,7 +33,7 @@ export function AppTemplate() {
               </div>
               <NotificacoesSheet />
             </header>
-            <main className="flex-1 overflow-hidden bg-secondary mx-auto w-full flex items-center justify-center min-h-0">
+            <main className="flex-1 overflow-auto bg-secondary w-full min-h-0">
               <Outlet />
             </main>
             <CommandPallete />
