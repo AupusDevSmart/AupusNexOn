@@ -6,16 +6,8 @@ import path from 'path'
 export default defineConfig({
   plugins: [react()],
   resolve: {
-    alias: [
-      { find: "@", replacement: path.resolve(__dirname, "./src") },
-      {
-        find: /^@aupus\/shared-pages$/,
-        replacement: path.resolve(__dirname, "../shared-pages/dist/index.js"),
-      },
-      {
-        find: /^@aupus\/shared-pages\/(.*)$/,
-        replacement: path.resolve(__dirname, "../shared-pages/dist") + "/$1",
-      },
-    ],
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+    },
   },
 })
