@@ -1,0 +1,2383 @@
+// ========== platformio.ini ==========
+; ==============================================================================
+; TON - Gerado pelo NexOn IoT
+; ESP32-S3-WROOM-1-N8R2
+; ==============================================================================
+
+[env:ton]
+platform = espressif32
+board = lolin_s3
+framework = arduino
+
+monitor_speed = 115200
+upload_speed = 921600
+
+board_upload.use_1200bps_touch = true
+board_upload.wait_for_upload_port = true
+board_build.arduino.memory_type = qio_qspi
+
+; Particionamento com 2 slots OTA (app0/app1) + SPIFFS
+; Necessario para que Update.h possa gravar em partition nao-ativa
+board_build.partitions = default_8MB.csv
+
+lib_deps =
+    adafruit/Adafruit MCP23017 Arduino Library@^2.3.2
+    adafruit/Adafruit BusIO@^1.16.1
+    knolleary/PubSubClient@^2.8
+    4-20ma/ModbusMaster@^2.0.1
+    bblanchon/ArduinoJson@^7
+    arduino-libraries/Ethernet@^2.0.2
+
+build_flags =
+    -DCORE_DEBUG_LEVEL=3
+    -DBOARD_HAS_PSRAM=0
+    -DCONFIG_SPIRAM_MODE_OCT=0
+    -DARDUINO_USB_CDC_ON_BOOT=1
+
+
+// ========== include/hal.h ==========
+#ifndef HAL_H
+#define HAL_H
+
+// USB nativo
+#define USB_DN              19
+#define USB_DP              20
+
+// I2C
+#define I2C_SDA             4
+#define I2C_SCL             5
+
+// SPI1 - SD Card (SPI3_HOST, zona MSPI)
+#define SPI1_MOSI_PIN       35
+#define SPI1_MISO_PIN       37
+#define SPI1_SCLK_PIN       36
+#define SD_CS               38
+
+// SPI2 - W5500 Ethernet
+#define SPI2_MOSI_PIN       11
+#define SPI2_MISO_PIN       13
+#define SPI2_SCLK_PIN       12
+#define W5500_CS            10
+#define W5500_RST           14
+
+// UART1 (RS485)
+#define UART1_TX            18
+#define UART1_RX            17
+
+// UART2 (LoRa)
+#define UART2_TX            16
+#define UART2_RX            15
+
+// RS485 direction
+#define RS485_DIR           8
+
+// LoRa E220
+#define LORA_AUX            47
+
+// Transistor outputs (BC817)
+#define TR1                 1
+#define TR2                 2
+#define TR3                 42
+#define TR4                 41
+
+// Analog inputs
+#define AN1                 6
+#define AN2                 7
+
+// PWM output (MOSFET AOD7N65)
+#define PWM_OUT             46
+
+#endif
+
+
+// ========== include/inputs.h ==========
+#ifndef INPUTS_H
+#define INPUTS_H
+#include <stdint.h>
+
+bool inputs_init();
+void inputs_scan();
+uint8_t inputs_get_state();
+bool inputs_changed();
+
+#endif
+
+
+// ========== src/inputs.cpp ==========
+#include "inputs.h"
+#include "hal.h"
+#include <Wire.h>
+#include <Adafruit_MCP23X08.h>
+
+#define MCP_IN_ADDR  0x26
+#define INPUT_COUNT  6
+
+static Adafruit_MCP23X08 _mcp;
+static bool _ok = false;
+static uint8_t _state = 0;
+static uint8_t _prev = 0;
+static bool _changed = false;
+static uint8_t _debounce[INPUT_COUNT] = {0};
+
+bool inputs_init() {
+    if (!_mcp.begin_I2C(MCP_IN_ADDR, &Wire)) return false;
+    for (int i = 1; i <= INPUT_COUNT; i++)
+        _mcp.pinMode(i, INPUT_PULLUP);
+    // GP6/GP7 = LoRa M0/M1 (saidas)
+    _mcp.pinMode(6, OUTPUT);
+    _mcp.pinMode(7, OUTPUT);
+    _mcp.digitalWrite(6, LOW);
+    _mcp.digitalWrite(7, LOW);
+    _ok = true;
+    return true;
+}
+
+void inputs_scan() {
+    if (!_ok) return;
+    uint8_t reading = 0;
+    for (int i = 0; i < INPUT_COUNT; i++) {
+        bool val = !_mcp.digitalRead(i + 1);
+        if (val == ((_state >> i) & 1)) {
+            _debounce[i] = 0;
+        } else {
+            _debounce[i]++;
+            if (_debounce[i] >= 3) {
+                if (val) reading |= (1 << i);
+                _debounce[i] = 0;
+            } else {
+                if ((_state >> i) & 1) reading |= (1 << i);
+            }
+            continue;
+        }
+        if (val) reading |= (1 << i);
+    }
+    _prev = _state;
+    _state = reading;
+    if (_state != _prev) _changed = true;
+}
+
+uint8_t inputs_get_state() { return _state; }
+bool inputs_changed() { bool c = _changed; _changed = false; return c; }
+
+
+// ========== include/relays.h ==========
+#ifndef RELAYS_H
+#define RELAYS_H
+#include <stdint.h>
+
+bool relays_init();
+void relay_set(uint8_t num, bool state);
+void relays_all_on();
+void relays_all_off();
+uint8_t relays_get_state();
+
+#endif
+
+
+// ========== src/relays.cpp ==========
+#include "relays.h"
+#include <Wire.h>
+#include <Adafruit_MCP23X08.h>
+
+#define MCP_OUT_ADDR 0x27
+#define RELAY_COUNT  6
+
+static Adafruit_MCP23X08 _mcp;
+static bool _ok = false;
+static uint8_t _state = 0;
+
+bool relays_init() {
+    if (!_mcp.begin_I2C(MCP_OUT_ADDR, &Wire)) return false;
+    for (int i = 1; i <= RELAY_COUNT; i++) {
+        _mcp.pinMode(i, OUTPUT);
+        _mcp.digitalWrite(i, LOW);
+    }
+    _ok = true;
+    return true;
+}
+
+void relay_set(uint8_t num, bool state) {
+    if (!_ok || num < 1 || num > RELAY_COUNT) return;
+    _mcp.digitalWrite(num, state ? HIGH : LOW);
+    if (state) _state |= (1 << num); else _state &= ~(1 << num);
+}
+
+void relays_all_on() { for (int i = 1; i <= RELAY_COUNT; i++) relay_set(i, true); }
+void relays_all_off() { for (int i = 1; i <= RELAY_COUNT; i++) relay_set(i, false); }
+uint8_t relays_get_state() { return _state; }
+
+
+// ========== include/outputs.h ==========
+#ifndef OUTPUTS_H
+#define OUTPUTS_H
+#include <stdint.h>
+
+void outputs_init();
+void output_set(uint8_t num, bool state);
+void outputs_all_on();
+void outputs_all_off();
+uint8_t outputs_get_state();
+
+#endif
+
+
+// ========== src/outputs.cpp ==========
+#include "outputs.h"
+#include "hal.h"
+#include <Arduino.h>
+
+static const uint8_t _pins[] = { TR1, TR2, TR3, TR4 };
+static uint8_t _state = 0;
+
+void outputs_init() {
+    for (int i = 0; i < 4; i++) {
+        pinMode(_pins[i], OUTPUT);
+        digitalWrite(_pins[i], LOW);
+    }
+}
+
+void output_set(uint8_t num, bool state) {
+    if (num < 1 || num > 4) return;
+    digitalWrite(_pins[num - 1], state ? HIGH : LOW);
+    if (state) _state |= (1 << (num-1)); else _state &= ~(1 << (num-1));
+}
+
+void outputs_all_on() { for (int i = 1; i <= 4; i++) output_set(i, true); }
+void outputs_all_off() { for (int i = 1; i <= 4; i++) output_set(i, false); }
+uint8_t outputs_get_state() { return _state; }
+
+
+// ========== include/adc.h ==========
+#ifndef ADC_H
+#define ADC_H
+
+void adc_init();
+float adc_read_mv(int channel);
+
+#endif
+
+
+// ========== src/adc.cpp ==========
+#include "adc.h"
+#include "hal.h"
+#include <Arduino.h>
+
+#define ADC_DIVIDER 8.01
+
+void adc_init() {
+    analogReadResolution(12);
+    analogSetPinAttenuation(AN1, ADC_11db);
+    analogSetPinAttenuation(AN2, ADC_11db);
+}
+
+float adc_read_mv(int channel) {
+    int pin = (channel == 1) ? AN1 : AN2;
+    return analogReadMilliVolts(pin) * ADC_DIVIDER;
+}
+
+
+// ========== include/ota.h ==========
+#ifndef OTA_H
+#define OTA_H
+#include <stdint.h>
+
+void ota_init();
+
+// Processa um comando OTA recebido via MQTT (JSON: url, version, md5).
+// Bloqueante: baixa o firmware, grava, reinicia.
+void ota_handle_command(const char* payload);
+
+// True durante o download/flash. loop() principal deve ceder tempo nesse estado.
+bool ota_in_progress();
+
+#endif
+
+
+// ========== src/ota.cpp ==========
+#include "ota.h"
+#include "config.h"
+#include "mqtt.h"
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <WiFiClientSecure.h>
+#include <Update.h>
+#include <ArduinoJson.h>
+#include <esp_task_wdt.h>
+
+static volatile bool _inProgress = false;
+
+static void _publishStatus(const char* state, int pct, const char* msg) {
+    char topic[160];
+    snprintf(topic, sizeof(topic), "%s/ota/status", MQTT_TOPIC_BASE);
+    StaticJsonDocument<256> j;
+    j["state"]    = state;
+    j["progress"] = pct;
+    j["version"]  = FIRMWARE_VERSION;
+    j["device"]   = DEVICE_ID;
+    if (msg) j["msg"] = msg;
+    char payload[256];
+    serializeJson(j, payload, sizeof(payload));
+    mqtt_publish(topic, payload);
+}
+
+void ota_init() {
+    _inProgress = false;
+}
+
+bool ota_in_progress() {
+    return _inProgress;
+}
+
+void ota_handle_command(const char* payload) {
+    if (_inProgress) {
+        _publishStatus("error", 0, "already_in_progress");
+        return;
+    }
+    if (!payload || !*payload) return;
+
+    StaticJsonDocument<512> doc;
+    DeserializationError err = deserializeJson(doc, payload);
+    if (err) { _publishStatus("error", 0, "invalid_json"); return; }
+
+    const char* url            = doc["url"]     | (const char*)nullptr;
+    const char* target_version = doc["version"] | "";
+    const char* md5            = doc["md5"]     | "";
+
+    if (!url) { _publishStatus("error", 0, "missing_url"); return; }
+    if (target_version[0] && strcmp(target_version, FIRMWARE_VERSION) == 0) {
+        _publishStatus("skipped", 0, "already_on_version");
+        return;
+    }
+
+    _inProgress = true;
+    _publishStatus("downloading", 0, url);
+    // Garante que o status sai antes de usar a rede para o download
+    mqtt_loop();
+
+    HTTPClient http;
+    http.setTimeout(60000);
+    http.setConnectTimeout(15000);
+
+    // TLS: usa WiFiClientSecure com setInsecure por enquanto.
+    // Producao deve pinar o CA via setCACert(LETS_ENCRYPT_ROOT).
+    WiFiClientSecure secureClient;
+    bool isHttps = (strncmp(url, "https://", 8) == 0);
+    if (isHttps) {
+        secureClient.setInsecure();
+        if (!http.begin(secureClient, url)) {
+            _publishStatus("error", 0, "http_begin_failed");
+            _inProgress = false; return;
+        }
+    } else {
+        if (!http.begin(url)) {
+            _publishStatus("error", 0, "http_begin_failed");
+            _inProgress = false; return;
+        }
+    }
+
+    int code = http.GET();
+    if (code != 200) {
+        char m[48]; snprintf(m, sizeof(m), "http_%d", code);
+        _publishStatus("error", 0, m);
+        http.end(); _inProgress = false; return;
+    }
+
+    int total = http.getSize();
+    if (total <= 0) {
+        _publishStatus("error", 0, "no_content_length");
+        http.end(); _inProgress = false; return;
+    }
+
+    if (!Update.begin(total)) {
+        _publishStatus("error", 0, Update.errorString());
+        http.end(); _inProgress = false; return;
+    }
+    if (md5[0]) Update.setMD5(md5);
+
+    WiFiClient* stream = http.getStreamPtr();
+    uint8_t buf[1024];
+    size_t written = 0;
+    int lastReport = -1;
+    unsigned long lastProgressMs = 0;
+
+    while (http.connected() && written < (size_t)total) {
+        esp_task_wdt_reset();
+        size_t avail = stream->available();
+        if (avail) {
+            size_t n = stream->readBytes(buf, avail > sizeof(buf) ? sizeof(buf) : avail);
+            if (Update.write(buf, n) != n) {
+                _publishStatus("error", 0, Update.errorString());
+                Update.abort(); http.end(); _inProgress = false; return;
+            }
+            written += n;
+
+            int pct = (int)((written * 100) / (size_t)total);
+            unsigned long now = millis();
+            // Reporta a cada 5% OU a cada 3s (o que vier primeiro)
+            if (pct != lastReport && (pct - lastReport >= 5 || now - lastProgressMs > 3000)) {
+                lastReport = pct;
+                lastProgressMs = now;
+                _publishStatus("downloading", pct, nullptr);
+                mqtt_loop();
+            }
+        } else {
+            delay(1);
+        }
+    }
+    http.end();
+
+    if (!Update.end(true)) {
+        _publishStatus("error", 0, Update.errorString());
+        _inProgress = false; return;
+    }
+
+    _publishStatus("success", 100, "rebooting");
+    mqtt_loop();
+    delay(500);
+    ESP.restart();
+}
+
+
+// ========== include/sd_buffer.h ==========
+#ifndef SD_BUFFER_H
+#define SD_BUFFER_H
+#include <stdint.h>
+
+// Tenta inicializar SD. Retorna true se OK.
+bool sd_buffer_init();
+bool sd_buffer_ready();
+
+// Guarda { topic, payload } no arquivo de buffer. Chamado quando MQTT falha.
+// Inclui timestamp automaticamente.
+bool sd_buffer_store(const char* topic, const char* payload);
+
+// Drena o buffer: envia tudo que foi salvo (chamado quando MQTT reconecta).
+// publish_fn: funcao que retorna true se publicou com sucesso.
+// max_send: maximo de msgs a enviar por chamada (evita bloquear demais)
+// Retorna numero de mensagens drenadas.
+typedef bool (*sd_buffer_publish_fn)(const char* topic, const char* payload);
+int sd_buffer_drain(sd_buffer_publish_fn publish_fn, int max_send);
+
+// Quantas mensagens pendentes no buffer (linhas no arquivo)
+int sd_buffer_pending();
+
+#endif
+
+
+// ========== src/sd_buffer.cpp ==========
+#include "sd_buffer.h"
+#include "hal.h"
+#include <Arduino.h>
+#include <SPI.h>
+#include <SD.h>
+
+#define SD_BUF_FILE      "/mqtt_buf.txt"
+#define SD_BUF_TMP       "/mqtt_buf.tmp"
+#define SD_MAX_FILE_SIZE (5UL * 1024UL * 1024UL)  // 5 MB
+#define SD_FLUSH_PER_LOOP 10                       // max msgs por drain
+
+static bool _sdReady = false;
+static SPIClass _spiSD(HSPI);
+static uint32_t _stored = 0;
+static uint32_t _resent = 0;
+
+bool sd_buffer_init() {
+    _spiSD.begin(SPI1_SCLK_PIN, SPI1_MISO_PIN, SPI1_MOSI_PIN, SD_CS);
+    if (!SD.begin(SD_CS, _spiSD, 8000000)) {
+        Serial.println("[SD-BUF] Inicializacao falhou");
+        _sdReady = false;
+        return false;
+    }
+    _sdReady = true;
+    Serial.printf("[SD-BUF] OK - %llu MB\n", SD.cardSize() / (1024ULL * 1024ULL));
+    int pending = sd_buffer_pending();
+    if (pending > 0) {
+        Serial.printf("[SD-BUF] %d mensagens pendentes no buffer\n", pending);
+    }
+    return true;
+}
+
+bool sd_buffer_ready() { return _sdReady; }
+
+bool sd_buffer_store(const char* topic, const char* payload) {
+    if (!_sdReady) return false;
+
+    File f = SD.open(SD_BUF_FILE, FILE_APPEND);
+    if (!f) {
+        Serial.println("[SD-BUF] Falha ao abrir para escrita");
+        return false;
+    }
+    if (f.size() > SD_MAX_FILE_SIZE) {
+        f.close();
+        Serial.println("[SD-BUF] Arquivo cheio, descartando");
+        return false;
+    }
+    f.print(topic);
+    f.print('\t');
+    f.println(payload);
+    f.close();
+    _stored++;
+    Serial.printf("[SD-BUF] SALVO: %s (total armazenado: %lu)\n", topic, (unsigned long)_stored);
+    return true;
+}
+
+int sd_buffer_pending() {
+    if (!_sdReady) return 0;
+    if (!SD.exists(SD_BUF_FILE)) return 0;
+    File f = SD.open(SD_BUF_FILE, FILE_READ);
+    if (!f) return 0;
+    int n = 0;
+    while (f.available()) {
+        if (f.read() == '\n') n++;
+    }
+    f.close();
+    return n;
+}
+
+int sd_buffer_drain(sd_buffer_publish_fn publish_fn, int max_send) {
+    if (!_sdReady || !publish_fn) return 0;
+    if (!SD.exists(SD_BUF_FILE)) return 0;
+
+    File check = SD.open(SD_BUF_FILE, FILE_READ);
+    if (!check) return 0;
+    if (check.size() == 0) { check.close(); SD.remove(SD_BUF_FILE); return 0; }
+    check.close();
+
+    if (SD.exists(SD_BUF_TMP)) SD.remove(SD_BUF_TMP);
+    if (!SD.rename(SD_BUF_FILE, SD_BUF_TMP)) return 0;
+
+    File src = SD.open(SD_BUF_TMP, FILE_READ);
+    if (!src) return 0;
+    File dst = SD.open(SD_BUF_FILE, FILE_WRITE);
+
+    int sent = 0, kept = 0, limit = (max_send > 0 ? max_send : SD_FLUSH_PER_LOOP);
+    bool failing = false;
+
+    while (src.available()) {
+        String line = src.readStringUntil('\n');
+        line.trim();
+        if (line.length() == 0) continue;
+
+        if (failing || sent >= limit) {
+            if (dst) dst.println(line);
+            kept++;
+            continue;
+        }
+
+        int tab = line.indexOf('\t');
+        if (tab <= 0) continue; // linha corrompida
+
+        String topic = line.substring(0, tab);
+        String payload = line.substring(tab + 1);
+
+        if (publish_fn(topic.c_str(), payload.c_str())) {
+            sent++;
+            _resent++;
+            Serial.printf("[SD-BUF] Reenviado: %s\n", topic.c_str());
+            delay(30);
+        } else {
+            // Falhou - guardar restante para proxima
+            if (dst) dst.println(line);
+            kept++;
+            failing = true;
+        }
+    }
+
+    src.close();
+    if (dst) dst.close();
+    SD.remove(SD_BUF_TMP);
+
+    if (sent > 0 || kept > 0) {
+        Serial.printf("[SD-BUF] Drenadas %d mensagens (restam %d, total reenviado: %lu)\n",
+                       sent, kept, (unsigned long)_resent);
+    }
+    // Se ficou vazio, remover arquivo
+    File recheck = SD.open(SD_BUF_FILE, FILE_READ);
+    if (recheck) {
+        if (recheck.size() == 0) { recheck.close(); SD.remove(SD_BUF_FILE); }
+        else recheck.close();
+    }
+    return sent;
+}
+
+
+// ========== include/config.h ==========
+#ifndef CONFIG_H
+#define CONFIG_H
+#include <stdint.h>
+
+// ============================================================
+// CONFIG - TON1 (TON1)
+// Gerado pelo NexOn IoT
+// ============================================================
+
+#define DEVICE_MODEL        "TON1"
+#define DEVICE_ID           "TON1"
+#define FIRMWARE_VERSION    "1.0.0"
+
+// I2C
+#define I2C_ADDR_RTC        0x68
+#define I2C_ADDR_MUX_IN     0x26
+#define I2C_ADDR_MUX_OUT    0x27
+#define I2C_CLOCK_HZ        100000
+
+// SPI
+#define SPI_CLOCK_HZ        8000000
+
+// RS485
+#define RS485_UART_NUM      1
+#define RS485_BAUD          9600
+#define RS485_CONFIG        SERIAL_8N1
+
+// WiFi
+#define WIFI_SSID           "Aupus Energia"
+#define WIFI_PASSWORD       "#Aupus123"
+#define WIFI_TIMEOUT_MS     10000
+
+// MQTT
+#define MQTT_SERVER         "72.60.158.163"
+#define MQTT_PORT           1883
+#define MQTT_USER           ""
+#define MQTT_PASS           ""
+#define MQTT_CLIENT_ID      "TON1-" DEVICE_ID
+#define MQTT_TOPIC_BASE     "AUPUS/GO/AUPUSII/UFV_AUPUSII"
+#define MQTT_TOPIC_CMD      MQTT_TOPIC_BASE "/cmd"
+#define MQTT_TOPIC_RELAYS   MQTT_TOPIC_BASE "/relays"
+#define MQTT_TOPIC_INPUTS   MQTT_TOPIC_BASE "/inputs"
+#define MQTT_TOPIC_OUTPUTS  MQTT_TOPIC_BASE "/outputs"
+#define MQTT_TOPIC_METER    MQTT_TOPIC_BASE "/meter"
+#define MQTT_BUFFER_SIZE    4096
+#define MQTT_STATUS_MS      60000
+#define OTA_DOWNLOAD_TIMEOUT_MS 60000
+
+// Ethernet W5500
+#define ETH_MAC             { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0x01 }
+#define ETH_DHCP_TIMEOUT_MS 10000
+#define ETH_STATIC_IP       "192.168.1.200"
+#define ETH_GATEWAY         "192.168.1.1"
+#define ETH_SUBNET          "255.255.255.0"
+#define ETH_DNS             "8.8.8.8"
+
+// SD Card
+#define SD_BUFFER_FILE      "/datalog.csv"
+#define SD_MAX_FILE_SIZE    (1024 * 1024)
+
+// PWM
+#define PWM_CHANNEL         0
+#define PWM_FREQ_HZ         1000
+#define PWM_RESOLUTION      8
+
+// ADC
+#define ADC_RESOLUTION_BITS 12
+#define ADC_ATTEN           ADC_11db
+#define ADC_DIVIDER         8.01
+
+// MCP23008 pin mapping
+#define MCP_INPUT_COUNT     6
+
+// Timing
+#define INPUT_SCAN_MS       50
+#define WATCHDOG_TIMEOUT_S  60      // Watchdog mais generoso (60s) para lidar com Modbus lento
+
+// Medidores Modbus
+#define METER_CYCLE_MS      2000
+#define PUBLISH_INTERVAL_MS 60000
+#define MAX_READINGS        35
+
+#endif
+
+
+// ========== src/mqtt.h ==========
+#ifndef MQTT_H
+#define MQTT_H
+
+typedef void (*mqtt_cmd_callback_t)(const char* payload);
+
+void mqtt_init(mqtt_cmd_callback_t callback);
+void mqtt_loop();
+bool mqtt_publish(const char* topic, const char* payload);
+bool mqtt_connected();
+
+#endif
+
+
+// ========== src/mqtt.cpp ==========
+#include "mqtt.h"
+#include "ota.h"
+#include "sd_buffer.h"
+#include "config.h"
+#include <WiFi.h>
+#include <PubSubClient.h>
+#include <esp_task_wdt.h>
+#include <string.h>
+#include <time.h>
+
+// Janelas de retry/drain — evita saturar o broker ao reconectar.
+// Publicacoes sao feitas normalmente em tempo real; a drenagem do SD e gradual.
+#define WIFI_RECONNECT_MS   15000UL   // tenta WiFi.reconnect() no maximo a cada 15s
+#define MQTT_RECONNECT_MS   5000UL    // tenta mqtt.connect() no maximo a cada 5s
+#define SD_DRAIN_INTERVAL_MS 10000UL  // drena no maximo uma vez a cada 10s
+#define SD_DRAIN_BATCH       5        // no maximo 5 mensagens retro por ciclo de drain
+#define SD_DRAIN_ON_RECONNECT 5       // primeira leva ao reconectar (nao sobrecarrega)
+
+static WiFiClient _wifiClient;
+static PubSubClient _mqtt(_wifiClient);
+static mqtt_cmd_callback_t _cmdCallback = nullptr;
+static unsigned long _lastReconnect = 0;
+static unsigned long _lastWifiReconnect = 0;
+static unsigned long _lastDrain = 0;
+static bool _wasConnected = false;
+static bool _timeSynced = false;
+
+// Forward decl
+bool mqtt_publish_raw(const char* topic, const char* payload);
+
+// Sync NTP apos WiFi conectar. Nao bloqueia — apenas arranca o processo.
+static void _start_ntp() {
+    configTime(-3 * 3600, 0, "pool.ntp.org", "time.google.com");
+}
+
+// Salva no SD com timestamp injetado no JSON (se possivel).
+// Formato: "{\"ts\":<epoch>, ... resto do payload}"
+// Se o relogio nao estiver sincronizado, ou o payload nao for JSON,
+// salva como esta (sem ts) para nao perder dados.
+static void _store_offline(const char* topic, const char* payload) {
+    time_t now = time(nullptr);
+    bool haveTime = (now > 1700000000);
+    if (haveTime) _timeSynced = true;
+
+    if (haveTime && payload && payload[0] == '{' && strstr(payload, "\"ts\"") == nullptr) {
+        // Cabe ate ~3200 bytes (payload de inversor + overhead do ts)
+        char withTs[3200];
+        int n = snprintf(withTs, sizeof(withTs), "{\"ts\":%lu,%s",
+                         (unsigned long)now, payload + 1);
+        if (n > 0 && n < (int)sizeof(withTs)) {
+            sd_buffer_store(topic, withTs);
+            return;
+        }
+    }
+    sd_buffer_store(topic, payload);
+}
+
+// Callback unico: despacha OTA (TOPIC_BASE/ota/cmd) antes de entregar o
+// restante ao callback de usuario (TOPIC_BASE/cmd).
+static void _onMessage(char* topic, byte* payload, unsigned int len) {
+    static char buf[1200]; // grande para caber JSON OTA
+    if (len >= sizeof(buf)) len = sizeof(buf) - 1;
+    memcpy(buf, payload, len);
+    buf[len] = 0;
+
+    if (strstr(topic, "/ota/cmd") != nullptr) {
+        Serial.printf("[MQTT] OTA cmd recebido (%u bytes)\n", len);
+        ota_handle_command(buf);
+        return;
+    }
+
+    Serial.printf("[MQTT] Recebido: %s -> %s\n", topic, buf);
+    if (_cmdCallback) _cmdCallback(buf);
+}
+
+void mqtt_init(mqtt_cmd_callback_t callback) {
+    _cmdCallback = callback;
+
+    // WiFi — reconexao automatica em qualquer queda (nao bloqueia o loop).
+    WiFi.setAutoReconnect(true);
+    WiFi.persistent(true);
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    Serial.printf("[WIFI] Conectando a '%s'...\n", WIFI_SSID);
+    unsigned long t = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - t < WIFI_TIMEOUT_MS) {
+        delay(500); Serial.print(".");
+        esp_task_wdt_reset();
+    }
+    if (WiFi.status() == WL_CONNECTED) {
+        Serial.printf("\n[WIFI] IP: %s\n", WiFi.localIP().toString().c_str());
+        _start_ntp();
+    } else {
+        Serial.println("\n[WIFI] FALHOU - continuara tentando em background, leituras seguirao e irao pro SD");
+    }
+
+    // MQTT
+    _mqtt.setServer(MQTT_SERVER, MQTT_PORT);
+    bool bufok = _mqtt.setBufferSize(MQTT_BUFFER_SIZE);
+    Serial.printf("[MQTT] Buffer %d bytes: %s\n", MQTT_BUFFER_SIZE, bufok ? "OK" : "FAIL (heap?)");
+    _mqtt.setCallback(_onMessage);
+}
+
+void mqtt_loop() {
+    // Sempre tentar manter o WiFi vivo — sem bloquear.
+    if (WiFi.status() != WL_CONNECTED) {
+        if (millis() - _lastWifiReconnect > WIFI_RECONNECT_MS) {
+            _lastWifiReconnect = millis();
+            Serial.println("[WIFI] Desconectado — reconectando em background...");
+            WiFi.reconnect();
+        }
+        // Sem WiFi nao ha o que fazer com MQTT; retorna para deixar o loop seguir lendo.
+        if (_wasConnected) {
+            Serial.println("[MQTT] DESCONECTADO - mensagens irao para o SD (com timestamp)");
+            _wasConnected = false;
+        }
+        return;
+    }
+
+    // WiFi OK — inicializar NTP se ainda nao iniciou (caso tenha conectado apos o boot)
+    if (!_timeSynced) {
+        time_t now = time(nullptr);
+        if (now < 1700000000) {
+            // Ainda nao sincronizou — rekick periodico
+            if (millis() - _lastWifiReconnect > WIFI_RECONNECT_MS) {
+                _lastWifiReconnect = millis();
+                _start_ntp();
+            }
+        } else {
+            _timeSynced = true;
+            Serial.println("[NTP] Tempo sincronizado");
+        }
+    }
+
+    if (_mqtt.connected()) {
+        _mqtt.loop();
+        // Drena retroativo aos poucos: no maximo SD_DRAIN_BATCH msgs por SD_DRAIN_INTERVAL_MS.
+        // Isto garante que tempo real + retroativo nao sobrecarregue o broker.
+        if (millis() - _lastDrain > SD_DRAIN_INTERVAL_MS) {
+            _lastDrain = millis();
+            int pending = sd_buffer_pending();
+            if (pending > 0) {
+                Serial.printf("[MQTT] Drenando retroativo (%d pendentes, batch %d)...\n",
+                              pending, SD_DRAIN_BATCH);
+                sd_buffer_drain(mqtt_publish_raw, SD_DRAIN_BATCH);
+            }
+        }
+        return;
+    }
+
+    // MQTT desconectado (mas WiFi OK) — tentar reconectar
+    if (_wasConnected) {
+        Serial.println("[MQTT] DESCONECTADO - mensagens irao para o SD (com timestamp)");
+        _wasConnected = false;
+    }
+    if (millis() - _lastReconnect < MQTT_RECONNECT_MS) return;
+    _lastReconnect = millis();
+
+    Serial.printf("[MQTT] Conectando a %s:%d (%s)...\n", MQTT_SERVER, MQTT_PORT, MQTT_CLIENT_ID);
+    // Last Will em TOPIC_BASE/status (QoS 1, retained) -> sinaliza offline se cair
+    String willTopic = String(MQTT_TOPIC_BASE) + "/status";
+    const char* willMsg = "{\"online\":false}";
+
+    bool ok;
+    if (strlen(MQTT_USER) > 0) {
+        ok = _mqtt.connect(MQTT_CLIENT_ID, MQTT_USER, MQTT_PASS,
+                           willTopic.c_str(), 1, true, willMsg);
+    } else {
+        ok = _mqtt.connect(MQTT_CLIENT_ID, nullptr, nullptr,
+                           willTopic.c_str(), 1, true, willMsg);
+    }
+
+    if (ok) {
+        Serial.println("[MQTT] Conectado!");
+        _wasConnected = true;
+        _mqtt.subscribe(MQTT_TOPIC_CMD);
+        String otaCmdTopic = String(MQTT_TOPIC_BASE) + "/ota/cmd";
+        _mqtt.subscribe(otaCmdTopic.c_str());
+        Serial.printf("[MQTT] Inscrito em: %s\n[MQTT] Inscrito em: %s\n",
+                      MQTT_TOPIC_CMD, otaCmdTopic.c_str());
+
+        // Announce online + versao atual (retained)
+        char hello[96];
+        snprintf(hello, sizeof(hello),
+                 "{\"online\":true,\"version\":\"%s\",\"model\":\"%s\"}",
+                 FIRMWARE_VERSION, DEVICE_MODEL);
+        _mqtt.publish(willTopic.c_str(), hello, true);
+
+        // Primeira leva ao reconectar — pequena, so pra confirmar fluxo.
+        // O resto sera drenado pelo _lastDrain no mqtt_loop, aos poucos.
+        int pending = sd_buffer_pending();
+        if (pending > 0) {
+            Serial.printf("[MQTT] Reconectado - %d mensagens no SD, iniciando drain gradual...\n", pending);
+            sd_buffer_drain(mqtt_publish_raw, SD_DRAIN_ON_RECONNECT);
+            _lastDrain = millis();  // espera SD_DRAIN_INTERVAL_MS antes do proximo lote
+        }
+    }
+}
+
+// Publica direto, sem fallback de SD (usado pela drain para evitar loop)
+bool mqtt_publish_raw(const char* topic, const char* payload) {
+    if (!_mqtt.connected()) return false;
+    return _mqtt.publish(topic, payload);
+}
+
+bool mqtt_publish(const char* topic, const char* payload) {
+    if (!_mqtt.connected()) {
+        Serial.printf("[MQTT] PUB FAIL (desconectado): %s -> SD\n", topic);
+        _store_offline(topic, payload);
+        return false;
+    }
+    size_t plen = strlen(payload);
+    size_t tlen = strlen(topic);
+    bool ok = _mqtt.publish(topic, payload);
+    if (!ok) {
+        Serial.printf("[MQTT] PUB FAIL: %s (payload=%u bytes, topic=%u bytes, state=%d) -> SD\n",
+                      topic, (unsigned)plen, (unsigned)tlen, _mqtt.state());
+        _store_offline(topic, payload);
+    }
+    return ok;
+}
+
+bool mqtt_connected() { return _mqtt.connected(); }
+
+
+// ========== src/eth.cpp ==========
+#include "hal.h"
+#include "config.h"
+#include <SPI.h>
+#include <Ethernet.h>
+
+static byte _mac[] = ETH_MAC;
+static bool _initialized = false;
+
+bool eth_init() {
+    pinMode(W5500_RST, OUTPUT);
+    digitalWrite(W5500_RST, LOW); delay(50);
+    digitalWrite(W5500_RST, HIGH); delay(500);
+
+    pinMode(W5500_CS, OUTPUT);
+    digitalWrite(W5500_CS, HIGH);
+    SPI.begin(SPI2_SCLK_PIN, SPI2_MISO_PIN, SPI2_MOSI_PIN);
+
+    Ethernet.init(W5500_CS);
+
+    if (Ethernet.linkStatus() != LinkOFF) {
+        if (Ethernet.begin(_mac, ETH_DHCP_TIMEOUT_MS) != 0) {
+            Serial.printf("[ETH] DHCP OK -> %s\n", Ethernet.localIP().toString().c_str());
+            _initialized = true;
+            return true;
+        }
+    }
+
+    IPAddress ip, gw, sn, dns;
+    ip.fromString(ETH_STATIC_IP); gw.fromString(ETH_GATEWAY);
+    sn.fromString(ETH_SUBNET); dns.fromString(ETH_DNS);
+    Ethernet.begin(_mac, ip, dns, gw, sn);
+    _initialized = true;
+    return true;
+}
+
+bool eth_connected() { return _initialized && Ethernet.linkStatus() == LinkON; }
+void eth_maintain() { if (_initialized) Ethernet.maintain(); }
+
+
+// ========== src/main.cpp ==========
+// ==============================================================================
+// TON1 (TON1) - Gerado pelo NexOn IoT
+// ==============================================================================
+
+#include <Arduino.h>
+#include <Wire.h>
+#include <ArduinoJson.h>
+#include <esp_task_wdt.h>
+
+#include "hal.h"
+#include "config.h"
+#include "inputs.h"
+#include "outputs.h"
+#include "adc.h"
+#include "sd_buffer.h"
+#include "mqtt.h"
+#include "ota.h"
+#include "modbus_meter.h"
+
+// Estado / timers
+static unsigned long last_input_scan = 0;
+static unsigned long last_status     = 0;
+static unsigned long last_sample     = 0;  // leitura Modbus (round-robin)
+static unsigned long last_publish    = 0;  // publicacao MQTT (medias/deltas)
+
+// Publica em TOPIC_BASE/<sub>. Helper para modulos que nao conhecem o prefixo.
+static void mqtt_publish_sub(const char* sub, const char* payload) {
+    char topic[160];
+    snprintf(topic, sizeof(topic), "%s/%s", MQTT_TOPIC_BASE, sub);
+    mqtt_publish(topic, payload);
+}
+
+// Comando (Serial + MQTT). Aceita:
+//   - "r1 on" / "tr2 off"                           -> reles locais/saidas
+//   - "status"                                       -> debug serial
+//   - {"device":"X","cmd":"cmd_fechar"}             -> BO Modbus (bo_map do catalogo)
+static void process_command(const char* raw) {
+    if (!raw) return;
+
+    // Tenta parsear como JSON primeiro (comandos estruturados)
+    if (raw[0] == '{') {
+        StaticJsonDocument<256> j;
+        DeserializationError jerr = deserializeJson(j, raw);
+        if (!jerr) {
+            const char* dev = j["device"] | "";
+            const char* cid = j["cmd"] | "";
+            if (dev[0] && cid[0]) {
+                bool ok = modbus_exec_command(dev, cid);
+                Serial.printf("[CMD] %s -> %s: %s\n", dev, cid, ok ? "OK" : "FAIL");
+                return;
+            }
+        }
+    }
+
+    String cmd = String(raw); cmd.trim(); cmd.toLowerCase();
+    if (cmd.length() == 0) return;
+
+    if (cmd.length() >= 4 && cmd[0] == 'r' && cmd[1] >= '1' && cmd[1] <= '6') {
+        Serial.println("[CMD] Reles nao disponiveis neste modelo");
+    }
+    else if (cmd.startsWith("tr") && cmd[2] >= '1' && cmd[2] <= '4') {
+        output_set(cmd[2] - '0', cmd.indexOf("on") >= 0);
+        Serial.printf("[CMD] TR%c %s\n", cmd[2], cmd.indexOf("on") >= 0 ? "ON" : "OFF");
+    }
+    else if (cmd == "status") {
+        Serial.printf("Entradas: %02X  Saidas: %02X\n", inputs_get_state(), outputs_get_state());
+    }
+}
+
+// Motivo do ultimo reset (diagnostico)
+static const char* _resetReason() {
+    switch (esp_reset_reason()) {
+        case ESP_RST_POWERON:  return "Power-on";
+        case ESP_RST_SW:       return "Software";
+        case ESP_RST_PANIC:    return "Panic (crash)";
+        case ESP_RST_INT_WDT:  return "Watchdog (interrupt)";
+        case ESP_RST_TASK_WDT: return "Watchdog (task)";
+        case ESP_RST_WDT:      return "Watchdog";
+        case ESP_RST_BROWNOUT: return "Brownout (tensao baixa)";
+        case ESP_RST_DEEPSLEEP:return "Deep-sleep wake";
+        case ESP_RST_EXT:      return "External reset";
+        default:               return "Unknown";
+    }
+}
+
+// Alimentar o watchdog (chamar em loops longos / esperas)
+static inline void feedWatchdog() { esp_task_wdt_reset(); }
+
+void setup() {
+    Serial.begin(115200);
+    delay(2000);
+    Serial.printf("\n  %s v%s - %s\n", DEVICE_ID, FIRMWARE_VERSION, DEVICE_MODEL);
+    Serial.printf("  Motivo do reset: %s\n", _resetReason());
+    Serial.printf("  Heap livre: %u bytes\n\n", ESP.getFreeHeap());
+
+    // Watchdog em panic mode: reinicia a placa se travar
+    esp_task_wdt_init(WATCHDOG_TIMEOUT_S, true);
+    esp_task_wdt_add(NULL);
+    Serial.printf("[OK] Watchdog %ds (panic=reboot)\n", WATCHDOG_TIMEOUT_S);
+
+    // I2C
+    Wire.begin(I2C_SDA, I2C_SCL);
+    Wire.setClock(I2C_CLOCK_HZ);
+
+    // Perifericos
+    if (inputs_init()) Serial.println("[OK] Entradas (6x optoacopladas)");
+    else Serial.println("[FAIL] Entradas");
+
+    outputs_init();
+    Serial.println("[OK] Transistores (TR1-TR4)");
+
+    adc_init();
+    Serial.println("[OK] ADC (AN1/AN2)");
+
+    // SD Card - buffer offline para MQTT
+    if (sd_buffer_init()) {
+        Serial.println("[OK] SD Buffer");
+    } else {
+        Serial.println("[WARN] SD nao disponivel - mensagens offline serao perdidas");
+    }
+
+    // RS485 + Modbus (dispositivos vem do catalogo, sem scan no boot)
+    modbus_init();
+
+    // WiFi + MQTT + OTA
+    mqtt_init(process_command);
+    ota_init();
+
+    esp_task_wdt_reset();
+    Serial.println("\nPronto!");
+}
+
+void loop() {
+    esp_task_wdt_reset();
+    unsigned long now = millis();
+    mqtt_loop();
+
+    // Durante OTA nao fazer mais nada (flash em andamento)
+    if (ota_in_progress()) { delay(1); return; }
+
+    // Entradas (debounce)
+    if (now - last_input_scan >= INPUT_SCAN_MS) {
+        last_input_scan = now;
+        inputs_scan();
+        if (inputs_changed()) {
+            uint8_t s = inputs_get_state();
+            char buf[80];
+            snprintf(buf, sizeof(buf), "{\"d1\":%d,\"d2\":%d,\"d3\":%d,\"d4\":%d,\"d5\":%d,\"d6\":%d}",
+                s&1, (s>>1)&1, (s>>2)&1, (s>>3)&1, (s>>4)&1, (s>>5)&1);
+            mqtt_publish(MQTT_TOPIC_INPUTS, buf);
+        }
+    }
+
+    // Status periodico
+    if (now - last_status >= MQTT_STATUS_MS) {
+        last_status = now;
+        // Publicar estado
+        uint8_t rs = inputs_get_state();
+        char ibuf[80];
+        snprintf(ibuf, sizeof(ibuf), "{\"d1\":%d,\"d2\":%d,\"d3\":%d,\"d4\":%d,\"d5\":%d,\"d6\":%d}",
+            rs&1, (rs>>1)&1, (rs>>2)&1, (rs>>3)&1, (rs>>4)&1, (rs>>5)&1);
+        mqtt_publish(MQTT_TOPIC_INPUTS, ibuf);
+
+        uint8_t os = outputs_get_state();
+        char obuf[60];
+        snprintf(obuf, sizeof(obuf), "{\"tr1\":%d,\"tr2\":%d,\"tr3\":%d,\"tr4\":%d}",
+            os&1, (os>>1)&1, (os>>2)&1, (os>>3)&1);
+        mqtt_publish(MQTT_TOPIC_OUTPUTS, obuf);
+    }
+
+    // Modbus: sample 1 device por ciclo (round-robin) a cada METER_CYCLE_MS
+    if (now - last_sample >= METER_CYCLE_MS) {
+        last_sample = now;
+        modbus_sample_one();
+    }
+
+    // Publicacao periodica: medias + deltas + last a cada PUBLISH_INTERVAL_MS
+    if (now - last_publish >= PUBLISH_INTERVAL_MS) {
+        last_publish = now;
+        modbus_publish_all(mqtt_publish_sub);
+    }
+
+    // Serial commands
+    if (Serial.available()) {
+        String cmd = Serial.readStringUntil('\n');
+        process_command(cmd.c_str());
+    }
+}
+
+
+// ========== include/modbus_meter.h ==========
+#ifndef MODBUS_METER_H
+#define MODBUS_METER_H
+#include <stdint.h>
+
+typedef void (*modbus_publish_fn)(const char* subtopic, const char* payload);
+
+void modbus_init();
+
+// Acumulacao + media. Chamar a cada READ_INTERVAL_MS (round-robin 1 device por call)
+// Internamente cicla entre os devices.
+void modbus_sample_one();
+
+// Publica medias acumuladas e reseta contadores. Chamar a cada PUBLISH_INTERVAL_MS.
+void modbus_publish_all(modbus_publish_fn publish);
+
+// Wrapper legado: faz sample de todos e publica imediatamente (sem media).
+void modbus_read_all(modbus_publish_fn publish);
+
+// Executa comando BO (write coil). device_name do catalogo, cmd_id conforme bo_map.
+bool modbus_exec_command(const char* device_name, const char* cmd_id);
+
+#endif
+
+
+// ========== src/modbus_meter.cpp ==========
+#include "modbus_meter.h"
+#include "hal.h"
+#include "config.h"
+#include <ModbusMaster.h>
+#include <ArduinoJson.h>
+#include <string.h>
+#include <math.h>
+#include <time.h>
+
+static ModbusMaster _mb;
+static HardwareSerial _rs485(RS485_UART_NUM);
+
+static void _preTx()  { digitalWrite(RS485_DIR, HIGH); delayMicroseconds(500); }
+static void _postTx() { delayMicroseconds(500); digitalWrite(RS485_DIR, LOW); }
+
+static inline void _select(uint8_t addr) {
+    _mb.begin(addr, _rs485);
+    _mb.preTransmission(_preTx);
+    _mb.postTransmission(_postTx);
+}
+
+// Mapeia codigo de work_state Sungrow -> texto (mesmo do UFV-SOLAR_POWER)
+static const char* _work_state_text(uint16_t s) {
+    switch (s) {
+        case 0x0000: return "Run";
+        case 0x8000: return "Stop";
+        case 0x1300: return "Key Stop";
+        case 0x1500: return "Emergency Stop";
+        case 0x1400: return "Standby";
+        case 0x1200: return "Initial Standby";
+        case 0x1600: return "Starting";
+        case 0x9100: return "Alarm Run";
+        case 0x8100: return "Derating Run";
+        case 0x8200: return "Dispatch Run";
+        case 0x5500: return "Fault";
+        case 0x2500: return "Communication Fault";
+        case 0x1111: return "Uninitialized";
+        default:     return "Unknown";
+    }
+}
+
+void modbus_init() {
+    pinMode(RS485_DIR, OUTPUT);
+    digitalWrite(RS485_DIR, LOW);
+    _rs485.begin(RS485_BAUD, RS485_CONFIG, UART1_RX, UART1_TX);
+    Serial.printf("[RS485] TX=%d RX=%d DIR=%d %d baud\n",
+                  UART1_TX, UART1_RX, RS485_DIR, RS485_BAUD);
+}
+
+
+// =========================================================================
+// Inversor (Sungrow SG110CX)
+// Endereco Modbus: 1
+// Modos: 34 avg, 20 last, 0 delta
+// =========================================================================
+
+struct _Dev0State {
+    // Acumuladores (somas para media)
+    double sum_[34];
+    int samples;
+    // Ultima amostra (valores brutos decodificados)
+    float last_[54];
+    // Primeira amostra de delta (snapshot no inicio do ciclo)
+    float first_delta_[1];
+    bool has_first_delta;
+    // Estados BI da ultima leitura
+    uint8_t bi_[1];
+    bool valid;
+    int fail_streak;  // leituras consecutivas falhas (diagnostico)
+};
+static _Dev0State _ds0 = {};
+
+static bool _read_dev_0_raw(uint16_t *buf) {
+    _select(1);
+    // Bloco 0: reg 4999, count 50, func 0x04 - Regs 5000-5049: info, yields, MPPT 1-3, V/I AC, potencias, status
+    {
+        uint8_t rc = _mb.readInputRegisters(4999, 50);
+        if (rc != _mb.ku8MBSuccess) {
+            // 1 retry (timeout=0xE2, CRC=0xE3, IllegalAddr=0x02, IllegalFn=0x01, SlaveFail=0x04)
+            delay(50);
+            rc = _mb.readInputRegisters(4999, 50);
+        }
+        if (rc == _mb.ku8MBSuccess) {
+            for (uint16_t i = 0; i < 50; i++) buf[0 + i] = _mb.getResponseBuffer(i);
+        } else {
+            Serial.printf("[MB] Inversor_1 bloco 0 FAIL (reg=4999 count=50 rc=0x%02X)\n", rc);
+            return false;
+        }
+    }
+    delay(40);
+    // Bloco 1: reg 5049, count 40, func 0x04 - Regs 5050-5089: regulation, insulation
+    {
+        uint8_t rc = _mb.readInputRegisters(5049, 40);
+        if (rc != _mb.ku8MBSuccess) {
+            // 1 retry (timeout=0xE2, CRC=0xE3, IllegalAddr=0x02, IllegalFn=0x01, SlaveFail=0x04)
+            delay(50);
+            rc = _mb.readInputRegisters(5049, 40);
+        }
+        if (rc == _mb.ku8MBSuccess) {
+            for (uint16_t i = 0; i < 40; i++) buf[50 + i] = _mb.getResponseBuffer(i);
+        } else {
+            Serial.printf("[MB] Inversor_1 bloco 1 FAIL (reg=5049 count=40 rc=0x%02X)\n", rc);
+            return false;
+        }
+    }
+    delay(40);
+    // Bloco 2: reg 5089, count 30, func 0x04 - Regs 5090-5119: tempo diario, MPPT 4-6
+    {
+        uint8_t rc = _mb.readInputRegisters(5089, 30);
+        if (rc != _mb.ku8MBSuccess) {
+            // 1 retry (timeout=0xE2, CRC=0xE3, IllegalAddr=0x02, IllegalFn=0x01, SlaveFail=0x04)
+            delay(50);
+            rc = _mb.readInputRegisters(5089, 30);
+        }
+        if (rc == _mb.ku8MBSuccess) {
+            for (uint16_t i = 0; i < 30; i++) buf[90 + i] = _mb.getResponseBuffer(i);
+        } else {
+            Serial.printf("[MB] Inversor_1 bloco 2 FAIL (reg=5089 count=30 rc=0x%02X)\n", rc);
+            return false;
+        }
+    }
+    delay(40);
+    // Bloco 3: reg 5119, count 35, func 0x04 - Regs 5120-5154: MPPT 7-9, bus voltage, PID
+    {
+        uint8_t rc = _mb.readInputRegisters(5119, 35);
+        if (rc != _mb.ku8MBSuccess) {
+            // 1 retry (timeout=0xE2, CRC=0xE3, IllegalAddr=0x02, IllegalFn=0x01, SlaveFail=0x04)
+            delay(50);
+            rc = _mb.readInputRegisters(5119, 35);
+        }
+        if (rc == _mb.ku8MBSuccess) {
+            for (uint16_t i = 0; i < 35; i++) buf[120 + i] = _mb.getResponseBuffer(i);
+        } else {
+            Serial.printf("[MB] Inversor_1 bloco 3 FAIL (reg=5119 count=35 rc=0x%02X)\n", rc);
+            return false;
+        }
+    }
+    delay(40);
+    // Bloco 4: reg 7012, count 18, func 0x04 - Regs 7013-7030: strings 1-18
+    {
+        uint8_t rc = _mb.readInputRegisters(7012, 18);
+        if (rc != _mb.ku8MBSuccess) {
+            // 1 retry (timeout=0xE2, CRC=0xE3, IllegalAddr=0x02, IllegalFn=0x01, SlaveFail=0x04)
+            delay(50);
+            rc = _mb.readInputRegisters(7012, 18);
+        }
+        if (rc == _mb.ku8MBSuccess) {
+            for (uint16_t i = 0; i < 18; i++) buf[155 + i] = _mb.getResponseBuffer(i);
+        } else {
+            Serial.printf("[MB] Inversor_1 bloco 4 FAIL (reg=7012 count=18 rc=0x%02X)\n", rc);
+            return false;
+        }
+    }
+    delay(40);
+    return true;
+}
+
+// Le + acumula. Chamar a cada READ_INTERVAL_MS.
+static void _sample_dev_0() {
+    uint16_t buf[173];
+    if (!_read_dev_0_raw(buf)) {
+        _ds0.fail_streak++;
+        Serial.printf("[MB] Inversor_1: falha leitura (consecutivas: %d)\n", _ds0.fail_streak);
+        return;
+    }
+    if (_ds0.fail_streak > 0) {
+        Serial.printf("[MB] Inversor_1: OK (apos %d falhas consecutivas)\n", _ds0.fail_streak);
+        _ds0.fail_streak = 0;
+    }
+
+    float v_mppt1_voltage = (float)buf[11] / 10.0;
+    _ds0.sum_[0] += v_mppt1_voltage;
+    float v_mppt2_voltage = (float)buf[13] / 10.0;
+    _ds0.sum_[1] += v_mppt2_voltage;
+    float v_mppt3_voltage = (float)buf[15] / 10.0;
+    _ds0.sum_[2] += v_mppt3_voltage;
+    float v_dc_total_power = (float)(((uint32_t)buf[17+1] << 16) | buf[17]);
+    _ds0.sum_[3] += v_dc_total_power;
+    float v_vab = (float)buf[19] / 10.0;
+    _ds0.sum_[4] += v_vab;
+    float v_vbc = (float)buf[20] / 10.0;
+    _ds0.sum_[5] += v_vbc;
+    float v_vca = (float)buf[21] / 10.0;
+    _ds0.sum_[6] += v_vca;
+    float v_ia = (float)buf[22] / 10.0;
+    _ds0.sum_[7] += v_ia;
+    float v_ib = (float)buf[23] / 10.0;
+    _ds0.sum_[8] += v_ib;
+    float v_ic = (float)buf[24] / 10.0;
+    _ds0.sum_[9] += v_ic;
+    float v_mppt4_voltage = (float)buf[115] / 10.0;
+    _ds0.sum_[10] += v_mppt4_voltage;
+    float v_mppt5_voltage = (float)buf[117] / 10.0;
+    _ds0.sum_[11] += v_mppt5_voltage;
+    float v_mppt6_voltage = (float)buf[119] / 10.0;
+    _ds0.sum_[12] += v_mppt6_voltage;
+    float v_mppt7_voltage = (float)buf[121] / 10.0;
+    _ds0.sum_[13] += v_mppt7_voltage;
+    float v_mppt8_voltage = (float)buf[123] / 10.0;
+    _ds0.sum_[14] += v_mppt8_voltage;
+    float v_mppt9_voltage = (float)buf[130] / 10.0;
+    _ds0.sum_[15] += v_mppt9_voltage;
+    float v_string1_current = (float)buf[155] / 100.0;
+    _ds0.sum_[16] += v_string1_current;
+    float v_string2_current = (float)buf[156] / 100.0;
+    _ds0.sum_[17] += v_string2_current;
+    float v_string3_current = (float)buf[157] / 100.0;
+    _ds0.sum_[18] += v_string3_current;
+    float v_string4_current = (float)buf[158] / 100.0;
+    _ds0.sum_[19] += v_string4_current;
+    float v_string5_current = (float)buf[159] / 100.0;
+    _ds0.sum_[20] += v_string5_current;
+    float v_string6_current = (float)buf[160] / 100.0;
+    _ds0.sum_[21] += v_string6_current;
+    float v_string7_current = (float)buf[161] / 100.0;
+    _ds0.sum_[22] += v_string7_current;
+    float v_string8_current = (float)buf[162] / 100.0;
+    _ds0.sum_[23] += v_string8_current;
+    float v_string9_current = (float)buf[163] / 100.0;
+    _ds0.sum_[24] += v_string9_current;
+    float v_string10_current = (float)buf[164] / 100.0;
+    _ds0.sum_[25] += v_string10_current;
+    float v_string11_current = (float)buf[165] / 100.0;
+    _ds0.sum_[26] += v_string11_current;
+    float v_string12_current = (float)buf[166] / 100.0;
+    _ds0.sum_[27] += v_string12_current;
+    float v_string13_current = (float)buf[167] / 100.0;
+    _ds0.sum_[28] += v_string13_current;
+    float v_string14_current = (float)buf[168] / 100.0;
+    _ds0.sum_[29] += v_string14_current;
+    float v_string15_current = (float)buf[169] / 100.0;
+    _ds0.sum_[30] += v_string15_current;
+    float v_string16_current = (float)buf[170] / 100.0;
+    _ds0.sum_[31] += v_string16_current;
+    float v_string17_current = (float)buf[171] / 100.0;
+    _ds0.sum_[32] += v_string17_current;
+    float v_string18_current = (float)buf[172] / 100.0;
+    _ds0.sum_[33] += v_string18_current;
+    float v_device_type = (float)buf[0];
+    float v_nominal_power = (float)buf[1] / 10.0;
+    float v_output_type = (float)buf[2];
+    float v_daily_yield = (float)buf[3] / 10.0;
+    float v_total_yield = (float)(((uint32_t)buf[4+1] << 16) | buf[4]);
+    float v_total_running_time = (float)(((uint32_t)buf[6+1] << 16) | buf[6]);
+    float v_temp_interna = (float)(int16_t)buf[8] / 10.0;
+    float v_potencia_aparente = (float)(((uint32_t)buf[9+1] << 16) | buf[9]);
+    float v_apparent_total = (float)(((uint32_t)buf[9+1] << 16) | buf[9]);
+    float v_potencia_ativa = (float)(((uint32_t)buf[31+1] << 16) | buf[31]);
+    float v_potencia_reativa = (float)(int32_t)(((uint32_t)buf[33+1] << 16) | buf[33]);
+    float v_fp = (float)(int16_t)buf[35] / 1000.0;
+    float v_freq = (float)buf[36] / 10.0;
+    float v_work_state = (float)buf[38];
+    float v_nominal_reactive_power = (float)buf[49] / 10.0;
+    float v_insulation_resistance = (float)buf[71];
+    float v_daily_running_time = (float)buf[113];
+    float v_bus_voltage = (float)buf[147] / 10.0;
+    float v_pid_work_state = (float)buf[150];
+    float v_pid_alarm_code = (float)buf[151];
+    _ds0.last_[0] = v_mppt1_voltage;
+    _ds0.last_[1] = v_mppt2_voltage;
+    _ds0.last_[2] = v_mppt3_voltage;
+    _ds0.last_[3] = v_dc_total_power;
+    _ds0.last_[4] = v_vab;
+    _ds0.last_[5] = v_vbc;
+    _ds0.last_[6] = v_vca;
+    _ds0.last_[7] = v_ia;
+    _ds0.last_[8] = v_ib;
+    _ds0.last_[9] = v_ic;
+    _ds0.last_[10] = v_mppt4_voltage;
+    _ds0.last_[11] = v_mppt5_voltage;
+    _ds0.last_[12] = v_mppt6_voltage;
+    _ds0.last_[13] = v_mppt7_voltage;
+    _ds0.last_[14] = v_mppt8_voltage;
+    _ds0.last_[15] = v_mppt9_voltage;
+    _ds0.last_[16] = v_string1_current;
+    _ds0.last_[17] = v_string2_current;
+    _ds0.last_[18] = v_string3_current;
+    _ds0.last_[19] = v_string4_current;
+    _ds0.last_[20] = v_string5_current;
+    _ds0.last_[21] = v_string6_current;
+    _ds0.last_[22] = v_string7_current;
+    _ds0.last_[23] = v_string8_current;
+    _ds0.last_[24] = v_string9_current;
+    _ds0.last_[25] = v_string10_current;
+    _ds0.last_[26] = v_string11_current;
+    _ds0.last_[27] = v_string12_current;
+    _ds0.last_[28] = v_string13_current;
+    _ds0.last_[29] = v_string14_current;
+    _ds0.last_[30] = v_string15_current;
+    _ds0.last_[31] = v_string16_current;
+    _ds0.last_[32] = v_string17_current;
+    _ds0.last_[33] = v_string18_current;
+    _ds0.last_[34] = v_device_type;
+    _ds0.last_[35] = v_nominal_power;
+    _ds0.last_[36] = v_output_type;
+    _ds0.last_[37] = v_daily_yield;
+    _ds0.last_[38] = v_total_yield;
+    _ds0.last_[39] = v_total_running_time;
+    _ds0.last_[40] = v_temp_interna;
+    _ds0.last_[41] = v_potencia_aparente;
+    _ds0.last_[42] = v_apparent_total;
+    _ds0.last_[43] = v_potencia_ativa;
+    _ds0.last_[44] = v_potencia_reativa;
+    _ds0.last_[45] = v_fp;
+    _ds0.last_[46] = v_freq;
+    _ds0.last_[47] = v_work_state;
+    _ds0.last_[48] = v_nominal_reactive_power;
+    _ds0.last_[49] = v_insulation_resistance;
+    _ds0.last_[50] = v_daily_running_time;
+    _ds0.last_[51] = v_bus_voltage;
+    _ds0.last_[52] = v_pid_work_state;
+    _ds0.last_[53] = v_pid_alarm_code;
+    _ds0.samples++;
+    // Log de debug — mostra principais valores lidos
+    Serial.printf("[MB] Inversor_1 #%d: ", _ds0.samples);
+    Serial.printf("vab=%.2f ", v_vab);
+    Serial.printf("vbc=%.2f ", v_vbc);
+    Serial.printf("vca=%.2f ", v_vca);
+    Serial.printf("ia=%.2f ", v_ia);
+    Serial.printf("ib=%.2f ", v_ib);
+    Serial.printf("ic=%.2f", v_ic);
+    Serial.println();
+    _ds0.valid = true;
+}
+
+// Publica JSON (medias + last + delta) e reseta acumuladores. Chamar a cada PUBLISH_INTERVAL_MS.
+static void _publish_dev_0(modbus_publish_fn publish) {
+    if (!_ds0.valid || _ds0.samples == 0) {
+        publish("Inversor_1/status", "{\"error\":\"no_samples\"}");
+        return;
+    }
+
+    int n = _ds0.samples;
+    StaticJsonDocument<3072> d;
+    d["timestamp"] = (long)time(nullptr);
+    d["device"] = "Inversor_1";
+    d["model"] = "SG110CX";
+    d["inverter_id"] = 1;
+    d["samples"] = n;
+
+    JsonObject g_info = d.createNestedObject("info");
+    { char _h[8]; snprintf(_h, sizeof(_h), "%x", (uint16_t)(_ds0.last_[34])); g_info["device_type"] = String(_h); }
+    g_info["nominal_power"] = _ds0.last_[35];
+    g_info["output_type"] = _ds0.last_[36];
+    JsonObject g_energy = d.createNestedObject("energy");
+    g_energy["daily_yield"] = _ds0.last_[37];
+    g_energy["total_yield"] = _ds0.last_[38];
+    g_energy["total_running_time"] = _ds0.last_[39];
+    g_energy["apparent_power_1"] = _ds0.last_[41];
+    g_energy["daily_running_time"] = _ds0.last_[50];
+    JsonObject g_temperature = d.createNestedObject("temperature");
+    g_temperature["internal"] = _ds0.last_[40];
+    JsonObject g_dc = d.createNestedObject("dc");
+    g_dc["mppt1_voltage"] = (float)(_ds0.sum_[0] / n);
+    g_dc["mppt2_voltage"] = (float)(_ds0.sum_[1] / n);
+    g_dc["mppt3_voltage"] = (float)(_ds0.sum_[2] / n);
+    g_dc["total_power"] = (float)(_ds0.sum_[3] / n);
+    g_dc["mppt4_voltage"] = (float)(_ds0.sum_[10] / n);
+    g_dc["mppt5_voltage"] = (float)(_ds0.sum_[11] / n);
+    g_dc["mppt6_voltage"] = (float)(_ds0.sum_[12] / n);
+    g_dc["mppt7_voltage"] = (float)(_ds0.sum_[13] / n);
+    g_dc["mppt8_voltage"] = (float)(_ds0.sum_[14] / n);
+    g_dc["mppt9_voltage"] = (float)(_ds0.sum_[15] / n);
+    g_dc["string1_current"] = (float)(_ds0.sum_[16] / n);
+    g_dc["string2_current"] = (float)(_ds0.sum_[17] / n);
+    g_dc["string3_current"] = (float)(_ds0.sum_[18] / n);
+    g_dc["string4_current"] = (float)(_ds0.sum_[19] / n);
+    g_dc["string5_current"] = (float)(_ds0.sum_[20] / n);
+    g_dc["string6_current"] = (float)(_ds0.sum_[21] / n);
+    g_dc["string7_current"] = (float)(_ds0.sum_[22] / n);
+    g_dc["string8_current"] = (float)(_ds0.sum_[23] / n);
+    g_dc["string9_current"] = (float)(_ds0.sum_[24] / n);
+    g_dc["string10_current"] = (float)(_ds0.sum_[25] / n);
+    g_dc["string11_current"] = (float)(_ds0.sum_[26] / n);
+    g_dc["string12_current"] = (float)(_ds0.sum_[27] / n);
+    g_dc["string13_current"] = (float)(_ds0.sum_[28] / n);
+    g_dc["string14_current"] = (float)(_ds0.sum_[29] / n);
+    g_dc["string15_current"] = (float)(_ds0.sum_[30] / n);
+    g_dc["string16_current"] = (float)(_ds0.sum_[31] / n);
+    g_dc["string17_current"] = (float)(_ds0.sum_[32] / n);
+    g_dc["string18_current"] = (float)(_ds0.sum_[33] / n);
+    JsonObject g_voltage = d.createNestedObject("voltage");
+    g_voltage["phase_a-b"] = (float)(_ds0.sum_[4] / n);
+    g_voltage["phase_b-c"] = (float)(_ds0.sum_[5] / n);
+    g_voltage["phase_c-a"] = (float)(_ds0.sum_[6] / n);
+    JsonObject g_current = d.createNestedObject("current");
+    g_current["phase_a"] = (float)(_ds0.sum_[7] / n);
+    g_current["phase_b"] = (float)(_ds0.sum_[8] / n);
+    g_current["phase_c"] = (float)(_ds0.sum_[9] / n);
+    JsonObject g_power = d.createNestedObject("power");
+    g_power["apparent_total"] = _ds0.last_[42];
+    g_power["active_total"] = _ds0.last_[43];
+    g_power["reactive_total"] = _ds0.last_[44];
+    g_power["power_factor"] = _ds0.last_[45];
+    g_power["frequency"] = _ds0.last_[46];
+    JsonObject g_status = d.createNestedObject("status");
+    g_status["work_state"] = _ds0.last_[47];
+    g_status["work_state_text"] = _work_state_text((uint16_t)_ds0.last_[47]);
+    JsonObject g_protection = d.createNestedObject("protection");
+    g_protection["insulation_resistance"] = _ds0.last_[49];
+    g_protection["bus_voltage"] = _ds0.last_[51];
+    JsonObject g_regulation = d.createNestedObject("regulation");
+    g_regulation["nominal_reactive_power"] = _ds0.last_[48];
+    JsonObject g_pid = d.createNestedObject("pid");
+    g_pid["work_state"] = _ds0.last_[52];
+    g_pid["alarm_code"] = _ds0.last_[53];
+
+    char payload[3072];
+    size_t sz = serializeJson(d, payload, sizeof(payload));
+    if (sz > 0) {
+        publish("Inversor_1/data", payload);
+        Serial.printf("\n===== PUBLICADO: Inversor_1 (%d amostras) =====\n", n);
+        Serial.println(payload);
+        Serial.println();
+    }
+
+    // Reset do ciclo (preserva 'first_delta' da ultima amostra para o proximo intervalo)
+    for (int i = 0; i < 34; i++) _ds0.sum_[i] = 0;
+    _ds0.samples = 0;
+}
+
+// =========================================================================
+// Inversor (Sungrow SG75CX)
+// Endereco Modbus: 2
+// Modos: 34 avg, 20 last, 0 delta
+// =========================================================================
+
+struct _Dev1State {
+    // Acumuladores (somas para media)
+    double sum_[34];
+    int samples;
+    // Ultima amostra (valores brutos decodificados)
+    float last_[54];
+    // Primeira amostra de delta (snapshot no inicio do ciclo)
+    float first_delta_[1];
+    bool has_first_delta;
+    // Estados BI da ultima leitura
+    uint8_t bi_[1];
+    bool valid;
+    int fail_streak;  // leituras consecutivas falhas (diagnostico)
+};
+static _Dev1State _ds1 = {};
+
+static bool _read_dev_1_raw(uint16_t *buf) {
+    _select(2);
+    // Bloco 0: reg 4999, count 50, func 0x04 - Regs 5000-5049: info, yields, MPPT 1-3, V/I AC, potencias, status
+    {
+        uint8_t rc = _mb.readInputRegisters(4999, 50);
+        if (rc != _mb.ku8MBSuccess) {
+            // 1 retry (timeout=0xE2, CRC=0xE3, IllegalAddr=0x02, IllegalFn=0x01, SlaveFail=0x04)
+            delay(50);
+            rc = _mb.readInputRegisters(4999, 50);
+        }
+        if (rc == _mb.ku8MBSuccess) {
+            for (uint16_t i = 0; i < 50; i++) buf[0 + i] = _mb.getResponseBuffer(i);
+        } else {
+            Serial.printf("[MB] Inversor_2 bloco 0 FAIL (reg=4999 count=50 rc=0x%02X)\n", rc);
+            return false;
+        }
+    }
+    delay(40);
+    // Bloco 1: reg 5049, count 40, func 0x04 - Regs 5050-5089: regulation, insulation
+    {
+        uint8_t rc = _mb.readInputRegisters(5049, 40);
+        if (rc != _mb.ku8MBSuccess) {
+            // 1 retry (timeout=0xE2, CRC=0xE3, IllegalAddr=0x02, IllegalFn=0x01, SlaveFail=0x04)
+            delay(50);
+            rc = _mb.readInputRegisters(5049, 40);
+        }
+        if (rc == _mb.ku8MBSuccess) {
+            for (uint16_t i = 0; i < 40; i++) buf[50 + i] = _mb.getResponseBuffer(i);
+        } else {
+            Serial.printf("[MB] Inversor_2 bloco 1 FAIL (reg=5049 count=40 rc=0x%02X)\n", rc);
+            return false;
+        }
+    }
+    delay(40);
+    // Bloco 2: reg 5089, count 30, func 0x04 - Regs 5090-5119: tempo diario, MPPT 4-6
+    {
+        uint8_t rc = _mb.readInputRegisters(5089, 30);
+        if (rc != _mb.ku8MBSuccess) {
+            // 1 retry (timeout=0xE2, CRC=0xE3, IllegalAddr=0x02, IllegalFn=0x01, SlaveFail=0x04)
+            delay(50);
+            rc = _mb.readInputRegisters(5089, 30);
+        }
+        if (rc == _mb.ku8MBSuccess) {
+            for (uint16_t i = 0; i < 30; i++) buf[90 + i] = _mb.getResponseBuffer(i);
+        } else {
+            Serial.printf("[MB] Inversor_2 bloco 2 FAIL (reg=5089 count=30 rc=0x%02X)\n", rc);
+            return false;
+        }
+    }
+    delay(40);
+    // Bloco 3: reg 5119, count 35, func 0x04 - Regs 5120-5154: MPPT 7-9, bus voltage, PID
+    {
+        uint8_t rc = _mb.readInputRegisters(5119, 35);
+        if (rc != _mb.ku8MBSuccess) {
+            // 1 retry (timeout=0xE2, CRC=0xE3, IllegalAddr=0x02, IllegalFn=0x01, SlaveFail=0x04)
+            delay(50);
+            rc = _mb.readInputRegisters(5119, 35);
+        }
+        if (rc == _mb.ku8MBSuccess) {
+            for (uint16_t i = 0; i < 35; i++) buf[120 + i] = _mb.getResponseBuffer(i);
+        } else {
+            Serial.printf("[MB] Inversor_2 bloco 3 FAIL (reg=5119 count=35 rc=0x%02X)\n", rc);
+            return false;
+        }
+    }
+    delay(40);
+    // Bloco 4: reg 7012, count 18, func 0x04 - Regs 7013-7030: strings 1-18
+    {
+        uint8_t rc = _mb.readInputRegisters(7012, 18);
+        if (rc != _mb.ku8MBSuccess) {
+            // 1 retry (timeout=0xE2, CRC=0xE3, IllegalAddr=0x02, IllegalFn=0x01, SlaveFail=0x04)
+            delay(50);
+            rc = _mb.readInputRegisters(7012, 18);
+        }
+        if (rc == _mb.ku8MBSuccess) {
+            for (uint16_t i = 0; i < 18; i++) buf[155 + i] = _mb.getResponseBuffer(i);
+        } else {
+            Serial.printf("[MB] Inversor_2 bloco 4 FAIL (reg=7012 count=18 rc=0x%02X)\n", rc);
+            return false;
+        }
+    }
+    delay(40);
+    return true;
+}
+
+// Le + acumula. Chamar a cada READ_INTERVAL_MS.
+static void _sample_dev_1() {
+    uint16_t buf[173];
+    if (!_read_dev_1_raw(buf)) {
+        _ds1.fail_streak++;
+        Serial.printf("[MB] Inversor_2: falha leitura (consecutivas: %d)\n", _ds1.fail_streak);
+        return;
+    }
+    if (_ds1.fail_streak > 0) {
+        Serial.printf("[MB] Inversor_2: OK (apos %d falhas consecutivas)\n", _ds1.fail_streak);
+        _ds1.fail_streak = 0;
+    }
+
+    float v_mppt1_voltage = (float)buf[11] / 10.0;
+    _ds1.sum_[0] += v_mppt1_voltage;
+    float v_mppt2_voltage = (float)buf[13] / 10.0;
+    _ds1.sum_[1] += v_mppt2_voltage;
+    float v_mppt3_voltage = (float)buf[15] / 10.0;
+    _ds1.sum_[2] += v_mppt3_voltage;
+    float v_dc_total_power = (float)(((uint32_t)buf[17+1] << 16) | buf[17]);
+    _ds1.sum_[3] += v_dc_total_power;
+    float v_vab = (float)buf[19] / 10.0;
+    _ds1.sum_[4] += v_vab;
+    float v_vbc = (float)buf[20] / 10.0;
+    _ds1.sum_[5] += v_vbc;
+    float v_vca = (float)buf[21] / 10.0;
+    _ds1.sum_[6] += v_vca;
+    float v_ia = (float)buf[22] / 10.0;
+    _ds1.sum_[7] += v_ia;
+    float v_ib = (float)buf[23] / 10.0;
+    _ds1.sum_[8] += v_ib;
+    float v_ic = (float)buf[24] / 10.0;
+    _ds1.sum_[9] += v_ic;
+    float v_mppt4_voltage = (float)buf[115] / 10.0;
+    _ds1.sum_[10] += v_mppt4_voltage;
+    float v_mppt5_voltage = (float)buf[117] / 10.0;
+    _ds1.sum_[11] += v_mppt5_voltage;
+    float v_mppt6_voltage = (float)buf[119] / 10.0;
+    _ds1.sum_[12] += v_mppt6_voltage;
+    float v_mppt7_voltage = (float)buf[121] / 10.0;
+    _ds1.sum_[13] += v_mppt7_voltage;
+    float v_mppt8_voltage = (float)buf[123] / 10.0;
+    _ds1.sum_[14] += v_mppt8_voltage;
+    float v_mppt9_voltage = (float)buf[130] / 10.0;
+    _ds1.sum_[15] += v_mppt9_voltage;
+    float v_string1_current = (float)buf[155] / 100.0;
+    _ds1.sum_[16] += v_string1_current;
+    float v_string2_current = (float)buf[156] / 100.0;
+    _ds1.sum_[17] += v_string2_current;
+    float v_string3_current = (float)buf[157] / 100.0;
+    _ds1.sum_[18] += v_string3_current;
+    float v_string4_current = (float)buf[158] / 100.0;
+    _ds1.sum_[19] += v_string4_current;
+    float v_string5_current = (float)buf[159] / 100.0;
+    _ds1.sum_[20] += v_string5_current;
+    float v_string6_current = (float)buf[160] / 100.0;
+    _ds1.sum_[21] += v_string6_current;
+    float v_string7_current = (float)buf[161] / 100.0;
+    _ds1.sum_[22] += v_string7_current;
+    float v_string8_current = (float)buf[162] / 100.0;
+    _ds1.sum_[23] += v_string8_current;
+    float v_string9_current = (float)buf[163] / 100.0;
+    _ds1.sum_[24] += v_string9_current;
+    float v_string10_current = (float)buf[164] / 100.0;
+    _ds1.sum_[25] += v_string10_current;
+    float v_string11_current = (float)buf[165] / 100.0;
+    _ds1.sum_[26] += v_string11_current;
+    float v_string12_current = (float)buf[166] / 100.0;
+    _ds1.sum_[27] += v_string12_current;
+    float v_string13_current = (float)buf[167] / 100.0;
+    _ds1.sum_[28] += v_string13_current;
+    float v_string14_current = (float)buf[168] / 100.0;
+    _ds1.sum_[29] += v_string14_current;
+    float v_string15_current = (float)buf[169] / 100.0;
+    _ds1.sum_[30] += v_string15_current;
+    float v_string16_current = (float)buf[170] / 100.0;
+    _ds1.sum_[31] += v_string16_current;
+    float v_string17_current = (float)buf[171] / 100.0;
+    _ds1.sum_[32] += v_string17_current;
+    float v_string18_current = (float)buf[172] / 100.0;
+    _ds1.sum_[33] += v_string18_current;
+    float v_device_type = (float)buf[0];
+    float v_nominal_power = (float)buf[1] / 10.0;
+    float v_output_type = (float)buf[2];
+    float v_daily_yield = (float)buf[3] / 10.0;
+    float v_total_yield = (float)(((uint32_t)buf[4+1] << 16) | buf[4]);
+    float v_total_running_time = (float)(((uint32_t)buf[6+1] << 16) | buf[6]);
+    float v_temp_interna = (float)(int16_t)buf[8] / 10.0;
+    float v_potencia_aparente = (float)(((uint32_t)buf[9+1] << 16) | buf[9]);
+    float v_apparent_total = (float)(((uint32_t)buf[9+1] << 16) | buf[9]);
+    float v_potencia_ativa = (float)(((uint32_t)buf[31+1] << 16) | buf[31]);
+    float v_potencia_reativa = (float)(int32_t)(((uint32_t)buf[33+1] << 16) | buf[33]);
+    float v_fp = (float)(int16_t)buf[35] / 1000.0;
+    float v_freq = (float)buf[36] / 10.0;
+    float v_work_state = (float)buf[38];
+    float v_nominal_reactive_power = (float)buf[49] / 10.0;
+    float v_insulation_resistance = (float)buf[71];
+    float v_daily_running_time = (float)buf[113];
+    float v_bus_voltage = (float)buf[147] / 10.0;
+    float v_pid_work_state = (float)buf[150];
+    float v_pid_alarm_code = (float)buf[151];
+    _ds1.last_[0] = v_mppt1_voltage;
+    _ds1.last_[1] = v_mppt2_voltage;
+    _ds1.last_[2] = v_mppt3_voltage;
+    _ds1.last_[3] = v_dc_total_power;
+    _ds1.last_[4] = v_vab;
+    _ds1.last_[5] = v_vbc;
+    _ds1.last_[6] = v_vca;
+    _ds1.last_[7] = v_ia;
+    _ds1.last_[8] = v_ib;
+    _ds1.last_[9] = v_ic;
+    _ds1.last_[10] = v_mppt4_voltage;
+    _ds1.last_[11] = v_mppt5_voltage;
+    _ds1.last_[12] = v_mppt6_voltage;
+    _ds1.last_[13] = v_mppt7_voltage;
+    _ds1.last_[14] = v_mppt8_voltage;
+    _ds1.last_[15] = v_mppt9_voltage;
+    _ds1.last_[16] = v_string1_current;
+    _ds1.last_[17] = v_string2_current;
+    _ds1.last_[18] = v_string3_current;
+    _ds1.last_[19] = v_string4_current;
+    _ds1.last_[20] = v_string5_current;
+    _ds1.last_[21] = v_string6_current;
+    _ds1.last_[22] = v_string7_current;
+    _ds1.last_[23] = v_string8_current;
+    _ds1.last_[24] = v_string9_current;
+    _ds1.last_[25] = v_string10_current;
+    _ds1.last_[26] = v_string11_current;
+    _ds1.last_[27] = v_string12_current;
+    _ds1.last_[28] = v_string13_current;
+    _ds1.last_[29] = v_string14_current;
+    _ds1.last_[30] = v_string15_current;
+    _ds1.last_[31] = v_string16_current;
+    _ds1.last_[32] = v_string17_current;
+    _ds1.last_[33] = v_string18_current;
+    _ds1.last_[34] = v_device_type;
+    _ds1.last_[35] = v_nominal_power;
+    _ds1.last_[36] = v_output_type;
+    _ds1.last_[37] = v_daily_yield;
+    _ds1.last_[38] = v_total_yield;
+    _ds1.last_[39] = v_total_running_time;
+    _ds1.last_[40] = v_temp_interna;
+    _ds1.last_[41] = v_potencia_aparente;
+    _ds1.last_[42] = v_apparent_total;
+    _ds1.last_[43] = v_potencia_ativa;
+    _ds1.last_[44] = v_potencia_reativa;
+    _ds1.last_[45] = v_fp;
+    _ds1.last_[46] = v_freq;
+    _ds1.last_[47] = v_work_state;
+    _ds1.last_[48] = v_nominal_reactive_power;
+    _ds1.last_[49] = v_insulation_resistance;
+    _ds1.last_[50] = v_daily_running_time;
+    _ds1.last_[51] = v_bus_voltage;
+    _ds1.last_[52] = v_pid_work_state;
+    _ds1.last_[53] = v_pid_alarm_code;
+    _ds1.samples++;
+    // Log de debug — mostra principais valores lidos
+    Serial.printf("[MB] Inversor_2 #%d: ", _ds1.samples);
+    Serial.printf("vab=%.2f ", v_vab);
+    Serial.printf("vbc=%.2f ", v_vbc);
+    Serial.printf("vca=%.2f ", v_vca);
+    Serial.printf("ia=%.2f ", v_ia);
+    Serial.printf("ib=%.2f ", v_ib);
+    Serial.printf("ic=%.2f", v_ic);
+    Serial.println();
+    _ds1.valid = true;
+}
+
+// Publica JSON (medias + last + delta) e reseta acumuladores. Chamar a cada PUBLISH_INTERVAL_MS.
+static void _publish_dev_1(modbus_publish_fn publish) {
+    if (!_ds1.valid || _ds1.samples == 0) {
+        publish("Inversor_2/status", "{\"error\":\"no_samples\"}");
+        return;
+    }
+
+    int n = _ds1.samples;
+    StaticJsonDocument<3072> d;
+    d["timestamp"] = (long)time(nullptr);
+    d["device"] = "Inversor_2";
+    d["model"] = "SG75CX";
+    d["inverter_id"] = 2;
+    d["samples"] = n;
+
+    JsonObject g_info = d.createNestedObject("info");
+    { char _h[8]; snprintf(_h, sizeof(_h), "%x", (uint16_t)(_ds1.last_[34])); g_info["device_type"] = String(_h); }
+    g_info["nominal_power"] = _ds1.last_[35];
+    g_info["output_type"] = _ds1.last_[36];
+    JsonObject g_energy = d.createNestedObject("energy");
+    g_energy["daily_yield"] = _ds1.last_[37];
+    g_energy["total_yield"] = _ds1.last_[38];
+    g_energy["total_running_time"] = _ds1.last_[39];
+    g_energy["apparent_power_1"] = _ds1.last_[41];
+    g_energy["daily_running_time"] = _ds1.last_[50];
+    JsonObject g_temperature = d.createNestedObject("temperature");
+    g_temperature["internal"] = _ds1.last_[40];
+    JsonObject g_dc = d.createNestedObject("dc");
+    g_dc["mppt1_voltage"] = (float)(_ds1.sum_[0] / n);
+    g_dc["mppt2_voltage"] = (float)(_ds1.sum_[1] / n);
+    g_dc["mppt3_voltage"] = (float)(_ds1.sum_[2] / n);
+    g_dc["total_power"] = (float)(_ds1.sum_[3] / n);
+    g_dc["mppt4_voltage"] = (float)(_ds1.sum_[10] / n);
+    g_dc["mppt5_voltage"] = (float)(_ds1.sum_[11] / n);
+    g_dc["mppt6_voltage"] = (float)(_ds1.sum_[12] / n);
+    g_dc["mppt7_voltage"] = (float)(_ds1.sum_[13] / n);
+    g_dc["mppt8_voltage"] = (float)(_ds1.sum_[14] / n);
+    g_dc["mppt9_voltage"] = (float)(_ds1.sum_[15] / n);
+    g_dc["string1_current"] = (float)(_ds1.sum_[16] / n);
+    g_dc["string2_current"] = (float)(_ds1.sum_[17] / n);
+    g_dc["string3_current"] = (float)(_ds1.sum_[18] / n);
+    g_dc["string4_current"] = (float)(_ds1.sum_[19] / n);
+    g_dc["string5_current"] = (float)(_ds1.sum_[20] / n);
+    g_dc["string6_current"] = (float)(_ds1.sum_[21] / n);
+    g_dc["string7_current"] = (float)(_ds1.sum_[22] / n);
+    g_dc["string8_current"] = (float)(_ds1.sum_[23] / n);
+    g_dc["string9_current"] = (float)(_ds1.sum_[24] / n);
+    g_dc["string10_current"] = (float)(_ds1.sum_[25] / n);
+    g_dc["string11_current"] = (float)(_ds1.sum_[26] / n);
+    g_dc["string12_current"] = (float)(_ds1.sum_[27] / n);
+    g_dc["string13_current"] = (float)(_ds1.sum_[28] / n);
+    g_dc["string14_current"] = (float)(_ds1.sum_[29] / n);
+    g_dc["string15_current"] = (float)(_ds1.sum_[30] / n);
+    g_dc["string16_current"] = (float)(_ds1.sum_[31] / n);
+    g_dc["string17_current"] = (float)(_ds1.sum_[32] / n);
+    g_dc["string18_current"] = (float)(_ds1.sum_[33] / n);
+    JsonObject g_voltage = d.createNestedObject("voltage");
+    g_voltage["phase_a-b"] = (float)(_ds1.sum_[4] / n);
+    g_voltage["phase_b-c"] = (float)(_ds1.sum_[5] / n);
+    g_voltage["phase_c-a"] = (float)(_ds1.sum_[6] / n);
+    JsonObject g_current = d.createNestedObject("current");
+    g_current["phase_a"] = (float)(_ds1.sum_[7] / n);
+    g_current["phase_b"] = (float)(_ds1.sum_[8] / n);
+    g_current["phase_c"] = (float)(_ds1.sum_[9] / n);
+    JsonObject g_power = d.createNestedObject("power");
+    g_power["apparent_total"] = _ds1.last_[42];
+    g_power["active_total"] = _ds1.last_[43];
+    g_power["reactive_total"] = _ds1.last_[44];
+    g_power["power_factor"] = _ds1.last_[45];
+    g_power["frequency"] = _ds1.last_[46];
+    JsonObject g_status = d.createNestedObject("status");
+    g_status["work_state"] = _ds1.last_[47];
+    g_status["work_state_text"] = _work_state_text((uint16_t)_ds1.last_[47]);
+    JsonObject g_protection = d.createNestedObject("protection");
+    g_protection["insulation_resistance"] = _ds1.last_[49];
+    g_protection["bus_voltage"] = _ds1.last_[51];
+    JsonObject g_regulation = d.createNestedObject("regulation");
+    g_regulation["nominal_reactive_power"] = _ds1.last_[48];
+    JsonObject g_pid = d.createNestedObject("pid");
+    g_pid["work_state"] = _ds1.last_[52];
+    g_pid["alarm_code"] = _ds1.last_[53];
+
+    char payload[3072];
+    size_t sz = serializeJson(d, payload, sizeof(payload));
+    if (sz > 0) {
+        publish("Inversor_2/data", payload);
+        Serial.printf("\n===== PUBLICADO: Inversor_2 (%d amostras) =====\n", n);
+        Serial.println(payload);
+        Serial.println();
+    }
+
+    // Reset do ciclo (preserva 'first_delta' da ultima amostra para o proximo intervalo)
+    for (int i = 0; i < 34; i++) _ds1.sum_[i] = 0;
+    _ds1.samples = 0;
+}
+
+// =========================================================================
+// Inversor (Sungrow SG110CX)
+// Endereco Modbus: 3
+// Modos: 34 avg, 20 last, 0 delta
+// =========================================================================
+
+struct _Dev2State {
+    // Acumuladores (somas para media)
+    double sum_[34];
+    int samples;
+    // Ultima amostra (valores brutos decodificados)
+    float last_[54];
+    // Primeira amostra de delta (snapshot no inicio do ciclo)
+    float first_delta_[1];
+    bool has_first_delta;
+    // Estados BI da ultima leitura
+    uint8_t bi_[1];
+    bool valid;
+    int fail_streak;  // leituras consecutivas falhas (diagnostico)
+};
+static _Dev2State _ds2 = {};
+
+static bool _read_dev_2_raw(uint16_t *buf) {
+    _select(3);
+    // Bloco 0: reg 4999, count 50, func 0x04 - Regs 5000-5049: info, yields, MPPT 1-3, V/I AC, potencias, status
+    {
+        uint8_t rc = _mb.readInputRegisters(4999, 50);
+        if (rc != _mb.ku8MBSuccess) {
+            // 1 retry (timeout=0xE2, CRC=0xE3, IllegalAddr=0x02, IllegalFn=0x01, SlaveFail=0x04)
+            delay(50);
+            rc = _mb.readInputRegisters(4999, 50);
+        }
+        if (rc == _mb.ku8MBSuccess) {
+            for (uint16_t i = 0; i < 50; i++) buf[0 + i] = _mb.getResponseBuffer(i);
+        } else {
+            Serial.printf("[MB] Inversor_3 bloco 0 FAIL (reg=4999 count=50 rc=0x%02X)\n", rc);
+            return false;
+        }
+    }
+    delay(40);
+    // Bloco 1: reg 5049, count 40, func 0x04 - Regs 5050-5089: regulation, insulation
+    {
+        uint8_t rc = _mb.readInputRegisters(5049, 40);
+        if (rc != _mb.ku8MBSuccess) {
+            // 1 retry (timeout=0xE2, CRC=0xE3, IllegalAddr=0x02, IllegalFn=0x01, SlaveFail=0x04)
+            delay(50);
+            rc = _mb.readInputRegisters(5049, 40);
+        }
+        if (rc == _mb.ku8MBSuccess) {
+            for (uint16_t i = 0; i < 40; i++) buf[50 + i] = _mb.getResponseBuffer(i);
+        } else {
+            Serial.printf("[MB] Inversor_3 bloco 1 FAIL (reg=5049 count=40 rc=0x%02X)\n", rc);
+            return false;
+        }
+    }
+    delay(40);
+    // Bloco 2: reg 5089, count 30, func 0x04 - Regs 5090-5119: tempo diario, MPPT 4-6
+    {
+        uint8_t rc = _mb.readInputRegisters(5089, 30);
+        if (rc != _mb.ku8MBSuccess) {
+            // 1 retry (timeout=0xE2, CRC=0xE3, IllegalAddr=0x02, IllegalFn=0x01, SlaveFail=0x04)
+            delay(50);
+            rc = _mb.readInputRegisters(5089, 30);
+        }
+        if (rc == _mb.ku8MBSuccess) {
+            for (uint16_t i = 0; i < 30; i++) buf[90 + i] = _mb.getResponseBuffer(i);
+        } else {
+            Serial.printf("[MB] Inversor_3 bloco 2 FAIL (reg=5089 count=30 rc=0x%02X)\n", rc);
+            return false;
+        }
+    }
+    delay(40);
+    // Bloco 3: reg 5119, count 35, func 0x04 - Regs 5120-5154: MPPT 7-9, bus voltage, PID
+    {
+        uint8_t rc = _mb.readInputRegisters(5119, 35);
+        if (rc != _mb.ku8MBSuccess) {
+            // 1 retry (timeout=0xE2, CRC=0xE3, IllegalAddr=0x02, IllegalFn=0x01, SlaveFail=0x04)
+            delay(50);
+            rc = _mb.readInputRegisters(5119, 35);
+        }
+        if (rc == _mb.ku8MBSuccess) {
+            for (uint16_t i = 0; i < 35; i++) buf[120 + i] = _mb.getResponseBuffer(i);
+        } else {
+            Serial.printf("[MB] Inversor_3 bloco 3 FAIL (reg=5119 count=35 rc=0x%02X)\n", rc);
+            return false;
+        }
+    }
+    delay(40);
+    // Bloco 4: reg 7012, count 18, func 0x04 - Regs 7013-7030: strings 1-18
+    {
+        uint8_t rc = _mb.readInputRegisters(7012, 18);
+        if (rc != _mb.ku8MBSuccess) {
+            // 1 retry (timeout=0xE2, CRC=0xE3, IllegalAddr=0x02, IllegalFn=0x01, SlaveFail=0x04)
+            delay(50);
+            rc = _mb.readInputRegisters(7012, 18);
+        }
+        if (rc == _mb.ku8MBSuccess) {
+            for (uint16_t i = 0; i < 18; i++) buf[155 + i] = _mb.getResponseBuffer(i);
+        } else {
+            Serial.printf("[MB] Inversor_3 bloco 4 FAIL (reg=7012 count=18 rc=0x%02X)\n", rc);
+            return false;
+        }
+    }
+    delay(40);
+    return true;
+}
+
+// Le + acumula. Chamar a cada READ_INTERVAL_MS.
+static void _sample_dev_2() {
+    uint16_t buf[173];
+    if (!_read_dev_2_raw(buf)) {
+        _ds2.fail_streak++;
+        Serial.printf("[MB] Inversor_3: falha leitura (consecutivas: %d)\n", _ds2.fail_streak);
+        return;
+    }
+    if (_ds2.fail_streak > 0) {
+        Serial.printf("[MB] Inversor_3: OK (apos %d falhas consecutivas)\n", _ds2.fail_streak);
+        _ds2.fail_streak = 0;
+    }
+
+    float v_mppt1_voltage = (float)buf[11] / 10.0;
+    _ds2.sum_[0] += v_mppt1_voltage;
+    float v_mppt2_voltage = (float)buf[13] / 10.0;
+    _ds2.sum_[1] += v_mppt2_voltage;
+    float v_mppt3_voltage = (float)buf[15] / 10.0;
+    _ds2.sum_[2] += v_mppt3_voltage;
+    float v_dc_total_power = (float)(((uint32_t)buf[17+1] << 16) | buf[17]);
+    _ds2.sum_[3] += v_dc_total_power;
+    float v_vab = (float)buf[19] / 10.0;
+    _ds2.sum_[4] += v_vab;
+    float v_vbc = (float)buf[20] / 10.0;
+    _ds2.sum_[5] += v_vbc;
+    float v_vca = (float)buf[21] / 10.0;
+    _ds2.sum_[6] += v_vca;
+    float v_ia = (float)buf[22] / 10.0;
+    _ds2.sum_[7] += v_ia;
+    float v_ib = (float)buf[23] / 10.0;
+    _ds2.sum_[8] += v_ib;
+    float v_ic = (float)buf[24] / 10.0;
+    _ds2.sum_[9] += v_ic;
+    float v_mppt4_voltage = (float)buf[115] / 10.0;
+    _ds2.sum_[10] += v_mppt4_voltage;
+    float v_mppt5_voltage = (float)buf[117] / 10.0;
+    _ds2.sum_[11] += v_mppt5_voltage;
+    float v_mppt6_voltage = (float)buf[119] / 10.0;
+    _ds2.sum_[12] += v_mppt6_voltage;
+    float v_mppt7_voltage = (float)buf[121] / 10.0;
+    _ds2.sum_[13] += v_mppt7_voltage;
+    float v_mppt8_voltage = (float)buf[123] / 10.0;
+    _ds2.sum_[14] += v_mppt8_voltage;
+    float v_mppt9_voltage = (float)buf[130] / 10.0;
+    _ds2.sum_[15] += v_mppt9_voltage;
+    float v_string1_current = (float)buf[155] / 100.0;
+    _ds2.sum_[16] += v_string1_current;
+    float v_string2_current = (float)buf[156] / 100.0;
+    _ds2.sum_[17] += v_string2_current;
+    float v_string3_current = (float)buf[157] / 100.0;
+    _ds2.sum_[18] += v_string3_current;
+    float v_string4_current = (float)buf[158] / 100.0;
+    _ds2.sum_[19] += v_string4_current;
+    float v_string5_current = (float)buf[159] / 100.0;
+    _ds2.sum_[20] += v_string5_current;
+    float v_string6_current = (float)buf[160] / 100.0;
+    _ds2.sum_[21] += v_string6_current;
+    float v_string7_current = (float)buf[161] / 100.0;
+    _ds2.sum_[22] += v_string7_current;
+    float v_string8_current = (float)buf[162] / 100.0;
+    _ds2.sum_[23] += v_string8_current;
+    float v_string9_current = (float)buf[163] / 100.0;
+    _ds2.sum_[24] += v_string9_current;
+    float v_string10_current = (float)buf[164] / 100.0;
+    _ds2.sum_[25] += v_string10_current;
+    float v_string11_current = (float)buf[165] / 100.0;
+    _ds2.sum_[26] += v_string11_current;
+    float v_string12_current = (float)buf[166] / 100.0;
+    _ds2.sum_[27] += v_string12_current;
+    float v_string13_current = (float)buf[167] / 100.0;
+    _ds2.sum_[28] += v_string13_current;
+    float v_string14_current = (float)buf[168] / 100.0;
+    _ds2.sum_[29] += v_string14_current;
+    float v_string15_current = (float)buf[169] / 100.0;
+    _ds2.sum_[30] += v_string15_current;
+    float v_string16_current = (float)buf[170] / 100.0;
+    _ds2.sum_[31] += v_string16_current;
+    float v_string17_current = (float)buf[171] / 100.0;
+    _ds2.sum_[32] += v_string17_current;
+    float v_string18_current = (float)buf[172] / 100.0;
+    _ds2.sum_[33] += v_string18_current;
+    float v_device_type = (float)buf[0];
+    float v_nominal_power = (float)buf[1] / 10.0;
+    float v_output_type = (float)buf[2];
+    float v_daily_yield = (float)buf[3] / 10.0;
+    float v_total_yield = (float)(((uint32_t)buf[4+1] << 16) | buf[4]);
+    float v_total_running_time = (float)(((uint32_t)buf[6+1] << 16) | buf[6]);
+    float v_temp_interna = (float)(int16_t)buf[8] / 10.0;
+    float v_potencia_aparente = (float)(((uint32_t)buf[9+1] << 16) | buf[9]);
+    float v_apparent_total = (float)(((uint32_t)buf[9+1] << 16) | buf[9]);
+    float v_potencia_ativa = (float)(((uint32_t)buf[31+1] << 16) | buf[31]);
+    float v_potencia_reativa = (float)(int32_t)(((uint32_t)buf[33+1] << 16) | buf[33]);
+    float v_fp = (float)(int16_t)buf[35] / 1000.0;
+    float v_freq = (float)buf[36] / 10.0;
+    float v_work_state = (float)buf[38];
+    float v_nominal_reactive_power = (float)buf[49] / 10.0;
+    float v_insulation_resistance = (float)buf[71];
+    float v_daily_running_time = (float)buf[113];
+    float v_bus_voltage = (float)buf[147] / 10.0;
+    float v_pid_work_state = (float)buf[150];
+    float v_pid_alarm_code = (float)buf[151];
+    _ds2.last_[0] = v_mppt1_voltage;
+    _ds2.last_[1] = v_mppt2_voltage;
+    _ds2.last_[2] = v_mppt3_voltage;
+    _ds2.last_[3] = v_dc_total_power;
+    _ds2.last_[4] = v_vab;
+    _ds2.last_[5] = v_vbc;
+    _ds2.last_[6] = v_vca;
+    _ds2.last_[7] = v_ia;
+    _ds2.last_[8] = v_ib;
+    _ds2.last_[9] = v_ic;
+    _ds2.last_[10] = v_mppt4_voltage;
+    _ds2.last_[11] = v_mppt5_voltage;
+    _ds2.last_[12] = v_mppt6_voltage;
+    _ds2.last_[13] = v_mppt7_voltage;
+    _ds2.last_[14] = v_mppt8_voltage;
+    _ds2.last_[15] = v_mppt9_voltage;
+    _ds2.last_[16] = v_string1_current;
+    _ds2.last_[17] = v_string2_current;
+    _ds2.last_[18] = v_string3_current;
+    _ds2.last_[19] = v_string4_current;
+    _ds2.last_[20] = v_string5_current;
+    _ds2.last_[21] = v_string6_current;
+    _ds2.last_[22] = v_string7_current;
+    _ds2.last_[23] = v_string8_current;
+    _ds2.last_[24] = v_string9_current;
+    _ds2.last_[25] = v_string10_current;
+    _ds2.last_[26] = v_string11_current;
+    _ds2.last_[27] = v_string12_current;
+    _ds2.last_[28] = v_string13_current;
+    _ds2.last_[29] = v_string14_current;
+    _ds2.last_[30] = v_string15_current;
+    _ds2.last_[31] = v_string16_current;
+    _ds2.last_[32] = v_string17_current;
+    _ds2.last_[33] = v_string18_current;
+    _ds2.last_[34] = v_device_type;
+    _ds2.last_[35] = v_nominal_power;
+    _ds2.last_[36] = v_output_type;
+    _ds2.last_[37] = v_daily_yield;
+    _ds2.last_[38] = v_total_yield;
+    _ds2.last_[39] = v_total_running_time;
+    _ds2.last_[40] = v_temp_interna;
+    _ds2.last_[41] = v_potencia_aparente;
+    _ds2.last_[42] = v_apparent_total;
+    _ds2.last_[43] = v_potencia_ativa;
+    _ds2.last_[44] = v_potencia_reativa;
+    _ds2.last_[45] = v_fp;
+    _ds2.last_[46] = v_freq;
+    _ds2.last_[47] = v_work_state;
+    _ds2.last_[48] = v_nominal_reactive_power;
+    _ds2.last_[49] = v_insulation_resistance;
+    _ds2.last_[50] = v_daily_running_time;
+    _ds2.last_[51] = v_bus_voltage;
+    _ds2.last_[52] = v_pid_work_state;
+    _ds2.last_[53] = v_pid_alarm_code;
+    _ds2.samples++;
+    // Log de debug — mostra principais valores lidos
+    Serial.printf("[MB] Inversor_3 #%d: ", _ds2.samples);
+    Serial.printf("vab=%.2f ", v_vab);
+    Serial.printf("vbc=%.2f ", v_vbc);
+    Serial.printf("vca=%.2f ", v_vca);
+    Serial.printf("ia=%.2f ", v_ia);
+    Serial.printf("ib=%.2f ", v_ib);
+    Serial.printf("ic=%.2f", v_ic);
+    Serial.println();
+    _ds2.valid = true;
+}
+
+// Publica JSON (medias + last + delta) e reseta acumuladores. Chamar a cada PUBLISH_INTERVAL_MS.
+static void _publish_dev_2(modbus_publish_fn publish) {
+    if (!_ds2.valid || _ds2.samples == 0) {
+        publish("Inversor_3/status", "{\"error\":\"no_samples\"}");
+        return;
+    }
+
+    int n = _ds2.samples;
+    StaticJsonDocument<3072> d;
+    d["timestamp"] = (long)time(nullptr);
+    d["device"] = "Inversor_3";
+    d["model"] = "SG110CX";
+    d["inverter_id"] = 3;
+    d["samples"] = n;
+
+    JsonObject g_info = d.createNestedObject("info");
+    { char _h[8]; snprintf(_h, sizeof(_h), "%x", (uint16_t)(_ds2.last_[34])); g_info["device_type"] = String(_h); }
+    g_info["nominal_power"] = _ds2.last_[35];
+    g_info["output_type"] = _ds2.last_[36];
+    JsonObject g_energy = d.createNestedObject("energy");
+    g_energy["daily_yield"] = _ds2.last_[37];
+    g_energy["total_yield"] = _ds2.last_[38];
+    g_energy["total_running_time"] = _ds2.last_[39];
+    g_energy["apparent_power_1"] = _ds2.last_[41];
+    g_energy["daily_running_time"] = _ds2.last_[50];
+    JsonObject g_temperature = d.createNestedObject("temperature");
+    g_temperature["internal"] = _ds2.last_[40];
+    JsonObject g_dc = d.createNestedObject("dc");
+    g_dc["mppt1_voltage"] = (float)(_ds2.sum_[0] / n);
+    g_dc["mppt2_voltage"] = (float)(_ds2.sum_[1] / n);
+    g_dc["mppt3_voltage"] = (float)(_ds2.sum_[2] / n);
+    g_dc["total_power"] = (float)(_ds2.sum_[3] / n);
+    g_dc["mppt4_voltage"] = (float)(_ds2.sum_[10] / n);
+    g_dc["mppt5_voltage"] = (float)(_ds2.sum_[11] / n);
+    g_dc["mppt6_voltage"] = (float)(_ds2.sum_[12] / n);
+    g_dc["mppt7_voltage"] = (float)(_ds2.sum_[13] / n);
+    g_dc["mppt8_voltage"] = (float)(_ds2.sum_[14] / n);
+    g_dc["mppt9_voltage"] = (float)(_ds2.sum_[15] / n);
+    g_dc["string1_current"] = (float)(_ds2.sum_[16] / n);
+    g_dc["string2_current"] = (float)(_ds2.sum_[17] / n);
+    g_dc["string3_current"] = (float)(_ds2.sum_[18] / n);
+    g_dc["string4_current"] = (float)(_ds2.sum_[19] / n);
+    g_dc["string5_current"] = (float)(_ds2.sum_[20] / n);
+    g_dc["string6_current"] = (float)(_ds2.sum_[21] / n);
+    g_dc["string7_current"] = (float)(_ds2.sum_[22] / n);
+    g_dc["string8_current"] = (float)(_ds2.sum_[23] / n);
+    g_dc["string9_current"] = (float)(_ds2.sum_[24] / n);
+    g_dc["string10_current"] = (float)(_ds2.sum_[25] / n);
+    g_dc["string11_current"] = (float)(_ds2.sum_[26] / n);
+    g_dc["string12_current"] = (float)(_ds2.sum_[27] / n);
+    g_dc["string13_current"] = (float)(_ds2.sum_[28] / n);
+    g_dc["string14_current"] = (float)(_ds2.sum_[29] / n);
+    g_dc["string15_current"] = (float)(_ds2.sum_[30] / n);
+    g_dc["string16_current"] = (float)(_ds2.sum_[31] / n);
+    g_dc["string17_current"] = (float)(_ds2.sum_[32] / n);
+    g_dc["string18_current"] = (float)(_ds2.sum_[33] / n);
+    JsonObject g_voltage = d.createNestedObject("voltage");
+    g_voltage["phase_a-b"] = (float)(_ds2.sum_[4] / n);
+    g_voltage["phase_b-c"] = (float)(_ds2.sum_[5] / n);
+    g_voltage["phase_c-a"] = (float)(_ds2.sum_[6] / n);
+    JsonObject g_current = d.createNestedObject("current");
+    g_current["phase_a"] = (float)(_ds2.sum_[7] / n);
+    g_current["phase_b"] = (float)(_ds2.sum_[8] / n);
+    g_current["phase_c"] = (float)(_ds2.sum_[9] / n);
+    JsonObject g_power = d.createNestedObject("power");
+    g_power["apparent_total"] = _ds2.last_[42];
+    g_power["active_total"] = _ds2.last_[43];
+    g_power["reactive_total"] = _ds2.last_[44];
+    g_power["power_factor"] = _ds2.last_[45];
+    g_power["frequency"] = _ds2.last_[46];
+    JsonObject g_status = d.createNestedObject("status");
+    g_status["work_state"] = _ds2.last_[47];
+    g_status["work_state_text"] = _work_state_text((uint16_t)_ds2.last_[47]);
+    JsonObject g_protection = d.createNestedObject("protection");
+    g_protection["insulation_resistance"] = _ds2.last_[49];
+    g_protection["bus_voltage"] = _ds2.last_[51];
+    JsonObject g_regulation = d.createNestedObject("regulation");
+    g_regulation["nominal_reactive_power"] = _ds2.last_[48];
+    JsonObject g_pid = d.createNestedObject("pid");
+    g_pid["work_state"] = _ds2.last_[52];
+    g_pid["alarm_code"] = _ds2.last_[53];
+
+    char payload[3072];
+    size_t sz = serializeJson(d, payload, sizeof(payload));
+    if (sz > 0) {
+        publish("Inversor_3/data", payload);
+        Serial.printf("\n===== PUBLICADO: Inversor_3 (%d amostras) =====\n", n);
+        Serial.println(payload);
+        Serial.println();
+    }
+
+    // Reset do ciclo (preserva 'first_delta' da ultima amostra para o proximo intervalo)
+    for (int i = 0; i < 34; i++) _ds2.sum_[i] = 0;
+    _ds2.samples = 0;
+}
+
+static int _rr_idx = 0;
+static const int _dev_count = 3;
+
+void modbus_sample_one() {
+    switch (_rr_idx) {
+        case 0: _sample_dev_0(); break;
+        case 1: _sample_dev_1(); break;
+        case 2: _sample_dev_2(); break;
+    }
+    _rr_idx = (_rr_idx + 1) % _dev_count;
+}
+
+void modbus_publish_all(modbus_publish_fn publish) {
+    if (!publish) return;
+    _publish_dev_0(publish);
+    _publish_dev_1(publish);
+    _publish_dev_2(publish);
+}
+
+// Legado: sample todos + publica (sem media)
+void modbus_read_all(modbus_publish_fn publish) {
+    if (!publish) return;
+    _sample_dev_0();
+    _publish_dev_0(publish);
+    _sample_dev_1();
+    _publish_dev_1(publish);
+    _sample_dev_2();
+    _publish_dev_2(publish);
+}
+
+bool modbus_exec_command(const char* device_name, const char* cmd_id) {
+    if (!device_name || !cmd_id) return false;
+    return false;
+}
+

@@ -1,4 +1,5 @@
 import { Layout } from "@/components/common/Layout";
+import { IoTDiagram } from "@/features/supervisorio/components/iot-diagram";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -6,9 +7,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import {
   Activity,
   ArrowLeft,
+  BarChart3,
   Building,
   Circle,
   Copy,
+  Cpu,
   Edit3,
   Gauge,
   HardDrive,
@@ -1791,6 +1794,19 @@ export function SinopticoAtivoPage() {
   const [unidadeAtual, setUnidadeAtual] = useState<Unidade | null>(stateFromNavigation?.unidade || null);
   // Abrir modal automaticamente se não tiver unidade selecionada
   const [modalSelecionarUnidade, setModalSelecionarUnidade] = useState(!ativoId);
+
+  // Tab ativa: 'unifilar' ou 'iot'
+  const [sinopticoTab, setSinopticoTab] = useState<'unifilar' | 'iot'>('unifilar');
+
+  // Listen for tab change events from DiagramV2
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      setSinopticoTab(detail as 'unifilar' | 'iot');
+    };
+    window.addEventListener('sinoptico-tab-change', handler);
+    return () => window.removeEventListener('sinoptico-tab-change', handler);
+  }, []);
 
   // ✅ IMPORTANTE: Atualizar título IMEDIATAMENTE quando recebe dados via state
   useEffect(() => {
@@ -3710,9 +3726,35 @@ if (import.meta.env.PROD) {
 
           </div>
 
-          {/* 🆕 V2: Diagrama refatorado (sempre ativo) */}
+          {/* Abas: Unifilar | IoT */}
           {unidadeId && (
-            <div className="flex-1 min-h-0">
+            <div className="flex items-end gap-0 px-2 -mb-px" style={{ zIndex: 10 }}>
+              <button
+                onClick={() => setSinopticoTab('unifilar')}
+                className={`px-5 py-2 text-sm font-medium border border-b-0 rounded-t-lg transition-colors ${
+                  sinopticoTab === 'unifilar'
+                    ? 'bg-white dark:bg-slate-900 text-foreground border-border'
+                    : 'bg-muted/50 dark:bg-slate-800/50 text-muted-foreground hover:text-foreground border-transparent'
+                }`}
+              >
+                Diagrama Unifilar
+              </button>
+              <button
+                onClick={() => setSinopticoTab('iot')}
+                className={`px-5 py-2 text-sm font-medium border border-b-0 rounded-t-lg transition-colors ${
+                  sinopticoTab === 'iot'
+                    ? 'bg-white dark:bg-slate-900 text-foreground border-border'
+                    : 'bg-muted/50 dark:bg-slate-800/50 text-muted-foreground hover:text-foreground border-transparent'
+                }`}
+              >
+                IoT
+              </button>
+            </div>
+          )}
+
+          {/* V2: Diagrama Unifilar */}
+          {unidadeId && sinopticoTab === 'unifilar' && (
+            <div className="flex-1 min-h-0 border border-border rounded-b-lg rounded-tr-lg overflow-hidden">
               <DiagramV2Wrapper
                 unidadeIdFromUrl={unidadeId}
                 modoEdicao={false}
@@ -3771,6 +3813,13 @@ if (import.meta.env.PROD) {
                   }
                 }}
               />
+            </div>
+          )}
+
+          {/* IoT: Diagrama IoT nativo */}
+          {unidadeId && sinopticoTab === 'iot' && (
+            <div className="flex-1 min-h-0 border border-border rounded-b-lg rounded-tl-lg overflow-hidden flex flex-col">
+              <IoTDiagram unidadeId={unidadeId} unidadeNome={unidadeAtual?.nome} />
             </div>
           )}
 
@@ -4179,13 +4228,30 @@ if (import.meta.env.PROD) {
                     }`}
                   >
                     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 pb-2 border-b flex-shrink-0 bg-slate-50 dark:bg-black gap-3">
-                      <div>
-                        <h3 className="text-base sm:text-lg font-semibold text-foreground flex items-center gap-2">
-                          <Network className="h-4 w-4 sm:h-5 sm:w-5" />
-                          <span className="hidden sm:inline">Diagrama Unifilar</span>
-                          <span className="sm:hidden">Diagrama</span>
-                          {diagramaFullscreen && <span className="hidden sm:inline">- Tela Cheia</span>}
-                        </h3>
+                      <div className="flex items-center gap-0 bg-muted dark:bg-slate-800 rounded-lg p-0.5">
+                        <button
+                          onClick={() => setSinopticoTab('unifilar')}
+                          className={`px-4 py-2 text-sm font-semibold rounded-md transition-all flex items-center gap-2 ${
+                            sinopticoTab === 'unifilar'
+                              ? 'bg-white dark:bg-slate-950 text-foreground shadow-sm border border-border'
+                              : 'text-muted-foreground hover:text-foreground'
+                          }`}
+                        >
+                          <Network className="h-4 w-4" />
+                          Unifilar
+                        </button>
+                        <button
+                          onClick={() => setSinopticoTab('iot')}
+                          className={`px-4 py-2 text-sm font-semibold rounded-md transition-all flex items-center gap-2 ${
+                            sinopticoTab === 'iot'
+                              ? 'bg-white dark:bg-slate-950 text-foreground shadow-sm border border-border'
+                              : 'text-muted-foreground hover:text-foreground'
+                          }`}
+                        >
+                          <Cpu className="h-4 w-4" />
+                          IoT
+                        </button>
+                        {diagramaFullscreen && <span className="text-sm text-muted-foreground ml-2">Tela Cheia</span>}
                       </div>
                       <div className="flex items-center gap-2 flex-wrap">
                         {/* Grid removido - aparece automaticamente no modo de edição (25px fixo) */}
@@ -4208,7 +4274,7 @@ if (import.meta.env.PROD) {
                             </>
                           )}
                         </Button>
-                        {!diagramaFullscreen && isAdmin() && (
+                        {!diagramaFullscreen && isAdmin() && sinopticoTab === 'unifilar' && (
                           <>
                             <Button
                               variant="outline"
@@ -4225,6 +4291,8 @@ if (import.meta.env.PROD) {
                       </div>
                     </div>
 
+                    {/* Tab: Unifilar */}
+                    {sinopticoTab === 'unifilar' && (
                     <div
                       className={`flex-1 relative w-full overflow-auto !bg-slate-50 dark:!bg-black ${
                         diagramaFullscreen ? 'h-[calc(100vh-73px)]' : ''
@@ -4251,6 +4319,14 @@ if (import.meta.env.PROD) {
                         connecting={connecting}
                       />
                     </div>
+                    )}
+
+                    {/* Tab: IoT (edit mode) */}
+                    {sinopticoTab === 'iot' && (
+                    <div className="flex-1 min-h-0 flex flex-col">
+                      <IoTDiagram unidadeId={unidadeId} unidadeNome={unidadeAtual?.nome} />
+                    </div>
+                    )}
 
                     {/* Container para modais em fullscreen */}
                     {diagramaFullscreen && <div id="fullscreen-modal-container" />}

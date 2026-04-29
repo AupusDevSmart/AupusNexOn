@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html><head><title>IoT Test</title></head>
+<body style="margin:0;background:#111;color:#fff;font-family:sans-serif">
+<div id="log" style="padding:10px;font-size:12px"></div>
+<div id="canvas" style="width:100vw;height:80vh"></div>
+<script src="/iot-device-catalog.v2.js"></script>
+<script src="/iot-firmware-base.v2.js"></script>
+<script src="/iot-firmware-generator.v2.js"></script>
+<script src="/iot-bench-tests.v2.js"></script>
+<script src="/iot-diagram.v2.js"></script>
+<script>
+const log = (msg) => { document.getElementById('log').innerHTML += msg + '<br>'; console.log(msg); };
+log('DiagramEditor: ' + typeof DiagramEditor);
+log('COMPONENT_TYPES: ' + typeof COMPONENT_TYPES);
+log('CATEGORIES: ' + (typeof CATEGORIES !== 'undefined' ? JSON.stringify(CATEGORIES.map(c=>c.id)) : 'undefined'));
+
+try {
+  const editor = new DiagramEditor('canvas');
+  log('Editor created OK. Container: ' + editor.container?.clientWidth + 'x' + editor.container?.clientHeight);
+  
+  // Load test data from API
+  fetch('/api/v1/iot/projetos?unidade_id=cmkfs6jz100hd2f5wh5zcbqju')
+    .then(r => r.json())
+    .then(data => {
+      const proj = data?.data?.data?.[0] || data?.data?.[0];
+      log('Project: ' + proj?.nome + ' components: ' + proj?.diagrama?.components?.length);
+      if (proj?.diagrama) {
+        editor.fromJSON(proj.diagrama);
+        log('fromJSON OK. Components: ' + editor.components.length);
+        editor.centerView();
+      }
+    });
+} catch(e) {
+  log('ERROR: ' + e.message);
+}
+</script>
+</body></html>
