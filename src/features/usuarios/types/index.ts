@@ -221,12 +221,19 @@ export const SPATIE_TO_DB_ROLE_MAPPING = {
 } as const;
 
 // ✅ FUNÇÃO AUXILIAR PARA EXTRAIR PERMISSÕES COMO STRINGS
+// Tolera array de strings ou objetos com {name|value|permission}, ou undefined.
 const extractPermissionNames = (permissions: UserPermission[] | string[] | undefined): string[] => {
-  if (!permissions) return [];
-  
-  return permissions.map(p => 
-    typeof p === 'string' ? p : p.name
-  );
+  if (!Array.isArray(permissions)) return [];
+
+  return permissions
+    .map((p: any) => {
+      if (typeof p === 'string') return p;
+      if (p && typeof p === 'object') {
+        return p.name || p.value || p.permission || '';
+      }
+      return '';
+    })
+    .filter((s) => typeof s === 'string' && s.length > 0);
 };
 
 // ✅ UTILITÁRIOS PARA CONVERSÃO - CORRIGIDOS
@@ -298,13 +305,19 @@ export const mapUsuarioToFormData = (usuario: Usuario): UsuarioFormData => {
     permissao_length: usuario.permissao?.length
   });
 
-  // ✅ CORREÇÃO CRÍTICA: Usar role_details primeiro, depois roles array, depois fallback
+  // Resolve a role principal aceitando role_details, ou roles[0] como string OU
+  // objeto {id,name,guard_name} (formato do backend apos getUserPermissions).
   let primaryRoleName = 'vendedor'; // Default
-  
+
   if (usuario.role_details?.name) {
     primaryRoleName = usuario.role_details.name;
   } else if (usuario.roles && usuario.roles.length > 0) {
-    primaryRoleName = usuario.roles[0];
+    const first: any = usuario.roles[0];
+    if (typeof first === 'string') {
+      primaryRoleName = first;
+    } else if (first && typeof first === 'object') {
+      primaryRoleName = first.name || first.value || primaryRoleName;
+    }
   }
   
   console.log('🎯 [mapUsuarioToFormData] Role detectada:', primaryRoleName);
