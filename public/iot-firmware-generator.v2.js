@@ -2010,14 +2010,43 @@ static void mqtt_publish_sub(const char* sub, const char* payload) {
 `;
         }
 
-        cpp += `// Comando (Serial + MQTT). Aceita:
-//   - "r1 on" / "tr2 off"                           -> reles locais/saidas
-//   - "status"                                       -> debug serial
-//   - {"device":"X","cmd":"cmd_fechar"}             -> BO Modbus (bo_map do catalogo)
-static void process_command(const char* raw) {
-    if (!raw) return;
+        cpp += `// ===== ACK aplicacao-level para comandos =====
+// Protocolo:
+//   Backend publica em <BASE>/cmd com envelope: {"cmd_id":"<uuid>","cmd": <inner>}
+//   <inner> pode ser string ("r1 on") ou objeto ({"device":"X","cmd":"cmd_fechar"})
+//   TON publica resposta em <BASE>/cmd/ack: {"cmd_id","status","msg","ts"}
+//   status: "ok" | "error" | "duplicate"
+// Backward-compat: se nao houver cmd_id, executa sem publicar ack (legado).
+#define CMD_DEDUP_SIZE 16
+static char _cmdSeen[CMD_DEDUP_SIZE][40];
+static int  _cmdSeenIdx = 0;
 
-    // Tenta parsear como JSON primeiro (comandos estruturados)
+static bool _cmd_seen_or_add(const char* cmd_id) {
+    for (int i = 0; i < CMD_DEDUP_SIZE; i++) {
+        if (_cmdSeen[i][0] && strcmp(_cmdSeen[i], cmd_id) == 0) return true;
+    }
+    strncpy(_cmdSeen[_cmdSeenIdx], cmd_id, sizeof(_cmdSeen[0]) - 1);
+    _cmdSeen[_cmdSeenIdx][sizeof(_cmdSeen[0]) - 1] = 0;
+    _cmdSeenIdx = (_cmdSeenIdx + 1) % CMD_DEDUP_SIZE;
+    return false;
+}
+
+static void _publish_cmd_ack(const char* cmd_id, const char* status, const char* msg) {
+    char topic[160];
+    snprintf(topic, sizeof(topic), "%s/cmd/ack", MQTT_TOPIC_BASE);
+    char payload[256];
+    snprintf(payload, sizeof(payload),
+             "{\\"cmd_id\\":\\"%s\\",\\"status\\":\\"%s\\",\\"msg\\":\\"%s\\",\\"ts\\":%lu}",
+             cmd_id, status, msg ? msg : "", (unsigned long)(millis() / 1000));
+    mqtt_publish(topic, payload);
+}
+
+// Executa o comando bruto (sem envelope). Preenche result_msg com descricao curta.
+// Retorna true em sucesso, false em erro.
+static bool _process_command_inner(const char* raw, char* result_msg, size_t msg_sz) {
+    if (!raw || !*raw) { snprintf(result_msg, msg_sz, "empty"); return false; }
+
+    // Comando estruturado: {"device":"X","cmd":"cmd_fechar"}
     if (raw[0] == '{') {
         StaticJsonDocument<256> j;
         DeserializationError jerr = deserializeJson(j, raw);
@@ -2028,37 +2057,94 @@ static void process_command(const char* raw) {
 `;
         if (spec.rs485_devices.length > 0) {
             cpp += `                bool ok = modbus_exec_command(dev, cid);
-                Serial.printf("[CMD] %s -> %s: %s\\n", dev, cid, ok ? "OK" : "FAIL");
+                snprintf(result_msg, msg_sz, "%s/%s:%s", dev, cid, ok ? "OK" : "FAIL");
+                return ok;
 `;
         } else {
-            cpp += `                Serial.println("[CMD] JSON cmd recebido mas sem Modbus neste firmware");
+            cpp += `                snprintf(result_msg, msg_sz, "no_modbus_in_firmware");
+                return false;
 `;
         }
-        cpp += `                return;
-            }
+        cpp += `            }
         }
     }
 
     String cmd = String(raw); cmd.trim(); cmd.toLowerCase();
-    if (cmd.length() == 0) return;
+    if (cmd.length() == 0) { snprintf(result_msg, msg_sz, "empty"); return false; }
 
     if (cmd.length() >= 4 && cmd[0] == 'r' && cmd[1] >= '1' && cmd[1] <= '6') {
 `;
         if (spec.has_relays) {
-            cpp += `        relay_set(cmd[1] - '0', cmd.indexOf("on") >= 0);
-        Serial.printf("[CMD] Rele %c %s\\n", cmd[1], cmd.indexOf("on") >= 0 ? "ON" : "OFF");
+            cpp += `        bool on = cmd.indexOf("on") >= 0;
+        relay_set(cmd[1] - '0', on);
+        snprintf(result_msg, msg_sz, "rele_%c_%s", cmd[1], on ? "on" : "off");
+        return true;
 `;
         } else {
-            cpp += `        Serial.println("[CMD] Reles nao disponiveis neste modelo");
+            cpp += `        snprintf(result_msg, msg_sz, "no_relays_in_model");
+        return false;
 `;
         }
         cpp += `    }
-    else if (cmd.startsWith("tr") && cmd[2] >= '1' && cmd[2] <= '4') {
-        output_set(cmd[2] - '0', cmd.indexOf("on") >= 0);
-        Serial.printf("[CMD] TR%c %s\\n", cmd[2], cmd.indexOf("on") >= 0 ? "ON" : "OFF");
+    if (cmd.startsWith("tr") && cmd[2] >= '1' && cmd[2] <= '4') {
+        bool on = cmd.indexOf("on") >= 0;
+        output_set(cmd[2] - '0', on);
+        snprintf(result_msg, msg_sz, "tr%c_%s", cmd[2], on ? "on" : "off");
+        return true;
     }
-    else if (cmd == "status") {
+    if (cmd == "status") {
         Serial.printf("Entradas: %02X  Saidas: %02X\\n", inputs_get_state(), outputs_get_state());
+        snprintf(result_msg, msg_sz, "status_printed");
+        return true;
+    }
+
+    snprintf(result_msg, msg_sz, "unknown_cmd");
+    return false;
+}
+
+// Wrapper publico: detecta envelope com cmd_id, faz dedup e publica ack.
+static void process_command(const char* raw) {
+    if (!raw) return;
+
+    char cmd_id[40] = {0};
+    const char* effective = raw;
+    static char inner_buf[512];
+
+    // Detecta envelope: { "cmd_id": "...", "cmd": <inner> }
+    if (raw[0] == '{') {
+        StaticJsonDocument<512> env;
+        if (deserializeJson(env, raw) == DeserializationError::Ok) {
+            const char* id = env["cmd_id"] | "";
+            if (id[0]) {
+                strncpy(cmd_id, id, sizeof(cmd_id) - 1);
+
+                if (_cmd_seen_or_add(cmd_id)) {
+                    Serial.printf("[CMD] Duplicate cmd_id=%s ignorado\\n", cmd_id);
+                    _publish_cmd_ack(cmd_id, "duplicate", "already_seen");
+                    return;
+                }
+
+                JsonVariantConst inner = env["cmd"];
+                if (inner.is<const char*>()) {
+                    snprintf(inner_buf, sizeof(inner_buf), "%s", inner.as<const char*>());
+                    effective = inner_buf;
+                } else if (inner.is<JsonObject>()) {
+                    serializeJson(inner, inner_buf, sizeof(inner_buf));
+                    effective = inner_buf;
+                } else {
+                    _publish_cmd_ack(cmd_id, "error", "missing_cmd_field");
+                    return;
+                }
+            }
+        }
+    }
+
+    char msg[64] = {0};
+    bool ok = _process_command_inner(effective, msg, sizeof(msg));
+    Serial.printf("[CMD] %s -> %s (%s)\\n", effective, ok ? "OK" : "FAIL", msg);
+
+    if (cmd_id[0]) {
+        _publish_cmd_ack(cmd_id, ok ? "ok" : "error", msg);
     }
 }
 
