@@ -1559,8 +1559,22 @@ bool modbus_exec_command(const char* device_name, const char* cmd_id) {
             const base = blockOffsets[m.block];
             const i0 = base + m.offset;
             const scale = this._resolveScale(m.scale, scales);
-            const decoder = this._decodeExpr(m.dataType || 'U16', 'buf', i0, scale, m, wordOrder);
+            let decoder = this._decodeExpr(m.dataType || 'U16', 'buf', i0, scale, m, wordOrder);
             if (!decoder) continue;
+
+            // Aplica fator TP/TC quando configurado no campo (vide cat.tp_tc).
+            // Replica comportamento das referências PlatformIO (M-160 LORA_TX_MODBUS,
+            // PD666 EV-PD666_USR_MQTT). Variáveis _fTP/_fTC/_fatorEnergia são
+            // computadas no início do _sample_dev_${idx}.
+            // FLAG DE DIAGNÓSTICO: setar IOT_DISABLE_TP_TC = true desativa toda
+            // a feature pra isolar regressões. Default: ativada.
+            if (m.apply_factor && !this._tpTcDisabled()) {
+                const factorVar = m.apply_factor === 'tp'    ? '_fTP'
+                                : m.apply_factor === 'tc'    ? '_fTC'
+                                : m.apply_factor === 'tp_tc' ? '_fatorEnergia'
+                                : null;
+                if (factorVar) decoder = `(${decoder}) * ${factorVar}`;
+            }
 
             const mode = m.mode || 'avg';
             const entry = { pid, decoder, clamp: !!m.clamp_negative, format: m.format || null };
@@ -1651,6 +1665,33 @@ static void _sample_dev_${idx}() {
     }
 
 `;
+        // Bloco TP/TC: lê separadamente do bloco principal e calcula fatores.
+        // Defaults 1.0 garantem degrade graceful se a leitura falhar.
+        // Comportamento replica referências PlatformIO (regs separados, scale
+        // independente). Variáveis usadas pelos decoders via apply_factor.
+        // FLAG DE DIAGNÓSTICO: vide _tpTcDisabled() abaixo.
+        if (cat.tp_tc && !this._tpTcDisabled()) {
+            const t = cat.tp_tc;
+            const sTp = (Number(t.scale_tp) || 1).toFixed(1);
+            const sTc = (Number(t.scale_tc) || 1).toFixed(1);
+            cpp += `    // TP/TC para escalonamento (lido a cada ciclo, replica refs PlatformIO)
+    float _fTP = 1.0f, _fTC = 1.0f, _fatorEnergia = 1.0f;
+    {
+        delay(40);
+        uint8_t rc_tptc = _mb.readHoldingRegisters(${t.register}, ${t.count});
+        if (rc_tptc == _mb.ku8MBSuccess) {
+            uint16_t _tp_raw = _mb.getResponseBuffer(${t.tp_offset});
+            uint16_t _tc_raw = _mb.getResponseBuffer(${t.tc_offset});
+            _fTP = (float)_tp_raw / ${sTp}f;
+            _fTC = (float)_tc_raw / ${sTc}f;
+            _fatorEnergia = _fTP * _fTC;
+        } else {
+            // Mantém defaults 1.0 — energia/potência ficam sem fator (TP=TC=1)
+        }
+    }
+
+`;
+        }
 
         // Decodificar todos os campos (avg + last + delta) usando 'buf'
         // Acumular 'avg' em sum_
@@ -1956,6 +1997,14 @@ static void _publish_dev_${idx}(modbus_publish_fn publish) {
         if (typeof scale === 'number') return scale;
         if (typeof scale === 'string' && scales[scale] !== undefined) return scales[scale];
         return 1;
+    }
+
+    // Flag de diagnóstico — quando true, generator NÃO emite leitura de TP/TC
+    // nem multiplicação dos decoders. Usado pra isolar regressões da feature.
+    // Setar no console do browser: window.IOT_DISABLE_TP_TC = true
+    _tpTcDisabled() {
+        try { return typeof window !== 'undefined' && window.IOT_DISABLE_TP_TC === true; }
+        catch (_) { return false; }
     }
 
     _escStr(s) {

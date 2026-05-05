@@ -576,6 +576,16 @@ var DEVICE_MODELS = {
         tipo: 'medidor_energia',
         protocolo: 'rtu',
         connection_note: 'RS485 direto ou Modbus TCP via USR. Func 0x03 (holding registers) p/ tudo.',
+        // TP/TC lido a cada ciclo (refs PlatformIO EV-PD666_USR_MQTT/main.cpp:587-595)
+        // 0x0006=IrAt(TC), 0x0007=UrAt(TP). Ambos uint16. Scale TP=/10, TC=/1.
+        tp_tc: {
+            register: 0x0006,
+            count: 2,
+            tc_offset: 0,    // primeira metade da resposta = TC
+            tp_offset: 1,    // segunda metade = TP
+            scale_tp: 10,
+            scale_tc: 1,
+        },
         ai_blocks: [
             // Bloco 0: V/I/P/Q/S/FP (regs 0x2006..0x2031, 22 floats = 44 regs)
             { start: 0x2006, count: 44, func: 0x03, label: 'V, I, P, Q, S, FP (22 floats IEEE 754)' },
@@ -587,29 +597,29 @@ var DEVICE_MODELS = {
         ],
         ai_map: {
             // --- Bloco 0 (V/I/P/Q/S/FP) ---
-            // Tensoes (offset = (reg - 0x2006))
-            'va':   { block: 0, offset: 0,  scale: 10,   dataType: 'FLOAT' }, // 0x2006
-            'vb':   { block: 0, offset: 2,  scale: 10,   dataType: 'FLOAT' }, // 0x2008
-            'vc':   { block: 0, offset: 4,  scale: 10,   dataType: 'FLOAT' }, // 0x200A
-            // Correntes
-            'ia':   { block: 0, offset: 6,  scale: 1000, dataType: 'FLOAT' }, // 0x200C
-            'ib':   { block: 0, offset: 8,  scale: 1000, dataType: 'FLOAT' }, // 0x200E
-            'ic':   { block: 0, offset: 10, scale: 1000, dataType: 'FLOAT' }, // 0x2010
-            // Potencias totais
-            'pt':   { block: 0, offset: 12, scale: 10,   dataType: 'FLOAT' }, // 0x2012
-            'qt':   { block: 0, offset: 20, scale: 10,   dataType: 'FLOAT' }, // 0x201A
-            'st':   { block: 0, offset: 28, scale: 10,   dataType: 'FLOAT' }, // 0x2022
-            // Fator de potencia por fase
+            // Tensoes — multiplicadas por fTP (ref: main.cpp:612-614)
+            'va':   { block: 0, offset: 0,  scale: 10,   dataType: 'FLOAT', apply_factor: 'tp' }, // 0x2006
+            'vb':   { block: 0, offset: 2,  scale: 10,   dataType: 'FLOAT', apply_factor: 'tp' }, // 0x2008
+            'vc':   { block: 0, offset: 4,  scale: 10,   dataType: 'FLOAT', apply_factor: 'tp' }, // 0x200A
+            // Correntes — multiplicadas por fTC (ref: main.cpp:617-619)
+            'ia':   { block: 0, offset: 6,  scale: 1000, dataType: 'FLOAT', apply_factor: 'tc' }, // 0x200C
+            'ib':   { block: 0, offset: 8,  scale: 1000, dataType: 'FLOAT', apply_factor: 'tc' }, // 0x200E
+            'ic':   { block: 0, offset: 10, scale: 1000, dataType: 'FLOAT', apply_factor: 'tc' }, // 0x2010
+            // Potencias totais — multiplicadas por fatorEnergia=fTP*fTC (ref: main.cpp:625,631,643)
+            'pt':   { block: 0, offset: 12, scale: 10,   dataType: 'FLOAT', apply_factor: 'tp_tc' }, // 0x2012
+            'qt':   { block: 0, offset: 20, scale: 10,   dataType: 'FLOAT', apply_factor: 'tp_tc' }, // 0x201A
+            'st':   { block: 0, offset: 28, scale: 10,   dataType: 'FLOAT', apply_factor: 'tp_tc' }, // 0x2022
+            // Fator de potencia por fase — sem fator (ratio puro)
             'fp_a': { block: 0, offset: 38, scale: 1000, dataType: 'FLOAT' }, // 0x202C
             'fp_b': { block: 0, offset: 40, scale: 1000, dataType: 'FLOAT' }, // 0x202E
             'fp_c': { block: 0, offset: 42, scale: 1000, dataType: 'FLOAT' }, // 0x2030
 
-            // --- Energias (mode 'last' p/ acumulado, mode 'delta' p/ consumo no intervalo) ---
-            'phf':          { block: 1, offset: 0, scale: 1, dataType: 'FLOAT', mode: 'last'  }, // PHF cumulativo
-            'consumo_phf':  { block: 1, offset: 0, scale: 1, dataType: 'FLOAT', mode: 'delta', clamp_negative: true },
-            'consumo_phr':  { block: 2, offset: 0, scale: 1, dataType: 'FLOAT', mode: 'delta', clamp_negative: true },
-            'consumo_qhf':  { block: 3, offset: 0, scale: 1, dataType: 'FLOAT', mode: 'delta', clamp_negative: true },
-            'consumo_qhr':  { block: 4, offset: 0, scale: 1, dataType: 'FLOAT', mode: 'delta', clamp_negative: true },
+            // --- Energias — multiplicadas por fatorEnergia (ref: main.cpp:658,667,676,685) ---
+            'phf':          { block: 1, offset: 0, scale: 1, dataType: 'FLOAT', mode: 'last',  apply_factor: 'tp_tc' },
+            'consumo_phf':  { block: 1, offset: 0, scale: 1, dataType: 'FLOAT', mode: 'delta', apply_factor: 'tp_tc', clamp_negative: true },
+            'consumo_phr':  { block: 2, offset: 0, scale: 1, dataType: 'FLOAT', mode: 'delta', apply_factor: 'tp_tc', clamp_negative: true },
+            'consumo_qhf':  { block: 3, offset: 0, scale: 1, dataType: 'FLOAT', mode: 'delta', apply_factor: 'tp_tc', clamp_negative: true },
+            'consumo_qhr':  { block: 4, offset: 0, scale: 1, dataType: 'FLOAT', mode: 'delta', apply_factor: 'tp_tc', clamp_negative: true },
         },
         bi_map: {},
         bo_map: {},
@@ -619,16 +629,39 @@ var DEVICE_MODELS = {
     // Referência: /var/www/iot_nexon/PLATFORMIO/TESTES-BANCADA/M160/LORA_TX_MODBUS
     // Bloco único 37..70 (REG_START=37, REG_COUNT=34) cobre V/I/P/Q/FP/S/Energia.
     // Scales: V/=10, I/=100, FP/=1000, Energia/=1000 (sem fator TP*TC ainda).
+    //
+    // Catálogo expõe SOMENTE os 17 pontos do contrato canônico
+    // DEVICE_POINTS.medidor_energia (mesmo conjunto que chint-pd666). M-160 tem
+    // mais registers (per-phase P/Q/S etc.) mas não são publicados pra manter
+    // JSON uniforme entre modelos.
     'ims-m160': {
         fabricante: 'IMS',
         modelo: 'M160',
         tipo: 'medidor_energia',
         protocolo: 'rtu',
         connection_note: 'RS485 direto, 9600 8N1. Registers 16-bit, não IEEE float.',
+        // TP/TC lido a cada ciclo (refs PlatformIO LORA_TX_MODBUS/main.cpp:135-141)
+        // reg 3 = TP (PT ratio), reg 4 = TC (CT ratio). Ambos uint16, scale=1.
+        // No M-160 só ENERGIAS precisam do fator (V/I/P/Q/S já vêm calculados).
+        tp_tc: {
+            register: 3,
+            count: 2,
+            tp_offset: 0,
+            tc_offset: 1,
+            scale_tp: 1,
+            scale_tc: 1,
+        },
         ai_blocks: [
             { start: 37, count: 34, func: 0x03, label: 'V, I, P, Q, FP, S, Energia (37..70)' },
         ],
         ai_map: {
+            // Energias (regs 64, 66, 68, 70) — multiplicadas por TP*TC
+            // (ref: main.cpp:187-192 → phf = (regs[REG_PHF]/1000) * fatorEnergia)
+            'phf':         { block: 0, offset: 27, scale: 1000, dataType: 'U16', mode: 'last',  apply_factor: 'tp_tc' },
+            'consumo_phf': { block: 0, offset: 27, scale: 1000, dataType: 'U16', mode: 'delta', apply_factor: 'tp_tc', clamp_negative: true },
+            'consumo_phr': { block: 0, offset: 29, scale: 1000, dataType: 'U16', mode: 'delta', apply_factor: 'tp_tc', clamp_negative: true },
+            'consumo_qhf': { block: 0, offset: 31, scale: 1000, dataType: 'U16', mode: 'delta', apply_factor: 'tp_tc', clamp_negative: true },
+            'consumo_qhr': { block: 0, offset: 33, scale: 1000, dataType: 'U16', mode: 'delta', apply_factor: 'tp_tc', clamp_negative: true },
             // Tensões (regs 37, 38, 39 — uint16, /10)
             'va': { block: 0, offset: 0, scale: 10, dataType: 'U16' },
             'vb': { block: 0, offset: 1, scale: 10, dataType: 'U16' },
@@ -637,32 +670,14 @@ var DEVICE_MODELS = {
             'ia': { block: 0, offset: 6, scale: 100, dataType: 'U16' },
             'ib': { block: 0, offset: 7, scale: 100, dataType: 'U16' },
             'ic': { block: 0, offset: 8, scale: 100, dataType: 'U16' },
-            // Potência ativa (regs 46-49 — int16, pode ser negativa)
-            'pa':       { block: 0, offset: 9,  scale: 1, dataType: 'S16' },
-            'pb':       { block: 0, offset: 10, scale: 1, dataType: 'S16' },
-            'pc':       { block: 0, offset: 11, scale: 1, dataType: 'S16' },
-            'pa_total': { block: 0, offset: 12, scale: 1, dataType: 'S16' },
-            // Potência reativa (regs 50-53 — int16)
-            'qa':       { block: 0, offset: 13, scale: 1, dataType: 'S16' },
-            'qb':       { block: 0, offset: 14, scale: 1, dataType: 'S16' },
-            'qc':       { block: 0, offset: 15, scale: 1, dataType: 'S16' },
-            'pr_total': { block: 0, offset: 16, scale: 1, dataType: 'S16' },
-            // FP (regs 54-57 — int16, /1000)
-            'fp_a':     { block: 0, offset: 17, scale: 1000, dataType: 'S16' },
-            'fp_b':     { block: 0, offset: 18, scale: 1000, dataType: 'S16' },
-            'fp_c':     { block: 0, offset: 19, scale: 1000, dataType: 'S16' },
-            'fp_total': { block: 0, offset: 20, scale: 1000, dataType: 'S16' },
-            // Potência aparente (regs 58-61 — uint16)
-            'sa':       { block: 0, offset: 21, scale: 1, dataType: 'U16' },
-            'sb':       { block: 0, offset: 22, scale: 1, dataType: 'U16' },
-            'sc':       { block: 0, offset: 23, scale: 1, dataType: 'U16' },
-            'ps_total': { block: 0, offset: 24, scale: 1, dataType: 'U16' },
-            // Energias acumuladas (regs 64, 66, 68, 70 — uint16, /1000)
-            // Nota: M-160 real multiplica por TP*TC. Aqui assume TP=TC=1 (medição direta).
-            'energia_ativa_imp': { block: 0, offset: 27, scale: 1000, dataType: 'U16', mode: 'last' },
-            'energia_ativa_exp': { block: 0, offset: 29, scale: 1000, dataType: 'U16', mode: 'last' },
-            'consumo_ativa_imp': { block: 0, offset: 27, scale: 1000, dataType: 'U16', mode: 'delta', clamp_negative: true },
-            'consumo_ativa_exp': { block: 0, offset: 29, scale: 1000, dataType: 'U16', mode: 'delta', clamp_negative: true },
+            // FP por fase (regs 54-56 — int16, /1000)
+            'fp_a': { block: 0, offset: 17, scale: 1000, dataType: 'S16' },
+            'fp_b': { block: 0, offset: 18, scale: 1000, dataType: 'S16' },
+            'fp_c': { block: 0, offset: 19, scale: 1000, dataType: 'S16' },
+            // Potências totais (regs 49=PA total, 53=QT, 61=ST)
+            'pt': { block: 0, offset: 12, scale: 1, dataType: 'S16' },
+            'qt': { block: 0, offset: 16, scale: 1, dataType: 'S16' },
+            'st': { block: 0, offset: 24, scale: 1, dataType: 'U16' },
         },
         bi_map: {},
         bo_map: {},
