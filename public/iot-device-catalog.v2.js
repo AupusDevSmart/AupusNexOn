@@ -615,32 +615,54 @@ var DEVICE_MODELS = {
         bo_map: {},
     },
 
+    // IMS M-160: registers 16-bit (uint16/int16) — NÃO IEEE 754 float.
+    // Referência: /var/www/iot_nexon/PLATFORMIO/TESTES-BANCADA/M160/LORA_TX_MODBUS
+    // Bloco único 37..70 (REG_START=37, REG_COUNT=34) cobre V/I/P/Q/FP/S/Energia.
+    // Scales: V/=10, I/=100, FP/=1000, Energia/=1000 (sem fator TP*TC ainda).
     'ims-m160': {
         fabricante: 'IMS',
         modelo: 'M160',
         tipo: 'medidor_energia',
         protocolo: 'rtu',
-        connection_note: 'RS485 direto',
+        connection_note: 'RS485 direto, 9600 8N1. Registers 16-bit, não IEEE float.',
         ai_blocks: [
-            { start: 100, count: 28, func: 0x03, label: 'V, I, P, FP, Freq' },
-            { start: 200, count: 4, func: 0x03, label: 'Energia' },
+            { start: 37, count: 34, func: 0x03, label: 'V, I, P, Q, FP, S, Energia (37..70)' },
         ],
         ai_map: {
-            'va':              { block: 0, offset: 0,  scale: 1, dataType: 'FLOAT' },
-            'vb':              { block: 0, offset: 2,  scale: 1, dataType: 'FLOAT' },
-            'vc':              { block: 0, offset: 4,  scale: 1, dataType: 'FLOAT' },
-            'ia':              { block: 0, offset: 6,  scale: 1, dataType: 'FLOAT' },
-            'ib':              { block: 0, offset: 8,  scale: 1, dataType: 'FLOAT' },
-            'ic':              { block: 0, offset: 10, scale: 1, dataType: 'FLOAT' },
-            'pa_total':        { block: 0, offset: 18, scale: 1, dataType: 'FLOAT' },
-            'pr_total':        { block: 0, offset: 20, scale: 1, dataType: 'FLOAT' },
-            'ps_total':        { block: 0, offset: 22, scale: 1, dataType: 'FLOAT' },
-            'fp_total':        { block: 0, offset: 24, scale: 1, dataType: 'FLOAT' },
-            'freq':            { block: 0, offset: 26, scale: 1, dataType: 'FLOAT' },
-            'energia_ativa_imp':     { block: 1, offset: 0, scale: 1, dataType: 'FLOAT', mode: 'last' },
-            'energia_ativa_exp':     { block: 1, offset: 2, scale: 1, dataType: 'FLOAT', mode: 'last' },
-            'consumo_ativa_imp':     { block: 1, offset: 0, scale: 1, dataType: 'FLOAT', mode: 'delta', clamp_negative: true },
-            'consumo_ativa_exp':     { block: 1, offset: 2, scale: 1, dataType: 'FLOAT', mode: 'delta', clamp_negative: true },
+            // Tensões (regs 37, 38, 39 — uint16, /10)
+            'va': { block: 0, offset: 0, scale: 10, dataType: 'U16' },
+            'vb': { block: 0, offset: 1, scale: 10, dataType: 'U16' },
+            'vc': { block: 0, offset: 2, scale: 10, dataType: 'U16' },
+            // Correntes (regs 43, 44, 45 — uint16, /100)
+            'ia': { block: 0, offset: 6, scale: 100, dataType: 'U16' },
+            'ib': { block: 0, offset: 7, scale: 100, dataType: 'U16' },
+            'ic': { block: 0, offset: 8, scale: 100, dataType: 'U16' },
+            // Potência ativa (regs 46-49 — int16, pode ser negativa)
+            'pa':       { block: 0, offset: 9,  scale: 1, dataType: 'S16' },
+            'pb':       { block: 0, offset: 10, scale: 1, dataType: 'S16' },
+            'pc':       { block: 0, offset: 11, scale: 1, dataType: 'S16' },
+            'pa_total': { block: 0, offset: 12, scale: 1, dataType: 'S16' },
+            // Potência reativa (regs 50-53 — int16)
+            'qa':       { block: 0, offset: 13, scale: 1, dataType: 'S16' },
+            'qb':       { block: 0, offset: 14, scale: 1, dataType: 'S16' },
+            'qc':       { block: 0, offset: 15, scale: 1, dataType: 'S16' },
+            'pr_total': { block: 0, offset: 16, scale: 1, dataType: 'S16' },
+            // FP (regs 54-57 — int16, /1000)
+            'fp_a':     { block: 0, offset: 17, scale: 1000, dataType: 'S16' },
+            'fp_b':     { block: 0, offset: 18, scale: 1000, dataType: 'S16' },
+            'fp_c':     { block: 0, offset: 19, scale: 1000, dataType: 'S16' },
+            'fp_total': { block: 0, offset: 20, scale: 1000, dataType: 'S16' },
+            // Potência aparente (regs 58-61 — uint16)
+            'sa':       { block: 0, offset: 21, scale: 1, dataType: 'U16' },
+            'sb':       { block: 0, offset: 22, scale: 1, dataType: 'U16' },
+            'sc':       { block: 0, offset: 23, scale: 1, dataType: 'U16' },
+            'ps_total': { block: 0, offset: 24, scale: 1, dataType: 'U16' },
+            // Energias acumuladas (regs 64, 66, 68, 70 — uint16, /1000)
+            // Nota: M-160 real multiplica por TP*TC. Aqui assume TP=TC=1 (medição direta).
+            'energia_ativa_imp': { block: 0, offset: 27, scale: 1000, dataType: 'U16', mode: 'last' },
+            'energia_ativa_exp': { block: 0, offset: 29, scale: 1000, dataType: 'U16', mode: 'last' },
+            'consumo_ativa_imp': { block: 0, offset: 27, scale: 1000, dataType: 'U16', mode: 'delta', clamp_negative: true },
+            'consumo_ativa_exp': { block: 0, offset: 29, scale: 1000, dataType: 'U16', mode: 'delta', clamp_negative: true },
         },
         bi_map: {},
         bo_map: {},
