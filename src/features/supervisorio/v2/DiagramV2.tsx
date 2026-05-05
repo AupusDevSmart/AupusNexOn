@@ -223,11 +223,12 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
       // Salvar no backend primeiro
       const { equipamentosApi } = await import('@/services/equipamentos.services');
 
+      const trimmedTopico = updates.topicoMqtt?.trim();
       await equipamentosApi.update(editingEquipment.id, {
         nome: updates.nome,
         tag: updates.tag,
-        mqtt_habilitado: updates.mqttHabilitado,
-        topico_mqtt: updates.topicoMqtt,
+        mqtt_habilitado: updates.mqttHabilitado ?? false,
+        ...(trimmedTopico ? { topico_mqtt: trimmedTopico } : {}),
       });
 
       // Atualizar equipamento no store

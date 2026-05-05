@@ -134,7 +134,7 @@ export const EquipmentEditModal: React.FC<EquipmentEditModalProps> = ({
           <Button variant="outline" onClick={onClose}>
             Cancelar
           </Button>
-          <Button onClick={handleSave} disabled={!nome.trim() || !tag.trim()}>
+          <Button onClick={handleSave} disabled={!nome.trim()}>
             Salvar Alterações
           </Button>
         </DialogFooter>
