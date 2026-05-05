@@ -1345,30 +1345,61 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
                     )}
 
                     {/* Checklist */}
-                    <div>
-                      <p className="text-sm font-medium mb-2">Checklist de Validacao:</p>
-                      <div className="space-y-1">
-                        {test.checklist.map((c: any) => (
-                          <label key={c.key} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-muted/50 rounded px-2 py-1">
-                            <input
-                              type="checkbox"
-                              checked={benchTestModal.checklist[c.key] || false}
-                              onChange={e => setBenchTestModal(prev => prev ? {
-                                ...prev,
-                                checklist: { ...prev.checklist, [c.key]: e.target.checked }
-                              } : null)}
-                              className="rounded"
-                            />
-                            <span className={benchTestModal.checklist[c.key] ? 'text-green-600 dark:text-green-400 line-through' : ''}>
-                              {c.item}
-                            </span>
-                          </label>
-                        ))}
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-2">
-                        {Object.values(benchTestModal.checklist).filter(Boolean).length} / {test.checklist.length} itens verificados
-                      </p>
-                    </div>
+                    {(() => {
+                      const totalItens = test.checklist.length;
+                      const marcados = test.checklist.filter((c: any) => benchTestModal.checklist[c.key]).length;
+                      const todosMarcados = totalItens > 0 && marcados === totalItens;
+                      const toggleTodos = () => {
+                        const novoEstado = !todosMarcados;
+                        setBenchTestModal(prev => prev ? {
+                          ...prev,
+                          checklist: test.checklist.reduce(
+                            (acc: Record<string, boolean>, c: any) => {
+                              acc[c.key] = novoEstado;
+                              return acc;
+                            },
+                            { ...prev.checklist },
+                          ),
+                        } : null);
+                      };
+                      return (
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="text-sm font-medium">Checklist de Validacao:</p>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 text-xs"
+                              onClick={toggleTodos}
+                            >
+                              {todosMarcados ? 'Limpar todos' : 'Selecionar todos'}
+                            </Button>
+                          </div>
+                          <div className="space-y-1">
+                            {test.checklist.map((c: any) => (
+                              <label key={c.key} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-muted/50 rounded px-2 py-1">
+                                <input
+                                  type="checkbox"
+                                  checked={benchTestModal.checklist[c.key] || false}
+                                  onChange={e => setBenchTestModal(prev => prev ? {
+                                    ...prev,
+                                    checklist: { ...prev.checklist, [c.key]: e.target.checked }
+                                  } : null)}
+                                  className="rounded"
+                                />
+                                <span className={benchTestModal.checklist[c.key] ? 'text-green-600 dark:text-green-400 line-through' : ''}>
+                                  {c.item}
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-2">
+                            {marcados} / {totalItens} itens verificados
+                          </p>
+                        </div>
+                      );
+                    })()}
                   </>
                 );
               })()}
