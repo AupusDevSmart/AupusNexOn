@@ -13,15 +13,16 @@ import { iotApiService, type IoTProjeto, type IoTDiagrama } from '@/services/iot
  * Resposta do OtaController.compileAndPublish (com envelope ResponseInterceptor):
  *   { success: true, data: { published, topic, url, version, md5, size }, meta? }
  */
+// Atenção: o interceptor de response em src/config/api.ts já desempacota
+// o envelope {success, data, meta} do NexOn — então resp.data aqui já é a
+// payload achatada {published, topic, url, ...}. NÃO acessar resp.data.data.
 interface OtaCompilePublishResponse {
-  data: {
-    published: boolean;
-    topic: string;
-    url: string;
-    version: string;
-    md5: string;
-    size: number;
-  };
+  published: boolean;
+  topic: string;
+  url: string;
+  version: string;
+  md5: string;
+  size: number;
 }
 
 interface OtaCompileFiles {
@@ -106,10 +107,19 @@ async function flashESP32(firmwareBase64: string, logFn: FlashLog): Promise<bool
 
     const firmwareBytes = Uint8Array.from(atob(firmwareBase64), c => c.charCodeAt(0));
     logFn(`Firmware: ${(firmwareBytes.length / 1024).toFixed(1)} KB`);
-    logFn('Gravando firmware (0x10000)...');
+
+    // otadata em 0xe000 (8KB). Quando todo 0xFF (estado apagado), bootloader
+    // cai no app0. Sem isso, USB grave em 0x10000 não vence se uma OTA prévia
+    // tiver deixado otadata apontando pra app1 — bootloader segue boot em app1.
+    const otadataReset = new Uint8Array(0x2000).fill(0xff);
+
+    logFn('Gravando otadata (0xe000) + firmware (0x10000)...');
 
     await loader.writeFlash({
-      fileArray: [{ data: firmwareBytes, address: 0x10000 }],
+      fileArray: [
+        { data: otadataReset, address: 0xe000 },
+        { data: firmwareBytes, address: 0x10000 },
+      ],
       flashSize: 'keep',
       flashMode: 'keep',
       flashFreq: 'keep',
@@ -173,12 +183,16 @@ function ensureIoTScripts(): Promise<void> {
   if ((window as any).__iotScriptsPromise) return (window as any).__iotScriptsPromise;
 
   (window as any).__iotScriptsPromise = new Promise<void>((resolve) => {
+    // Cache-buster: bumpe esta string sempre que editar qualquer iot-*.v2.js.
+    // Browsers respeitam Cache-Control immutable mesmo em hard refresh, então
+    // a única forma garantida de forçar fetch é mudar a URL.
+    const IOT_SCRIPTS_VERSION = '20260505-1645';
     const scripts = [
-      '/iot-device-catalog.v2.js',
-      '/iot-firmware-base.v2.js',
-      '/iot-firmware-generator.v2.js',
-      '/iot-bench-tests.v2.js',
-      '/iot-diagram.v2.js',
+      `/iot-device-catalog.v2.js?v=${IOT_SCRIPTS_VERSION}`,
+      `/iot-firmware-base.v2.js?v=${IOT_SCRIPTS_VERSION}`,
+      `/iot-firmware-generator.v2.js?v=${IOT_SCRIPTS_VERSION}`,
+      `/iot-bench-tests.v2.js?v=${IOT_SCRIPTS_VERSION}`,
+      `/iot-diagram.v2.js?v=${IOT_SCRIPTS_VERSION}`,
     ];
     let idx = 0;
     const loadNext = () => {
@@ -773,11 +787,15 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
         name: proj.name,
         version,
       };
+      // Timeout estendido: compile (~40s) + publish-artifact + publish MQTT
+      // pode passar de 60s. Default global do api é 30s, insuficiente.
       const resp = await api.post<OtaCompilePublishResponse>(
         `/equipamentos/${encodeURIComponent(equipamentoId)}/ota/compilar-e-publicar`,
         body,
+        { timeout: 180000 },
       );
-      const payload = resp.data.data;
+      // resp.data já vem desempacotado pelo interceptor (vide src/config/api.ts).
+      const payload = resp.data;
       setFirmwareModal(prev => prev ? {
         ...prev, status: 'deployed',
         log: [...prev.log,
