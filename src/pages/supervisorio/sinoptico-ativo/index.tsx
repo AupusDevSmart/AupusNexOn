@@ -3810,6 +3810,22 @@ if (import.meta.env.PROD) {
                     // Abrir modal de pivô
                     setSelectedPivoId(comp.id);
                     setPivoModalOpen(true);
+                  } else if (
+                    (comp.dados?.tipoEquipamento?.categoria?.nome ||
+                      comp.dados?.tipo_equipamento_rel?.categoria?.nome) === 'Gateway'
+                  ) {
+                    console.log('[DiagramV2] Opening A966 modal');
+                    const componenteV1: ComponenteDU = {
+                      id: comp.id,
+                      tipo: comp.tipo,
+                      nome: comp.nome,
+                      tag: comp.tag,
+                      posicao: { x: comp.posicaoX, y: comp.posicaoY },
+                      status: comp.status?.toUpperCase() as any || 'NORMAL',
+                      dados: comp.dados || {},
+                    };
+                    setComponenteSelecionado(componenteV1);
+                    setModalAberto('A966');
                   }
                 }}
               />
