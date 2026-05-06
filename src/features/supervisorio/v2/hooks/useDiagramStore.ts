@@ -457,8 +457,13 @@ export const useDiagramStore = create<DiagramStore>()(
                 // ✅ CORRIGIDO: Usar codigo do tipoEquipamento (ex: "INVERSOR_FRONIUS", "M160_SCHNEIDER")
                 // Fallback para tipo_equipamento genérico se tipoEquipamento não existir
                 tipo: eq.tipoEquipamento?.codigo || eq.tipo_equipamento_rel?.codigo || eq.tipo_equipamento || 'EQUIPAMENTO',
-                // ✅ Adicionar categoria do equipamento (ex: "CHAVE", "INVERSOR_PV")
-                categoria: eq.tipoEquipamento?.categoria?.codigo || eq.tipo_equipamento_rel?.categoria?.codigo,
+                // ✅ Categoria do equipamento. A tabela categorias_equipamentos tem só id+nome
+                // (sem codigo) — entao usamos `nome` como fonte primaria, com fallback pra
+                // `codigo` caso o backend passe a expor algum dia.
+                categoria: eq.tipoEquipamento?.categoria?.nome
+                  || eq.tipoEquipamento?.categoria?.codigo
+                  || eq.tipo_equipamento_rel?.categoria?.nome
+                  || eq.tipo_equipamento_rel?.categoria?.codigo,
                 unidadeId: unidadeId,
                 diagramaId: diagramaRaw.id.trim(), // Normalizar ID
                 posicaoX: pos.posicaoX,

@@ -425,7 +425,7 @@ export const DiagramV2Wrapper: React.FC<DiagramV2WrapperProps> = ({
               // sobreposicao com o modal de detalhes/CRUD do equipamento.
               if (
                 !modoEdicao &&
-                getCommandsForCategoria(equipment.categoria) !== null
+                getCommandsForCategoria(equipment.categoria, equipment.tipo) !== null
               ) {
                 setCommandModalEquipment(equipment);
                 return;

@@ -139,6 +139,11 @@ const ICON_MAP: Record<string, IconComponent> = {
   // Modelos TON1/TON2/TON3/TON4 ficam em tipos_equipamentos; categoria
   // diferencia visualmente dos eletricos no diagrama.
   'TON': TONIcon,
+  // Match pelo codigo do tipo (caso categoria nao venha populada do backend)
+  'TON1': TONIcon,
+  'TON2': TONIcon,
+  'TON3': TONIcon,
+  'TON4': TONIcon,
 
   // 15. SoftStarter (usando InversorIcon temporariamente)
   'SOFTSTARTER': InversorIcon,

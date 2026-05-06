@@ -114,12 +114,47 @@ export const COMMAND_REGISTRY: Record<string, CategoryCommands> = {
 };
 
 /**
+ * Normaliza nome de categoria para chave de lookup.
+ * Mesma normalizacao usada por EquipmentIconFactory.getEquipmentIcon —
+ * uppercase + remover espaco/parentese/hifen — pra que o registry case
+ * com a categoria que vier do backend independente de capitalizacao.
+ */
+function normalizeKey(categoria: string): string {
+  return categoria
+    .toUpperCase()
+    .replace(/[\-()]/g, '_')
+    .trim();
+}
+
+/**
  * Lookup do registry para uma categoria. Retorna null se nao houver comandos
  * registrados (modal nao deve abrir nesses casos).
+ *
+ * Aceita tambem fallback pelo `tipo` do equipamento — assim TONs cadastrados
+ * com tipo_equipamento.codigo='TON1'/'TON2'/'TON3'/'TON4' caem sob a chave
+ * 'TON' do registry sem precisar entrada por modelo.
  */
 export function getCommandsForCategoria(
   categoriaNome: string | null | undefined,
+  tipoCodigo?: string | null,
 ): CategoryCommands | null {
-  if (!categoriaNome) return null;
-  return COMMAND_REGISTRY[categoriaNome.trim()] ?? null;
+  // 1) Match direto pela categoria
+  if (categoriaNome) {
+    const direct = COMMAND_REGISTRY[normalizeKey(categoriaNome)];
+    if (direct) return direct;
+  }
+
+  // 2) Fallback: tipo_equipamento.codigo (TON1/2/3/4 -> TON)
+  if (tipoCodigo) {
+    const tipoNorm = normalizeKey(tipoCodigo);
+    // Match exato (caso tipoCodigo seja 'TON' literal)
+    if (COMMAND_REGISTRY[tipoNorm]) return COMMAND_REGISTRY[tipoNorm];
+    // Match por prefixo numerado (TON1/2/3/4 -> TON)
+    const prefixMatch = tipoNorm.match(/^([A-Z_]+?)\d+$/);
+    if (prefixMatch && COMMAND_REGISTRY[prefixMatch[1]]) {
+      return COMMAND_REGISTRY[prefixMatch[1]];
+    }
+  }
+
+  return null;
 }
