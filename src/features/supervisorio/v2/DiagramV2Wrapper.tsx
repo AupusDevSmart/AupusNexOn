@@ -32,6 +32,8 @@ import { DiagramV2 } from './DiagramV2';
 import { useDiagramStore } from './hooks/useDiagramStore';
 import type { Equipment } from './types/diagram.types';
 import { SinopticoGraficosV2 } from '../components/sinoptico-graficos-v2';
+import { EquipamentoCommandModal } from './components/EquipamentoCommandModal';
+import { getCommandsForCategoria } from './utils/commandRegistry';
 import { Button } from '@/components/ui/button';
 import { BarChart3 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
@@ -143,6 +145,10 @@ export const DiagramV2Wrapper: React.FC<DiagramV2WrapperProps> = ({
 
   // Estado para mostrar/ocultar gráficos - SEMPRE começa OCULTO
   const [showGraficos, setShowGraficos] = useState(false);
+
+  // Estado do modal de comando MQTT — abre ao clicar em equipamento cuja
+  // categoria tem comandos registrados (ex: TON com botoes de rele/transistor).
+  const [commandModalEquipment, setCommandModalEquipment] = useState<Equipment | null>(null);
 
   // Buscar demanda contratada da unidade
   const { data: unidadeData } = useQuery({
@@ -413,8 +419,20 @@ export const DiagramV2Wrapper: React.FC<DiagramV2WrapperProps> = ({
             mode={modoEdicao ? 'edit' : 'view'}
             availableEquipments={equipamentosDisponiveis}
             onBackgroundClick={onBackgroundClick}
-            onEquipmentClick={onComponenteClick ? (equipment) => {
-              // Converter Equipment V2 para formato legado
+            onEquipmentClick={(equipment) => {
+              // Categorias com comandos registrados (ex: TON) abrem o modal
+              // de comando MQTT em vez do callback legado. Isso evita
+              // sobreposicao com o modal de detalhes/CRUD do equipamento.
+              if (
+                !modoEdicao &&
+                getCommandsForCategoria(equipment.categoria) !== null
+              ) {
+                setCommandModalEquipment(equipment);
+                return;
+              }
+
+              // Caso contrario, segue o fluxo legado (callback opcional).
+              if (!onComponenteClick) return;
               const legacyComponente = {
                 id: equipment.id,
                 nome: equipment.nome,
@@ -425,10 +443,23 @@ export const DiagramV2Wrapper: React.FC<DiagramV2WrapperProps> = ({
                 dados: (equipment as unknown as { dados?: Record<string, unknown> }).dados,
               };
               onComponenteClick(legacyComponente);
-            } : undefined}
+            }}
           />
         </div>
       </div>
+
+      {commandModalEquipment && (
+        <EquipamentoCommandModal
+          open={true}
+          onClose={() => setCommandModalEquipment(null)}
+          equipamento={{
+            id: commandModalEquipment.id,
+            nome: commandModalEquipment.nome,
+            topico_mqtt: commandModalEquipment.topicoMqtt ?? null,
+            categoria: commandModalEquipment.categoria ?? null,
+          }}
+        />
+      )}
     </div>
   );
 };

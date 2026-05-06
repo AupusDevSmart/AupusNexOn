@@ -21,6 +21,7 @@ import { ModulosPVIcon } from './ModulosPVIcon';
 import { MotorEletricoIcon } from './MotorEletricoIcon';
 import { PivoIcon } from './PivoIcon';
 import { CarregadorEletricoIcon } from './CarregadorEletricoIcon';
+import { TONIcon } from './TONIcon';
 
 // ============================================================================
 // TIPOS
@@ -133,6 +134,11 @@ const ICON_MAP: Record<string, IconComponent> = {
 
   // 14. RTU (Remote Terminal Unit) (usando MedidorIcon temporariamente)
   'RTU': MedidorIcon,
+
+  // TON (Controlador IoT Aupus) — categoria criada via cadastro de equipamentos
+  // Modelos TON1/TON2/TON3/TON4 ficam em tipos_equipamentos; categoria
+  // diferencia visualmente dos eletricos no diagrama.
+  'TON': TONIcon,
 
   // 15. SoftStarter (usando InversorIcon temporariamente)
   'SOFTSTARTER': InversorIcon,

@@ -222,6 +222,28 @@ export interface EstatisticasPlantaResponse {
   };
 }
 
+/**
+ * Resposta do POST /equipamentos/:id/cmd.
+ * Espelha CommandResultDto do backend (apos desempacotar pelo interceptor).
+ *
+ * Mapeamento de status HTTP no backend:
+ *  - 200: TON respondeu ok ou duplicate (este shape)
+ *  - 400: equipamento sem mqtt_habilitado/topico_mqtt
+ *  - 404: equipamento nao encontrado
+ *  - 502: TON respondeu com error (cai no catch do axios)
+ *  - 504: timeout (cai no catch)
+ */
+export interface CommandResult {
+  cmd_id: string;
+  status: 'ok' | 'duplicate';
+  msg: string;
+  ts: number;
+  latency_ms: number;
+}
+
+/** Payload do `cmd` aceito pelo endpoint — string ou objeto Modbus BO. */
+export type EquipamentoCommand = string | Record<string, unknown>;
+
 export interface ComponentesGerenciamentoResponse {
   equipamentoUC: {
     id: string;
@@ -437,6 +459,34 @@ export class EquipamentosApiService {
   async removeFoto(id: string): Promise<{ fotoUrl: null }> {
     const response = await api.delete<{ fotoUrl: null }>(
       `${this.baseEndpoint}/${id.trim()}/foto`
+    );
+    return response.data;
+  }
+
+  // ============================================================================
+  // COMANDOS MQTT
+  // ============================================================================
+
+  /**
+   * Envia comando MQTT para um equipamento e aguarda ack do TON.
+   * Backend publica em <topico_mqtt>/cmd e aguarda <topico_mqtt>/cmd/ack
+   * com retransmissao automatica.
+   *
+   * Permission necessaria: equipamentos.comandar
+   *
+   * @param id ID do equipamento (CUID)
+   * @param cmd Comando — string para atalhos firmware ('r1 on', 'tr2 off',
+   *            'status') ou objeto Modbus BO ({device, cmd}).
+   * @returns CommandResult com status do TON ('ok' ou 'duplicate' = sucesso)
+   * @throws AxiosError em 4xx/5xx — verificar error.response.data.error.message
+   */
+  async sendCommand(
+    id: string,
+    cmd: EquipamentoCommand,
+  ): Promise<CommandResult> {
+    const response = await api.post<CommandResult>(
+      `${this.baseEndpoint}/${id.trim()}/cmd`,
+      { cmd },
     );
     return response.data;
   }
