@@ -89,14 +89,6 @@ export const navigationLinks: Array<NavigationLink> = [
         label: "Logs MQTT",
         hint: "Logs gerados pelas regras MQTT",
       },
-      // {
-      //   key: "supervisorio-sinoptico-v2",
-      //   featureKey: "supervisorio",
-      //   path: "/supervisorio/sinoptico-v2",
-      //   icon: Cpu,
-      //   label: "Diagrama Unifilar V2",
-      //   hint: "Diagrama unifilar refatorado (arquitetura modular)",
-      // },
     ],
   },
   // Financeiro - OCULTO

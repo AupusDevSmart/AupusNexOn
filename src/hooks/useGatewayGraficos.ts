@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
 import { api } from "@/config/api";
 
+// Constante de divisao do medidor SSU acoplado ao A966 (kWh = leitura_bruta * KD).
+// Espelha KD_A966_SSU em a966-modal.tsx.
+const KD_A966_SSU = 0.3;
+
 export interface GatewayGraficoDiaPonto {
   timestamp: string;
   hora: string;
@@ -63,7 +67,12 @@ export function useGatewayGraficoDia(
         );
 
         const payload = response.data?.data ?? response.data;
-        setGrafico(payload);
+        const dados = (payload?.dados ?? []).map((p: GatewayGraficoDiaPonto) => ({
+          ...p,
+          phf_kw: p.phf_kw * KD_A966_SSU,
+          phr_kw: p.phr_kw * KD_A966_SSU,
+        }));
+        setGrafico({ ...payload, dados });
       } catch (err: any) {
         setError(err.response?.data?.message || "Erro ao carregar gráfico do dia");
         setGrafico(null);
@@ -99,7 +108,12 @@ export function useGatewayGraficoMes(equipamentoId: string | null, mes?: string)
           { params },
         );
         const payload = response.data?.data ?? response.data;
-        setGrafico(payload);
+        const dados = (payload?.dados ?? []).map((p: GatewayGraficoMesPonto) => ({
+          ...p,
+          phf_kw_avg: p.phf_kw_avg * KD_A966_SSU,
+          phr_kw_avg: p.phr_kw_avg * KD_A966_SSU,
+        }));
+        setGrafico({ ...payload, dados });
       } catch (err: any) {
         setError(err.response?.data?.message || "Erro ao carregar gráfico do mês");
         setGrafico(null);

@@ -682,6 +682,32 @@ var DEVICE_MODELS = {
         bi_map: {},
         bo_map: {},
     },
+
+    // SSU acoplado ao Gateway A-966. Tipico: protocolo proprietario serial,
+    // payload publica em AUPUS/.../A966/SSU/state como JSON com phf/phr/qhfi/qhfc/qhri/qhrc + cdo + sts + frame.
+    // Energia em kWh = leitura_bruta * Kd. Kd default 0.3 (constante de divisao do medidor).
+    // Override por equipamento: linha em equipamentos_dados_tecnicos com campo='kd'.
+    'a966-ssu': {
+        fabricante: 'AUPUS',
+        modelo: 'A966-SSU',
+        tipo: 'gateway_medidor',
+        protocolo: 'serial',
+        connection_note: 'Gateway A-966 le SSU via serial proprietario e publica JSON em /SSU/state.',
+        kd: { default: 0.3 },
+        ai_blocks: [],
+        ai_map: {
+            'phf':  { apply_factor: 'kd', unit: 'kWh' },
+            'phr':  { apply_factor: 'kd', unit: 'kWh' },
+            'qhfi': { apply_factor: 'kd', unit: 'kVArh' },
+            'qhfc': { apply_factor: 'kd', unit: 'kVArh' },
+            'qhri': { apply_factor: 'kd', unit: 'kVArh' },
+            'qhrc': { apply_factor: 'kd', unit: 'kVArh' },
+        },
+        bi_map: {
+            'sts': { unit: 'enum' },
+        },
+        bo_map: {},
+    },
 };
 
 

@@ -45,7 +45,49 @@ interface GatewayPayload {
   frame?: string;
 }
 
+// Constante de divisao do medidor SSU acoplado ao A966 — energia em kWh = leitura_bruta * KD_A966_SSU.
+// Quando houver mais de uma unidade com Kd diferente, mover pra equipamentos.dados_tecnicos (campo='kd').
+const KD_A966_SSU = 0.3;
+
+function extractA966Payload(rawDados: unknown): GatewayPayload | null {
+  if (!rawDados || typeof rawDados !== "object") return null;
+  const root = rawDados as Record<string, any>;
+  const flat: Record<string, any> = root.data && typeof root.data === "object" ? root.data : root;
+
+  const num = (v: unknown): number | undefined =>
+    typeof v === "number" && Number.isFinite(v) ? v : typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v)) ? Number(v) : undefined;
+  const scale = (v: unknown): number | undefined => {
+    const n = num(v);
+    return n === undefined ? undefined : n * KD_A966_SSU;
+  };
+
+  return {
+    cdo: typeof flat.cdo === "string" || typeof flat.cdo === "number" ? flat.cdo : undefined,
+    sts: num(flat.sts),
+    phf: scale(flat.phf),
+    phr: scale(flat.phr),
+    qhfi: scale(flat.qhfi),
+    qhfc: scale(flat.qhfc),
+    qhri: scale(flat.qhri),
+    qhrc: scale(flat.qhrc),
+    frame: typeof flat.frame === "string" ? flat.frame : undefined,
+  };
+}
+
 const TZ = "America/Sao_Paulo";
+
+function formatTempoRelativo(d: Date): string {
+  const diffMs = Date.now() - d.getTime();
+  const min = Math.floor(diffMs / 60000);
+  if (min < 1) return "agora";
+  if (min < 60) return `há ${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `há ${h}h`;
+  const dias = Math.floor(h / 24);
+  return `há ${dias}d`;
+}
+
+const STALE_THRESHOLD_MS = 30 * 60 * 1000;
 
 function statusLabel(sts?: number): { label: string; tone: string } {
   switch (sts) {
@@ -93,16 +135,20 @@ export function A966Modal({
     open ? equipamentoId ?? null : null,
   );
 
-  const payload = useMemo<GatewayPayload | null>(() => {
-    const dados = mqttResponse?.dado?.dados as any;
-    if (!dados) return null;
-    return (dados.data ?? dados) as GatewayPayload;
-  }, [mqttResponse]);
+  const payload = useMemo<GatewayPayload | null>(
+    () => extractA966Payload(mqttResponse?.dado?.dados),
+    [mqttResponse],
+  );
 
-  const isConnected = useMemo(() => {
-    if (!lastUpdate) return false;
-    return Date.now() - lastUpdate.getTime() < 5 * 60 * 1000;
+  const isStale = useMemo(() => {
+    if (!lastUpdate) return true;
+    return Date.now() - lastUpdate.getTime() > STALE_THRESHOLD_MS;
   }, [lastUpdate]);
+
+  const tempoRelativo = useMemo(
+    () => (lastUpdate ? formatTempoRelativo(lastUpdate) : null),
+    [lastUpdate],
+  );
 
   const status = statusLabel(payload?.sts);
 
@@ -150,13 +196,25 @@ export function A966Modal({
               <Badge variant="outline" className={status.tone}>
                 {status.label}
               </Badge>
-              {isConnected ? (
-                <Badge variant="outline" className="text-muted-foreground border-border">
-                  <Wifi className="h-3 w-3 mr-1" /> Tempo Real
+              {tempoRelativo ? (
+                <Badge
+                  variant="outline"
+                  className={
+                    isStale
+                      ? "text-amber-700 dark:text-amber-400 border-amber-500/40 bg-amber-500/10"
+                      : "text-muted-foreground border-border"
+                  }
+                >
+                  {isStale ? (
+                    <WifiOff className="h-3 w-3 mr-1" />
+                  ) : (
+                    <Wifi className="h-3 w-3 mr-1" />
+                  )}
+                  Atualizado {tempoRelativo}
                 </Badge>
               ) : (
                 <Badge variant="outline" className="text-muted-foreground border-border">
-                  <WifiOff className="h-3 w-3 mr-1" /> Sem dado recente
+                  <WifiOff className="h-3 w-3 mr-1" /> Sem dado
                 </Badge>
               )}
             </div>
@@ -177,8 +235,8 @@ export function A966Modal({
               </CardTitle>
             </CardHeader>
             <CardContent className="grid grid-cols-2 gap-2">
-              <ValorCard label="phf — Direta" valor={payload?.phf} unidade="kW" />
-              <ValorCard label="phr — Reversa" valor={payload?.phr} unidade="kW" />
+              <ValorCard label="phf — Direta" valor={payload?.phf} unidade="kWh" />
+              <ValorCard label="phr — Reversa" valor={payload?.phr} unidade="kWh" />
             </CardContent>
           </Card>
 
@@ -380,7 +438,7 @@ function GraficoEnergia({
             stroke="hsl(var(--muted-foreground))"
             fontSize={12}
             tickFormatter={(v) => `${Number(v).toFixed(1)}`}
-            label={{ value: "kW", angle: -90, position: "insideLeft", style: { fill: "hsl(var(--muted-foreground))" } }}
+            label={{ value: "kWh", angle: -90, position: "insideLeft", style: { fill: "hsl(var(--muted-foreground))" } }}
           />
           <Tooltip
             contentStyle={{
@@ -390,7 +448,7 @@ function GraficoEnergia({
               fontSize: 12,
             }}
             formatter={(value: any, name: string) => [
-              `${Number(value).toFixed(3)} kW`,
+              `${Number(value).toFixed(3)} kWh`,
               name,
             ]}
           />

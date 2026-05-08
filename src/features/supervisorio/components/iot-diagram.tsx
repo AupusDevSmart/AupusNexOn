@@ -186,7 +186,7 @@ function ensureIoTScripts(): Promise<void> {
     // Cache-buster: bumpe esta string sempre que editar qualquer iot-*.v2.js.
     // Browsers respeitam Cache-Control immutable mesmo em hard refresh, então
     // a única forma garantida de forçar fetch é mudar a URL.
-    const IOT_SCRIPTS_VERSION = '20260505-1645';
+    const IOT_SCRIPTS_VERSION = '20260508-a966kd';
     const scripts = [
       `/iot-device-catalog.v2.js?v=${IOT_SCRIPTS_VERSION}`,
       `/iot-firmware-base.v2.js?v=${IOT_SCRIPTS_VERSION}`,

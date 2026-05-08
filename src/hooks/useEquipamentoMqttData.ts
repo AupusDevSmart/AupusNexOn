@@ -36,9 +36,8 @@ export function useEquipamentoMqttData(equipamentoId: string | null) {
       console.log('✅ [useEquipamentoMqttData] Dados extraídos:', (response as any).data);
       const responseData = (response as any).data || response;
       setData(responseData);
-      // ✅ CORREÇÃO: Usar timestamp_dados real ao invés da hora atual
       const timestampDados = responseData?.dado?.timestamp_dados;
-      setLastUpdate(timestampDados ? new Date(timestampDados) : new Date());
+      setLastUpdate(timestampDados ? new Date(timestampDados) : null);
     } catch (err: any) {
       console.error('❌ [useEquipamentoMqttData] Erro ao buscar dados:', err);
       setError(err.message || 'Erro ao buscar dados do equipamento');
@@ -117,11 +116,10 @@ export function useEquipamentoMqttData(equipamentoId: string | null) {
       console.log('📡 [WebSocket] Match?', event.equipamentoId === cleanId);
 
       if (event.equipamentoId === cleanId) {
-        // ✅ CORREÇÃO: Usar timestamp do evento ao invés da hora atual
-        const timestampEvento = event.timestamp ? new Date(event.timestamp) : new Date();
+        const timestampEvento = event.timestamp ? new Date(event.timestamp) : null;
         console.log('✅ [WebSocket] Match confirmado! Atualizando dados...');
         console.log('✅ [WebSocket] Timestamp do evento:', event.timestamp);
-        console.log('✅ [WebSocket] Timestamp convertido:', timestampEvento.toISOString());
+        console.log('✅ [WebSocket] Timestamp convertido:', timestampEvento?.toISOString() ?? null);
 
         // Atualizar apenas o dado, mantendo as informações do equipamento
         setData((prevData) => {
@@ -145,7 +143,7 @@ export function useEquipamentoMqttData(equipamentoId: string | null) {
         });
 
         setLastUpdate(timestampEvento);
-        console.log('✅ [WebSocket] Dados atualizados em tempo real! LastUpdate:', timestampEvento.toLocaleTimeString());
+        console.log('✅ [WebSocket] Dados atualizados em tempo real! LastUpdate:', timestampEvento?.toLocaleTimeString() ?? null);
       } else {
         console.log('⚠️ [WebSocket] ID não corresponde, ignorando evento');
       }
