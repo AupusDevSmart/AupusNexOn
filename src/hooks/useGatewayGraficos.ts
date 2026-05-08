@@ -66,8 +66,10 @@ export function useGatewayGraficoDia(
           { params },
         );
 
-        const payload = response.data?.data ?? response.data;
-        const dados = (payload?.dados ?? []).map((p: GatewayGraficoDiaPonto) => ({
+        // Endpoint retorna o objeto direto (sem wrapper {data:...}). O campo
+        // payload.data e' a string da data do dia (YYYY-MM-DD), nao um wrapper.
+        const payload: GatewayGraficoDiaData = response.data;
+        const dados = (payload?.dados ?? []).map((p) => ({
           ...p,
           phf_kw: p.phf_kw * KD_A966_SSU,
           phr_kw: p.phr_kw * KD_A966_SSU,
@@ -107,8 +109,8 @@ export function useGatewayGraficoMes(equipamentoId: string | null, mes?: string)
           `/equipamentos-dados/${equipamentoId.trim()}/gateway/grafico-mes`,
           { params },
         );
-        const payload = response.data?.data ?? response.data;
-        const dados = (payload?.dados ?? []).map((p: GatewayGraficoMesPonto) => ({
+        const payload: GatewayGraficoMesData = response.data;
+        const dados = (payload?.dados ?? []).map((p) => ({
           ...p,
           phf_kw_avg: p.phf_kw_avg * KD_A966_SSU,
           phr_kw_avg: p.phr_kw_avg * KD_A966_SSU,
