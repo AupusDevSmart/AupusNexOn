@@ -48,7 +48,7 @@ interface GatewayPayload {
 
 // Constante de divisao do medidor SSU acoplado ao A966 — energia em kWh = leitura_bruta * KD_A966_SSU.
 // Quando houver mais de uma unidade com Kd diferente, mover pra equipamentos.dados_tecnicos (campo='kd').
-const KD_A966_SSU = 0.3;
+const KD_A966_SSU = 0.048;
 
 function extractA966Payload(rawDados: unknown): GatewayPayload | null {
   if (!rawDados || typeof rawDados !== "object") return null;

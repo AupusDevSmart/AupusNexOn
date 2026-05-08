@@ -3,7 +3,7 @@ import { api } from "@/config/api";
 
 // Constante de divisao do medidor SSU acoplado ao A966 (kWh = leitura_bruta * KD).
 // Espelha KD_A966_SSU em a966-modal.tsx.
-const KD_A966_SSU = 0.3;
+const KD_A966_SSU = 0.048;
 
 export interface GatewayGraficoDiaPonto {
   timestamp: string;
