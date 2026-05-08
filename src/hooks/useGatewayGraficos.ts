@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "@/config/api";
 
 // Constante de divisao do medidor SSU acoplado ao A966 (kWh = leitura_bruta * KD).
@@ -45,48 +45,47 @@ export function useGatewayGraficoDia(
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const fetchGrafico = useCallback(async () => {
     if (!equipamentoId) {
       setGrafico(null);
       return;
     }
+    setLoading(true);
+    setError(null);
+    try {
+      const params: Record<string, string> = {};
+      if (data) params.data = data;
+      if (intervalo) params.intervalo = intervalo;
+      if (inicio) params.inicio = inicio;
+      if (fim) params.fim = fim;
 
-    const fetchGrafico = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const params: Record<string, string> = {};
-        if (data) params.data = data;
-        if (intervalo) params.intervalo = intervalo;
-        if (inicio) params.inicio = inicio;
-        if (fim) params.fim = fim;
+      const response = await api.get(
+        `/equipamentos-dados/${equipamentoId.trim()}/gateway/grafico-dia`,
+        { params },
+      );
 
-        const response = await api.get(
-          `/equipamentos-dados/${equipamentoId.trim()}/gateway/grafico-dia`,
-          { params },
-        );
-
-        // Endpoint retorna o objeto direto (sem wrapper {data:...}). O campo
-        // payload.data e' a string da data do dia (YYYY-MM-DD), nao um wrapper.
-        const payload: GatewayGraficoDiaData = response.data;
-        const dados = (payload?.dados ?? []).map((p) => ({
-          ...p,
-          phf_kw: p.phf_kw * KD_A966_SSU,
-          phr_kw: p.phr_kw * KD_A966_SSU,
-        }));
-        setGrafico({ ...payload, dados });
-      } catch (err: any) {
-        setError(err.response?.data?.message || "Erro ao carregar gráfico do dia");
-        setGrafico(null);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchGrafico();
+      // Endpoint retorna o objeto direto (sem wrapper {data:...}). O campo
+      // payload.data e' a string da data do dia (YYYY-MM-DD), nao um wrapper.
+      const payload: GatewayGraficoDiaData = response.data;
+      const dados = (payload?.dados ?? []).map((p) => ({
+        ...p,
+        phf_kw: p.phf_kw * KD_A966_SSU,
+        phr_kw: p.phr_kw * KD_A966_SSU,
+      }));
+      setGrafico({ ...payload, dados });
+    } catch (err: any) {
+      setError(err.response?.data?.message || "Erro ao carregar gráfico do dia");
+      setGrafico(null);
+    } finally {
+      setLoading(false);
+    }
   }, [equipamentoId, data, intervalo, inicio, fim]);
 
-  return { data: grafico, loading, error };
+  useEffect(() => {
+    void fetchGrafico();
+  }, [fetchGrafico]);
+
+  return { data: grafico, loading, error, refetch: fetchGrafico };
 }
 
 export function useGatewayGraficoMes(equipamentoId: string | null, mes?: string) {
@@ -94,38 +93,37 @@ export function useGatewayGraficoMes(equipamentoId: string | null, mes?: string)
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const fetchGrafico = useCallback(async () => {
     if (!equipamentoId) {
       setGrafico(null);
       return;
     }
-
-    const fetchGrafico = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const params = mes ? { mes } : {};
-        const response = await api.get(
-          `/equipamentos-dados/${equipamentoId.trim()}/gateway/grafico-mes`,
-          { params },
-        );
-        const payload: GatewayGraficoMesData = response.data;
-        const dados = (payload?.dados ?? []).map((p) => ({
-          ...p,
-          phf_kw_avg: p.phf_kw_avg * KD_A966_SSU,
-          phr_kw_avg: p.phr_kw_avg * KD_A966_SSU,
-        }));
-        setGrafico({ ...payload, dados });
-      } catch (err: any) {
-        setError(err.response?.data?.message || "Erro ao carregar gráfico do mês");
-        setGrafico(null);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchGrafico();
+    setLoading(true);
+    setError(null);
+    try {
+      const params = mes ? { mes } : {};
+      const response = await api.get(
+        `/equipamentos-dados/${equipamentoId.trim()}/gateway/grafico-mes`,
+        { params },
+      );
+      const payload: GatewayGraficoMesData = response.data;
+      const dados = (payload?.dados ?? []).map((p) => ({
+        ...p,
+        phf_kw_avg: p.phf_kw_avg * KD_A966_SSU,
+        phr_kw_avg: p.phr_kw_avg * KD_A966_SSU,
+      }));
+      setGrafico({ ...payload, dados });
+    } catch (err: any) {
+      setError(err.response?.data?.message || "Erro ao carregar gráfico do mês");
+      setGrafico(null);
+    } finally {
+      setLoading(false);
+    }
   }, [equipamentoId, mes]);
 
-  return { data: grafico, loading, error };
+  useEffect(() => {
+    void fetchGrafico();
+  }, [fetchGrafico]);
+
+  return { data: grafico, loading, error, refetch: fetchGrafico };
 }

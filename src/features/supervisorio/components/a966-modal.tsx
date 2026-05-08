@@ -13,7 +13,8 @@ import {
   useGatewayGraficoDia,
   useGatewayGraficoMes,
 } from "@/hooks/useGatewayGraficos";
-import { Activity, Gauge, Hash, Radio, Wifi, WifiOff, Zap } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Activity, Gauge, Hash, Radio, RefreshCw, Wifi, WifiOff, Zap } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
   CartesianGrid,
@@ -131,7 +132,7 @@ export function A966Modal({
   const equipamentoId = (componenteData?.dados?.equipamento_id || componenteData?.id)?.trim();
   const nome = nomeComponente || componenteData?.nome || "Gateway IoT";
 
-  const { data: mqttResponse, lastUpdate, error } = useEquipamentoMqttData(
+  const { data: mqttResponse, lastUpdate, error, refetch: refetchMqtt } = useEquipamentoMqttData(
     open ? equipamentoId ?? null : null,
   );
 
@@ -163,24 +164,32 @@ export function A966Modal({
     }
   }, [open]);
 
-  const { data: graficoDia, loading: loadingDia } = useGatewayGraficoDia(
+  const { data: graficoDia, loading: loadingDia, refetch: refetchDia } = useGatewayGraficoDia(
     open && activeTab === "dia" ? equipamentoId ?? null : null,
     diaSelecionado,
     "15",
   );
 
-  const { data: graficoMes, loading: loadingMes } = useGatewayGraficoMes(
+  const { data: graficoMes, loading: loadingMes, refetch: refetchMes } = useGatewayGraficoMes(
     open && activeTab === "mes" ? equipamentoId ?? null : null,
     mesSelecionado,
   );
 
-  const { data: graficoCustom, loading: loadingCustom } = useGatewayGraficoDia(
+  const { data: graficoCustom, loading: loadingCustom, refetch: refetchCustom } = useGatewayGraficoDia(
     open && activeTab === "custom" ? equipamentoId ?? null : null,
     undefined,
     "15",
     customRange.inicio,
     customRange.fim,
   );
+
+  const isRefetching = loadingDia || loadingMes || loadingCustom;
+  const handleRefresh = () => {
+    void refetchMqtt();
+    if (activeTab === "dia") void refetchDia();
+    else if (activeTab === "mes") void refetchMes();
+    else if (activeTab === "custom") void refetchCustom();
+  };
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -193,6 +202,19 @@ export function A966Modal({
               <span className="text-muted-foreground text-sm">Gateway</span>
             </div>
             <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={handleRefresh}
+                disabled={isRefetching}
+                title="Atualizar dados e gráfico"
+                className="h-7 px-2"
+              >
+                <RefreshCw
+                  className={`h-3.5 w-3.5 ${isRefetching ? "animate-spin" : ""}`}
+                />
+              </Button>
               <Badge variant="outline" className={status.tone}>
                 {status.label}
               </Badge>
@@ -472,8 +494,8 @@ function GraficoEnergia({
             dataKey="phf"
             name="Direta (phf)"
             stroke={PHF_COLOR}
-            dot={{ r: 4, fill: PHF_COLOR, stroke: PHF_COLOR }}
-            activeDot={{ r: 6 }}
+            dot={false}
+            activeDot={{ r: 4 }}
             strokeWidth={2}
             connectNulls
             isAnimationActive={false}
@@ -483,8 +505,8 @@ function GraficoEnergia({
             dataKey="phr"
             name="Reversa (phr)"
             stroke={PHR_COLOR}
-            dot={{ r: 4, fill: PHR_COLOR, stroke: PHR_COLOR }}
-            activeDot={{ r: 6 }}
+            dot={false}
+            activeDot={{ r: 4 }}
             strokeWidth={2}
             connectNulls
             isAnimationActive={false}
