@@ -428,17 +428,29 @@ function GraficoEnergia({
     );
   }
 
+  const tickStyle = { fill: "hsl(var(--muted-foreground))", fontSize: 12 };
+  const labelStyle = { fill: "hsl(var(--muted-foreground))" };
+
   return (
     <div className="h-[320px]">
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={pontos} margin={{ top: 10, right: 16, left: 0, bottom: 0 }}>
+        <LineChart data={pontos} margin={{ top: 10, right: 24, left: 8, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-          <XAxis dataKey="label" stroke="hsl(var(--muted-foreground))" fontSize={12} />
+          <XAxis dataKey="label" stroke="hsl(var(--muted-foreground))" tick={tickStyle} />
           <YAxis
+            yAxisId="phf"
+            stroke="hsl(var(--foreground))"
+            tick={tickStyle}
+            tickFormatter={(v) => Number(v).toFixed(2)}
+            label={{ value: "phf (kWh)", angle: -90, position: "insideLeft", style: labelStyle }}
+          />
+          <YAxis
+            yAxisId="phr"
+            orientation="right"
             stroke="hsl(var(--muted-foreground))"
-            fontSize={12}
-            tickFormatter={(v) => `${Number(v).toFixed(1)}`}
-            label={{ value: "kWh", angle: -90, position: "insideLeft", style: { fill: "hsl(var(--muted-foreground))" } }}
+            tick={tickStyle}
+            tickFormatter={(v) => Number(v).toFixed(2)}
+            label={{ value: "phr (kWh)", angle: 90, position: "insideRight", style: labelStyle }}
           />
           <Tooltip
             contentStyle={{
@@ -446,33 +458,39 @@ function GraficoEnergia({
               border: "1px solid hsl(var(--border))",
               borderRadius: 6,
               fontSize: 12,
+              color: "hsl(var(--popover-foreground))",
             }}
+            labelStyle={{ color: "hsl(var(--popover-foreground))" }}
             formatter={(value: any, name: string) => [
               `${Number(value).toFixed(3)} kWh`,
               name,
             ]}
           />
-          <Legend />
+          <Legend wrapperStyle={{ color: "hsl(var(--foreground))" }} />
           <Line
-            type="monotone"
+            yAxisId="phf"
+            type="linear"
             dataKey="phf"
             name="Direta (phf)"
             stroke="hsl(var(--foreground))"
-            dot={{ r: 3 }}
+            dot={{ r: 3, fill: "hsl(var(--foreground))" }}
             activeDot={{ r: 5 }}
-            strokeWidth={1.5}
+            strokeWidth={2}
             connectNulls
+            isAnimationActive={false}
           />
           <Line
-            type="monotone"
+            yAxisId="phr"
+            type="linear"
             dataKey="phr"
             name="Reversa (phr)"
             stroke="hsl(var(--muted-foreground))"
-            dot={{ r: 3 }}
+            dot={{ r: 3, fill: "hsl(var(--muted-foreground))" }}
             activeDot={{ r: 5 }}
-            strokeWidth={1.5}
+            strokeWidth={2}
             strokeDasharray="4 2"
             connectNulls
+            isAnimationActive={false}
           />
         </LineChart>
       </ResponsiveContainer>
