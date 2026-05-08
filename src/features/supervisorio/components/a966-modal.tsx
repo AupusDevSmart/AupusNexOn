@@ -434,23 +434,16 @@ function GraficoEnergia({
   return (
     <div className="h-[320px]">
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={pontos} margin={{ top: 10, right: 24, left: 8, bottom: 0 }}>
+        <LineChart data={pontos} margin={{ top: 12, right: 16, left: 8, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
           <XAxis dataKey="label" stroke="hsl(var(--muted-foreground))" tick={tickStyle} />
           <YAxis
-            yAxisId="phf"
-            stroke="hsl(var(--foreground))"
-            tick={tickStyle}
-            tickFormatter={(v) => Number(v).toFixed(2)}
-            label={{ value: "phf (kWh)", angle: -90, position: "insideLeft", style: labelStyle }}
-          />
-          <YAxis
-            yAxisId="phr"
-            orientation="right"
             stroke="hsl(var(--muted-foreground))"
             tick={tickStyle}
             tickFormatter={(v) => Number(v).toFixed(2)}
-            label={{ value: "phr (kWh)", angle: 90, position: "insideRight", style: labelStyle }}
+            domain={[0, "auto"]}
+            padding={{ top: 12, bottom: 12 }}
+            label={{ value: "kWh", angle: -90, position: "insideLeft", style: labelStyle }}
           />
           <Tooltip
             contentStyle={{
@@ -468,25 +461,23 @@ function GraficoEnergia({
           />
           <Legend wrapperStyle={{ color: "hsl(var(--foreground))" }} />
           <Line
-            yAxisId="phf"
             type="linear"
             dataKey="phf"
             name="Direta (phf)"
             stroke="hsl(var(--foreground))"
-            dot={{ r: 3, fill: "hsl(var(--foreground))" }}
-            activeDot={{ r: 5 }}
+            dot={{ r: 4, fill: "hsl(var(--foreground))", stroke: "hsl(var(--foreground))" }}
+            activeDot={{ r: 6 }}
             strokeWidth={2}
             connectNulls
             isAnimationActive={false}
           />
           <Line
-            yAxisId="phr"
             type="linear"
             dataKey="phr"
             name="Reversa (phr)"
             stroke="hsl(var(--muted-foreground))"
-            dot={{ r: 3, fill: "hsl(var(--muted-foreground))" }}
-            activeDot={{ r: 5 }}
+            dot={{ r: 4, fill: "hsl(var(--muted-foreground))", stroke: "hsl(var(--muted-foreground))" }}
+            activeDot={{ r: 6 }}
             strokeWidth={2}
             strokeDasharray="4 2"
             connectNulls
