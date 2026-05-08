@@ -433,8 +433,8 @@ function GraficoEnergia({
   // Slate-400 (#94a3b8) tem contraste bom em ambos os temas.
   const AXIS_COLOR = "#94a3b8";
   const GRID_COLOR = "#94a3b833";
-  const PHF_COLOR = "#3b82f6"; // blue-500
-  const PHR_COLOR = "#f97316"; // orange-500
+  const PHF_COLOR = "#64748b"; // slate-500 — cinza-azulado dessaturado
+  const PHR_COLOR = "#a16207"; // yellow-700 — ocre dessaturado
   const tickStyle = { fill: AXIS_COLOR, fontSize: 12 };
   const labelStyle = { fill: AXIS_COLOR };
 
