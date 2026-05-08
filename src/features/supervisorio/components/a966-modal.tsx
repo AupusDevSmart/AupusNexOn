@@ -458,17 +458,21 @@ function GraficoEnergia({
             dataKey="phf"
             name="Direta (phf)"
             stroke="hsl(var(--foreground))"
-            dot={false}
+            dot={{ r: 3 }}
+            activeDot={{ r: 5 }}
             strokeWidth={1.5}
+            connectNulls
           />
           <Line
             type="monotone"
             dataKey="phr"
             name="Reversa (phr)"
             stroke="hsl(var(--muted-foreground))"
-            dot={false}
+            dot={{ r: 3 }}
+            activeDot={{ r: 5 }}
             strokeWidth={1.5}
             strokeDasharray="4 2"
+            connectNulls
           />
         </LineChart>
       </ResponsiveContainer>
