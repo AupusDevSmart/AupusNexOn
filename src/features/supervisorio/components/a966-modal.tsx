@@ -166,7 +166,7 @@ export function A966Modal({
   const { data: graficoDia, loading: loadingDia } = useGatewayGraficoDia(
     open && activeTab === "dia" ? equipamentoId ?? null : null,
     diaSelecionado,
-    "30",
+    "15",
   );
 
   const { data: graficoMes, loading: loadingMes } = useGatewayGraficoMes(
@@ -177,7 +177,7 @@ export function A966Modal({
   const { data: graficoCustom, loading: loadingCustom } = useGatewayGraficoDia(
     open && activeTab === "custom" ? equipamentoId ?? null : null,
     undefined,
-    "30",
+    "15",
     customRange.inicio,
     customRange.fim,
   );
