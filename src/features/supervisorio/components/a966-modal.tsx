@@ -428,17 +428,24 @@ function GraficoEnergia({
     );
   }
 
-  const tickStyle = { fill: "hsl(var(--muted-foreground))", fontSize: 12 };
-  const labelStyle = { fill: "hsl(var(--muted-foreground))" };
+  // Cores hex fixas — Recharts nao resolve `hsl(var(--xxx))` em todas as
+  // posicoes (tick.fill, Legend wrapperStyle), entao texto sumia no dark.
+  // Slate-400 (#94a3b8) tem contraste bom em ambos os temas.
+  const AXIS_COLOR = "#94a3b8";
+  const GRID_COLOR = "#94a3b833";
+  const PHF_COLOR = "#3b82f6"; // blue-500
+  const PHR_COLOR = "#f97316"; // orange-500
+  const tickStyle = { fill: AXIS_COLOR, fontSize: 12 };
+  const labelStyle = { fill: AXIS_COLOR };
 
   return (
     <div className="h-[320px]">
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={pontos} margin={{ top: 12, right: 16, left: 8, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-          <XAxis dataKey="label" stroke="hsl(var(--muted-foreground))" tick={tickStyle} />
+          <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
+          <XAxis dataKey="label" stroke={AXIS_COLOR} tick={tickStyle} />
           <YAxis
-            stroke="hsl(var(--muted-foreground))"
+            stroke={AXIS_COLOR}
             tick={tickStyle}
             tickFormatter={(v) => Number(v).toFixed(2)}
             domain={[0, "auto"]}
@@ -459,13 +466,13 @@ function GraficoEnergia({
               name,
             ]}
           />
-          <Legend wrapperStyle={{ color: "hsl(var(--foreground))" }} />
+          <Legend wrapperStyle={{ color: AXIS_COLOR }} />
           <Line
             type="linear"
             dataKey="phf"
             name="Direta (phf)"
-            stroke="hsl(var(--foreground))"
-            dot={{ r: 4, fill: "hsl(var(--foreground))", stroke: "hsl(var(--foreground))" }}
+            stroke={PHF_COLOR}
+            dot={{ r: 4, fill: PHF_COLOR, stroke: PHF_COLOR }}
             activeDot={{ r: 6 }}
             strokeWidth={2}
             connectNulls
@@ -475,11 +482,10 @@ function GraficoEnergia({
             type="linear"
             dataKey="phr"
             name="Reversa (phr)"
-            stroke="hsl(var(--muted-foreground))"
-            dot={{ r: 4, fill: "hsl(var(--muted-foreground))", stroke: "hsl(var(--muted-foreground))" }}
+            stroke={PHR_COLOR}
+            dot={{ r: 4, fill: PHR_COLOR, stroke: PHR_COLOR }}
             activeDot={{ r: 6 }}
             strokeWidth={2}
-            strokeDasharray="4 2"
             connectNulls
             isAnimationActive={false}
           />
