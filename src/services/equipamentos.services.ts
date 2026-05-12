@@ -37,6 +37,7 @@ export interface CreateEquipamentoApiData {
   mcpse?: boolean;
   mqtt_habilitado?: boolean;
   topico_mqtt?: string;
+  automacao?: boolean;
   tuc?: string;
   a1?: string;
   a2?: string;
@@ -50,6 +51,16 @@ export interface CreateEquipamentoApiData {
     valor: string;
     tipo: string;
     unidade?: string;
+  }[];
+
+  /** Pontos de automacao (PR3). id opcional em UPDATE; create sempre ignora id. */
+  pontos?: {
+    id?: string;
+    tipo: 'comando' | 'status' | 'medicao';
+    nome: string;
+    unidade?: string;
+    ordem?: number;
+    ativo?: boolean;
   }[];
 }
 
@@ -88,6 +99,7 @@ export interface EquipamentoApiResponse {
   mcpse?: boolean;
   mqtt_habilitado?: boolean;
   topico_mqtt?: string;
+  automacao?: boolean;
   tuc?: string;
   a1?: string;
   a2?: string;

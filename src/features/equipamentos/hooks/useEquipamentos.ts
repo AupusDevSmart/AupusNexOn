@@ -88,6 +88,9 @@ export const transformApiToFrontend = (apiEquipamento: EquipamentoApiResponse): 
     mqttHabilitado: apiEquipamento.mqtt_habilitado,
     topicoMqtt: apiEquipamento.topico_mqtt,
 
+    // Automacao (PR3)
+    automacao: apiEquipamento.automacao ?? false,
+
     // Campos MCPSE
     mcpse: apiEquipamento.mcpse,
     tuc: apiEquipamento.tuc,
@@ -163,6 +166,19 @@ export const transformApiToFrontend = (apiEquipamento: EquipamentoApiResponse): 
       valor: dt.valor || '',
       tipo: dt.tipo,
       unidade: dt.unidade
+    })) || [],
+
+    // Pontos de automacao (PR3) — preservado em snake_case pra match com modal
+    // (que le `dadosCompletos.equipamento_pontos`). Tambem expondo em camel pra consumo
+    // futuro mais limpo.
+    equipamento_pontos: (apiEquipamento as any).equipamento_pontos?.map((p: any) => ({
+      id: p.id?.trim?.() ?? p.id,
+      equipamento_id: p.equipamento_id?.trim?.() ?? p.equipamento_id,
+      tipo: p.tipo,
+      nome: p.nome,
+      unidade: p.unidade,
+      ordem: p.ordem ?? 0,
+      ativo: p.ativo !== false,
     })) || [],
 
     // Tipo de equipamento completo (relação com tipos_equipamentos)
@@ -249,6 +265,9 @@ export const transformFrontendToApi = (equipamento: any): CreateEquipamentoApiDa
     mqtt_habilitado: equipamento.mqtt_habilitado || equipamento.mqttHabilitado,
     topico_mqtt: equipamento.topico_mqtt || equipamento.topicoMqtt,
 
+    // Automacao (PR3)
+    automacao: equipamento.automacao ?? false,
+
     // MCPSE
     mcpse: equipamento.mcpse,
     tuc: equipamento.tuc,
@@ -263,7 +282,10 @@ export const transformFrontendToApi = (equipamento: any): CreateEquipamentoApiDa
     foto_url: equipamento.foto_url || equipamento.fotoUrl,
 
     // Dados técnicos
-    dados_tecnicos: equipamento.dados_tecnicos || equipamento.dadosTecnicos
+    dados_tecnicos: equipamento.dados_tecnicos || equipamento.dadosTecnicos,
+
+    // Pontos de automacao (PR3) — modal envia array no camelCase ou snake; aceitar ambos
+    pontos: (equipamento as any).pontos,
   };
 
   // console.log('TRANSFORM: Dados de saída:', apiData);

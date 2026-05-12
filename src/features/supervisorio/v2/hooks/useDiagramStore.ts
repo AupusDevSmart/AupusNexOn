@@ -474,6 +474,7 @@ export const useDiagramStore = create<DiagramStore>()(
                 labelOffsetY: pos.labelOffsetY,
                 mqttHabilitado: eq.mqtt_habilitado,
                 topicoMqtt: eq.topico_mqtt,
+                automacao: eq.automacao === true,
                 status: eq.status || 'normal',
                 createdAt: new Date(diagramaRaw.created_at),
                 updatedAt: new Date(diagramaRaw.updated_at),

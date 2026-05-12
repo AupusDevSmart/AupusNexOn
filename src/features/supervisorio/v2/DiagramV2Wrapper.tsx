@@ -33,6 +33,7 @@ import { useDiagramStore } from './hooks/useDiagramStore';
 import type { Equipment } from './types/diagram.types';
 import { SinopticoGraficosV2 } from '../components/sinoptico-graficos-v2';
 import { EquipamentoCommandModal } from './components/EquipamentoCommandModal';
+import { EquipamentoAcionarModal } from './components/EquipamentoAcionarModal';
 import { getCommandsForCategoria } from './utils/commandRegistry';
 import { Button } from '@/components/ui/button';
 import { BarChart3 } from 'lucide-react';
@@ -149,6 +150,9 @@ export const DiagramV2Wrapper: React.FC<DiagramV2WrapperProps> = ({
   // Estado do modal de comando MQTT — abre ao clicar em equipamento cuja
   // categoria tem comandos registrados (ex: TON com botoes de rele/transistor).
   const [commandModalEquipment, setCommandModalEquipment] = useState<Equipment | null>(null);
+  // Modal de acionamento de pontos (Fase C-3): aberto ao clicar em equipamento com automacao=true
+  // que NAO eh uma TON (TONs caem no fluxo de comandos diretos via commandRegistry).
+  const [acionarModalEquipment, setAcionarModalEquipment] = useState<Equipment | null>(null);
 
   // Buscar demanda contratada da unidade
   const { data: unidadeData } = useQuery({
@@ -431,6 +435,13 @@ export const DiagramV2Wrapper: React.FC<DiagramV2WrapperProps> = ({
                 return;
               }
 
+              // Equipamentos com automacao=true (nao-TON) abrem modal de acionamento
+              // de pontos. Resolve mapeamento ton_bo no backend pra executar pulso.
+              if (!modoEdicao && equipment.automacao === true) {
+                setAcionarModalEquipment(equipment);
+                return;
+              }
+
               // Caso contrario, segue o fluxo legado (callback opcional).
               if (!onComponenteClick) return;
               const legacyComponente = {
@@ -457,6 +468,17 @@ export const DiagramV2Wrapper: React.FC<DiagramV2WrapperProps> = ({
             nome: commandModalEquipment.nome,
             topico_mqtt: commandModalEquipment.topicoMqtt ?? null,
             categoria: commandModalEquipment.categoria ?? null,
+          }}
+        />
+      )}
+
+      {acionarModalEquipment && (
+        <EquipamentoAcionarModal
+          open={true}
+          onClose={() => setAcionarModalEquipment(null)}
+          equipamento={{
+            id: acionarModalEquipment.id,
+            nome: acionarModalEquipment.nome,
           }}
         />
       )}

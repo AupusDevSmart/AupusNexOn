@@ -128,6 +128,9 @@ export interface Equipamento extends BaseEntity {
   mqttHabilitado?: boolean;
   topicoMqtt?: string;
 
+  // Automacao (PR3) — expoe pontos para integracao com TONs
+  automacao?: boolean;
+
   // Campos MCPSE
   mcpse?: boolean;
   mcpseAtivo?: boolean;

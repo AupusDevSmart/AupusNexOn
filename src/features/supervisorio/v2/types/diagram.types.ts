@@ -50,6 +50,9 @@ export interface Equipment {
   mqttHabilitado?: boolean;
   topicoMqtt?: string;
 
+  // Automacao (PR3) — equipamento expoe pontos para integracao com TONs
+  automacao?: boolean;
+
   // Metadados
   createdAt: Date;
   updatedAt: Date;

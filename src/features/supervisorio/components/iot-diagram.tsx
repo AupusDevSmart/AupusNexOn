@@ -8,6 +8,7 @@ import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { ESPLoader, Transport } from 'esptool-js';
 import { api } from '@/config/api';
 import { iotApiService, type IoTProjeto, type IoTDiagrama } from '@/services/iot.services';
+import { TonBoConfigModal } from './TonBoConfigModal';
 
 /**
  * Resposta do OtaController.compileAndPublish (com envelope ResponseInterceptor):
@@ -233,7 +234,19 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
   // Component properties modal
   const [propsModalOpen, setPropsModalOpen] = useState(false);
   const [propsComp, setPropsComp] = useState<any>(null);
+  // Modal de configuracao de BOs (Binary Outputs) — aberto para TONs com has_relays.
+  // Estado segura o id do equipamento alvo + nome para o header.
+  const [boConfigOpen, setBoConfigOpen] = useState(false);
+  const [boConfigTonId, setBoConfigTonId] = useState<string | null>(null);
+  const [boConfigTonNome, setBoConfigTonNome] = useState<string | undefined>(undefined);
   const [propsValues, setPropsValues] = useState<Record<string, any>>({});
+
+  // Picker de equipamento NexOn para o campo `equipamento_id` dos componentes TON.
+  // Substitui input de texto livre (CUID 26 chars) por um select com TONs da unidade.
+  // Carregado quando o modal de props abre para um componente com has_relays/has_lora.
+  const [availableTonsForPicker, setAvailableTonsForPicker] = useState<
+    { id: string; nome: string }[]
+  >([]);
 
   // Connection context menu
   const [connMenu, setConnMenu] = useState<{ conn: any; allowed: string[]; x: number; y: number } | null>(null);
@@ -431,13 +444,41 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
     };
   }, []);
 
-  const openComponentProps = (comp: any) => {
+  const openComponentProps = async (comp: any) => {
     if (!comp || !window.COMPONENT_TYPES) return;
     const def = window.COMPONENT_TYPES[comp.type];
     if (!def) return;
     setPropsComp({ ...comp, _def: def });
     setPropsValues({ ...comp.props });
     setPropsModalOpen(true);
+
+    // Carrega TONs da unidade para o picker do campo equipamento_id.
+    // Acontece quando o componente eh uma TON (def tem `equipamento_id` em fields).
+    const hasEquipamentoIdField = Array.isArray(def.fields)
+      && def.fields.some((f: any) => f?.key === 'equipamento_id');
+    if (hasEquipamentoIdField && unidadeId) {
+      try {
+        const { equipamentosApi } = await import('@/services/equipamentos.services');
+        // Backend limita query param `limit` a 100. Se a unidade tiver mais que isso,
+        // virar paginacao no futuro.
+        const resp = await equipamentosApi.findByUnidade(unidadeId, { limit: 100 });
+        const lista = (resp.data ?? []).filter((e: any) => {
+          if (e.deleted_at) return false;
+          // Filtra equipamentos cuja categoria eh 'TON' (case-insensitive).
+          const catNome =
+            e.tipo_equipamento_rel?.categoria?.nome
+            ?? e.tipoEquipamento?.categoria?.nome
+            ?? '';
+          return typeof catNome === 'string' && catNome.trim().toUpperCase() === 'TON';
+        });
+        setAvailableTonsForPicker(
+          lista.map((e: any) => ({ id: (e.id || '').trim(), nome: e.nome })),
+        );
+      } catch (err) {
+        console.warn('[iot-diagram] Falha ao carregar TONs para picker:', err);
+        setAvailableTonsForPicker([]);
+      }
+    }
   };
 
   const saveComponentProps = async () => {
@@ -1061,7 +1102,38 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
             {propsComp?._def?.fields?.map((f: any) => (
               <div key={f.key} className="space-y-1">
                 <Label className="text-xs">{f.label}</Label>
-                {(f.type === 'text' || f.type === 'number') && (
+                {/* Caso especial: campo equipamento_id (TON) — vira picker em vez de
+                    input texto livre. Lista TONs da unidade categorizados como 'TON'. */}
+                {f.key === 'equipamento_id' && (
+                  <>
+                    <select
+                      value={propsValues[f.key] ?? ''}
+                      onChange={e =>
+                        setPropsValues(prev => ({ ...prev, [f.key]: e.target.value }))
+                      }
+                      className="w-full h-8 text-sm rounded border border-input bg-background dark:bg-black px-2 focus:outline-none focus:ring-1 focus:ring-ring"
+                    >
+                      <option value="">— Selecionar TON do NexOn —</option>
+                      {availableTonsForPicker.map((ton) => (
+                        <option key={ton.id} value={ton.id}>
+                          {ton.nome}
+                        </option>
+                      ))}
+                      {/* Se a TON atual nao esta na lista (deletada/categoria diferente), preserva o valor */}
+                      {propsValues[f.key]
+                        && !availableTonsForPicker.some((t) => t.id === propsValues[f.key])
+                        && (
+                          <option value={propsValues[f.key]} className="text-amber-600">
+                            ⚠ {String(propsValues[f.key])} (fora da unidade ou removido)
+                          </option>
+                        )}
+                    </select>
+                    <p className="text-[10px] text-muted-foreground">
+                      TONs cadastrados como equipamento desta unidade.
+                    </p>
+                  </>
+                )}
+                {f.key !== 'equipamento_id' && (f.type === 'text' || f.type === 'number') && (
                   <Input
                     type={f.type === 'number' ? 'number' : 'text'}
                     value={propsValues[f.key] ?? ''}
@@ -1147,12 +1219,46 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
               );
             })()}
           </div>
-          <DialogFooter>
+          <DialogFooter className="gap-2 sm:gap-2">
+            {/* Botao "Configurar BOs" — so para TONs com reles (TON3/TON4).
+                Exige equipamento_id ja vinculado a um equipamento real do NexOn. */}
+            {propsComp?._def?.has_relays === true && (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!String(propsValues.equipamento_id ?? '').trim()}
+                title={
+                  String(propsValues.equipamento_id ?? '').trim()
+                    ? 'Configurar mapeamento de cada rele para equipamentos da unidade'
+                    : 'Defina o Equipamento NexOn primeiro'
+                }
+                onClick={() => {
+                  const eid = String(propsValues.equipamento_id ?? '').trim();
+                  if (!eid) return;
+                  setBoConfigTonId(eid);
+                  setBoConfigTonNome(
+                    String(propsValues.name ?? propsComp?._def?.label ?? 'TON'),
+                  );
+                  setBoConfigOpen(true);
+                }}
+                className="mr-auto"
+              >
+                Configurar BOs
+              </Button>
+            )}
             <Button variant="outline" onClick={() => setPropsModalOpen(false)}>Fechar</Button>
             <Button onClick={saveComponentProps}>Salvar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <TonBoConfigModal
+        open={boConfigOpen}
+        onClose={() => setBoConfigOpen(false)}
+        tonId={boConfigTonId}
+        unidadeId={unidadeId}
+        tonNome={boConfigTonNome}
+      />
 
       {/* Create Project Modal */}
       <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
