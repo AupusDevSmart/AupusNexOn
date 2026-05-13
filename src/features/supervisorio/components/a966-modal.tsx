@@ -1,31 +1,20 @@
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { DateTimeInput } from "@/components/ui/datetime-input";
-import { useEquipamentoMqttData } from "@/hooks/useEquipamentoMqttData";
-import {
-  useGatewayGraficoDia,
-  useGatewayGraficoMes,
-} from "@/hooks/useGatewayGraficos";
-import { Button } from "@/components/ui/button";
-import { Activity, Gauge, Hash, Radio, RefreshCw, Wifi, WifiOff, Zap } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import {
-  CartesianGrid,
-  Legend,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { useGatewayDashboard } from "@/hooks/useGatewayDashboard";
+import { Radio, RefreshCw, Wifi, WifiOff } from "lucide-react";
+import { useMemo } from "react";
+import { ComunicacaoCard } from "./a966/ComunicacaoCard";
+import { DemandaGauge } from "./a966/DemandaGauge";
+import { FluxoLiquidoCard } from "./a966/FluxoLiquidoCard";
+import { ResumoDiaCard } from "./a966/ResumoDiaCard";
+import { TendenciaPotencia } from "./a966/TendenciaPotencia";
+import { UltimasLeiturasTable } from "./a966/UltimasLeiturasTable";
 
 interface A966ModalProps {
   open: boolean;
@@ -34,48 +23,12 @@ interface A966ModalProps {
   nomeComponente?: string;
 }
 
-interface GatewayPayload {
-  cdo?: string | number;
-  sts?: number;
-  phf?: number;
-  phr?: number;
-  qhfi?: number;
-  qhfc?: number;
-  qhri?: number;
-  qhrc?: number;
-  frame?: string;
-}
+// Cores das demandas (gauges). Slate-500 pra consumo e yellow-700 pra geracao
+// — combina com as series do grafico (TendenciaPotencia).
+const COR_CONSUMO = "#64748b";
+const COR_GERACAO = "#a16207";
 
-// Constante de divisao do medidor SSU acoplado ao A966 — energia em kWh = leitura_bruta * KD_A966_SSU.
-// Quando houver mais de uma unidade com Kd diferente, mover pra equipamentos.dados_tecnicos (campo='kd').
-const KD_A966_SSU = 0.048;
-
-function extractA966Payload(rawDados: unknown): GatewayPayload | null {
-  if (!rawDados || typeof rawDados !== "object") return null;
-  const root = rawDados as Record<string, any>;
-  const flat: Record<string, any> = root.data && typeof root.data === "object" ? root.data : root;
-
-  const num = (v: unknown): number | undefined =>
-    typeof v === "number" && Number.isFinite(v) ? v : typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v)) ? Number(v) : undefined;
-  const scale = (v: unknown): number | undefined => {
-    const n = num(v);
-    return n === undefined ? undefined : n * KD_A966_SSU;
-  };
-
-  return {
-    cdo: typeof flat.cdo === "string" || typeof flat.cdo === "number" ? flat.cdo : undefined,
-    sts: num(flat.sts),
-    phf: scale(flat.phf),
-    phr: scale(flat.phr),
-    qhfi: scale(flat.qhfi),
-    qhfc: scale(flat.qhfc),
-    qhri: scale(flat.qhri),
-    qhrc: scale(flat.qhrc),
-    frame: typeof flat.frame === "string" ? flat.frame : undefined,
-  };
-}
-
-const TZ = "America/Sao_Paulo";
+const STALE_THRESHOLD_MS = 30 * 60 * 1000;
 
 function formatTempoRelativo(d: Date): string {
   const diffMs = Date.now() - d.getTime();
@@ -88,39 +41,20 @@ function formatTempoRelativo(d: Date): string {
   return `há ${dias}d`;
 }
 
-const STALE_THRESHOLD_MS = 30 * 60 * 1000;
-
-function statusLabel(sts?: number): { label: string; tone: string } {
-  switch (sts) {
-    case 0:
-      return { label: "Normal", tone: "bg-muted text-foreground border-border" };
-    case 1:
-      return { label: "Atenção", tone: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/40" };
-    case 2:
-      return { label: "Falha", tone: "bg-destructive/10 text-destructive border-destructive/40" };
-    default:
-      return { label: `Código ${sts ?? "—"}`, tone: "bg-muted text-muted-foreground border-border" };
+function statusFromFP(fp: number | undefined): { label: string; tone: string } {
+  if (typeof fp !== "number" || !Number.isFinite(fp)) {
+    return { label: "Sem dado", tone: "bg-muted text-muted-foreground border-border" };
   }
-}
-
-function formatBRT(date: Date) {
-  return date.toLocaleString("pt-BR", { timeZone: TZ });
-}
-
-function todayBRT(): string {
-  return new Date().toLocaleDateString("en-CA", { timeZone: TZ });
-}
-
-function currentMonthBRT(): string {
-  return todayBRT().slice(0, 7);
-}
-
-function defaultCustomRange() {
-  const today = todayBRT();
-  const [y, m, d] = today.split("-").map(Number);
-  const inicio = new Date(Date.UTC(y, m - 1, d - 7, 0, 0, 0, 0)).toISOString();
-  const fim = new Date(Date.UTC(y, m - 1, d, 23, 59, 59, 999)).toISOString();
-  return { inicio, fim };
+  if (fp >= 0.92) return { label: "Normal", tone: "bg-muted text-foreground border-border" };
+  if (fp >= 0.8)
+    return {
+      label: "Atenção",
+      tone: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/40",
+    };
+  return {
+    label: "Falha",
+    tone: "bg-destructive/10 text-destructive border-destructive/40",
+  };
 }
 
 export function A966Modal({
@@ -129,17 +63,21 @@ export function A966Modal({
   componenteData,
   nomeComponente,
 }: A966ModalProps) {
-  const equipamentoId = (componenteData?.dados?.equipamento_id || componenteData?.id)?.trim();
-  const nome = nomeComponente || componenteData?.nome || "Gateway IoT";
+  const equipamentoId = (
+    componenteData?.dados?.equipamento_id || componenteData?.id
+  )?.trim();
+  const nomeFallback = nomeComponente || componenteData?.nome || "Gateway IoT";
 
-  const { data: mqttResponse, lastUpdate, error, refetch: refetchMqtt } = useEquipamentoMqttData(
+  const { data, loading, error, refetch } = useGatewayDashboard(
     open ? equipamentoId ?? null : null,
   );
 
-  const payload = useMemo<GatewayPayload | null>(
-    () => extractA966Payload(mqttResponse?.dado?.dados),
-    [mqttResponse],
-  );
+  const nome = data?.equipamento?.nome ?? nomeFallback;
+  const tag = data?.equipamento?.tag ?? null;
+  const tipo = data?.equipamento?.tipo ?? "Gateway";
+
+  const snapshot = data?.snapshot ?? null;
+  const lastUpdate = snapshot?.timestamp_dados ? new Date(snapshot.timestamp_dados) : null;
 
   const isStale = useMemo(() => {
     if (!lastUpdate) return true;
@@ -151,69 +89,36 @@ export function A966Modal({
     [lastUpdate],
   );
 
-  const status = statusLabel(payload?.sts);
-
-  const [activeTab, setActiveTab] = useState<"dia" | "mes" | "custom">("dia");
-  const [diaSelecionado, setDiaSelecionado] = useState<string>(() => todayBRT());
-  const [mesSelecionado, setMesSelecionado] = useState<string>(() => currentMonthBRT());
-  const [customRange, setCustomRange] = useState(() => defaultCustomRange());
-
-  useEffect(() => {
-    if (!open) {
-      setActiveTab("dia");
-    }
-  }, [open]);
-
-  const { data: graficoDia, loading: loadingDia, refetch: refetchDia } = useGatewayGraficoDia(
-    open && activeTab === "dia" ? equipamentoId ?? null : null,
-    diaSelecionado,
-    "15",
-  );
-
-  const { data: graficoMes, loading: loadingMes, refetch: refetchMes } = useGatewayGraficoMes(
-    open && activeTab === "mes" ? equipamentoId ?? null : null,
-    mesSelecionado,
-  );
-
-  const { data: graficoCustom, loading: loadingCustom, refetch: refetchCustom } = useGatewayGraficoDia(
-    open && activeTab === "custom" ? equipamentoId ?? null : null,
-    undefined,
-    "15",
-    customRange.inicio,
-    customRange.fim,
-  );
-
-  const isRefetching = loadingDia || loadingMes || loadingCustom;
-  const handleRefresh = () => {
-    void refetchMqtt();
-    if (activeTab === "dia") void refetchDia();
-    else if (activeTab === "mes") void refetchMes();
-    else if (activeTab === "custom") void refetchCustom();
-  };
+  const status = statusFromFP(snapshot?.FP);
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-5xl max-h-[90vh] overflow-auto">
+      <DialogContent className="max-w-7xl max-h-[92vh] overflow-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center justify-between gap-2 pr-8">
-            <div className="flex items-center gap-2">
-              <Radio className="h-4 w-4 text-muted-foreground" />
-              <span className="font-medium">{nome}</span>
-              <span className="text-muted-foreground text-sm">Gateway</span>
+            <div className="flex flex-col gap-0.5">
+              <div className="flex items-center gap-2">
+                <Radio className="h-4 w-4 text-muted-foreground" />
+                <span className="font-medium">{nome}</span>
+                <span className="text-muted-foreground text-sm">{tipo}</span>
+              </div>
+              {tag && (
+                <div className="text-xs text-muted-foreground font-mono pl-6">
+                  TAG: {tag}
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
-                onClick={handleRefresh}
-                disabled={isRefetching}
-                title="Atualizar dados e gráfico"
+                onClick={() => void refetch()}
+                disabled={loading}
+                title="Atualizar dados"
                 className="h-7 px-2"
               >
-                <RefreshCw
-                  className={`h-3.5 w-3.5 ${isRefetching ? "animate-spin" : ""}`}
-                />
+                <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
               </Button>
               <Badge variant="outline" className={status.tone}>
                 {status.label}
@@ -249,270 +154,65 @@ export function A966Modal({
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <Card className="rounded-sm">
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                <Zap className="h-3.5 w-3.5" /> Potência
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="grid grid-cols-2 gap-2">
-              <ValorCard label="phf — Direta" valor={payload?.phf} unidade="kWh" />
-              <ValorCard label="phr — Reversa" valor={payload?.phr} unidade="kWh" />
-            </CardContent>
-          </Card>
+        {/* Linha 1: 2 gauges de demanda + grafico tendencia + fluxo liquido */}
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-3">
+          <div className="xl:col-span-3 flex flex-col gap-3">
+            <div className="rounded-sm border border-border bg-card p-3">
+              <DemandaGauge
+                valor={snapshot?.kW_consumo ?? 0}
+                contratada={data?.unidade?.demanda_carga ?? null}
+                cor={COR_CONSUMO}
+                labelContratada="Demanda Carga"
+                labelAtual="Demanda atual"
+              />
+            </div>
+            <div className="rounded-sm border border-border bg-card p-3">
+              <DemandaGauge
+                valor={snapshot?.kW_injecao ?? 0}
+                contratada={data?.unidade?.demanda_geracao ?? null}
+                cor={COR_GERACAO}
+                labelContratada="Demanda Geração"
+                labelAtual="Geração atual"
+              />
+            </div>
+          </div>
 
-          <Card className="rounded-sm">
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                <Activity className="h-3.5 w-3.5" /> Energia Reativa
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="grid grid-cols-2 gap-2">
-              <ValorCard label="qhfi" valor={payload?.qhfi} unidade="kVArh" />
-              <ValorCard label="qhfc" valor={payload?.qhfc} unidade="kVArh" />
-              <ValorCard label="qhri" valor={payload?.qhri} unidade="kVArh" />
-              <ValorCard label="qhrc" valor={payload?.qhrc} unidade="kVArh" />
-            </CardContent>
-          </Card>
+          <div className="xl:col-span-6 rounded-sm border border-border bg-card p-3">
+            <TendenciaPotencia
+              equipamentoId={equipamentoId ?? null}
+              demandaCarga={data?.unidade?.demanda_carga ?? null}
+              demandaGeracao={data?.unidade?.demanda_geracao ?? null}
+            />
+          </div>
 
-          <Card className="md:col-span-2 rounded-sm">
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                <Hash className="h-3.5 w-3.5" /> Identificação e Frame
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-2">
-              <div className="rounded-sm border border-border bg-muted/30 p-2.5">
-                <div className="text-xs text-muted-foreground">cdo</div>
-                <div className="text-base font-medium">{payload?.cdo ?? "—"}</div>
-              </div>
-              <div className="rounded-sm border border-border bg-muted/30 p-2.5">
-                <div className="text-xs text-muted-foreground">Última leitura</div>
-                <div className="text-sm">
-                  {lastUpdate ? formatBRT(lastUpdate) : "—"}
-                </div>
-              </div>
-              <div className="rounded-sm border border-border bg-muted/30 p-2.5">
-                <div className="text-xs text-muted-foreground">sts</div>
-                <div className="text-base font-medium">{payload?.sts ?? "—"}</div>
-              </div>
-              <div className="rounded-sm border border-border bg-muted/30 p-2.5 md:col-span-3">
-                <div className="text-xs text-muted-foreground mb-1">frame</div>
-                <code className="block font-mono text-xs break-all whitespace-pre-wrap text-foreground">
-                  {payload?.frame ?? "—"}
-                </code>
-              </div>
-            </CardContent>
-          </Card>
+          <div className="xl:col-span-3">
+            <FluxoLiquidoCard
+              fluxoLiquidoKw={snapshot?.fluxo_liquido_kw ?? 0}
+              consumoKw={snapshot?.kW_consumo ?? 0}
+              injecaoKw={snapshot?.kW_injecao ?? 0}
+            />
+          </div>
         </div>
 
-        <Card className="mt-2 rounded-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <Gauge className="h-3.5 w-3.5" /> Energia (phf / phr)
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
-                <TabsList>
-                  <TabsTrigger value="dia">Dia</TabsTrigger>
-                  <TabsTrigger value="mes">Mês</TabsTrigger>
-                  <TabsTrigger value="custom">Personalizado</TabsTrigger>
-                </TabsList>
+        {/* Linha 2: resumo dia + ultimas leituras */}
+        {data && (
+          <div className="grid grid-cols-1 xl:grid-cols-12 gap-3 mt-3">
+            <div className="xl:col-span-5">
+              <ResumoDiaCard resumo={data.resumo_dia} snapshot={snapshot} />
+            </div>
+            <div className="xl:col-span-7">
+              <UltimasLeiturasTable leituras={data.ultimas_leituras} />
+            </div>
+          </div>
+        )}
 
-                <div className="flex flex-wrap items-center gap-2">
-                  {activeTab === "dia" && (
-                    <input
-                      type="date"
-                      value={diaSelecionado}
-                      onChange={(e) => setDiaSelecionado(e.target.value)}
-                      className="h-9 rounded-sm border border-input bg-background px-3 text-sm"
-                    />
-                  )}
-                  {activeTab === "mes" && (
-                    <input
-                      type="month"
-                      value={mesSelecionado}
-                      onChange={(e) => setMesSelecionado(e.target.value)}
-                      className="h-9 rounded-sm border border-input bg-background px-3 text-sm"
-                    />
-                  )}
-                  {activeTab === "custom" && (
-                    <div className="flex flex-wrap items-center gap-2">
-                      <DateTimeInput
-                        value={customRange.inicio}
-                        onChange={(v) => setCustomRange((r) => ({ ...r, inicio: v }))}
-                      />
-                      <span className="text-muted-foreground text-sm">até</span>
-                      <DateTimeInput
-                        value={customRange.fim}
-                        onChange={(v) => setCustomRange((r) => ({ ...r, fim: v }))}
-                      />
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <TabsContent value="dia">
-                <GraficoEnergia
-                  loading={loadingDia}
-                  pontos={(graficoDia?.dados ?? []).map((p) => ({
-                    x: p.timestamp,
-                    label: new Date(p.timestamp).toLocaleTimeString("pt-BR", {
-                      timeZone: TZ,
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    }),
-                    phf: p.phf_kw,
-                    phr: p.phr_kw,
-                  }))}
-                />
-              </TabsContent>
-
-              <TabsContent value="mes">
-                <GraficoEnergia
-                  loading={loadingMes}
-                  pontos={(graficoMes?.dados ?? []).map((p) => ({
-                    x: p.data,
-                    label: String(p.dia).padStart(2, "0"),
-                    phf: p.phf_kw_avg,
-                    phr: p.phr_kw_avg,
-                  }))}
-                />
-              </TabsContent>
-
-              <TabsContent value="custom">
-                <GraficoEnergia
-                  loading={loadingCustom}
-                  pontos={(graficoCustom?.dados ?? []).map((p) => ({
-                    x: p.timestamp,
-                    label: new Date(p.timestamp).toLocaleString("pt-BR", {
-                      timeZone: TZ,
-                      day: "2-digit",
-                      month: "2-digit",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    }),
-                    phf: p.phf_kw,
-                    phr: p.phr_kw,
-                  }))}
-                />
-              </TabsContent>
-            </Tabs>
-          </CardContent>
-        </Card>
+        {/* Linha 3: comunicacao (linha inteira) */}
+        {data && (
+          <div className="mt-3">
+            <ComunicacaoCard comunicacao={data.comunicacao} />
+          </div>
+        )}
       </DialogContent>
     </Dialog>
-  );
-}
-
-function ValorCard({
-  label,
-  valor,
-  unidade,
-}: {
-  label: string;
-  valor?: number;
-  unidade: string;
-}) {
-  return (
-    <div className="rounded-sm border border-border bg-muted/30 p-2.5">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="text-lg font-medium tabular-nums">
-        {typeof valor === "number" ? valor.toFixed(2) : "—"}
-      </div>
-      <div className="text-xs text-muted-foreground">{unidade}</div>
-    </div>
-  );
-}
-
-function GraficoEnergia({
-  loading,
-  pontos,
-}: {
-  loading: boolean;
-  pontos: Array<{ x: string | Date; label: string; phf: number; phr: number }>;
-}) {
-  if (loading) {
-    return (
-      <div className="h-[320px] flex items-center justify-center text-sm text-muted-foreground">
-        Carregando...
-      </div>
-    );
-  }
-  if (!pontos.length) {
-    return (
-      <div className="h-[320px] flex items-center justify-center text-sm text-muted-foreground">
-        Sem dados no período
-      </div>
-    );
-  }
-
-  // Cores hex fixas — Recharts nao resolve `hsl(var(--xxx))` em todas as
-  // posicoes (tick.fill, Legend wrapperStyle), entao texto sumia no dark.
-  // Slate-400 (#94a3b8) tem contraste bom em ambos os temas.
-  const AXIS_COLOR = "#94a3b8";
-  const GRID_COLOR = "#94a3b833";
-  const PHF_COLOR = "#64748b"; // slate-500 — cinza-azulado dessaturado
-  const PHR_COLOR = "#a16207"; // yellow-700 — ocre dessaturado
-  const tickStyle = { fill: AXIS_COLOR, fontSize: 12 };
-  const labelStyle = { fill: AXIS_COLOR };
-
-  return (
-    <div className="h-[320px]">
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={pontos} margin={{ top: 12, right: 16, left: 8, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke={GRID_COLOR} />
-          <XAxis dataKey="label" stroke={AXIS_COLOR} tick={tickStyle} />
-          <YAxis
-            stroke={AXIS_COLOR}
-            tick={tickStyle}
-            tickFormatter={(v) => Number(v).toFixed(2)}
-            domain={[0, "auto"]}
-            padding={{ top: 12, bottom: 12 }}
-            label={{ value: "kWh", angle: -90, position: "insideLeft", style: labelStyle }}
-          />
-          <Tooltip
-            contentStyle={{
-              background: "hsl(var(--popover))",
-              border: "1px solid hsl(var(--border))",
-              borderRadius: 6,
-              fontSize: 12,
-              color: "hsl(var(--popover-foreground))",
-            }}
-            labelStyle={{ color: "hsl(var(--popover-foreground))" }}
-            formatter={(value: any, name: string) => [
-              `${Number(value).toFixed(3)} kWh`,
-              name,
-            ]}
-          />
-          <Legend wrapperStyle={{ color: AXIS_COLOR }} />
-          <Line
-            type="linear"
-            dataKey="phf"
-            name="Direta (phf)"
-            stroke={PHF_COLOR}
-            dot={false}
-            activeDot={{ r: 4 }}
-            strokeWidth={2}
-            connectNulls
-            isAnimationActive={false}
-          />
-          <Line
-            type="linear"
-            dataKey="phr"
-            name="Reversa (phr)"
-            stroke={PHR_COLOR}
-            dot={false}
-            activeDot={{ r: 4 }}
-            strokeWidth={2}
-            connectNulls
-            isAnimationActive={false}
-          />
-        </LineChart>
-      </ResponsiveContainer>
-    </div>
   );
 }
