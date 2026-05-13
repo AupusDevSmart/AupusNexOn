@@ -187,23 +187,23 @@ export function TendenciaPotencia({
               )}
               <ReferenceLine y={0} stroke={AXIS_COLOR} strokeOpacity={0.5} />
               <Line
-                type="linear"
+                type="monotone"
                 dataKey="consumo"
                 name="Consumo (kW)"
                 stroke={CONSUMO_COLOR}
-                dot={{ r: 2.5, fill: CONSUMO_COLOR, stroke: CONSUMO_COLOR }}
-                activeDot={{ r: 4 }}
+                dot={false}
+                activeDot={{ r: 3, fill: CONSUMO_COLOR, stroke: CONSUMO_COLOR }}
                 strokeWidth={1.5}
                 connectNulls
                 isAnimationActive={false}
               />
               <Line
-                type="linear"
+                type="monotone"
                 dataKey="injecao"
                 name="Injeção (kW)"
                 stroke={INJECAO_COLOR}
-                dot={{ r: 2.5, fill: INJECAO_COLOR, stroke: INJECAO_COLOR }}
-                activeDot={{ r: 4 }}
+                dot={false}
+                activeDot={{ r: 3, fill: INJECAO_COLOR, stroke: INJECAO_COLOR }}
                 strokeWidth={1.5}
                 connectNulls
                 isAnimationActive={false}
