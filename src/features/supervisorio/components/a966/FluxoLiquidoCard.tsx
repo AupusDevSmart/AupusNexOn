@@ -12,8 +12,8 @@ export function FluxoLiquidoCard({
   consumoKw,
   injecaoKw,
 }: FluxoLiquidoCardProps) {
-  const importando = fluxoLiquidoKw >= 0;
-  const sinal = importando ? "+" : "−";
+  const exportando = fluxoLiquidoKw >= 0;
+  const sinal = exportando ? "+" : "−";
   const valorAbs = Math.abs(fluxoLiquidoKw);
 
   return (
@@ -31,7 +31,7 @@ export function FluxoLiquidoCard({
             {valorAbs.toFixed(1)} <span className="text-base font-normal">kW</span>
           </div>
           <div className="text-xs text-muted-foreground mt-0.5">
-            {importando ? "Importando" : "Exportando"}
+            {exportando ? "Exportando" : "Importando"}
           </div>
         </div>
 
