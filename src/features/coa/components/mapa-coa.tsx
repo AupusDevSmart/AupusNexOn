@@ -29,6 +29,7 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
+  const clusterGroupRef = useRef<any>(null);
 
   const [unidadeSelecionada, setUnidadeSelecionada] = useState<UnidadeResumo | null>(null);
   const [modalAberto, setModalAberto] = useState(false);
@@ -134,8 +135,11 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
       const L = (window as any).L;
       const map = mapInstanceRef.current;
 
-      // Limpar marcadores existentes
-      markersRef.current.forEach((marker) => map.removeLayer(marker));
+      // Limpar marcadores existentes (cluster group + refs)
+      if (clusterGroupRef.current) {
+        map.removeLayer(clusterGroupRef.current);
+        clusterGroupRef.current = null;
+      }
       markersRef.current = [];
 
       // Se não houver unidades com coordenadas, não criar marcadores
@@ -145,6 +149,39 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
 
       // NÃO reposicionar o mapa automaticamente - deixar o usuário controlar
       // O mapa sempre inicia em Goiás e o usuário pode navegar manualmente ou usar o botão reset
+
+      // Cluster group: agrupa marcadores próximos/sobrepostos e exibe leque (spiderfy)
+      // ao clicar quando coordenadas são idênticas — resolve marcadores sob marcadores.
+      const cluster = L.markerClusterGroup({
+        spiderfyOnMaxZoom: true,
+        showCoverageOnHover: false,
+        zoomToBoundsOnClick: true,
+        maxClusterRadius: 30,
+        spiderfyDistanceMultiplier: 1.8,
+        iconCreateFunction: (c: any) => {
+          const total = c.getChildCount();
+          const children = c.getAllChildMarkers();
+          const statuses = children.map((m: any) => m.options.__status);
+          let cor = "#10B981";
+          if (statuses.some((s: string) => s === "OFFLINE")) cor = "#6B7280";
+          else if (statuses.some((s: string) => s === "ALERTA")) cor = "#F59E0B";
+          return L.divIcon({
+            html: `
+              <div style="
+                width:34px;height:34px;border-radius:50%;
+                background:${cor};border:2px solid #fff;
+                box-shadow:0 2px 8px rgba(0,0,0,0.3);
+                color:#fff;font-weight:600;font-size:12px;
+                display:flex;align-items:center;justify-content:center;
+              ">${total}</div>`,
+            className: "custom-cluster-coa",
+            iconSize: [34, 34],
+            iconAnchor: [17, 17],
+          });
+        },
+      });
+      clusterGroupRef.current = cluster;
+      map.addLayer(cluster);
 
       // Adicionar novos marcadores
       unidadesComCoordenadas.forEach((unidade) => {
@@ -212,11 +249,12 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
           iconAnchor: [isSelected ? 16 : 12, isSelected ? 16 : 12],
         });
 
-        // Criar marcador
+        // Criar marcador (vai dentro do cluster group, não direto no map)
         const marker = L.marker(
           [unidade.coordenadas!.latitude, unidade.coordenadas!.longitude],
-          { icon }
-        ).addTo(map);
+          { icon, __status: unidade.status } as any
+        );
+        cluster.addLayer(marker);
 
         // Adicionar popup com informações da unidade
         const popupContent = `
