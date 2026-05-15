@@ -1,23 +1,19 @@
+import { useMemo, useState } from "react";
+
 interface DemandaGaugeProps {
-  /** Valor atual (kW) */
+  /** Valor atual (kW), modo "Atual" */
   valor: number;
+  /** Pico do mes corrente (kW + timestamp), modo "Mes". null = sem dado */
+  picoMes: { kw: number; timestamp: string } | null;
   /** Demanda contratada (kW). Se null/0, gauge fica vazio. */
   contratada: number | null;
   /** Cor do arco preenchido em hex. */
   cor: string;
   /** Label da contratada (ex: "Demanda Carga", "Demanda Geração") */
   labelContratada: string;
-  /** Label do valor atual (ex: "Demanda atual", "Geração atual") */
+  /** Label do valor atual no modo "Atual" (ex: "Demanda atual", "Geração atual") */
   labelAtual: string;
 }
-
-// Gauge 270deg aberto embaixo:
-// - inicio em 7h30 (math angle 225) — canto inferior esquerdo, 0%
-// - passa pelo topo
-// - fim em 4h30 (math angle 315) — canto inferior direito, 100%
-// Preenchimento cresce do start em direcao ao end via stroke-dasharray.
-// Permite overload visual ate 120% (a barra preenchida para no end mas
-// o numero textual mostra a porcentagem real).
 
 const SIZE = 160;
 const STROKE = 14;
@@ -27,6 +23,8 @@ const R = (SIZE - STROKE) / 2;
 const ANG_START = 225; // 7h30 em math convention (0 = direita, anti-horario)
 const ANG_END = 315; // 4h30
 const ARC_LEN = (270 / 360) * 2 * Math.PI * R;
+
+const TZ = "America/Sao_Paulo";
 
 function pointAt(angleDeg: number) {
   const rad = (angleDeg * Math.PI) / 180;
@@ -42,22 +40,64 @@ const END_POINT = pointAt(ANG_END);
 // largeArc=1 (270 > 180), sweep=1 (clockwise visualmente em SVG, passa pelo topo).
 const ARC_PATH = `M ${START_POINT.x} ${START_POINT.y} A ${R} ${R} 0 1 1 ${END_POINT.x} ${END_POINT.y}`;
 
+function formatDataHoraBRT(ts: string): string {
+  const d = new Date(ts);
+  return d.toLocaleString("pt-BR", {
+    timeZone: TZ,
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+type Modo = "atual" | "mes";
+
 export function DemandaGauge({
   valor,
+  picoMes,
   contratada,
   cor,
   labelContratada,
   labelAtual,
 }: DemandaGaugeProps) {
-  const ratio = contratada && contratada > 0 ? valor / contratada : 0;
+  const [modo, setModo] = useState<Modo>("atual");
+
+  // No modo "mes" usa o kW do pico (ou 0 se sem dado).
+  const valorMostrado = modo === "mes" ? picoMes?.kw ?? 0 : valor;
+
+  const ratio = useMemo(
+    () => (contratada && contratada > 0 ? valorMostrado / contratada : 0),
+    [valorMostrado, contratada],
+  );
   const ratioClamp = Math.max(0, Math.min(ratio, 1.2));
   const percentLabel = contratada && contratada > 0 ? Math.round(ratio * 100) : null;
   const filledLen = (ratioClamp / 1.2) * ARC_LEN;
   // Evita renderizar a "bolinha" do stroke-linecap=round quando ratio=0.
   const showFilled = filledLen > 0.5;
 
+  const labelInferior =
+    modo === "mes"
+      ? picoMes
+        ? `Pico do Mês — ${formatDataHoraBRT(picoMes.timestamp)}`
+        : "Pico do Mês — sem dado"
+      : labelAtual;
+
   return (
     <div className="flex flex-col items-center gap-1">
+      <div className="w-full flex items-center justify-end gap-1 mb-1">
+        <ToggleButton ativo={modo === "atual"} onClick={() => setModo("atual")}>
+          Atual
+        </ToggleButton>
+        <ToggleButton
+          ativo={modo === "mes"}
+          onClick={() => setModo("mes")}
+          disabled={!picoMes}
+        >
+          Mês
+        </ToggleButton>
+      </div>
+
       <div className="relative" style={{ width: SIZE, height: SIZE * 0.85 }}>
         <svg
           width={SIZE}
@@ -88,10 +128,10 @@ export function DemandaGauge({
             {percentLabel !== null ? `${percentLabel}%` : "—"}
           </div>
           <div className="text-sm font-medium tabular-nums text-foreground">
-            {valor.toFixed(1)} kW
+            {valorMostrado.toFixed(1)} kW
           </div>
-          <div className="text-[10px] text-muted-foreground uppercase tracking-wide">
-            {labelAtual}
+          <div className="text-[10px] text-muted-foreground uppercase tracking-wide text-center px-2 leading-tight">
+            {labelInferior}
           </div>
         </div>
       </div>
@@ -102,5 +142,35 @@ export function DemandaGauge({
         </span>
       </div>
     </div>
+  );
+}
+
+function ToggleButton({
+  ativo,
+  onClick,
+  disabled,
+  children,
+}: {
+  ativo: boolean;
+  onClick: () => void;
+  disabled?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-sm border transition-colors
+        ${
+          ativo
+            ? "bg-foreground/10 border-border text-foreground"
+            : "bg-transparent border-border/50 text-muted-foreground hover:bg-foreground/5"
+        }
+        ${disabled ? "opacity-40 cursor-not-allowed" : "cursor-pointer"}
+      `}
+    >
+      {children}
+    </button>
   );
 }

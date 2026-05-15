@@ -160,6 +160,7 @@ export function A966Modal({
             <div className="rounded-sm border border-border bg-card p-3">
               <DemandaGauge
                 valor={snapshot?.kW_consumo ?? 0}
+                picoMes={data?.resumo_mes?.pico_consumo ?? null}
                 contratada={data?.unidade?.demanda_carga ?? null}
                 cor={COR_CONSUMO}
                 labelContratada="Demanda Carga"
@@ -169,6 +170,7 @@ export function A966Modal({
             <div className="rounded-sm border border-border bg-card p-3">
               <DemandaGauge
                 valor={snapshot?.kW_injecao ?? 0}
+                picoMes={data?.resumo_mes?.pico_injecao ?? null}
                 contratada={data?.unidade?.demanda_geracao ?? null}
                 cor={COR_GERACAO}
                 labelContratada="Demanda Geração"

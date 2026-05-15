@@ -24,6 +24,12 @@ export interface GatewayResumoDia {
   pico_injecao: { kw: number; timestamp: string } | null;
 }
 
+export interface GatewayResumoMes {
+  mes: string; // YYYY-MM
+  pico_consumo: { kw: number; timestamp: string } | null;
+  pico_injecao: { kw: number; timestamp: string } | null;
+}
+
 export interface GatewayUltimaLeitura {
   timestamp: string;
   kW_consumo: number;
@@ -47,6 +53,7 @@ export interface GatewayDashboardData {
   unidade: { id: string; demanda_carga: number | null; demanda_geracao: number | null } | null;
   snapshot: GatewaySnapshot | null;
   resumo_dia: GatewayResumoDia;
+  resumo_mes: GatewayResumoMes;
   ultimas_leituras: GatewayUltimaLeitura[];
   comunicacao: GatewayComunicacao;
 }
