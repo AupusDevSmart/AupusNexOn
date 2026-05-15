@@ -63,7 +63,8 @@ export function DemandaGauge({
 }: DemandaGaugeProps) {
   const [modo, setModo] = useState<Modo>("atual");
 
-  // No modo "mes" usa o kW do pico (ou 0 se sem dado).
+  // No modo "mes" usa o kW do pico. Sem dado: mostra '—'.
+  const semDadoMes = modo === "mes" && !picoMes;
   const valorMostrado = modo === "mes" ? picoMes?.kw ?? 0 : valor;
 
   const ratio = useMemo(
@@ -89,11 +90,7 @@ export function DemandaGauge({
         <ToggleButton ativo={modo === "atual"} onClick={() => setModo("atual")}>
           Atual
         </ToggleButton>
-        <ToggleButton
-          ativo={modo === "mes"}
-          onClick={() => setModo("mes")}
-          disabled={!picoMes}
-        >
+        <ToggleButton ativo={modo === "mes"} onClick={() => setModo("mes")}>
           Mês
         </ToggleButton>
       </div>
@@ -125,10 +122,10 @@ export function DemandaGauge({
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center pb-2">
           <div className="text-2xl font-semibold tabular-nums" style={{ color: cor }}>
-            {percentLabel !== null ? `${percentLabel}%` : "—"}
+            {semDadoMes ? "—" : percentLabel !== null ? `${percentLabel}%` : "—"}
           </div>
           <div className="text-sm font-medium tabular-nums text-foreground">
-            {valorMostrado.toFixed(1)} kW
+            {semDadoMes ? "—" : `${valorMostrado.toFixed(1)} kW`}
           </div>
           <div className="text-[10px] text-muted-foreground uppercase tracking-wide text-center px-2 leading-tight">
             {labelInferior}
@@ -148,27 +145,21 @@ export function DemandaGauge({
 function ToggleButton({
   ativo,
   onClick,
-  disabled,
   children,
 }: {
   ativo: boolean;
   onClick: () => void;
-  disabled?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      disabled={disabled}
-      className={`text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-sm border transition-colors
-        ${
-          ativo
-            ? "bg-foreground/10 border-border text-foreground"
-            : "bg-transparent border-border/50 text-muted-foreground hover:bg-foreground/5"
-        }
-        ${disabled ? "opacity-40 cursor-not-allowed" : "cursor-pointer"}
-      `}
+      className={`text-[10px] uppercase tracking-wide px-2 py-0.5 border transition-colors cursor-pointer ${
+        ativo
+          ? "bg-foreground/10 border-border text-foreground"
+          : "bg-transparent border-border/50 text-muted-foreground hover:bg-foreground/5"
+      }`}
     >
       {children}
     </button>
