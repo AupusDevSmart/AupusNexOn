@@ -1,5 +1,4 @@
 import { ChartNoAxesColumn } from "@/components/icons/ChartNoAxesColumn";
-import { Permissao } from "@/types/dtos/usuarios-dto";
 import { featureFlags, type FeatureFlags } from "@/config/feature-flags";
 import {
   type LucideIcon,
@@ -16,10 +15,17 @@ import {
   FileText,
 } from "lucide-react";
 
+/**
+ * `featureKey` agora usa o ID da permission Spatie (ex: "dashboard.view", "usuarios.view").
+ * Migracao em 2026-05 do vocabulario legacy ("Dashboard", "Usuarios", etc) para
+ * alinhar com o `acessivel` (que carrega all_permissions do backend).
+ *
+ * Items sem `featureKey` sao sempre mostrados (sujeitos so a feature flag).
+ */
 export type NavigationLink = {
   key: string;
   path: string;
-  featureKey?: Permissao;
+  featureKey?: string;
   featureFlag?: keyof FeatureFlags;
   icon: LucideIcon | React.FC<React.SVGProps<SVGSVGElement>>;
   label: string;
@@ -30,27 +36,25 @@ export type NavigationLink = {
 export const navigationLinks: Array<NavigationLink> = [
   {
     key: "admin",
-    featureKey: "Dashboard",
+    featureKey: "dashboard.view",
     featureFlag: "enableCOA",
     path: "/dashboard",
     icon: ChartNoAxesColumn,
     label: "COA - Centro de Operações de Ativos",
     hint: "COA - Centro de Operações de Ativos",
   },
-  // SCADA - Adicionado
+  // SCADA - sem permission Spatie correspondente; controlado so por feature flag
   {
     key: "scada",
-    featureKey: "SCADA",
     featureFlag: "enableScada",
     path: "/scada",
     icon: Activity,
     label: "SCADA",
     hint: "Sistema SCADA",
   },
-  // Seção Supervisório
+  // Supervisorio - sem permission Spatie; controlado so por feature flag
   {
     key: "supervisorio",
-    featureKey: "supervisorio",
     featureFlag: "enableSupervisorio",
     path: "/supervisorio",
     icon: Monitor,
@@ -76,7 +80,6 @@ export const navigationLinks: Array<NavigationLink> = [
       // },
       {
         key: "supervisorio-sinoptico",
-        featureKey: "supervisorio",
         path: "/supervisorio/sinoptico",
         icon: Cpu,
         label: "Sinóptico do Ativo",
@@ -135,10 +138,9 @@ export const navigationLinks: Array<NavigationLink> = [
   //     },
   //   ],
   // },
-  // Cadastros
+  // Cadastros - grupo, visivel se pelo menos um filho for visivel
   {
     key: "cadastros",
-    featureKey: "Usuarios", // Usando Usuarios como feature principal
     featureFlag: "enableCadastros",
     path: "/cadastros",
     icon: Database,
@@ -147,7 +149,7 @@ export const navigationLinks: Array<NavigationLink> = [
     links: [
       {
         key: "cadastros-usuarios",
-        featureKey: "Usuarios",
+        featureKey: "usuarios.view",
         path: "/cadastros/usuarios",
         icon: Users,
         label: "Usuários",
@@ -155,7 +157,7 @@ export const navigationLinks: Array<NavigationLink> = [
       },
       {
         key: "cadastros-plantas",
-        featureKey: "Plantas",
+        featureKey: "plantas.view",
         path: "/cadastros/plantas",
         icon: Factory,
         label: "Plantas",
@@ -163,7 +165,7 @@ export const navigationLinks: Array<NavigationLink> = [
       },
       {
         key: "cadastros-unidades",
-        featureKey: "UnidadesConsumidoras",
+        featureKey: "unidades.view",
         path: "/cadastros/unidades",
         icon: Building2,
         label: "Instalações",
@@ -171,7 +173,7 @@ export const navigationLinks: Array<NavigationLink> = [
       },
       {
         key: "cadastros-equipamentos",
-        featureKey: "Equipamentos",
+        featureKey: "equipamentos.view",
         path: "/cadastros/equipamentos",
         icon: Boxes,
         label: "Equipamentos",
@@ -179,7 +181,7 @@ export const navigationLinks: Array<NavigationLink> = [
       },
       {
         key: "cadastros-concessionarias",
-        featureKey: "Concessionarias",
+        featureKey: "equipamentos.manage",
         path: "/cadastros/concessionarias",
         icon: Zap,
         label: "Concessionárias",
@@ -187,6 +189,7 @@ export const navigationLinks: Array<NavigationLink> = [
       },
       {
         key: "cadastros-regras-logs",
+        featureKey: "equipamentos.manage",
         path: "/cadastros/regras-logs",
         icon: ScrollText,
         label: "Regras de Logs",

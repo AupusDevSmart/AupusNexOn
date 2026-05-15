@@ -30,13 +30,13 @@ export function useProprietarios(): UseProprietariosReturn {
         setLoading(true);
         setError(null);
 
-        console.log('🔍 [useProprietarios] Buscando TODOS os usuários...');
+        console.log('🔍 [useProprietarios] Buscando usuarios proprietarios...');
 
-        // Buscar TODOS os usuários ativos sem paginação (limit alto)
+        // Backend tem cap de limit=100 no endpoint /usuarios.
         const response = await api.get('/usuarios', {
           params: {
-            limit: 1000, // Buscar até 1000 usuários
-            includeInactive: false, // Apenas ativos
+            limit: 100,
+            includeInactive: false,
           },
         });
 
@@ -69,8 +69,15 @@ export function useProprietarios(): UseProprietariosReturn {
 
         setProprietarios(proprietariosFormatados);
       } catch (err: any) {
-        console.error('❌ [useProprietarios] Erro ao buscar proprietários:', err);
-        setError(err.response?.data?.message || 'Erro ao carregar proprietários');
+        // 403 e esperado para roles sem `usuarios.view` (ex: operador). Nao reportar
+        // como erro - o filtro de proprietario simplesmente nao aparece preenchido.
+        if (err?.response?.status === 403) {
+          console.warn('[useProprietarios] Sem permissao para listar usuarios (403). Filtro de proprietario ficara vazio.');
+          setError(null);
+        } else {
+          console.error('❌ [useProprietarios] Erro ao buscar proprietários:', err);
+          setError(err.response?.data?.message || 'Erro ao carregar proprietários');
+        }
         setProprietarios([]);
       } finally {
         setLoading(false);

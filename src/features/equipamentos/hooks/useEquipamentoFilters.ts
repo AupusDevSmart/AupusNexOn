@@ -76,8 +76,14 @@ export function useEquipamentoFilters(): UseEquipamentoFiltersReturn {
       console.log('✅ [FILTERS] Proprietários carregados:', options.length - 1); // -1 para não contar "Todos"
       
     } catch (error: any) {
-      console.error('❌ [FILTERS] Erro ao carregar proprietários:', error);
-      setError('Erro ao carregar proprietários');
+      // 403 e esperado para roles sem `usuarios.view` (ex: operador). Nao reportar
+      // como erro no banner - filtro de proprietario simplesmente fica so com "Todos".
+      if (error?.response?.status === 403) {
+        console.warn('[FILTERS] Sem permissao para listar usuarios (403). Filtro de proprietario fica vazio.');
+      } else {
+        console.error('❌ [FILTERS] Erro ao carregar proprietários:', error);
+        setError('Erro ao carregar proprietários');
+      }
       setProprietarios([{ value: 'all', label: 'Todos os Proprietários' }]);
     } finally {
       setLoadingProprietarios(false);

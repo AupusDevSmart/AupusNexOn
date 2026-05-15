@@ -38,9 +38,13 @@ export const useLocationCascade = (initialData?: LocationData) => {
 
       console.log('✅ [useLocationCascade] Proprietários carregados:', proprietariosList.length);
 
-    } catch (err) {
-      console.error('❌ [useLocationCascade] Erro ao carregar proprietários:', err);
-      setError('Erro ao carregar proprietários');
+    } catch (err: any) {
+      if (err?.response?.status === 403) {
+        console.warn('[useLocationCascade] Sem permissao para listar proprietarios (403). Cascade fica vazio.');
+      } else {
+        console.error('❌ [useLocationCascade] Erro ao carregar proprietários:', err);
+        setError('Erro ao carregar proprietários');
+      }
     } finally {
       setLoadingProprietarios(false);
     }

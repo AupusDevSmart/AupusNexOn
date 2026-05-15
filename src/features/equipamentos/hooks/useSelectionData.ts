@@ -1,5 +1,5 @@
 // src/features/equipamentos/hooks/useSelectionData.ts - COM CARREGAMENTO OTIMIZADO
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   selectionDataService,
   ProprietarioSelection,
@@ -57,24 +57,33 @@ export function useSelectionData(): UseSelectionDataReturn {
   // Estado de erro
   const [error, setError] = useState<string | null>(null);
 
+  // Flag para evitar loop quando fetch falha (403, network, etc.) e ainda assim deixa proprietarios = []
+  const proprietariosAttemptedRef = useRef(false);
+
   // ============================================================================
   // PROPRIETÁRIOS - APENAS AQUELES COM PLANTAS
   // ============================================================================
   const fetchProprietarios = useCallback(async (): Promise<ProprietarioSelection[]> => {
     console.log('🚀 [HOOK] Iniciando fetchProprietarios (apenas com plantas)...');
+    proprietariosAttemptedRef.current = true;
     try {
       setLoadingProprietarios(true);
       setError(null);
-      
+
       const data = await selectionDataService.getProprietarios();
       console.log(`✅ [HOOK] ${data.length} proprietários com plantas carregados`);
-      
+
       setProprietarios(data);
       return data;
     } catch (error: any) {
-      console.error('❌ [HOOK] Erro ao carregar proprietários:', error);
-      const errorMessage = error.message || 'Erro ao carregar proprietários';
-      setError(`Erro ao carregar proprietários: ${errorMessage}`);
+      // 403 e esperado para roles sem `usuarios.view`. Nao mostrar banner de erro.
+      if (error?.response?.status === 403) {
+        console.warn('[HOOK] Sem permissao para listar proprietarios (403). Lista fica vazia.');
+      } else {
+        console.error('❌ [HOOK] Erro ao carregar proprietários:', error);
+        const errorMessage = error.message || 'Erro ao carregar proprietários';
+        setError(`Erro ao carregar proprietários: ${errorMessage}`);
+      }
       setProprietarios([]); // Limpar dados em caso de erro
       return [];
     } finally {
@@ -241,8 +250,15 @@ export function useSelectionData(): UseSelectionDataReturn {
   // EFEITO PARA CARREGAR PROPRIETÁRIOS QUANDO NECESSÁRIO
   // ============================================================================
   useEffect(() => {
-    // Carregar proprietários apenas se ainda não foram carregados
-    if (proprietarios.length === 0 && !loadingProprietarios) {
+    // Carregar apenas uma vez por montagem do hook. Mesmo que o fetch termine
+    // com [] (ex: usuario sem permission `usuarios.view` recebe 403), nao
+    // re-tentar — senao o effect entra em loop porque o estado de proprietarios
+    // continua === 0.
+    if (
+      !proprietariosAttemptedRef.current &&
+      proprietarios.length === 0 &&
+      !loadingProprietarios
+    ) {
       console.log('📝 [HOOK] Proprietários não carregados, iniciando carregamento...');
       fetchProprietarios();
     }
