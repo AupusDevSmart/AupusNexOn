@@ -198,11 +198,11 @@ export function A966Modal({
 
         {/* Linha 2: resumo dia + ultimas leituras */}
         {data && (
-          <div className="grid grid-cols-1 xl:grid-cols-12 gap-3 mt-3">
-            <div className="xl:col-span-5">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 mt-3">
+            <div className="lg:col-span-5">
               <ResumoDiaCard resumo={data.resumo_dia} snapshot={snapshot} />
             </div>
-            <div className="xl:col-span-7">
+            <div className="lg:col-span-7">
               <UltimasLeiturasTable leituras={data.ultimas_leituras} />
             </div>
           </div>

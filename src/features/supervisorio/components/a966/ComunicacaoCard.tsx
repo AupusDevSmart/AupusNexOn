@@ -29,7 +29,7 @@ export function ComunicacaoCard({ comunicacao }: ComunicacaoCardProps) {
 
   return (
     <Card className="rounded-sm h-full">
-      <CardContent className="grid grid-cols-3 gap-4 pt-6">
+      <CardContent className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-6">
         <div>
           <div className="text-xs text-muted-foreground">Comunicação</div>
           <div className={`text-base font-semibold tabular-nums flex items-center gap-1.5 ${tone}`}>
