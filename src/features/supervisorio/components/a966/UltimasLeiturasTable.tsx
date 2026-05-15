@@ -6,13 +6,25 @@ interface UltimasLeiturasTableProps {
 }
 
 const TZ = "America/Sao_Paulo";
+const INTERVALO_MS = 15 * 60 * 1000;
 
-function formatHoraBRT(ts: string): string {
-  return new Date(ts).toLocaleTimeString("pt-BR", {
+function formatHoraBRT(d: Date): string {
+  return d.toLocaleTimeString("pt-BR", {
     timeZone: TZ,
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+/**
+ * Cada leitura A966 representa energia acumulada nos 15min anteriores ao
+ * timestamp. Mostrar o intervalo (fim_intervalo_anterior - timestamp) deixa
+ * claro de qual janela o dado e' — util quando ha pacote perdido.
+ */
+function formatIntervaloBRT(ts: string): string {
+  const fim = new Date(ts);
+  const inicio = new Date(fim.getTime() - INTERVALO_MS);
+  return `${formatHoraBRT(inicio)} – ${formatHoraBRT(fim)}`;
 }
 
 export function UltimasLeiturasTable({ leituras }: UltimasLeiturasTableProps) {
@@ -33,7 +45,7 @@ export function UltimasLeiturasTable({ leituras }: UltimasLeiturasTableProps) {
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-xs text-muted-foreground border-b border-border">
-                  <th className="text-left font-normal py-2 pr-4">Horário</th>
+                  <th className="text-left font-normal py-2 pr-4">Intervalo</th>
                   <th className="text-right font-normal py-2 px-2">Consumo (kW)</th>
                   <th className="text-right font-normal py-2 px-2">Injeção (kW)</th>
                   <th className="text-right font-normal py-2 px-2">Reativo (kvar)</th>
@@ -44,7 +56,9 @@ export function UltimasLeiturasTable({ leituras }: UltimasLeiturasTableProps) {
               <tbody>
                 {leituras.map((l) => (
                   <tr key={l.timestamp} className="border-b border-border/40 last:border-b-0">
-                    <td className="py-2 pr-4 tabular-nums">{formatHoraBRT(l.timestamp)}</td>
+                    <td className="py-2 pr-4 tabular-nums whitespace-nowrap">
+                      {formatIntervaloBRT(l.timestamp)}
+                    </td>
                     <td className="py-2 px-2 text-right tabular-nums">
                       {l.kW_consumo.toFixed(1)}
                     </td>
