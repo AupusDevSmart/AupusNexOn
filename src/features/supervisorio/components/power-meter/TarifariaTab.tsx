@@ -8,6 +8,18 @@ import { Clock, Info } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
+/** Formata hora cheia em HH:00 (ex: 18 -> "18:00"). */
+function formatHora(h: number): string {
+  return `${String(Math.floor(h)).padStart(2, "0")}:00`;
+}
+
+/** Formata hora decimal em HH:MM (ex: 21.5 -> "21:30"). */
+function formatHoraDecimal(h: number): string {
+  const horas = Math.floor(h);
+  const minutos = Math.round((h - horas) * 60);
+  return `${String(horas).padStart(2, "0")}:${String(minutos).padStart(2, "0")}`;
+}
+
 interface TarifariaTabProps {
   equipamentoId: string | null;
 }
@@ -289,22 +301,29 @@ export function TarifariaTab({ equipamentoId }: TarifariaTabProps) {
         </div>
       </div>
 
-      {/* Horarios dos postos — somente leitura por enquanto (sem campo no DTO). */}
+      {/* Horarios dos postos — somente leitura. Vem da concessionaria da
+          unidade do equipamento. Edicao acontece no cadastro de concessionarias. */}
       <Card className="rounded-sm">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
             <Clock className="h-3.5 w-3.5" />
-            Horários dos Postos Tarifários
+            Horários dos Postos Tarifários (configurados na concessionária)
           </CardTitle>
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
           <div>
             <div className="text-xs text-muted-foreground mb-1">Ponta</div>
-            <div className="font-medium tabular-nums">18:00 – 21:00</div>
+            <div className="font-medium tabular-nums">
+              {formatHora(config?.horarios?.hora_inicio_ponta ?? 18)} –{" "}
+              {formatHora(config?.horarios?.hora_fim_ponta ?? 21)}
+            </div>
           </div>
           <div>
             <div className="text-xs text-muted-foreground mb-1">Reservado</div>
-            <div className="font-medium tabular-nums">21:30 – 06:00</div>
+            <div className="font-medium tabular-nums">
+              {formatHoraDecimal(config?.horarios?.hora_inicio_reservado_decimal ?? 21.5)} –{" "}
+              {formatHora(config?.horarios?.hora_fim_reservado ?? 6)}
+            </div>
             <div className="text-[10px] text-muted-foreground mt-0.5">
               Horário final considera o dia seguinte.
             </div>

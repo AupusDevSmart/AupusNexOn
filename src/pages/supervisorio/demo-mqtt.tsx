@@ -141,7 +141,7 @@ export function DemoMqttPage() {
 
       {/* Modais */}
       <PowerMeterModal
-        open={modalAberto === "M160" || modalAberto === "POWER_METER"}
+        open={modalAberto === "POWER_METER"}
         onClose={fecharModal}
         componenteData={equipamentoSelecionado}
         nomeComponente={equipamentoSelecionado?.nome || "Power Meter"}

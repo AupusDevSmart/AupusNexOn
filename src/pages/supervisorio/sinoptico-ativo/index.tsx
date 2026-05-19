@@ -4762,7 +4762,7 @@ if (import.meta.env.PROD) {
 
         {/* Modals */}
         <PowerMeterModal
-          open={modalAberto === "POWER_METER" || modalAberto === "MEDIDOR" || modalAberto === "M160"}
+          open={modalAberto === "POWER_METER"}
           onClose={fecharModal}
           componenteData={componenteSelecionado}
           nomeComponente={componenteSelecionado?.nome || "Power Meter"}

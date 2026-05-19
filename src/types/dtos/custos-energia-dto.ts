@@ -94,6 +94,13 @@ export interface CustosEnergiaQueryParams {
   timestamp_fim?: string;
 }
 
+export interface ConfiguracaoHorariosDto {
+  hora_inicio_ponta: number;
+  hora_fim_ponta: number;
+  hora_inicio_reservado_decimal: number;
+  hora_fim_reservado: number;
+}
+
 export interface ConfiguracaoCustoDto {
   icms: number;
   pis: number;
@@ -108,4 +115,7 @@ export interface ConfiguracaoCustoDto {
   te_d: number | null;
   tusd_b: number | null;
   te_b: number | null;
+  // Read-only — vem da concessionaria ligada a unidade do equipamento.
+  // Edicao acontece no cadastro de concessionarias.
+  horarios: ConfiguracaoHorariosDto;
 }
