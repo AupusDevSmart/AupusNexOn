@@ -1,7 +1,7 @@
 import { Layout } from "@/components/common/Layout";
 import { TitleCard } from "@/components/common/title-card";
 import { useState } from "react";
-import { M160Modal } from "@/features/supervisorio/components/m160-modal";
+import { PowerMeterModal } from "@/features/supervisorio/components/power-meter/PowerMeterModal";
 import { A966Modal } from "@/features/supervisorio/components/a966-modal";
 import { LandisGyrModal } from "@/features/supervisorio/components/landisgyr-modal";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -140,13 +140,13 @@ export function DemoMqttPage() {
       </div>
 
       {/* Modais */}
-      {modalAberto === "M160" && (
-        <M160Modal
-          isOpen={true}
-          onClose={fecharModal}
-          componenteData={equipamentoSelecionado}
-        />
-      )}
+      <PowerMeterModal
+        open={modalAberto === "M160" || modalAberto === "POWER_METER"}
+        onClose={fecharModal}
+        componenteData={equipamentoSelecionado}
+        nomeComponente={equipamentoSelecionado?.nome || "Power Meter"}
+      />
+
 
       <A966Modal
         open={modalAberto === "A966"}

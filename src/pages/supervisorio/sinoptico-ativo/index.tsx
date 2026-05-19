@@ -48,9 +48,9 @@ import { InversorMqttDataModal } from "@/features/equipamentos/components/Invers
 // Removido: MultiplosInversoresGraficosModal - seleção é feita via modal de configuração
 import { PivoModal, type DadosPivo } from "@/features/supervisorio/components/pivo";
 import { LandisGyrModal } from "@/features/supervisorio/components/landisgyr-modal";
-import { M160Modal } from "@/features/supervisorio/components/m160-modal";
 import { M300Modal } from "@/features/supervisorio/components/m300-modal";
-import { MedidorModal } from "@/features/supervisorio/components/medidor-modal";
+import { PowerMeterModal } from "@/features/supervisorio/components/power-meter/PowerMeterModal";
+import { isPowerMeter } from "@/features/supervisorio/components/power-meter/helpers";
 import { SinopticoDiagrama } from "@/features/supervisorio/components/sinoptico-diagrama";
 import { SinopticoGraficosV2 } from "@/features/supervisorio/components/sinoptico-graficos-v2";
 import { TransformadorModal } from "@/features/supervisorio/components/transformador-modal";
@@ -2703,10 +2703,9 @@ export function SinopticoAtivoPage() {
       // Detectar tópico MQTT e abrir modal correto
       const tag = (componente as any).tag || '';
 
-      // ✅ HABILITADO: Apenas M160 e INVERSOR funcionam completamente
-      if (tag.includes('M160') || componente.tipo === 'M160' || componente.tipo === 'METER_M160') {
-        // Log removido;
-        setModalAberto('M160');
+      // Power Meter (M160, PD666, M300, Landis, etc) — abre o PowerMeterModal unico.
+      if (isPowerMeter(componente as any)) {
+        setModalAberto('POWER_METER');
       }
       // ❌ DESABILITADO: Outros modais não funcionam completamente ainda
       // else if (tag.includes('a966/state') && !tag.includes('LANDIS')) {
@@ -3777,20 +3776,8 @@ if (import.meta.env.PROD) {
                     dados: comp.dados
                   });
 
-                  // Verificar se é M160 por tipo, tag, nome, categoria OU tipo_equipamento
-                  const isM160 =
-                    tag.includes('M160') ||
-                    tipo === 'M160' ||
-                    tipo === 'METER_M160' ||
-                    tipo.includes('M160') ||
-                    nome.includes('M160') ||
-                    comp.categoria?.includes('M160') ||
-                    comp.dados?.tipo_equipamento?.includes('M160') ||
-                    comp.dados?.tipoEquipamento?.codigo?.includes('M160');
-
-                  if (isM160) {
-                    console.log('[DiagramV2] Opening M160 modal');
-                    // M160Modal precisa do componenteSelecionado para funcionar
+                  // Power Meter (M160, PD666, M300, Landis, etc) — modal unificado.
+                  if (isPowerMeter(comp as any)) {
                     const componenteV1: ComponenteDU = {
                       id: comp.id,
                       tipo: comp.tipo,
@@ -3801,7 +3788,7 @@ if (import.meta.env.PROD) {
                       dados: comp.dados || {},
                     };
                     setComponenteSelecionado(componenteV1);
-                    setModalAberto('M160');
+                    setModalAberto('POWER_METER');
                   } else if (tipo === 'INVERSOR' || tipo.includes('INVERSOR')) {
                     // InversorMqttDataModal usa apenas o ID
                     setSelectedInversorMqttId(comp.id);
@@ -4774,11 +4761,11 @@ if (import.meta.env.PROD) {
         </div>
 
         {/* Modals */}
-        <MedidorModal
-          open={modalAberto === "MEDIDOR"}
+        <PowerMeterModal
+          open={modalAberto === "POWER_METER" || modalAberto === "MEDIDOR" || modalAberto === "M160"}
           onClose={fecharModal}
-          dados={dadosMedidor}
-          nomeComponente={componenteSelecionado?.nome || ""}
+          componenteData={componenteSelecionado}
+          nomeComponente={componenteSelecionado?.nome || "Power Meter"}
         />
 
         <InversorModal
@@ -4960,13 +4947,7 @@ if (import.meta.env.PROD) {
           nomeComponente={componenteSelecionado?.nome || ""}
         />
 
-        {modalAberto === "M160" && (
-          <M160Modal
-            isOpen={true}
-            onClose={fecharModal}
-            componenteData={componenteSelecionado}
-          />
-        )}
+        {/* M160 antigo agora rotaliza pra PowerMeterModal (acima). */}
         <M300Modal
           open={modalAberto === "M300"}
           onClose={fecharModal}
