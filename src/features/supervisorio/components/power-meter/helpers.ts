@@ -81,9 +81,15 @@ export function calcDerivados(p: PowerMeterPayload | null): PowerMeterDerivados 
   const potencia_aparente_total_kva = typeof p.St === 'number' ? p.St / 1000 : null;
 
   let fp_trifasico: number | null = null;
-  if (typeof p.Pt === 'number' && typeof p.St === 'number' && p.St !== 0) {
-    fp_trifasico = Math.abs(p.Pt) / p.St;
-    if (fp_trifasico > 1) fp_trifasico = 1; // clamp por arredondamento
+  if (typeof p.Pt === 'number' && typeof p.St === 'number') {
+    if (p.Pt === 0 && p.St === 0) {
+      // Medidor em standby/idle (sem carga): convencao FP = 1.000.
+      // Evita "—" quando os tres totais (Pt, Qt, St) chegam zerados.
+      fp_trifasico = 1.0;
+    } else if (p.St !== 0) {
+      fp_trifasico = Math.abs(p.Pt) / p.St;
+      if (fp_trifasico > 1) fp_trifasico = 1; // clamp por arredondamento
+    }
   }
 
   let fp_natureza: 'ind' | 'cap' | null = null;
