@@ -21,9 +21,9 @@ interface PowerMeterModalProps {
 }
 
 const ABAS: Array<{ value: Aba; label: string }> = [
+  { value: "relatorio", label: "Relatório" },
   { value: "dados", label: "Dados" },
   { value: "tarifaria", label: "Tarifária" },
-  { value: "relatorio", label: "Relatório" },
 ];
 
 export function PowerMeterModal({
@@ -38,10 +38,10 @@ export function PowerMeterModal({
   const nome = nomeComponente || componenteData?.nome || "Power Meter";
   const tag = componenteData?.tag ?? componenteData?.dados?.tag ?? null;
 
-  const [aba, setAba] = useState<Aba>("dados");
-  // Reseta pra "dados" sempre que abre.
+  const [aba, setAba] = useState<Aba>("relatorio");
+  // Reseta pra primeira aba sempre que abre.
   useEffect(() => {
-    if (open) setAba("dados");
+    if (open) setAba("relatorio");
   }, [open]);
 
   return (
