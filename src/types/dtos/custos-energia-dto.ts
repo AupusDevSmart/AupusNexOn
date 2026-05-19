@@ -97,7 +97,7 @@ export interface CustosEnergiaQueryParams {
 export interface ConfiguracaoHorariosDto {
   hora_inicio_ponta: number;
   hora_fim_ponta: number;
-  hora_inicio_reservado_decimal: number;
+  hora_inicio_reservado: number;
   hora_fim_reservado: number;
 }
 

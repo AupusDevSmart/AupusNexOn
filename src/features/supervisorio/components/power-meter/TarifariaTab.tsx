@@ -8,15 +8,13 @@ import { Clock, Info } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
-/** Formata hora cheia em HH:00 (ex: 18 -> "18:00"). */
-function formatHora(h: number): string {
-  return `${String(Math.floor(h)).padStart(2, "0")}:00`;
-}
-
-/** Formata hora decimal em HH:MM (ex: 21.5 -> "21:30"). */
+/** Formata hora decimal em HH:MM (ex: 21.5 -> "21:30", 18 -> "18:00"). */
 function formatHoraDecimal(h: number): string {
   const horas = Math.floor(h);
   const minutos = Math.round((h - horas) * 60);
+  if (minutos === 60) {
+    return `${String((horas + 1) % 24).padStart(2, "0")}:00`;
+  }
   return `${String(horas).padStart(2, "0")}:${String(minutos).padStart(2, "0")}`;
 }
 
@@ -314,15 +312,15 @@ export function TarifariaTab({ equipamentoId }: TarifariaTabProps) {
           <div>
             <div className="text-xs text-muted-foreground mb-1">Ponta</div>
             <div className="font-medium tabular-nums">
-              {formatHora(config?.horarios?.hora_inicio_ponta ?? 18)} –{" "}
-              {formatHora(config?.horarios?.hora_fim_ponta ?? 21)}
+              {formatHoraDecimal(config?.horarios?.hora_inicio_ponta ?? 18)} –{" "}
+              {formatHoraDecimal(config?.horarios?.hora_fim_ponta ?? 21)}
             </div>
           </div>
           <div>
             <div className="text-xs text-muted-foreground mb-1">Reservado</div>
             <div className="font-medium tabular-nums">
-              {formatHoraDecimal(config?.horarios?.hora_inicio_reservado_decimal ?? 21.5)} –{" "}
-              {formatHora(config?.horarios?.hora_fim_reservado ?? 6)}
+              {formatHoraDecimal(config?.horarios?.hora_inicio_reservado ?? 21.5)} –{" "}
+              {formatHoraDecimal(config?.horarios?.hora_fim_reservado ?? 6)}
             </div>
             <div className="text-[10px] text-muted-foreground mt-0.5">
               Horário final considera o dia seguinte.
