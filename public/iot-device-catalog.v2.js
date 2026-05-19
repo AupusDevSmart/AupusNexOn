@@ -301,6 +301,108 @@ var DEVICE_MODELS = {
     //   - Campos: mesmos que UFV (nominal_power, daily_yield, total_yield, mppt1-12_voltage, string1-24_current, etc.)
     //   - Modo avg nas leituras que variam (MPPT V, string I, DC power, tensoes/correntes AC)
     //   - Modo last nos contadores/estados (yields, tempo, potencia ativa/reativa, FP, freq, work_state)
+
+    'sungrow-sg250cx': {
+        fabricante: 'Sungrow',
+        modelo: 'SG250CX',
+        tipo: 'inversor_solar',
+        protocolo: 'rtu',
+        connection_note: 'RS485 direto (9600 8N1) ou TCP via WiNet-S',
+        num_mppts: 12,
+        num_strings: 24,
+        // Sungrow armazena U32/S32 com WORD ORDER LITTLE-ENDIAN (low word primeiro).
+        // Ou seja: para um U32 que ocupa regs N e N+1, o valor = (reg[N+1] << 16) | reg[N].
+        // O default do gerador eh 'high_first' (big-endian word). Sungrow precisa override.
+        word_order: 'low_first',
+        // Blocos identicos aos usados em producao no UFV (arquivo UFV-SOLAR_POWER/src/main.cpp).
+        // Offset em cada bloco = (registrador_datasheet - primeiro_registrador_do_bloco).
+        // block 0 cobre 5000-5049 -> offset = reg - 5000
+        // block 1 cobre 5050-5089 -> offset = reg - 5050
+        // block 2 cobre 5090-5119 -> offset = reg - 5090
+        // block 3 cobre 5120-5154 -> offset = reg - 5120
+        // block 4 cobre 7013-7036 -> offset = reg - 7013  (correntes de string)
+        ai_blocks: [
+            { start: 4999, count: 50, func: 0x04, label: 'Regs 5000-5049: info, yields, MPPT 1-3, V/I AC, potencias, status' },
+            { start: 5049, count: 40, func: 0x04, label: 'Regs 5050-5089: regulation, insulation' },
+            { start: 5089, count: 30, func: 0x04, label: 'Regs 5090-5119: tempo diario, MPPT 4-6' },
+            { start: 5119, count: 35, func: 0x04, label: 'Regs 5120-5154: MPPT 7-9, bus voltage, PID' },
+            { start: 7012, count: 18, func: 0x04, label: 'Regs 7013-7030: strings 1-18' },
+        ],
+        // IMPORTANTE: scale e DIVISOR (valor_final = registrador / scale)
+        // mode (opcional): 'avg'=media das N amostras | 'last'=ultima leitura | 'delta'=ultima-primeira
+        ai_map: {
+            // --- Bloco 0: 5000-5049 ---
+            'device_type':        { block: 0, offset: 0,  scale: 1,    dataType: 'U16', mode: 'last', format: 'hex' }, // 5000 codigo
+            'nominal_power':      { block: 0, offset: 1,  scale: 10,   dataType: 'U16', mode: 'last' }, // 5001 kW
+            'output_type':        { block: 0, offset: 2,  scale: 1,    dataType: 'U16', mode: 'last' }, // 5002 tipo saida
+            'daily_yield':        { block: 0, offset: 3,  scale: 10,   dataType: 'U16', mode: 'last' }, // 5003 kWh
+            'total_yield':        { block: 0, offset: 4,  scale: 1,    dataType: 'U32', mode: 'last' }, // 5004-5005 kWh
+            'total_running_time': { block: 0, offset: 6,  scale: 1,    dataType: 'U32', mode: 'last' }, // 5006-5007 h
+            'temp_interna':       { block: 0, offset: 8,  scale: 10,   dataType: 'S16', mode: 'last' }, // 5008 degC
+            // reg 5009-5010 publicado em DOIS lugares (igual UFV): energy.apparent_power_1 e power.apparent_total
+            'potencia_aparente':  { block: 0, offset: 9,  scale: 1,    dataType: 'U32', mode: 'last' }, // energy.Potencia Aparente1 (5009-5010)
+            'potencia_aparente2': { block: 0, offset: 10, scale: 1,    dataType: 'U32', mode: 'last' }, // energy.Potencia Aparente2 (5010-5011, deslocado igual UFV)
+            'apparent_total':     { block: 0, offset: 9,  scale: 1,    dataType: 'U32', mode: 'last' }, // power.apparent_total
+            'mppt1_voltage':      { block: 0, offset: 11, scale: 10,   dataType: 'U16', mode: 'avg'  }, // 5011
+            'mppt2_voltage':      { block: 0, offset: 13, scale: 10,   dataType: 'U16', mode: 'avg'  }, // 5013
+            'mppt3_voltage':      { block: 0, offset: 15, scale: 10,   dataType: 'U16', mode: 'avg'  }, // 5015
+            'dc_total_power':     { block: 0, offset: 17, scale: 1,    dataType: 'U32', mode: 'avg'  }, // 5017-5018 W
+            'vab':                { block: 0, offset: 19, scale: 10,   dataType: 'U16', mode: 'avg'  }, // 5019
+            'vbc':                { block: 0, offset: 20, scale: 10,   dataType: 'U16', mode: 'avg'  }, // 5020
+            'vca':                { block: 0, offset: 21, scale: 10,   dataType: 'U16', mode: 'avg'  }, // 5021
+            'ia':                 { block: 0, offset: 22, scale: 10,   dataType: 'U16', mode: 'avg'  }, // 5022
+            'ib':                 { block: 0, offset: 23, scale: 10,   dataType: 'U16', mode: 'avg'  }, // 5023
+            'ic':                 { block: 0, offset: 24, scale: 10,   dataType: 'U16', mode: 'avg'  }, // 5024
+            'potencia_ativa':     { block: 0, offset: 31, scale: 1,    dataType: 'U32', mode: 'last' }, // 5031-5032 W
+            'potencia_reativa':   { block: 0, offset: 33, scale: 1,    dataType: 'S32', mode: 'last' }, // 5033-5034 VAr
+            'fp':                 { block: 0, offset: 35, scale: 1000, dataType: 'S16', mode: 'last' }, // 5035
+            'freq':               { block: 0, offset: 36, scale: 10,   dataType: 'U16', mode: 'last' }, // 5036 Hz
+            'work_state':         { block: 0, offset: 38, scale: 1,    dataType: 'U16', mode: 'last' }, // 5038 codigo
+            'nominal_reactive_power': { block: 0, offset: 49, scale: 10, dataType: 'U16', mode: 'last' }, // 5049 kVAr
+
+            // --- Bloco 1: 5050-5089 ---
+            'insulation_resistance': { block: 1, offset: 21, scale: 1, dataType: 'U16', mode: 'last' }, // 5071 kOhm
+
+            // --- Bloco 2: 5090-5119 ---
+            'daily_running_time': { block: 2, offset: 23, scale: 1,    dataType: 'U16', mode: 'last' }, // 5113 min
+            'mppt4_voltage':      { block: 2, offset: 25, scale: 10,   dataType: 'U16', mode: 'avg'  }, // 5115
+            'mppt5_voltage':      { block: 2, offset: 27, scale: 10,   dataType: 'U16', mode: 'avg'  }, // 5117
+            'mppt6_voltage':      { block: 2, offset: 29, scale: 10,   dataType: 'U16', mode: 'avg'  }, // 5119
+
+            // --- Bloco 3: 5120-5154 --- (SG110CX tem 9 MPPTs, so vai ate mppt9)
+            'mppt7_voltage':      { block: 3, offset: 1,  scale: 10,   dataType: 'U16', mode: 'avg'  }, // 5121
+            'mppt8_voltage':      { block: 3, offset: 3,  scale: 10,   dataType: 'U16', mode: 'avg'  }, // 5123
+            'mppt9_voltage':      { block: 3, offset: 10, scale: 10,   dataType: 'U16', mode: 'avg'  }, // 5130
+            'bus_voltage':        { block: 3, offset: 27, scale: 10,   dataType: 'U16', mode: 'last' }, // 5147 V
+            'pid_work_state':     { block: 3, offset: 30, scale: 1,    dataType: 'U16', mode: 'last' }, // 5150
+            'pid_alarm_code':     { block: 3, offset: 31, scale: 1,    dataType: 'U16', mode: 'last' }, // 5151
+
+            // --- Bloco 4: 7013-7030 (SG110CX tem 18 strings = 9 MPPTs x 2 strings) ---
+            'string1_current':  { block: 4, offset: 0,  scale: 100, dataType: 'U16', mode: 'avg' }, // 7013
+            'string2_current':  { block: 4, offset: 1,  scale: 100, dataType: 'U16', mode: 'avg' },
+            'string3_current':  { block: 4, offset: 2,  scale: 100, dataType: 'U16', mode: 'avg' },
+            'string4_current':  { block: 4, offset: 3,  scale: 100, dataType: 'U16', mode: 'avg' },
+            'string5_current':  { block: 4, offset: 4,  scale: 100, dataType: 'U16', mode: 'avg' },
+            'string6_current':  { block: 4, offset: 5,  scale: 100, dataType: 'U16', mode: 'avg' },
+            'string7_current':  { block: 4, offset: 6,  scale: 100, dataType: 'U16', mode: 'avg' },
+            'string8_current':  { block: 4, offset: 7,  scale: 100, dataType: 'U16', mode: 'avg' },
+            'string9_current':  { block: 4, offset: 8,  scale: 100, dataType: 'U16', mode: 'avg' },
+            'string10_current': { block: 4, offset: 9,  scale: 100, dataType: 'U16', mode: 'avg' },
+            'string11_current': { block: 4, offset: 10, scale: 100, dataType: 'U16', mode: 'avg' },
+            'string12_current': { block: 4, offset: 11, scale: 100, dataType: 'U16', mode: 'avg' },
+            'string13_current': { block: 4, offset: 12, scale: 100, dataType: 'U16', mode: 'avg' },
+            'string14_current': { block: 4, offset: 13, scale: 100, dataType: 'U16', mode: 'avg' },
+            'string15_current': { block: 4, offset: 14, scale: 100, dataType: 'U16', mode: 'avg' },
+            'string16_current': { block: 4, offset: 15, scale: 100, dataType: 'U16', mode: 'avg' },
+            'string17_current': { block: 4, offset: 16, scale: 100, dataType: 'U16', mode: 'avg' },
+            'string18_current': { block: 4, offset: 17, scale: 100, dataType: 'U16', mode: 'avg' }, // 7030
+        },
+        bi_map: {
+            'work_state': { register: 5038, func: 0x04 },
+        },
+        bo_map: {},
+    },
+
     'sungrow-sg110cx': {
         fabricante: 'Sungrow',
         modelo: 'SG110CX',
