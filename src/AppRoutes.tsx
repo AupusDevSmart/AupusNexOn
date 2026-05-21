@@ -85,6 +85,10 @@ const CadastroRegrasLogsPage = lazy(() =>
   import("@/pages/cadastros/regras-logs")
 );
 
+const CadastroIotCatalogPage = lazy(() =>
+  import("@/pages/cadastros/iot-catalog")
+);
+
 const LogsMqttPage = lazy(() =>
   import("@/pages/logs/logs-mqtt")
 );
@@ -322,6 +326,14 @@ export const appRoutes = createBrowserRouter([
         element: (
           <Suspense fallback={<div>Carregando...</div>}>
             <CadastroRegrasLogsPage />
+          </Suspense>
+        ),
+      },
+      {
+        path: "cadastros/iot-catalog",
+        element: (
+          <Suspense fallback={<div>Carregando...</div>}>
+            <CadastroIotCatalogPage />
           </Suspense>
         ),
       },

@@ -195,6 +195,14 @@ export const navigationLinks: Array<NavigationLink> = [
         label: "Regras de Logs",
         hint: "Cadastrar regras de logs MQTT",
       },
+      {
+        key: "cadastros-iot-catalog",
+        featureKey: "equipamentos.manage",
+        path: "/cadastros/iot-catalog",
+        icon: Cpu,
+        label: "Catálogo IoT",
+        hint: "Cadastrar tipos e modelos de dispositivos IoT (Modbus mapping)",
+      },
     ],
   },
   // {

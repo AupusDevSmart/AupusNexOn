@@ -7,6 +7,7 @@ import { Plus, Play, Download, Edit3, Maximize2, Minimize2, ZoomIn, Trash2, Fold
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { ESPLoader, Transport } from 'esptool-js';
 import { api } from '@/config/api';
+import { BASE_URL } from '@/config/constants';
 import { iotApiService, type IoTProjeto, type IoTDiagrama } from '@/services/iot.services';
 import { TonBoConfigModal } from './TonBoConfigModal';
 
@@ -184,12 +185,15 @@ function ensureIoTScripts(): Promise<void> {
   if ((window as any).__iotScriptsPromise) return (window as any).__iotScriptsPromise;
 
   (window as any).__iotScriptsPromise = new Promise<void>((resolve) => {
-    // Cache-buster: bumpe esta string sempre que editar qualquer iot-*.v2.js.
-    // Browsers respeitam Cache-Control immutable mesmo em hard refresh, então
-    // a única forma garantida de forçar fetch é mudar a URL.
+    // Cache-buster: bumpe esta string sempre que editar qualquer iot-*.v2.js
+    // ESTATICO. Browsers respeitam Cache-Control immutable mesmo em hard
+    // refresh, então a única forma garantida de forçar fetch é mudar a URL.
+    //
+    // O catalogo de dispositivos foi movido pro backend (GET /iot-catalog/device-catalog.js)
+    // — ele revalida sozinho via ETag. Os demais ainda sao estaticos.
     const IOT_SCRIPTS_VERSION = '20260508-a966kd';
     const scripts = [
-      `/iot-device-catalog.v2.js?v=${IOT_SCRIPTS_VERSION}`,
+      `${BASE_URL}/iot-catalog/device-catalog.js`,
       `/iot-firmware-base.v2.js?v=${IOT_SCRIPTS_VERSION}`,
       `/iot-firmware-generator.v2.js?v=${IOT_SCRIPTS_VERSION}`,
       `/iot-bench-tests.v2.js?v=${IOT_SCRIPTS_VERSION}`,
