@@ -274,29 +274,27 @@ var FirmwareGenerator = class FirmwareGenerator {
 
     // ---- inverter_tcp.h ----
     _genInverterTcpH(spec) {
+        const count = spec.tcp_devices.filter(d => d.type === 'inversor').length;
         return `#ifndef INVERTER_TCP_H
 #define INVERTER_TCP_H
 #include <stdint.h>
 
-struct InverterReading {
-    float ger_diaria;      // kWh
-    float ger_total;       // kWh
-    float pot_ativa;       // W
-    float pot_reativa;     // Var
-    float pot_aparente;    // VA
-    float fp;
-    float freq;
-    float va, vb, vc;      // V
-    float ia, ib, ic;      // A
-    float mppt_v[12];      // V
-    float mppt_i[12];      // A
-    uint16_t estado;
-};
+// Callback de publicacao: subtopic relativo a MQTT_TOPIC_BASE, payload JSON.
+typedef void (*tcp_publish_fn)(const char* subtopic, const char* payload);
 
+// Inicializa cliente TCP do datalogger e imprime configuracao.
 void inverter_tcp_init();
-bool inverter_tcp_read(uint8_t slave_id, InverterReading &out);
 
-#define TCP_INVERTER_COUNT ${spec.tcp_devices.filter(d => d.type === 'inversor').length}
+// Round-robin: le UM inversor por chamada e acumula amostras (avg) +
+// salva ultima leitura (last) + snapshot inicial de delta. Chamar a cada
+// READ_INTERVAL_MS (no loop principal). Distribui carga no datalogger.
+void inverter_tcp_sample_one();
+
+// Calcula medias/deltas acumulados e publica JSON por inversor.
+// Chamar a cada PUBLISH_INTERVAL_MS. Zera acumuladores apos publicar.
+void inverter_tcp_publish_all(tcp_publish_fn publish);
+
+#define TCP_INVERTER_COUNT ${count}
 extern const uint8_t TCP_INVERTER_IDS[];
 
 #endif
@@ -304,12 +302,16 @@ extern const uint8_t TCP_INVERTER_IDS[];
     }
 
     // ---- inverter_tcp.cpp ----
+    // Gera reader dinamico a partir de cat.ai_blocks/ai_map de cada inversor.
+    // Estrutura espelha _genDeviceReader (RS485): sample acumula, publish consolida.
+    // Diferenca chave vs RS485: transporte e' MBAP/TCP em vez de ModbusMaster RTU.
     _genInverterTcpCpp(spec) {
         const invs = spec.tcp_devices.filter(d => d.type === 'inversor' && d.gateway);
         if (invs.length === 0) {
             return `#include "inverter_tcp.h"
 void inverter_tcp_init() {}
-bool inverter_tcp_read(uint8_t, InverterReading &) { return false; }
+void inverter_tcp_sample_one() {}
+void inverter_tcp_publish_all(tcp_publish_fn) {}
 const uint8_t TCP_INVERTER_IDS[] = {};
 `;
         }
@@ -318,13 +320,16 @@ const uint8_t TCP_INVERTER_IDS[] = {};
         const gw = invs[0].gateway;
         const ids = invs.map(i => i.modbus_address).join(', ');
 
-        return `#include "inverter_tcp.h"
+        let cpp = `#include "inverter_tcp.h"
 #include "config.h"
 #include <WiFi.h>
 #include <WiFiClient.h>
+#include <ArduinoJson.h>
 #include <esp_task_wdt.h>
+#include <string.h>
+#include <math.h>
 
-// Gateway (Datalogger)
+// Gateway (Datalogger) — compartilhado por todos os inversores TCP
 #define GATEWAY_IP      "${gw.ip}"
 #define GATEWAY_PORT    ${gw.port}
 #define GATEWAY_TIMEOUT ${gw.timeout_ms}
@@ -344,6 +349,7 @@ void inverter_tcp_init() {
     Serial.println();
 }
 
+// Helper Modbus TCP — uma chamada por bloco. Reusa conexao persistente do datalogger.
 static bool _modbus_tcp_read(uint8_t slave, uint8_t func, uint16_t addr, uint16_t count, uint16_t *out) {
     if (!WiFi.isConnected()) return false;
 
@@ -363,30 +369,27 @@ static bool _modbus_tcp_read(uint8_t slave, uint8_t func, uint16_t addr, uint16_
     req[4] = 0; req[5] = 6;      // Length = 6
     req[6] = slave;              // Unit ID
     // PDU
-    req[7] = func;               // Function code
+    req[7] = func;
     req[8] = addr >> 8; req[9] = addr & 0xFF;
     req[10] = count >> 8; req[11] = count & 0xFF;
 
     _tcpClient.write(req, 12);
     _tcpClient.flush();
 
-    // Aguardar resposta
     uint32_t t0 = millis();
     while (_tcpClient.available() < 9 && millis() - t0 < GATEWAY_TIMEOUT) {
         delay(5);
         esp_task_wdt_reset();
     }
     if (_tcpClient.available() < 9) {
-        Serial.printf("[TCP-INV] Timeout ID%d func%d addr%d\\n", slave, func, addr);
+        Serial.printf("[TCP-INV] Timeout slave=%d func=%d addr=%d\\n", slave, func, addr);
         return false;
     }
 
-    // Ler MBAP + unit + func + byte count
     uint8_t hdr[9];
     _tcpClient.readBytes(hdr, 9);
     if (hdr[7] & 0x80) {
-        Serial.printf("[TCP-INV] Erro Modbus: 0x%02X\\n", hdr[8]);
-        // Ler exceção e descartar
+        Serial.printf("[TCP-INV] Excecao Modbus slave=%d: 0x%02X\\n", slave, hdr[8]);
         while (_tcpClient.available()) _tcpClient.read();
         return false;
     }
@@ -401,37 +404,257 @@ static bool _modbus_tcp_read(uint8_t slave, uint8_t func, uint16_t addr, uint16_
     return true;
 }
 
-bool inverter_tcp_read(uint8_t slave_id, InverterReading &out) {
-    memset(&out, 0, sizeof(out));
-
-    // Bloco 1: 5003-5024 (22 regs) - Yields, MPPT 1-3, V/I fases
-    uint16_t b1[22];
-    if (!_modbus_tcp_read(slave_id, 0x04, 5002, 22, b1)) return false;  // addr - 1
-
-    out.ger_diaria   = b1[0] * 0.1f;
-    out.ger_total    = ((uint32_t)b1[1] << 16 | b1[2]);
-    out.pot_aparente = ((uint32_t)b1[6] << 16 | b1[7]);
-    out.mppt_v[0] = b1[8]  * 0.1f;  out.mppt_i[0] = b1[9]  * 0.1f;
-    out.mppt_v[1] = b1[10] * 0.1f;  out.mppt_i[1] = b1[11] * 0.1f;
-    out.mppt_v[2] = b1[12] * 0.1f;  out.mppt_i[2] = b1[13] * 0.1f;
-    out.va = b1[16] * 0.1f;  out.vb = b1[17] * 0.1f;  out.vc = b1[18] * 0.1f;
-    out.ia = b1[19] * 0.1f;  out.ib = b1[20] * 0.1f;  out.ic = b1[21] * 0.1f;
-
-    delay(50);
-
-    // Bloco 2: 5031-5038 (8 regs) - Potencia, FP, Freq, Estado
-    uint16_t b2[8];
-    if (!_modbus_tcp_read(slave_id, 0x04, 5030, 8, b2)) return false;
-
-    out.pot_ativa   = (int32_t)((uint32_t)b2[0] << 16 | b2[1]);
-    out.pot_reativa = (int32_t)((uint32_t)b2[2] << 16 | b2[3]);
-    out.fp          = (int16_t)b2[4] * 0.001f;
-    out.freq        = b2[5] * 0.1f;
-    out.estado      = b2[7];
-
-    return true;
-}
 `;
+
+        // Gera state + sample + publish por inversor
+        invs.forEach((inv, idx) => {
+            cpp += this._genTcpInverterReader(inv, idx);
+        });
+
+        // Round-robin sample (1 inversor por chamada)
+        cpp += `
+// =============================================================================
+// Despacho publico: round-robin sample + broadcast publish
+// =============================================================================
+static int _rr_tcp_idx = 0;
+static const int _tcp_inv_count = ${invs.length};
+
+void inverter_tcp_sample_one() {
+    switch (_rr_tcp_idx) {
+`;
+        invs.forEach((_, idx) => {
+            cpp += `        case ${idx}: _sample_tcp_inv_${idx}(); break;\n`;
+        });
+        cpp += `    }
+    _rr_tcp_idx = (_rr_tcp_idx + 1) % _tcp_inv_count;
+}
+
+void inverter_tcp_publish_all(tcp_publish_fn publish) {
+    if (!publish) return;
+`;
+        invs.forEach((_, idx) => {
+            cpp += `    _publish_tcp_inv_${idx}(publish);\n`;
+        });
+        cpp += `}
+`;
+        return cpp;
+    }
+
+    // Gera estado, _sample_tcp_inv_<idx>() e _publish_tcp_inv_<idx>(publish) para um inversor TCP.
+    // Espelha _genDeviceReader (RS485): mesma classificacao avg/last/delta, mesmo _decodeExpr,
+    // mesmas convencoes de state. Diferenca: transporte e' _modbus_tcp_read em vez de _mb.*.
+    _genTcpInverterReader(inv, idx) {
+        const cat = inv.catalog_device || {};
+        const blocks = cat.ai_blocks || [];
+        const aiMap = cat.ai_map || {};
+        const scales = cat.scales || {};
+        const wordOrder = cat.word_order || 'high_first';
+        const slave = inv.modbus_address;
+        const name = inv.name || `inv_${slave}`;
+        const nameEsc = this._escStr(name);
+        const subtopicEsc = this._escStr(`${name}/data`);
+
+        if (blocks.length === 0) {
+            return `
+// =============================================================================
+// ${name} (slave ${slave}) — cadastro sem ai_blocks. Reader vazio.
+// =============================================================================
+static void _sample_tcp_inv_${idx}() {
+    Serial.println("[TCP-INV] ${nameEsc}: cadastro sem ai_blocks — skip");
+}
+static void _publish_tcp_inv_${idx}(tcp_publish_fn publish) {
+    publish("${subtopicEsc}", "{\\"error\\":\\"no_ai_blocks\\"}");
+}
+
+`;
+        }
+
+        // Offsets cumulativos pra mapear (block, offset_local) -> indice no buffer concatenado
+        const blockOffsets = [];
+        let acc = 0;
+        for (const b of blocks) { blockOffsets.push(acc); acc += b.count; }
+        const totalRegs = Math.max(acc, 1);
+
+        // Classificacao por modo (igual RS485)
+        const avgFields = [];
+        const lastFields = [];
+        const deltaFields = [];
+
+        for (const [pid, m] of Object.entries(aiMap)) {
+            if (m.block === undefined || m.offset === undefined) continue;
+            if (m.block >= blocks.length) continue;
+            const base = blockOffsets[m.block];
+            const i0 = base + m.offset;
+            const scale = this._resolveScale(m.scale, scales);
+            const decoder = this._decodeExpr(m.dataType || 'U16', 'buf', i0, scale, m, wordOrder);
+            if (!decoder) continue;
+            const entry = { pid, decoder, format: m.format || null };
+            const mode = m.mode || 'avg';
+            if (mode === 'last') lastFields.push(entry);
+            else if (mode === 'delta') deltaFields.push(entry);
+            else avgFields.push(entry);
+        }
+
+        const totalFields = avgFields.length + lastFields.length + deltaFields.length;
+
+        let cpp = `
+// =============================================================================
+// ${name} — ${cat.fabricante || '?'} ${cat.modelo || cat.tipo || '?'} (slave ${slave})
+// ${blocks.length} blocos | ${totalFields} pontos AI (${avgFields.length} avg, ${lastFields.length} last, ${deltaFields.length} delta)
+// word_order: ${wordOrder}
+// =============================================================================
+struct _TcpDs${idx}State {
+    double sum_[${Math.max(avgFields.length, 1)}];
+    int samples;
+    float last_[${Math.max(totalFields, 1)}];
+    float first_delta_[${Math.max(deltaFields.length, 1)}];
+    bool has_first_delta;
+    bool valid;
+    int fail_streak;
+};
+static _TcpDs${idx}State _tds${idx} = {};
+
+// Le todos os blocos do inversor e popula buf concatenado.
+// Retorna false se qualquer bloco falhar (timeout, excecao, slave invalido).
+static bool _read_tcp_inv_${idx}_raw(uint16_t *buf) {
+`;
+        blocks.forEach((b, bi) => {
+            const off = blockOffsets[bi];
+            const fnHex = '0x' + b.func.toString(16).padStart(2, '0');
+            cpp += `    // Bloco ${bi}: regs ${b.start + 1}-${b.start + b.count}, func ${fnHex}${b.label ? ' — ' + b.label : ''}
+    {
+        uint16_t tmp${bi}[${b.count}];
+        if (!_modbus_tcp_read(${slave}, ${fnHex}, ${b.start}, ${b.count}, tmp${bi})) {
+            Serial.printf("[TCP-INV] ${nameEsc} bloco ${bi} FAIL (reg=${b.start} count=${b.count})\\n");
+            return false;
+        }
+        for (uint16_t i = 0; i < ${b.count}; i++) buf[${off} + i] = tmp${bi}[i];
+    }
+`;
+            if (bi < blocks.length - 1) {
+                cpp += `    delay(50);  // espacamento entre blocos pro datalogger respirar
+`;
+            }
+        });
+
+        cpp += `    return true;
+}
+
+// Le + acumula. Chamar a cada READ_INTERVAL_MS (round-robin em inverter_tcp_sample_one).
+static void _sample_tcp_inv_${idx}() {
+    uint16_t buf[${totalRegs}];
+    if (!_read_tcp_inv_${idx}_raw(buf)) {
+        _tds${idx}.fail_streak++;
+        Serial.printf("[TCP-INV] ${nameEsc}: falha leitura (consecutivas: %d)\\n", _tds${idx}.fail_streak);
+        return;
+    }
+    if (_tds${idx}.fail_streak > 0) {
+        Serial.printf("[TCP-INV] ${nameEsc}: OK (apos %d falhas)\\n", _tds${idx}.fail_streak);
+        _tds${idx}.fail_streak = 0;
+    }
+
+`;
+        // Decode + acumulacao avg
+        avgFields.forEach((f, i) => {
+            cpp += `    float v_${f.pid} = ${f.decoder};\n`;
+            cpp += `    _tds${idx}.sum_[${i}] += v_${f.pid};\n`;
+        });
+        lastFields.forEach((f) => {
+            cpp += `    float v_${f.pid} = ${f.decoder};\n`;
+        });
+        deltaFields.forEach((f, i) => {
+            cpp += `    float v_${f.pid} = ${f.decoder};\n`;
+            cpp += `    if (!_tds${idx}.has_first_delta) { _tds${idx}.first_delta_[${i}] = v_${f.pid}; }\n`;
+        });
+        if (deltaFields.length > 0) {
+            cpp += `    if (!_tds${idx}.has_first_delta) _tds${idx}.has_first_delta = true;\n`;
+        }
+
+        // Salvar last_ em ordem (avg + last + delta)
+        let lastIdx = 0;
+        [...avgFields, ...lastFields, ...deltaFields].forEach(f => {
+            cpp += `    _tds${idx}.last_[${lastIdx++}] = v_${f.pid};\n`;
+        });
+        cpp += `    _tds${idx}.samples++;\n`;
+        cpp += `    _tds${idx}.valid = true;\n`;
+
+        // Log de debug (similar RS485)
+        const preferredOrder = ['mppt1_voltage', 'dc_total_power', 'potencia_ativa',
+                                'freq', 'fp', 'work_state', 'daily_yield', 'total_yield'];
+        const logFields = [];
+        for (const pid of preferredOrder) {
+            if (aiMap[pid] && logFields.length < 5) {
+                if (avgFields.find(f => f.pid === pid) ||
+                    lastFields.find(f => f.pid === pid) ||
+                    deltaFields.find(f => f.pid === pid)) {
+                    logFields.push(pid);
+                }
+            }
+        }
+        if (logFields.length > 0) {
+            cpp += `    Serial.printf("[TCP-INV] ${nameEsc} #%d: ", _tds${idx}.samples);\n`;
+            logFields.forEach((pid, i) => {
+                cpp += `    Serial.printf("${pid}=%.2f${i < logFields.length - 1 ? ' ' : ''}", v_${pid});\n`;
+            });
+            cpp += `    Serial.println();\n`;
+        }
+
+        cpp += `}
+
+// Publica medias (avg) + last + delta. Zera acumuladores apos publish.
+static void _publish_tcp_inv_${idx}(tcp_publish_fn publish) {
+    if (!_tds${idx}.valid || _tds${idx}.samples == 0) {
+        publish("${subtopicEsc}", "{\\"error\\":\\"no_samples\\"}");
+        return;
+    }
+    int n = _tds${idx}.samples;
+    StaticJsonDocument<2048> d;
+    d["device"] = "${nameEsc}";
+    d["addr"] = ${slave};
+    d["samples"] = n;
+
+`;
+        // Emite cada campo no JSON (chaves = pids do catalogo)
+        // avg: media; last: ultimo; delta: ultimo - primeiro
+        avgFields.forEach((f, i) => {
+            const expr = `(float)(_tds${idx}.sum_[${i}] / n)`;
+            if (f.format === 'hex') {
+                cpp += `    { char _h[8]; snprintf(_h, sizeof(_h), "%x", (uint16_t)(${expr})); d["${this._escStr(f.pid)}"] = String(_h); }\n`;
+            } else {
+                cpp += `    d["${this._escStr(f.pid)}"] = ${expr};\n`;
+            }
+        });
+        let lastRunIdx = avgFields.length;
+        lastFields.forEach((f) => {
+            const expr = `_tds${idx}.last_[${lastRunIdx++}]`;
+            if (f.format === 'hex') {
+                cpp += `    { char _h[8]; snprintf(_h, sizeof(_h), "%x", (uint16_t)(${expr})); d["${this._escStr(f.pid)}"] = String(_h); }\n`;
+            } else {
+                cpp += `    d["${this._escStr(f.pid)}"] = ${expr};\n`;
+            }
+        });
+        deltaFields.forEach((f, i) => {
+            const lastI = avgFields.length + lastFields.length + i;
+            cpp += `    {\n`;
+            cpp += `        float dv = _tds${idx}.last_[${lastI}] - _tds${idx}.first_delta_[${i}];\n`;
+            cpp += `        if (dv < 0 || fabsf(dv) < 1e-6f) dv = 0;\n`;
+            cpp += `        d["${this._escStr(f.pid)}"] = dv;\n`;
+            cpp += `    }\n`;
+        });
+
+        cpp += `
+    char payload[2048];
+    serializeJson(d, payload, sizeof(payload));
+    publish("${subtopicEsc}", payload);
+
+    // Reset acumuladores
+    for (int i = 0; i < ${Math.max(avgFields.length, 1)}; i++) _tds${idx}.sum_[i] = 0;
+    _tds${idx}.samples = 0;
+    _tds${idx}.has_first_delta = false;
+}
+
+`;
+        return cpp;
     }
 
     // ---- config.h (variável por projeto) ----
@@ -2043,8 +2266,10 @@ static void _publish_dev_${idx}(modbus_publish_fn publish) {
 // Estado / timers
 static unsigned long last_input_scan = 0;
 static unsigned long last_status     = 0;
-static unsigned long last_sample     = 0;  // leitura Modbus (round-robin)
-static unsigned long last_publish    = 0;  // publicacao MQTT (medias/deltas)
+static unsigned long last_sample     = 0;  // leitura Modbus RS485 (round-robin)
+static unsigned long last_publish    = 0;  // publicacao MQTT RS485 (medias/deltas)
+static unsigned long last_sample_tcp = 0;  // leitura Modbus TCP (round-robin via datalogger)
+static unsigned long last_publish_tcp = 0; // publicacao MQTT TCP (medias/deltas)
 
 `;
 
@@ -2390,50 +2615,20 @@ void loop() {
         // Leitura dos inversores via TCP (datalogger)
         const tcpInvs = (spec.tcp_devices || []).filter(d => d.type === 'inversor');
         if (tcpInvs.length > 0) {
+            const tcpPubCall = spec.wifi
+                ? `inverter_tcp_publish_all(mqtt_publish_sub);`
+                : `inverter_tcp_publish_all([](const char* sub, const char* payload){ Serial.printf("[TCP] %s %s\\n", sub, payload); });`;
             cpp += `
-    // Modbus TCP (Datalogger): le cada inversor e publica em TOPIC_BASE/<name>/data
-    if (now - last_publish >= PUBLISH_INTERVAL_MS) {
-        last_publish = now;
-`;
-            tcpInvs.forEach(inv => {
-                const nameEsc = this._escStr(inv.name || `inv_${inv.modbus_address}`);
-                cpp += `        {
-            InverterReading r;
-            if (inverter_tcp_read(${inv.modbus_address}, r)) {
-                StaticJsonDocument<1024> d;
-                d["device"] = "${nameEsc}";
-                d["addr"] = ${inv.modbus_address};
-                d["ger_diaria"]    = r.ger_diaria;
-                d["ger_total"]     = r.ger_total;
-                d["pot_ativa"]     = r.pot_ativa;
-                d["pot_reativa"]   = r.pot_reativa;
-                d["pot_aparente"]  = r.pot_aparente;
-                d["fp"]            = r.fp;
-                d["freq"]          = r.freq;
-                d["va"] = r.va; d["vb"] = r.vb; d["vc"] = r.vc;
-                d["ia"] = r.ia; d["ib"] = r.ib; d["ic"] = r.ic;
-                d["mppt1_v"] = r.mppt_v[0]; d["mppt1_i"] = r.mppt_i[0];
-                d["mppt2_v"] = r.mppt_v[1]; d["mppt2_i"] = r.mppt_i[1];
-                d["mppt3_v"] = r.mppt_v[2]; d["mppt3_i"] = r.mppt_i[2];
-                d["estado"] = r.estado;
-                char payload[1024];
-                serializeJson(d, payload, sizeof(payload));
-`;
-                if (spec.wifi) {
-                    cpp += `                mqtt_publish_sub("${nameEsc}/data", payload);
-`;
-                } else {
-                    cpp += `                Serial.printf("[TCP] %s %s\\n", "${nameEsc}", payload);
-`;
-                }
-                cpp += `            } else {
-                Serial.printf("[TCP] Falha leitura ID %d\\n", ${inv.modbus_address});
-            }
-            delay(100);
-        }
-`;
-            });
-            cpp += `    }
+    // Modbus TCP (Datalogger): sample round-robin 1 inversor por ciclo a cada METER_CYCLE_MS,
+    // publica medias/last/delta a cada PUBLISH_INTERVAL_MS (igual padrao RS485).
+    if (now - last_sample_tcp >= METER_CYCLE_MS) {
+        last_sample_tcp = now;
+        inverter_tcp_sample_one();
+    }
+    if (now - last_publish_tcp >= PUBLISH_INTERVAL_MS) {
+        last_publish_tcp = now;
+        ${tcpPubCall}
+    }
 `;
         }
 
