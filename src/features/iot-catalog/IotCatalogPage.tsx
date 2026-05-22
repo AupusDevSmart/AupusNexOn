@@ -31,6 +31,7 @@ import type {
   IotDeviceTipo,
 } from '@/services/iot-catalog.services';
 import { toast } from 'sonner';
+import { formatApiError } from '@/utils/api-error';
 import { TipoFormModal } from './TipoFormModal';
 import { ModeloFormModal } from './ModeloFormModal';
 
@@ -181,7 +182,7 @@ export function IotCatalogPage() {
       await removeTipo.mutateAsync(t.id);
       toast.success('Tipo removido');
     } catch (e: any) {
-      toast.error(`Erro: ${e.response?.data?.message ?? e.message}`);
+      toast.error(formatApiError(e));
     }
   };
 
@@ -191,7 +192,7 @@ export function IotCatalogPage() {
       await removeModelo.mutateAsync(m.id);
       toast.success('Modelo removido');
     } catch (e: any) {
-      toast.error(`Erro: ${e.response?.data?.message ?? e.message}`);
+      toast.error(formatApiError(e));
     }
   };
 
@@ -201,7 +202,7 @@ export function IotCatalogPage() {
       toast.success(`Duplicado como "${novo.modelo}"`);
       setModeloModal({ open: true, modelo: novo });
     } catch (e: any) {
-      toast.error(`Erro: ${e.response?.data?.message ?? e.message}`);
+      toast.error(formatApiError(e));
     }
   };
 

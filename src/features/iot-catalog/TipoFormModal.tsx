@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
+import { formatApiError } from '@/utils/api-error';
 import {
   useCreateIotDeviceTipo,
   useUpdateIotDeviceTipo,
@@ -78,7 +79,7 @@ export function TipoFormModal({ tipo, onClose }: Props) {
       }
       onClose();
     } catch (e: any) {
-      toast.error(`Erro: ${e.response?.data?.message ?? e.message}`);
+      toast.error(formatApiError(e));
     }
   };
 

@@ -184,7 +184,7 @@ function ensureIoTScripts(): Promise<void> {
   if (window.__iotScriptsReady && window.DiagramEditor) return Promise.resolve();
   if ((window as any).__iotScriptsPromise) return (window as any).__iotScriptsPromise;
 
-  (window as any).__iotScriptsPromise = new Promise<void>((resolve) => {
+  (window as any).__iotScriptsPromise = new Promise<void>((resolve, reject) => {
     // Cache-buster: bumpe esta string sempre que editar qualquer iot-*.v2.js
     // ESTATICO. Browsers respeitam Cache-Control immutable mesmo em hard
     // refresh, então a única forma garantida de forçar fetch é mudar a URL.
@@ -209,7 +209,30 @@ function ensureIoTScripts(): Promise<void> {
       const el = document.createElement('script');
       el.src = scripts[idx];
       el.onload = () => { idx++; loadNext(); };
-      el.onerror = () => { console.error('[IoT] Failed:', scripts[idx]); idx++; loadNext(); };
+      el.onerror = () => {
+        const failed = scripts[idx];
+        console.error('[IoT] Failed:', failed);
+        // O catalogo (primeiro script) eh load-bearing: sem ele, DEVICE_POINTS e
+        // DEVICE_MODELS ficam undefined e o editor abre quebrado com erros opacos.
+        // Em vez de seguir silenciosamente, aborta o load e expoe a falha pro UI.
+        if (failed.includes('device-catalog.js')) {
+          (window as any).__iotScriptsPromise = null;
+          window.__iotScriptsReady = false;
+          const err = new Error(
+            `Falha ao carregar catalogo IoT (${failed}). Editor IoT indisponivel.`,
+          );
+          (err as any).isCatalogLoadError = true;
+          // Sonner toast pra UX imediata.
+          import('sonner').then(({ toast }) => toast.error(err.message));
+          // Rejeitar a promise — useEffect que aguarda ensureIoTScripts
+          // captura via .catch e renderiza estado de falha.
+          reject(err);
+          return;
+        }
+        // Demais scripts seguem o comportamento antigo (warning + continua).
+        idx++;
+        loadNext();
+      };
       document.body.appendChild(el);
     };
     loadNext();
@@ -260,6 +283,7 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
   const [selectedProjectId, _setSelectedProjectId] = useState<string | null>(null);
   const setSelectedProjectId = (id: string | null) => { selectedProjectIdRef.current = id; _setSelectedProjectId(id); };
   const [loadingProjects, setLoadingProjects] = useState(true);
+  const [catalogLoadError, setCatalogLoadError] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -270,8 +294,18 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
     let cancelled = false;
 
     async function init() {
-      // Load scripts
-      await ensureIoTScripts();
+      // Load scripts — bail fora se o catalogo falhar
+      try {
+        await ensureIoTScripts();
+      } catch (e: any) {
+        if (cancelled) return;
+        const msg = e?.message ?? 'Falha ao carregar scripts IoT.';
+        console.error('[IoT] Script load aborted:', e);
+        setCatalogLoadError(msg);
+        setLoadingProjects(false);
+        setReady(false);
+        return;
+      }
       if (cancelled) return;
 
       // Load projects via service centralizado (axios + interceptor de auth).
@@ -909,6 +943,24 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
             <DialogFooter><Button variant="outline" onClick={() => setShowCreateModal(false)}>Cancelar</Button><Button onClick={createProject} disabled={!newProjectName.trim()}>Criar Projeto</Button></DialogFooter>
           </DialogContent>
         </Dialog>
+      </div>
+    );
+  }
+
+  if (catalogLoadError) {
+    return (
+      <div className="flex-1 flex items-center justify-center p-6">
+        <div className="max-w-md text-center space-y-3">
+          <div className="text-destructive font-medium">Editor IoT indisponivel</div>
+          <p className="text-sm text-muted-foreground">{catalogLoadError}</p>
+          <p className="text-xs text-muted-foreground">
+            Verifique se o backend esta no ar e que o endpoint /iot-catalog/device-catalog.js responde.
+            Recarregue a pagina apos confirmar.
+          </p>
+          <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
+            Recarregar pagina
+          </Button>
+        </div>
       </div>
     );
   }

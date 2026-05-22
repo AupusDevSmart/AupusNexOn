@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
+import { formatApiError } from '@/utils/api-error';
 import {
   useCreateIotDeviceModelo,
   useUpdateIotDeviceModelo,
@@ -116,7 +117,7 @@ export function ModeloFormModal({ modelo, tipos, onClose }: Props) {
       }
       onClose();
     } catch (e: any) {
-      toast.error(`Erro: ${e.response?.data?.message ?? e.message}`);
+      toast.error(formatApiError(e));
     }
   };
 
