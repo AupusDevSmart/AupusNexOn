@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import equipamentosDadosService from '@/services/equipamentos-dados.service';
+import { formatApiError } from '@/utils/api-error';
 import type {
   CustosEnergiaResponseDto,
   PeriodoTipo,
@@ -108,9 +109,11 @@ export function useCustosEnergia({
 
       console.log('✅ [useCustosEnergia] Dados de custos processados:', custosData);
       setCustos(custosData);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('❌ [useCustosEnergia] Erro ao buscar custos:', err);
-      setError(err.message || 'Erro ao buscar dados de custos');
+      // formatApiError normaliza string | string[] | network err em mensagem
+      // unica e legivel pro toast/banner. NaoExpose stack/codigos tecnicos.
+      setError(formatApiError(err));
       setCustos(null);
     } finally {
       setLoading(false);
