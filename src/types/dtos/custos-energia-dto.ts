@@ -85,6 +85,13 @@ export interface CustosEnergiaResponseDto {
   custos: CustosDto;
   tributos: TributosDto;
   irrigante?: IrriganteInfoDto;
+  /**
+   * Mensagem amigavel (PT-BR) quando o calculo encontra estado nao-fatal
+   * que merece destaque na UI: "Nenhuma leitura encontrada" ou
+   * "Concessionaria sem tarifa configurada". Quando presente, banner amarelo
+   * eh exibido acima dos cards.
+   */
+  aviso?: string;
 }
 
 export interface CustosEnergiaQueryParams {

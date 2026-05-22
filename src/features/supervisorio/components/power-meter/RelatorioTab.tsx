@@ -58,13 +58,17 @@ export function RelatorioTab({ equipamentoId }: RelatorioTabProps) {
     };
   }, [inicio, fim]);
 
-  const { data, loading, error } = useCustosEnergia({
+  const { data, loading, error, refetch } = useCustosEnergia({
     equipamentoId,
     periodo: "custom",
     timestamp_inicio: params?.timestamp_inicio,
     timestamp_fim: params?.timestamp_fim,
     enabled: !!params,
   });
+
+  // Empty: backend retornou OK mas sem leituras no periodo (energia=0).
+  // Diferente de error (network/4xx/5xx) — eh estado valido, mas merece UI propria.
+  const isEmpty = !loading && !error && data && data.consumo?.energia_total_kwh === 0;
 
   // Monta linhas da tabela: 1 linha por TarifaAplicada, + linha Total.
   const linhas = useMemo(() => {
@@ -132,8 +136,23 @@ export function RelatorioTab({ equipamentoId }: RelatorioTabProps) {
       </div>
 
       {error && (
-        <div className="rounded-sm border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
-          {error}
+        <div className="rounded-sm border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive flex items-start justify-between gap-3">
+          <span>{error}</span>
+          <button
+            type="button"
+            onClick={() => refetch()}
+            className="text-xs underline underline-offset-2 hover:no-underline shrink-0"
+          >
+            Tentar novamente
+          </button>
+        </div>
+      )}
+
+      {/* Aviso nao-fatal vindo do backend (ex: sem tarifa configurada).
+          Mostra como banner amarelo informativo, calculo continua. */}
+      {!error && data?.aviso && (
+        <div className="rounded-sm border border-amber-500/40 bg-amber-500/5 p-3 text-sm text-amber-700 dark:text-amber-400">
+          {data.aviso}
         </div>
       )}
 
@@ -144,6 +163,15 @@ export function RelatorioTab({ equipamentoId }: RelatorioTabProps) {
       ) : !data ? (
         <div className="py-12 text-center text-sm text-muted-foreground">
           Selecione um período pra ver o relatório.
+        </div>
+      ) : isEmpty ? (
+        <div className="py-12 text-center space-y-2">
+          <p className="text-sm text-muted-foreground">
+            Nenhuma leitura encontrada no período selecionado.
+          </p>
+          <p className="text-xs text-muted-foreground/70">
+            Verifique se o equipamento está ativo e enviando dados.
+          </p>
         </div>
       ) : (
         <>
