@@ -1622,10 +1622,34 @@ bool modbus_exec_command(const char* device_name, const char* cmd_id);
 static ModbusMaster _mb;
 static HardwareSerial _rs485(RS485_UART_NUM);
 
-static void _preTx()  { digitalWrite(RS485_DIR, HIGH); delayMicroseconds(500); }
-static void _postTx() { delayMicroseconds(500); digitalWrite(RS485_DIR, LOW); }
+// NOTA: ModbusMaster usa ku16MBResponseTimeout = 2000ms como static const compilada
+// na lib — nao expoe setter runtime. Timeout fica em 2s (folgado pra Sungrow).
+// Refator pra ajustar exige trocar a lib (ex: eModbus) — fora deste escopo.
 
+// preTx: garante TX anterior 100% drenado (flush) antes de comutar DE/RE pra TX.
+// Sem o flush, bytes do envio anterior ainda no shift register UART podem ecoar
+// pelo RX e o ModbusMaster os interpreta como inicio de resposta -> rc=0xE0
+// (ku8MBInvalidSlaveID). Delay de 1ms (vs 500us anterior) e' folga pro driver
+// MAX485 — necessario em variantes com optoacoplador/isolacao.
+static void _preTx()  {
+    _rs485.flush();
+    digitalWrite(RS485_DIR, HIGH);
+    delayMicroseconds(1000);
+}
+// postTx: mantem TX habilitado por 1ms apos enviar pra ultimo bit nao ser truncado,
+// depois libera linha pro slave responder.
+static void _postTx() {
+    delayMicroseconds(1000);
+    digitalWrite(RS485_DIR, LOW);
+}
+
+// _select: prepara a proxima transacao Modbus.
+// CRITICO: drena buffer RX antes de cada nova requisicao. Bytes residuais (eco
+// de transacao anterior OU resposta atrasada de outro slave no barramento)
+// contaminam o frame proximo. Sem drain, ModbusMaster ve o byte residual como
+// slave ID da resposta e retorna 0xE0 mesmo com o frame real chegando depois.
 static inline void _select(uint8_t addr) {
+    while (_rs485.available()) _rs485.read();
     _mb.begin(addr, _rs485);
     _mb.preTransmission(_preTx);
     _mb.postTransmission(_postTx);
@@ -1853,8 +1877,17 @@ static bool _read_dev_${idx}_raw(uint16_t *buf) {
     {
         uint8_t rc = _mb.${fn}(${b.start}, ${b.count});
         if (rc != _mb.ku8MBSuccess) {
-            // 1 retry (timeout=0xE2, CRC=0xE3, IllegalAddr=0x02, IllegalFn=0x01, SlaveFail=0x04)
-            delay(50);
+            // Codigos: 0xE0 InvalidSlaveID (cross-talk/eco) | 0xE2 timeout
+            //          0xE3 CRC | 0x02 IllegalAddr | 0x01 IllegalFn | 0x04 SlaveFail
+            // 0xE0 indica que recebemos bytes errados (residuo no RX). Drenar
+            // agressivamente antes do retry pra nao herdar a contaminacao.
+            if (rc == 0xE0) {
+                delay(20);
+                while (_rs485.available()) _rs485.read();
+                delay(20);
+            } else {
+                delay(50);
+            }
             rc = _mb.${fn}(${b.start}, ${b.count});
         }
         if (rc == _mb.ku8MBSuccess) {
@@ -1866,7 +1899,10 @@ static bool _read_dev_${idx}_raw(uint16_t *buf) {
             return false;
         }
     }
-    delay(40);
+    // Espacamento entre blocos. 80ms cobre datalogger interno do Sungrow CX
+    // (mais lento do parque). Outros devices pagam 40ms extra por bloco — desprezivel
+    // dado round-robin de 2s/device * N devices.
+    delay(80);
 `;
         });
 
