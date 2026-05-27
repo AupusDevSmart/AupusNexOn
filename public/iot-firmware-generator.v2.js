@@ -525,7 +525,7 @@ static bool _read_tcp_inv_${idx}_raw(uint16_t *buf) {
     {
         uint16_t tmp${bi}[${b.count}];
         if (!_modbus_tcp_read(${slave}, ${fnHex}, ${b.start}, ${b.count}, tmp${bi})) {
-            Serial.printf("[TCP-INV] ${nameEsc} bloco ${bi} FAIL (reg=${b.start} count=${b.count})\\n");
+            Serial.printf("[TCP-INV] ${nameEsc}(id${slave}) bloco ${bi} FAIL (reg=${b.start} count=${b.count})\\n");
             return false;
         }
         for (uint16_t i = 0; i < ${b.count}; i++) buf[${off} + i] = tmp${bi}[i];
@@ -545,11 +545,11 @@ static void _sample_tcp_inv_${idx}() {
     uint16_t buf[${totalRegs}];
     if (!_read_tcp_inv_${idx}_raw(buf)) {
         _tds${idx}.fail_streak++;
-        Serial.printf("[TCP-INV] ${nameEsc}: falha leitura (consecutivas: %d)\\n", _tds${idx}.fail_streak);
+        Serial.printf("[TCP-INV] ${nameEsc}(id${slave}): falha leitura (consecutivas: %d)\\n", _tds${idx}.fail_streak);
         return;
     }
     if (_tds${idx}.fail_streak > 0) {
-        Serial.printf("[TCP-INV] ${nameEsc}: OK (apos %d falhas)\\n", _tds${idx}.fail_streak);
+        Serial.printf("[TCP-INV] ${nameEsc}(id${slave}): OK (apos %d falhas)\\n", _tds${idx}.fail_streak);
         _tds${idx}.fail_streak = 0;
     }
 
@@ -592,7 +592,7 @@ static void _sample_tcp_inv_${idx}() {
             }
         }
         if (logFields.length > 0) {
-            cpp += `    Serial.printf("[TCP-INV] ${nameEsc} #%d: ", _tds${idx}.samples);\n`;
+            cpp += `    Serial.printf("[TCP-INV] ${nameEsc}(id${slave}) #%d: ", _tds${idx}.samples);\n`;
             logFields.forEach((pid, i) => {
                 cpp += `    Serial.printf("${pid}=%.2f${i < logFields.length - 1 ? ' ' : ''}", v_${pid});\n`;
             });
@@ -670,7 +670,7 @@ static void _publish_tcp_inv_${idx}(tcp_publish_fn publish) {
 
 #define DEVICE_MODEL        "${spec.tonType.toUpperCase()}"
 #define DEVICE_ID           "${spec.hostname}"
-#define FIRMWARE_VERSION    "1.2.1-cycle4s"
+#define FIRMWARE_VERSION    "1.2.2-tcplog"
 
 // I2C
 #define I2C_ADDR_RTC        0x68
@@ -2494,6 +2494,7 @@ void setup() {
     Serial.println("  [BOOT] RS485-fix v1.1: drain RX, flush preTx, retry 0xE0, delays 80/1000us");
     Serial.println("  [BOOT] MQTT-fix v1.2: setKeepAlive(60), setSocketTimeout(30), mqtt_loop entre blocos");
     Serial.println("  [BOOT] Cycle v1.2.1: METER_CYCLE_MS=4000 (era 2000) — menos pressao no Modbus/MQTT");
+    Serial.println("  [BOOT] TCPlog v1.2.2: log inclui slave id pra desambiguar inversores TCP");
     Serial.printf("  [BOOT] MAC: %s\\n", WiFi.macAddress().c_str());
     Serial.printf("  Motivo do reset: %s\\n", _resetReason());
     Serial.printf("  Heap livre: %u bytes\\n\\n", ESP.getFreeHeap());
