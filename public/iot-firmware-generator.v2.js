@@ -670,7 +670,7 @@ static void _publish_tcp_inv_${idx}(tcp_publish_fn publish) {
 
 #define DEVICE_MODEL        "${spec.tonType.toUpperCase()}"
 #define DEVICE_ID           "${spec.hostname}"
-#define FIRMWARE_VERSION    "1.2.0-mqttkeepalive"
+#define FIRMWARE_VERSION    "1.2.1-cycle4s"
 
 // I2C
 #define I2C_ADDR_RTC        0x68
@@ -768,7 +768,7 @@ static void _publish_tcp_inv_${idx}(tcp_publish_fn publish) {
         if (spec.rs485_devices.length > 0 || spec.tcp_devices.length > 0) {
             h += `
 // Medidores Modbus
-#define METER_CYCLE_MS      2000
+#define METER_CYCLE_MS      4000
 #define PUBLISH_INTERVAL_MS 60000
 #define MAX_READINGS        35
 `;
@@ -2493,6 +2493,7 @@ void setup() {
     Serial.printf("\\n  %s v%s - %s\\n", DEVICE_ID, FIRMWARE_VERSION, DEVICE_MODEL);
     Serial.println("  [BOOT] RS485-fix v1.1: drain RX, flush preTx, retry 0xE0, delays 80/1000us");
     Serial.println("  [BOOT] MQTT-fix v1.2: setKeepAlive(60), setSocketTimeout(30), mqtt_loop entre blocos");
+    Serial.println("  [BOOT] Cycle v1.2.1: METER_CYCLE_MS=4000 (era 2000) — menos pressao no Modbus/MQTT");
     Serial.printf("  [BOOT] MAC: %s\\n", WiFi.macAddress().c_str());
     Serial.printf("  Motivo do reset: %s\\n", _resetReason());
     Serial.printf("  Heap livre: %u bytes\\n\\n", ESP.getFreeHeap());
