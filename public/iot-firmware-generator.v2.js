@@ -670,7 +670,7 @@ static void _publish_tcp_inv_${idx}(tcp_publish_fn publish) {
 
 #define DEVICE_MODEL        "${spec.tonType.toUpperCase()}"
 #define DEVICE_ID           "${spec.hostname}"
-#define FIRMWARE_VERSION    "1.0.0"
+#define FIRMWARE_VERSION    "1.2.0-mqttkeepalive"
 
 // I2C
 #define I2C_ADDR_RTC        0x68
@@ -1188,6 +1188,11 @@ void mqtt_init(mqtt_cmd_callback_t callback) {
     bool bufok = _mqtt.setBufferSize(MQTT_BUFFER_SIZE);
     Serial.printf("[MQTT] Buffer %d bytes: %s\\n", MQTT_BUFFER_SIZE, bufok ? "OK" : "FAIL (heap?)");
     _mqtt.setCallback(_onMessage);
+    // Default PubSubClient: keepalive 15s, socket timeout 15s — apertado demais.
+    // Um sample Modbus com 1-2 timeouts pode passar de 15s (lib ModbusMaster
+    // timeout = 2s/transacao, nao configuravel). 60s/30s da' folga real.
+    _mqtt.setKeepAlive(60);
+    _mqtt.setSocketTimeout(30);
 }
 
 void mqtt_loop() {
@@ -1613,6 +1618,7 @@ bool modbus_exec_command(const char* device_name, const char* cmd_id);
 #include "hal.h"
 #include "config.h"
 #include "diag.h"
+#include "mqtt.h"   // mqtt_loop() chamado entre blocos pra nao bloquear keepalive
 #include <ModbusMaster.h>
 #include <ArduinoJson.h>
 #include <string.h>
@@ -1903,6 +1909,10 @@ static bool _read_dev_${idx}_raw(uint16_t *buf) {
     // (mais lento do parque). Outros devices pagam 40ms extra por bloco — desprezivel
     // dado round-robin de 2s/device * N devices.
     delay(80);
+    // CRITICO: chamar mqtt_loop() entre blocos para nao bloquear PubSubClient.
+    // Se um sample Modbus passa de 15s (default keepalive antigo) sem loop(),
+    // broker desconecta. Mantem mensagens MQTT processadas durante ciclos longos.
+    mqtt_loop();
 `;
         });
 
@@ -2481,6 +2491,8 @@ void setup() {
     Serial.begin(115200);
     delay(2000);
     Serial.printf("\\n  %s v%s - %s\\n", DEVICE_ID, FIRMWARE_VERSION, DEVICE_MODEL);
+    Serial.println("  [BOOT] RS485-fix v1.1: drain RX, flush preTx, retry 0xE0, delays 80/1000us");
+    Serial.println("  [BOOT] MQTT-fix v1.2: setKeepAlive(60), setSocketTimeout(30), mqtt_loop entre blocos");
     Serial.printf("  [BOOT] MAC: %s\\n", WiFi.macAddress().c_str());
     Serial.printf("  Motivo do reset: %s\\n", _resetReason());
     Serial.printf("  Heap livre: %u bytes\\n\\n", ESP.getFreeHeap());
