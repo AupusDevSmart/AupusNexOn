@@ -670,7 +670,7 @@ static void _publish_tcp_inv_${idx}(tcp_publish_fn publish) {
 
 #define DEVICE_MODEL        "${spec.tonType.toUpperCase()}"
 #define DEVICE_ID           "${spec.hostname}"
-#define FIRMWARE_VERSION    "1.2.2-tcplog"
+#define FIRMWARE_VERSION    "1.3.0-clientid"
 
 // I2C
 #define I2C_ADDR_RTC        0x68
@@ -715,7 +715,12 @@ static void _publish_tcp_inv_${idx}(tcp_publish_fn publish) {
 #define MQTT_PORT           ${spec.mqtt.port}
 #define MQTT_USER           ""
 #define MQTT_PASS           ""
-#define MQTT_CLIENT_ID      "${spec.tonType.toUpperCase()}-" DEVICE_ID
+// MQTT_CLIENT_ID e' montado em runtime usando o MAC do hardware (unico por placa).
+// Formato: "TON-XXXXXXXXXXXX" (12 hex chars do MAC, sem separador).
+// Substitui versao compile-time que colidia quando duas TONs compartilhavam hostname
+// (ex: 10 IPs reais em campo conectavam com "TON1-TON1" simultaneamente, derrubando
+// uns aos outros no broker - 26k+ desconexoes/dia). Veja docs/IOT-MQTT-CLIENTID-UNICO.md.
+extern char MQTT_CLIENT_ID[20];
 #define MQTT_TOPIC_BASE     "${spec.mqtt.topic_base}"
 #define MQTT_TOPIC_CMD      MQTT_TOPIC_BASE "/cmd"
 #define MQTT_TOPIC_RELAYS   MQTT_TOPIC_BASE "/relays"
@@ -1004,6 +1009,10 @@ static NetIf _activeIf = NET_NONE;
 
 static WiFiClient     _wifiClient;
 static PubSubClient _mqtt(_wifiClient);  // PubSubClient::setClient() troca o transport sem recriar
+
+// Definicao do MQTT_CLIENT_ID (extern em config.h). Preenchido no mqtt_init() a partir do MAC.
+// Formato "TON-XXXXXXXXXXXX\\0" = 17 chars, buffer 20 com folga.
+char MQTT_CLIENT_ID[20] = "TON-uninitialized";
 static mqtt_cmd_callback_t _cmdCallback = nullptr;
 static unsigned long _lastReconnect = 0;
 static unsigned long _lastWifiReconnect = 0;
@@ -1182,6 +1191,17 @@ void mqtt_init(mqtt_cmd_callback_t callback) {
     } else {
         Serial.println("[NET] Sem rede ainda — irei tentando em background");
     }
+
+    // MQTT_CLIENT_ID derivado do MAC — unico por hardware, evita colisao de IDs
+    // que estava causando 26k+ desconexoes/dia no broker (10 IPs em "TON1-TON1").
+    // Definicao (declaracao extern esta no config.h).
+    uint8_t _mac_for_id[6];
+    WiFi.macAddress(_mac_for_id);
+    snprintf(MQTT_CLIENT_ID, sizeof(MQTT_CLIENT_ID),
+             "TON-%02X%02X%02X%02X%02X%02X",
+             _mac_for_id[0], _mac_for_id[1], _mac_for_id[2],
+             _mac_for_id[3], _mac_for_id[4], _mac_for_id[5]);
+    Serial.printf("[MQTT] client_id (do MAC): %s\\n", MQTT_CLIENT_ID);
 
     // MQTT (PubSubClient — transport ja foi setado por _setActiveIf)
     _mqtt.setServer(MQTT_SERVER, MQTT_PORT);
@@ -2495,6 +2515,7 @@ void setup() {
     Serial.println("  [BOOT] MQTT-fix v1.2: setKeepAlive(60), setSocketTimeout(30), mqtt_loop entre blocos");
     Serial.println("  [BOOT] Cycle v1.2.1: METER_CYCLE_MS=4000 (era 2000) — menos pressao no Modbus/MQTT");
     Serial.println("  [BOOT] TCPlog v1.2.2: log inclui slave id pra desambiguar inversores TCP");
+    Serial.println("  [BOOT] ClientID v1.3.0: MQTT_CLIENT_ID derivado do MAC (unico por hardware)");
     Serial.printf("  [BOOT] MAC: %s\\n", WiFi.macAddress().c_str());
     Serial.printf("  Motivo do reset: %s\\n", _resetReason());
     Serial.printf("  Heap livre: %u bytes\\n\\n", ESP.getFreeHeap());
