@@ -670,7 +670,7 @@ static void _publish_tcp_inv_${idx}(tcp_publish_fn publish) {
 
 #define DEVICE_MODEL        "${spec.tonType.toUpperCase()}"
 #define DEVICE_ID           "${spec.hostname}"
-#define FIRMWARE_VERSION    "1.3.0-clientid"
+#define FIRMWARE_VERSION    "1.4.0-cmd-hr"
 
 // I2C
 #define I2C_ADDR_RTC        0x68
@@ -1790,9 +1790,27 @@ bool modbus_exec_command(const char* device_name, const char* cmd_id) {
             cmds.forEach(([cid, m]) => {
                 const func = m.func || 0x05;
                 if (func === 0x05) {
+                    // Write Single Coil — convencao Pextron URP6000 e similares
+                    // (devices que separam coils de holding registers)
                     cpp += `        if (strcmp(cmd_id, "${this._escStr(cid)}") == 0) {\n`;
                     cpp += `            return _mb.writeSingleCoil(${m.coil}, true) == _mb.ku8MBSuccess;\n`;
                     cpp += `        }\n`;
+                } else if (func === 0x06) {
+                    // Write Single Register — convencao Schneider P3 e similares
+                    // (devices que mapeiam tudo em holding registers, incluindo
+                    // Virtual Inputs usados como gatilho de comando via MATRIX).
+                    // Cadastro do catalogo: { register: NNN, value: V, func: 0x06 }
+                    // Default value=1 (pulse pra ativar VI).
+                    if (m.register === undefined) {
+                        console.warn(`[gen] bo_map ${cid}: func 0x06 exige 'register' (cadastro do ${dev.name})`);
+                        return;
+                    }
+                    const value = (m.value !== undefined) ? m.value : 1;
+                    cpp += `        if (strcmp(cmd_id, "${this._escStr(cid)}") == 0) {\n`;
+                    cpp += `            return _mb.writeSingleRegister(${m.register}, ${value}) == _mb.ku8MBSuccess;\n`;
+                    cpp += `        }\n`;
+                } else {
+                    console.warn(`[gen] bo_map ${cid}: func 0x${func.toString(16)} nao suportada (cadastro do ${dev.name})`);
                 }
             });
             cpp += `        return false;\n    }\n`;
@@ -2516,6 +2534,7 @@ void setup() {
     Serial.println("  [BOOT] Cycle v1.2.1: METER_CYCLE_MS=4000 (era 2000) — menos pressao no Modbus/MQTT");
     Serial.println("  [BOOT] TCPlog v1.2.2: log inclui slave id pra desambiguar inversores TCP");
     Serial.println("  [BOOT] ClientID v1.3.0: MQTT_CLIENT_ID derivado do MAC (unico por hardware)");
+    Serial.println("  [BOOT] CmdHR v1.4.0: bo_map suporta func 0x06 (writeSingleRegister) — Schneider VI");
     Serial.printf("  [BOOT] MAC: %s\\n", WiFi.macAddress().c_str());
     Serial.printf("  Motivo do reset: %s\\n", _resetReason());
     Serial.printf("  Heap livre: %u bytes\\n\\n", ESP.getFreeHeap());
