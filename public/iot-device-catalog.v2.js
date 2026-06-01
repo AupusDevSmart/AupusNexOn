@@ -287,39 +287,48 @@ var DEVICE_MODELS = {
     },
 
     // Schneider PowerLogic Easergy P3U30 - rele de protecao multifuncao.
-    // Protocolo: Modbus RTU (RS485, 9600 8N1 ou 8E1 — config no eSetup Easergy Pro)
-    // Manual: /var/www/iot_nexon/mapa_modbus/SCHNEIDER/P3_EN_CM_30-208A_web.pdf
-    // ATENCAO: default de fabrica e' 9600 8E1 (Even parity). TON usa 8N1 (None).
-    // Antes de conectar a TON, configurar no eSetup: COMMUNICATION > MODBUS main config
-    //   - Slave number: 1 (ou outro, mas tem que bater com cadastro)
-    //   - Modbus bit rate: 9600
-    //   - Parity: None
-    // Cadastro inicial: medicoes basicas (V, I, freq, P ativa). Sem protecoes nem comandos.
-    // Endereco Modicon 40xxxx (holding register, func 0x03). Frame Modbus = endereco - 1.
-    // Bloco unico em 402009-402022 (offset zero-based: start=2008, count=14).
+    // Protocolo: Modbus RTU (RS485). Default fabrica 9600/8N2 (parity=None com 2 stop bits)
+    // ou 9600/8E1 (Even parity). TON do gerador NexOn esta hardcoded em 8N1.
+    // Manual de comunicacao: /var/www/iot_nexon/mapa_modbus/SCHNEIDER/P3_EN_CM_30-208A_web.pdf
+    // Cadastro descoberto via leitura dos PDFs "Relatorio de configuracoes" do eSetup.
+    //
+    // ATENCAO FRAMING: P3U30 usa "11 bits sempre" (8E1, 8O1 ou 8N2). Se o relé estiver
+    // em 8N2 (default com parity=None) e a TON em 8N1, framing e' incompativel —
+    // o relé descarta frames silenciosamente (timeout 0xE2). Em validacao isolada
+    // (TESTES-BANCADA/TESTE-SCHNEIDER-P3U30) ja se observou que comunica de qualquer
+    // forma; alguns rev de firmware Schneider sao tolerantes. Confirmar empiricamente
+    // se houver problema, e considerar mudar TON pra SERIAL_8N2.
+    //
+    // Endereco Modicon 40xxxx (holding register, func 0x03). Frame Modbus = Modicon - 400001.
+    // 4 blocos cobrindo: medicoes, status/control feedback, fault data, CBM counters.
     'schneider-p3u30': {
         fabricante: 'Schneider',
         modelo: 'P3U30',
         tipo: 'rele_protecao',
         protocolo: 'rtu',
-        connection_note: 'RS485 9600 8N1 (default 8E1 — configurar No eSetup Easergy Pro). Slave 1-247.',
-        word_order: 'high_first',  // default Schneider
+        connection_note: 'RS485 9600 (parity None=8N2 OU Even=8E1 — config eSetup). Slave 1-247.',
+        word_order: 'high_first',  // default Schneider para U32
         ai_blocks: [
-            // Bloco unico cobrindo regs Modicon 402009-402022 (14 regs, holding):
-            //   IA/IB/IC (correntes), IN-1 (residual), VAB/VBC/VCA (line-to-line),
-            //   VA/VB/VC (phase-to-earth), Uo (residual voltage), freq, P ativa.
-            // Reg 402013 nao mapeado pelo manual (gap normal).
+            // B0: medicoes basicas (correntes, tensoes, freq, P ativa)
             { start: 2008, count: 14, func: 0x03, label: 'Regs 402009-402022: I, V, freq, P' },
+            // B1: status & control feedback (AR, voltage interrupt, logic/virtual outputs)
+            { start: 3400, count: 26, func: 0x03, label: 'Regs 403401-403426: AR, voltage status, LOs, VOs' },
+            // B2: fault data (total trips, fault currents da ultima ocorrencia, scalings)
+            { start: 5500, count: 18, func: 0x03, label: 'Regs 405501-405518: total trips, fault currents' },
+            // B3: CBM (circuit breaker monitoring) + DI validity
+            { start: 5812, count: 13, func: 0x03, label: 'Regs 405813-405825: CBM open/trip counters, DI validity' },
         ],
         ai_map: {
-            // --- Bloco 0: regs 402009..402022 (offset 0 = reg 402009) ---
+            // ================================================================
+            // BLOCO 0 (start=2008): MEDICOES BASICAS — regs 402009..402022
             // Scalings default Schneider (vide pag.12 do manual):
-            //   - Voltage: "1000V = 1000" -> raw e' o valor direto em V (scale=1)
-            //   - Current: "1A = 1" -> raw e' direto em A (scale=1)
+            //   - Voltage: "1000V = 1000" -> raw direto em V (scale=1)
+            //   - Current: "1A = 1" -> raw direto em A (scale=1)
             //   - IN-1 residual: "1.00A = 100" -> scale=100
             //   - Uo residual: "1.0% = 10" -> scale=10
             //   - Frequency: "50.000Hz = 5000" -> scale=100
             //   - Active power: "1000kW = 1000" -> raw em kW (scale=1)
+            // ================================================================
             'ia':                 { block: 0, offset: 0,  scale: 1,   dataType: 'U16', mode: 'avg' },   // 402009
             'ib':                 { block: 0, offset: 1,  scale: 1,   dataType: 'U16', mode: 'avg' },   // 402010
             'ic':                 { block: 0, offset: 2,  scale: 1,   dataType: 'U16', mode: 'avg' },   // 402011
@@ -334,12 +343,107 @@ var DEVICE_MODELS = {
             'residual_voltage':   { block: 0, offset: 11, scale: 10,  dataType: 'U16', mode: 'avg' },   // 402020
             'freq':               { block: 0, offset: 12, scale: 100, dataType: 'U16', mode: 'last' },  // 402021
             'potencia_ativa':     { block: 0, offset: 13, scale: 1,   dataType: 'U16', mode: 'last' },  // 402022
+
+            // ================================================================
+            // BLOCO 1 (start=3400): STATUS & CONTROL FEEDBACK — regs 403401..403426
+            // Todos U16. Inteiros sem scaling (raw e' o codigo/contador/bitmap).
+            // ================================================================
+            // offset 0 = 403401 (reserved/gap)
+            'ar_shot_number':         { block: 1, offset: 1,  scale: 1, dataType: 'U16', mode: 'last' },  // 403402 (1..5, 6=END)
+            'critical_ar_req':        { block: 1, offset: 2,  scale: 1, dataType: 'U16', mode: 'last' },  // 403403
+            'ar_locked':              { block: 1, offset: 3,  scale: 1, dataType: 'U16', mode: 'last' },  // 403404
+            'ar_running':             { block: 1, offset: 4,  scale: 1, dataType: 'U16', mode: 'last' },  // 403405
+            'final_trip':             { block: 1, offset: 5,  scale: 1, dataType: 'U16', mode: 'last' },  // 403406
+            'auto_recloser_on':       { block: 1, offset: 6,  scale: 1, dataType: 'U16', mode: 'last' },  // 403407
+            // offset 7..11 = 403408..403412 (reserved/gap)
+            // FONTE ALTERNATIVA pra deteccao de "falta de energia" alem dos bits de protecao:
+            //   voltage_interrupt = 0 (LOW = sem energia) | 1 (OK = com energia)
+            //   pode ser usado pelo detector da integracao Equatorial sem precisar
+            //   mapear f27 nos bits de protecao do bloco 406xxx.
+            'voltage_interrupt':      { block: 1, offset: 12, scale: 1, dataType: 'U16', mode: 'last' },  // 403413
+            // voltage_status: codigos 0..7 (OK=0, LOW=1, HIGH=2, LOW/HIGH=3, ...)
+            'voltage_status':         { block: 1, offset: 13, scale: 1, dataType: 'U16', mode: 'last' },  // 403414
+            'timer1_status':          { block: 1, offset: 14, scale: 1, dataType: 'U16', mode: 'last' },  // 403415
+            'timer2_status':          { block: 1, offset: 15, scale: 1, dataType: 'U16', mode: 'last' },  // 403416
+            'timer3_status':          { block: 1, offset: 16, scale: 1, dataType: 'U16', mode: 'last' },  // 403417
+            'timer4_status':          { block: 1, offset: 17, scale: 1, dataType: 'U16', mode: 'last' },  // 403418
+            // bitmap dos LO (Logic Outputs) configurados no rele — bits mudam quando
+            // VI->LO mapeado na MATRIX dispara. Util pra feedback dos comandos.
+            'logic_outputs_1_10':     { block: 1, offset: 18, scale: 1, dataType: 'U16', mode: 'last' },  // 403419
+            'cbw_alarm_1':            { block: 1, offset: 19, scale: 1, dataType: 'U16', mode: 'last' },  // 403420
+            'cbw_alarm_2':            { block: 1, offset: 20, scale: 1, dataType: 'U16', mode: 'last' },  // 403421
+            'logic_outputs_9_16':     { block: 1, offset: 21, scale: 1, dataType: 'U16', mode: 'last' },  // 403422
+            'logic_outputs_17_20':    { block: 1, offset: 22, scale: 1, dataType: 'U16', mode: 'last' },  // 403423
+            // offset 23..24 = 403424..403425 (reserved)
+            // Virtual outputs: bitmap dos VOs (controlados via logica programada).
+            'virtual_outputs_1_16':   { block: 1, offset: 25, scale: 1, dataType: 'U16', mode: 'last' },  // 403426
+
+            // ================================================================
+            // BLOCO 2 (start=5500): FAULT DATA — regs 405501..405518
+            // Memoria da ultima falta (zera so com novo evento).
+            // ================================================================
+            'total_trips':            { block: 2, offset: 0,  scale: 1,   dataType: 'U16', mode: 'last' },  // 405501
+            // offset 1..3 = 405502..405504 (reserved no manual)
+            // Fault currents sao U32 (2 regs cada). Manual: "1A = 1" -> scale=1.
+            'il1_fault_current':      { block: 2, offset: 4,  scale: 1,   dataType: 'U32', mode: 'last' },  // 405505-505506
+            'il2_fault_current':      { block: 2, offset: 6,  scale: 1,   dataType: 'U32', mode: 'last' },  // 405507-505508
+            'il3_fault_current':      { block: 2, offset: 8,  scale: 1,   dataType: 'U32', mode: 'last' },  // 405509-505510
+            // Io fault currents: "1.00A = 100" -> scale=100
+            'io1_fault_current':      { block: 2, offset: 10, scale: 100, dataType: 'U32', mode: 'last' },  // 405511-405512
+            'io2_fault_current':      { block: 2, offset: 12, scale: 100, dataType: 'U32', mode: 'last' },  // 405513-405514
+            'iocalc_fault_current':   { block: 2, offset: 14, scale: 100, dataType: 'U32', mode: 'last' },  // 405515-405516
+            // Modbus scalings configurados no proprio rele (informativos pro nosso decoder
+            // saber se operador mudou os defaults).
+            'mb_power_scaling':       { block: 2, offset: 16, scale: 10,  dataType: 'U16', mode: 'last' },  // 405517
+            'mb_pf_scaling':          { block: 2, offset: 17, scale: 10,  dataType: 'U16', mode: 'last' },  // 405518
+
+            // ================================================================
+            // BLOCO 3 (start=5812): CBM (Circuit Breaker Monitoring) + DI VALIDITY
+            // ================================================================
+            // CBM counters: U32 (2 regs cada). Crescem com operacoes do disjuntor.
+            'cbm_open_count':         { block: 3, offset: 0,  scale: 1, dataType: 'U32', mode: 'last' },  // 405813-405814
+            // offset 2..3 = 405815..405816 (reserved/gap)
+            'cbm_trip_counter':       { block: 3, offset: 4,  scale: 1, dataType: 'U32', mode: 'last' },  // 405817-405818
+            // offset 6..7 = 405819..405820 (reserved/gap)
+            // DI validity (4 regs = 64 bits) indica quais DIs estao "OK" (validade fisica).
+            // Mapeado como 4 U16 separados pra simplicidade.
+            'di_validity_1':          { block: 3, offset: 8,  scale: 1, dataType: 'U16', mode: 'last' },  // 405821
+            'di_validity_2':          { block: 3, offset: 9,  scale: 1, dataType: 'U16', mode: 'last' },  // 405822
+            'di_validity_3':          { block: 3, offset: 10, scale: 1, dataType: 'U16', mode: 'last' },  // 405823
+            'di_validity_4':          { block: 3, offset: 11, scale: 1, dataType: 'U16', mode: 'last' },  // 405824
+            // offset 12 = 405825 (CBM1 cnt ph A bin 1 — start dos CBM bins, nao mapeados aqui)
         },
-        // Protecoes (f27 subtensao, f50 sobrecorrente, etc) a cadastrar em V2.
+        // bi_map (protecoes via bit-level) a cadastrar em V2.
         // Quando vier, precisara' usar bit-level decoding (ja' suportado pelo gerador).
+        // Bits ANSI 27/50/59 etc estao em 406xxx (slave 406001->).
         bi_map: {},
-        // Comandos remotos (trip, reset, close) a cadastrar em V2 quando necessario.
-        bo_map: {},
+        // ================================================================
+        // COMANDOS REMOTOS via Virtual Inputs (MATRIX-mapped)
+        // ================================================================
+        // Schneider P3U30 nao expoe "trip/close" diretamente como coil — usa o conceito
+        // de Virtual Inputs. Voce escreve 1 num VI (holding register, func 0x06) e o rele
+        // aciona qualquer funcao mapeada pra esse VI na MATRIZ do eSetup Easergy Pro.
+        //
+        // PRE-REQUISITO no rele (configurar via eSetup):
+        //   1. Aba MATRIZ:
+        //        VI1 -> Object 1 Open  (trip)
+        //        VI2 -> Object 1 Close
+        //        VI3 -> Release latches (reset)
+        //   2. Aba CONTROLE: Object 1 Control mode = Remote
+        //
+        // ATENCAO GERADOR: o gerador atual de firmware (iot-firmware-generator.v2.js)
+        // suporta APENAS func 0x05 (writeSingleCoil) em bo_map. Comandos com func 0x06
+        // (writeSingleRegister) sao silenciosamente IGNORADOS na geracao do firmware.
+        // Pra ativar comandos do P3U30 em producao, e' preciso estender o gerador pra
+        // suportar func 0x06. Mantemos o cadastro aqui pra documentar a intencao —
+        // quando o gerador for atualizado, comandos passam a funcionar automaticamente
+        // sem mudar este catalogo. Validacao isolada disponivel em:
+        //   /var/www/iot_nexon/PLATFORMIO/TESTES-BANCADA/TESTE-SCHNEIDER-P3U30/
+        bo_map: {
+            'cmd_trip':  { register: 3426, value: 1, func: 0x06 },  // VI1 (Modicon 403427) -> Object 1 Open
+            'cmd_close': { register: 3427, value: 1, func: 0x06 },  // VI2 (Modicon 403428) -> Object 1 Close
+            'cmd_reset': { register: 3428, value: 1, func: 0x06 },  // VI3 (Modicon 403429) -> Release latches
+        },
     },
 
     // --------------------------------------------------------
