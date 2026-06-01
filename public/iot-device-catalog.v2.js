@@ -286,6 +286,62 @@ var DEVICE_MODELS = {
         handshake: { register: 0x0088, count: 2, func: 0x03 },
     },
 
+    // Schneider PowerLogic Easergy P3U30 - rele de protecao multifuncao.
+    // Protocolo: Modbus RTU (RS485, 9600 8N1 ou 8E1 — config no eSetup Easergy Pro)
+    // Manual: /var/www/iot_nexon/mapa_modbus/SCHNEIDER/P3_EN_CM_30-208A_web.pdf
+    // ATENCAO: default de fabrica e' 9600 8E1 (Even parity). TON usa 8N1 (None).
+    // Antes de conectar a TON, configurar no eSetup: COMMUNICATION > MODBUS main config
+    //   - Slave number: 1 (ou outro, mas tem que bater com cadastro)
+    //   - Modbus bit rate: 9600
+    //   - Parity: None
+    // Cadastro inicial: medicoes basicas (V, I, freq, P ativa). Sem protecoes nem comandos.
+    // Endereco Modicon 40xxxx (holding register, func 0x03). Frame Modbus = endereco - 1.
+    // Bloco unico em 402009-402022 (offset zero-based: start=2008, count=14).
+    'schneider-p3u30': {
+        fabricante: 'Schneider',
+        modelo: 'P3U30',
+        tipo: 'rele_protecao',
+        protocolo: 'rtu',
+        connection_note: 'RS485 9600 8N1 (default 8E1 — configurar No eSetup Easergy Pro). Slave 1-247.',
+        word_order: 'high_first',  // default Schneider
+        ai_blocks: [
+            // Bloco unico cobrindo regs Modicon 402009-402022 (14 regs, holding):
+            //   IA/IB/IC (correntes), IN-1 (residual), VAB/VBC/VCA (line-to-line),
+            //   VA/VB/VC (phase-to-earth), Uo (residual voltage), freq, P ativa.
+            // Reg 402013 nao mapeado pelo manual (gap normal).
+            { start: 2008, count: 14, func: 0x03, label: 'Regs 402009-402022: I, V, freq, P' },
+        ],
+        ai_map: {
+            // --- Bloco 0: regs 402009..402022 (offset 0 = reg 402009) ---
+            // Scalings default Schneider (vide pag.12 do manual):
+            //   - Voltage: "1000V = 1000" -> raw e' o valor direto em V (scale=1)
+            //   - Current: "1A = 1" -> raw e' direto em A (scale=1)
+            //   - IN-1 residual: "1.00A = 100" -> scale=100
+            //   - Uo residual: "1.0% = 10" -> scale=10
+            //   - Frequency: "50.000Hz = 5000" -> scale=100
+            //   - Active power: "1000kW = 1000" -> raw em kW (scale=1)
+            'ia':                 { block: 0, offset: 0,  scale: 1,   dataType: 'U16', mode: 'avg' },   // 402009
+            'ib':                 { block: 0, offset: 1,  scale: 1,   dataType: 'U16', mode: 'avg' },   // 402010
+            'ic':                 { block: 0, offset: 2,  scale: 1,   dataType: 'U16', mode: 'avg' },   // 402011
+            'in1_residual':       { block: 0, offset: 3,  scale: 100, dataType: 'U16', mode: 'avg' },   // 402012
+            // offset 4 = reg 402013 (gap no manual, nao mapeado)
+            'vab':                { block: 0, offset: 5,  scale: 1,   dataType: 'U16', mode: 'avg' },   // 402014
+            'vbc':                { block: 0, offset: 6,  scale: 1,   dataType: 'U16', mode: 'avg' },   // 402015
+            'vca':                { block: 0, offset: 7,  scale: 1,   dataType: 'U16', mode: 'avg' },   // 402016
+            'va':                 { block: 0, offset: 8,  scale: 1,   dataType: 'U16', mode: 'avg' },   // 402017
+            'vb':                 { block: 0, offset: 9,  scale: 1,   dataType: 'U16', mode: 'avg' },   // 402018
+            'vc':                 { block: 0, offset: 10, scale: 1,   dataType: 'U16', mode: 'avg' },   // 402019
+            'residual_voltage':   { block: 0, offset: 11, scale: 10,  dataType: 'U16', mode: 'avg' },   // 402020
+            'freq':               { block: 0, offset: 12, scale: 100, dataType: 'U16', mode: 'last' },  // 402021
+            'potencia_ativa':     { block: 0, offset: 13, scale: 1,   dataType: 'U16', mode: 'last' },  // 402022
+        },
+        // Protecoes (f27 subtensao, f50 sobrecorrente, etc) a cadastrar em V2.
+        // Quando vier, precisara' usar bit-level decoding (ja' suportado pelo gerador).
+        bi_map: {},
+        // Comandos remotos (trip, reset, close) a cadastrar em V2 quando necessario.
+        bo_map: {},
+    },
+
     // --------------------------------------------------------
     // INVERSORES SOLARES
     // --------------------------------------------------------
