@@ -212,49 +212,59 @@ class EquipamentosDadosService {
   }
 
   /**
-   * Busca dados agregados de múltiplos inversores para gráfico do dia
+   * Busca dados agregados de múltiplos equipamentos para gráfico do dia.
+   * Aceita range customizado via inicio/fim (ISO datetime, máx 31 dias).
+   * Aplica sinal/multiplicador por equipamento e fator de perdas opcional.
    */
   async getGraficoDiaMultiplosInversores(
-    equipamentosIds: string[],
-    data?: string
+    equipamentos: EquipamentoAgregacaoInput[],
+    opts: { data?: string; inicio?: string; fim?: string; fatorPerdas?: number } = {},
   ) {
-    const response = await api.post('/equipamentos-dados/multiplos-inversores/grafico-dia', {
-      equipamentosIds,
-    }, {
-      params: data ? { data } : undefined,
-    });
+    const { data, inicio, fim, fatorPerdas } = opts;
+    const params: Record<string, string> = {};
+    if (data) params.data = data;
+    if (inicio) params.inicio = inicio;
+    if (fim) params.fim = fim;
+
+    const response = await api.post(
+      '/equipamentos-dados/multiplos-inversores/grafico-dia',
+      { equipamentos, fatorPerdas },
+      { params: Object.keys(params).length > 0 ? params : undefined },
+    );
     return response.data;
   }
 
-  /**
-   * Busca dados agregados de múltiplos inversores para gráfico do mês
-   */
   async getGraficoMesMultiplosInversores(
-    equipamentosIds: string[],
-    mes?: string
+    equipamentos: EquipamentoAgregacaoInput[],
+    opts: { mes?: string; fatorPerdas?: number } = {},
   ) {
-    const response = await api.post('/equipamentos-dados/multiplos-inversores/grafico-mes', {
-      equipamentosIds,
-    }, {
-      params: mes ? { mes } : undefined,
-    });
+    const { mes, fatorPerdas } = opts;
+    const response = await api.post(
+      '/equipamentos-dados/multiplos-inversores/grafico-mes',
+      { equipamentos, fatorPerdas },
+      { params: mes ? { mes } : undefined },
+    );
     return response.data;
   }
 
-  /**
-   * Busca dados agregados de múltiplos inversores para gráfico do ano
-   */
   async getGraficoAnoMultiplosInversores(
-    equipamentosIds: string[],
-    ano?: string
+    equipamentos: EquipamentoAgregacaoInput[],
+    opts: { ano?: string; fatorPerdas?: number } = {},
   ) {
-    const response = await api.post('/equipamentos-dados/multiplos-inversores/grafico-ano', {
-      equipamentosIds,
-    }, {
-      params: ano ? { ano } : undefined,
-    });
+    const { ano, fatorPerdas } = opts;
+    const response = await api.post(
+      '/equipamentos-dados/multiplos-inversores/grafico-ano',
+      { equipamentos, fatorPerdas },
+      { params: ano ? { ano } : undefined },
+    );
     return response.data;
   }
+}
+
+export interface EquipamentoAgregacaoInput {
+  id: string;
+  sinal: 1 | -1;
+  multiplicador?: number;
 }
 
 export default new EquipamentosDadosService();
