@@ -22,35 +22,45 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import {
   Settings,
-  Zap,
   TrendingUp,
   TrendingDown,
   Activity,
   Info,
   Save,
-  RotateCcw
+  RotateCcw,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 
+import {
+  CATEGORIA_FLUXO,
+  resolverFluxoEquipamento,
+  type FluxoEnergia,
+  type FluxoManualSelecao,
+} from "../utils/categoria-fluxo";
+
 export interface EquipamentoConfig {
   id: string;
   nome: string;
-  tipo: 'INVERSOR' | 'A966' | 'M160' | 'M300' | 'MOTOR' | 'CARGA';
-  fluxoEnergia: 'GERACAO' | 'CONSUMO' | 'BIDIRECIONAL';
+  /** Codigo do tipo_equipamento (legado; mantido pra compat). */
+  tipo: string;
+  /** Nome da categoria (`tipo_equipamento_rel.categoria.nome`) — fonte de verdade do fluxo. */
+  categoria: string;
+  fluxoEnergia: FluxoEnergia;
   selecionado: boolean;
-  multiplicador: number; // Para ajustes de calibração
+  multiplicador: number;
   online: boolean;
 }
 
 export interface ConfiguracaoDemanda {
-  fonte: 'A966' | 'AGRUPAMENTO' | 'AUTO';
   equipamentos: EquipamentoConfig[];
+  /** Decisão do admin pros equipamentos cuja categoria eh AMBIGUA. */
+  fluxoManual?: Record<string, FluxoManualSelecao>;
   mostrarDetalhes: boolean;
-  intervaloAtualizacao: number; // segundos
+  intervaloAtualizacao: number;
   aplicarPerdas: boolean;
-  fatorPerdas: number; // percentual
-  demandaContratada?: number; // kW - demanda contratada da unidade
+  fatorPerdas: number;
+  demandaContratada?: number;
 }
 
 interface ConfiguracaoDemandaModalProps {
@@ -69,34 +79,16 @@ export function ConfiguracaoDemandaModal({
   equipamentosDisponiveis,
 }: ConfiguracaoDemandaModalProps) {
   const [config, setConfig] = useState<ConfiguracaoDemanda>(configuracao);
-  const [tabAtiva, setTabAtiva] = useState("fonte");
+  const [tabAtiva, setTabAtiva] = useState("equipamentos");
 
-  // Debug log
+  // Mescla equipamentos disponíveis com seleção persistida na configuração.
   useEffect(() => {
-    // console.log('🎯 Modal ConfiguracaoDemanda:');
-    // console.log('  - open:', open);
-    // console.log('  - equipamentosDisponiveis:', equipamentosDisponiveis);
-    // console.log('  - equipamentosDisponiveis length:', equipamentosDisponiveis?.length);
-    // console.log('  - configuracao.equipamentos:', configuracao.equipamentos);
-    // console.log('  - config.equipamentos:', config.equipamentos);
-  }, [open, equipamentosDisponiveis]);
-
-  useEffect(() => {
-    // Quando a configuração mudar, mesclar com equipamentos disponíveis
-    if (equipamentosDisponiveis && equipamentosDisponiveis.length > 0) {
-      const equipamentosComSelecao = equipamentosDisponiveis.map(equip => {
-        // Verificar se este equipamento está na configuração salva
-        const equipSalvo = configuracao.equipamentos?.find(e => e.id === equip.id);
-        return {
-          ...equip,
-          selecionado: equipSalvo ? equipSalvo.selecionado : equip.selecionado
-        };
+    if (equipamentosDisponiveis?.length) {
+      const mesclados = equipamentosDisponiveis.map((equip) => {
+        const salvo = configuracao.equipamentos?.find((e) => e.id === equip.id);
+        return { ...equip, selecionado: salvo?.selecionado ?? equip.selecionado };
       });
-
-      setConfig({
-        ...configuracao,
-        equipamentos: equipamentosComSelecao
-      });
+      setConfig({ ...configuracao, equipamentos: mesclados });
     } else {
       setConfig(configuracao);
     }
@@ -112,15 +104,10 @@ export function ConfiguracaoDemandaModal({
   };
 
   const handleSalvar = () => {
-    // Validações
-    if (config.fonte === 'AGRUPAMENTO') {
-      const selecionados = config.equipamentos.filter(e => e.selecionado);
-      if (selecionados.length === 0) {
-        toast.error("Selecione pelo menos um equipamento para o agrupamento");
-        return;
-      }
+    if (config.equipamentos.filter((e) => e.selecionado).length === 0) {
+      toast.error("Selecione pelo menos um equipamento para o agrupamento");
+      return;
     }
-
     onSalvar(config);
     toast.success("Configuração salva com sucesso!");
     onOpenChange(false);
@@ -128,32 +115,31 @@ export function ConfiguracaoDemandaModal({
 
   const handleResetar = () => {
     setConfig({
-      fonte: 'AUTO',
       equipamentos: equipamentosDisponiveis,
+      fluxoManual: {},
       mostrarDetalhes: true,
       intervaloAtualizacao: 60,
       aplicarPerdas: true,
-      fatorPerdas: 3, // 3% de perdas
+      fatorPerdas: 3,
     });
   };
 
-  // Calcular resumo
-  const calcularResumo = () => {
-    const selecionados = config.equipamentos.filter(e => e.selecionado);
-    const geracao = selecionados
-      .filter(e => e.fluxoEnergia === 'GERACAO')
-      .length;
-    const consumo = selecionados
-      .filter(e => e.fluxoEnergia === 'CONSUMO')
-      .length;
-    const bidirecional = selecionados
-      .filter(e => e.fluxoEnergia === 'BIDIRECIONAL')
-      .length;
-
-    return { total: selecionados.length, geracao, consumo, bidirecional };
-  };
-
-  const resumo = calcularResumo();
+  // Resumo do agrupamento — conta cada equipamento selecionado pelo fluxo
+  // efetivo (resolvido via categoria + fluxoManual). NEUTRO eh contado a parte
+  // pra deixar claro que existem equipamentos selecionados mas que nao somam.
+  const resumo = (() => {
+    const selecionados = config.equipamentos.filter((e) => e.selecionado);
+    const fluxoManual = config.fluxoManual ?? {};
+    const contagem = { geracao: 0, consumo: 0, bidirecional: 0, neutro: 0 };
+    for (const eq of selecionados) {
+      const fluxo = resolverFluxoEquipamento(eq.categoria, eq.id, fluxoManual);
+      if (fluxo === 'GERACAO') contagem.geracao++;
+      else if (fluxo === 'CONSUMO') contagem.consumo++;
+      else if (fluxo === 'BIDIRECIONAL') contagem.bidirecional++;
+      else contagem.neutro++;
+    }
+    return { total: selecionados.length, ...contagem };
+  })();
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -169,85 +155,32 @@ export function ConfiguracaoDemandaModal({
         </DialogHeader>
 
         <Tabs value={tabAtiva} onValueChange={setTabAtiva} className="mt-4">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="fonte">Fonte de Dados</TabsTrigger>
-            <TabsTrigger value="equipamentos">Equipamentos</TabsTrigger>
-            <TabsTrigger value="avancado">Avançado</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-2 gap-1 rounded-[2px] bg-transparent p-0">
+            <TabsTrigger value="equipamentos" className="rounded-[2px] data-[state=active]:bg-accent">Equipamentos</TabsTrigger>
+            <TabsTrigger value="avancado" className="rounded-[2px] data-[state=active]:bg-accent">Avançado</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="fonte" className="space-y-4">
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="fonte">Fonte Principal</Label>
-                <Select
-                  value={config.fonte}
-                  onValueChange={(value: any) =>
-                    setConfig(prev => ({ ...prev, fonte: value }))
-                  }
-                >
-                  <SelectTrigger id="fonte">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="AUTO">
-                      <div className="flex items-center gap-2">
-                        <Activity className="h-4 w-4" />
-                        Automático (Melhor Disponível)
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="A966">
-                      <div className="flex items-center gap-2">
-                        <Zap className="h-4 w-4 text-green-500" />
-                        A966 - Medidor Principal
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="AGRUPAMENTO">
-                      <div className="flex items-center gap-2">
-                        <Settings className="h-4 w-4 text-blue-500" />
-                        Agrupamento Personalizado
-                      </div>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="rounded-lg bg-muted p-4 space-y-2">
-                <div className="flex items-start gap-2">
-                  <Info className="h-4 w-4 text-muted-foreground mt-0.5" />
-                  <div className="text-sm text-muted-foreground">
-                    <p className="font-medium">Como funciona:</p>
-                    <ul className="mt-1 space-y-1 list-disc list-inside">
-                      <li><strong>Automático:</strong> Usa A966 se disponível, senão agrupa inversores</li>
-                      <li><strong>A966:</strong> Medição mais precisa no ponto de conexão com a rede</li>
-                      <li><strong>Agrupamento:</strong> Soma personalizada de equipamentos selecionados</li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
-
-              {config.fonte === 'AGRUPAMENTO' && (
-                <div className="rounded-lg border p-4">
-                  <p className="text-sm font-medium mb-2">Resumo do Agrupamento:</p>
-                  <div className="flex gap-4">
-                    <Badge variant="outline" className="gap-1">
-                      <TrendingUp className="h-3 w-3 text-green-500" />
-                      {resumo.geracao} Geração
-                    </Badge>
-                    <Badge variant="outline" className="gap-1">
-                      <TrendingDown className="h-3 w-3 text-red-500" />
-                      {resumo.consumo} Consumo
-                    </Badge>
-                    <Badge variant="outline" className="gap-1">
-                      <Activity className="h-3 w-3 text-blue-500" />
-                      {resumo.bidirecional} Bidirecional
-                    </Badge>
-                  </div>
-                </div>
+          <TabsContent value="equipamentos" className="space-y-4">
+            <div className="rounded-[2px] border p-3 flex flex-wrap gap-2">
+              <Badge variant="outline" className="gap-1">
+                <TrendingUp className="h-3 w-3 text-green-500" />
+                {resumo.geracao} Geração
+              </Badge>
+              <Badge variant="outline" className="gap-1">
+                <TrendingDown className="h-3 w-3 text-red-500" />
+                {resumo.consumo} Consumo
+              </Badge>
+              <Badge variant="outline" className="gap-1">
+                <Activity className="h-3 w-3 text-blue-500" />
+                {resumo.bidirecional} Bidirecional
+              </Badge>
+              {resumo.neutro > 0 && (
+                <Badge variant="outline" className="gap-1 text-muted-foreground">
+                  {resumo.neutro} Não somam
+                </Badge>
               )}
             </div>
-          </TabsContent>
 
-          <TabsContent value="equipamentos" className="space-y-4">
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <Label>Equipamentos Disponíveis</Label>
@@ -279,7 +212,7 @@ export function ConfiguracaoDemandaModal({
                 </div>
               </div>
 
-              <ScrollArea className="h-[300px] rounded-lg border">
+              <ScrollArea className="h-[300px] rounded-[2px] border">
                 <div className="p-4 space-y-2">
                   {config.equipamentos.length === 0 ? (
                     <div className="text-center text-muted-foreground py-8">
@@ -288,64 +221,90 @@ export function ConfiguracaoDemandaModal({
                       <p className="text-sm mt-2">Verifique se há equipamentos com MQTT habilitado na unidade</p>
                     </div>
                   ) : (
-                    config.equipamentos.map((equipamento) => (
-                    <div
-                      key={equipamento.id}
-                      className="flex items-center justify-between p-3 rounded-lg hover:bg-muted/50 transition-colors"
-                    >
-                      <div className="flex items-center gap-3">
-                        <Checkbox
-                          checked={equipamento.selecionado}
-                          onCheckedChange={() => handleToggleEquipamento(equipamento.id)}
-                          disabled={config.fonte !== 'AGRUPAMENTO'}
-                        />
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium">{equipamento.nome}</span>
-                            <Badge variant="outline" className="text-xs">
-                              {equipamento.tipo}
-                            </Badge>
-                            {!equipamento.online && (
-                              <Badge variant="destructive" className="text-xs">
-                                Offline
-                              </Badge>
-                            )}
+                    config.equipamentos.map((equipamento) => {
+                      const fluxoPadrao = CATEGORIA_FLUXO[equipamento.categoria] ?? 'NEUTRO';
+                      const ehAmbiguo = fluxoPadrao === 'AMBIGUO';
+                      const escolhaManual = config.fluxoManual?.[equipamento.id];
+                      return (
+                        <div
+                          key={equipamento.id}
+                          className="flex items-center justify-between p-3 rounded-[2px] hover:bg-muted/50 transition-colors"
+                        >
+                          <div className="flex items-center gap-3 flex-1 min-w-0">
+                            <Checkbox
+                              checked={equipamento.selecionado}
+                              onCheckedChange={() => handleToggleEquipamento(equipamento.id)}
+                              disabled={fluxoPadrao === 'NEUTRO'}
+                            />
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-medium truncate">{equipamento.nome}</span>
+                                <Badge variant="outline" className="text-xs">{equipamento.categoria || equipamento.tipo || '?'}</Badge>
+                                {!equipamento.online && (
+                                  <Badge variant="destructive" className="text-xs">Offline</Badge>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-1 mt-1 text-xs">
+                                {fluxoPadrao === 'GERACAO' && (
+                                  <span className="flex items-center gap-1 text-green-600">
+                                    <TrendingUp className="h-3 w-3" /> Geração (automático)
+                                  </span>
+                                )}
+                                {fluxoPadrao === 'CONSUMO' && (
+                                  <span className="flex items-center gap-1 text-red-600">
+                                    <TrendingDown className="h-3 w-3" /> Consumo (automático)
+                                  </span>
+                                )}
+                                {fluxoPadrao === 'BIDIRECIONAL' && (
+                                  <span className="flex items-center gap-1 text-blue-600">
+                                    <Activity className="h-3 w-3" /> Bidirecional
+                                  </span>
+                                )}
+                                {fluxoPadrao === 'NEUTRO' && (
+                                  <span className="text-muted-foreground">Não entra no agregado</span>
+                                )}
+                                {ehAmbiguo && !escolhaManual && (
+                                  <span className="text-amber-600">Fluxo não definido — não soma</span>
+                                )}
+                              </div>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-2 mt-1">
-                            {equipamento.fluxoEnergia === 'GERACAO' && (
-                              <span className="flex items-center gap-1 text-xs text-green-600">
-                                <TrendingUp className="h-3 w-3" />
-                                Geração
-                              </span>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {ehAmbiguo && (
+                              <Select
+                                value={escolhaManual ?? 'IGNORAR'}
+                                onValueChange={(v) => {
+                                  setConfig(prev => ({
+                                    ...prev,
+                                    fluxoManual: { ...(prev.fluxoManual ?? {}), [equipamento.id]: v as FluxoManualSelecao },
+                                  }));
+                                }}
+                              >
+                                <SelectTrigger className="h-7 text-xs w-[120px] rounded-[2px]">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="GERACAO">Geração</SelectItem>
+                                  <SelectItem value="CONSUMO">Consumo</SelectItem>
+                                  <SelectItem value="BIDIRECIONAL">Bidirecional</SelectItem>
+                                  <SelectItem value="IGNORAR">Ignorar</SelectItem>
+                                </SelectContent>
+                              </Select>
                             )}
-                            {equipamento.fluxoEnergia === 'CONSUMO' && (
-                              <span className="flex items-center gap-1 text-xs text-red-600">
-                                <TrendingDown className="h-3 w-3" />
-                                Consumo
-                              </span>
-                            )}
-                            {equipamento.fluxoEnergia === 'BIDIRECIONAL' && (
-                              <span className="flex items-center gap-1 text-xs text-blue-600">
-                                <Activity className="h-3 w-3" />
-                                Bidirecional
-                              </span>
-                            )}
+                            <span className="text-xs text-muted-foreground">{equipamento.multiplicador}x</span>
                           </div>
                         </div>
-                      </div>
-                      <div className="text-sm text-muted-foreground">
-                        Multiplicador: {equipamento.multiplicador}x
-                      </div>
-                    </div>
-                  )))}
+                      );
+                    })
+                  )}
                 </div>
               </ScrollArea>
 
-              <div className="rounded-lg bg-muted p-3 text-sm">
-                <p className="font-medium">Fórmula de Cálculo:</p>
-                <code className="text-xs">
-                  Demanda = Σ(Geração × Multiplicador) - Σ(Consumo × Multiplicador)
-                </code>
+              <div className="rounded-[2px] bg-muted p-3 text-xs space-y-1">
+                <p className="font-medium">Como o cálculo funciona:</p>
+                <p>Categorias inequívocas (Inversor PV, Motor, etc.) têm fluxo automático.</p>
+                <p>Power Meter e Medidor SSU dependem da instalação física — selecione manualmente acima.</p>
+                <p>Não selecionados ou marcados como "Ignorar" não entram no agregado.</p>
               </div>
             </div>
           </TabsContent>

@@ -4203,16 +4203,6 @@ if (import.meta.env.PROD) {
                 <div className="xl:col-span-1 flex flex-col gap-4 h-full overflow-y-auto overflow-x-hidden pr-2">
                   <SinopticoGraficosV2
                     unidadeId={unidadeId}
-                    dadosPotencia={
-                      historicoMqtt.length > 0
-                        ? historicoMqtt
-                        : dadosGraficos
-                    }
-                    dadosTensao={
-                      historicoMqtt.length > 0
-                        ? historicoMqtt
-                        : dadosGraficos
-                    }
                     valorContratado={valorContratadoReal}
                     percentualAdicional={5}
                     onConfigSaved={reloadUnidade}

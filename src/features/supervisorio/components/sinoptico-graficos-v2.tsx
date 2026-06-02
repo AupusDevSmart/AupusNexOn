@@ -1,14 +1,17 @@
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { DadosGrafico } from "@/types/dtos/sinoptico-ativo";
-import { Activity, Settings, TrendingUp, Zap, AlertTriangle, CheckCircle, Loader2, Expand } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Input } from "@/components/ui/input";
+import { Activity, Settings, TrendingUp, Zap, AlertTriangle, Loader2, Expand } from "lucide-react";
 import { useState, useEffect, useMemo } from "react";
 import {
+  Bar,
+  BarChart,
   Brush,
   CartesianGrid,
   Legend,
@@ -20,7 +23,8 @@ import {
   YAxis,
 } from "recharts";
 import { ConfiguracaoDemandaModal, ConfiguracaoDemanda, EquipamentoConfig } from "./ConfiguracaoDemandaModal";
-import { useDadosDemanda } from "@/hooks/useDadosDemanda";
+import { CATEGORIA_FLUXO, resolverFluxoEquipamento } from "../utils/categoria-fluxo";
+import { useDemandaAgregada, PeriodoFiltro } from "@/hooks/useDemandaAgregada";
 import { useDadosM160 } from "@/hooks/useDadosM160";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/config/api";
@@ -37,158 +41,85 @@ if (import.meta.env.PROD) {
 
 interface SinopticoGraficosV2Props {
   unidadeId?: string;
-  dadosPotencia?: DadosGrafico[];
-  dadosTensao?: DadosGrafico[];
   valorContratado?: number;
   percentualAdicional?: number;
-  onConfigSaved?: () => void; // ✅ NOVO: Callback para notificar quando configuração for salva
+  onConfigSaved?: () => void;
 }
 
-// Função para formatar dados para o gráfico
-const formatarDadosGrafico = (dados: any[]) => {
-  return dados.map((item) => ({
-    ...item,
-    hora: new Date(item.timestamp).toLocaleTimeString("pt-BR", {
-      hour: "2-digit",
-      minute: "2-digit",
-    }),
-  }));
-};
-
-// Função para adicionar linhas de referência (valor contratado e adicional)
-const adicionarLinhasReferencia = (
-  dados: any[],
-  valorContratado: number,
-  percentualAdicional: number
-) => {
-  const valorAdicional = valorContratado * (1 + percentualAdicional / 100);
-
-  return dados.map((item) => ({
-    ...item,
-    hora: new Date(item.timestamp).toLocaleTimeString("pt-BR", {
-      hour: "2-digit",
-      minute: "2-digit",
-    }),
-    valorContratado: valorContratado,
-    valorAdicional: valorAdicional,
-  }));
-};
-
-// Componente customizado para o Tooltip
 interface CustomTooltipProps {
   active?: boolean;
-  payload?: Array<{
-    value: number;
-    name: string;
-    color: string;
-  }>;
+  payload?: Array<{ value: number; name: string; color: string }>;
   label?: string;
+  unidade?: string;
 }
 
-const CustomTooltip = ({ active, payload, label }: CustomTooltipProps) => {
-  if (active && payload && payload.length) {
-    return (
-      <div className="bg-background border border-border rounded-lg shadow-lg p-3">
-        <p className="text-sm font-medium">{`Hora: ${label}`}</p>
-        {payload.map((entry, index) => (
-          <p key={index} className="text-sm" style={{ color: entry.color }}>
-            {`${entry.name}: ${entry.value.toFixed(2)}`}
-          </p>
-        ))}
-      </div>
-    );
-  }
-  return null;
+const CustomTooltip = ({ active, payload, label, unidade = '' }: CustomTooltipProps) => {
+  if (!active || !payload || payload.length === 0) return null;
+  return (
+    <div className="bg-background border border-border rounded-lg shadow-lg p-3">
+      <p className="text-sm font-medium">{label}</p>
+      {payload.map((entry, index) => (
+        <p key={index} className="text-sm" style={{ color: entry.color }}>
+          {`${entry.name}: ${entry.value.toFixed(2)}${unidade ? ' ' + unidade : ''}`}
+        </p>
+      ))}
+    </div>
+  );
 };
 
-// Função para verificar qualidade dos dados (detecta períodos sem dados)
-const analisarQualidadeDados = (dados: any[]) => {
+/**
+ * Qualidade dos dados — limitado a SEM_DADOS e DESATUALIZADO.
+ * Só faz sentido para período "dia" (live); mês/ano são consultas históricas.
+ */
+function analisarQualidadeDados(dados: Array<{ timestamp?: string }>) {
   if (!dados || dados.length === 0) {
-    return {
-      status: 'SEM_DADOS',
-      mensagem: 'Nenhum dado disponível',
-      cor: 'text-red-500',
-      icone: AlertTriangle
-    };
+    return { status: 'SEM_DADOS' as const, mensagem: 'Nenhum dado disponível' };
   }
-
-  // Verificar se há lacunas grandes nos dados (mais de 2 horas sem dados)
-  const agora = new Date();
-  const ultimoDado = new Date(dados[dados.length - 1]?.timestamp || 0);
-  const diferencaHoras = (agora.getTime() - ultimoDado.getTime()) / (1000 * 60 * 60);
-
+  const ultimo = dados[dados.length - 1]?.timestamp;
+  if (!ultimo) return { status: 'OK' as const, mensagem: '' };
+  const diferencaHoras = (Date.now() - new Date(ultimo).getTime()) / 3_600_000;
   if (diferencaHoras > 2) {
     return {
-      status: 'DESATUALIZADO',
+      status: 'DESATUALIZADO' as const,
       mensagem: `Último dado: ${Math.floor(diferencaHoras)}h atrás`,
-      cor: 'text-orange-500',
-      icone: AlertTriangle
     };
   }
+  return { status: 'OK' as const, mensagem: '' };
+}
 
-  // Verificar cobertura dos últimos 24h
-  const dadosUltimas24h = dados.filter(d => {
-    const timestamp = new Date(d.timestamp);
-    const diff = agora.getTime() - timestamp.getTime();
-    return diff <= 24 * 60 * 60 * 1000; // 24 horas
-  });
-
-  const coberturaPercentual = (dadosUltimas24h.length / 288) * 100; // 288 = pontos esperados em 24h (5min cada)
-
-  if (coberturaPercentual < 50) {
-    return {
-      status: 'PARCIAL',
-      mensagem: `Cobertura: ${Math.round(coberturaPercentual)}%`,
-      cor: 'text-yellow-500',
-      icone: AlertTriangle
-    };
+function formatarEnergia(kwh: number): string {
+  if (Math.abs(kwh) >= 1000) {
+    return `${(kwh / 1000).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MWh`;
   }
+  return `${kwh.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} kWh`;
+}
 
-  return {
-    status: 'OK',
-    mensagem: 'Dados atualizados',
-    cor: 'text-green-500',
-    icone: CheckCircle
-  };
-};
+const MESES_PT_CURTOS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
-// Função para obter badge de confiabilidade
-const getConfiabilidadeBadge = (fonte: string, confiabilidade: number) => {
-  if (fonte === 'A966') {
-    return (
-      <Badge variant="outline" className="ml-2 gap-1">
-        <CheckCircle className="h-3 w-3 text-green-500" />
-        A966 (Alta)
-      </Badge>
-    );
-  } else if (fonte === 'AGRUPAMENTO') {
-    return (
-      <Badge variant="outline" className="ml-2 gap-1">
-        <Activity className="h-3 w-3 text-blue-500" />
-        Agrupamento ({confiabilidade}%)
-      </Badge>
-    );
-  } else {
-    return (
-      <Badge variant="outline" className="ml-2 gap-1">
-        <AlertTriangle className="h-3 w-3 text-yellow-500" />
-        Simulado
-      </Badge>
-    );
-  }
-};
+function inicioISO(d: Date) {
+  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
+}
 
 export function SinopticoGraficosV2({
   unidadeId,
-  dadosPotencia: dadosPotenciaLegacy,
-  dadosTensao,
   valorContratado = 2500,
   percentualAdicional = 5,
-  onConfigSaved, // ✅ NOVO: Callback para notificar quando configuração for salva
+  onConfigSaved,
 }: SinopticoGraficosV2Props) {
   const { theme } = useTheme();
   const [modalOpen, setModalOpen] = useState(false);
   const [modalExpandidoOpen, setModalExpandidoOpen] = useState(false);
+
+  // Período do gráfico de Demanda
+  const [periodo, setPeriodo] = useState<PeriodoFiltro>({ tipo: 'dia' });
+  const [customAberto, setCustomAberto] = useState(false);
+  const [customInicio, setCustomInicio] = useState<string>(() => {
+    const d = new Date();
+    d.setHours(d.getHours() - 24);
+    return inicioISO(d);
+  });
+  const [customFim, setCustomFim] = useState<string>(() => inicioISO(new Date()));
 
   // Estados para gráficos de tensão e FP
   const [m160Selecionado, setM160Selecionado] = useState<string>('');
@@ -244,17 +175,15 @@ export function SinopticoGraficosV2({
   });
 
   // Estado local da configuração (inicializa com valores padrão ou da API)
-  const [configuracao, setConfiguracao] = useState<ConfiguracaoDemanda>(() => {
-    return {
-      fonte: 'AGRUPAMENTO',
-      equipamentos: [],
-      mostrarDetalhes: true,
-      intervaloAtualizacao: 30,
-      aplicarPerdas: true,
-      fatorPerdas: 3,
-      demandaContratada: valorContratado, // Inicializar com valor da unidade
-    };
-  });
+  const [configuracao, setConfiguracao] = useState<ConfiguracaoDemanda>(() => ({
+    equipamentos: [],
+    fluxoManual: {},
+    mostrarDetalhes: true,
+    intervaloAtualizacao: 30,
+    aplicarPerdas: true,
+    fatorPerdas: 3,
+    demandaContratada: valorContratado,
+  }));
 
   // Buscar equipamentos disponíveis
   const {
@@ -277,42 +206,25 @@ export function SinopticoGraficosV2({
         const equipamentosArray = response.data?.data || [];
 
         if (equipamentosArray && equipamentosArray.length > 0) {
-        // Mapear para formato do modal
-        const equipamentosMapeados = equipamentosArray.map((equip: any) => {
-          let fluxoEnergia: 'GERACAO' | 'CONSUMO' | 'BIDIRECIONAL' = 'BIDIRECIONAL';
-
-          // Determinar fluxo baseado no tipo ou classificação
-          const tipo = equip.tipo_equipamento_rel?.codigo || equip.tipo_equipamento || '';
-          const classificacao = equip.classificacao || '';
-
-          // Primeiro verificar pela classificação (mais confiável)
-          if (classificacao === 'GERACAO') {
-            fluxoEnergia = 'GERACAO';
-          } else if (classificacao === 'CONSUMO') {
-            fluxoEnergia = 'CONSUMO';
-          }
-          // Depois verificar pelo tipo se não tiver classificação
-          else if (tipo.includes('INVERSOR')) {
-            fluxoEnergia = 'GERACAO';
-          } else if (tipo.includes('M160') || tipo.includes('M-160') ||
-                     tipo.includes('MOTOR') || tipo.includes('CARGA')) {
-            fluxoEnergia = 'CONSUMO';
-          } else if (tipo.includes('A966') || tipo.includes('LANDIS')) {
-            fluxoEnergia = 'BIDIRECIONAL';
-          }
-
-          return {
-            id: equip.id.trim(),
-            nome: equip.nome,
-            tipo: tipo,
-            fluxoEnergia,
-            selecionado: false,
-            multiplicador: 1,
-            online: equip.status === 'ONLINE' || equip.status === 'online' || true
-          } as EquipamentoConfig;
-        });
-
-        return equipamentosMapeados;
+          // Mapear para formato do modal. Fluxo padrao vem da categoria —
+          // ver utils/categoria-fluxo.ts pra tabela completa. AMBIGUO fica
+          // como literal aqui; resolveFluxoManual() embaixo substitui pela
+          // escolha do admin quando aplicavel.
+          return equipamentosArray.map((equip: any): EquipamentoConfig => {
+            const tipo = equip.tipo_equipamento_rel?.codigo || equip.tipo_equipamento || '';
+            const categoria = equip.tipo_equipamento_rel?.categoria?.nome || '';
+            const fluxoPadrao = CATEGORIA_FLUXO[categoria] ?? 'NEUTRO';
+            return {
+              id: equip.id.trim(),
+              nome: equip.nome,
+              tipo,
+              categoria,
+              fluxoEnergia: fluxoPadrao,
+              selecionado: false,
+              multiplicador: 1,
+              online: equip.status === 'ONLINE' || equip.status === 'online' || true,
+            };
+          });
         }
         return [];
       } catch (error) {
@@ -356,10 +268,14 @@ export function SinopticoGraficosV2({
         };
       });
 
+      const fluxoManualApi =
+        (configData as any).fluxoManual ?? (configData as any).fluxo_manual ?? {};
+
       setConfiguracao({
-        ...configData as ConfiguracaoDemanda,
+        ...(configData as ConfiguracaoDemanda),
         equipamentos: equipamentosComSelecao,
-        demandaContratada: valorContratado, // Garantir que sempre tenha o valor atualizado da unidade
+        fluxoManual: fluxoManualApi,
+        demandaContratada: valorContratado,
       });
     } else if (equipamentosData && equipamentosData.length > 0 && !configData) {
       // Se não tem config na API, usar equipamentos disponíveis
@@ -371,8 +287,28 @@ export function SinopticoGraficosV2({
     }
   }, [configData, equipamentosData, valorContratado]);
 
-  // Usar hook de dados de demanda
-  const { dados, fonte, confiabilidade, detalhes, isLoading, isInitialLoading, energiaDia } = useDadosDemanda(configuracao, unidadeId);
+  // Resolve fluxo final por equipamento: substitui AMBIGUO pela escolha manual
+  // do admin (configuracao.fluxoManual). NEUTRO continua NEUTRO e eh filtrado
+  // dentro do hook (nao entra no request).
+  const equipamentosResolvidos = useMemo<EquipamentoConfig[]>(() => {
+    const fluxoManual = configuracao.fluxoManual ?? {};
+    return configuracao.equipamentos.map((e) => ({
+      ...e,
+      fluxoEnergia: resolverFluxoEquipamento(e.categoria, e.id, fluxoManual),
+    }));
+  }, [configuracao.equipamentos, configuracao.fluxoManual]);
+
+  // Dados de demanda — período selecionável (dia/mes/ano/custom), agregados no backend.
+  const {
+    dados,
+    energiaPeriodo,
+    isInitialLoading,
+  } = useDemandaAgregada({
+    equipamentos: equipamentosResolvidos,
+    periodo,
+    fatorPerdas: configuracao.aplicarPerdas ? configuracao.fatorPerdas : 0,
+    intervaloAtualizacao: configuracao.intervaloAtualizacao,
+  });
 
   // Usar hook de dados M160 para tensão e FP
   const { dados: dadosM160, equipamentosM160, isLoading: isLoadingM160, isInitialLoading: isInitialLoadingM160 } = useDadosM160(unidadeId, m160Selecionado);
@@ -384,28 +320,26 @@ export function SinopticoGraficosV2({
     }
   }, [equipamentosM160, m160Selecionado]);
 
-  // Log para debug da energia do dia
-  useEffect(() => {
-    // Log removido
-  }, [energiaDia]);
-
   // Salvar configuração na API
   const handleSalvarConfiguracao = async (novaConfig: ConfiguracaoDemanda) => {
     if (!unidadeId) return;
 
     try {
-      // Converter formato para o banco
+      // Converter formato para o banco. `fonte` mantido como 'AGRUPAMENTO' fixo
+      // pra compat com schema existente — única fonte real desde a remoção do
+      // dropdown AUTO/A966.
       const configParaBanco = {
-        fonte: novaConfig.fonte,
+        fonte: 'AGRUPAMENTO',
         equipamentos_ids: novaConfig.equipamentos
           .filter(e => e.selecionado)
           .map(e => e.id.trim()),
+        fluxo_manual: novaConfig.fluxoManual ?? {},
         mostrar_detalhes: novaConfig.mostrarDetalhes,
         intervalo_atualizacao: novaConfig.intervaloAtualizacao,
         aplicar_perdas: novaConfig.aplicarPerdas,
         fator_perdas: novaConfig.fatorPerdas,
-        valor_contratado: novaConfig.demandaContratada || valorContratado, // ✅ Usar valor do modal
-        percentual_adicional: percentualAdicional
+        valor_contratado: novaConfig.demandaContratada || valorContratado,
+        percentual_adicional: percentualAdicional,
       };
 
       await api.put(`/configuracao-demanda/unidade/${unidadeId}`, configParaBanco);
@@ -437,65 +371,81 @@ export function SinopticoGraficosV2({
     }
   };
 
-  // Preparar dados para o gráfico com useMemo para evitar re-cálculos desnecessários
+  // Dados formatados conforme o período selecionado.
+  // - dia: template de slots de 5min + merge (linhas contratado/adicional)
+  // - custom: pontos brutos com label "dd/MM HH:mm"
+  // - mes: barras por dia (energia kWh)
+  // - ano: barras por mês (energia kWh)
   const dadosFormatadosPotencia = useMemo(() => {
     if (!dados || dados.length === 0) return [];
 
-    // Filtrar apenas dados de hoje (00:00 até agora)
-    const hoje = new Date();
-    hoje.setHours(0, 0, 0, 0);
-    const inicioDeHoje = hoje.getTime();
+    if (periodo.tipo === 'dia') {
+      const hoje = new Date();
+      hoje.setHours(0, 0, 0, 0);
+      const inicioDeHoje = hoje.getTime();
+      const valorAdicional = valorContratado * (1 + percentualAdicional / 100);
 
-    const dadosDeHoje = dados.filter(item => {
-      const timestamp = new Date(item.timestamp).getTime();
-      return timestamp >= inicioDeHoje;
-    });
+      const dadosDeHoje = dados.filter(item => {
+        if (!item.timestamp) return false;
+        return new Date(item.timestamp).getTime() >= inicioDeHoje;
+      });
 
-    // Criar array com todas as horas do dia de 00:00 até agora
-    const agora = new Date();
-    const todosOsHorarios: any[] = [];
-    const horaFinal = agora.getHours();
-    const minutoFinal = agora.getMinutes();
+      const agora = new Date();
+      const todosOsHorarios: any[] = [];
+      const horaFinal = agora.getHours();
+      const minutoFinal = agora.getMinutes();
 
-    for (let h = 0; h <= horaFinal; h++) {
-      const maxMinutos = (h === horaFinal) ? minutoFinal : 59;
-      for (let m = 0; m <= maxMinutos; m += 5) { // ✅ De 5 em 5 minutos
-        const timestamp = new Date(hoje);
-        timestamp.setHours(h, m, 0, 0);
-        todosOsHorarios.push({
-          timestamp: timestamp.toISOString(),
-          hora: timestamp.toLocaleTimeString("pt-BR", {
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
-          potencia: null,
-          valorContratado: valorContratado,
-          valorAdicional: valorContratado * (1 + percentualAdicional / 100),
-        });
+      for (let h = 0; h <= horaFinal; h++) {
+        const maxMinutos = h === horaFinal ? minutoFinal : 59;
+        for (let m = 0; m <= maxMinutos; m += 5) {
+          const ts = new Date(hoje);
+          ts.setHours(h, m, 0, 0);
+          todosOsHorarios.push({
+            timestamp: ts.toISOString(),
+            hora: ts.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+            potencia: null,
+            valorContratado,
+            valorAdicional,
+          });
+        }
       }
+
+      const dadosMap = new Map(
+        dadosDeHoje.map(item => {
+          const hora = new Date(item.timestamp!).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+          return [hora, { hora, timestamp: item.timestamp, potencia: item.potencia_kw, valorContratado, valorAdicional }];
+        }),
+      );
+
+      return todosOsHorarios.map(slot => dadosMap.get(slot.hora) ?? slot);
     }
 
-    // Mesclar dados reais com o template
-    const dadosMap = new Map(
-      dadosDeHoje.map((item) => [
-        new Date(item.timestamp).toLocaleTimeString("pt-BR", {
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-        {
-          ...item,
-          hora: new Date(item.timestamp).toLocaleTimeString("pt-BR", {
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
-          valorContratado: valorContratado,
-          valorAdicional: valorContratado * (1 + percentualAdicional / 100),
-        }
-      ])
-    );
+    if (periodo.tipo === 'custom') {
+      return dados.map(item => {
+        const ts = item.timestamp ? new Date(item.timestamp) : null;
+        return {
+          timestamp: item.timestamp,
+          hora: ts
+            ? ts.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+            : '',
+          potencia: item.potencia_kw,
+        };
+      });
+    }
 
-    return todosOsHorarios.map(slot => dadosMap.get(slot.hora) || slot);
-  }, [dados, valorContratado, percentualAdicional]);
+    if (periodo.tipo === 'mes') {
+      return dados.map(item => ({
+        label: String(item.dia ?? ''),
+        energia: item.energia_kwh,
+      }));
+    }
+
+    // ano
+    return dados.map(item => ({
+      label: item.mes_nome ? item.mes_nome.slice(0, 3) : MESES_PT_CURTOS[(item.mes_numero ?? 1) - 1],
+      energia: item.energia_kwh,
+    }));
+  }, [dados, periodo.tipo, valorContratado, percentualAdicional]);
 
   // Formatar dados de tensão e FP do M160 - com período completo de 00:00 até agora
   const dadosFormatadosTensao = useMemo(() => {
@@ -606,33 +556,55 @@ export function SinopticoGraficosV2({
     return todosOsHorarios.map(slot => dadosMap.get(slot.hora) || slot);
   }, [dadosM160]);
 
-  // Verificar se tem equipamentos disponíveis para o gráfico de demanda
-  // SEMPRE mostra o gráfico se tiver equipamentos disponíveis (mesmo sem nenhum selecionado)
-  // Isso permite que o usuário clique em "Configurar" para selecionar equipamentos
+  // Há equipamentos cadastrados na unidade (com MQTT). Mostra card mesmo sem seleção.
   const temEquipamentosDisponiveis = equipamentosData && equipamentosData.length > 0;
-
-  // Verificar se tem algum equipamento selecionado
   const temEquipamentosSelecionados = configuracao.equipamentos.some(e => e.selecionado);
-
-  // Verificar se tem M160 disponível para tensão e FP
   const temM160Disponivel = equipamentosM160.length > 0;
 
-  // Analisar qualidade dos dados
-  const qualidadeDados = useMemo(() => analisarQualidadeDados(dados), [dados]);
+  // Qualidade só faz sentido para 'dia' (live). Mês/ano/custom são consultas históricas.
+  const qualidadeDados = useMemo(
+    () => (periodo.tipo === 'dia' ? analisarQualidadeDados(dados) : { status: 'OK' as const, mensagem: '' }),
+    [dados, periodo.tipo],
+  );
+
+  const ehSeriesPotencia = periodo.tipo === 'dia' || periodo.tipo === 'custom';
+  const unidadeGrafico = ehSeriesPotencia ? 'kW' : 'kWh';
+
+  const handlePeriodoTipoChange = (novoTipo: string) => {
+    if (novoTipo === 'dia') setPeriodo({ tipo: 'dia' });
+    else if (novoTipo === 'mes') setPeriodo({ tipo: 'mes' });
+    else if (novoTipo === 'ano') setPeriodo({ tipo: 'ano' });
+  };
+
+  const aplicarCustom = () => {
+    const inicio = new Date(customInicio);
+    const fim = new Date(customFim);
+    if (isNaN(inicio.getTime()) || isNaN(fim.getTime()) || fim <= inicio) return;
+    const dias = (fim.getTime() - inicio.getTime()) / 86_400_000;
+    if (dias > 31) return;
+    setPeriodo({ tipo: 'custom', inicio: inicio.toISOString(), fim: fim.toISOString() });
+    setCustomAberto(false);
+  };
+
+  const customLabel = useMemo(() => {
+    if (periodo.tipo !== 'custom' || !periodo.inicio || !periodo.fim) return 'Personalizado';
+    const fmt = (iso: string) =>
+      new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    return `${fmt(periodo.inicio)} – ${fmt(periodo.fim)}`;
+  }, [periodo]);
 
   return (
     <div className="w-full flex flex-col gap-4">
-      {/* Gráfico de Demanda - Mostra se tiver equipamentos disponíveis (mesmo que nenhum esteja selecionado) */}
+      {/* Gráfico de Demanda */}
       {temEquipamentosDisponiveis && (
       <Card>
-        <CardHeader className="p-2">
+        <CardHeader className="p-2 space-y-2">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-2">
               <Zap className="h-5 w-5 text-yellow-500" />
               <CardTitle>Demanda</CardTitle>
-              {getConfiabilidadeBadge(fonte, confiabilidade)}
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
               <Button
                 variant="ghost"
                 size="icon"
@@ -653,45 +625,82 @@ export function SinopticoGraficosV2({
               </Button>
             </div>
           </div>
+
+          {/* Tabs de período + energia inline */}
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-1">
+              <Tabs value={periodo.tipo === 'custom' ? '' : periodo.tipo} onValueChange={handlePeriodoTipoChange}>
+                <TabsList className="h-8 gap-1 rounded-[2px] bg-transparent p-0">
+                  <TabsTrigger value="dia" className="text-xs h-7 px-3 rounded-[2px] data-[state=active]:bg-accent">Dia</TabsTrigger>
+                  <TabsTrigger value="mes" className="text-xs h-7 px-3 rounded-[2px] data-[state=active]:bg-accent">Mês</TabsTrigger>
+                  <TabsTrigger value="ano" className="text-xs h-7 px-3 rounded-[2px] data-[state=active]:bg-accent">Ano</TabsTrigger>
+                </TabsList>
+              </Tabs>
+
+              <Popover open={customAberto} onOpenChange={setCustomAberto}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant={periodo.tipo === 'custom' ? 'secondary' : 'ghost'}
+                    size="sm"
+                    className="h-8 text-xs"
+                  >
+                    {customLabel}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80" align="start">
+                  <div className="space-y-3">
+                    <div className="space-y-1">
+                      <Label htmlFor="custom-inicio" className="text-xs">Início</Label>
+                      <Input
+                        id="custom-inicio"
+                        type="datetime-local"
+                        value={customInicio}
+                        onChange={e => setCustomInicio(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="custom-fim" className="text-xs">Fim</Label>
+                      <Input
+                        id="custom-fim"
+                        type="datetime-local"
+                        value={customFim}
+                        onChange={e => setCustomFim(e.target.value)}
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">Range máximo: 31 dias.</p>
+                    <div className="flex justify-end gap-2">
+                      <Button variant="ghost" size="sm" onClick={() => setCustomAberto(false)}>Cancelar</Button>
+                      <Button size="sm" onClick={aplicarCustom}>Aplicar</Button>
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            {energiaPeriodo > 0 && (
+              <div className="flex items-baseline gap-1.5">
+                <TrendingUp className="h-4 w-4 text-muted-foreground self-center" />
+                <span className="text-sm font-semibold">{formatarEnergia(energiaPeriodo)}</span>
+                <span className="text-xs text-muted-foreground">no período</span>
+              </div>
+            )}
+          </div>
         </CardHeader>
+
         <CardContent className="p-2">
-          {/* Alerta de Dados Desatualizados/Sem Dados - Discreto */}
-          {qualidadeDados.status !== 'OK' && (
+          {/* Alerta de qualidade — só em modo 'dia' */}
+          {periodo.tipo === 'dia' && qualidadeDados.status !== 'OK' && (
             <div className="mb-3 p-2 rounded-md bg-muted/40">
               <div className="flex items-center gap-2">
                 <AlertTriangle className="h-3.5 w-3.5 text-muted-foreground/70" />
-                <div className="flex-1">
-                  <p className="text-xs text-muted-foreground">
-                    {qualidadeDados.status === 'SEM_DADOS' && (
-                      <>Nenhum dado disponível</>
-                    )}
-                    {qualidadeDados.status === 'DESATUALIZADO' && (
-                      <>Dados desatualizados. {qualidadeDados.mensagem}</>
-                    )}
-                    {qualidadeDados.status === 'PARCIAL' && (
-                      <>Cobertura parcial: {qualidadeDados.mensagem.split(': ')[1]}</>
-                    )}
-                    {' · '}
-                    <span className="text-muted-foreground/60">
-                      {qualidadeDados.status === 'SEM_DADOS' && 'Verifique serviço MQTT'}
-                      {qualidadeDados.status === 'DESATUALIZADO' && 'Conexão MQTT interrompida ou equipamentos offline'}
-                      {qualidadeDados.status === 'PARCIAL' && 'Falhas intermitentes na conexão'}
-                    </span>
-                  </p>
-                </div>
+                <p className="text-xs text-muted-foreground">
+                  {qualidadeDados.status === 'SEM_DADOS' && <>Nenhum dado disponível · <span className="text-muted-foreground/60">Verifique serviço MQTT</span></>}
+                  {qualidadeDados.status === 'DESATUALIZADO' && <>Dados desatualizados ({qualidadeDados.mensagem}) · <span className="text-muted-foreground/60">Conexão MQTT interrompida ou equipamentos offline</span></>}
+                </p>
               </div>
             </div>
           )}
 
-          {/* Energia do Dia */}
-          {energiaDia !== undefined && energiaDia !== 0 && (
-            <div className="mb-2 bg-muted/50 rounded-lg flex items-center gap-2">
-              <TrendingUp className="h-4 w-4 text-green-600 dark:text-green-400" />
-              <span className="text-sm font-semibold text-green-600 dark:text-green-400">
-                Energia do dia: {energiaDia.toFixed(2)} kWh
-              </span>
-            </div>
-          )}
           {isInitialLoading ? (
             <div className="flex flex-col items-center justify-center h-[300px] space-y-3">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -702,9 +711,7 @@ export function SinopticoGraficosV2({
               <AlertTriangle className="h-8 w-8 text-muted-foreground" />
               <div className="text-center space-y-2">
                 <p className="text-sm font-medium text-muted-foreground">
-                  {temEquipamentosSelecionados
-                    ? 'Nenhum dado disponível'
-                    : 'Nenhum equipamento selecionado'}
+                  {temEquipamentosSelecionados ? 'Nenhum dado disponível' : 'Nenhum equipamento selecionado'}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {temEquipamentosSelecionados
@@ -713,89 +720,59 @@ export function SinopticoGraficosV2({
                 </p>
               </div>
             </div>
+          ) : ehSeriesPotencia ? (
+            <ResponsiveContainer width="100%" height={350}>
+              <LineChart data={dadosFormatadosPotencia}>
+                <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                <XAxis dataKey="hora" fontSize={12} />
+                <YAxis fontSize={12} label={{ value: unidadeGrafico, angle: -90, position: 'insideLeft' }} />
+                <Tooltip content={<CustomTooltip unidade={unidadeGrafico} />} />
+                <Legend wrapperStyle={{ fontSize: '12px' }} iconType="line" />
+                <Line
+                  type="monotone"
+                  dataKey="potencia"
+                  name="Demanda"
+                  stroke={corLinhaDemanda}
+                  strokeWidth={2}
+                  dot={false}
+                  activeDot={{ r: 4 }}
+                  connectNulls={true}
+                />
+                {periodo.tipo === 'dia' && (
+                  <>
+                    <Line
+                      type="monotone"
+                      dataKey="valorContratado"
+                      name="Valor Contratado"
+                      stroke="#9ca3af"
+                      strokeWidth={1.5}
+                      strokeDasharray="5 5"
+                      dot={false}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="valorAdicional"
+                      name={`Contratado + ${percentualAdicional}%`}
+                      stroke="#6b7280"
+                      strokeWidth={1.5}
+                      strokeDasharray="5 5"
+                      dot={false}
+                    />
+                  </>
+                )}
+              </LineChart>
+            </ResponsiveContainer>
           ) : (
-          <ResponsiveContainer width="100%" height={350}>
-            <LineChart data={dadosFormatadosPotencia}>
-              <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-              <XAxis dataKey="hora" fontSize={12} />
-              <YAxis
-                fontSize={12}
-                label={{
-                  value: "kW",
-                  angle: -90,
-                  position: "insideLeft",
-                }}
-              />
-              <Tooltip content={<CustomTooltip />} />
-              <Legend
-                wrapperStyle={{ fontSize: '12px' }}
-                iconType="line"
-              />
-
-              {/* Linha 1: Demanda Real (Potência) - Preto no light, branco no dark */}
-              <Line
-                type="monotone"
-                dataKey="potencia"
-                name="Demanda Real"
-                stroke={corLinhaDemanda}
-                strokeWidth={2}
-                dot={false}
-                activeDot={{ r: 4 }}
-                connectNulls={true}
-              />
-
-              {/* Linha 2: Valor Contratado - Discreto */}
-              <Line
-                type="monotone"
-                dataKey="valorContratado"
-                name="Valor Contratado"
-                stroke="#9ca3af"
-                strokeWidth={1.5}
-                strokeDasharray="5 5"
-                dot={false}
-              />
-
-              {/* Linha 3: Valor Contratado + Adicional - Discreto */}
-              <Line
-                type="monotone"
-                dataKey="valorAdicional"
-                name={`Contratado + ${percentualAdicional}%`}
-                stroke="#6b7280"
-                strokeWidth={1.5}
-                strokeDasharray="5 5"
-                dot={false}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-          )}
-
-          {/* Detalhes adicionais */}
-          {!isLoading && configuracao.mostrarDetalhes && detalhes && (
-            <div className="mt-4 p-3 bg-muted rounded-lg text-xs">
-              <p className="font-medium mb-1">Detalhes da Medição:</p>
-              <div className="flex flex-wrap gap-3">
-                {energiaDia !== undefined && energiaDia !== 0 && (
-                  <span className="font-semibold text-green-600 dark:text-green-400">
-                    Energia do dia: {energiaDia.toFixed(2)} kWh
-                  </span>
-                )}
-                {detalhes.formula && (
-                  <span>Fórmula: {detalhes.formula}</span>
-                )}
-                {detalhes.equipamentosUsados !== undefined && (
-                  <span>Equipamentos: {detalhes.equipamentosUsados}</span>
-                )}
-                {detalhes.equipamentosOffline !== undefined && detalhes.equipamentosOffline > 0 && (
-                  <span className="text-yellow-600">Offline: {detalhes.equipamentosOffline}</span>
-                )}
-                {detalhes.perdaAplicada !== undefined && detalhes.perdaAplicada > 0 && (
-                  <span>Perdas: {detalhes.perdaAplicada}%</span>
-                )}
-                {detalhes.energiaDetalhes && (
-                  <span className="text-muted-foreground">({detalhes.energiaDetalhes})</span>
-                )}
-              </div>
-            </div>
+            <ResponsiveContainer width="100%" height={350}>
+              <BarChart data={dadosFormatadosPotencia}>
+                <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                <XAxis dataKey="label" fontSize={12} />
+                <YAxis fontSize={12} label={{ value: unidadeGrafico, angle: -90, position: 'insideLeft' }} />
+                <Tooltip content={<CustomTooltip unidade={unidadeGrafico} />} />
+                <Legend wrapperStyle={{ fontSize: '12px' }} iconType="rect" />
+                <Bar dataKey="energia" name="Energia" fill={corLinhaDemanda} radius={[2, 2, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
           )}
         </CardContent>
       </Card>
@@ -1189,22 +1166,16 @@ export function SinopticoGraficosV2({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Zap className="h-5 w-5 text-yellow-500" />
-              Gráfico de Demanda - Expandido
-              {getConfiabilidadeBadge(fonte, confiabilidade)}
+              Demanda — Expandido
+              {energiaPeriodo > 0 && (
+                <span className="ml-3 text-sm font-normal text-muted-foreground">
+                  <span className="font-semibold text-foreground">{formatarEnergia(energiaPeriodo)}</span> no período
+                </span>
+              )}
             </DialogTitle>
           </DialogHeader>
 
-          {/* Energia do Dia - Modal Expandido */}
-          {energiaDia !== undefined && energiaDia !== 0 && (
-            <div className="p-3 bg-muted/50 rounded-lg flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-green-600 dark:text-green-400" />
-              <span className="text-base font-semibold text-green-600 dark:text-green-400">
-                Energia do dia: {energiaDia.toFixed(2)} kWh
-              </span>
-            </div>
-          )}
-
-          <div className="w-full h-[70vh]">
+          <div className="w-full h-[75vh]">
             {isInitialLoading ? (
               <div className="flex flex-col items-center justify-center h-full space-y-3">
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -1215,9 +1186,7 @@ export function SinopticoGraficosV2({
                 <AlertTriangle className="h-8 w-8 text-muted-foreground" />
                 <div className="text-center space-y-2">
                   <p className="text-sm font-medium text-muted-foreground">
-                    {temEquipamentosSelecionados
-                      ? 'Nenhum dado disponível'
-                      : 'Nenhum equipamento selecionado'}
+                    {temEquipamentosSelecionados ? 'Nenhum dado disponível' : 'Nenhum equipamento selecionado'}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {temEquipamentosSelecionados
@@ -1226,26 +1195,14 @@ export function SinopticoGraficosV2({
                   </p>
                 </div>
               </div>
-            ) : (
+            ) : ehSeriesPotencia ? (
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={dadosFormatadosPotencia}>
                   <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                   <XAxis dataKey="hora" fontSize={12} />
-                  <YAxis
-                    fontSize={12}
-                    label={{
-                      value: "kW",
-                      angle: -90,
-                      position: "insideLeft",
-                    }}
-                  />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Legend
-                    wrapperStyle={{ fontSize: '12px' }}
-                    iconType="line"
-                  />
-
-                  {/* Brush para zoom e navegação - apenas no modal expandido */}
+                  <YAxis fontSize={12} label={{ value: unidadeGrafico, angle: -90, position: 'insideLeft' }} />
+                  <Tooltip content={<CustomTooltip unidade={unidadeGrafico} />} />
+                  <Legend wrapperStyle={{ fontSize: '12px' }} iconType="line" />
                   <Brush
                     dataKey="hora"
                     height={30}
@@ -1253,63 +1210,51 @@ export function SinopticoGraficosV2({
                     fill="hsl(var(--muted))"
                     travellerWidth={10}
                   />
-
-                  {/* Linha 1: Demanda Real (Potência) - Preto no light, branco no dark */}
                   <Line
                     type="monotone"
                     dataKey="potencia"
-                    name="Demanda Real"
+                    name="Demanda"
                     stroke={corLinhaDemanda}
                     strokeWidth={2}
                     dot={false}
                     activeDot={{ r: 4 }}
                     connectNulls={true}
                   />
-
-                  {/* Linha 2: Valor Contratado - Discreto */}
-                  <Line
-                    type="monotone"
-                    dataKey="valorContratado"
-                    name="Valor Contratado"
-                    stroke="#9ca3af"
-                    strokeWidth={1.5}
-                    strokeDasharray="5 5"
-                    dot={false}
-                  />
-
-                  {/* Linha 3: Valor Contratado + Adicional - Discreto */}
-                  <Line
-                    type="monotone"
-                    dataKey="valorAdicional"
-                    name={`Contratado + ${percentualAdicional}%`}
-                    stroke="#6b7280"
-                    strokeWidth={1.5}
-                    strokeDasharray="5 5"
-                    dot={false}
-                  />
+                  {periodo.tipo === 'dia' && (
+                    <>
+                      <Line
+                        type="monotone"
+                        dataKey="valorContratado"
+                        name="Valor Contratado"
+                        stroke="#9ca3af"
+                        strokeWidth={1.5}
+                        strokeDasharray="5 5"
+                        dot={false}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="valorAdicional"
+                        name={`Contratado + ${percentualAdicional}%`}
+                        stroke="#6b7280"
+                        strokeWidth={1.5}
+                        strokeDasharray="5 5"
+                        dot={false}
+                      />
+                    </>
+                  )}
                 </LineChart>
               </ResponsiveContainer>
-            )}
-
-            {/* Detalhes adicionais */}
-            {!isLoading && configuracao.mostrarDetalhes && detalhes && (
-              <div className="mt-4 p-3 bg-muted rounded-lg text-xs">
-                <p className="font-medium mb-1">Detalhes da Medição:</p>
-                <div className="flex flex-wrap gap-3">
-                  {detalhes.formula && (
-                    <span>Fórmula: {detalhes.formula}</span>
-                  )}
-                  {detalhes.equipamentosUsados !== undefined && (
-                    <span>Equipamentos: {detalhes.equipamentosUsados}</span>
-                  )}
-                  {detalhes.equipamentosOffline !== undefined && detalhes.equipamentosOffline > 0 && (
-                    <span className="text-yellow-600">Offline: {detalhes.equipamentosOffline}</span>
-                  )}
-                  {detalhes.perdaAplicada !== undefined && detalhes.perdaAplicada > 0 && (
-                    <span>Perdas: {detalhes.perdaAplicada}%</span>
-                  )}
-                </div>
-              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={dadosFormatadosPotencia}>
+                  <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                  <XAxis dataKey="label" fontSize={12} />
+                  <YAxis fontSize={12} label={{ value: unidadeGrafico, angle: -90, position: 'insideLeft' }} />
+                  <Tooltip content={<CustomTooltip unidade={unidadeGrafico} />} />
+                  <Legend wrapperStyle={{ fontSize: '12px' }} iconType="rect" />
+                  <Bar dataKey="energia" name="Energia" fill={corLinhaDemanda} radius={[2, 2, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
             )}
           </div>
         </DialogContent>
