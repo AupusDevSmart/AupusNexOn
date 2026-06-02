@@ -147,6 +147,16 @@ export const DiagramV2Wrapper: React.FC<DiagramV2WrapperProps> = ({
   // Estado para mostrar/ocultar gráficos - SEMPRE começa OCULTO
   const [showGraficos, setShowGraficos] = useState(false);
 
+  // Auto-refit quando o painel de gráficos alterna — viewport real muda de
+  // largura, fit do IoT consegue isso de graça via editor.centerView() na
+  // troca de mode, aqui precisamos chamar explícito após o reflow.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      useDiagramStore.getState().fitToContent();
+    }, 250);
+    return () => clearTimeout(t);
+  }, [showGraficos]);
+
   // Estado do modal de comando MQTT — abre ao clicar em equipamento cuja
   // categoria tem comandos registrados (ex: TON com botoes de rele/transistor).
   const [commandModalEquipment, setCommandModalEquipment] = useState<Equipment | null>(null);
@@ -394,7 +404,7 @@ export const DiagramV2Wrapper: React.FC<DiagramV2WrapperProps> = ({
             variant="outline"
             size="sm"
             onClick={() => setShowGraficos(!showGraficos)}
-            className="gap-2 bg-background/95 backdrop-blur-sm shadow-lg border-2"
+            className="gap-2 bg-background/95 backdrop-blur-sm shadow-lg border-2 rounded-sm"
           >
             <BarChart3 className="h-4 w-4" />
             {showGraficos ? 'Ocultar Gráficos' : 'Mostrar Gráficos'}

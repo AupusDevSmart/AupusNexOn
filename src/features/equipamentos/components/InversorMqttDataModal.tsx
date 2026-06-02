@@ -181,7 +181,7 @@ export function InversorMqttDataModal({ equipamentoId, open, onOpenChange }: Inv
   const dataTimestamp = new Date(data.dado.timestamp_dados);
   const agora = new Date();
   const diferencaMinutos = (agora.getTime() - dataTimestamp.getTime()) / (1000 * 60);
-  const isDataStale = diferencaMinutos > 5; // Dados com mais de 5 minutos são considerados desatualizados
+  const isDataStale = diferencaMinutos > 30; // Dados com mais de 30 minutos são considerados desatualizados
   const isDataVeryStale = diferencaMinutos > 60; // Dados com mais de 1 hora são muito desatualizados
 
   // Formatar tempo decorrido

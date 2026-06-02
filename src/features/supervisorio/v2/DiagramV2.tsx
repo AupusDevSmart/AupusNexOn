@@ -11,6 +11,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
+import { CircuitBoard } from 'lucide-react';
 import { useDiagramStore } from './hooks/useDiagramStore';
 import { DiagramViewport } from './components/DiagramViewer/DiagramViewport';
 import { DiagramConnections } from './components/DiagramViewer/DiagramConnections';
@@ -349,7 +350,7 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
 
   if (isLoading) {
     return (
-      <div className="w-full h-full flex items-center justify-center bg-white dark:bg-black">
+      <div className="w-full h-full flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin"></div>
           <p className="text-sm text-muted-foreground">Carregando diagrama...</p>
@@ -362,7 +363,7 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
   if (error && errorType === 'not_found') {
     return (
       <>
-        <div className="w-full h-full flex items-center justify-center bg-white dark:bg-black">
+        <div className="w-full h-full flex items-center justify-center">
           <div className="flex flex-col items-center text-center max-w-md px-4">
             <div className="mb-4 text-muted-foreground">
               <svg
@@ -473,7 +474,7 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
   // Erro genérico
   if (error) {
     return (
-      <div className="w-full h-full flex items-center justify-center bg-white dark:bg-black">
+      <div className="w-full h-full flex items-center justify-center">
         <div className="flex flex-col items-center text-center max-w-md px-4">
           <div className="mb-4 text-destructive">
             <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -499,7 +500,7 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
 
   if (!diagrama) {
     return (
-      <div className="w-full h-full flex items-center justify-center bg-white dark:bg-black">
+      <div className="w-full h-full flex items-center justify-center">
         <p className="text-muted-foreground">Nenhum diagrama carregado</p>
       </div>
     );
@@ -508,12 +509,15 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
   return (
     <div className="w-full h-full flex flex-col overflow-hidden">
       {/* Toolbar superior */}
-      <div className="flex justify-between items-center px-5 py-2 bg-muted/30 border-b min-h-[56px]">
-        <div className="flex flex-col">
-          <h2 className="text-sm font-medium text-foreground tracking-tight">{diagrama.nome}</h2>
-          {diagrama.descricao && (
-            <p className="text-xs text-muted-foreground mt-0.5">{diagrama.descricao}</p>
-          )}
+      <div className="flex justify-between items-center px-5 py-2 bg-muted/30 min-h-[56px]">
+        <div className="flex items-center gap-3">
+          <CircuitBoard className="h-4 w-4 text-foreground" />
+          <div className="flex flex-col">
+            <h2 className="text-sm font-medium text-foreground tracking-tight">{diagrama.nome}</h2>
+            {diagrama.descricao && (
+              <p className="text-xs text-muted-foreground mt-0.5">{diagrama.descricao}</p>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center gap-2">

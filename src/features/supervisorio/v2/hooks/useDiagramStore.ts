@@ -25,7 +25,7 @@ import {
   Theme,
 } from '../types/diagram.types';
 import { convertToVisualConnections } from '../utils/barramentoDetector';
-import { VIEWPORT } from '../utils/diagramConstants';
+import { CANVAS, VIEWPORT } from '../utils/diagramConstants';
 
 // ============================================================================
 // TIPOS DA STORE
@@ -1368,125 +1368,66 @@ if (import.meta.env.PROD) {
       fitToContent: () => {
         const { equipamentos } = get();
 
-        // Se não houver equipamentos, centralizar na origem
         if (equipamentos.length === 0) {
           set({
-            viewport: {
-              x: 0,
-              y: 0,
-              scale: VIEWPORT.DEFAULT_SCALE,
-              isDragging: false,
-            },
+            viewport: { x: 0, y: 0, scale: VIEWPORT.DEFAULT_SCALE, isDragging: false },
           });
           return;
         }
 
-        // IMPORTANTE: Equipamentos armazenam posição em GRID UNITS, não pixels
-        // Exemplo: posicaoX = 5 significa 5 células de grid = 5 * 40px = 200px
-        const GRID_SIZE = 40; // pixels por célula de grid
-        const EQUIPMENT_SIZE_GRID = 2; // Todos os equipamentos ocupam 2x2 células
+        // Equipamentos em GRID UNITS (1 cell = 40px no espaço SVG, todos 2x2).
+        const GRID_SIZE = 40;
+        const EQUIPMENT_SIZE_GRID = 2;
 
-        // Calcular bounding box em GRID UNITS primeiro
-        let minGridX = Infinity;
-        let minGridY = Infinity;
-        let maxGridX = -Infinity;
-        let maxGridY = -Infinity;
-
+        // Bbox em pixels SVG (coords do viewBox, NÃO pixels CSS).
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
         equipamentos.forEach(eq => {
-          // Posições já estão em grid units
-          if (eq.posicaoX < minGridX) {
-            minGridX = eq.posicaoX;
-          }
-          if (eq.posicaoX + EQUIPMENT_SIZE_GRID > maxGridX) {
-            maxGridX = eq.posicaoX + EQUIPMENT_SIZE_GRID;
-          }
-          if (eq.posicaoY < minGridY) {
-            minGridY = eq.posicaoY;
-          }
-          if (eq.posicaoY + EQUIPMENT_SIZE_GRID > maxGridY) {
-            maxGridY = eq.posicaoY + EQUIPMENT_SIZE_GRID;
-          }
+          const x = eq.posicaoX * GRID_SIZE;
+          const y = eq.posicaoY * GRID_SIZE;
+          if (x < minX) minX = x;
+          if (y < minY) minY = y;
+          const x2 = x + EQUIPMENT_SIZE_GRID * GRID_SIZE;
+          const y2 = y + EQUIPMENT_SIZE_GRID * GRID_SIZE;
+          if (x2 > maxX) maxX = x2;
+          if (y2 > maxY) maxY = y2;
         });
 
-        // Converter para pixels
-        const minX = minGridX * GRID_SIZE;
-        const minY = minGridY * GRID_SIZE;
-        const maxX = maxGridX * GRID_SIZE;
-        const maxY = maxGridY * GRID_SIZE;
-
-        // Calcular dimensões do bounding box
-        const contentWidth = maxX - minX;
-        const contentHeight = maxY - minY;
-
-        // Calcular centro do bounding box EM PIXELS
+        const contentWidth = Math.max(maxX - minX, 1);
+        const contentHeight = Math.max(maxY - minY, 1);
         const centerX = (minX + maxX) / 2;
         const centerY = (minY + maxY) / 2;
 
-        // 🎯 USAR AS DIMENSÕES REAIS DO CONTAINER SVG (não window)
-        // Pegar referência do container do diagrama
-        const viewportElement = document.querySelector('.diagram-viewport-container');
-        const viewportWidth = viewportElement?.clientWidth || (typeof window !== 'undefined' ? window.innerWidth : 1920);
-        const viewportHeight = viewportElement?.clientHeight || (typeof window !== 'undefined' ? window.innerHeight : 1080);
+        // Dimensões reais do container (varia quando painel de gráficos abre).
+        const viewportEl = document.querySelector('.diagram-viewport-container');
+        const viewportWidth = viewportEl?.clientWidth ?? CANVAS.WIDTH;
+        const viewportHeight = viewportEl?.clientHeight ?? CANVAS.HEIGHT;
 
-        // ⚡ CÁLCULO DE ZOOM BASEADO NO TAMANHO DO CONTEÚDO (não do container)
-        // Isso garante que o zoom seja SEMPRE o mesmo, independente do painel lateral estar aberto
+        // viewBox eh 3x o CANVAS (gridMultiplier=1.5 * 2 em
+        // DiagramViewport.calculateViewBox). 1 px SVG → 1/3 px CSS.
+        const SVG_TO_CSS = 1 / 3;
 
-        // Estratégia: Calcular zoom baseado no tamanho do conteúdo em pixels
-        // Diagramas pequenos (< 1000px) → zoom alto (2.0-3.0)
-        // Diagramas médios (1000-2000px) → zoom médio (1.0-2.0)
-        // Diagramas grandes (> 2000px) → zoom baixo (0.5-1.0)
+        // Fit clássico: encolhe ate caber, com 10% de margem visual.
+        const PADDING = 0.9;
+        const fitScaleX = (viewportWidth * PADDING) / (contentWidth * SVG_TO_CSS);
+        const fitScaleY = (viewportHeight * PADDING) / (contentHeight * SVG_TO_CSS);
+        const fitScale = Math.min(fitScaleX, fitScaleY);
 
-        const contentSize = Math.max(contentWidth, contentHeight);
-
-        // ⚡ ZOOM ADAPTATIVO GERAL - Funciona para qualquer tamanho de diagrama
-        // Estratégia: Usar faixas de tamanho com zooms apropriados
-
-        let targetScale: number;
-
-        if (contentSize < 600) {
-          // Diagramas muito pequenos: zoom fixo alto
-          targetScale = 2.5;
-        } else if (contentSize > 2500) {
-          // Diagramas muito grandes: zoom fixo baixo
-          targetScale = 0.8;
-        } else {
-          // Diagramas médios (600-2500px): usar fórmula proporcional
-          // Calibrado para atingir ~1.95x com contentSize=1000px
-          const REFERENCE_SIZE = 400;
-          const MULTIPLIER = 4.875;
-          targetScale = (REFERENCE_SIZE / contentSize) * MULTIPLIER;
-        }
-
-        // Limitar apenas aos limites globais MIN/MAX (sem forçar caber na tela)
         const clampedScale = Math.max(
           VIEWPORT.MIN_SCALE,
-          Math.min(VIEWPORT.MAX_SCALE, targetScale)
+          Math.min(VIEWPORT.MAX_SCALE, fitScale),
         );
 
-        // ⚡ FÓRMULA SIMPLES DO PAN
-        // Mover o centro do conteúdo para o centro (origem) do viewBox
-        const panX = -centerX / clampedScale;
-        const panY = -centerY / clampedScale;
+        // Pan: transform aplicado eh
+        //   translate(-50%, -50%) translate(panX, panY) scale(S)
+        // SVG centralizado por translate(-50%, -50%) sobre top:50% left:50%.
+        // viewBox tem origem (0,0) no centro. Ponto SVG (cx,cy) aparece em
+        // (cx * SVG_TO_CSS * S, cy * SVG_TO_CSS * S) off-center em CSS pixels.
+        // Pra trazer o centro do conteudo pro centro: anular esse offset.
+        const panX = -centerX * SVG_TO_CSS * clampedScale;
+        const panY = -centerY * SVG_TO_CSS * clampedScale;
 
-        console.log('🎯 [fitToContent] RESULTADO:', {
-          boundingBox: { minX, minY, maxX, maxY },
-          center: { x: centerX, y: centerY },
-          pan: { x: panX, y: panY },
-          scale: clampedScale,
-          contentSize: { width: contentWidth, height: contentHeight },
-          viewportSize: { width: viewportWidth, height: viewportHeight },
-          formula: `panX = (${viewportWidth}/2 - ${centerX}) / ${clampedScale} = ${panX}`,
-          formulaY: `panY = (${viewportHeight}/2 - ${centerY}) / ${clampedScale} = ${panY}`
-        });
-
-        // Aplicar viewport
         set({
-          viewport: {
-            x: panX,
-            y: panY,
-            scale: clampedScale,
-            isDragging: false,
-          },
+          viewport: { x: panX, y: panY, scale: clampedScale, isDragging: false },
         });
       },
 

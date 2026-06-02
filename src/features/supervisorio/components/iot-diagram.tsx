@@ -924,7 +924,7 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
   if (!selectedProjectId && !loadingProjects) {
     return (
       <div className="flex-1 flex flex-col min-h-0">
-        <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/30">
+        <div className="flex items-center justify-between px-4 py-2 bg-muted/30">
           <span className="text-sm font-medium">Projetos IoT</span>
           <Button variant="outline" size="sm" onClick={openCreateModal}>
             <Plus className="h-4 w-4 mr-1" /> Novo Projeto
@@ -974,7 +974,7 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
 
       {/* View mode header */}
       {!editMode && (
-        <div className="flex items-center justify-between px-5 py-2 bg-muted/30 border-b min-h-[48px]">
+        <div className="flex items-center justify-between px-5 py-2 bg-muted/30 min-h-[48px]">
           <div className="flex items-center gap-3">
             <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
               <Network className="h-4 w-4" />
