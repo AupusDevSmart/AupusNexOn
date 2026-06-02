@@ -670,7 +670,7 @@ static void _publish_tcp_inv_${idx}(tcp_publish_fn publish) {
 
 #define DEVICE_MODEL        "${spec.tonType.toUpperCase()}"
 #define DEVICE_ID           "${spec.hostname}"
-#define FIRMWARE_VERSION    "1.4.0-cmd-hr"
+#define FIRMWARE_VERSION    "1.4.1-cmdenv-fix"
 
 // I2C
 #define I2C_ADDR_RTC        0x68
@@ -2483,10 +2483,13 @@ static void process_command(const char* raw) {
                 }
 
                 JsonVariantConst inner = env["cmd"];
+                // ArduinoJson 7: em JsonVariantConst, is<JsonObject>() retorna false
+                // mesmo pra objetos — precisa usar JsonObjectConst. Bug observado em
+                // 2026-06-02 (ack "missing_cmd_field" mesmo com {"cmd":{...}} valido).
                 if (inner.is<const char*>()) {
                     snprintf(inner_buf, sizeof(inner_buf), "%s", inner.as<const char*>());
                     effective = inner_buf;
-                } else if (inner.is<JsonObject>()) {
+                } else if (inner.is<JsonObjectConst>()) {
                     serializeJson(inner, inner_buf, sizeof(inner_buf));
                     effective = inner_buf;
                 } else {
@@ -2535,6 +2538,7 @@ void setup() {
     Serial.println("  [BOOT] TCPlog v1.2.2: log inclui slave id pra desambiguar inversores TCP");
     Serial.println("  [BOOT] ClientID v1.3.0: MQTT_CLIENT_ID derivado do MAC (unico por hardware)");
     Serial.println("  [BOOT] CmdHR v1.4.0: bo_map suporta func 0x06 (writeSingleRegister) — Schneider VI");
+    Serial.println("  [BOOT] CmdEnvFix v1.4.1: envelope {cmd_id, cmd:{...}} agora reconhece objeto aninhado");
     Serial.printf("  [BOOT] MAC: %s\\n", WiFi.macAddress().c_str());
     Serial.printf("  Motivo do reset: %s\\n", _resetReason());
     Serial.printf("  Heap livre: %u bytes\\n\\n", ESP.getFreeHeap());
