@@ -3677,13 +3677,13 @@ if (import.meta.env.PROD) {
 
         <div className="w-full h-full flex flex-col">
           {/* Header */}
-          <div className="flex-none flex flex-col sm:flex-row items-start sm:items-center gap-3 p-4 border-b">
+          <div className="flex-none flex flex-col sm:flex-row items-start sm:items-center gap-3 p-4">
             <Button
               variant="outline"
               size="sm"
               onClick={() => navigate(-1)}
               disabled={isSavingDiagrama}
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 rounded-sm"
             >
               <ArrowLeft className="h-4 w-4" />
               <span className="hidden sm:inline">Voltar</span>
@@ -3727,23 +3727,23 @@ if (import.meta.env.PROD) {
 
           {/* Abas: Unifilar | IoT */}
           {unidadeId && (
-            <div className="flex items-end gap-0 px-2 -mb-px" style={{ zIndex: 10 }}>
+            <div className="flex justify-center gap-1 pt-3 pb-1" style={{ zIndex: 10 }}>
               <button
                 onClick={() => setSinopticoTab('unifilar')}
-                className={`px-5 py-2 text-sm font-medium border border-b-0 rounded-t-lg transition-colors ${
+                className={`px-5 py-1.5 text-sm font-medium rounded-[2px] transition-colors ${
                   sinopticoTab === 'unifilar'
-                    ? 'bg-white dark:bg-slate-900 text-foreground border-border'
-                    : 'bg-muted/50 dark:bg-slate-800/50 text-muted-foreground hover:text-foreground border-transparent'
+                    ? 'bg-muted text-foreground'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                 }`}
               >
                 Diagrama Unifilar
               </button>
               <button
                 onClick={() => setSinopticoTab('iot')}
-                className={`px-5 py-2 text-sm font-medium border border-b-0 rounded-t-lg transition-colors ${
+                className={`px-5 py-1.5 text-sm font-medium rounded-[2px] transition-colors ${
                   sinopticoTab === 'iot'
-                    ? 'bg-white dark:bg-slate-900 text-foreground border-border'
-                    : 'bg-muted/50 dark:bg-slate-800/50 text-muted-foreground hover:text-foreground border-transparent'
+                    ? 'bg-muted text-foreground'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                 }`}
               >
                 IoT
@@ -3753,7 +3753,7 @@ if (import.meta.env.PROD) {
 
           {/* V2: Diagrama Unifilar */}
           {unidadeId && sinopticoTab === 'unifilar' && (
-            <div className="flex-1 min-h-0 border border-border rounded-b-lg rounded-tr-lg overflow-hidden">
+            <div className="flex-1 min-h-0 border-x border-b border-border rounded-b-lg overflow-hidden">
               <DiagramV2Wrapper
                 unidadeIdFromUrl={unidadeId}
                 modoEdicao={false}
@@ -3821,7 +3821,7 @@ if (import.meta.env.PROD) {
 
           {/* IoT: Diagrama IoT nativo */}
           {unidadeId && sinopticoTab === 'iot' && (
-            <div className="flex-1 min-h-0 border border-border rounded-b-lg rounded-tl-lg overflow-hidden flex flex-col">
+            <div className="flex-1 min-h-0 border-x border-b border-border rounded-b-lg overflow-hidden flex flex-col">
               <IoTDiagram unidadeId={unidadeId} unidadeNome={unidadeAtual?.nome} />
             </div>
           )}
