@@ -670,7 +670,7 @@ static void _publish_tcp_inv_${idx}(tcp_publish_fn publish) {
 
 #define DEVICE_MODEL        "${spec.tonType.toUpperCase()}"
 #define DEVICE_ID           "${spec.hostname}"
-#define FIRMWARE_VERSION    "1.4.1-cmdenv-fix"
+#define FIRMWARE_VERSION    "1.5.0-sbo"
 
 // I2C
 #define I2C_ADDR_RTC        0x68
@@ -1787,20 +1787,65 @@ bool modbus_exec_command(const char* device_name, const char* cmd_id) {
             if (cmds.length === 0) return;
             cpp += `    if (strcmp(device_name, "${this._escStr(dev.name)}") == 0) {\n`;
             cpp += `        _select(${dev.modbus_address});\n`;
+            // Helper: emite UMA chamada Modbus pra um "step" do bo_map
+            // Step pode ser:
+            //   { func: 0x05, coil: NNN }          -> writeSingleCoil
+            //   { func: 0x06, register: NNN, value: V } -> writeSingleRegister
+            // Retorna o trecho cpp com "if (!_mb.writeXxx(...)) return false;"
+            const emitStep = (step) => {
+                const sFunc = step.func || 0x06;
+                if (sFunc === 0x05) {
+                    if (step.coil === undefined) {
+                        console.warn(`[gen] step func 0x05 exige 'coil'`);
+                        return null;
+                    }
+                    return `            if (_mb.writeSingleCoil(${step.coil}, true) != _mb.ku8MBSuccess) return false;\n`;
+                } else if (sFunc === 0x06) {
+                    if (step.register === undefined) {
+                        console.warn(`[gen] step func 0x06 exige 'register'`);
+                        return null;
+                    }
+                    const v = (step.value !== undefined) ? step.value : 1;
+                    return `            if (_mb.writeSingleRegister(${step.register}, ${v}) != _mb.ku8MBSuccess) return false;\n`;
+                }
+                console.warn(`[gen] step func 0x${sFunc.toString(16)} nao suportada`);
+                return null;
+            };
+
             cmds.forEach(([cid, m]) => {
+                // Caso 1: comando composto (multi-write sequencial). Usado por padroes
+                // industriais Select-Before-Operate (SBO) — ex: Schneider P3 Object control,
+                // que exige 2 writes (Select + Execute) pra disparar trip/close.
+                // Formato: { steps: [ {func, ...}, {func, ...} ], delay_ms: 50 }
+                if (Array.isArray(m.steps)) {
+                    cpp += `        if (strcmp(cmd_id, "${this._escStr(cid)}") == 0) {\n`;
+                    const delayMs = m.delay_ms || 0;
+                    let validSteps = 0;
+                    m.steps.forEach((step, idx) => {
+                        if (idx > 0 && delayMs > 0) {
+                            cpp += `            delay(${delayMs});\n`;
+                        }
+                        const line = emitStep(step);
+                        if (line) { cpp += line; validSteps++; }
+                    });
+                    if (validSteps > 0) {
+                        cpp += `            return true;\n`;
+                    } else {
+                        cpp += `            return false;  // nenhum step valido\n`;
+                    }
+                    cpp += `        }\n`;
+                    return;
+                }
+
+                // Caso 2: comando simples (1 write). Formato legado.
                 const func = m.func || 0x05;
                 if (func === 0x05) {
                     // Write Single Coil — convencao Pextron URP6000 e similares
-                    // (devices que separam coils de holding registers)
                     cpp += `        if (strcmp(cmd_id, "${this._escStr(cid)}") == 0) {\n`;
                     cpp += `            return _mb.writeSingleCoil(${m.coil}, true) == _mb.ku8MBSuccess;\n`;
                     cpp += `        }\n`;
                 } else if (func === 0x06) {
-                    // Write Single Register — convencao Schneider P3 e similares
-                    // (devices que mapeiam tudo em holding registers, incluindo
-                    // Virtual Inputs usados como gatilho de comando via MATRIX).
-                    // Cadastro do catalogo: { register: NNN, value: V, func: 0x06 }
-                    // Default value=1 (pulse pra ativar VI).
+                    // Write Single Register — Schneider via VI ou registro de comando direto
                     if (m.register === undefined) {
                         console.warn(`[gen] bo_map ${cid}: func 0x06 exige 'register' (cadastro do ${dev.name})`);
                         return;
@@ -2539,6 +2584,7 @@ void setup() {
     Serial.println("  [BOOT] ClientID v1.3.0: MQTT_CLIENT_ID derivado do MAC (unico por hardware)");
     Serial.println("  [BOOT] CmdHR v1.4.0: bo_map suporta func 0x06 (writeSingleRegister) — Schneider VI");
     Serial.println("  [BOOT] CmdEnvFix v1.4.1: envelope {cmd_id, cmd:{...}} agora reconhece objeto aninhado");
+    Serial.println("  [BOOT] SBO v1.5.0: bo_map suporta comandos compostos (steps[]) — Schneider Object control");
     Serial.printf("  [BOOT] MAC: %s\\n", WiFi.macAddress().c_str());
     Serial.printf("  Motivo do reset: %s\\n", _resetReason());
     Serial.printf("  Heap livre: %u bytes\\n\\n", ESP.getFreeHeap());

@@ -418,31 +418,133 @@ var DEVICE_MODELS = {
         // Bits ANSI 27/50/59 etc estao em 406xxx (slave 406001->).
         bi_map: {},
         // ================================================================
-        // COMANDOS REMOTOS via Virtual Inputs (MATRIX-mapped)
+        // COMANDOS REMOTOS — Object control direto (SBO: Select-Before-Operate)
         // ================================================================
-        // Schneider P3U30 nao expoe "trip/close" diretamente como coil — usa o conceito
-        // de Virtual Inputs. Voce escreve 1 num VI (holding register, func 0x06) e o rele
-        // aciona qualquer funcao mapeada pra esse VI na MATRIZ do eSetup Easergy Pro.
+        // Schneider P3U30 suporta ate 8 Objects (disjuntores controlaveis). Padrao
+        // industrial de protecao: 2 writes sequenciais por comando ("Open select"
+        // seguido de "Execute operation"), pra evitar trip acidental por frame
+        // corrompido. Se Execute nao chegar em ~30s, rele cancela a selecao sozinho.
         //
-        // PRE-REQUISITO no rele (configurar via eSetup):
-        //   1. Aba MATRIZ:
-        //        VI1 -> Object 1 Open  (trip)
-        //        VI2 -> Object 1 Close
-        //        VI3 -> Release latches (reset)
-        //   2. Aba CONTROLE: Object 1 Control mode = Remote
+        // Endereco (Modicon -> frame):
+        //   Obj1: Open=402508(2507) Close=402509(2508) Execute=402510(2509)
+        //   Obj2: Open=402512(2511) Close=402513(2512) Execute=402514(2513)
+        //   Obj3: Open=402517(2516) Close=402518(2517) Execute=402519(2518)
+        //   Obj4: Open=402521(2520) Close=402522(2521) Execute=402523(2522)
+        //   Obj5: Open=402527(2526) Close=402528(2527) Execute=402529(2528)
+        //   Obj6: Open=402531(2530) Close=402532(2531) Execute=402533(2532)
+        //   Obj7: Open=402538(2537) Close=402539(2538) Execute=402540(2539)
+        //   Obj8: Open=402542(2541) Close=402543(2542) Execute=402544(2543)
         //
-        // ATENCAO GERADOR: o gerador atual de firmware (iot-firmware-generator.v2.js)
-        // suporta APENAS func 0x05 (writeSingleCoil) em bo_map. Comandos com func 0x06
-        // (writeSingleRegister) sao silenciosamente IGNORADOS na geracao do firmware.
-        // Pra ativar comandos do P3U30 em producao, e' preciso estender o gerador pra
-        // suportar func 0x06. Mantemos o cadastro aqui pra documentar a intencao —
-        // quando o gerador for atualizado, comandos passam a funcionar automaticamente
-        // sem mudar este catalogo. Validacao isolada disponivel em:
-        //   /var/www/iot_nexon/PLATFORMIO/TESTES-BANCADA/TESTE-SCHNEIDER-P3U30/
+        // Especiais (single-write):
+        //   Release latches:        402501 (2500) — reset alarmes
+        //   Cancel selected op:     402516 (2515) — desfaz selecao pendente
+        //   Reset diagnostics:      402535 (2534)
+        //   Clear min&max:          402536 (2535)
+        //
+        // Pre-requisito unico no rele: CONTROLE > Object N > Control mode = Remote.
+        // NAO exige Matrix configurada — vai direto pro Object control.
+        //
+        // Gerador suporta multi-write via campo `steps` desde v1.5.0-sbo (delay_ms
+        // opcional entre steps, default 0). Backward compat: cmds simples sem `steps`
+        // continuam funcionando (single-write 0x05 ou 0x06).
         bo_map: {
-            'cmd_trip':  { register: 3426, value: 1, func: 0x06 },  // VI1 (Modicon 403427) -> Object 1 Open
-            'cmd_close': { register: 3427, value: 1, func: 0x06 },  // VI2 (Modicon 403428) -> Object 1 Close
-            'cmd_reset': { register: 3428, value: 1, func: 0x06 },  // VI3 (Modicon 403429) -> Release latches
+            // ----- Obj1 -----
+            'cmd_open_obj1':  { steps: [
+                { register: 2507, value: 1, func: 0x06 },   // Open select Obj1
+                { register: 2509, value: 1, func: 0x06 },   // Execute operation Obj1
+            ], delay_ms: 50 },
+            'cmd_close_obj1': { steps: [
+                { register: 2508, value: 1, func: 0x06 },   // Close select Obj1
+                { register: 2509, value: 1, func: 0x06 },   // Execute operation Obj1
+            ], delay_ms: 50 },
+
+            // ----- Obj2 -----
+            'cmd_open_obj2':  { steps: [
+                { register: 2511, value: 1, func: 0x06 },
+                { register: 2513, value: 1, func: 0x06 },
+            ], delay_ms: 50 },
+            'cmd_close_obj2': { steps: [
+                { register: 2512, value: 1, func: 0x06 },
+                { register: 2513, value: 1, func: 0x06 },
+            ], delay_ms: 50 },
+
+            // ----- Obj3 -----
+            'cmd_open_obj3':  { steps: [
+                { register: 2516, value: 1, func: 0x06 },
+                { register: 2518, value: 1, func: 0x06 },
+            ], delay_ms: 50 },
+            'cmd_close_obj3': { steps: [
+                { register: 2517, value: 1, func: 0x06 },
+                { register: 2518, value: 1, func: 0x06 },
+            ], delay_ms: 50 },
+
+            // ----- Obj4 -----
+            'cmd_open_obj4':  { steps: [
+                { register: 2520, value: 1, func: 0x06 },
+                { register: 2522, value: 1, func: 0x06 },
+            ], delay_ms: 50 },
+            'cmd_close_obj4': { steps: [
+                { register: 2521, value: 1, func: 0x06 },
+                { register: 2522, value: 1, func: 0x06 },
+            ], delay_ms: 50 },
+
+            // ----- Obj5 -----
+            'cmd_open_obj5':  { steps: [
+                { register: 2526, value: 1, func: 0x06 },
+                { register: 2528, value: 1, func: 0x06 },
+            ], delay_ms: 50 },
+            'cmd_close_obj5': { steps: [
+                { register: 2527, value: 1, func: 0x06 },
+                { register: 2528, value: 1, func: 0x06 },
+            ], delay_ms: 50 },
+
+            // ----- Obj6 -----
+            'cmd_open_obj6':  { steps: [
+                { register: 2530, value: 1, func: 0x06 },
+                { register: 2532, value: 1, func: 0x06 },
+            ], delay_ms: 50 },
+            'cmd_close_obj6': { steps: [
+                { register: 2531, value: 1, func: 0x06 },
+                { register: 2532, value: 1, func: 0x06 },
+            ], delay_ms: 50 },
+
+            // ----- Obj7 -----
+            'cmd_open_obj7':  { steps: [
+                { register: 2537, value: 1, func: 0x06 },
+                { register: 2539, value: 1, func: 0x06 },
+            ], delay_ms: 50 },
+            'cmd_close_obj7': { steps: [
+                { register: 2538, value: 1, func: 0x06 },
+                { register: 2539, value: 1, func: 0x06 },
+            ], delay_ms: 50 },
+
+            // ----- Obj8 -----
+            'cmd_open_obj8':  { steps: [
+                { register: 2541, value: 1, func: 0x06 },
+                { register: 2543, value: 1, func: 0x06 },
+            ], delay_ms: 50 },
+            'cmd_close_obj8': { steps: [
+                { register: 2542, value: 1, func: 0x06 },
+                { register: 2543, value: 1, func: 0x06 },
+            ], delay_ms: 50 },
+
+            // ----- Comandos especiais (single-write) -----
+            'cmd_release_latches':   { register: 2500, value: 1, func: 0x06 },  // 402501
+            'cmd_cancel_operation':  { register: 2515, value: 1, func: 0x06 },  // 402516
+            'cmd_reset_diagnostics': { register: 2534, value: 1, func: 0x06 },  // 402535
+            'cmd_clear_min_max':     { register: 2535, value: 1, func: 0x06 },  // 402536
+
+            // ----- Aliases legados (apontam pra Obj1, p/ compat com integradores que
+            // ja usavam cmd_trip/cmd_close do v1.4.x) -----
+            'cmd_trip':  { steps: [
+                { register: 2507, value: 1, func: 0x06 },   // alias de cmd_open_obj1
+                { register: 2509, value: 1, func: 0x06 },
+            ], delay_ms: 50 },
+            'cmd_close': { steps: [
+                { register: 2508, value: 1, func: 0x06 },   // alias de cmd_close_obj1
+                { register: 2509, value: 1, func: 0x06 },
+            ], delay_ms: 50 },
+            'cmd_reset': { register: 2500, value: 1, func: 0x06 },  // alias de cmd_release_latches
         },
     },
 
