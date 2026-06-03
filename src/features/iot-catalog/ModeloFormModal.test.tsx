@@ -27,26 +27,27 @@ const TIPOS: IotDeviceTipo[] = [
 ];
 
 describe('ModeloFormModal', () => {
-  it('1. JSON invalido na textarea desabilita o botao "Salvar"', async () => {
+  it('1. JSON invalido na aba JSON desabilita o botao "Salvar"', async () => {
     const user = userEvent.setup();
     render(<ModeloFormModal modelo={null} tipos={TIPOS} onClose={vi.fn()} />);
 
-    // Antes de qualquer interacao, preenche campos obrigatorios pra isolar
-    // a regra "Salvar desabilitado por JSON invalido".
     await user.type(screen.getByLabelText(/^Fabricante/i), 'Fronius');
     await user.type(screen.getByLabelText(/^Modelo/i), 'Symo');
 
-    const textarea = screen.getByLabelText(/Mapeamento Modbus/i);
+    // Abre a aba JSON pra acessar o textarea de mapeamento.
+    await user.click(screen.getByRole('tab', { name: /JSON/i }));
 
-    // Estado inicial: JSON valido, mas tipo nao selecionado — botao deve
-    // estar desabilitado por isso. Selecionar tipo via fireEvent direto no
-    // Radix Select eh complexo; simulamos via re-set state injetando texto.
-    // Aqui foco eh: JSON invalido => botao DEVE estar desabilitado.
+    const textarea = screen.getByLabelText(/Mapeamento Modbus/i);
     await user.clear(textarea);
-    // `{{` em userEvent.type vira `{` literal. Resulta em "{ assim:" -> JSON invalido.
+    // `{{` em userEvent.type vira `{` literal -> "{ assim:" -> JSON invalido.
     await user.type(textarea, '{{ assim:');
 
     const saveBtn = screen.getByRole('button', { name: /Salvar/i });
     expect(saveBtn).toBeDisabled();
+  });
+
+  it('2. abre na aba Estruturado pedindo selecao de tipo', () => {
+    render(<ModeloFormModal modelo={null} tipos={TIPOS} onClose={vi.fn()} />);
+    expect(screen.getByText(/Selecione um tipo para carregar os pontos/i)).toBeInTheDocument();
   });
 });

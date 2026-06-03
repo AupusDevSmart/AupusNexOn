@@ -17,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { formatApiError } from '@/utils/api-error';
 import {
@@ -27,6 +28,14 @@ import type {
   IotDeviceModelo,
   IotDeviceTipo,
 } from '@/services/iot-catalog.services';
+import { MapeamentoEditor } from './components/MapeamentoEditor';
+import {
+  PROTOCOLOS,
+  emptyMapeamentoForm,
+  formToMapeamento,
+  mapeamentoToForm,
+  type MapeamentoForm,
+} from './iot-catalog-shapes';
 
 interface Props {
   modelo: IotDeviceModelo | null; // null = create
@@ -34,20 +43,14 @@ interface Props {
   onClose: () => void;
 }
 
-const PROTOCOLOS = ['rtu', 'tcp', 'tcp_usr', 'serial'];
-
-const DEFAULT_MAP = `{
-  "ai_blocks": [],
-  "ai_map": {},
-  "bi_map": {},
-  "bo_map": {}
-}`;
+const pretty = (o: unknown) => JSON.stringify(o, null, 2);
 
 export function ModeloFormModal({ modelo, tipos, onClose }: Props) {
   const create = useCreateIotDeviceModelo();
   const update = useUpdateIotDeviceModelo();
 
   const tipoById = useMemo(() => new Map(tipos.map((t) => [t.id, t])), [tipos]);
+  const tipoByCodigo = useMemo(() => new Map(tipos.map((t) => [t.codigo, t])), [tipos]);
 
   const [tipoCodigo, setTipoCodigo] = useState('');
   const [fabricante, setFabricante] = useState('');
@@ -55,8 +58,12 @@ export function ModeloFormModal({ modelo, tipos, onClose }: Props) {
   const [protocolo, setProtocolo] = useState('rtu');
   const [connectionNote, setConnectionNote] = useState('');
   const [catalogId, setCatalogId] = useState('');
-  const [mapJson, setMapJson] = useState(DEFAULT_MAP);
+  const [form, setForm] = useState<MapeamentoForm>(emptyMapeamentoForm);
+  const [tab, setTab] = useState<'form' | 'json'>('form');
+  const [jsonDraft, setJsonDraft] = useState('');
   const [jsonError, setJsonError] = useState<string | null>(null);
+
+  const currentTipo = tipoByCodigo.get(tipoCodigo);
 
   useEffect(() => {
     if (modelo) {
@@ -70,32 +77,69 @@ export function ModeloFormModal({ modelo, tipos, onClose }: Props) {
       const cId = (map.catalog_id as string | undefined) ?? '';
       delete map.catalog_id;
       setCatalogId(cId);
-      setMapJson(JSON.stringify(map, null, 2));
+      setForm(mapeamentoToForm(map, tipo?.pontos));
     }
   }, [modelo, tipoById]);
 
-  const handleJsonChange = (val: string) => {
-    setMapJson(val);
+  // Mudar o tipo: regenera linhas a partir dos pontos do novo tipo, preservando
+  // o que ja foi preenchido (casado por pointId; nao-casados viram orfaos).
+  const handleTipoChange = (codigo: string) => {
+    setTipoCodigo(codigo);
+    const novoTipo = tipoByCodigo.get(codigo);
+    let base: Record<string, unknown> = {};
     try {
-      JSON.parse(val);
+      base = tab === 'json' ? JSON.parse(jsonDraft || '{}') : formToMapeamento(form);
+    } catch {
+      base = {};
+    }
+    const novoForm = mapeamentoToForm(base, novoTipo?.pontos);
+    setForm(novoForm);
+    if (tab === 'json') setJsonDraft(pretty(formToMapeamento(novoForm)));
+  };
+
+  const handleTab = (next: string) => {
+    if (next === tab) return;
+    if (next === 'json') {
+      setJsonDraft(pretty(formToMapeamento(form)));
       setJsonError(null);
-    } catch (e: any) {
-      setJsonError(e.message);
+      setTab('json');
+    } else {
+      try {
+        const parsed: unknown = JSON.parse(jsonDraft || '{}');
+        setForm(mapeamentoToForm(parsed as Record<string, unknown>, currentTipo?.pontos));
+        setJsonError(null);
+        setTab('form');
+      } catch (e) {
+        setJsonError(e instanceof Error ? e.message : 'JSON invalido');
+      }
     }
   };
 
-  const handleSubmit = async () => {
-    if (jsonError) {
-      toast.error('JSON invalido em mapeamento');
-      return;
-    }
-    let mapeamento: Record<string, unknown>;
+  const handleJsonChange = (val: string) => {
+    setJsonDraft(val);
     try {
-      mapeamento = JSON.parse(mapJson);
-    } catch {
-      toast.error('JSON invalido');
-      return;
+      JSON.parse(val || '{}');
+      setJsonError(null);
+    } catch (e) {
+      setJsonError(e instanceof Error ? e.message : 'JSON invalido');
     }
+  };
+
+  const buildMapeamento = (): Record<string, unknown> | null => {
+    if (tab === 'json') {
+      try {
+        return JSON.parse(jsonDraft || '{}') as Record<string, unknown>;
+      } catch {
+        toast.error('JSON invalido em mapeamento');
+        return null;
+      }
+    }
+    return formToMapeamento(form);
+  };
+
+  const handleSubmit = async () => {
+    const mapeamento = buildMapeamento();
+    if (!mapeamento) return;
 
     const payload = {
       tipo: tipoCodigo,
@@ -116,17 +160,18 @@ export function ModeloFormModal({ modelo, tipos, onClose }: Props) {
         toast.success('Modelo criado');
       }
       onClose();
-    } catch (e: any) {
+    } catch (e) {
       toast.error(formatApiError(e));
     }
   };
 
   const loading = create.isPending || update.isPending;
-  const canSubmit = tipoCodigo && fabricante && modeloNome && protocolo && !jsonError;
+  const hasError = tab === 'json' ? !!jsonError : false;
+  const canSubmit = !!tipoCodigo && !!fabricante && !!modeloNome && !!protocolo && !hasError;
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[720px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="w-[95vw] sm:max-w-[1180px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{modelo ? 'Editar modelo' : 'Novo modelo'}</DialogTitle>
         </DialogHeader>
@@ -137,7 +182,7 @@ export function ModeloFormModal({ modelo, tipos, onClose }: Props) {
               <Label>
                 Tipo <span className="text-destructive">*</span>
               </Label>
-              <Select value={tipoCodigo} onValueChange={setTipoCodigo}>
+              <Select value={tipoCodigo} onValueChange={handleTipoChange}>
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione" />
                 </SelectTrigger>
@@ -195,46 +240,55 @@ export function ModeloFormModal({ modelo, tipos, onClose }: Props) {
             </div>
           </div>
 
-          <div className="space-y-1">
-            <Label htmlFor="catalog_id">Catalog ID (opcional)</Label>
-            <Input
-              id="catalog_id"
-              value={catalogId}
-              onChange={(e) => setCatalogId(e.target.value)}
-              placeholder="sungrow-sg250cx (vazio = derivado)"
-            />
-            <p className="text-xs text-muted-foreground">
-              Slug usado como chave no DEVICE_MODELS. Vazio = gerado a partir de fabricante+modelo.
-            </p>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label htmlFor="catalog_id">Catalog ID (opcional)</Label>
+              <Input
+                id="catalog_id"
+                value={catalogId}
+                onChange={(e) => setCatalogId(e.target.value)}
+                placeholder="sungrow-sg250cx (vazio = derivado)"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="connection_note">Nota de conexao</Label>
+              <Input
+                id="connection_note"
+                value={connectionNote}
+                onChange={(e) => setConnectionNote(e.target.value)}
+                placeholder="RS485 direto (9600 8N1)"
+              />
+            </div>
           </div>
 
-          <div className="space-y-1">
-            <Label htmlFor="connection_note">Nota de conexao</Label>
-            <Input
-              id="connection_note"
-              value={connectionNote}
-              onChange={(e) => setConnectionNote(e.target.value)}
-              placeholder="RS485 direto (9600 8N1)"
-            />
-          </div>
+          <Tabs value={tab} onValueChange={handleTab}>
+            <TabsList>
+              <TabsTrigger value="form">Estruturado</TabsTrigger>
+              <TabsTrigger value="json">JSON</TabsTrigger>
+            </TabsList>
 
-          <div className="space-y-1">
-            <Label htmlFor="mapeamento">Mapeamento Modbus (JSON)</Label>
-            <Textarea
-              id="mapeamento"
-              value={mapJson}
-              onChange={(e) => handleJsonChange(e.target.value)}
-              className="font-mono text-xs h-64"
-              spellCheck={false}
-            />
-            {jsonError ? (
-              <p className="text-xs text-destructive">{jsonError}</p>
-            ) : (
-              <p className="text-xs text-muted-foreground">
-                Shape: ai_blocks, ai_map, bi_map, bo_map, num_mppts?, num_strings?, word_order?, tp_tc?, ...
-              </p>
-            )}
-          </div>
+            <TabsContent value="form" className="mt-3">
+              <MapeamentoEditor value={form} onChange={setForm} hasTipo={!!currentTipo} />
+            </TabsContent>
+
+            <TabsContent value="json" className="mt-3 space-y-1">
+              <Label htmlFor="mapeamento-json">Mapeamento Modbus (JSON)</Label>
+              <Textarea
+                id="mapeamento-json"
+                value={jsonDraft}
+                onChange={(e) => handleJsonChange(e.target.value)}
+                className="font-mono text-xs h-72"
+                spellCheck={false}
+              />
+              {jsonError ? (
+                <p className="text-xs text-destructive">{jsonError}</p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Visao opcional. O editor estruturado ja cobre todos os campos.
+                </p>
+              )}
+            </TabsContent>
+          </Tabs>
         </div>
 
         <DialogFooter>

@@ -126,7 +126,6 @@ export function IotCatalogPage() {
 
   const tipos = tiposQuery.data ?? [];
   const modelos = modelosQuery.data ?? [];
-  const tipoByCodigo = new Map(tipos.map((t) => [t.codigo, t]));
   const tipoById = new Map(tipos.map((t) => [t.id, t]));
 
   const modelosFiltrados = useMemo(() => {
@@ -181,7 +180,7 @@ export function IotCatalogPage() {
     try {
       await removeTipo.mutateAsync(t.id);
       toast.success('Tipo removido');
-    } catch (e: any) {
+    } catch (e) {
       toast.error(formatApiError(e));
     }
   };
@@ -191,7 +190,7 @@ export function IotCatalogPage() {
     try {
       await removeModelo.mutateAsync(m.id);
       toast.success('Modelo removido');
-    } catch (e: any) {
+    } catch (e) {
       toast.error(formatApiError(e));
     }
   };
@@ -201,7 +200,7 @@ export function IotCatalogPage() {
       const novo = await duplicateModelo.mutateAsync(m.id);
       toast.success(`Duplicado como "${novo.modelo}"`);
       setModeloModal({ open: true, modelo: novo });
-    } catch (e: any) {
+    } catch (e) {
       toast.error(formatApiError(e));
     }
   };
@@ -309,7 +308,7 @@ export function IotCatalogPage() {
                     modelosPagina.map((m) => {
                       const tipo = tipoById.get(m.tipo_id);
                       return (
-                        <TableRow key={m.id}>
+                        <TableRow key={m.id} className="hover:bg-muted/50">
                           <TableCell className="font-medium">{m.fabricante}</TableCell>
                           <TableCell>{m.modelo}</TableCell>
                           <TableCell className="text-muted-foreground">
@@ -416,7 +415,7 @@ export function IotCatalogPage() {
                     tiposPagina.map((t) => {
                       const count = modelos.filter((m) => m.tipo_id === t.id).length;
                       return (
-                        <TableRow key={t.id}>
+                        <TableRow key={t.id} className="hover:bg-muted/50">
                           <TableCell className="font-mono text-xs">{t.codigo}</TableCell>
                           <TableCell>{t.nome}</TableCell>
                           <TableCell className="text-right text-muted-foreground">{count}</TableCell>
