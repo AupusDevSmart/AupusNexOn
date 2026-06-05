@@ -549,7 +549,7 @@ export function DashboardPage() {
                                             />
                                           </div>
                                         </div>
-                                        <span className="text-xs text-muted-foreground">{unidade.metricas.potenciaAtual.toFixed(1)} MW</span>
+                                        <span className="text-xs text-muted-foreground">{unidade.metricas.potenciaAtual.toFixed(1)} kW</span>
                                       </div>
                                     </td>
                                     <td className="text-center py-2 px-2">
