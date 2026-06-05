@@ -38,6 +38,7 @@ import {
   type FluxoEnergia,
   type FluxoManualSelecao,
 } from "../utils/categoria-fluxo";
+import { formatApiError } from "@/utils/api-error";
 
 export interface EquipamentoConfig {
   id: string;
@@ -67,7 +68,7 @@ interface ConfiguracaoDemandaModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   configuracao: ConfiguracaoDemanda;
-  onSalvar: (config: ConfiguracaoDemanda) => void;
+  onSalvar: (config: ConfiguracaoDemanda) => void | Promise<void>;
   equipamentosDisponiveis: EquipamentoConfig[];
 }
 
@@ -103,14 +104,25 @@ export function ConfiguracaoDemandaModal({
     }));
   };
 
-  const handleSalvar = () => {
+  const [salvando, setSalvando] = useState(false);
+
+  const handleSalvar = async () => {
     if (config.equipamentos.filter((e) => e.selecionado).length === 0) {
       toast.error("Selecione pelo menos um equipamento para o agrupamento");
       return;
     }
-    onSalvar(config);
-    toast.success("Configuração salva com sucesso!");
-    onOpenChange(false);
+    // Só confirma sucesso se o onSalvar (persistência na API) resolver. Antes o
+    // toast de sucesso disparava sem await, escondendo erros 400 da API.
+    setSalvando(true);
+    try {
+      await onSalvar(config);
+      toast.success("Configuração salva com sucesso!");
+      onOpenChange(false);
+    } catch (err) {
+      toast.error(formatApiError(err));
+    } finally {
+      setSalvando(false);
+    }
   };
 
   const handleResetar = () => {
@@ -404,9 +416,9 @@ export function ConfiguracaoDemandaModal({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
-          <Button onClick={handleSalvar}>
+          <Button onClick={handleSalvar} disabled={salvando}>
             <Save className="h-4 w-4 mr-2" />
-            Salvar Configuração
+            {salvando ? "Salvando..." : "Salvar Configuração"}
           </Button>
         </DialogFooter>
       </DialogContent>

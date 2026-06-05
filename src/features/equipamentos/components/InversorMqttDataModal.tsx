@@ -312,6 +312,7 @@ export function InversorMqttDataModal({ equipamentoId, open, onOpenChange }: Inv
                     loading={graficoDia.loading}
                     height={350}
                     equipamentoId={cleanId}
+                    geracaoDiariaKwh={inversorData.energy?.daily_yield}
                   />
                 </TabsContent>
 

@@ -324,50 +324,52 @@ export function SinopticoGraficosV2({
   const handleSalvarConfiguracao = async (novaConfig: ConfiguracaoDemanda) => {
     if (!unidadeId) return;
 
+    // Converter formato para o banco. `fonte` mantido como 'AGRUPAMENTO' fixo
+    // pra compat com schema existente — única fonte real desde a remoção do
+    // dropdown AUTO/A966.
+    const configParaBanco = {
+      fonte: 'AGRUPAMENTO',
+      equipamentos_ids: novaConfig.equipamentos
+        .filter(e => e.selecionado)
+        .map(e => e.id.trim()),
+      // NÃO enviar `fluxo_manual`: o backend (UpdateConfiguracaoDemandaDto) não
+      // tem esse campo e o ValidationPipe roda com forbidNonWhitelisted, então
+      // qualquer campo extra rejeita TODO o PUT com 400 (era a causa de "salvo,
+      // recarrego e não muda"). A escolha manual de equipamentos AMBIGUO (ex:
+      // Medidor SSU) fica só em memória até existir coluna fluxo_manual no schema.
+      mostrar_detalhes: novaConfig.mostrarDetalhes,
+      intervalo_atualizacao: novaConfig.intervaloAtualizacao,
+      aplicar_perdas: novaConfig.aplicarPerdas,
+      fator_perdas: novaConfig.fatorPerdas,
+      valor_contratado: novaConfig.demandaContratada || valorContratado,
+      percentual_adicional: percentualAdicional,
+    };
+
+    // Persistência. NÃO engolir erro aqui: se o PUT falhar (ex: 400), propaga
+    // pro modal exibir o erro real (toast.error) e manter-se aberto. Antes o
+    // catch silencioso + toast.success sem await mascaravam falhas de save.
+    await api.put(`/configuracao-demanda/unidade/${unidadeId}`, configParaBanco);
+
+    // Se houver demanda contratada, atualizar na unidade
+    if (novaConfig.demandaContratada !== undefined) {
+      await api.put(`/unidades/${unidadeId}`, {
+        demanda_geracao: novaConfig.demandaContratada
+      });
+    }
+
+    // Sucesso: atualizar estado local e fechar.
+    setConfiguracao(novaConfig);
+    setModalOpen(false);
+
+    // Revalidação é secundária — uma falha de refetch não invalida o save.
     try {
-      // Converter formato para o banco. `fonte` mantido como 'AGRUPAMENTO' fixo
-      // pra compat com schema existente — única fonte real desde a remoção do
-      // dropdown AUTO/A966.
-      const configParaBanco = {
-        fonte: 'AGRUPAMENTO',
-        equipamentos_ids: novaConfig.equipamentos
-          .filter(e => e.selecionado)
-          .map(e => e.id.trim()),
-        fluxo_manual: novaConfig.fluxoManual ?? {},
-        mostrar_detalhes: novaConfig.mostrarDetalhes,
-        intervalo_atualizacao: novaConfig.intervaloAtualizacao,
-        aplicar_perdas: novaConfig.aplicarPerdas,
-        fator_perdas: novaConfig.fatorPerdas,
-        valor_contratado: novaConfig.demandaContratada || valorContratado,
-        percentual_adicional: percentualAdicional,
-      };
-
-      await api.put(`/configuracao-demanda/unidade/${unidadeId}`, configParaBanco);
-
-      // Se houver demanda contratada, atualizar na unidade
-      if (novaConfig.demandaContratada !== undefined) {
-        await api.put(`/unidades/${unidadeId}`, {
-          demanda_geracao: novaConfig.demandaContratada
-        });
-      }
-
-      // Atualizar estado local imediatamente
-      setConfiguracao(novaConfig);
-
-      // Fechar modal
-      setModalOpen(false);
-
-      // ✅ SOLUÇÃO: Recarregar apenas os dados do gráfico usando refetch do React Query
-      // Isso evita recarregar toda a página
       await refetchConfig();
       await refetchEquipamentos();
-
-      // ✅ NOVO: Notificar a página pai que a configuração foi salva (para recarregar unidade se necessário)
       if (onConfigSaved) {
         onConfigSaved();
       }
     } catch (error) {
-      console.error('Erro ao salvar configuração:', error);
+      console.error('Erro ao revalidar dados após salvar:', error);
     }
   };
 

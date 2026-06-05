@@ -35,6 +35,10 @@ interface InversorGraficoDiaProps {
   loading: boolean;
   height?: number;
   equipamentoId?: string | null;    // para buscar detail internamente
+  /** Geração do dia pelo contador do inversor (energy.daily_yield). Fonte de
+   *  verdade da energia do dia inteiro — usada na estatística "Energia" quando
+   *  não há zoom (a integração da curva subconta ~8% por gaps de amostragem). */
+  geracaoDiariaKwh?: number;
 }
 
 // Determina intervalo ideal pelo tamanho da janela visível (em minutos)
@@ -45,7 +49,7 @@ function intervaloParaJanela(minutos: number): string {
   return '30';
 }
 
-export function InversorGraficoDia({ data, loading, height = 400, equipamentoId }: InversorGraficoDiaProps) {
+export function InversorGraficoDia({ data, loading, height = 400, equipamentoId, geracaoDiariaKwh }: InversorGraficoDiaProps) {
   // Detecta dark mode observando a classe no <html>
   const [isDark, setIsDark] = useState(() => document.documentElement.classList.contains('dark'));
   useEffect(() => {
@@ -135,12 +139,19 @@ export function InversorGraficoDia({ data, loading, height = 400, equipamentoId 
     const pts = focusChartData.map(d => d.potencia).filter((p): p is number => p != null);
     if (!pts.length) return { max: 0, avg: 0, energia: 0 };
     const intervaloH = ((detail.data?.intervalo_minutos ?? data?.intervalo_minutos ?? 30)) / 60;
+    const energiaIntegrada = pts.reduce((a, b) => a + b, 0) * intervaloH;
+    // Dia inteiro (sem zoom): usa o contador do inversor (daily_yield), que é a
+    // geração real do dia e bate com "Geração Diária". A integração da curva fica
+    // ~8% abaixo por gaps de amostragem. Com zoom numa janela, integra a janela.
+    const energia = (!zoomWindow && geracaoDiariaKwh != null && geracaoDiariaKwh > 0)
+      ? geracaoDiariaKwh
+      : energiaIntegrada;
     return {
       max: Math.max(...pts),
       avg: pts.reduce((a, b) => a + b, 0) / pts.length,
-      energia: pts.reduce((a, b) => a + b, 0) * intervaloH,
+      energia,
     };
-  }, [focusChartData, detail.data?.intervalo_minutos, data?.intervalo_minutos]);
+  }, [focusChartData, detail.data?.intervalo_minutos, data?.intervalo_minutos, zoomWindow, geracaoDiariaKwh]);
 
   // Calcula zoom window a partir dos índices do brush no overview
   const aplicarZoom = useCallback((startIdx: number, endIdx: number) => {
