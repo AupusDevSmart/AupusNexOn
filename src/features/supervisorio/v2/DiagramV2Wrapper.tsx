@@ -407,13 +407,13 @@ export const DiagramV2Wrapper: React.FC<DiagramV2WrapperProps> = ({
             className="gap-2 bg-background/95 backdrop-blur-sm shadow-lg border-2 rounded-sm"
           >
             <BarChart3 className="h-4 w-4" />
-            {showGraficos ? 'Ocultar Gráficos' : 'Mostrar Gráficos'}
+            <span className="hidden sm:inline">{showGraficos ? 'Ocultar Gráficos' : 'Mostrar Gráficos'}</span>
           </Button>
         </div>
       )}
 
       {/* Layout com Grid Responsivo - Removido overflow-hidden para permitir scroll */}
-      <div className={`grid grid-cols-1 ${showGraficos && !isEditMode ? 'xl:grid-cols-3' : ''} gap-4 h-full`}>
+      <div className={`grid grid-cols-1 ${showGraficos && !isEditMode ? 'xl:grid-cols-3' : ''} gap-2 sm:gap-4 h-full`}>
         {/* Gráficos - Painel Lateral (1/3 da largura em telas grandes) - Com scroll próprio */}
         {/* NUNCA mostrar gráficos em modo de edição */}
         {showGraficos && !isEditMode && (

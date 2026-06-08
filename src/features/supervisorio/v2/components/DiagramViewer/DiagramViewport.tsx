@@ -337,47 +337,22 @@ export const DiagramViewport: React.FC<DiagramViewportProps> = ({ children, onBa
       </div>
 
       {/* Controles de zoom - FORA do viewport-wrapper para não serem cortados */}
-      <div style={{
-        position: 'absolute',
-        bottom: '20px',
-        right: '20px',
-        display: 'flex',
-        gap: '8px',
-        alignItems: 'center',
-        zIndex: 1000,
-        pointerEvents: 'auto',
-        backgroundColor: 'rgba(0, 0, 0, 0.7)',
-        padding: '10px',
-        borderRadius: '8px'
-      }}>
+      <div
+        className="absolute bottom-2 right-2 z-[1000] flex items-center gap-1.5 rounded-lg bg-black/70 p-1.5 sm:bottom-5 sm:right-5 sm:gap-2 sm:p-2.5"
+        style={{ pointerEvents: 'auto' }}
+      >
         <button
           onClick={() => setZoom(viewport.scale + VIEWPORT.ZOOM_STEP)}
           title="Zoom In"
-          style={{
-            backgroundColor: '#444',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            padding: '8px 12px',
-            cursor: 'pointer',
-            fontSize: '16px'
-          }}
+          className="cursor-pointer rounded bg-neutral-700 px-2 py-0.5 text-sm leading-none text-white sm:px-3 sm:py-1.5 sm:text-base"
         >
           +
         </button>
-        <span style={{ color: 'white', fontSize: '14px' }}>{Math.round(viewport.scale * 100)}%</span>
+        <span className="tabular-nums text-xs text-white sm:text-sm">{Math.round(viewport.scale * 100)}%</span>
         <button
           onClick={() => setZoom(viewport.scale - VIEWPORT.ZOOM_STEP)}
           title="Zoom Out"
-          style={{
-            backgroundColor: '#444',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            padding: '8px 12px',
-            cursor: 'pointer',
-            fontSize: '16px'
-          }}
+          className="cursor-pointer rounded bg-neutral-700 px-2 py-0.5 text-sm leading-none text-white sm:px-3 sm:py-1.5 sm:text-base"
         >
           −
         </button>

@@ -3677,7 +3677,7 @@ if (import.meta.env.PROD) {
 
         <div className="w-full h-full flex flex-col">
           {/* Header */}
-          <div className="flex-none flex flex-col sm:flex-row items-start sm:items-center gap-3 p-4">
+          <div className="flex-none flex flex-row items-center gap-2 sm:gap-3 p-3 sm:p-4">
             <Button
               variant="outline"
               size="sm"

@@ -811,7 +811,7 @@ export function SinopticoGraficosV2({
                 Medidor:
               </Label>
               <Select value={m160Selecionado} onValueChange={setM160Selecionado}>
-                <SelectTrigger id="m160-tensao" className="w-[250px]">
+                <SelectTrigger id="m160-tensao" className="w-full sm:w-[250px]">
                   <SelectValue placeholder="Selecione um M160" />
                 </SelectTrigger>
                 <SelectContent>
@@ -825,9 +825,9 @@ export function SinopticoGraficosV2({
             </div>
 
             {/* Checkboxes Fases */}
-            <div className="flex items-center gap-4">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
               <Label className="text-sm min-w-[80px]">Fases:</Label>
-              <div className="flex items-center gap-4">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                 <div className="flex items-center gap-2">
                   <Checkbox
                     id="fase-a-tensao"
@@ -991,7 +991,7 @@ export function SinopticoGraficosV2({
                 Medidor:
               </Label>
               <Select value={m160Selecionado} onValueChange={setM160Selecionado}>
-                <SelectTrigger id="m160-fp" className="w-[250px]">
+                <SelectTrigger id="m160-fp" className="w-full sm:w-[250px]">
                   <SelectValue placeholder="Selecione um M160" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1005,9 +1005,9 @@ export function SinopticoGraficosV2({
             </div>
 
             {/* Checkboxes Fases */}
-            <div className="flex items-center gap-4">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
               <Label className="text-sm min-w-[80px]">Fases:</Label>
-              <div className="flex items-center gap-4">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                 <div className="flex items-center gap-2">
                   <Checkbox
                     id="fase-a-fp"
@@ -1281,7 +1281,7 @@ export function SinopticoGraficosV2({
                   Medidor:
                 </Label>
                 <Select value={m160Selecionado} onValueChange={setM160Selecionado}>
-                  <SelectTrigger id="m160-tensao-modal" className="w-[250px]">
+                  <SelectTrigger id="m160-tensao-modal" className="w-full sm:w-[250px]">
                     <SelectValue placeholder="Selecione um M160" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1295,9 +1295,9 @@ export function SinopticoGraficosV2({
               </div>
 
               {/* Checkboxes Fases */}
-              <div className="flex items-center gap-4">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                 <Label className="text-sm min-w-[80px]">Fases:</Label>
-                <div className="flex items-center gap-4">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                   <div className="flex items-center gap-2">
                     <Checkbox
                       id="fase-a-tensao-modal"
@@ -1438,7 +1438,7 @@ export function SinopticoGraficosV2({
                   Medidor:
                 </Label>
                 <Select value={m160Selecionado} onValueChange={setM160Selecionado}>
-                  <SelectTrigger id="m160-fp-modal" className="w-[250px]">
+                  <SelectTrigger id="m160-fp-modal" className="w-full sm:w-[250px]">
                     <SelectValue placeholder="Selecione um M160" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1452,9 +1452,9 @@ export function SinopticoGraficosV2({
               </div>
 
               {/* Checkboxes Fases */}
-              <div className="flex items-center gap-4">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                 <Label className="text-sm min-w-[80px]">Fases:</Label>
-                <div className="flex items-center gap-4">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                   <div className="flex items-center gap-2">
                     <Checkbox
                       id="fase-a-fp-modal"
