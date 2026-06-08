@@ -3,6 +3,7 @@
 
 import React, { useMemo } from "react";
 import { Layout } from "@/components/common/Layout";
+import { formatEnergy } from "@/utils/formatEnergy";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Zap,
@@ -297,8 +298,7 @@ export function DashboardPage() {
                 {/* 2. Energia Gerada Hoje */}
                 <MetricCard
                   title="Energia Gerada Hoje"
-                  value={metricas.energiaGeradaHoje}
-                  unit="kWh"
+                  value={formatEnergy(metricas.energiaGeradaHoje)}
                   subtitle="Total acumulado"
                   icon={TrendingUp}
                   color="text-green-500"
@@ -317,8 +317,7 @@ export function DashboardPage() {
                 {/* 4. Energia Consumida Hoje */}
                 <MetricCard
                   title="Energia Consumida Hoje"
-                  value={metricas.energiaConsumidaHoje}
-                  unit="kWh"
+                  value={formatEnergy(metricas.energiaConsumidaHoje)}
                   subtitle="Total de consumo"
                   icon={Activity}
                   color="text-red-500"
@@ -664,7 +663,7 @@ export function DashboardPage() {
                                     <td className="py-2 px-2 font-medium">{unidade.nome}</td>
                                     <td className="text-center py-2 px-2">
                                       <div className="flex flex-col items-center gap-1">
-                                        <span className="text-sm font-bold">{unidade.metricas.energiaHoje.toFixed(1)} kWh</span>
+                                        <span className="text-sm font-bold">{formatEnergy(unidade.metricas.energiaHoje)}</span>
                                         <span className="text-xs text-muted-foreground">Energia do dia</span>
                                       </div>
                                     </td>
