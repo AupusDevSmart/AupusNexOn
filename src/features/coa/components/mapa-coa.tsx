@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { formatEnergy } from "@/utils/formatEnergy";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -275,7 +276,7 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
               <strong>Potência:</strong> ${unidade.metricas.potenciaAtual.toFixed(1)} kW
             </p>
             <p style="margin: 4px 0; font-size: 12px;">
-              <strong>Energia Hoje:</strong> ${unidade.metricas.energiaHoje.toFixed(1)} kWh
+              <strong>Energia Hoje:</strong> ${formatEnergy(unidade.metricas.energiaHoje)}
             </p>
           </div>
         `;
@@ -564,7 +565,7 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
                     Energia Hoje
                   </span>
                   <p className="text-lg font-semibold text-blue-600">
-                    {unidadeSelecionada.metricas.energiaHoje.toFixed(1)} kWh
+                    {formatEnergy(unidadeSelecionada.metricas.energiaHoje)}
                   </p>
                 </div>
               </div>
