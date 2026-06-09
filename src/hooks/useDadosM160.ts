@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/config/api';
+import { isPowerMeter } from '@/features/supervisorio/components/power-meter/helpers';
 
 // Desabilitar logs de debug em produção
 const noop = () => {};
@@ -60,22 +61,22 @@ export function useDadosM160(unidadeId?: string, equipamentoId?: string) {
           return [];
         }
 
-        // Filtrar apenas M160 pelo código do tipo de equipamento
-        // ✅ CORRIGIDO: Ordem de fallback correta (tipo_equipamento_rel é a fonte autoritativa)
-        const equipamentosM160 = equipamentos.filter((eq: any) => {
+        // Filtrar QUALQUER Power Meter — decisao por CATEGORIA, nao pelo codigo do
+        // tipo. Hoje toda a categoria "Power Meter (PM)" compartilha o mesmo payload
+        // (Va/Vb/Vc, FPa/FPb/FPc), nao so o M160. isPowerMeter cai pra codigo/tag/nome
+        // caso a categoria nao venha. tipo_equipamento_rel e a fonte autoritativa.
+        const powerMeters = equipamentos.filter((eq: any) => {
+          const categoria =
+            eq.tipo_equipamento_rel?.categoria?.nome || eq.tipoEquipamento?.categoria?.nome || '';
           const codigo = eq.tipo_equipamento_rel?.codigo || eq.tipoEquipamento?.codigo || '';
-          // console.log(`📊 [useDadosM160] Equipamento ${eq.nome}: código=${codigo}`);
-          return codigo === 'M160' || codigo === 'M-160' || codigo === 'METER_M160' || codigo === 'MEDIDOR';
+          return isPowerMeter({ categoria, tipo: codigo, tag: eq.tag, nome: eq.nome });
         });
 
-        // console.log('📊 [useDadosM160] Equipamentos M-160 filtrados:', equipamentosM160);
-
-        // ✅ CORRIGIDO: Ordem de fallback correta em todos os campos
-        return equipamentosM160.map((eq: any) => ({
+        return powerMeters.map((eq: any) => ({
           id: eq.id?.trim(),
-          nome: eq.nome || 'M-160',
+          nome: eq.nome || eq.tag || 'Medidor',
           tag: eq.tag,
-          tipo: eq.tipo_equipamento_rel?.codigo || eq.tipoEquipamento?.codigo || 'M-160'
+          tipo: eq.tipo_equipamento_rel?.codigo || eq.tipoEquipamento?.codigo || ''
         }));
       } catch (error) {
         console.error('❌ Erro ao buscar M160:', error);
