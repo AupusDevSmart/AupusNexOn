@@ -979,26 +979,88 @@ var DEVICE_MODELS = {
         bo_map: {},
     },
 
+    // Huawei SUN2000-100KTL M1 - protocolo Huawei "Solar Inverter Modbus Interface
+    // Definitions V3.0" (mesmo manual do WEG SIW500H, que e' rebrand Huawei).
+    // Manual: /var/www/iot_nexon/mapa_modbus/WEG/SIW500H/SIW500H ST100.pdf
+    // Endereco direto (Huawei nao usa convencao Modicon; frame addr = register addr decimal).
+    // word_order high_first (padrao Huawei SUN2000 para U32/I32).
+    // "Gain" Huawei = divisor (valor_real = raw / gain). Ex: V gain 10 -> raw/10.
+    // Potencias em kW/kVar: convertidas pra W/VAr (scale=1 ja' que gain1000 cancela com x1000).
+    // SUN2000-100KTL M1: 10 MPPTs (PV1-PV10) com 2 strings cada (20 strings totais).
     'huawei-sun2000': {
         fabricante: 'Huawei',
-        modelo: 'SUN2000',
+        modelo: 'SUN2000-100KTL M1',
         tipo: 'inversor_solar',
         protocolo: 'tcp',
-        connection_note: 'Via SmartLogger TCP',
+        connection_note: 'Via SmartLogger TCP. Regs 32016+, 32064+, 32106+.',
+        word_order: 'high_first',
+        num_mppts: 10,
+        num_strings: 20,
         ai_blocks: [
-            { start: 32016, count: 60, func: 0x03, label: 'Dados principais' },
+            // Bloco 0: PV1-PV10 voltage/current (32016-32035, 20 regs)
+            { start: 32016, count: 20, func: 0x03, label: 'Regs 32016-32035: PV1-10 V/I' },
+            // Bloco 1: input power -> device status (32064-32089, 26 regs)
+            { start: 32064, count: 26, func: 0x03, label: 'Regs 32064-32089: P, V, I, freq, temp, status' },
+            // Bloco 2: energia acumulada e diaria (32106-32115, 10 regs)
+            { start: 32106, count: 10, func: 0x03, label: 'Regs 32106-32115: energia total e diaria' },
         ],
         ai_map: {
-            'potencia_ativa':   { block: 0, offset: 62, scale: 0.001, dataType: 'S32' },
-            'geracao_total':    { block: 0, offset: 48, scale: 0.01, dataType: 'U32' },
-            'geracao_diaria':   { block: 0, offset: 50, scale: 0.01, dataType: 'U32' },
-            'freq_rede':        { block: 0, offset: 53, scale: 0.01, dataType: 'U16' },
-            'mppt1_v':          { block: 0, offset: 0, scale: 0.1, dataType: 'S16' },
-            'mppt1_i':          { block: 0, offset: 1, scale: 0.01, dataType: 'S16' },
-            'temp_interna':     { block: 0, offset: 71, scale: 0.1, dataType: 'S16' },
+            // --- Bloco 0: PV1-PV10 (offset 0 = 32016) ---
+            // PVn voltage I16 V gain10; PVn current I16 A gain100.
+            // Nota: Huawei expoe um par V/I por entrada. SUN2000-100KTL M1 tem 10 MPPTs
+            // com 2 strings cada — Modbus expoe a corrente combinada da string monitorada.
+            'mppt1_voltage':    { block: 0, offset: 0,  scale: 10,  dataType: 'S16', mode: 'avg' }, // 32016
+            'string1_current':  { block: 0, offset: 1,  scale: 100, dataType: 'S16', mode: 'avg' }, // 32017
+            'mppt2_voltage':    { block: 0, offset: 2,  scale: 10,  dataType: 'S16', mode: 'avg' }, // 32018
+            'string2_current':  { block: 0, offset: 3,  scale: 100, dataType: 'S16', mode: 'avg' }, // 32019
+            'mppt3_voltage':    { block: 0, offset: 4,  scale: 10,  dataType: 'S16', mode: 'avg' }, // 32020
+            'string3_current':  { block: 0, offset: 5,  scale: 100, dataType: 'S16', mode: 'avg' }, // 32021
+            'mppt4_voltage':    { block: 0, offset: 6,  scale: 10,  dataType: 'S16', mode: 'avg' }, // 32022
+            'string4_current':  { block: 0, offset: 7,  scale: 100, dataType: 'S16', mode: 'avg' }, // 32023
+            'mppt5_voltage':    { block: 0, offset: 8,  scale: 10,  dataType: 'S16', mode: 'avg' }, // 32024
+            'string5_current':  { block: 0, offset: 9,  scale: 100, dataType: 'S16', mode: 'avg' }, // 32025
+            'mppt6_voltage':    { block: 0, offset: 10, scale: 10,  dataType: 'S16', mode: 'avg' }, // 32026
+            'string6_current':  { block: 0, offset: 11, scale: 100, dataType: 'S16', mode: 'avg' }, // 32027
+            'mppt7_voltage':    { block: 0, offset: 12, scale: 10,  dataType: 'S16', mode: 'avg' }, // 32028
+            'string7_current':  { block: 0, offset: 13, scale: 100, dataType: 'S16', mode: 'avg' }, // 32029
+            'mppt8_voltage':    { block: 0, offset: 14, scale: 10,  dataType: 'S16', mode: 'avg' }, // 32030
+            'string8_current':  { block: 0, offset: 15, scale: 100, dataType: 'S16', mode: 'avg' }, // 32031
+            'mppt9_voltage':    { block: 0, offset: 16, scale: 10,  dataType: 'S16', mode: 'avg' }, // 32032
+            'string9_current':  { block: 0, offset: 17, scale: 100, dataType: 'S16', mode: 'avg' }, // 32033
+            'mppt10_voltage':   { block: 0, offset: 18, scale: 10,  dataType: 'S16', mode: 'avg' }, // 32034
+            'string10_current': { block: 0, offset: 19, scale: 100, dataType: 'S16', mode: 'avg' }, // 32035
+
+            // --- Bloco 1: principais (offset 0 = 32064) ---
+            // 32064 Input power I32 kW gain1000 -> dc_total_power em W (scale 1)
+            'dc_total_power':   { block: 1, offset: 0,  scale: 1,    dataType: 'S32', mode: 'avg'  }, // 32064-32065
+            // 32066-32068 Line voltage A-B/B-C/C-A U16 V gain10 -> vab/vbc/vca
+            'vab':              { block: 1, offset: 2,  scale: 10,   dataType: 'U16', mode: 'avg'  }, // 32066
+            'vbc':              { block: 1, offset: 3,  scale: 10,   dataType: 'U16', mode: 'avg'  }, // 32067
+            'vca':              { block: 1, offset: 4,  scale: 10,   dataType: 'U16', mode: 'avg'  }, // 32068
+            // 32072/32074/32076 Phase A/B/C current I32 A gain1000 -> ia/ib/ic
+            'ia':               { block: 1, offset: 8,  scale: 1000, dataType: 'S32', mode: 'avg'  }, // 32072-32073
+            'ib':               { block: 1, offset: 10, scale: 1000, dataType: 'S32', mode: 'avg'  }, // 32074-32075
+            'ic':               { block: 1, offset: 12, scale: 1000, dataType: 'S32', mode: 'avg'  }, // 32076-32077
+            // 32080 Active power I32 kW gain1000 -> potencia_ativa em W (scale 1)
+            'potencia_ativa':   { block: 1, offset: 16, scale: 1,    dataType: 'S32', mode: 'last' }, // 32080-32081
+            // 32082 Reactive power I32 kVar gain1000 -> potencia_reativa em VAr (scale 1)
+            'potencia_reativa': { block: 1, offset: 18, scale: 1,    dataType: 'S32', mode: 'last' }, // 32082-32083
+            // 32084 Power factor I16 gain1000 -> fp
+            'fp':               { block: 1, offset: 20, scale: 1000, dataType: 'S16', mode: 'last' }, // 32084
+            // 32085 Grid frequency U16 Hz gain100 -> freq
+            'freq':             { block: 1, offset: 21, scale: 100,  dataType: 'U16', mode: 'last' }, // 32085
+            // 32087 Internal temperature I16 C gain10 -> temp_interna
+            'temp_interna':     { block: 1, offset: 23, scale: 10,   dataType: 'S16', mode: 'last' }, // 32087
+
+            // --- Bloco 2: energia (offset 0 = 32106) ---
+            // 32106 Accumulated energy yield U32 kWh gain100 -> total_yield
+            'total_yield':      { block: 2, offset: 0, scale: 100, dataType: 'U32', mode: 'last' }, // 32106-32107
+            // 32114 Daily energy yield U32 kWh gain100 -> daily_yield
+            'daily_yield':      { block: 2, offset: 8, scale: 100, dataType: 'U32', mode: 'last' }, // 32114-32115
         },
         bi_map: {
-            'estado_operacao': { register: 32089, func: 0x03 },
+            // 32089 Device status (enum 0x0000..0x0A00, vide manual pag 11-12)
+            'work_state': { register: 32089, func: 0x03 },
         },
         bo_map: {},
     },
@@ -1022,8 +1084,8 @@ var DEVICE_MODELS = {
         protocolo: 'tcp',
         connection_note: 'Rebrand GoodWe. TCP via datalogger/WiFi. Range non-MT 0x0220-0x0236.',
         word_order: 'high_first',
-        num_mppts: 2,
-        num_strings: 2,
+        num_mppts: 4,
+        num_strings: 16,
         ai_blocks: [
             // Bloco unico: 0x0220-0x0236 (35 regs) cobre error, energia, PV, grid, freq,
             // power, status, temp. GoodWe non-MT public read range.
