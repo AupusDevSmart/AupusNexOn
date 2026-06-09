@@ -26,6 +26,7 @@ import { ConfiguracaoDemandaModal, ConfiguracaoDemanda, EquipamentoConfig } from
 import { CATEGORIA_FLUXO, resolverFluxoEquipamento } from "../utils/categoria-fluxo";
 import { useDemandaAgregada, PeriodoFiltro } from "@/hooks/useDemandaAgregada";
 import { useDadosM160 } from "@/hooks/useDadosM160";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/config/api";
 import { useTheme } from "@/components/theme-provider";
@@ -108,6 +109,7 @@ export function SinopticoGraficosV2({
   onConfigSaved,
 }: SinopticoGraficosV2Props) {
   const { theme } = useTheme();
+  const isMobile = useIsMobile();
   const [modalOpen, setModalOpen] = useState(false);
   const [modalExpandidoOpen, setModalExpandidoOpen] = useState(false);
 
@@ -726,10 +728,10 @@ export function SinopticoGraficosV2({
             <ResponsiveContainer width="100%" height={350}>
               <LineChart data={dadosFormatadosPotencia}>
                 <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                <XAxis dataKey="hora" fontSize={12} />
+                <XAxis dataKey="hora" fontSize={isMobile ? 10 : 12} interval="preserveStartEnd" minTickGap={isMobile ? 28 : 12} />
                 <YAxis fontSize={12} label={{ value: unidadeGrafico, angle: -90, position: 'insideLeft' }} />
                 <Tooltip content={<CustomTooltip unidade={unidadeGrafico} />} />
-                <Legend wrapperStyle={{ fontSize: '12px' }} iconType="line" />
+                <Legend wrapperStyle={{ fontSize: isMobile ? '10px' : '12px' }} iconType="line" />
                 <Line
                   type="monotone"
                   dataKey="potencia"
@@ -768,10 +770,10 @@ export function SinopticoGraficosV2({
             <ResponsiveContainer width="100%" height={350}>
               <BarChart data={dadosFormatadosPotencia}>
                 <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                <XAxis dataKey="label" fontSize={12} />
+                <XAxis dataKey="label" fontSize={isMobile ? 10 : 12} interval="preserveStartEnd" minTickGap={isMobile ? 28 : 12} />
                 <YAxis fontSize={12} label={{ value: unidadeGrafico, angle: -90, position: 'insideLeft' }} />
                 <Tooltip content={<CustomTooltip unidade={unidadeGrafico} />} />
-                <Legend wrapperStyle={{ fontSize: '12px' }} iconType="rect" />
+                <Legend wrapperStyle={{ fontSize: isMobile ? '10px' : '12px' }} iconType="rect" />
                 <Bar dataKey="energia" name="Energia" fill={corLinhaDemanda} radius={[2, 2, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -903,7 +905,7 @@ export function SinopticoGraficosV2({
               <ResponsiveContainer width="100%" height={300}>
                 <LineChart data={dadosFormatadosTensao}>
                   <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                <XAxis dataKey="hora" fontSize={12} />
+                <XAxis dataKey="hora" fontSize={isMobile ? 10 : 12} interval="preserveStartEnd" minTickGap={isMobile ? 28 : 12} />
                 <YAxis
                   fontSize={12}
                   domain={["dataMin - 5", "dataMax + 5"]}
@@ -914,7 +916,7 @@ export function SinopticoGraficosV2({
                   }}
                 />
                 <Tooltip content={<CustomTooltip />} />
-                <Legend wrapperStyle={{ fontSize: "12px" }} iconType="line" />
+                <Legend wrapperStyle={{ fontSize: isMobile ? '10px' : '12px' }} iconType="line" />
 
                 {fasesTensao.A && (
                   <Line
@@ -1083,7 +1085,7 @@ export function SinopticoGraficosV2({
               <ResponsiveContainer width="100%" height={300}>
                 <LineChart data={dadosFormatadosFP}>
                   <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                  <XAxis dataKey="hora" fontSize={12} />
+                  <XAxis dataKey="hora" fontSize={isMobile ? 10 : 12} interval="preserveStartEnd" minTickGap={isMobile ? 28 : 12} />
                 <YAxis
                   fontSize={12}
                   domain={[-1.0, 1.0]}
@@ -1094,7 +1096,7 @@ export function SinopticoGraficosV2({
                   }}
                 />
                 <Tooltip content={<CustomTooltip />} />
-                <Legend wrapperStyle={{ fontSize: "12px" }} iconType="line" />
+                <Legend wrapperStyle={{ fontSize: isMobile ? '10px' : '12px' }} iconType="line" />
 
                 {fasesFP.A && (
                   <Line
@@ -1164,7 +1166,7 @@ export function SinopticoGraficosV2({
 
       {/* Modal Expandido - Gráfico de Demanda */}
       <Dialog open={modalExpandidoOpen} onOpenChange={setModalExpandidoOpen}>
-        <DialogContent className="max-w-[90vw] max-h-[90vh]">
+        <DialogContent className="flex flex-col gap-2 p-3 w-screen h-[100dvh] max-w-none rounded-none sm:rounded-none md:w-full md:h-auto md:max-h-[90vh] md:max-w-[90vw] md:gap-4 md:p-6 md:rounded-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Zap className="h-5 w-5 text-yellow-500" />
@@ -1177,7 +1179,7 @@ export function SinopticoGraficosV2({
             </DialogTitle>
           </DialogHeader>
 
-          <div className="w-full h-[75vh]">
+          <div className="w-full flex-1 min-h-0 md:flex-none md:h-[75vh]">
             {isInitialLoading ? (
               <div className="flex flex-col items-center justify-center h-full space-y-3">
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -1201,16 +1203,16 @@ export function SinopticoGraficosV2({
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={dadosFormatadosPotencia}>
                   <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                  <XAxis dataKey="hora" fontSize={12} />
+                  <XAxis dataKey="hora" fontSize={isMobile ? 10 : 12} interval="preserveStartEnd" minTickGap={isMobile ? 28 : 12} />
                   <YAxis fontSize={12} label={{ value: unidadeGrafico, angle: -90, position: 'insideLeft' }} />
                   <Tooltip content={<CustomTooltip unidade={unidadeGrafico} />} />
-                  <Legend wrapperStyle={{ fontSize: '12px' }} iconType="line" />
+                  <Legend wrapperStyle={{ fontSize: isMobile ? '10px' : '12px' }} iconType="line" />
                   <Brush
                     dataKey="hora"
-                    height={30}
+                    height={isMobile ? 40 : 30}
                     stroke="hsl(var(--muted-foreground) / 0.3)"
                     fill="hsl(var(--muted))"
-                    travellerWidth={10}
+                    travellerWidth={isMobile ? 18 : 10}
                   />
                   <Line
                     type="monotone"
@@ -1250,10 +1252,10 @@ export function SinopticoGraficosV2({
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={dadosFormatadosPotencia}>
                   <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                  <XAxis dataKey="label" fontSize={12} />
+                  <XAxis dataKey="label" fontSize={isMobile ? 10 : 12} interval="preserveStartEnd" minTickGap={isMobile ? 28 : 12} />
                   <YAxis fontSize={12} label={{ value: unidadeGrafico, angle: -90, position: 'insideLeft' }} />
                   <Tooltip content={<CustomTooltip unidade={unidadeGrafico} />} />
-                  <Legend wrapperStyle={{ fontSize: '12px' }} iconType="rect" />
+                  <Legend wrapperStyle={{ fontSize: isMobile ? '10px' : '12px' }} iconType="rect" />
                   <Bar dataKey="energia" name="Energia" fill={corLinhaDemanda} radius={[2, 2, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -1264,7 +1266,7 @@ export function SinopticoGraficosV2({
 
       {/* Modal Expandido - Gráfico de Tensão */}
       <Dialog open={modalTensaoOpen} onOpenChange={setModalTensaoOpen}>
-        <DialogContent className="max-w-[90vw] max-h-[90vh]">
+        <DialogContent className="flex flex-col gap-2 p-3 w-screen h-[100dvh] max-w-none rounded-none sm:rounded-none md:w-full md:h-auto md:max-h-[90vh] md:max-w-[90vw] md:gap-4 md:p-6 md:rounded-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Activity className="h-5 w-5 text-blue-500" />
@@ -1272,7 +1274,7 @@ export function SinopticoGraficosV2({
             </DialogTitle>
           </DialogHeader>
 
-          <div className="w-full flex flex-col gap-4" style={{ height: '70vh' }}>
+          <div className="w-full flex flex-col gap-4 flex-1 min-h-0 md:flex-none md:h-[70vh]">
             {/* Controles */}
             <div className="space-y-3 flex-shrink-0">
               {/* Select M160 */}
@@ -1355,7 +1357,7 @@ export function SinopticoGraficosV2({
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={dadosFormatadosTensao}>
                     <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                    <XAxis dataKey="hora" fontSize={12} />
+                    <XAxis dataKey="hora" fontSize={isMobile ? 10 : 12} interval="preserveStartEnd" minTickGap={isMobile ? 28 : 12} />
                   <YAxis
                     fontSize={12}
                     domain={["dataMin - 5", "dataMax + 5"]}
@@ -1366,15 +1368,15 @@ export function SinopticoGraficosV2({
                     }}
                   />
                   <Tooltip content={<CustomTooltip />} />
-                  <Legend wrapperStyle={{ fontSize: "12px" }} iconType="line" />
+                  <Legend wrapperStyle={{ fontSize: isMobile ? '10px' : '12px' }} iconType="line" />
 
                   {/* Brush para zoom - apenas no modal expandido */}
                   <Brush
                     dataKey="hora"
-                    height={30}
+                    height={isMobile ? 40 : 30}
                     stroke="hsl(var(--muted-foreground) / 0.3)"
                     fill="hsl(var(--muted))"
-                    travellerWidth={10}
+                    travellerWidth={isMobile ? 18 : 10}
                   />
 
                   {fasesTensao.A && (
@@ -1421,7 +1423,7 @@ export function SinopticoGraficosV2({
 
       {/* Modal Expandido - Gráfico de Fator de Potência */}
       <Dialog open={modalFPOpen} onOpenChange={setModalFPOpen}>
-        <DialogContent className="max-w-[90vw] max-h-[90vh]">
+        <DialogContent className="flex flex-col gap-2 p-3 w-screen h-[100dvh] max-w-none rounded-none sm:rounded-none md:w-full md:h-auto md:max-h-[90vh] md:max-w-[90vw] md:gap-4 md:p-6 md:rounded-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <TrendingUp className="h-5 w-5 text-purple-500" />
@@ -1429,7 +1431,7 @@ export function SinopticoGraficosV2({
             </DialogTitle>
           </DialogHeader>
 
-          <div className="w-full flex flex-col gap-4" style={{ height: '70vh' }}>
+          <div className="w-full flex flex-col gap-4 flex-1 min-h-0 md:flex-none md:h-[70vh]">
             {/* Controles */}
             <div className="space-y-3 flex-shrink-0">
               {/* Select M160 */}
@@ -1512,7 +1514,7 @@ export function SinopticoGraficosV2({
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={dadosFormatadosFP}>
                     <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                    <XAxis dataKey="hora" fontSize={12} />
+                    <XAxis dataKey="hora" fontSize={isMobile ? 10 : 12} interval="preserveStartEnd" minTickGap={isMobile ? 28 : 12} />
                   <YAxis
                     fontSize={12}
                     domain={[-1.0, 1.0]}
@@ -1523,15 +1525,15 @@ export function SinopticoGraficosV2({
                     }}
                   />
                   <Tooltip content={<CustomTooltip />} />
-                  <Legend wrapperStyle={{ fontSize: "12px" }} iconType="line" />
+                  <Legend wrapperStyle={{ fontSize: isMobile ? '10px' : '12px' }} iconType="line" />
 
                   {/* Brush para zoom - apenas no modal expandido */}
                   <Brush
                     dataKey="hora"
-                    height={30}
+                    height={isMobile ? 40 : 30}
                     stroke="hsl(var(--muted-foreground) / 0.3)"
                     fill="hsl(var(--muted))"
-                    travellerWidth={10}
+                    travellerWidth={isMobile ? 18 : 10}
                   />
 
                   {fasesFP.A && (
