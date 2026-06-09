@@ -44,7 +44,7 @@ export function ModalSelecionarUnidade({
       <div className="absolute inset-0 bg-black/60 dark:bg-black/80 backdrop-blur-sm" />
 
       {/* Modal com suporte a dark mode */}
-      <div className="relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden">
+      <div className="relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl max-w-4xl w-full mx-4 max-h-[90dvh] overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
           <h2 className="text-lg font-bold text-gray-900 dark:text-white">

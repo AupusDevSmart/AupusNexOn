@@ -24,7 +24,7 @@ export function M300Modal({
 }: M300ModalProps) {
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-md max-h-[90vh] overflow-auto">
+      <DialogContent className="max-w-md max-h-[90dvh] overflow-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Activity className="h-5 w-5 text-blue-500" />

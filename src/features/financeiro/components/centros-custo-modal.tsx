@@ -139,7 +139,7 @@ export function CentrosCustoModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[600px] max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {editingItem ? 'Editar Centro de Custo' : 'Novo Centro de Custo'}

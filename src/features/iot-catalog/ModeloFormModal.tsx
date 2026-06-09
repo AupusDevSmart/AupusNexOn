@@ -171,7 +171,7 @@ export function ModeloFormModal({ modelo, tipos, onClose }: Props) {
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="w-[95vw] sm:max-w-[1180px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="w-[95vw] sm:max-w-[1180px] max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{modelo ? 'Editar modelo' : 'Novo modelo'}</DialogTitle>
         </DialogHeader>

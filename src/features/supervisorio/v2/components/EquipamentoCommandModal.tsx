@@ -118,7 +118,7 @@ export const EquipamentoCommandModal: React.FC<EquipamentoCommandModalProps> = (
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-2xl max-h-[85dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{equipamento.nome}</DialogTitle>
           <DialogDescription>

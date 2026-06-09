@@ -1169,7 +1169,7 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
 
       {/* Component Properties Modal */}
       <Dialog open={propsModalOpen} onOpenChange={setPropsModalOpen}>
-        <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-lg max-h-[80dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {propsComp && <div className="w-3 h-3 rounded-full" style={{ background: propsComp._def?.color }} />}
@@ -1481,7 +1481,7 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
       {/* Bench Test Modal */}
       {benchTestModal && window.BENCH_TESTS && (
         <Dialog open={true} onOpenChange={() => setBenchTestModal(null)}>
-          <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="sm:max-w-3xl max-h-[90dvh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Zap className="h-5 w-5" />

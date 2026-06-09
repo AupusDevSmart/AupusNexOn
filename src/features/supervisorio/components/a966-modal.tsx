@@ -93,7 +93,7 @@ export function A966Modal({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-7xl max-h-[92vh] overflow-auto">
+      <DialogContent className="max-w-7xl max-h-[92dvh] overflow-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center justify-between gap-2 pr-8">
             <div className="flex flex-col gap-0.5">

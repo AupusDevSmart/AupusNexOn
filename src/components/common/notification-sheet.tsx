@@ -204,7 +204,7 @@ export function NotificacoesSheet() {
           {/* <TabsContent value="nao-lidas">
             <div
               ref={unreadContainerRef}
-              className="overflow-y-auto max-h-[75vh]"
+              className="overflow-y-auto max-h-[75dvh]"
             >
               {unreadNotificacoes.length ? (
                 <>
@@ -278,7 +278,7 @@ export function NotificacoesSheet() {
           </TabsContent> */}
 
           {/* <TabsContent value="lidas">
-            <div ref={readContainerRef} className="overflow-y-auto max-h-[75vh]">
+            <div ref={readContainerRef} className="overflow-y-auto max-h-[75dvh]">
               {readNotificacoes.length ? (
                 <>
                   {readNotificacoes.map((notificacao, index) => {

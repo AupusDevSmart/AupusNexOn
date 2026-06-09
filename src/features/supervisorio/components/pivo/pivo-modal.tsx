@@ -487,7 +487,7 @@ export function PivoModal({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-7xl max-h-[95vh] overflow-y-auto p-0 gap-0">
+      <DialogContent className="max-w-7xl max-h-[95dvh] overflow-y-auto p-0 gap-0">
         {/* Header */}
         <DialogHeader className="px-6 py-4 border-b bg-muted/30">
           <div className="flex items-center justify-between">

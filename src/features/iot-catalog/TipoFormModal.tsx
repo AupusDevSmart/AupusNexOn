@@ -111,7 +111,7 @@ export function TipoFormModal({ tipo, onClose }: Props) {
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="w-[95vw] sm:max-w-[980px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="w-[95vw] sm:max-w-[980px] max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{tipo ? 'Editar tipo' : 'Novo tipo'}</DialogTitle>
         </DialogHeader>

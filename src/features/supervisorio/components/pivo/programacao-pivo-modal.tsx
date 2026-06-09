@@ -167,7 +167,7 @@ export function ProgramacaoPivoModal({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-6xl max-h-[95vh] overflow-y-auto">
+      <DialogContent className="max-w-6xl max-h-[95dvh] overflow-y-auto">
         {/* Header */}
         <DialogHeader>
           <DialogTitle className="flex items-center gap-3 text-xl">

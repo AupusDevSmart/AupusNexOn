@@ -247,7 +247,7 @@ export const TonBoConfigModal: React.FC<TonBoConfigModalProps> = ({
   // ---------------------------------------------------------------------
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-3xl max-h-[85dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{tonNome ?? 'TON'} · Configuracao de BOs</DialogTitle>
           <DialogDescription className="text-xs">

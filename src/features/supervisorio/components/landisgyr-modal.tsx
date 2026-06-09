@@ -91,7 +91,7 @@ export function LandisGyrModal({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-auto">
+      <DialogContent className="max-w-4xl max-h-[90dvh] overflow-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 justify-between">
             <div className="flex items-center gap-2">
