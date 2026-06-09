@@ -996,14 +996,14 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
 
       {/* View mode header */}
       {!editMode && (
-        <div className="flex items-center justify-between px-5 py-2 bg-muted/30 min-h-[48px]">
-          <div className="flex items-center gap-3">
-            <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-5 py-2 bg-muted/30 min-h-[48px]">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1 sm:flex-initial">
+            <h3 className="hidden sm:flex text-sm font-semibold text-foreground items-center gap-2 shrink-0">
               <Network className="h-4 w-4" />
               Diagrama IoT
             </h3>
             {/* Project tabs */}
-            <div className="flex items-center gap-0.5 ml-2">
+            <div className="flex items-center gap-0.5 sm:ml-2 min-w-0 overflow-x-auto">
               {projects.map(p => (
                 <div key={p.id} className="flex items-center">
                   {renamingId === p.id ? (
@@ -1014,32 +1014,32 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
                     />
                   ) : (
                     <button onClick={() => setSelectedProjectId(p.id)} onDoubleClick={() => { setRenamingId(p.id); setRenameValue(p.nome); }}
-                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${p.id === selectedProjectId ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted'}`}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors truncate max-w-[55vw] sm:max-w-none ${p.id === selectedProjectId ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted'}`}
                       title="Duplo-clique para renomear">{p.nome}</button>
                   )}
                 </div>
               ))}
-              <button onClick={openCreateModal} className="px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground rounded-md hover:bg-muted" title="Novo projeto"><Plus className="h-3.5 w-3.5" /></button>
+              <button onClick={openCreateModal} className="px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground rounded-md hover:bg-muted shrink-0" title="Novo projeto"><Plus className="h-3.5 w-3.5" /></button>
             </div>
-            <span className="text-muted-foreground text-xs ml-2">{compCount} componentes · {connCount} conexões</span>
+            <span className="hidden md:inline text-muted-foreground text-xs ml-2 shrink-0">{compCount} componentes · {connCount} conexões</span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
             <Button variant="outline" size="sm" onClick={handleCenter}><ZoomIn className="h-4 w-4 mr-1" />{zoom}%</Button>
             <Button variant="outline" size="sm" onClick={toggleFullscreen}>{fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}</Button>
             <Button variant="outline" size="sm" onClick={toggleSimulation}>
-              <Play className="h-4 w-4 mr-1" />{simulating ? 'Parar' : 'Simular'}
+              <Play className="h-4 w-4 sm:mr-1" /><span className="hidden sm:inline">{simulating ? 'Parar' : 'Simular'}</span>
             </Button>
             <Button variant="outline" size="sm" onClick={handleGenerateFirmware}>
-              <Download className="h-4 w-4 mr-1" />Firmware
+              <Download className="h-4 w-4 sm:mr-1" /><span className="hidden sm:inline">Firmware</span>
             </Button>
             <Button variant="outline" size="sm" onClick={() => setBenchTestModal({ selectedTest: 0, checklist: {} })}>
-              <Zap className="h-4 w-4 mr-1" />Teste Bancada
+              <Zap className="h-4 w-4 sm:mr-1" /><span className="hidden sm:inline">Teste Bancada</span>
             </Button>
             <Button variant={serialOpen ? 'default' : 'outline'} size="sm" onClick={() => setSerialOpen(!serialOpen)}>
-              <Terminal className="h-4 w-4 mr-1" />Serial
+              <Terminal className="h-4 w-4 sm:mr-1" /><span className="hidden sm:inline">Serial</span>
             </Button>
             <Button variant="outline" size="sm" onClick={toggleEdit}>
-              <Edit3 className="h-4 w-4 mr-1" />Editar
+              <Edit3 className="h-4 w-4 sm:mr-1" /><span className="hidden sm:inline">Editar</span>
             </Button>
           </div>
         </div>
@@ -1048,25 +1048,25 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
       {/* Edit mode toolbar — matches Unifilar style */}
       {editMode && (
         <div className="border-b bg-white dark:bg-gray-900 shadow-sm">
-          <div className="flex items-center justify-between p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 p-3">
             <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
               <Network className="h-5 w-5" />
               Diagrama IoT
             </h3>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Button variant="outline" size="sm" onClick={saveCurrentDiagram} disabled={saving} className="flex items-center gap-2">
                 {saving ? (
-                  <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current" />Salvando...</>
+                  <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current" /><span className="hidden sm:inline">Salvando...</span></>
                 ) : (
-                  <><Save className="h-4 w-4" />Salvar</>
+                  <><Save className="h-4 w-4" /><span className="hidden sm:inline">Salvar</span></>
                 )}
               </Button>
-              <div className="text-xs text-muted-foreground flex items-center gap-3">
+              <div className="hidden md:flex text-xs text-muted-foreground items-center gap-3">
                 <span>Componentes: {compCount}</span>
                 <span>Conexões: {connCount}</span>
               </div>
               <Button variant="default" size="sm" onClick={toggleEdit} disabled={saving} className="flex items-center gap-2">
-                <X className="h-4 w-4" />Sair da Edição
+                <X className="h-4 w-4" /><span className="hidden sm:inline">Sair da Edição</span>
               </Button>
             </div>
           </div>
@@ -1112,7 +1112,7 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
       )}
 
       {/* Canvas */}
-      <div id="iotDiagramCanvas" ref={containerRef} style={{ position: 'relative', overflow: 'hidden', background: '#0a0a0a', flex: '1 1 0%', minHeight: '500px' }} />
+      <div id="iotDiagramCanvas" ref={containerRef} className="min-h-[360px] sm:min-h-[500px]" style={{ position: 'relative', overflow: 'hidden', background: '#0a0a0a', flex: '1 1 0%' }} />
 
       {/* Connection Context Menu */}
       {connMenu && (
