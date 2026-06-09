@@ -235,7 +235,7 @@ export function DashboardPage() {
   return (
     <Layout>
       <Layout.Main>
-        <div className="h-screen w-full overflow-hidden">
+        <div className="h-full w-full overflow-hidden">
           <div className="h-full overflow-y-auto">
             <div className="flex flex-col gap-3 p-2">
               {/* Header com Status */}

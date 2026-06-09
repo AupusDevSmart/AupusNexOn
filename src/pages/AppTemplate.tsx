@@ -23,7 +23,7 @@ export function AppTemplate() {
   return (
     <QueryClientProvider client={queryClient}>
       <SidebarProvider defaultOpen={false}>
-        <div className="flex h-screen w-screen overflow-hidden bg-secondary">
+        <div className="flex h-[100dvh] w-screen overflow-hidden bg-secondary">
           <AppSidebar />
           <SidebarInset className="flex flex-col w-full h-full bg-secondary">
             <header className="flex-none flex items-center justify-between bg-secondary">
