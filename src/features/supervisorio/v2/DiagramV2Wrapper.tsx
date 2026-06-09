@@ -36,7 +36,7 @@ import { EquipamentoCommandModal } from './components/EquipamentoCommandModal';
 import { EquipamentoAcionarModal } from './components/EquipamentoAcionarModal';
 import { getCommandsForCategoria } from './utils/commandRegistry';
 import { Button } from '@/components/ui/button';
-import { BarChart3 } from 'lucide-react';
+import { BarChart3, X } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/config/api';
 
@@ -399,11 +399,12 @@ export const DiagramV2Wrapper: React.FC<DiagramV2WrapperProps> = ({
       {/* Botão Toggle Gráficos - Posicionado no canto inferior direito, acima dos controles de zoom */}
       {/* NUNCA mostrar gráficos em modo de edição */}
       {temGraficosVisiveis && !isEditMode && (
-        <div style={{ position: 'absolute', bottom: '5.5rem', right: '1.5rem', zIndex: 10 }}>
+        <div className={`fixed xl:absolute bottom-12 right-2 xl:bottom-[5.5rem] xl:right-6 z-[60] ${showGraficos ? 'hidden xl:block' : ''}`}>
           <Button
             variant="outline"
             size="sm"
             onClick={() => setShowGraficos(!showGraficos)}
+            aria-label={showGraficos ? 'Ocultar gráficos' : 'Mostrar gráficos'}
             className="gap-2 bg-background/95 backdrop-blur-sm shadow-lg border-2 rounded-sm"
           >
             <BarChart3 className="h-4 w-4" />
@@ -417,17 +418,37 @@ export const DiagramV2Wrapper: React.FC<DiagramV2WrapperProps> = ({
         {/* Gráficos - Painel Lateral (1/3 da largura em telas grandes) - Com scroll próprio */}
         {/* NUNCA mostrar gráficos em modo de edição */}
         {showGraficos && !isEditMode && (
-          <div className="xl:col-span-1 flex flex-col gap-4 overflow-y-auto overflow-x-hidden pr-2" style={{ maxHeight: '100%' }}>
-            <SinopticoGraficosV2
-              unidadeId={unidadeIdParaGraficos}
-              valorContratado={demandaContratada}
-              percentualAdicional={5}
+          <>
+            {/* Backdrop — só mobile (no desktop o painel é coluna inline do grid) */}
+            <div
+              className="fixed inset-0 z-40 bg-black/60 xl:hidden"
+              onClick={() => setShowGraficos(false)}
+              aria-hidden
             />
-          </div>
+            {/* Painel de gráficos: bottom-sheet fixo sobre o diagrama no mobile;
+                coluna inline (1/3) no desktop (xl). Uma única instância. */}
+            <div
+              className="fixed inset-x-0 bottom-0 z-50 flex max-h-[85dvh] flex-col gap-4 overflow-y-auto rounded-t-2xl border-t bg-background p-3 pt-6 shadow-2xl xl:static xl:z-auto xl:col-span-1 xl:max-h-full xl:rounded-none xl:border-0 xl:bg-transparent xl:p-0 xl:pr-2 xl:shadow-none"
+              style={{ overscrollBehavior: 'contain' }}
+            >
+              <button
+                onClick={() => setShowGraficos(false)}
+                className="absolute right-3 top-2 rounded-sm p-1 text-muted-foreground hover:bg-muted xl:hidden"
+                aria-label="Fechar gráficos"
+              >
+                <X className="h-4 w-4" />
+              </button>
+              <SinopticoGraficosV2
+                unidadeId={unidadeIdParaGraficos}
+                valorContratado={demandaContratada}
+                percentualAdicional={5}
+              />
+            </div>
+          </>
         )}
 
-        {/* Diagrama - Ocupa o restante do espaço */}
-        <div className={`${showGraficos ? 'xl:col-span-2' : ''} flex`} style={{ minHeight: 0, position: 'relative' }}>
+        {/* Diagrama - Ocupa o restante do espaço (tela cheia no mobile) */}
+        <div className={`${showGraficos ? 'xl:col-span-2' : ''} flex min-h-[55vh] xl:min-h-0`} style={{ position: 'relative' }}>
           <DiagramV2
             diagramaId={diagramaId || unidadeIdFromUrl || 'static-diagram'}
             mode={modoEdicao ? 'edit' : 'view'}

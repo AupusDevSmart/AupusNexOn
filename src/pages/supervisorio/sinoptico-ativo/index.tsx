@@ -3677,20 +3677,20 @@ if (import.meta.env.PROD) {
 
         <div className="w-full h-full flex flex-col">
           {/* Header */}
-          <div className="flex-none flex flex-row items-center gap-2 sm:gap-3 p-3 sm:p-4">
+          <div className="flex-none flex flex-row items-center gap-2 sm:gap-3 p-3 sm:p-4 min-w-0">
             <Button
               variant="outline"
               size="sm"
               onClick={() => navigate(-1)}
               disabled={isSavingDiagrama}
-              className="flex items-center gap-2 rounded-sm"
+              className="flex items-center gap-2 rounded-sm shrink-0"
             >
               <ArrowLeft className="h-4 w-4" />
               <span className="hidden sm:inline">Voltar</span>
             </Button>
 
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 flex-1 w-full sm:w-auto">
-              <h1 className="text-lg sm:text-2xl font-bold text-foreground">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 flex-1 w-full sm:w-auto min-w-0">
+              <h1 className="text-lg sm:text-2xl font-bold text-foreground truncate min-w-0 max-w-full">
                 <span className="hidden sm:inline">Sinóptico: </span>
                 {(() => {
                   // Log removido
@@ -3730,17 +3730,17 @@ if (import.meta.env.PROD) {
             <div className="flex justify-center gap-1 pt-3 pb-1" style={{ zIndex: 10 }}>
               <button
                 onClick={() => setSinopticoTab('unifilar')}
-                className={`px-5 py-1.5 text-sm font-medium rounded-[2px] transition-colors ${
+                className={`px-3 sm:px-5 py-1.5 text-sm font-medium rounded-[2px] transition-colors ${
                   sinopticoTab === 'unifilar'
                     ? 'bg-muted text-foreground'
                     : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                 }`}
               >
-                Diagrama Unifilar
+                <span className="hidden sm:inline">Diagrama </span>Unifilar
               </button>
               <button
                 onClick={() => setSinopticoTab('iot')}
-                className={`px-5 py-1.5 text-sm font-medium rounded-[2px] transition-colors ${
+                className={`px-3 sm:px-5 py-1.5 text-sm font-medium rounded-[2px] transition-colors ${
                   sinopticoTab === 'iot'
                     ? 'bg-muted text-foreground'
                     : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'

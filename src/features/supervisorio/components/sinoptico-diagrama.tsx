@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Zap } from "lucide-react";
 import { PivoSymbol } from "./pivo";
 
 // Helper function para posicionamento do label
@@ -1480,7 +1481,7 @@ export function SinopticoDiagrama({
       {componentes.length === 0 && (
         <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
           <div className="text-center">
-            <div className="text-4xl mb-2">⚡</div>
+            <Zap className="mx-auto mb-2 h-10 w-10 opacity-60" />
             <p className="text-lg font-medium">Nenhum componente no diagrama</p>
             <p className="text-sm">
               Adicione componentes para visualizar o diagrama unifilar

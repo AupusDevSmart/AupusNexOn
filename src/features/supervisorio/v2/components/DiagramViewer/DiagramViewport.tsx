@@ -63,6 +63,70 @@ export const DiagramViewport: React.FC<DiagramViewportProps> = ({ children, onBa
   }, [viewport.scale, setZoom]);
 
   // ==========================================================================
+  // TOUCH (MOBILE) - 1 dedo = pan, 2 dedos = pinch-zoom. Listener nativo com
+  // {passive:false} (o onTouchMove do React e passive, nao permite preventDefault).
+  // ==========================================================================
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+
+    let mode: 'pan' | 'pinch' | null = null;
+    let lastX = 0;
+    let lastY = 0;
+    let pinchStartDist = 1;
+    let pinchStartScale = 1;
+    const dist = (a: Touch, b: Touch) => Math.hypot(b.clientX - a.clientX, b.clientY - a.clientY);
+
+    const onStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        mode = 'pinch';
+        pinchStartDist = dist(e.touches[0], e.touches[1]) || 1;
+        pinchStartScale = useDiagramStore.getState().viewport.scale;
+        e.preventDefault();
+      } else if (e.touches.length === 1 && e.target === svg) {
+        // Pan so quando comeca no fundo (svg). Tocar num equipamento deixa o tap abrir o modal.
+        mode = 'pan';
+        lastX = e.touches[0].clientX;
+        lastY = e.touches[0].clientY;
+        startViewportDrag();
+        e.preventDefault();
+      }
+    };
+
+    const onMove = (e: TouchEvent) => {
+      const st = useDiagramStore.getState();
+      if (mode === 'pan' && e.touches.length === 1) {
+        const dx = e.touches[0].clientX - lastX;
+        const dy = e.touches[0].clientY - lastY;
+        lastX = e.touches[0].clientX;
+        lastY = e.touches[0].clientY;
+        st.setPan(st.viewport.x + dx, st.viewport.y + dy);
+        e.preventDefault();
+      } else if (mode === 'pinch' && e.touches.length === 2) {
+        const d = dist(e.touches[0], e.touches[1]) || 1;
+        st.setZoom(pinchStartScale * (d / pinchStartDist));
+        e.preventDefault();
+      }
+    };
+
+    const onEnd = () => {
+      if (mode === 'pan') endViewportDrag();
+      mode = null;
+    };
+
+    svg.addEventListener('touchstart', onStart, { passive: false });
+    svg.addEventListener('touchmove', onMove, { passive: false });
+    svg.addEventListener('touchend', onEnd);
+    svg.addEventListener('touchcancel', onEnd);
+    return () => {
+      svg.removeEventListener('touchstart', onStart);
+      svg.removeEventListener('touchmove', onMove);
+      svg.removeEventListener('touchend', onEnd);
+      svg.removeEventListener('touchcancel', onEnd);
+    };
+  }, [startViewportDrag, endViewportDrag]);
+
+  // ==========================================================================
   // PAN (CLICK + DRAG)
   // ==========================================================================
 
@@ -304,6 +368,7 @@ export const DiagramViewport: React.FC<DiagramViewportProps> = ({ children, onBa
             transform: `translate(-50%, -50%) translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.scale})`,
             transformOrigin: 'center center',
             transition: viewport.isDragging ? 'none' : 'transform 0.1s ease-out',
+            touchAction: 'none',
           }}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}

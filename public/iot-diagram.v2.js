@@ -638,6 +638,61 @@ var DiagramEditor = class {
             if (this.onZoomChange) this.onZoomChange(this.zoom);
         });
 
+        // ---- Touch (mobile): 1 dedo = pan, 2 dedos = pinch-zoom ----
+        // touch-action:none impede o browser de roubar os gestos (scroll/zoom da pagina).
+        this.svg.style.touchAction = 'none';
+        let touchMode = null; // 'pan' | 'pinch'
+        let touchPanStart = { x: 0, y: 0 };
+        let pinchStartDist = 1;
+        let pinchStartZoom = 1;
+        let pinchCenter = { x: 0, y: 0 };
+        const _touchDist = (a, b) => Math.hypot(b.clientX - a.clientX, b.clientY - a.clientY);
+
+        this.svg.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 2) {
+                // Pinch (2 dedos) — funciona em qualquer alvo
+                touchMode = 'pinch';
+                pinchStartDist = _touchDist(e.touches[0], e.touches[1]) || 1;
+                pinchStartZoom = this.zoom;
+                const rect = this.svg.getBoundingClientRect();
+                pinchCenter = {
+                    x: (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left,
+                    y: (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top,
+                };
+                e.preventDefault();
+            } else if (e.touches.length === 1 && (e.target === this.svg || e.target === this.gridRect)) {
+                // Pan (1 dedo) — so quando comeca no fundo (igual ao mousedown).
+                // Tocar num componente NAO faz preventDefault: deixa o tap/click abrir o modal.
+                touchMode = 'pan';
+                touchPanStart = { x: e.touches[0].clientX - this.pan.x, y: e.touches[0].clientY - this.pan.y };
+                e.preventDefault();
+            }
+        }, { passive: false });
+
+        this.svg.addEventListener('touchmove', (e) => {
+            if (touchMode === 'pan' && e.touches.length === 1) {
+                this.pan.x = e.touches[0].clientX - touchPanStart.x;
+                this.pan.y = e.touches[0].clientY - touchPanStart.y;
+                this._updateTransform();
+                e.preventDefault();
+            } else if (touchMode === 'pinch' && e.touches.length === 2) {
+                const dist = _touchDist(e.touches[0], e.touches[1]) || 1;
+                const newZoom = Math.min(3, Math.max(0.15, pinchStartZoom * (dist / pinchStartDist)));
+                const mx = pinchCenter.x, my = pinchCenter.y;
+                this.pan.x = mx - (mx - this.pan.x) * (newZoom / this.zoom);
+                this.pan.y = my - (my - this.pan.y) * (newZoom / this.zoom);
+                this.zoom = newZoom;
+                this._updateTransform();
+                this._updateGridVisibility();
+                if (this.onZoomChange) this.onZoomChange(this.zoom);
+                e.preventDefault();
+            }
+        }, { passive: false });
+
+        const _endTouch = () => { touchMode = null; };
+        this.svg.addEventListener('touchend', _endTouch);
+        this.svg.addEventListener('touchcancel', _endTouch);
+
         // Keyboard shortcuts
         window.addEventListener('keydown', (e) => {
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
@@ -1762,7 +1817,8 @@ var DiagramEditor = class {
             const contentW = maxX - minX + 120;
             const contentH = maxY - minY + 120;
             const fitZoom = Math.min(cw / contentW, ch / contentH);
-            this.zoom = Math.max(0.4, Math.min(1.5, fitZoom));
+            // Piso 0.15 (era 0.4): diagrama largo precisa caber numa tela ~360px.
+            this.zoom = Math.max(0.15, Math.min(1.5, fitZoom));
             const centerX = (minX + maxX) / 2;
             const centerY = (minY + maxY) / 2;
             this.pan.x = cw / 2 - centerX * this.zoom;
