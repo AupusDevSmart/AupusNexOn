@@ -564,6 +564,10 @@ export function SinopticoGraficosV2({
   const temEquipamentosDisponiveis = equipamentosData && equipamentosData.length > 0;
   const temEquipamentosSelecionados = configuracao.equipamentos.some(e => e.selecionado);
   const temM160Disponivel = equipamentosM160.length > 0;
+  // So a Demanda visivel (sem PM/M160): no desktop o card preenche a altura da
+  // coluna em vez de deixar um vazio embaixo. So aplica em xl (layout em coluna);
+  // abaixo disso e bottom-sheet e os graficos mantem altura fixa.
+  const soDemanda = !!temEquipamentosDisponiveis && !temM160Disponivel;
 
   // Qualidade só faz sentido para 'dia' (live). Mês/ano/custom são consultas históricas.
   const qualidadeDados = useMemo(
@@ -598,10 +602,10 @@ export function SinopticoGraficosV2({
   }, [periodo]);
 
   return (
-    <div className="w-full flex flex-col gap-4">
+    <div className={`w-full flex flex-col gap-4 ${soDemanda ? 'xl:flex-1 xl:min-h-0' : ''}`}>
       {/* Gráfico de Demanda */}
       {temEquipamentosDisponiveis && (
-      <Card>
+      <Card className={soDemanda ? 'xl:flex-1 xl:min-h-0 xl:flex xl:flex-col' : undefined}>
         <CardHeader className="p-2 space-y-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -691,7 +695,7 @@ export function SinopticoGraficosV2({
           </div>
         </CardHeader>
 
-        <CardContent className="p-2">
+        <CardContent className={`p-2 ${soDemanda ? 'xl:flex-1 xl:min-h-0 xl:flex xl:flex-col' : ''}`}>
           {/* Alerta de qualidade — só em modo 'dia' */}
           {periodo.tipo === 'dia' && qualidadeDados.status !== 'OK' && (
             <div className="mb-3 p-2 rounded-md bg-muted/40">
@@ -725,7 +729,8 @@ export function SinopticoGraficosV2({
               </div>
             </div>
           ) : ehSeriesPotencia ? (
-            <ResponsiveContainer width="100%" height={350}>
+            <div className={soDemanda ? 'h-[350px] xl:h-auto xl:flex-1 xl:min-h-0' : 'h-[350px]'}>
+            <ResponsiveContainer width="100%" height="100%">
               <LineChart data={dadosFormatadosPotencia}>
                 <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                 <XAxis dataKey="hora" fontSize={isMobile ? 10 : 12} interval="preserveStartEnd" minTickGap={isMobile ? 28 : 12} />
@@ -766,8 +771,10 @@ export function SinopticoGraficosV2({
                 )}
               </LineChart>
             </ResponsiveContainer>
+            </div>
           ) : (
-            <ResponsiveContainer width="100%" height={350}>
+            <div className={soDemanda ? 'h-[350px] xl:h-auto xl:flex-1 xl:min-h-0' : 'h-[350px]'}>
+            <ResponsiveContainer width="100%" height="100%">
               <BarChart data={dadosFormatadosPotencia}>
                 <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                 <XAxis dataKey="label" fontSize={isMobile ? 10 : 12} interval="preserveStartEnd" minTickGap={isMobile ? 28 : 12} />
@@ -777,6 +784,7 @@ export function SinopticoGraficosV2({
                 <Bar dataKey="energia" name="Energia" fill={corLinhaDemanda} radius={[2, 2, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
+            </div>
           )}
         </CardContent>
       </Card>
