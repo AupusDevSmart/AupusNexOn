@@ -163,8 +163,11 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
           const total = c.getChildCount();
           const children = c.getAllChildMarkers();
           const statuses = children.map((m: any) => m.options.__status);
-          let cor = "#10B981";
-          if (statuses.some((s: string) => s === "OFFLINE")) cor = "#6B7280";
+          // Cor do cluster prioriza o "ligado": verde se PELO MENOS UMA estiver
+          // online (facilita achar usinas on dentro de um grupo); amber se nenhuma
+          // online mas houver alerta; cinza so quando TODAS estao offline.
+          let cor = "#6B7280";
+          if (statuses.some((s: string) => s === "ONLINE")) cor = "#10B981";
           else if (statuses.some((s: string) => s === "ALERTA")) cor = "#F59E0B";
           return L.divIcon({
             html: `
