@@ -670,7 +670,7 @@ static void _publish_tcp_inv_${idx}(tcp_publish_fn publish) {
 
 #define DEVICE_MODEL        "${spec.tonType.toUpperCase()}"
 #define DEVICE_ID           "${spec.hostname}"
-#define FIRMWARE_VERSION    "1.5.0-sbo"
+#define FIRMWARE_VERSION    "1.6.0-io-onchange"
 
 // I2C
 #define I2C_ADDR_RTC        0x68
@@ -2394,7 +2394,6 @@ static void _publish_dev_${idx}(modbus_publish_fn publish) {
         cpp += `
 // Estado / timers
 static unsigned long last_input_scan = 0;
-static unsigned long last_status     = 0;
 static unsigned long last_sample     = 0;  // leitura Modbus RS485 (round-robin)
 static unsigned long last_publish    = 0;  // publicacao MQTT RS485 (medias/deltas)
 static unsigned long last_sample_tcp = 0;  // leitura Modbus TCP (round-robin via datalogger)
@@ -2686,11 +2685,28 @@ void loop() {
         }
 
         cpp += `
-    // Entradas (debounce)
+    // I/O edge-triggered: publica entradas/saidas SOMENTE quando mudam.
+    // Estado inicial publicado no boot e republicado apos cada reconexao MQTT
+    // (pra o backend nunca ficar sem o estado atual). Substitui o antigo status
+    // periodico de ${'$'}{MQTT_STATUS_MS}ms que poluia o broker com publicacoes redundantes.
     if (now - last_input_scan >= INPUT_SCAN_MS) {
         last_input_scan = now;
         inputs_scan();
-        if (inputs_changed()) {
+
+        static bool _io_force = true;        // forca publicacao inicial (boot)
+        static bool _mqtt_was_up = false;
+        static uint8_t _prev_out = 0;
+`;
+        if (spec.has_relays) cpp += `        static uint8_t _prev_rl = 0;\n`;
+        cpp += `
+        // Detecta reconexao MQTT (false->true) pra republicar estado atual
+        bool _mqtt_up = mqtt_connected();
+        if (_mqtt_up && !_mqtt_was_up) _io_force = true;
+        _mqtt_was_up = _mqtt_up;
+
+        // Entradas digitais (on-change via debounce de inputs_changed)
+        bool _in_changed = inputs_changed();   // sempre chama pra consumir o flag
+        if (_io_force || _in_changed) {
             uint8_t s = inputs_get_state();
             char buf[80];
             snprintf(buf, sizeof(buf), "{\\"d1\\":%d,\\"d2\\":%d,\\"d3\\":%d,\\"d4\\":%d,\\"d5\\":%d,\\"d6\\":%d}",
@@ -2699,38 +2715,35 @@ void loop() {
         if (spec.wifi) cpp += `            mqtt_publish(MQTT_TOPIC_INPUTS, buf);\n`;
         if (spec.has_lora && spec.lora?.mode === 'tx') cpp += `            lora_send(buf);\n`;
         cpp += `        }
-    }
-
-    // Status periodico
-    if (now - last_status >= MQTT_STATUS_MS) {
-        last_status = now;
 `;
         if (spec.wifi) {
-            cpp += `        // Publicar estado
-        uint8_t rs = inputs_get_state();
-        char ibuf[80];
-        snprintf(ibuf, sizeof(ibuf), "{\\"d1\\":%d,\\"d2\\":%d,\\"d3\\":%d,\\"d4\\":%d,\\"d5\\":%d,\\"d6\\":%d}",
-            rs&1, (rs>>1)&1, (rs>>2)&1, (rs>>3)&1, (rs>>4)&1, (rs>>5)&1);
-        mqtt_publish(MQTT_TOPIC_INPUTS, ibuf);
+            cpp += `
+        // Saidas transistor (TR1-4) on-change
+        uint8_t os = outputs_get_state();
+        if (_io_force || os != _prev_out) {
+            _prev_out = os;
+            char obuf[60];
+            snprintf(obuf, sizeof(obuf), "{\\"tr1\\":%d,\\"tr2\\":%d,\\"tr3\\":%d,\\"tr4\\":%d}",
+                os&1, (os>>1)&1, (os>>2)&1, (os>>3)&1);
+            mqtt_publish(MQTT_TOPIC_OUTPUTS, obuf);
+        }
 `;
             if (spec.has_relays) {
                 cpp += `
+        // Reles (R1-6) on-change
         uint8_t rl = relays_get_state();
-        char rbuf[80];
-        snprintf(rbuf, sizeof(rbuf), "{\\"r1\\":%d,\\"r2\\":%d,\\"r3\\":%d,\\"r4\\":%d,\\"r5\\":%d,\\"r6\\":%d}",
-            (rl>>1)&1, (rl>>2)&1, (rl>>3)&1, (rl>>4)&1, (rl>>5)&1, (rl>>6)&1);
-        mqtt_publish(MQTT_TOPIC_RELAYS, rbuf);
+        if (_io_force || rl != _prev_rl) {
+            _prev_rl = rl;
+            char rbuf[80];
+            snprintf(rbuf, sizeof(rbuf), "{\\"r1\\":%d,\\"r2\\":%d,\\"r3\\":%d,\\"r4\\":%d,\\"r5\\":%d,\\"r6\\":%d}",
+                (rl>>1)&1, (rl>>2)&1, (rl>>3)&1, (rl>>4)&1, (rl>>5)&1, (rl>>6)&1);
+            mqtt_publish(MQTT_TOPIC_RELAYS, rbuf);
+        }
 `;
             }
-            cpp += `
-        uint8_t os = outputs_get_state();
-        char obuf[60];
-        snprintf(obuf, sizeof(obuf), "{\\"tr1\\":%d,\\"tr2\\":%d,\\"tr3\\":%d,\\"tr4\\":%d}",
-            os&1, (os>>1)&1, (os>>2)&1, (os>>3)&1);
-        mqtt_publish(MQTT_TOPIC_OUTPUTS, obuf);
-`;
         }
-        cpp += `    }
+        cpp += `        _io_force = false;
+    }
 `;
 
         if (spec.rs485_devices.length > 0) {
