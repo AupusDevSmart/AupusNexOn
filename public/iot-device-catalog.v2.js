@@ -1003,25 +1003,135 @@ var DEVICE_MODELS = {
         bo_map: {},
     },
 
+    // WEG SIW400 - inversor rebrand GoodWe (protocolo GoodWe ModBus).
+    // Manual: /var/www/iot_nexon/mapa_modbus/WEG/SIW400/SIW400 ST075 .pdf (= GoodWe protocol)
+    // ATENCAO: cadastro anterior (start=39, scale 0.1) estava TOTALMENTE errado —
+    // enderecos inventados + escala invertida (no NexON scale e' DIVISOR, nao multiplicador).
+    // Corrigido em 2026-06-09 com base no protocolo GoodWe real.
+    //
+    // Endereco direto (GoodWe nao usa convencao Modicon -1; frame addr = register addr).
+    // Range de leitura non-MT series: 0x0220-0x0236 (modelos menores, 2 trackers).
+    // Se valores vierem errados/saturados, o inversor pode ser MT series (range 0x0300+) —
+    // nesse caso trocar para os enderecos MT (Vpv1=0x0300, etc).
+    // word_order high_first ("2 words, high word first and low word follow" - manual).
+    // "Gain" do GoodWe = divisor (valor_real = raw / gain). Ex: 0.1V -> raw/10.
     'weg-siw400': {
         fabricante: 'WEG',
         modelo: 'SIW400',
         tipo: 'inversor_solar',
         protocolo: 'tcp',
-        connection_note: 'Via conversor WiFi/TCP',
+        connection_note: 'Rebrand GoodWe. TCP via datalogger/WiFi. Range non-MT 0x0220-0x0236.',
+        word_order: 'high_first',
+        num_mppts: 2,
+        num_strings: 2,
         ai_blocks: [
-            { start: 39, count: 40, func: 0x03, label: 'Dados principais' },
+            // Bloco unico: 0x0220-0x0236 (35 regs) cobre error, energia, PV, grid, freq,
+            // power, status, temp. GoodWe non-MT public read range.
+            { start: 0x0220, count: 0x17, func: 0x03, label: 'Regs 0x0220-0x0236: energia, PV, grid, power, temp' },
         ],
         ai_map: {
-            'potencia_ativa':  { block: 0, offset: 29, scale: 0.1, dataType: 'U32' },
-            'geracao_total':   { block: 0, offset: 33, scale: 0.01, dataType: 'U32' },
-            'geracao_diaria':  { block: 0, offset: 31, scale: 0.01, dataType: 'U32' },
-            'freq_rede':       { block: 0, offset: 37, scale: 0.01, dataType: 'U16' },
-            'mppt1_v':         { block: 0, offset: 0, scale: 0.1, dataType: 'U16' },
-            'mppt1_i':         { block: 0, offset: 1, scale: 0.1, dataType: 'U16' },
+            // offset 0 = 0x0220 (Error code H). offsets relativos ao start.
+            // 0x0222-0x0223 ETotal (0.1kWh) -> total_yield em kWh, scale 10
+            'total_yield':      { block: 0, offset: 2,  scale: 10,  dataType: 'U32', mode: 'last' }, // 0x0222
+            // 0x0226 PV voltage tracker 1 (0.1V) -> mppt1_voltage, scale 10
+            'mppt1_voltage':    { block: 0, offset: 6,  scale: 10,  dataType: 'U16', mode: 'avg'  }, // 0x0226
+            'mppt2_voltage':    { block: 0, offset: 7,  scale: 10,  dataType: 'U16', mode: 'avg'  }, // 0x0227
+            // 0x0228 PV current tracker 1 (0.1A) -> string1_current, scale 10
+            'string1_current':  { block: 0, offset: 8,  scale: 10,  dataType: 'U16', mode: 'avg'  }, // 0x0228
+            'string2_current':  { block: 0, offset: 9,  scale: 10,  dataType: 'U16', mode: 'avg'  }, // 0x0229
+            // 0x022A-0x022C Grid voltage phase 1/2/3 (0.1V). Mapeado em vab/vbc/vca (fase-fase
+            // aproximado; GoodWe non-MT expoe tensao por fase, nao line-to-line direta).
+            'vab':              { block: 0, offset: 10, scale: 10,  dataType: 'U16', mode: 'avg'  }, // 0x022A
+            'vbc':              { block: 0, offset: 11, scale: 10,  dataType: 'U16', mode: 'avg'  }, // 0x022B
+            'vca':              { block: 0, offset: 12, scale: 10,  dataType: 'U16', mode: 'avg'  }, // 0x022C
+            // 0x022D-0x022F Grid current phase 1/2/3 (0.1A)
+            'ia':               { block: 0, offset: 13, scale: 10,  dataType: 'U16', mode: 'avg'  }, // 0x022D
+            'ib':               { block: 0, offset: 14, scale: 10,  dataType: 'U16', mode: 'avg'  }, // 0x022E
+            'ic':               { block: 0, offset: 15, scale: 10,  dataType: 'U16', mode: 'avg'  }, // 0x022F
+            // 0x0230 Grid frequency phase 1 (0.01Hz) -> freq, scale 100
+            'freq':             { block: 0, offset: 16, scale: 100, dataType: 'U16', mode: 'last' }, // 0x0230
+            // 0x0233 Feeding power to grid (1W, ja em W) -> potencia_ativa, scale 1.
+            // NOTA: U16 satura em 65535W (~65kW). Inversores >65kW devem usar MT series.
+            'potencia_ativa':   { block: 0, offset: 19, scale: 1,   dataType: 'U16', mode: 'last' }, // 0x0233
+            // 0x0235 Temperature of Heatsink (0.1C, signed) -> temp_interna, scale 10
+            'temp_interna':     { block: 0, offset: 21, scale: 10,  dataType: 'S16', mode: 'last' }, // 0x0235
+            // 0x0236 EDay (0.1kWh) -> daily_yield, scale 10
+            'daily_yield':      { block: 0, offset: 22, scale: 10,  dataType: 'U16', mode: 'last' }, // 0x0236
         },
         bi_map: {
-            'estado_operacao': { register: 0, func: 0x03 },
+            // 0x0234 Running status: 0=cWaitMode, 1=cNormalMode, 2=cFaultMode
+            'work_state': { register: 0x0234, func: 0x03 },
+        },
+        bo_map: {},
+    },
+
+    // WEG SIW500H - inversor rebrand Huawei SUN2000 (protocolo Huawei).
+    // Manual: /var/www/iot_nexon/mapa_modbus/WEG/SIW500H/SIW500H ST100.pdf
+    //         (= Huawei "Solar Inverter Modbus Interface Definitions V3.0")
+    // Endereco direto (Huawei nao usa convencao Modicon; frame addr = register addr decimal).
+    // word_order high_first (padrao Huawei SUN2000 para U32/I32).
+    // "Gain" Huawei = divisor (valor_real = raw / gain). Ex: V gain 10 -> raw/10.
+    // Potencias em kW/kVar: convertidas pra W/VAr (scale=1 ja' que gain1000 cancela com x1000).
+    'weg-siw500h': {
+        fabricante: 'WEG',
+        modelo: 'SIW500H',
+        tipo: 'inversor_solar',
+        protocolo: 'tcp',
+        connection_note: 'Rebrand Huawei SUN2000. TCP via datalogger. Regs 32016+, 32064+, 32106+.',
+        word_order: 'high_first',
+        num_mppts: 4,
+        num_strings: 4,
+        ai_blocks: [
+            // Bloco 0: PV1-PV4 voltage/current (32016-32023, 8 regs)
+            { start: 32016, count: 8,  func: 0x03, label: 'Regs 32016-32023: PV1-4 V/I' },
+            // Bloco 1: input power -> device status (32064-32089, 26 regs)
+            { start: 32064, count: 26, func: 0x03, label: 'Regs 32064-32089: P, V, I, freq, temp, status' },
+            // Bloco 2: energia acumulada e diaria (32106-32115, 10 regs)
+            { start: 32106, count: 10, func: 0x03, label: 'Regs 32106-32115: energia total e diaria' },
+        ],
+        ai_map: {
+            // --- Bloco 0: PV1-PV4 (offset 0 = 32016) ---
+            // PVn voltage I16 V gain10; PVn current I16 A gain100
+            'mppt1_voltage':    { block: 0, offset: 0, scale: 10,  dataType: 'S16', mode: 'avg' }, // 32016
+            'string1_current':  { block: 0, offset: 1, scale: 100, dataType: 'S16', mode: 'avg' }, // 32017
+            'mppt2_voltage':    { block: 0, offset: 2, scale: 10,  dataType: 'S16', mode: 'avg' }, // 32018
+            'string2_current':  { block: 0, offset: 3, scale: 100, dataType: 'S16', mode: 'avg' }, // 32019
+            'mppt3_voltage':    { block: 0, offset: 4, scale: 10,  dataType: 'S16', mode: 'avg' }, // 32020
+            'string3_current':  { block: 0, offset: 5, scale: 100, dataType: 'S16', mode: 'avg' }, // 32021
+            'mppt4_voltage':    { block: 0, offset: 6, scale: 10,  dataType: 'S16', mode: 'avg' }, // 32022
+            'string4_current':  { block: 0, offset: 7, scale: 100, dataType: 'S16', mode: 'avg' }, // 32023
+
+            // --- Bloco 1: principais (offset 0 = 32064) ---
+            // 32064 Input power I32 kW gain1000 -> dc_total_power em W (scale 1)
+            'dc_total_power':   { block: 1, offset: 0,  scale: 1,    dataType: 'S32', mode: 'avg'  }, // 32064-32065
+            // 32066-32068 Line voltage A-B/B-C/C-A U16 V gain10 -> vab/vbc/vca
+            'vab':              { block: 1, offset: 2,  scale: 10,   dataType: 'U16', mode: 'avg'  }, // 32066
+            'vbc':              { block: 1, offset: 3,  scale: 10,   dataType: 'U16', mode: 'avg'  }, // 32067
+            'vca':              { block: 1, offset: 4,  scale: 10,   dataType: 'U16', mode: 'avg'  }, // 32068
+            // 32072/32074/32076 Phase A/B/C current I32 A gain1000 -> ia/ib/ic
+            'ia':               { block: 1, offset: 8,  scale: 1000, dataType: 'S32', mode: 'avg'  }, // 32072-32073
+            'ib':               { block: 1, offset: 10, scale: 1000, dataType: 'S32', mode: 'avg'  }, // 32074-32075
+            'ic':               { block: 1, offset: 12, scale: 1000, dataType: 'S32', mode: 'avg'  }, // 32076-32077
+            // 32080 Active power I32 kW gain1000 -> potencia_ativa em W (scale 1)
+            'potencia_ativa':   { block: 1, offset: 16, scale: 1,    dataType: 'S32', mode: 'last' }, // 32080-32081
+            // 32082 Reactive power I32 kVar gain1000 -> potencia_reativa em VAr (scale 1)
+            'potencia_reativa': { block: 1, offset: 18, scale: 1,    dataType: 'S32', mode: 'last' }, // 32082-32083
+            // 32084 Power factor I16 gain1000 -> fp
+            'fp':               { block: 1, offset: 20, scale: 1000, dataType: 'S16', mode: 'last' }, // 32084
+            // 32085 Grid frequency U16 Hz gain100 -> freq
+            'freq':             { block: 1, offset: 21, scale: 100,  dataType: 'U16', mode: 'last' }, // 32085
+            // 32087 Internal temperature I16 C gain10 -> temp_interna
+            'temp_interna':     { block: 1, offset: 23, scale: 10,   dataType: 'S16', mode: 'last' }, // 32087
+
+            // --- Bloco 2: energia (offset 0 = 32106) ---
+            // 32106 Accumulated energy yield U32 kWh gain100 -> total_yield
+            'total_yield':      { block: 2, offset: 0, scale: 100, dataType: 'U32', mode: 'last' }, // 32106-32107
+            // 32114 Daily energy yield U32 kWh gain100 -> daily_yield
+            'daily_yield':      { block: 2, offset: 8, scale: 100, dataType: 'U32', mode: 'last' }, // 32114-32115
+        },
+        bi_map: {
+            // 32089 Device status (enum 0x0000..0x0A00, vide manual pag 11-12)
+            'work_state': { register: 32089, func: 0x03 },
         },
         bo_map: {},
     },
