@@ -1870,14 +1870,22 @@ export function SinopticoAtivoPage() {
 
       setUnidadeAtual(unidadeFormatada);
 
-      // Carregar planta se tiver plantaId
-      if (unidadeData.planta_id) {
-        try {
-          const plantaResponse = await api.get(`/plantas/${unidadeData.planta_id}`);
-          const plantaData = plantaResponse.data?.data || plantaResponse.data;
-          setPlantaAtual(plantaData);
-        } catch (err) {
-          console.error('❌ Erro ao carregar planta:', err);
+      // Planta: preferir a que ja vem aninhada na resposta da unidade
+      // (/unidades/:id inclui planta { id, nome, ... }) — setada junto com a unidade,
+      // sem fetch extra nem race. So cai pro /plantas/:id se, por algum motivo, nao
+      // vier aninhada (aceita planta_id snake OU plantaId camel).
+      if (unidadeData.planta) {
+        setPlantaAtual(unidadeData.planta);
+      } else {
+        const plantaId = unidadeData.planta_id || unidadeData.plantaId;
+        if (plantaId) {
+          try {
+            const plantaResponse = await api.get(`/plantas/${plantaId}`);
+            const plantaData = plantaResponse.data?.data || plantaResponse.data;
+            setPlantaAtual(plantaData);
+          } catch (err) {
+            console.error('❌ Erro ao carregar planta:', err);
+          }
         }
       }
     } catch (error) {
@@ -3698,7 +3706,9 @@ if (import.meta.env.PROD) {
                   if (unidadeAtual) {
                     return (
                       <>
-                        <span className="hidden md:inline">{plantaAtual?.nome} - </span>
+                        {plantaAtual?.nome && (
+                          <span className="hidden md:inline">{plantaAtual.nome} - </span>
+                        )}
                         {unidadeAtual.nome}
                       </>
                     );
