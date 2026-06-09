@@ -413,6 +413,28 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
     setTimeout(() => { editor.centerView(); setZoom(Math.round(editor.zoom * 100)); }, 200);
   }, [selectedProjectId]);
 
+  // Re-fit (centerView) quando o container muda de tamanho ou ao girar o aparelho.
+  // Antes o fit so rodava no init/troca de projeto, entao orientacao/abrir-fechar a
+  // barra do navegador no mobile deixava o diagrama desalinhado.
+  useEffect(() => {
+    if (!ready) return;
+    const el = containerRef.current;
+    if (!el) return;
+    let t: ReturnType<typeof setTimeout>;
+    const reFit = () => {
+      clearTimeout(t);
+      t = setTimeout(() => editorRef.current?.centerView?.(), 120);
+    };
+    const ro = new ResizeObserver(reFit);
+    ro.observe(el);
+    window.addEventListener('orientationchange', reFit);
+    return () => {
+      clearTimeout(t);
+      ro.disconnect();
+      window.removeEventListener('orientationchange', reFit);
+    };
+  }, [ready]);
+
   const saveCurrentDiagram = useCallback(async () => {
     const projId = selectedProjectIdRef.current;
     if (!projId || !editorRef.current) return;
