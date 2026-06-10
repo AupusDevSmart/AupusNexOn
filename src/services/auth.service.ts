@@ -75,6 +75,28 @@ export const AuthService = {
   },
 
   /**
+   * Solicita a redefinição de senha por email.
+   * O backend sempre responde com sucesso genérico (anti-enumeração).
+   * @param email Email da conta
+   */
+  async forgotPassword(email: string): Promise<void> {
+    await api.post('/auth/forgot-password', { email });
+  },
+
+  /**
+   * Conclui a redefinição de senha usando o token recebido por email.
+   * @param payload email, token e nova senha (com confirmação)
+   */
+  async resetPassword(payload: {
+    email: string;
+    token: string;
+    novaSenha: string;
+    confirmarSenha: string;
+  }): Promise<void> {
+    await api.post('/auth/reset-password', payload);
+  },
+
+  /**
    * Realiza logout do sistema
    * Remove tokens e notifica o backend (opcional)
    */
