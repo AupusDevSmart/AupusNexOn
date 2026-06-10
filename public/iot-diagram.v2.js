@@ -266,10 +266,12 @@ var COMPONENT_TYPES = {
         ]
     },
 
-    // Datalogger de inversores (Sungrow WiNet-S, GoodWe Wi-Fi Kit, Huawei SmartLogger, etc)
-    // Converte RS485 (inversores) -> Modbus TCP (via WiFi/Ethernet)
+    // Datalogger / Gateway RS485 <-> TCP/Ethernet generico.
+    // Modelos: Sungrow WiNet-S, GoodWe Wi-Fi Kit, Huawei SmartLogger, USR-TCP232-304, etc.
+    // Aceita qualquer dispositivo Modbus RS485 (inversor, medidor, rele) no lado serial.
+    // Tipo mantido como 'inverter_datalogger' por backward-compat com diagramas salvos.
     inverter_datalogger: {
-        label: 'Datalogger Inversor', category: 'infra', color: '#0EA5E9',
+        label: 'Datalogger', category: 'infra', color: '#0EA5E9',
         // Antena/server icon
         icon: 'M5 12H3l9-9 9 9h-2M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6',
         ports: ['top', 'bottom', 'left', 'right'],
@@ -980,8 +982,9 @@ var DiagramEditor = class {
         // Datalogger de inversor: RS485 para inversores, TCP para TON/Router
         if (types.includes('inverter_datalogger')) {
             const other = from.type === 'inverter_datalogger' ? to.type : from.type;
-            // Datalogger ↔ Inversor = RS485
-            if (other === 'inversor') return ['rs485'];
+            // Datalogger ↔ Dispositivo (inversor / medidor / rele) = RS485
+            if (other === 'inversor' || other === 'power_meter' ||
+                other === 'medidor_comum' || other === 'rele_protecao') return ['rs485'];
             // Datalogger ↔ TON = TCP (via rede)
             if (tonTypes.includes(other)) return ['tcp'];
             // Datalogger ↔ Router = WiFi ou Ethernet
@@ -1501,12 +1504,12 @@ var DiagramEditor = class {
             }
         }
 
-        // Rule 7: Datalogger conecta a: Inversor (RS485), Router (WiFi/Eth), TON (TCP)
+        // Rule 7: Datalogger conecta a: Dispositivos Modbus (RS485), Router (WiFi/Eth), TON (TCP)
         if (types.includes('inverter_datalogger')) {
             const other = from.type === 'inverter_datalogger' ? to.type : from.type;
-            const allowedTargets = ['inversor', 'wifi_router', ...tonTypes];
+            const allowedTargets = ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao', 'wifi_router', ...tonTypes];
             if (!allowedTargets.includes(other)) {
-                return { allowed: false, reason: 'Datalogger se conecta a: Inversor (RS485), Router (WiFi) ou TON (TCP)' };
+                return { allowed: false, reason: 'Datalogger se conecta a: Dispositivos Modbus (RS485), Router (WiFi) ou TON (TCP)' };
             }
         }
 
@@ -1526,7 +1529,11 @@ var DiagramEditor = class {
         // Router to Broker MQTT = WiFi
         if (types.includes('mqtt_broker') && types.includes('wifi_router')) return 'wifi';
         // Datalogger ↔ Inversor = RS485
-        if (types.includes('inverter_datalogger') && types.includes('inversor')) return 'rs485';
+        // Datalogger ↔ Dispositivo Modbus (inversor / medidor / rele) = RS485
+        if (types.includes('inverter_datalogger') && (
+            types.includes('inversor') || types.includes('power_meter') ||
+            types.includes('medidor_comum') || types.includes('rele_protecao')
+        )) return 'rs485';
         // Datalogger ↔ TON = TCP
         if (types.includes('inverter_datalogger') && types.some(t => tonTypes.includes(t))) return 'tcp';
         // TON/anything to Router = WiFi (default, can switch to ethernet)
