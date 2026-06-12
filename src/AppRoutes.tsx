@@ -35,6 +35,29 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/**
+ * Guarda de rota por permission Spatie.
+ * Bloqueia acesso direto via URL a quem nao possui a permission (o menu ja
+ * esconde o link via useFilteredNavigationLinks, mas a URL precisa ser barrada).
+ * Subscreve `acessivel` para reavaliar quando as permissions mudam.
+ */
+function RequirePermission({
+  permission,
+  children,
+}: {
+  permission: string;
+  children: React.ReactNode;
+}) {
+  const acessivel = useUserStore((state) => state.acessivel);
+  const allowed = Array.isArray(acessivel) && acessivel.includes(permission);
+
+  if (!allowed) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return <>{children}</>;
+}
+
 const CadastroUnidadesPage = lazy(() =>
   import("@/pages/supervisorio/cadastro-unidades").then((module) => ({
     default: module.CadastroUnidadesPage,
@@ -344,9 +367,11 @@ export const appRoutes = createBrowserRouter([
       {
         path: "cadastros/iot-catalog",
         element: (
-          <Suspense fallback={<div>Carregando...</div>}>
-            <CadastroIotCatalogPage />
-          </Suspense>
+          <RequirePermission permission="equipamentos.iot_catalog">
+            <Suspense fallback={<div>Carregando...</div>}>
+              <CadastroIotCatalogPage />
+            </Suspense>
+          </RequirePermission>
         ),
       },
       {

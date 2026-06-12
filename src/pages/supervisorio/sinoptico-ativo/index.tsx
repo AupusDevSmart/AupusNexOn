@@ -1780,7 +1780,10 @@ export function SinopticoAtivoPage() {
   const { ativoId: ativoIdRaw } = useParams<{ ativoId?: string }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const { isAdmin } = useUserStore();
+  const { isAdmin, hasPermission } = useUserStore();
+  // Aba/diagrama IoT restrito a quem tem a permission Spatie (por padrao apenas
+  // admin e super_admin). O diagrama unifilar continua visivel para todos.
+  const podeVerIot = hasPermission('supervisorio.iot_view');
 
   // Limpar espaços em branco do ID da URL
   const ativoId = ativoIdRaw?.trim();
@@ -1801,12 +1804,24 @@ export function SinopticoAtivoPage() {
   // Listen for tab change events from DiagramV2
   useEffect(() => {
     const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      setSinopticoTab(detail as 'unifilar' | 'iot');
+      const detail = (e as CustomEvent).detail as 'unifilar' | 'iot';
+      // Ignora pedido de troca para a aba IoT se o usuario nao tem permissao.
+      if (detail === 'iot' && !useUserStore.getState().hasPermission('supervisorio.iot_view')) {
+        return;
+      }
+      setSinopticoTab(detail);
     };
     window.addEventListener('sinoptico-tab-change', handler);
     return () => window.removeEventListener('sinoptico-tab-change', handler);
   }, []);
+
+  // Defensivo: se por qualquer motivo a aba IoT ficar ativa sem permissao,
+  // volta para o diagrama unifilar.
+  useEffect(() => {
+    if (sinopticoTab === 'iot' && !podeVerIot) {
+      setSinopticoTab('unifilar');
+    }
+  }, [sinopticoTab, podeVerIot]);
 
   // ✅ IMPORTANTE: Atualizar título IMEDIATAMENTE quando recebe dados via state
   useEffect(() => {
@@ -3748,16 +3763,18 @@ if (import.meta.env.PROD) {
               >
                 <span className="hidden sm:inline">Diagrama </span>Unifilar
               </button>
-              <button
-                onClick={() => setSinopticoTab('iot')}
-                className={`px-3 sm:px-5 py-1.5 text-sm font-medium rounded-[2px] transition-colors ${
-                  sinopticoTab === 'iot'
-                    ? 'bg-muted text-foreground'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-                }`}
-              >
-                IoT
-              </button>
+              {podeVerIot && (
+                <button
+                  onClick={() => setSinopticoTab('iot')}
+                  className={`px-3 sm:px-5 py-1.5 text-sm font-medium rounded-[2px] transition-colors ${
+                    sinopticoTab === 'iot'
+                      ? 'bg-muted text-foreground'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                  }`}
+                >
+                  IoT
+                </button>
+              )}
             </div>
           )}
 
@@ -3829,8 +3846,8 @@ if (import.meta.env.PROD) {
             </div>
           )}
 
-          {/* IoT: Diagrama IoT nativo */}
-          {unidadeId && sinopticoTab === 'iot' && (
+          {/* IoT: Diagrama IoT nativo (restrito a admin/super_admin via permission) */}
+          {unidadeId && sinopticoTab === 'iot' && podeVerIot && (
             <div className="flex-1 min-h-0 border-x border-b border-border rounded-b-lg overflow-hidden flex flex-col">
               <IoTDiagram unidadeId={unidadeId} unidadeNome={unidadeAtual?.nome} />
             </div>
@@ -4243,17 +4260,19 @@ if (import.meta.env.PROD) {
                           <Network className="h-4 w-4" />
                           Unifilar
                         </button>
-                        <button
-                          onClick={() => setSinopticoTab('iot')}
-                          className={`px-4 py-2 text-sm font-semibold rounded-md transition-all flex items-center gap-2 ${
-                            sinopticoTab === 'iot'
-                              ? 'bg-white dark:bg-slate-950 text-foreground shadow-sm border border-border'
-                              : 'text-muted-foreground hover:text-foreground'
-                          }`}
-                        >
-                          <Cpu className="h-4 w-4" />
-                          IoT
-                        </button>
+                        {podeVerIot && (
+                          <button
+                            onClick={() => setSinopticoTab('iot')}
+                            className={`px-4 py-2 text-sm font-semibold rounded-md transition-all flex items-center gap-2 ${
+                              sinopticoTab === 'iot'
+                                ? 'bg-white dark:bg-slate-950 text-foreground shadow-sm border border-border'
+                                : 'text-muted-foreground hover:text-foreground'
+                            }`}
+                          >
+                            <Cpu className="h-4 w-4" />
+                            IoT
+                          </button>
+                        )}
                         {diagramaFullscreen && <span className="text-sm text-muted-foreground ml-2">Tela Cheia</span>}
                       </div>
                       <div className="flex items-center gap-2 flex-wrap">
@@ -4324,8 +4343,8 @@ if (import.meta.env.PROD) {
                     </div>
                     )}
 
-                    {/* Tab: IoT (edit mode) */}
-                    {sinopticoTab === 'iot' && (
+                    {/* Tab: IoT (edit mode) - restrito a admin/super_admin via permission */}
+                    {sinopticoTab === 'iot' && podeVerIot && (
                     <div className="flex-1 min-h-0 flex flex-col">
                       <IoTDiagram unidadeId={unidadeId} unidadeNome={unidadeAtual?.nome} />
                     </div>

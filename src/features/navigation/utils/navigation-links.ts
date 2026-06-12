@@ -197,7 +197,7 @@ export const navigationLinks: Array<NavigationLink> = [
       },
       {
         key: "cadastros-iot-catalog",
-        featureKey: "equipamentos.manage",
+        featureKey: "equipamentos.iot_catalog",
         path: "/cadastros/iot-catalog",
         icon: Cpu,
         label: "Catálogo IoT",

@@ -11,6 +11,7 @@ type UserStoreState = {
   getUserRole: () => string;
   isSuperAdmin: () => boolean;
   isAdmin: () => boolean;
+  hasPermission: (permission: string) => boolean;
 };
 
 export const useUserStore = create(
@@ -52,6 +53,13 @@ export const useUserStore = create(
       isAdmin: () => {
         const role = get().getUserRole();
         return role === 'admin' || role === 'super_admin';
+      },
+
+      // Checa se o usuario possui uma permission Spatie (mesma fonte usada pela
+      // navegacao: `acessivel` carrega os nomes de all_permissions vindos do backend).
+      hasPermission: (permission: string) => {
+        const { acessivel } = get();
+        return Array.isArray(acessivel) && acessivel.includes(permission);
       },
     }),
     {
