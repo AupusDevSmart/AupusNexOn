@@ -320,11 +320,13 @@ var COMPONENT_TYPES = {
         icon: 'M13 10V3L4 14h7v7l9-11h-7z',
         ports: ['top', 'bottom', 'left', 'right'],
         generates_firmware: false,
-        defaults: { name: 'Power Meter', catalog_id: '', modbus_address: 1 },
+        defaults: { name: 'Power Meter', catalog_id: '', modbus_address: 1, current_scale_override: '', voltage_scale_override: '' },
         fields: [
             { key: 'name', label: 'Nome', type: 'text' },
             { key: 'catalog_id', label: 'Modelo', type: 'device_select', device_type: 'medidor_energia' },
             { key: 'modbus_address', label: 'Endereco Modbus', type: 'number' },
+            { key: 'current_scale_override', label: 'Override scale corrente (vazio = padrao)', type: 'number', placeholder: 'ex: 100, 1000' },
+            { key: 'voltage_scale_override', label: 'Override scale tensao (vazio = padrao)', type: 'number', placeholder: 'ex: 10, 100' },
         ]
     },
     medidor_comum: {
@@ -332,11 +334,13 @@ var COMPONENT_TYPES = {
         icon: 'M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z',
         ports: ['top', 'bottom', 'left', 'right'],
         generates_firmware: false,
-        defaults: { name: 'Medidor', catalog_id: '', modbus_address: 1 },
+        defaults: { name: 'Medidor', catalog_id: '', modbus_address: 1, current_scale_override: '', voltage_scale_override: '' },
         fields: [
             { key: 'name', label: 'Nome', type: 'text' },
             { key: 'catalog_id', label: 'Modelo', type: 'device_select', device_type: 'medidor_energia' },
             { key: 'modbus_address', label: 'Endereco Modbus', type: 'number' },
+            { key: 'current_scale_override', label: 'Override scale corrente (vazio = padrao)', type: 'number', placeholder: 'ex: 100, 1000' },
+            { key: 'voltage_scale_override', label: 'Override scale tensao (vazio = padrao)', type: 'number', placeholder: 'ex: 10, 100' },
         ]
     },
     rele_protecao: {

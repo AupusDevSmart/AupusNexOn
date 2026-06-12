@@ -135,6 +135,8 @@ var FirmwareGenerator = class FirmwareGenerator {
             catalog_id: catalogId || null,
             catalog_device: dev,
             registros: dev ? dev.registros : [],
+            current_scale_override: this._parseScaleOverride(other.props.current_scale_override),
+            voltage_scale_override: this._parseScaleOverride(other.props.voltage_scale_override),
         });
 
         // Daisy-chain
@@ -190,6 +192,8 @@ var FirmwareGenerator = class FirmwareGenerator {
                         catalog_device: dev,
                         registros: dev ? dev.registros : [],
                         gateway: gateway,
+                        current_scale_override: this._parseScaleOverride(inv.props.current_scale_override),
+                        voltage_scale_override: this._parseScaleOverride(inv.props.voltage_scale_override),
                     });
                 }
             }
@@ -211,6 +215,8 @@ var FirmwareGenerator = class FirmwareGenerator {
             catalog_device: dev,
             registros: dev ? dev.registros : [],
             gateway: null,
+            current_scale_override: this._parseScaleOverride(other.props.current_scale_override),
+            voltage_scale_override: this._parseScaleOverride(other.props.voltage_scale_override),
         });
     }
 
@@ -274,7 +280,10 @@ var FirmwareGenerator = class FirmwareGenerator {
 
     // ---- inverter_tcp.h ----
     _genInverterTcpH(spec) {
-        const count = spec.tcp_devices.filter(d => d.type === 'inversor').length;
+        // Tipos lidos via Modbus TCP (espelha _processTCP.deviceTypes).
+        // Antes só 'inversor' entrava — bug fazia power_meter atrás de datalogger ser silenciosamente ignorado.
+        const TCP_READABLE_TYPES = ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao'];
+        const count = spec.tcp_devices.filter(d => TCP_READABLE_TYPES.includes(d.type)).length;
         return `#ifndef INVERTER_TCP_H
 #define INVERTER_TCP_H
 #include <stdint.h>
@@ -306,7 +315,10 @@ extern const uint8_t TCP_INVERTER_IDS[];
     // Estrutura espelha _genDeviceReader (RS485): sample acumula, publish consolida.
     // Diferenca chave vs RS485: transporte e' MBAP/TCP em vez de ModbusMaster RTU.
     _genInverterTcpCpp(spec) {
-        const invs = spec.tcp_devices.filter(d => d.type === 'inversor' && d.gateway);
+        // Aceita qualquer device-com-catalogo conectado via gateway (datalogger).
+        // Antes só 'inversor' entrava — power_meter atrás de datalogger não era gerado.
+        const TCP_READABLE_TYPES = ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao'];
+        const invs = spec.tcp_devices.filter(d => TCP_READABLE_TYPES.includes(d.type) && d.gateway);
         if (invs.length === 0) {
             return `#include "inverter_tcp.h"
 void inverter_tcp_init() {}
@@ -322,12 +334,14 @@ const uint8_t TCP_INVERTER_IDS[] = {};
 
         let cpp = `#include "inverter_tcp.h"
 #include "config.h"
+#include "eth.h"
 #include <WiFi.h>
 #include <WiFiClient.h>
 #include <ArduinoJson.h>
 #include <esp_task_wdt.h>
 #include <string.h>
 #include <math.h>
+#include <time.h>
 
 // Gateway (Datalogger) — compartilhado por todos os inversores TCP
 #define GATEWAY_IP      "${gw.ip}"
@@ -336,8 +350,56 @@ const uint8_t TCP_INVERTER_IDS[] = {};
 
 const uint8_t TCP_INVERTER_IDS[] = {${ids}};
 
-static WiFiClient _tcpClient;
+static WiFiClient _wifiTcpClient;
 static uint16_t _txId = 0;
+
+// Helpers locais — duplicados do modbus_meter.cpp para escopo deste arquivo.
+// Mantemos copia local porque _publish_tcp_inv_<idx> (gerada abaixo) os usa
+// quando o tipo do catalogo declara publish.timestamp_format='datetime' ou
+// tem campo work_state no grupo 'status'.
+
+// Timestamp formatado "DD/MM/YYYY HH:MM:SS" no timezone local.
+// Fallback "sem_ntp" se o relogio nao estiver sincronizado.
+static String _format_timestamp_str() {
+    time_t now = time(nullptr);
+    if (now < 1700000000) return String("sem_ntp");
+    struct tm* t = localtime(&now);
+    char buf[24];
+    sprintf(buf, "%02d/%02d/%04d %02d:%02d:%02d",
+            t->tm_mday, t->tm_mon + 1, t->tm_year + 1900,
+            t->tm_hour, t->tm_min, t->tm_sec);
+    return String(buf);
+}
+
+// Mapeia codigo de work_state Sungrow -> texto.
+static const char* _work_state_text(uint16_t s) {
+    switch (s) {
+        case 0x0000: return "Run";
+        case 0x8000: return "Stop";
+        case 0x1300: return "Key Stop";
+        case 0x1500: return "Emergency Stop";
+        case 0x1400: return "Standby";
+        case 0x1200: return "Initial Standby";
+        case 0x1600: return "Starting";
+        case 0x9100: return "Alarm Run";
+        case 0x8100: return "Derating Run";
+        case 0x8200: return "Dispatch Run";
+        case 0x5500: return "Fault";
+        case 0x2500: return "Communication Fault";
+        case 0x1111: return "Uninitialized";
+        default:               return "Unknown";
+    }
+}
+
+// Retorna ponteiro pro Client correto baseado na interface ativa.
+// Antes usava WiFiClient fixo + check WiFi.isConnected() — quebrava quando rodando
+// so' por Ethernet (WiFi.mode(OFF) -> isConnected() == false -> retornava sempre falha
+// sem nem tentar conectar TCP). Agora funciona em ambas as interfaces.
+static Client* _active_tcp_client() {
+    if (eth_connected()) return &eth_get_client();
+    if (WiFi.isConnected()) return &_wifiTcpClient;
+    return nullptr;
+}
 
 void inverter_tcp_init() {
     Serial.printf("[TCP-INV] Gateway: %s:%d (timeout %dms)\\n",
@@ -351,11 +413,12 @@ void inverter_tcp_init() {
 
 // Helper Modbus TCP — uma chamada por bloco. Reusa conexao persistente do datalogger.
 static bool _modbus_tcp_read(uint8_t slave, uint8_t func, uint16_t addr, uint16_t count, uint16_t *out) {
-    if (!WiFi.isConnected()) return false;
+    Client* tcp = _active_tcp_client();
+    if (!tcp) return false;
 
-    if (!_tcpClient.connected()) {
-        _tcpClient.setTimeout(GATEWAY_TIMEOUT / 1000);
-        if (!_tcpClient.connect(GATEWAY_IP, GATEWAY_PORT)) {
+    if (!tcp->connected()) {
+        tcp->setTimeout(GATEWAY_TIMEOUT / 1000);
+        if (!tcp->connect(GATEWAY_IP, GATEWAY_PORT)) {
             Serial.println("[TCP-INV] Falha ao conectar no gateway");
             return false;
         }
@@ -373,30 +436,30 @@ static bool _modbus_tcp_read(uint8_t slave, uint8_t func, uint16_t addr, uint16_
     req[8] = addr >> 8; req[9] = addr & 0xFF;
     req[10] = count >> 8; req[11] = count & 0xFF;
 
-    _tcpClient.write(req, 12);
-    _tcpClient.flush();
+    tcp->write(req, 12);
+    tcp->flush();
 
     uint32_t t0 = millis();
-    while (_tcpClient.available() < 9 && millis() - t0 < GATEWAY_TIMEOUT) {
+    while (tcp->available() < 9 && millis() - t0 < GATEWAY_TIMEOUT) {
         delay(5);
         esp_task_wdt_reset();
     }
-    if (_tcpClient.available() < 9) {
+    if (tcp->available() < 9) {
         Serial.printf("[TCP-INV] Timeout slave=%d func=%d addr=%d\\n", slave, func, addr);
         return false;
     }
 
     uint8_t hdr[9];
-    _tcpClient.readBytes(hdr, 9);
+    tcp->readBytes(hdr, 9);
     if (hdr[7] & 0x80) {
         Serial.printf("[TCP-INV] Excecao Modbus slave=%d: 0x%02X\\n", slave, hdr[8]);
-        while (_tcpClient.available()) _tcpClient.read();
+        while (tcp->available()) tcp->read();
         return false;
     }
 
     uint8_t byteCount = hdr[8];
     uint8_t buf[256];
-    _tcpClient.readBytes(buf, byteCount);
+    tcp->readBytes(buf, byteCount);
 
     for (uint16_t i = 0; i < count; i++) {
         out[i] = (buf[i*2] << 8) | buf[i*2+1];
@@ -446,13 +509,19 @@ void inverter_tcp_publish_all(tcp_publish_fn publish) {
     _genTcpInverterReader(inv, idx) {
         const cat = inv.catalog_device || {};
         const blocks = cat.ai_blocks || [];
-        const aiMap = cat.ai_map || {};
+        // Aplica overrides do diagrama (props.current_scale_override / voltage_scale_override)
+        // antes de processar o ai_map — escalas dos campos i*/v* podem ser sobrescritas
+        // por dispositivo sem mexer no catalogo.
+        const aiMap = this._applyScaleOverrides(cat.ai_map || {}, inv);
         const scales = cat.scales || {};
         const wordOrder = cat.word_order || 'high_first';
         const slave = inv.modbus_address;
         const name = inv.name || `inv_${slave}`;
         const nameEsc = this._escStr(name);
-        const subtopicEsc = this._escStr(`${name}/data`);
+        // Topico inclui addr Modbus como sufixo — espelha _genDeviceReader (RS485)
+        // para consistencia: "Inversor_1/data", "Power_Meter_1/data" etc.
+        const topicName = `${name}_${slave}`;
+        const subtopicEsc = this._escStr(`${topicName}/data`);
 
         if (blocks.length === 0) {
             return `
@@ -578,12 +647,19 @@ static void _sample_tcp_inv_${idx}() {
         cpp += `    _tds${idx}.samples++;\n`;
         cpp += `    _tds${idx}.valid = true;\n`;
 
-        // Log de debug (similar RS485)
-        const preferredOrder = ['mppt1_voltage', 'dc_total_power', 'potencia_ativa',
-                                'freq', 'fp', 'work_state', 'daily_yield', 'total_yield'];
+        // Log de debug — espelha a lista do RS485 _genDeviceReader.
+        // Antes so' listava campos de inversor — power_meter ia silencioso (sem log de sample).
+        const preferredOrder = ['vab', 'vbc', 'vca', 'va', 'vb', 'vc',
+                                'ia', 'ib', 'ic',
+                                'potencia_ativa', 'pa_total', 'dc_total_power',
+                                'freq_rede', 'freq', 'fator_potencia', 'fp', 'fp_total',
+                                'mppt1_voltage', 'mppt1_v', 'temp_interna',
+                                'daily_yield', 'total_yield', 'work_state',
+                                'geracao_diaria', 'geracao_total', 'estado_operacao',
+                                'energia_ativa_imp', 'consumo_ativa_imp'];
         const logFields = [];
         for (const pid of preferredOrder) {
-            if (aiMap[pid] && logFields.length < 5) {
+            if (aiMap[pid] && logFields.length < 7) {   // 7 pra caber V trifasico + I trifasico + freq
                 if (avgFields.find(f => f.pid === pid) ||
                     lastFields.find(f => f.pid === pid) ||
                     deltaFields.find(f => f.pid === pid)) {
@@ -602,55 +678,177 @@ static void _sample_tcp_inv_${idx}() {
         cpp += `}
 
 // Publica medias (avg) + last + delta. Zera acumuladores apos publish.
+// Estrutura aninhada espelha _genDeviceReader (RS485): usa tipo.ai/bi do catalogo
+// para resolver json paths, agrupar por top-level key, e respeitar tipo.group_order.
 static void _publish_tcp_inv_${idx}(tcp_publish_fn publish) {
     if (!_tds${idx}.valid || _tds${idx}.samples == 0) {
         publish("${subtopicEsc}", "{\\"error\\":\\"no_samples\\"}");
         return;
     }
-    int n = _tds${idx}.samples;
-    StaticJsonDocument<2048> d;
-    d["device"] = "${nameEsc}";
-    d["addr"] = ${slave};
-    d["samples"] = n;
 
+    int n = _tds${idx}.samples;
+    StaticJsonDocument<3072> d;
 `;
-        // Emite cada campo no JSON (chaves = pids do catalogo)
-        // avg: media; last: ultimo; delta: ultimo - primeiro
+
+        // --- Resolver path JSON para cada pid (usa DEVICE_POINTS[tipo]) ---
+        const tipo = (typeof DEVICE_POINTS !== 'undefined' && cat.tipo) ? DEVICE_POINTS[cat.tipo] : null;
+        const tipoAi = tipo ? (tipo.ai || []) : [];
+        const tipoBi = tipo ? (tipo.bi || []) : [];
+
+        // Config de publicacao: timestamp_format, timestamp_position, meta_fields
+        const pubCfg = (tipo && tipo.publish) || {};
+        const tsFormat   = pubCfg.timestamp_format   || 'epoch';
+        const tsPosition = pubCfg.timestamp_position || 'first';
+        const metaFields = pubCfg.meta_fields || ['inverter_id', 'samples'];
+        const tsExpr = (tsFormat === 'datetime')
+            ? '_format_timestamp_str()'
+            : '(long)time(nullptr)';
+
+        if (tsPosition === 'first') {
+            cpp += `    d["timestamp"] = ${tsExpr};\n`;
+        }
+        if (metaFields.includes('inverter_id')) {
+            cpp += `    d["inverter_id"] = ${slave};\n`;
+        }
+        if (metaFields.includes('samples')) {
+            cpp += `    d["samples"] = n;\n`;
+        }
+        cpp += `\n`;
+
+        const resolveJsonPath = (pid) => {
+            const exactAi = tipoAi.find(a => a.id === pid);
+            if (exactAi && exactAi.json) return exactAi.json;
+            const exactBi = tipoBi.find(a => a.id === pid);
+            if (exactBi && exactBi.json) return exactBi.json;
+            for (const a of tipoAi) {
+                if (a.per_instance && a.prefix && a.suffix) {
+                    const re = new RegExp(`^${a.prefix}\\d+${a.suffix}$`);
+                    if (re.test(pid)) return `${a.group || 'dc'}.${pid}`;
+                }
+            }
+            return pid;
+        };
+
+        // --- Coleta expressoes fonte para cada pid ---
+        const fieldSources = {}; // pid -> { expr, format }
         avgFields.forEach((f, i) => {
-            const expr = `(float)(_tds${idx}.sum_[${i}] / n)`;
-            if (f.format === 'hex') {
-                cpp += `    { char _h[8]; snprintf(_h, sizeof(_h), "%x", (uint16_t)(${expr})); d["${this._escStr(f.pid)}"] = String(_h); }\n`;
-            } else {
-                cpp += `    d["${this._escStr(f.pid)}"] = ${expr};\n`;
-            }
+            fieldSources[f.pid] = { expr: `(float)(_tds${idx}.sum_[${i}] / n)`, format: f.format, raw: false };
         });
-        let lastRunIdx = avgFields.length;
+        let lastRunIdx2 = avgFields.length;
         lastFields.forEach((f) => {
-            const expr = `_tds${idx}.last_[${lastRunIdx++}]`;
-            if (f.format === 'hex') {
-                cpp += `    { char _h[8]; snprintf(_h, sizeof(_h), "%x", (uint16_t)(${expr})); d["${this._escStr(f.pid)}"] = String(_h); }\n`;
-            } else {
-                cpp += `    d["${this._escStr(f.pid)}"] = ${expr};\n`;
-            }
+            fieldSources[f.pid] = { expr: `_tds${idx}.last_[${lastRunIdx2++}]`, format: f.format, raw: false };
         });
+        const deltaExprs = {}; // pid -> { lastI, deltaIdx, clamp, format }
         deltaFields.forEach((f, i) => {
             const lastI = avgFields.length + lastFields.length + i;
-            cpp += `    {\n`;
-            cpp += `        float dv = _tds${idx}.last_[${lastI}] - _tds${idx}.first_delta_[${i}];\n`;
-            cpp += `        if (dv < 0 || fabsf(dv) < 1e-6f) dv = 0;\n`;
-            cpp += `        d["${this._escStr(f.pid)}"] = dv;\n`;
-            cpp += `    }\n`;
+            deltaExprs[f.pid] = { lastI, deltaIdx: i, clamp: !!f.clamp, format: f.format };
+            // Placeholder — real expr resolvido ao emitir (usa variavel local dv_pid)
+            fieldSources[f.pid] = { expr: `dv_${f.pid}`, format: f.format, raw: false };
         });
 
-        cpp += `
-    char payload[2048];
-    serializeJson(d, payload, sizeof(payload));
-    publish("${subtopicEsc}", payload);
+        // --- Agrupar por top-level key do json path ---
+        // Pre-popular groups na ordem definida pelo tipo
+        const groups = {}; // topKey -> [{ subKey, pid, src }]
+        for (const a of [...tipoAi, ...tipoBi]) {
+            if (a.json && a.json.includes('.')) {
+                const top = a.json.split('.')[0];
+                if (!groups[top]) groups[top] = [];
+            } else if (a.group) {
+                if (!groups[a.group]) groups[a.group] = [];
+            }
+        }
+        const topLevelFields = []; // flat fields
+        for (const [pid, src] of Object.entries(fieldSources)) {
+            const path = resolveJsonPath(pid);
+            const parts = path.split('.');
+            if (parts.length === 1) {
+                topLevelFields.push({ key: parts[0], pid, src });
+            } else {
+                const top = parts[0];
+                const rest = parts.slice(1).join('.');
+                if (!groups[top]) groups[top] = [];
+                groups[top].push({ subKey: rest, pid, src });
+            }
+        }
 
-    // Reset acumuladores
-    for (int i = 0; i < ${Math.max(avgFields.length, 1)}; i++) _tds${idx}.sum_[i] = 0;
+        // --- Emitir delta (precisa calcular dv_<pid> antes de usar) ---
+        Object.entries(deltaExprs).forEach(([pid, de]) => {
+            cpp += `    float dv_${pid} = _tds${idx}.last_[${de.lastI}] - _tds${idx}.first_delta_[${de.deltaIdx}];\n`;
+            if (de.clamp) {
+                cpp += `    if (dv_${pid} < 0 || fabsf(dv_${pid}) < 1e-6f) dv_${pid} = 0;\n`;
+            }
+        });
+
+        // --- Ordenar topLevelFields pela ordem do tipo.ai/bi (saida flat consistente) ---
+        const aiOrder = new Map();
+        [...tipoAi, ...tipoBi].forEach((a, i) => aiOrder.set(a.id, i));
+        topLevelFields.sort((a, b) => {
+            const ia = aiOrder.has(a.pid) ? aiOrder.get(a.pid) : 999 + a.pid.localeCompare('');
+            const ib = aiOrder.has(b.pid) ? aiOrder.get(b.pid) : 999 + b.pid.localeCompare('');
+            return ia - ib;
+        });
+
+        // --- Emitir top-level fields ---
+        topLevelFields.forEach(({ key, src }) => {
+            if (src.format === 'hex') {
+                cpp += `    { char _h[8]; snprintf(_h, sizeof(_h), "%x", (uint16_t)(${src.expr})); d["${this._escStr(key)}"] = String(_h); }\n`;
+            } else {
+                cpp += `    d["${this._escStr(key)}"] = ${src.expr};\n`;
+            }
+        });
+
+        // --- Reordenar groups conforme tipo.group_order (se definido) ---
+        if (tipo && Array.isArray(tipo.group_order)) {
+            const ordered = {};
+            for (const g of tipo.group_order) if (groups[g]) ordered[g] = groups[g];
+            for (const g of Object.keys(groups)) if (!ordered[g]) ordered[g] = groups[g];
+            Object.keys(groups).forEach(k => delete groups[k]);
+            Object.assign(groups, ordered);
+        }
+
+        // --- Emitir grupos aninhados (pula grupos vazios, exceto 'status') ---
+        for (const [groupKey, fields] of Object.entries(groups)) {
+            if (fields.length === 0 && groupKey !== 'status') continue;
+            const gvar = `g_${groupKey.replace(/[^a-zA-Z0-9_]/g, '_')}`;
+            cpp += `    JsonObject ${gvar} = d.createNestedObject("${this._escStr(groupKey)}");\n`;
+            fields.forEach(({ subKey, src }) => {
+                if (src.format === 'hex') {
+                    cpp += `    { char _h[8]; snprintf(_h, sizeof(_h), "%x", (uint16_t)(${src.expr})); ${gvar}["${this._escStr(subKey)}"] = String(_h); }\n`;
+                } else {
+                    cpp += `    ${gvar}["${this._escStr(subKey)}"] = ${src.expr};\n`;
+                }
+            });
+            // status.work_state_text: se o grupo for 'status' e tivermos work_state, adiciona o texto
+            if (groupKey === 'status' && fieldSources['work_state']) {
+                cpp += `    ${gvar}["work_state_text"] = _work_state_text((uint16_t)${fieldSources['work_state'].expr});\n`;
+            }
+        }
+
+        // --- Timestamp no fim, se configurado ---
+        if (tsPosition === 'last') {
+            cpp += `    d["timestamp"] = ${tsExpr};\n`;
+        }
+
+        cpp += `
+    char payload[3072];
+    size_t sz = serializeJson(d, payload, sizeof(payload));
+    if (sz > 0) {
+        publish("${subtopicEsc}", payload);
+        Serial.printf("\\n===== PUBLICADO: ${nameEsc} (%d amostras) =====\\n", n);
+        Serial.println(payload);
+        Serial.println();
+    }
+
+    // Reset do ciclo (preserva 'first_delta' da ultima amostra para o proximo intervalo)
+`;
+        if (deltaFields.length > 0) {
+            deltaFields.forEach((_, i) => {
+                const lastI = avgFields.length + lastFields.length + i;
+                cpp += `    _tds${idx}.first_delta_[${i}] = _tds${idx}.last_[${lastI}];\n`;
+            });
+        }
+        cpp += `    for (int i = 0; i < ${Math.max(avgFields.length, 1)}; i++) _tds${idx}.sum_[i] = 0;
     _tds${idx}.samples = 0;
-    _tds${idx}.has_first_delta = false;
 }
 
 `;
@@ -670,7 +868,7 @@ static void _publish_tcp_inv_${idx}(tcp_publish_fn publish) {
 
 #define DEVICE_MODEL        "${spec.tonType.toUpperCase()}"
 #define DEVICE_ID           "${spec.hostname}"
-#define FIRMWARE_VERSION    "1.6.0-io-onchange"
+#define FIRMWARE_VERSION    "1.7.0-pmtcp-override"
 
 // I2C
 #define I2C_ADDR_RTC        0x68
@@ -1021,9 +1219,35 @@ static unsigned long _lastNetEval = 0;
 static bool _wasConnected = false;
 static bool _timeSynced = false;
 
+// Estado do WiFi: desligado por default. Ligamos sob demanda (apenas quando Eth nao disponivel).
+// Evita logs ruidosos de AUTH_EXPIRE/NO_AP_FOUND quando o cliente so usa Eth.
+static bool _wifiStarted = false;
+
 // Helpers para identificar/observar a interface ativa
 static const char* _ifName(NetIf i) {
     switch (i) { case NET_WIFI: return "wifi"; case NET_ETH: return "eth"; default: return "none"; }
+}
+
+// Liga o radio WiFi e dispara conexao em background.
+// Idempotente: chamadas extras nao reiniciam conexao em andamento.
+static void _start_wifi() {
+    if (_wifiStarted) return;
+    Serial.println("[WIFI] Ligando radio (fallback / Eth indisponivel)");
+    WiFi.mode(WIFI_STA);
+    WiFi.setAutoReconnect(true);
+    WiFi.persistent(true);
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    _wifiStarted = true;
+}
+
+// Desliga o radio WiFi por completo. Para os reconnect attempts internos da stack
+// que poluem o serial com AUTH_EXPIRE/NO_AP_FOUND quando o cliente so tem Eth.
+static void _stop_wifi() {
+    if (!_wifiStarted) return;
+    Serial.println("[WIFI] Desligando radio (Eth ativa)");
+    WiFi.disconnect(true, true);   // wifioff + erase config persistida
+    WiFi.mode(WIFI_OFF);
+    _wifiStarted = false;
 }
 static String _ifLocalIp() {
     if (_activeIf == NET_ETH) return eth_local_ip().toString();
@@ -1070,7 +1294,15 @@ static void _evalNetwork() {
     if (linkUp) {
         ethReady = eth_check_dhcp();  // pode pegar IP se cabo acabou de ser plugado
     }
-    bool wifiReady = (WiFi.status() == WL_CONNECTED);
+    bool wifiReady = (_wifiStarted && WiFi.status() == WL_CONNECTED);
+
+    // Gestao de energia do radio WiFi: liga so' se Eth estiver indisponivel.
+    // Sem Eth e WiFi off -> liga.  Com Eth e WiFi on -> desliga.
+    if (!ethReady && !_wifiStarted) {
+        _start_wifi();
+    } else if (ethReady && _wifiStarted) {
+        _stop_wifi();
+    }
 
     // Loga transicoes de IP/conexao
     if (ethReady != _prevHasIp) {
@@ -1158,45 +1390,43 @@ static void _onMessage(char* topic, byte* payload, unsigned int len) {
 void mqtt_init(mqtt_cmd_callback_t callback) {
     _cmdCallback = callback;
 
-    // 1) Ethernet (W5500) — tenta primeiro. Se cabo plugado, ganha do WiFi.
-    //    Mesmo se nao houver cabo no boot, deixamos o W5500 inicializado para
-    //    detectar plug a quente em _evalNetwork().
+    // 1) Captura o MAC ANTES de mexer com radios — WiFi.macAddress() le do efuse
+    //    e funciona independente do WIFI_MODE. Garantia de identidade estavel.
+    uint8_t _mac_for_id[6];
+    WiFi.macAddress(_mac_for_id);
+
+    // 2) Ethernet (W5500) — tenta primeiro. Se cabo plugado com IP, ETH vence
+    //    e o radio WiFi sequer e' ligado (evita logs spurious de AUTH_EXPIRE).
     eth_hw_init();
     bool ethReady = eth_check_dhcp();   // tenta DHCP se link UP
 
-    // 2) WiFi — sempre liga, mesmo com Ethernet OK (fallback automatico).
-    WiFi.setAutoReconnect(true);
-    WiFi.persistent(true);
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    Serial.printf("[WIFI] Conectando a '%s'...\\n", WIFI_SSID);
-    unsigned long t = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - t < WIFI_TIMEOUT_MS) {
-        delay(500); Serial.print(".");
-        esp_task_wdt_reset();
-    }
-    if (WiFi.status() == WL_CONNECTED) {
-        Serial.printf("\\n[WIFI] IP: %s\\n", WiFi.localIP().toString().c_str());
-        _start_ntp();
-    } else {
-        Serial.println("\\n[WIFI] FALHOU - continuara tentando em background");
-    }
-
-    // 3) Decisao inicial: Ethernet vence se tiver IP, senao WiFi (mesmo se cair, OK).
+    // 3) WiFi — so' liga se Eth nao estiver disponivel. Se Eth cair depois,
+    //    _evalNetwork() religa o WiFi como fallback (e desliga quando Eth volta).
     if (ethReady) {
-        Serial.println("[NET] Usando Ethernet (cabo detectado com IP)");
+        Serial.println("[NET] Ethernet OK no boot — WiFi ficara OFF (auto fallback se Eth cair)");
+        WiFi.mode(WIFI_OFF);
+        _wifiStarted = false;
         _setActiveIf(NET_ETH);
-    } else if (WiFi.status() == WL_CONNECTED) {
-        Serial.println("[NET] Usando WiFi");
-        _setActiveIf(NET_WIFI);
+        _start_ntp();   // NTP via Ethernet (configTime nao depende do WiFi)
     } else {
-        Serial.println("[NET] Sem rede ainda — irei tentando em background");
+        _start_wifi();
+        Serial.printf("[WIFI] Conectando a '%s'...\\n", WIFI_SSID);
+        unsigned long t = millis();
+        while (WiFi.status() != WL_CONNECTED && millis() - t < WIFI_TIMEOUT_MS) {
+            delay(500); Serial.print(".");
+            esp_task_wdt_reset();
+        }
+        if (WiFi.status() == WL_CONNECTED) {
+            Serial.printf("\\n[WIFI] IP: %s\\n", WiFi.localIP().toString().c_str());
+            _setActiveIf(NET_WIFI);
+            _start_ntp();
+        } else {
+            Serial.println("\\n[WIFI] FALHOU no boot - continuara tentando em background");
+        }
     }
 
-    // MQTT_CLIENT_ID derivado do MAC — unico por hardware, evita colisao de IDs
-    // que estava causando 26k+ desconexoes/dia no broker (10 IPs em "TON1-TON1").
-    // Definicao (declaracao extern esta no config.h).
-    uint8_t _mac_for_id[6];
-    WiFi.macAddress(_mac_for_id);
+    // 4) MQTT_CLIENT_ID derivado do MAC — unico por hardware, evita colisao de IDs
+    //    que estava causando 26k+ desconexoes/dia no broker (10 IPs em "TON1-TON1").
     snprintf(MQTT_CLIENT_ID, sizeof(MQTT_CLIENT_ID),
              "TON-%02X%02X%02X%02X%02X%02X",
              _mac_for_id[0], _mac_for_id[1], _mac_for_id[2],
@@ -1225,9 +1455,9 @@ void mqtt_loop() {
         _evalNetwork();
     }
 
-    // Detecta queda de WiFi para o contador
+    // Detecta queda de WiFi para o contador (so' conta se o radio estiver ligado)
     static bool _wifiWasConn = false;
-    bool wifiNow = (WiFi.status() == WL_CONNECTED);
+    bool wifiNow = (_wifiStarted && WiFi.status() == WL_CONNECTED);
     if (_wifiWasConn && !wifiNow) {
         diag_wifi_disconnects++;
         Serial.printf("[ALERTA] WiFi desconectou (#%lu)\\n", (unsigned long)diag_wifi_disconnects);
@@ -1239,7 +1469,10 @@ void mqtt_loop() {
     bool netUp = ethOk || wifiNow;
 
     if (!netUp) {
-        // Sem nenhuma rede. Tenta reconectar WiFi em background (Ethernet eh detectado em _evalNetwork).
+        // Sem nenhuma rede. Garante que o WiFi esta ligado pra tentar fallback
+        // (se ETH cair, ainda nao foi processado por _evalNetwork ainda).
+        if (!_wifiStarted) _start_wifi();
+        // Tenta reconectar WiFi em background (rate-limited).
         if (millis() - _lastWifiReconnect > WIFI_RECONNECT_MS) {
             _lastWifiReconnect = millis();
             Serial.println("[WIFI] Desconectado — reconectando em background...");
@@ -1870,7 +2103,9 @@ bool modbus_exec_command(const char* device_name, const char* cmd_id) {
     _genDeviceReader(dev, idx) {
         const cat = dev.catalog_device;
         const blocks = cat.ai_blocks || [];
-        const aiMap = cat.ai_map || {};
+        // Aplica overrides do diagrama (props.current_scale_override / voltage_scale_override)
+        // antes de processar o ai_map.
+        const aiMap = this._applyScaleOverrides(cat.ai_map || {}, dev);
         const biBlock = cat.bi_block || null;
         const biMap = cat.bi_map || {};
         const scales = cat.scales || {};
@@ -2351,6 +2586,46 @@ static void _publish_dev_${idx}(modbus_publish_fn publish) {
         return 1;
     }
 
+    // Sanitiza valor de override de escala vindo do props do diagrama.
+    // Aceita number positivo. Retorna null pra valores vazios/invalidos
+    // (fallback: usa scale original do catalogo).
+    _parseScaleOverride(val) {
+        if (val === undefined || val === null || val === '') return null;
+        const n = Number(val);
+        return (Number.isFinite(n) && n > 0) ? n : null;
+    }
+
+    // pids reconhecidos como CORRENTE (ia/ib/ic e variantes capitalizadas/maiusculas).
+    _isCurrentPid(pid) {
+        return /^(i[abc]|I[abc]|ia|ib|ic|Ia|Ib|Ic)$/.test(pid);
+    }
+
+    // pids reconhecidos como TENSAO (va/vb/vc + V fase-fase + variantes capitalizadas).
+    _isVoltagePid(pid) {
+        return /^(v[abc]|V[abc]|v(ab|bc|ca)|V(ab|bc|ca))$/.test(pid);
+    }
+
+    // Aplica overrides de escala do componente (props.current_scale_override e
+    // props.voltage_scale_override) sobre os campos correspondentes do ai_map.
+    // NAO MUTA o ai_map original do catalogo — devolve uma copia rasa modificada.
+    // Usado tanto pelo gerador RS485 quanto TCP.
+    _applyScaleOverrides(aiMap, dev) {
+        const iOver = dev && dev.current_scale_override;
+        const vOver = dev && dev.voltage_scale_override;
+        if (!iOver && !vOver) return aiMap;
+        const out = {};
+        for (const [pid, m] of Object.entries(aiMap)) {
+            if (iOver && this._isCurrentPid(pid)) {
+                out[pid] = { ...m, scale: iOver };
+            } else if (vOver && this._isVoltagePid(pid)) {
+                out[pid] = { ...m, scale: vOver };
+            } else {
+                out[pid] = m;
+            }
+        }
+        return out;
+    }
+
     // Flag de diagnóstico — quando true, generator NÃO emite leitura de TP/TC
     // nem multiplicação dos decoders. Usado pra isolar regressões da feature.
     // Setar no console do browser: window.IOT_DISABLE_TP_TC = true
@@ -2712,32 +2987,36 @@ void loop() {
             snprintf(buf, sizeof(buf), "{\\"d1\\":%d,\\"d2\\":%d,\\"d3\\":%d,\\"d4\\":%d,\\"d5\\":%d,\\"d6\\":%d}",
                 s&1, (s>>1)&1, (s>>2)&1, (s>>3)&1, (s>>4)&1, (s>>5)&1);
 `;
-        if (spec.wifi) cpp += `            mqtt_publish(MQTT_TOPIC_INPUTS, buf);\n`;
+        // I/O usa mqtt_publish_raw — NAO grava no SD quando offline.
+        // I/O eh ESTADO, nao dado historico. Se MQTT cair, _io_force=true na
+        // proxima reconexao republica o estado atual. Antes (mqtt_publish) lotava
+        // o SD com milhares de copias do mesmo estado quando MQTT oscilava.
+        if (spec.wifi) cpp += `            mqtt_publish_raw(MQTT_TOPIC_INPUTS, buf);\n`;
         if (spec.has_lora && spec.lora?.mode === 'tx') cpp += `            lora_send(buf);\n`;
         cpp += `        }
 `;
         if (spec.wifi) {
             cpp += `
-        // Saidas transistor (TR1-4) on-change
+        // Saidas transistor (TR1-4) on-change (mqtt_publish_raw — nao grava SD)
         uint8_t os = outputs_get_state();
         if (_io_force || os != _prev_out) {
             _prev_out = os;
             char obuf[60];
             snprintf(obuf, sizeof(obuf), "{\\"tr1\\":%d,\\"tr2\\":%d,\\"tr3\\":%d,\\"tr4\\":%d}",
                 os&1, (os>>1)&1, (os>>2)&1, (os>>3)&1);
-            mqtt_publish(MQTT_TOPIC_OUTPUTS, obuf);
+            mqtt_publish_raw(MQTT_TOPIC_OUTPUTS, obuf);
         }
 `;
             if (spec.has_relays) {
                 cpp += `
-        // Reles (R1-6) on-change
+        // Reles (R1-6) on-change (mqtt_publish_raw — nao grava SD)
         uint8_t rl = relays_get_state();
         if (_io_force || rl != _prev_rl) {
             _prev_rl = rl;
             char rbuf[80];
             snprintf(rbuf, sizeof(rbuf), "{\\"r1\\":%d,\\"r2\\":%d,\\"r3\\":%d,\\"r4\\":%d,\\"r5\\":%d,\\"r6\\":%d}",
                 (rl>>1)&1, (rl>>2)&1, (rl>>3)&1, (rl>>4)&1, (rl>>5)&1, (rl>>6)&1);
-            mqtt_publish(MQTT_TOPIC_RELAYS, rbuf);
+            mqtt_publish_raw(MQTT_TOPIC_RELAYS, rbuf);
         }
 `;
             }
@@ -2765,8 +3044,10 @@ void loop() {
 `;
         }
 
-        // Leitura dos inversores via TCP (datalogger)
-        const tcpInvs = (spec.tcp_devices || []).filter(d => d.type === 'inversor');
+        // Leitura de devices via TCP (datalogger) — inclui inversores, power_meters, etc.
+        // Antes só filtrava 'inversor' — power_meter via datalogger era ignorado.
+        const TCP_READABLE_TYPES = ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao'];
+        const tcpInvs = (spec.tcp_devices || []).filter(d => TCP_READABLE_TYPES.includes(d.type));
         if (tcpInvs.length > 0) {
             const tcpPubCall = spec.wifi
                 ? `inverter_tcp_publish_all(mqtt_publish_sub);`
