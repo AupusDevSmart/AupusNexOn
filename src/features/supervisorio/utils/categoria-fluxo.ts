@@ -13,6 +13,11 @@
  *
  * Sem coluna no banco — mapping vive aqui ate uma eventual migration. Categorias
  * nao listadas viram NEUTRO por default (silencioso e seguro).
+ *
+ * SINCRONIA: ha um mirror backend em
+ * aupus-nexon-api/src/shared/util/categoria-fluxo.backend.ts (usado pelo COA pra a
+ * "Energia Hoje" seguir esta config). Ao mudar este mapa, atualize o mirror — ha um
+ * teste de paridade (categoria-fluxo.backend.spec.ts) que falha se divergirem.
  */
 export type FluxoEnergia =
   | 'GERACAO'
