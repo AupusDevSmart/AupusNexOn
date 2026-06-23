@@ -30,7 +30,7 @@ var BENCH_TESTS = [
             { cmd: 'trtest', desc: 'Teste sequencial dos 4 transistores' },
             { cmd: 'tr1..4 on/off', desc: 'Ligar/desligar transistor individual' },
             { cmd: 'adc', desc: 'Ler entradas analogicas AN1/AN2' },
-            { cmd: 'modbus', desc: 'Scan Modbus RS485 (IDs 1-10)' },
+            { cmd: 'modbus', desc: 'Ler Modbus RS485 (ID 1)' },
             { cmd: 'read N', desc: 'Ler medidor Modbus no endereco N' },
             { cmd: 'eth', desc: 'Testar Ethernet W5500 (SPI + link + DHCP)' },
             { cmd: 'sd', desc: 'Testar SD Card (escrita + leitura)' },

@@ -78,12 +78,19 @@ var FirmwareGenerator = class FirmwareGenerator {
             };
         }
 
+        // Determina role LoRa baseado no LAYOUT (internet + peers).
+        // Roda DEPOIS de processar todas as conexoes pra ter wifi e lora_peers populados.
+        result.lora_role = this._resolveLoraRole(ton, result);
+
         // Warnings
         if (!result.wifi && !result.lora) {
             result.warnings.push('Sem WiFi nem LoRa — não conseguirá enviar dados');
         }
         if (result.rs485_devices.length === 0 && result.tcp_devices.length === 0) {
             result.warnings.push('Sem dispositivos de medição conectados');
+        }
+        if (result.lora_role === 'satellite' && !result.wifi && (result.lora_peers || []).length === 0) {
+            result.warnings.push('Satellite sem peer LoRa configurado — não conseguirá comunicar');
         }
 
         return result;
@@ -137,6 +144,8 @@ var FirmwareGenerator = class FirmwareGenerator {
             registros: dev ? dev.registros : [],
             current_scale_override: this._parseScaleOverride(other.props.current_scale_override),
             voltage_scale_override: this._parseScaleOverride(other.props.voltage_scale_override),
+            tc_ratio: this._parseScaleOverride(other.props.tc_ratio),
+            tp_ratio: this._parseScaleOverride(other.props.tp_ratio),
         });
 
         // Daisy-chain
@@ -166,6 +175,7 @@ var FirmwareGenerator = class FirmwareGenerator {
                 ip: other.props.ip || '',
                 port: other.props.tcp_port || 502,
                 timeout_ms: other.props.timeout_ms || 2000,
+                mode: 'datalogger',   // transporte Modbus TCP (MBAP)
             };
 
             // Descobrir inversores ligados ao datalogger via RS485
@@ -194,6 +204,54 @@ var FirmwareGenerator = class FirmwareGenerator {
                         gateway: gateway,
                         current_scale_override: this._parseScaleOverride(inv.props.current_scale_override),
                         voltage_scale_override: this._parseScaleOverride(inv.props.voltage_scale_override),
+                        tc_ratio: this._parseScaleOverride(inv.props.tc_ratio),
+                        tp_ratio: this._parseScaleOverride(inv.props.tp_ratio),
+                    });
+                }
+            }
+            return;
+        }
+
+        // Caso 1b: TON ↔ Conversor serial->TCP (ex: USR-W610 em modo transparente).
+        // Diferente do datalogger: os devices atras dele falam Modbus RTU puro, entao
+        // o transporte e' RTU-sobre-TCP + CRC16 (gateway.mode='rtu_tcp'), nao MBAP.
+        if (other.type === 'conversor') {
+            const gateway = {
+                name: other.props.name || 'Conversor',
+                modelo: other.props.modelo || 'usr-w610',
+                ip: other.props.ip || '',
+                port: other.props.tcp_port || 502,
+                timeout_ms: other.props.timeout_ms || 3000,
+                mode: 'rtu_tcp',   // Modbus RTU sobre TCP + CRC16 (bridge transparente)
+            };
+
+            if (connections) {
+                const cvConns = connections.filter(c =>
+                    (c.from.componentId === other.id || c.to.componentId === other.id) &&
+                    c.style === 'rs485'
+                );
+                for (const cc of cvConns) {
+                    const devId = cc.from.componentId === other.id ? cc.to.componentId : cc.from.componentId;
+                    const dev = components.find(c => c.id === devId);
+                    if (!dev || !deviceTypes.includes(dev.type)) continue;
+                    if (result.tcp_devices.find(d => d.componentId === dev.id)) continue;
+
+                    const catalogId = dev.props.catalog_id;
+                    const catDev = catalogId && typeof getCatalogDevice === 'function' ? getCatalogDevice(catalogId) : null;
+
+                    result.tcp_devices.push({
+                        componentId: dev.id,
+                        name: dev.props.name || COMPONENT_TYPES[dev.type].label,
+                        type: dev.type,
+                        modbus_address: dev.props.modbus_address || 1,
+                        catalog_id: catalogId || null,
+                        catalog_device: catDev,
+                        registros: catDev ? catDev.registros : [],
+                        gateway: gateway,
+                        current_scale_override: this._parseScaleOverride(dev.props.current_scale_override),
+                        voltage_scale_override: this._parseScaleOverride(dev.props.voltage_scale_override),
+                        tc_ratio: this._parseScaleOverride(dev.props.tc_ratio),
+                        tp_ratio: this._parseScaleOverride(dev.props.tp_ratio),
                     });
                 }
             }
@@ -217,17 +275,49 @@ var FirmwareGenerator = class FirmwareGenerator {
             gateway: null,
             current_scale_override: this._parseScaleOverride(other.props.current_scale_override),
             voltage_scale_override: this._parseScaleOverride(other.props.voltage_scale_override),
+            tc_ratio: this._parseScaleOverride(other.props.tc_ratio),
+            tp_ratio: this._parseScaleOverride(other.props.tp_ratio),
         });
     }
 
     _processLoRa(ton, other, result) {
         const loraTypes = ['ton2', 'ton4'];
         if (!loraTypes.includes(other.type)) return;
-        result.lora = {
-            mode: ton.props.lora_mode || 'tx',
+        // Acumula peers — TON2 pode ter varios TON4s satelites.
+        if (!result.lora_peers) result.lora_peers = [];
+        if (result.lora_peers.find(p => p.peer_id === other.id)) return;
+        result.lora_peers.push({
             peer_name: other.props.name || other.type.toUpperCase(),
             peer_id: other.id,
-        };
+            peer_mac: other.props.mac_address || '',  // populado depois via BD/auto-discovery
+            peer_type: other.type,
+        });
+        // Backward-compat: mantem result.lora pro codigo antigo que olha pra peer unico.
+        // (lora.mode aqui e' deprecated — half-duplex sempre na pratica.)
+        if (!result.lora) {
+            result.lora = {
+                mode: 'duplex',  // half-duplex RX+TX sempre, mantido pro legacy
+                peer_name: result.lora_peers[0].peer_name,
+                peer_id: result.lora_peers[0].peer_id,
+            };
+        }
+    }
+
+    // Determina o papel da TON na topologia LoRa puramente pelo LAYOUT, nao
+    // pelo tipo (ton2/ton4) nem por config manual de modo. Toda TON com LoRa
+    // e' RX+TX (half-duplex bidirecional). O role apenas determina COMO ela
+    // roteia mensagens:
+    //   - tem internet (WiFi/Eth) E tem peer LoRa -> gateway (faz ponte MQTT<->LoRa)
+    //   - sem internet E tem peer LoRa            -> satellite (publica via LoRa)
+    //   - tem LoRa mas sem peer no diagrama       -> 'tx' (modo solo, sem roteamento)
+    // Override manual: ton.props.lora_role tem prioridade (escape hatch).
+    _resolveLoraRole(ton, result) {
+        if (ton.props.lora_role) return ton.props.lora_role;  // override manual
+        const hasInternet = !!result.wifi;  // wifi flag cobre WiFi+Ethernet
+        const hasPeers = (result.lora_peers || []).length > 0;
+        if (hasInternet && hasPeers) return 'gateway';
+        if (!hasInternet && hasPeers) return 'satellite';
+        return 'tx';  // tem LoRa mas sem peer no layout — modo solo
     }
 
     // ================================================================
@@ -359,10 +449,11 @@ static uint16_t _txId = 0;
 // tem campo work_state no grupo 'status'.
 
 // Timestamp formatado "DD/MM/YYYY HH:MM:SS" no timezone local.
-// Fallback "sem_ntp" se o relogio nao estiver sincronizado.
+// Fallback "0" (epoch zero) se o relogio nao estiver sincronizado — o ingestion
+// trata como timestamp numerico valido e usa now do server como timestamp_dados.
 static String _format_timestamp_str() {
     time_t now = time(nullptr);
-    if (now < 1700000000) return String("sem_ntp");
+    if (now < 1700000000) return String("0");
     struct tm* t = localtime(&now);
     char buf[24];
     sprintf(buf, "%02d/%02d/%04d %02d:%02d:%02d",
@@ -401,6 +492,9 @@ static Client* _active_tcp_client() {
     return nullptr;
 }
 
+// 10^e por inteiro (e pode ser negativo). Evita pull de powf; deterministico em FPU/no-FPU.
+static inline float _pow10i(int e){ float r=1.0f; if(e>=0){ for(int i=0;i<e;i++) r*=10.0f; } else { for(int i=0;i<-e;i++) r/=10.0f; } return r; }
+
 void inverter_tcp_init() {
     Serial.printf("[TCP-INV] Gateway: %s:%d (timeout %dms)\\n",
         GATEWAY_IP, GATEWAY_PORT, GATEWAY_TIMEOUT);
@@ -411,18 +505,51 @@ void inverter_tcp_init() {
     Serial.println();
 }
 
-// Helper Modbus TCP — uma chamada por bloco. Reusa conexao persistente do datalogger.
-static bool _modbus_tcp_read(uint8_t slave, uint8_t func, uint16_t addr, uint16_t count, uint16_t *out) {
+// Gerencia a conexao TCP compartilhada. Reconecta se cair OU se o alvo (ip:port)
+// mudou — permite datalogger (MBAP) e conversor (RTU) em IPs distintos na mesma
+// TON com um unico Client. Retorna o Client conectado (ou nullptr).
+static char     _tcp_cur_ip[40] = "";
+static uint16_t _tcp_cur_port = 0;
+static Client* _tcp_ensure_conn(const char* ip, uint16_t port, uint32_t timeout) {
     Client* tcp = _active_tcp_client();
-    if (!tcp) return false;
-
+    if (!tcp) return nullptr;
+    bool targetChanged = (strcmp(_tcp_cur_ip, ip) != 0) || (_tcp_cur_port != port);
+    if (tcp->connected() && targetChanged) {
+        tcp->stop();
+    }
     if (!tcp->connected()) {
-        tcp->setTimeout(GATEWAY_TIMEOUT / 1000);
-        if (!tcp->connect(GATEWAY_IP, GATEWAY_PORT)) {
-            Serial.println("[TCP-INV] Falha ao conectar no gateway");
-            return false;
+        tcp->setTimeout(timeout / 1000);
+        if (!tcp->connect(ip, port)) {
+            Serial.printf("[TCP-INV] Falha ao conectar em %s:%d\\n", ip, port);
+            _tcp_cur_ip[0] = 0;
+            return nullptr;
+        }
+        strncpy(_tcp_cur_ip, ip, sizeof(_tcp_cur_ip) - 1);
+        _tcp_cur_ip[sizeof(_tcp_cur_ip) - 1] = 0;
+        _tcp_cur_port = port;
+    }
+    return tcp;
+}
+
+// CRC16 Modbus (poly 0xA001) — transporte RTU-sobre-TCP do conversor.
+static uint16_t _modbus_crc16(const uint8_t* buf, uint16_t len) {
+    uint16_t crc = 0xFFFF;
+    for (uint16_t i = 0; i < len; i++) {
+        crc ^= buf[i];
+        for (uint8_t b = 0; b < 8; b++) {
+            if (crc & 0x0001) { crc >>= 1; crc ^= 0xA001; }
+            else crc >>= 1;
         }
     }
+    return crc;
+}
+
+// Helper Modbus TCP (MBAP) — datalogger. Comportamento identico ao anterior;
+// so' passou a receber ip/port/timeout e usar o gerenciador de conexao.
+static bool _modbus_tcp_read(const char* ip, uint16_t port, uint32_t timeout,
+                             uint8_t slave, uint8_t func, uint16_t addr, uint16_t count, uint16_t *out) {
+    Client* tcp = _tcp_ensure_conn(ip, port, timeout);
+    if (!tcp) return false;
 
     _txId++;
     uint8_t req[12];
@@ -440,7 +567,7 @@ static bool _modbus_tcp_read(uint8_t slave, uint8_t func, uint16_t addr, uint16_
     tcp->flush();
 
     uint32_t t0 = millis();
-    while (tcp->available() < 9 && millis() - t0 < GATEWAY_TIMEOUT) {
+    while (tcp->available() < 9 && millis() - t0 < timeout) {
         delay(5);
         esp_task_wdt_reset();
     }
@@ -463,6 +590,87 @@ static bool _modbus_tcp_read(uint8_t slave, uint8_t func, uint16_t addr, uint16_
 
     for (uint16_t i = 0; i < count; i++) {
         out[i] = (buf[i*2] << 8) | buf[i*2+1];
+    }
+    return true;
+}
+
+// Helper Modbus RTU-sobre-TCP + CRC16 — conversor (USR transparente). Espelha o
+// readModbusBlock antigo: frame RTU com CRC, valida ID/FC/byteCount/CRC e REJEITA
+// frame corrompido (em link instavel nao deixa passar 0xFFFF/lixo como dado).
+static bool _modbus_rtu_tcp_read(const char* ip, uint16_t port, uint32_t timeout,
+                                 uint8_t slave, uint8_t func, uint16_t addr, uint16_t count, uint16_t *out) {
+    Client* tcp = _tcp_ensure_conn(ip, port, timeout);
+    if (!tcp) return false;
+
+    uint8_t req[8];
+    req[0] = slave;
+    req[1] = func;
+    req[2] = addr >> 8; req[3] = addr & 0xFF;
+    req[4] = count >> 8; req[5] = count & 0xFF;
+    uint16_t crc = _modbus_crc16(req, 6);
+    req[6] = crc & 0xFF; req[7] = (crc >> 8) & 0xFF;   // CRC little-endian
+
+    while (tcp->available()) tcp->read();   // flush anti-dessincronizacao
+    tcp->write(req, 8);
+    tcp->flush();
+
+    // Resposta RTU: [ID][FC][ByteCount][dados...][CRC_L][CRC_H] — minimo 5 bytes.
+    uint32_t t0 = millis();
+    while (tcp->available() < 5 && millis() - t0 < timeout) {
+        delay(5);
+        esp_task_wdt_reset();
+    }
+    if (tcp->available() < 5) {
+        Serial.printf("[TCP-INV] Timeout(rtu) slave=%d func=%d addr=%d\\n", slave, func, addr);
+        return false;
+    }
+
+    uint8_t hdr[3];
+    tcp->readBytes(hdr, 3);   // ID + FC + ByteCount
+    if (hdr[1] & 0x80) {
+        Serial.printf("[TCP-INV] Excecao Modbus(rtu) slave=%d: 0x%02X\\n", slave, hdr[1]);
+        while (tcp->available()) tcp->read();
+        return false;
+    }
+    if (hdr[0] != slave || hdr[1] != func) {
+        Serial.printf("[TCP-INV] ID/FC invalido(rtu) slave=%d\\n", slave);
+        while (tcp->available()) tcp->read();
+        return false;
+    }
+    uint8_t byteCount = hdr[2];
+    if (byteCount != count * 2) {
+        Serial.printf("[TCP-INV] byteCount invalido(rtu) slave=%d: %d\\n", slave, byteCount);
+        while (tcp->available()) tcp->read();
+        return false;
+    }
+
+    t0 = millis();
+    while (tcp->available() < (byteCount + 2) && millis() - t0 < timeout) {
+        delay(2);
+        esp_task_wdt_reset();
+    }
+    if (tcp->available() < (byteCount + 2)) {
+        Serial.printf("[TCP-INV] Resposta(rtu) incompleta slave=%d\\n", slave);
+        return false;
+    }
+
+    uint8_t data[256];
+    tcp->readBytes(data, byteCount);
+    uint8_t crcBytes[2];
+    tcp->readBytes(crcBytes, 2);
+
+    uint8_t full[3 + 256];
+    memcpy(full, hdr, 3);
+    memcpy(full + 3, data, byteCount);
+    uint16_t rxCRC = crcBytes[0] | (crcBytes[1] << 8);
+    uint16_t calcCRC = _modbus_crc16(full, 3 + byteCount);
+    if (rxCRC != calcCRC) {
+        Serial.printf("[TCP-INV] CRC invalido(rtu) slave=%d — frame descartado\\n", slave);
+        return false;
+    }
+
+    for (uint16_t i = 0; i < count; i++) {
+        out[i] = (data[i*2] << 8) | data[i*2+1];
     }
     return true;
 }
@@ -555,8 +763,23 @@ static void _publish_tcp_inv_${idx}(tcp_publish_fn publish) {
             const base = blockOffsets[m.block];
             const i0 = base + m.offset;
             const scale = this._resolveScale(m.scale, scales);
-            const decoder = this._decodeExpr(m.dataType || 'U16', 'buf', i0, scale, m, wordOrder);
+            let decoder = this._decodeExpr(m.dataType || 'U16', 'buf', i0, scale, m, wordOrder);
             if (!decoder) continue;
+            // Casa decimal por campo (espelha apply_factor). Aplicado ANTES do TP/TC.
+            // Multiplicacao comuta, mas a ordem casa com a semantica e com o RS485.
+            if (m.decimal_src && cat.decimal_regs && !this._tpTcDisabled()) {
+                const _dv = m.decimal_src === 'dpt' ? '_fDPT'
+                          : m.decimal_src === 'dct' ? '_fDCT'
+                          : m.decimal_src === 'dpq' ? '_fDPQ' : null;
+                if (_dv) decoder = `(${decoder}) * ${_dv}`;
+            }
+            // Fator TP/TC (mesma logica do RS485): _fTP/_fTC/_fatorEnergia computados em _sample_tcp_inv.
+            if (m.apply_factor && cat.tp_tc && !this._tpTcDisabled()) {
+                const _fv = m.apply_factor === 'tp' ? '_fTP'
+                          : m.apply_factor === 'tc' ? '_fTC'
+                          : m.apply_factor === 'tp_tc' ? '_fatorEnergia' : null;
+                if (_fv) decoder = `(${decoder}) * ${_fv}`;
+            }
             const entry = { pid, decoder, format: m.format || null };
             const mode = m.mode || 'avg';
             if (mode === 'last') lastFields.push(entry);
@@ -580,6 +803,7 @@ struct _TcpDs${idx}State {
     bool has_first_delta;
     bool valid;
     int fail_streak;
+    unsigned long cooldown_until;  // millis() ate quando pular este device (back-off)
 };
 static _TcpDs${idx}State _tds${idx} = {};
 
@@ -587,13 +811,18 @@ static _TcpDs${idx}State _tds${idx} = {};
 // Retorna false se qualquer bloco falhar (timeout, excecao, slave invalido).
 static bool _read_tcp_inv_${idx}_raw(uint16_t *buf) {
 `;
+        // Despacha por gateway: datalogger -> MBAP; conversor -> RTU+CRC. ip/port/
+        // timeout inline (cada device carrega seu gateway — suporta 2 na mesma TON).
+        const gw = inv.gateway || {};
+        const _readFn = (gw.mode === 'rtu_tcp') ? '_modbus_rtu_tcp_read' : '_modbus_tcp_read';
+        const _gwArgs = `"${gw.ip || ''}", ${gw.port || 502}, ${gw.timeout_ms || 2000}`;
         blocks.forEach((b, bi) => {
             const off = blockOffsets[bi];
             const fnHex = '0x' + b.func.toString(16).padStart(2, '0');
             cpp += `    // Bloco ${bi}: regs ${b.start + 1}-${b.start + b.count}, func ${fnHex}${b.label ? ' — ' + b.label : ''}
     {
         uint16_t tmp${bi}[${b.count}];
-        if (!_modbus_tcp_read(${slave}, ${fnHex}, ${b.start}, ${b.count}, tmp${bi})) {
+        if (!${_readFn}(${_gwArgs}, ${slave}, ${fnHex}, ${b.start}, ${b.count}, tmp${bi})) {
             Serial.printf("[TCP-INV] ${nameEsc}(id${slave}) bloco ${bi} FAIL (reg=${b.start} count=${b.count})\\n");
             return false;
         }
@@ -611,18 +840,81 @@ static bool _read_tcp_inv_${idx}_raw(uint16_t *buf) {
 
 // Le + acumula. Chamar a cada READ_INTERVAL_MS (round-robin em inverter_tcp_sample_one).
 static void _sample_tcp_inv_${idx}() {
+    // Back-off: device TCP que nao responde fica em cooldown — pula a leitura
+    // (que bloquearia o loop ~GATEWAY_TIMEOUT no _modbus_tcp_read) ate expirar.
+    // Espelha o leitor RS485; sem isso um device morto (ex: Power_Meter ausente)
+    // starva o keepalive do MQTT e a conexao fica flapando.
+    if (_tds${idx}.cooldown_until && (long)(millis() - _tds${idx}.cooldown_until) < 0) return;
+
     uint16_t buf[${totalRegs}];
     if (!_read_tcp_inv_${idx}_raw(buf)) {
         _tds${idx}.fail_streak++;
         Serial.printf("[TCP-INV] ${nameEsc}(id${slave}): falha leitura (consecutivas: %d)\\n", _tds${idx}.fail_streak);
+        if (_tds${idx}.fail_streak >= MODBUS_FAIL_COOLDOWN_N) {
+            _tds${idx}.cooldown_until = millis() + MODBUS_COOLDOWN_MS;
+            if (_tds${idx}.cooldown_until == 0) _tds${idx}.cooldown_until = 1;  // 0 = sentinela "sem cooldown"
+            Serial.printf("[TCP-INV] ${nameEsc}(id${slave}): cooldown %lus (nao responde) — loop liberado p/ MQTT/cmd\\n", (unsigned long)(MODBUS_COOLDOWN_MS/1000));
+        }
         return;
     }
+    _tds${idx}.cooldown_until = 0;
     if (_tds${idx}.fail_streak > 0) {
         Serial.printf("[TCP-INV] ${nameEsc}(id${slave}): OK (apos %d falhas)\\n", _tds${idx}.fail_streak);
         _tds${idx}.fail_streak = 0;
     }
 
 `;
+        // TP/TC: le reg do medidor via o gateway do device (MBAP ou RTU+CRC) e aplica
+        // override do diagrama. Espelha o leitor RS485. So' pra devices com cat.tp_tc.
+        if (cat.tp_tc && !this._tpTcDisabled()) {
+            const _t = cat.tp_tc;
+            const _sTp = (Number(_t.scale_tp) || 1).toFixed(1);
+            const _sTc = (Number(_t.scale_tc) || 1).toFixed(1);
+            const _tcOv = this._parseScaleOverride(inv.tc_ratio);
+            const _tpOv = this._parseScaleOverride(inv.tp_ratio);
+            cpp += `    // TP/TC para escalonamento (le reg ${_t.register} via gateway; override do diagrama prevalece)
+    float _fTP = 1.0f, _fTC = 1.0f, _fatorEnergia = 1.0f;
+    {
+        uint16_t _tptc[${_t.count}];
+        if (${_readFn}(${_gwArgs}, ${slave}, 0x03, ${_t.register}, ${_t.count}, _tptc)) {
+            _fTP = (float)_tptc[${_t.tp_offset}] / ${_sTp}f;
+            _fTC = (float)_tptc[${_t.tc_offset}] / ${_sTc}f;
+            Serial.printf("[M160] medidor reporta TP=%.0f TC=%.0f\\n", _fTP, _fTC);
+        } else {
+            Serial.println("[M160] leitura TP/TC FALHOU (rc!=0)");
+        }
+${_tpOv ? `        _fTP = ${_tpOv.toFixed(1)}f;  // override tp_ratio (diagrama)\n` : ''}${_tcOv ? `        _fTC = ${_tcOv.toFixed(1)}f;  // override tc_ratio (diagrama) — deterministico\n` : ''}        _fatorEnergia = _fTP * _fTC;
+        Serial.printf("[M160] usando TP=%.0f TC=%.0f -> fatorEnergia=%.0f\\n", _fTP, _fTC, _fatorEnergia);
+    }
+`;
+        }
+        // DPT/DCT/DPQ (casa decimal dinamica, M160): le reg35/36 via gateway e calcula
+        // fatores _fDPT/_fDCT/_fDPQ como DELTA do expoente lido vs baseline do scale fixo.
+        if (cat.decimal_regs && !this._tpTcDisabled()) {
+            const d = cat.decimal_regs, L = d.layout || {};
+            const ext = (s) => {
+                const cfg = L[s]; if (!cfg) return null;
+                const w = cfg.word || 0, base = (cfg.baseline ?? 4);
+                const expr = cfg.byte === 'hi' ? `(_dec[${w}] >> 8) & 0xFF` : `_dec[${w}] & 0xFF`;
+                return { expr, base, var: `_f${s.toUpperCase()}` };
+            };
+            const dpt = ext('dpt'), dct = ext('dct'), dpq = ext('dpq');
+            cpp += `    // Casas decimais (reg ${d.register}: DPT/DCT/DPQ). value = raw*10^(exp-baseline) relativo ao scale fixo.
+    float _fDPT = 1.0f, _fDCT = 1.0f, _fDPQ = 1.0f;
+    {
+        uint16_t _dec[${d.count}];
+        if (${_readFn}(${_gwArgs}, ${slave}, 0x03, ${d.register}, ${d.count}, _dec)) {
+            uint8_t _eDPT = ${dpt ? dpt.expr : '0'};
+            uint8_t _eDCT = ${dct ? dct.expr : '0'};
+            uint8_t _eDPQ = ${dpq ? dpq.expr : '0'};
+            uint8_t _sign = _dec[${(d.sign && d.sign.word) || 1}] & 0xFF;
+${dpt ? `            _fDPT = _pow10i((int)_eDPT - ${dpt.base});\n` : ''}${dct ? `            _fDCT = _pow10i((int)_eDCT - ${dct.base});\n` : ''}${dpq ? `            _fDPQ = _pow10i((int)_eDPQ - ${dpq.base});\n` : ''}            Serial.printf("[M160] DPT=%u DCT=%u DPQ=%u SIGN=0x%02X (raw r35=0x%04X r36=0x%04X) -> fDPT=%.4f fDCT=%.4f fDPQ=%.4f\\n", _eDPT, _eDCT, _eDPQ, _sign, _dec[0], _dec[${d.count > 1 ? 1 : 0}], _fDPT, _fDCT, _fDPQ);
+        } else {
+            Serial.println("[M160] leitura DPT/DCT/DPQ FALHOU (rc!=0) — usando fatores 1.0");
+        }
+    }
+`;
+        }
         // Decode + acumulacao avg
         avgFields.forEach((f, i) => {
             cpp += `    float v_${f.pid} = ${f.decoder};\n`;
@@ -687,7 +979,11 @@ static void _publish_tcp_inv_${idx}(tcp_publish_fn publish) {
     }
 
     int n = _tds${idx}.samples;
-    StaticJsonDocument<3072> d;
+    // JSON e payload na HEAP (nao na stack). loopTask tem 8KB de stack;
+    // alocar 3KB+3KB na stack aqui causava overflow + Panic em ~67s no projeto
+    // Chimarrao com Power_Meter + 2 inversores. Heap fica em ~280KB livres,
+    // sobra de sobra pra os 3KB do doc+payload.
+    DynamicJsonDocument d(3072);
 `;
 
         // --- Resolver path JSON para cada pid (usa DEVICE_POINTS[tipo]) ---
@@ -830,14 +1126,20 @@ static void _publish_tcp_inv_${idx}(tcp_publish_fn publish) {
         }
 
         cpp += `
-    char payload[3072];
-    size_t sz = serializeJson(d, payload, sizeof(payload));
+    // Payload na HEAP (evita estouro de stack). Liberado ao sair do escopo.
+    char* payload = (char*)malloc(3072);
+    if (!payload) {
+        Serial.println("[TCP-INV] OOM ao alocar payload");
+        return;
+    }
+    size_t sz = serializeJson(d, payload, 3072);
     if (sz > 0) {
         publish("${subtopicEsc}", payload);
         Serial.printf("\\n===== PUBLICADO: ${nameEsc} (%d amostras) =====\\n", n);
         Serial.println(payload);
         Serial.println();
     }
+    free(payload);
 
     // Reset do ciclo (preserva 'first_delta' da ultima amostra para o proximo intervalo)
 `;
@@ -868,7 +1170,7 @@ static void _publish_tcp_inv_${idx}(tcp_publish_fn publish) {
 
 #define DEVICE_MODEL        "${spec.tonType.toUpperCase()}"
 #define DEVICE_ID           "${spec.hostname}"
-#define FIRMWARE_VERSION    "1.7.0-pmtcp-override"
+#define FIRMWARE_VERSION    "${(() => { const d = new Date(); const p = n => String(n).padStart(2,'0'); return `1.8.0-build${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}${p(d.getHours())}${p(d.getMinutes())}`; })()}"
 
 // I2C
 #define I2C_ADDR_RTC        0x68
@@ -886,12 +1188,14 @@ static void _publish_tcp_inv_${idx}(tcp_publish_fn publish) {
 `;
 
         if (spec.has_lora) {
+            // LORA_MODE removido — half-duplex bidirecional sempre (RX+TX).
+            // Role (gateway/satellite/tx) e' resolvido pelo layout, nao por config manual.
             h += `
-// LoRa (E220-900T30D)
+// LoRa (E220-900T30D — modo transparente, half-duplex RX+TX)
 #define LORA_UART_NUM       2
 #define LORA_BAUD           9600
 #define LORA_CONFIG         SERIAL_8N1
-#define LORA_MODE           "${(spec.lora?.mode || 'tx').toUpperCase()}"
+#define LORA_ROLE           "${(spec.lora_role || 'tx').toUpperCase()}"
 `;
         }
 
@@ -929,6 +1233,18 @@ extern char MQTT_CLIENT_ID[20];
 #define DIAG_INTERVAL_MS    60000   // publica diagnostico a cada 60s
 #define MQTT_STATUS_MS      60000
 #define OTA_DOWNLOAD_TIMEOUT_MS 60000
+`;
+        } else {
+            // Sem broker/WiFi (ex: TON4 satellite — só LoRa). O firmware ainda
+            // gera funcoes que referenciam MQTT_TOPIC_BASE (ex: _publish_cmd_ack
+            // do caminho de comando via Serial). Define um base a partir do
+            // topico configurado pra compilar — a TON satellite nao publica em
+            // MQTT (telemetria/ack vao por LoRa), entao o valor e' so identidade.
+            h += `
+// MQTT ausente (LoRa-only). MQTT_TOPIC_BASE definido apenas pra compilar os
+// helpers de comando — nenhuma publicacao MQTT real ocorre nesta TON.
+#define MQTT_TOPIC_BASE     "${spec.topicBase || spec.name || 'TON'}"
+#define DIAG_INTERVAL_MS    60000
 `;
         }
 
@@ -974,6 +1290,13 @@ extern char MQTT_CLIENT_ID[20];
 #define METER_CYCLE_MS      4000
 #define PUBLISH_INTERVAL_MS 60000
 #define MAX_READINGS        35
+// Back-off de device Modbus que nao responde: apos N falhas consecutivas, para
+// de ler por COOLDOWN_MS. Cada leitura falha bloqueia ~2-4s no timeout do
+// ModbusMaster; sem back-off, um device morto deixa a TON surda a comandos
+// (critico no satellite LoRa — precisa sempre acionar a bomba). Durante o
+// cooldown o loop fica livre pra LoRa/MQTT.
+#define MODBUS_FAIL_COOLDOWN_N   3
+#define MODBUS_COOLDOWN_MS       30000UL
 `;
         }
 
@@ -1343,8 +1666,10 @@ static void _evalNetwork() {
 bool mqtt_publish_raw(const char* topic, const char* payload);
 
 // Sync NTP apos WiFi conectar. Nao bloqueia — apenas arranca o processo.
+// 3o servidor e' IP fixo do NTP.br (a.st1.ntp.br) — contorna o caso comum em
+// redes corporativas onde DNS esta bloqueado mas UDP 123 sai.
 static void _start_ntp() {
-    configTime(-3 * 3600, 0, "pool.ntp.org", "time.google.com");
+    configTime(-3 * 3600, 0, "pool.ntp.org", "time.google.com", "200.160.7.193");
 }
 
 // Salva no SD com timestamp injetado no JSON (se possivel).
@@ -1369,6 +1694,9 @@ static void _store_offline(const char* topic, const char* payload) {
     sd_buffer_store(topic, payload);
 }
 
+// Forward decl: gateway router precisa estar declarado pra _onMessage chamar.
+${spec.lora_role === 'gateway' ? 'void gateway_handle_satellite_mqtt(const char* mac_alvo, const char* payload);' : ''}
+
 // Callback unico: despacha OTA (TOPIC_BASE/ota/cmd) antes de entregar o
 // restante ao callback de usuario (TOPIC_BASE/cmd).
 static void _onMessage(char* topic, byte* payload, unsigned int len) {
@@ -1382,7 +1710,27 @@ static void _onMessage(char* topic, byte* payload, unsigned int len) {
         ota_handle_command(buf);
         return;
     }
-
+${spec.lora_role === 'gateway' ? `
+    // Gateway: detecta padrao <BASE>/satellite/<MAC>/cmd e roteia via LoRa.
+    {
+        const char* sat = strstr(topic, "/satellite/");
+        if (sat) {
+            const char* mac_start = sat + strlen("/satellite/");
+            const char* mac_end = strchr(mac_start, '/');
+            if (mac_end && strcmp(mac_end, "/cmd") == 0) {
+                char mac_alvo[32] = {0};
+                size_t mlen = mac_end - mac_start;
+                if (mlen > 0 && mlen < sizeof(mac_alvo)) {
+                    memcpy(mac_alvo, mac_start, mlen);
+                    mac_alvo[mlen] = 0;
+                    Serial.printf("[MQTT-GW] Roteando cmd MQTT -> LoRa target=%s\\n", mac_alvo);
+                    gateway_handle_satellite_mqtt(mac_alvo, buf);
+                    return;
+                }
+            }
+        }
+    }
+` : ''}
     Serial.printf("[MQTT] Recebido: %s -> %s\\n", topic, buf);
     if (_cmdCallback) _cmdCallback(buf);
 }
@@ -1491,18 +1839,25 @@ void mqtt_loop() {
         _setActiveIf(ethOk ? NET_ETH : NET_WIFI);
     }
 
-    // WiFi OK — inicializar NTP se ainda nao iniciou (caso tenha conectado apos o boot)
+    // WiFi/Eth OK — rekick NTP ate sincronizar. Usa variavel separada
+    // (_lastNtpKick) pra nao competir com o rate-limit do WiFi.reconnect().
+    // Intervalo agressivo (5s) nos primeiros 5min depois do boot — periodo
+    // critico onde o TON precisa carimbar timestamps validos. Depois espaca
+    // pra 30s pra reduzir trafego.
     if (!_timeSynced) {
         time_t now = time(nullptr);
         if (now < 1700000000) {
-            // Ainda nao sincronizou — rekick periodico
-            if (millis() - _lastWifiReconnect > WIFI_RECONNECT_MS) {
-                _lastWifiReconnect = millis();
+            static unsigned long _lastNtpKick = 0;
+            unsigned long retryInterval = (millis() < 300000UL) ? 5000UL : 30000UL;
+            if (millis() - _lastNtpKick > retryInterval) {
+                _lastNtpKick = millis();
                 _start_ntp();
+                Serial.printf("[NTP] retry (uptime=%lus, epoch=%lu)\\n",
+                              (unsigned long)(millis()/1000), (unsigned long)now);
             }
         } else {
             _timeSynced = true;
-            Serial.println("[NTP] Tempo sincronizado");
+            Serial.printf("[NTP] sincronizado! epoch=%lu\\n", (unsigned long)now);
         }
     }
 
@@ -1553,6 +1908,13 @@ void mqtt_loop() {
         _mqtt.subscribe(otaCmdTopic.c_str());
         Serial.printf("[MQTT] Inscrito em: %s\\n[MQTT] Inscrito em: %s\\n",
                       MQTT_TOPIC_CMD, otaCmdTopic.c_str());
+${spec.lora_role === 'gateway' ? `
+        // Gateway: tambem subscreve no namespace de satellites pra rotear
+        // comandos vindos do backend via LoRa pros TON satelites.
+        String satCmdTopic = String(MQTT_TOPIC_BASE) + "/satellite/+/cmd";
+        _mqtt.subscribe(satCmdTopic.c_str());
+        Serial.printf("[MQTT] Inscrito em (gateway): %s\\n", satCmdTopic.c_str());
+` : ''}
 
         // Announce online + identidade (retained). Inclui MAC, IP da interface
         // ativa e qual interface (wifi/eth) — backend usa para auto-discovery.
@@ -1833,6 +2195,766 @@ bool lora_ready() { return digitalRead(LORA_AUX) == HIGH; }
     }
 
     // ============================================================
+    // LoRa router: dispatcher consciente do papel na topologia.
+    // - gateway (TON2 com WiFi+LoRa): roteia MQTT<->LoRa
+    // - satellite (TON sem WiFi, só LoRa+RS485): só recebe cmd LoRa
+    //   destinado ao próprio MAC, executa e publica ack via LoRa
+    // - default (modo tx simples): mantém comportamento legado
+    // ============================================================
+    _genLoraRouter(spec) {
+        const role = spec.lora_role || 'tx';
+
+        // Detecta dispositivos M160 (mesmo field-set binario) entre os RS485 do
+        // satellite e gera o mapeamento subtopic-real -> type_code. Isso conserta
+        // o bug critico: o subtopic emitido pelo device reader e' `${name}_${addr}/data`
+        // (default "Power Meter_1/data" COM ESPACO), nunca o literal hardcoded
+        // "Power_Meter_1/data". Agora casamos pelo subtopic REAL de cada device.
+        const cEsc = (s) => String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+        const isM160 = (d) => {
+            const cid = (d.catalog_id || '').toLowerCase();
+            const nm = (d.name || '').toLowerCase();
+            return cid.includes('m160') || cid.includes('ims') || nm.includes('m160')
+                || d.type === 'power_meter';
+        };
+        const m160Devices = (spec.rs485_devices || []).filter(isM160);
+        const m160SubtopicCases = m160Devices.map((d) => {
+            const sub = `${d.name || 'dev'}_${d.modbus_address || 1}/data`;
+            return `    if (strcmp(subtopic, "${cEsc(sub)}") == 0) return LORA_TYPE_M160;`;
+        }).join('\n') || '    (void)subtopic;';
+
+        // ----- Helpers comuns: parser de MAC e normalização -----
+        let cpp = `
+// ===== LoRa Router (role: ${role}) =====
+// Protocolo em envelope JSON (modo transparente do E220):
+//   cmd:        {"to":"AA:BB:..","from":"<orig>","cmd_id":"...","cmd":"r1 on"}
+//   ack:        {"to":"<orig>","from":"<me>","cmd_id":"...","status":"ok","msg":"..."}
+//   data:       {"to":"<gw>","from":"<me>","type":"data","subtopic":"X/data","payload":{...}}
+//   status:     {"to":"<gw>","from":"<me>","type":"status","online":true,"version":"..."}
+//
+// Garantias de entrega:
+//   - Gateway: pending queue + retry com timeout 2s, ate 3 tentativas. Se nao
+//     receber ACK no ultimo retry, publica ack erro "lora_no_ack" no MQTT.
+//   - Ambos: CSMA simples (aguarda AUX=HIGH) + jitter random antes de TX pra
+//     reduzir colisao quando varios dispositivos transmitem perto no tempo.
+//   - MTU E220: 200 bytes max em modo transparente. _lora_safe_send descarta
+//     payload acima e loga erro (caller deve dividir ou comprimir).
+
+#define LORA_MAX_PAYLOAD 200
+
+// Compara MACs ignorando case e separadores ':' / '-'.
+static bool _lora_mac_eq(const char* a, const char* b) {
+    if (!a || !b) return false;
+    auto norm = [](char c) -> char {
+        if (c == ':' || c == '-') return 0;
+        if (c >= 'a' && c <= 'z') return c - 32;
+        return c;
+    };
+    while (*a || *b) {
+        while (*a && norm(*a) == 0) a++;
+        while (*b && norm(*b) == 0) b++;
+        if (norm(*a) != norm(*b)) return false;
+        if (!*a || !*b) return (*a == *b);
+        a++; b++;
+    }
+    return true;
+}
+
+// CSMA simples: aguarda canal idle (AUX=HIGH) + jitter random pra evitar
+// colisao quando varios devices transmitem perto no tempo. Retorna false
+// (sem transmitir) se passou do MTU do E220 (200 bytes) — caller decide o que
+// fazer (ex: gateway publica erro imediato em vez de esperar timeout).
+static bool _lora_safe_send(const char* msg) {
+    if (!msg) return false;
+    size_t len = strlen(msg);
+    if (len > LORA_MAX_PAYLOAD) {
+        Serial.printf("[LORA] descartado: payload %u > MTU %d\\n", (unsigned)len, LORA_MAX_PAYLOAD);
+        return false;
+    }
+    // Espera ate 2s o canal ficar idle.
+    unsigned long t = millis();
+    while (!digitalRead(LORA_AUX) && millis() - t < 2000) {
+        delay(2);
+        esp_task_wdt_reset();
+    }
+    // Jitter aleatorio 30-150ms reduz colisao entre transmissores proximos.
+    delay(30 + (esp_random() % 120));
+    lora_send(msg);
+    return true;
+}
+
+// ============================================================
+// SCHEMAS BINARIOS — compress\xe3o de telemetria pra caber no MTU do E220.
+// Frame: "$B$" + Base64( header + subtopic + payload ), onde:
+//   header   = [type_code(1), version(1), from_mac(6), subtopic_len(1)] = 9 bytes
+//   subtopic = N bytes (o subtopic REAL do device, ex: "Power Meter_1/data")
+//   payload  = bytes dos fields do field-set (big-endian, com escala)
+// O subtopic VIAJA no frame — assim o gateway republica no topico exato que o
+// satellite emitiu (conserta o bug de subtopic hardcoded). O type_code so'
+// seleciona o LAYOUT de campos (compartilhado entre os firmwares).
+// Tamanho M160: 9 + ~18 (subtopic) + 50 (payload) = 77B -> Base64 104B + 3 = 107B ✓
+// ============================================================
+
+#define LORA_SUBTOPIC_MAX 60
+
+typedef enum { LFT_U8 = 1, LFT_U16, LFT_S16, LFT_U32, LFT_S32 } LoraFieldType;
+
+typedef struct {
+    const char* json_key;
+    uint8_t type;       // LoraFieldType
+    float scale;        // raw_binario = real * scale; real = raw / scale
+} LoraField;
+
+typedef struct {
+    uint8_t type_code;          // identificador do layout de campos (0x10=M160)
+    uint8_t version;            // pra migrar layouts no futuro sem quebrar
+    const LoraField* fields;    // array null-terminated (key=NULL)
+} LoraFieldSet;
+
+// ---- M160 (Modbus RTU, multimedidor IMS) — keys batem com o payload REAL do
+//      firmware do M160 (Va,Ia,FPa,Pt,phf,consumo_* — capitalizado, confirmado
+//      no broker em campo). ----
+static const LoraField LORA_FIELDS_M160_V1[] = {
+    {"Va",          LFT_U16, 100.0f},   // 0.01 V
+    {"Vb",          LFT_U16, 100.0f},
+    {"Vc",          LFT_U16, 100.0f},
+    {"Ia",          LFT_U16, 100.0f},   // 0.01 A
+    {"Ib",          LFT_U16, 100.0f},
+    {"Ic",          LFT_U16, 100.0f},
+    {"FPa",         LFT_S16, 1000.0f},  // 0.001 FP
+    {"FPb",         LFT_S16, 1000.0f},
+    {"FPc",         LFT_S16, 1000.0f},
+    {"Pt",          LFT_S32, 10.0f},    // 0.1 W
+    {"Qt",          LFT_S32, 10.0f},    // 0.1 var
+    {"St",          LFT_S32, 10.0f},    // 0.1 VA
+    {"phf",         LFT_U32, 1000.0f},  // mWh
+    {"consumo_phf", LFT_U32, 1000.0f},
+    {"consumo_phr", LFT_U32, 1000.0f},
+    {"consumo_qhf", LFT_U32, 1000.0f},
+    {"consumo_qhr", LFT_U32, 1000.0f},
+    {NULL, 0, 0}  // terminator
+};
+
+#define LORA_TYPE_M160 0x10
+
+// Tabela de field-sets FIXA e compartilhada (gateway e satellite tem a mesma).
+// Indexada por type_code — define apenas o LAYOUT, nao o subtopic.
+static const LoraFieldSet LORA_FIELD_SETS[] = {
+    {LORA_TYPE_M160, 1, LORA_FIELDS_M160_V1},
+    {0, 0, NULL}  // terminator
+};
+
+static const LoraFieldSet* _lora_fieldset_for_type(uint8_t type_code, uint8_t version) {
+    for (const LoraFieldSet* s = LORA_FIELD_SETS; s->fields; s++) {
+        if (s->type_code == type_code && s->version == version) return s;
+    }
+    return NULL;
+}
+
+// SATELLITE-SIDE: mapeia o subtopic REAL emitido pelo device reader
+// (formato nome_endereco/data) -> type_code. Gerado a partir dos RS485 do
+// diagrama desta TON, entao casa exatamente o que lora_publish_data recebe.
+static uint8_t _lora_typecode_for_subtopic(const char* subtopic) {
+    if (!subtopic) return 0;
+${m160SubtopicCases}
+    return 0;  // sem field-set conhecido -> caller usa JSON (e loga)
+}
+
+// MAC string ("AA:BB:CC:DD:EE:FF") <-> 6 bytes binarios
+static void _lora_mac_str_to_bytes(const char* str, uint8_t bytes[6]) {
+    memset(bytes, 0, 6);
+    if (!str) return;
+    int b = 0;
+    const char* p = str;
+    while (*p && b < 6) {
+        while (*p && (*p == ':' || *p == '-' || *p == ' ')) p++;
+        if (!*p || !*(p+1)) break;
+        char h[3] = { *p, *(p+1), 0 };
+        bytes[b++] = (uint8_t)strtoul(h, NULL, 16);
+        p += 2;
+    }
+}
+static void _lora_mac_bytes_to_str(const uint8_t bytes[6], char* out) {
+    sprintf(out, "%02X:%02X:%02X:%02X:%02X:%02X",
+            bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5]);
+}
+
+// Pack JSON -> binario. Retorna bytes escritos ou -1 em overflow.
+static int _lora_pack_fields(const LoraField* fields, JsonDocument& doc,
+                              uint8_t* buf, int max_len) {
+    int pos = 0;
+    for (const LoraField* f = fields; f->json_key; f++) {
+        if (pos + 4 > max_len) return -1;
+        double val = doc[f->json_key] | 0.0;
+        int64_t raw = (int64_t)(val * f->scale + (val >= 0 ? 0.5 : -0.5));  // round
+        switch (f->type) {
+            case LFT_U8:
+                buf[pos++] = (uint8_t)(raw & 0xFF);
+                break;
+            case LFT_U16:
+            case LFT_S16:
+                buf[pos++] = (uint8_t)((raw >> 8) & 0xFF);
+                buf[pos++] = (uint8_t)(raw & 0xFF);
+                break;
+            case LFT_U32:
+            case LFT_S32:
+                buf[pos++] = (uint8_t)((raw >> 24) & 0xFF);
+                buf[pos++] = (uint8_t)((raw >> 16) & 0xFF);
+                buf[pos++] = (uint8_t)((raw >> 8) & 0xFF);
+                buf[pos++] = (uint8_t)(raw & 0xFF);
+                break;
+        }
+    }
+    return pos;
+}
+
+// Unpack binario -> JSON. Retorna bytes consumidos ou -1 em underflow.
+static int _lora_unpack_fields(const LoraField* fields, const uint8_t* buf,
+                                int len, JsonDocument& doc) {
+    int pos = 0;
+    for (const LoraField* f = fields; f->json_key; f++) {
+        int64_t raw = 0;
+        switch (f->type) {
+            case LFT_U8:
+                if (pos + 1 > len) return -1;
+                raw = buf[pos++];
+                break;
+            case LFT_U16:
+                if (pos + 2 > len) return -1;
+                raw = ((uint16_t)buf[pos] << 8) | buf[pos+1]; pos += 2;
+                break;
+            case LFT_S16:
+                if (pos + 2 > len) return -1;
+                raw = (int16_t)(((uint16_t)buf[pos] << 8) | buf[pos+1]); pos += 2;
+                break;
+            case LFT_U32:
+                if (pos + 4 > len) return -1;
+                raw = ((uint32_t)buf[pos] << 24) | ((uint32_t)buf[pos+1] << 16)
+                    | ((uint32_t)buf[pos+2] << 8) | buf[pos+3]; pos += 4;
+                break;
+            case LFT_S32:
+                if (pos + 4 > len) return -1;
+                raw = (int32_t)(((uint32_t)buf[pos] << 24) | ((uint32_t)buf[pos+1] << 16)
+                              | ((uint32_t)buf[pos+2] << 8) | buf[pos+3]); pos += 4;
+                break;
+        }
+        // Scale=1 mantem como inteiro; senao como double
+        if (f->scale == 1.0f) {
+            doc[f->json_key] = (long)raw;
+        } else {
+            doc[f->json_key] = (double)raw / f->scale;
+        }
+    }
+    return pos;
+}
+
+// Base64 — usa mbedtls (ja disponivel no Arduino-ESP32 framework)
+#include <mbedtls/base64.h>
+static int _lora_b64_encode(const uint8_t* in, size_t in_len, char* out, size_t out_max) {
+    size_t olen = 0;
+    int rc = mbedtls_base64_encode((unsigned char*)out, out_max, &olen, in, in_len);
+    if (rc != 0) return -1;
+    out[olen] = 0;
+    return (int)olen;
+}
+static int _lora_b64_decode(const char* in, size_t in_len, uint8_t* out, size_t out_max) {
+    size_t olen = 0;
+    int rc = mbedtls_base64_decode(out, out_max, &olen, (const unsigned char*)in, in_len);
+    if (rc != 0) return -1;
+    return (int)olen;
+}
+
+`;
+        if (role === 'satellite') {
+            cpp += `
+// Satellite: recebe envelope LoRa, processa só se 'to' bater com meu MAC.
+// Dedup local (32 entradas) evita reaplicar cmd quando gateway re-envia por
+// timeout. Heartbeat a cada 30s pro gateway saber que estamos vivos.
+
+#define LORA_SAT_DEDUP_SIZE 32
+#define LORA_SAT_HEARTBEAT_MS 30000UL
+
+static String _ton2_gw_mac = "";  // MAC do gateway (descoberto na 1a msg recebida)
+static char _satDedup[LORA_SAT_DEDUP_SIZE][40];
+static int _satDedupIdx = 0;
+static unsigned long _lastHeartbeat = 0;
+
+static bool _sat_seen_or_add(const char* cmd_id) {
+    if (!cmd_id || !cmd_id[0]) return false;
+    for (int i = 0; i < LORA_SAT_DEDUP_SIZE; i++) {
+        if (_satDedup[i][0] && strcmp(_satDedup[i], cmd_id) == 0) return true;
+    }
+    strncpy(_satDedup[_satDedupIdx], cmd_id, sizeof(_satDedup[0]) - 1);
+    _satDedup[_satDedupIdx][sizeof(_satDedup[0]) - 1] = 0;
+    _satDedupIdx = (_satDedupIdx + 1) % LORA_SAT_DEDUP_SIZE;
+    return false;
+}
+
+// Empacota envelope JSON e envia via _lora_safe_send (CSMA + jitter).
+static void lora_send_envelope(const char* to_mac, const char* type, const char* cmd_id,
+                                const char* status, const char* msg,
+                                const char* subtopic, const char* payload_json) {
+    char buf[LORA_MAX_PAYLOAD + 20];  // +20 pra detectar overflow antes do safe_send
+    String my_mac = WiFi.macAddress();
+    int n = snprintf(buf, sizeof(buf), "{\\"to\\":\\"%s\\",\\"from\\":\\"%s\\"",
+                     to_mac && to_mac[0] ? to_mac : "*", my_mac.c_str());
+    if (type && type[0]) n += snprintf(buf + n, sizeof(buf) - n, ",\\"type\\":\\"%s\\"", type);
+    if (cmd_id && cmd_id[0]) n += snprintf(buf + n, sizeof(buf) - n, ",\\"cmd_id\\":\\"%s\\"", cmd_id);
+    if (status && status[0]) n += snprintf(buf + n, sizeof(buf) - n, ",\\"status\\":\\"%s\\"", status);
+    if (msg && msg[0]) n += snprintf(buf + n, sizeof(buf) - n, ",\\"msg\\":\\"%s\\"", msg);
+    if (subtopic && subtopic[0]) n += snprintf(buf + n, sizeof(buf) - n, ",\\"subtopic\\":\\"%s\\"", subtopic);
+    if (payload_json && payload_json[0]) n += snprintf(buf + n, sizeof(buf) - n, ",\\"payload\\":%s", payload_json);
+    n += snprintf(buf + n, sizeof(buf) - n, ",\\"ts\\":%lu}", (unsigned long)(millis()/1000));
+    if (n <= 0 || n >= (int)sizeof(buf)) {
+        Serial.printf("[LORA-SAT] envelope montagem falhou (n=%d)\\n", n);
+        return;
+    }
+    _lora_safe_send(buf);  // descarta se > MTU 200, com log
+}
+
+static void lora_handle_rx(const char* raw) {
+    if (!raw || !*raw || raw[0] != '{') {
+        Serial.printf("[LORA-SAT] payload nao-JSON descartado: %s\\n", raw ? raw : "(null)");
+        return;
+    }
+    StaticJsonDocument<512> env;
+    if (deserializeJson(env, raw) != DeserializationError::Ok) {
+        Serial.println("[LORA-SAT] JSON invalido");
+        return;
+    }
+    const char* to = env["to"] | "";
+    const char* from = env["from"] | "";
+    String myMac = WiFi.macAddress();
+    if (!_lora_mac_eq(to, myMac.c_str())) return;  // broadcast — nao e' pra mim
+
+    // Memoriza MAC do gateway pra responder ack/telemetria.
+    if (from[0] && _ton2_gw_mac.length() == 0) {
+        _ton2_gw_mac = String(from);
+        Serial.printf("[LORA-SAT] Gateway descoberto: %s\\n", from);
+    }
+
+    const char* cmd_id = env["cmd_id"] | "";
+
+    // Dedup: gateway pode reenviar mesmo cmd_id se nosso ACK se perdeu.
+    // Resposta correta e' re-enviar ack 'duplicate' (gateway libera pendente).
+    if (cmd_id[0] && _sat_seen_or_add(cmd_id)) {
+        Serial.printf("[LORA-SAT] Duplicado cmd_id=%s — re-enviando ack 'duplicate'\\n", cmd_id);
+        lora_send_envelope(from, "ack", cmd_id, "duplicate", "already_seen", nullptr, nullptr);
+        return;
+    }
+
+    JsonVariantConst inner = env["cmd"];
+    static char inner_buf[300];
+    const char* effective = "";
+    if (inner.is<const char*>()) {
+        snprintf(inner_buf, sizeof(inner_buf), "%s", inner.as<const char*>());
+        effective = inner_buf;
+    } else if (inner.is<JsonObjectConst>()) {
+        serializeJson(inner, inner_buf, sizeof(inner_buf));
+        effective = inner_buf;
+    } else {
+        if (cmd_id[0]) lora_send_envelope(from, "ack", cmd_id, "error", "missing_cmd_field", nullptr, nullptr);
+        return;
+    }
+
+    char msg[64] = {0};
+    bool ok = _process_command_inner(effective, msg, sizeof(msg));
+    Serial.printf("[LORA-SAT][CMD] %s -> %s (%s)\\n", effective, ok ? "OK" : "FAIL", msg);
+    if (cmd_id[0]) {
+        lora_send_envelope(from, "ack", cmd_id, ok ? "ok" : "error", msg, nullptr, nullptr);
+    }
+}
+
+// Tenta enviar binario (cabe folgado no MTU). Retorna true se conseguiu.
+// Frame: "$B$" + Base64( type(1), version(1), from_mac[6], sublen(1), subtopic, payload ).
+// O subtopic viaja no frame -> gateway republica no topico EXATO emitido aqui.
+static bool _lora_try_publish_binary(const char* subtopic, const char* payload_json) {
+    uint8_t type_code = _lora_typecode_for_subtopic(subtopic);
+    if (!type_code) return false;  // sem field-set p/ esse device -> caller usa JSON
+    const LoraFieldSet* fs = _lora_fieldset_for_type(type_code, 1);
+    if (!fs) return false;
+
+    StaticJsonDocument<400> doc;
+    if (deserializeJson(doc, payload_json) != DeserializationError::Ok) {
+        Serial.println("[LORA-SAT] bin: JSON invalido");
+        return false;
+    }
+
+    size_t sublen = strlen(subtopic);
+    if (sublen > LORA_SUBTOPIC_MAX) {
+        Serial.printf("[LORA-SAT] bin: subtopic %u > %d (usa JSON)\\n",
+                      (unsigned)sublen, LORA_SUBTOPIC_MAX);
+        return false;
+    }
+
+    // Header: type(1) + version(1) + from_mac(6) + sublen(1), depois subtopic + payload
+    uint8_t binbuf[200];
+    binbuf[0] = fs->type_code;
+    binbuf[1] = fs->version;
+    String my_mac = WiFi.macAddress();
+    _lora_mac_str_to_bytes(my_mac.c_str(), &binbuf[2]);
+    binbuf[8] = (uint8_t)sublen;
+    memcpy(&binbuf[9], subtopic, sublen);
+    int payload_off = 9 + (int)sublen;
+
+    int payload_len = _lora_pack_fields(fs->fields, doc, &binbuf[payload_off],
+                                        (int)sizeof(binbuf) - payload_off);
+    if (payload_len < 0) {
+        Serial.println("[LORA-SAT] bin: pack overflow");
+        return false;
+    }
+    int bin_total = payload_off + payload_len;
+
+    char out[LORA_MAX_PAYLOAD + 4];
+    out[0] = '$'; out[1] = 'B'; out[2] = '$';
+    int b64_len = _lora_b64_encode(binbuf, bin_total, out + 3, sizeof(out) - 4);
+    if (b64_len < 0) {
+        Serial.println("[LORA-SAT] bin: b64 encode falhou");
+        return false;
+    }
+    int total = 3 + b64_len;
+    if (total > LORA_MAX_PAYLOAD) {
+        Serial.printf("[LORA-SAT] bin: %d > MTU %d (descarta)\\n", total, LORA_MAX_PAYLOAD);
+        return false;
+    }
+    Serial.printf("[LORA-SAT] BIN tx sub=%s type=0x%02X bin=%dB total=%dB\\n",
+                  subtopic, fs->type_code, bin_total, total);
+    _lora_safe_send(out);
+    return true;
+}
+
+// Helper: satellite publica telemetria via LoRa. Tenta binario primeiro. Se
+// nao ha field-set conhecido, cai pro JSON envelope — que pode exceder o MTU.
+// FAIL-LOUD: avisa no Serial quando vai pro JSON, pra diagnosticar perda.
+static void lora_publish_data(const char* subtopic, const char* payload_json) {
+    if (_lora_try_publish_binary(subtopic, payload_json)) return;
+    size_t plen = payload_json ? strlen(payload_json) : 0;
+    if (plen > 120) {
+        // Envelope JSON vai estourar o MTU 200. Avisa claramente (sem schema
+        // binario nao temos como caber). Telemetria NAO sera entregue.
+        Serial.printf("[LORA-SAT] ⚠ sub=%s sem field-set binario e payload=%uB — "
+                      "JSON provavelmente excede MTU 200 e sera descartado. "
+                      "Cadastre um field-set p/ este device.\\n",
+                      subtopic ? subtopic : "?", (unsigned)plen);
+    }
+    const char* gw = _ton2_gw_mac.length() ? _ton2_gw_mac.c_str() : "*";
+    lora_send_envelope(gw, "data", nullptr, nullptr, nullptr, subtopic, payload_json);
+}
+
+// Heartbeat periodico pro gateway saber que satellite esta vivo.
+// Gateway re-publica em <BASE>/satellite/<MAC>/status (retain) — backend ve
+// presence. Sem heartbeat por 2*intervalo, backend pode marcar offline.
+void lora_loop_tick() {
+    unsigned long now = millis();
+    if (now - _lastHeartbeat < LORA_SAT_HEARTBEAT_MS) return;
+    _lastHeartbeat = now;
+    char payload[180];
+    snprintf(payload, sizeof(payload),
+             "{\\"online\\":true,\\"version\\":\\"%s\\",\\"uptime\\":%lu,\\"free_heap\\":%u,\\"min_heap\\":%u}",
+             FIRMWARE_VERSION, (unsigned long)(now/1000),
+             (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMinFreeHeap());
+    const char* gw = _ton2_gw_mac.length() ? _ton2_gw_mac.c_str() : "*";
+    lora_send_envelope(gw, "status", nullptr, nullptr, nullptr, nullptr, payload);
+}
+`;
+        } else if (role === 'gateway') {
+            cpp += `
+// Gateway: subscreve <BASE>/satellite/+/cmd no MQTT. Cmds MQTT viram envelope
+// LoRa, sao enfileirados (pending queue) e transmitidos com retry ate receber
+// ACK do satellite. Sem ACK em 3 tentativas, publica ack erro no MQTT.
+// RX LoRa: filtra por 'to'=meu MAC; roteia ack/data/status pro MQTT.
+
+extern bool mqtt_publish_raw(const char* topic, const char* payload);
+
+// ===== Pending queue de cmds aguardando ACK do satellite =====
+// Timeout/attempts calibrados pro canal half-duplex do E220: depois de TX, o
+// gateway precisa FICAR EM SILENCIO tempo suficiente pro satellite responder o
+// ACK sem colisao. 4s de janela cobre: airtime do cmd (~0.5s) + processamento
+// do satellite (ate ~1s, ou mais se estiver saindo de um ciclo Modbus) +
+// airtime do ACK (~0.5s) + folga. 3 tentativas = 12s total, dentro dos 15s do
+// publishCommand do backend (5s x 3), entao o resultado (ACK ou erro) sempre
+// chega a tempo. Antes era 2s x 3 = 6s: o gateway retransmitia POR CIMA do ACK.
+#define LORA_PENDING_MAX 8
+#define LORA_RETRY_TIMEOUT_MS 4000UL
+#define LORA_MAX_ATTEMPTS 3
+
+struct LoraPending {
+    bool in_use;
+    char cmd_id[40];
+    char target_mac[20];
+    char envelope[400];       // serializado pronto pra reenvio
+    uint8_t attempts;
+    unsigned long last_sent_ms;
+};
+static LoraPending _loraPending[LORA_PENDING_MAX];
+
+static int _pending_alloc() {
+    for (int i = 0; i < LORA_PENDING_MAX; i++) if (!_loraPending[i].in_use) return i;
+    return -1;
+}
+static void _pending_release(int idx) {
+    if (idx >= 0 && idx < LORA_PENDING_MAX) _loraPending[idx].in_use = false;
+}
+static int _pending_find(const char* cmd_id) {
+    if (!cmd_id || !cmd_id[0]) return -1;
+    for (int i = 0; i < LORA_PENDING_MAX; i++) {
+        if (_loraPending[i].in_use && strcmp(_loraPending[i].cmd_id, cmd_id) == 0) return i;
+    }
+    return -1;
+}
+
+// Publica ack de erro no MQTT (queue cheia, timeout LoRa, etc).
+static void _publish_error_ack(const char* mac_alvo, const char* cmd_id, const char* reason, int attempts) {
+    char topic[200];
+    snprintf(topic, sizeof(topic), "%s/satellite/%s/cmd/ack", MQTT_TOPIC_BASE, mac_alvo);
+    char ack[300];
+    snprintf(ack, sizeof(ack),
+             "{\\"cmd_id\\":\\"%s\\",\\"status\\":\\"error\\",\\"msg\\":\\"%s\\",\\"attempts\\":%d,\\"ts\\":%lu}",
+             cmd_id, reason, attempts, (unsigned long)(millis()/1000));
+    mqtt_publish_raw(topic, ack);
+}
+
+// Chamado por mqtt.cpp quando recebe <BASE>/satellite/<MAC>/cmd.
+// Aloca slot no pending queue, monta envelope, envia 1a tentativa.
+void gateway_handle_satellite_mqtt(const char* mac_alvo, const char* payload) {
+    if (!mac_alvo || !mac_alvo[0] || !payload) return;
+    StaticJsonDocument<512> env;
+    if (deserializeJson(env, payload) != DeserializationError::Ok) {
+        Serial.println("[LORA-GW] payload MQTT invalido — descartado");
+        return;
+    }
+    const char* cmd_id = env["cmd_id"] | "";
+
+    // DEDUP (bug-fix): o backend re-publica o MESMO cmd_id a cada 5s (3x). Sem
+    // esse guard, cada re-publish alocava um novo slot -> burst LoRa duplicado +
+    // slot vazado. Se ja' temos esse cmd_id em voo, ignoramos o re-publish (a
+    // retransmissao LoRa ja' e' gerida por lora_loop_tick).
+    if (cmd_id[0] && _pending_find(cmd_id) >= 0) {
+        Serial.printf("[LORA-GW] cmd_id=%s ja' em voo — re-publish MQTT ignorado\\n", cmd_id);
+        return;
+    }
+
+    JsonVariantConst inner = env["cmd"];
+    char inner_buf[300];
+    if (inner.is<const char*>()) {
+        snprintf(inner_buf, sizeof(inner_buf), "\\"%s\\"", inner.as<const char*>());
+    } else if (inner.is<JsonObjectConst>()) {
+        serializeJson(inner, inner_buf, sizeof(inner_buf));
+    } else {
+        snprintf(inner_buf, sizeof(inner_buf), "\\"\\"");
+    }
+
+    int idx = _pending_alloc();
+    if (idx < 0) {
+        Serial.println("[LORA-GW] pending queue cheia");
+        if (cmd_id[0]) _publish_error_ack(mac_alvo, cmd_id, "gateway_queue_full", 0);
+        return;
+    }
+    LoraPending& p = _loraPending[idx];
+    p.in_use = true;
+    strncpy(p.cmd_id, cmd_id, sizeof(p.cmd_id) - 1); p.cmd_id[sizeof(p.cmd_id) - 1] = 0;
+    strncpy(p.target_mac, mac_alvo, sizeof(p.target_mac) - 1); p.target_mac[sizeof(p.target_mac) - 1] = 0;
+    String myMac = WiFi.macAddress();
+    int n = snprintf(p.envelope, sizeof(p.envelope),
+                     "{\\"to\\":\\"%s\\",\\"from\\":\\"%s\\",\\"cmd_id\\":\\"%s\\",\\"cmd\\":%s,\\"ts\\":%lu}",
+                     mac_alvo, myMac.c_str(), cmd_id, inner_buf, (unsigned long)(millis()/1000));
+    if (n <= 0 || n >= (int)sizeof(p.envelope)) {
+        Serial.println("[LORA-GW] envelope > buffer — descartado");
+        _pending_release(idx);
+        if (cmd_id[0]) _publish_error_ack(mac_alvo, cmd_id, "envelope_too_large", 0);
+        return;
+    }
+    // Bug-fix MTU: checa o limite REAL do radio (200), nao so o buffer (400).
+    // Comando entre 201-399B passava o guard mas era descartado por _lora_safe_send,
+    // gerando um "lora_no_ack" enganoso 6s depois. Falha imediato com motivo certo.
+    p.attempts = 1;
+    p.last_sent_ms = millis();
+    if (!_lora_safe_send(p.envelope)) {
+        Serial.printf("[LORA-GW] envelope %dB > MTU %d — abortado\\n", n, LORA_MAX_PAYLOAD);
+        _pending_release(idx);
+        if (cmd_id[0]) _publish_error_ack(mac_alvo, cmd_id, "lora_mtu_exceeded", 0);
+        return;
+    }
+    Serial.printf("[LORA-GW] TX#1 -> %s cmd_id=%s slot=%d (%d bytes)\\n", mac_alvo, cmd_id, idx, n);
+}
+
+// Tick periodico — chamado do loop() do main. Reenvia pendentes que estouraram
+// timeout, e descarta os que esgotaram tentativas (publica ack de erro).
+void lora_loop_tick() {
+    unsigned long now = millis();
+    for (int i = 0; i < LORA_PENDING_MAX; i++) {
+        LoraPending& p = _loraPending[i];
+        if (!p.in_use) continue;
+        if (now - p.last_sent_ms < LORA_RETRY_TIMEOUT_MS) continue;
+        if (p.attempts >= LORA_MAX_ATTEMPTS) {
+            Serial.printf("[LORA-GW] FALHA cmd_id=%s -> %s apos %d tentativas\\n",
+                          p.cmd_id, p.target_mac, p.attempts);
+            _publish_error_ack(p.target_mac, p.cmd_id, "lora_no_ack", p.attempts);
+            _pending_release(i);
+        } else {
+            p.attempts++;
+            p.last_sent_ms = now;
+            _lora_safe_send(p.envelope);
+            Serial.printf("[LORA-GW] TX#%d -> %s cmd_id=%s (retry)\\n",
+                          p.attempts, p.target_mac, p.cmd_id);
+        }
+    }
+}
+
+// Decodifica frame "$B$" + Base64( type, version, from_mac[6], sublen, subtopic, payload ).
+// Republica em <BASE>/satellite/<from_mac>/<subtopic> com JSON expandido.
+// O subtopic vem DO frame (nao de tabela), entao casa o que o satellite emitiu.
+static bool _lora_handle_binary(const char* raw, size_t raw_len) {
+    if (raw_len < 4 || raw[0] != '$' || raw[1] != 'B' || raw[2] != '$') return false;
+
+    uint8_t binbuf[200];
+    int bin_len = _lora_b64_decode(raw + 3, raw_len - 3, binbuf, sizeof(binbuf));
+    if (bin_len < 9) {
+        Serial.println("[LORA-GW] BIN: b64 decode falhou ou < header");
+        return true;  // foi reconhecido como binario, so descartado
+    }
+
+    uint8_t type_code = binbuf[0];
+    uint8_t version = binbuf[1];
+    uint8_t from_bytes[6];
+    memcpy(from_bytes, &binbuf[2], 6);
+    uint8_t sublen = binbuf[8];
+    if (9 + (int)sublen > bin_len || sublen >= LORA_SUBTOPIC_MAX) {
+        Serial.printf("[LORA-GW] BIN: sublen invalido (%u)\\n", sublen);
+        return true;
+    }
+    char subtopic[LORA_SUBTOPIC_MAX + 1];
+    memcpy(subtopic, &binbuf[9], sublen);
+    subtopic[sublen] = 0;
+    int payload_off = 9 + (int)sublen;
+
+    const LoraFieldSet* fs = _lora_fieldset_for_type(type_code, version);
+    if (!fs) {
+        Serial.printf("[LORA-GW] BIN: field-set desconhecido type=0x%02X v%d\\n", type_code, version);
+        return true;
+    }
+
+    StaticJsonDocument<512> doc;
+    int consumed = _lora_unpack_fields(fs->fields, &binbuf[payload_off], bin_len - payload_off, doc);
+    if (consumed < 0) {
+        Serial.println("[LORA-GW] BIN: unpack underflow");
+        return true;
+    }
+
+    char from_str[20];
+    _lora_mac_bytes_to_str(from_bytes, from_str);
+
+    char topic[220];
+    snprintf(topic, sizeof(topic), "%s/satellite/%s/%s",
+             MQTT_TOPIC_BASE, from_str, subtopic);
+    char json_buf[600];
+    size_t n = serializeJson(doc, json_buf, sizeof(json_buf));
+    if (n > 0) {
+        Serial.printf("[LORA-GW] BIN rx type=0x%02X from=%s -> %s (%uB JSON)\\n",
+                      type_code, from_str, topic, (unsigned)n);
+        mqtt_publish_raw(topic, json_buf);
+    }
+    return true;
+}
+
+static void lora_handle_rx(const char* raw) {
+    if (!raw || !*raw) return;
+    size_t raw_len = strlen(raw);
+
+    // Detecta frame binario antes do JSON (prefixo "$B$").
+    if (_lora_handle_binary(raw, raw_len)) return;
+
+    if (raw[0] != '{') return;
+    StaticJsonDocument<700> env;
+    if (deserializeJson(env, raw) != DeserializationError::Ok) {
+        Serial.println("[LORA-GW] JSON invalido");
+        return;
+    }
+    const char* to = env["to"] | "";
+    const char* from = env["from"] | "";
+    String myMac = WiFi.macAddress();
+    // Aceita frames endereçados a mim OU broadcast "*". Satellites enviam
+    // heartbeat/telemetria pra "*" ANTES de descobrir o MAC do gateway (so'
+    // aprendem ao receber o 1o comando). Sem aceitar "*", o heartbeat de um
+    // satellite recem-ligado nunca chegava -> o MAC dele nunca aparecia no
+    // broker -> impossivel cadastrar. Aceitando "*", o satellite aparece online
+    // assim que liga, revelando o MAC pra cadastro.
+    bool isBroadcast = (to[0] == '*' && to[1] == 0);
+    if (!isBroadcast && !_lora_mac_eq(to, myMac.c_str())) return;  // nao e' pra mim
+    if (!from[0]) {
+        Serial.println("[LORA-GW] envelope sem 'from' — descartado");
+        return;
+    }
+
+    const char* type = env["type"] | "";
+
+    // ACK do satellite — libera pendente e publica em <BASE>/satellite/<from>/cmd/ack
+    if (!type[0] || strcmp(type, "ack") == 0) {
+        const char* cmd_id = env["cmd_id"] | "";
+        int idx = _pending_find(cmd_id);
+        if (idx >= 0) {
+            Serial.printf("[LORA-GW] ACK recebido cmd_id=%s slot=%d apos %d tentativas\\n",
+                          cmd_id, idx, _loraPending[idx].attempts);
+            _pending_release(idx);
+        }
+        char topic[200];
+        snprintf(topic, sizeof(topic), "%s/satellite/%s/cmd/ack", MQTT_TOPIC_BASE, from);
+        char ack_buf[400];
+        const char* status = env["status"] | "ok";
+        const char* msg = env["msg"] | "";
+        unsigned long ts = env["ts"] | 0UL;
+        snprintf(ack_buf, sizeof(ack_buf),
+                 "{\\"cmd_id\\":\\"%s\\",\\"status\\":\\"%s\\",\\"msg\\":\\"%s\\",\\"ts\\":%lu}",
+                 cmd_id, status, msg, ts);
+        mqtt_publish_raw(topic, ack_buf);
+        return;
+    }
+
+    // Telemetria — re-publica em <BASE>/satellite/<from>/<subtopic>
+    if (strcmp(type, "data") == 0) {
+        const char* subtopic = env["subtopic"] | "";
+        if (!subtopic[0]) return;
+        char topic[200];
+        snprintf(topic, sizeof(topic), "%s/satellite/%s/%s", MQTT_TOPIC_BASE, from, subtopic);
+        char payload_buf[600];
+        JsonVariantConst payload = env["payload"];
+        if (payload.isNull()) return;
+        size_t n = serializeJson(payload, payload_buf, sizeof(payload_buf));
+        if (n > 0) mqtt_publish_raw(topic, payload_buf);
+        return;
+    }
+
+    // Heartbeat/status do satellite — publica em <BASE>/satellite/<from>/status (retain)
+    if (strcmp(type, "status") == 0) {
+        char topic[200];
+        snprintf(topic, sizeof(topic), "%s/satellite/%s/status", MQTT_TOPIC_BASE, from);
+        char status_buf[400];
+        JsonVariantConst payload = env["payload"];
+        if (payload.isNull()) {
+            // Sem payload aninhado: re-serializa envelope inteiro
+            size_t n = serializeJson(env, status_buf, sizeof(status_buf));
+            if (n > 0) mqtt_publish_raw(topic, status_buf);
+        } else {
+            size_t n = serializeJson(payload, status_buf, sizeof(status_buf));
+            if (n > 0) mqtt_publish_raw(topic, status_buf);
+        }
+        return;
+    }
+}
+`;
+        } else {
+            // Modo legado: TX simples sem roteamento, mantém comportamento antigo.
+            cpp += `
+// Modo legacy: trata payload LoRa como comando local direto.
+static void lora_handle_rx(const char* raw) {
+    if (!raw || !*raw) return;
+    process_command(raw);
+}
+`;
+        }
+        return cpp;
+    }
+
+    // ============================================================
     // Modbus dinâmico — gerado a partir de DEVICE_MODELS do catálogo.
     // Suporta: func 0x03 (holding), 0x04 (input), 0x01 (coils), 0x05 (write coil).
     // DataTypes: U16, S16, U32, S32, COSFI, U32_SUM3 (Pextron).
@@ -1922,11 +3044,14 @@ static inline float _u32_to_float(uint16_t hi, uint16_t lo) {
     return f;
 }
 
+// 10^e por inteiro (e pode ser negativo). Evita pull de powf; deterministico em FPU/no-FPU.
+static inline float _pow10i(int e){ float r=1.0f; if(e>=0){ for(int i=0;i<e;i++) r*=10.0f; } else { for(int i=0;i<-e;i++) r/=10.0f; } return r; }
+
 // Timestamp formatado "DD/MM/YYYY HH:MM:SS" no timezone local (configurado via configTime).
-// Fallback "sem_ntp" se o relogio nao estiver sincronizado.
+// Fallback "0" (epoch zero) se o relogio nao estiver sincronizado.
 static String _format_timestamp_str() {
     time_t now = time(nullptr);
-    if (now < 1700000000) return String("sem_ntp");
+    if (now < 1700000000) return String("0");
     struct tm* t = localtime(&now);
     char buf[24];
     sprintf(buf, "%02d/%02d/%04d %02d:%02d:%02d",
@@ -2133,6 +3258,17 @@ bool modbus_exec_command(const char* device_name, const char* cmd_id) {
             let decoder = this._decodeExpr(m.dataType || 'U16', 'buf', i0, scale, m, wordOrder);
             if (!decoder) continue;
 
+            // Casa decimal por campo (espelha apply_factor). Aplicado ANTES do TP/TC.
+            // O fator é o DELTA do expoente lido (reg35/36) vs o baseline já codificado
+            // no `scale` fixo do catálogo. No ponto típico vale 1.0 -> diff vazio.
+            if (m.decimal_src && cat.decimal_regs && !this._tpTcDisabled()) {
+                const decVar = m.decimal_src === 'dpt' ? '_fDPT'
+                             : m.decimal_src === 'dct' ? '_fDCT'
+                             : m.decimal_src === 'dpq' ? '_fDPQ'
+                             : null;
+                if (decVar) decoder = `(${decoder}) * ${decVar}`;
+            }
+
             // Aplica fator TP/TC quando configurado no campo (vide cat.tp_tc).
             // Replica comportamento das referências PlatformIO (M-160 LORA_TX_MODBUS,
             // PD666 EV-PD666_USR_MQTT). Variáveis _fTP/_fTC/_fatorEnergia são
@@ -2175,7 +3311,8 @@ struct _Dev${idx}State {
     // Estados BI da ultima leitura
     uint8_t bi_[${Math.max(biCount, 1)}];
     bool valid;
-    int fail_streak;  // leituras consecutivas falhas (diagnostico)
+    int fail_streak;            // leituras consecutivas falhas
+    unsigned long cooldown_until;  // millis() ate quando pular este device (back-off)
 };
 static _Dev${idx}State _ds${idx} = {};
 
@@ -2212,7 +3349,11 @@ static bool _read_dev_${idx}_raw(uint16_t *buf) {
             } else {
                 delay(50);
             }
-            rc = _mb.${fn}(${b.start}, ${b.count});
+            // Retry so' na 1a falha (transiente). Device cronicamente morto nao
+            // paga 2x o timeout — reduz o bloqueio do loop ate o cooldown armar.
+            if (_ds${idx}.fail_streak == 0) {
+                rc = _mb.${fn}(${b.start}, ${b.count});
+            }
         }
         if (rc == _mb.ku8MBSuccess) {
             for (uint16_t i = 0; i < ${b.count}; i++) buf[${off} + i] = _mb.getResponseBuffer(i);
@@ -2239,13 +3380,24 @@ static bool _read_dev_${idx}_raw(uint16_t *buf) {
 
 // Le + acumula. Chamar a cada READ_INTERVAL_MS.
 static void _sample_dev_${idx}() {
+    // Back-off: device que falhou MODBUS_FAIL_COOLDOWN_N vezes fica em cooldown.
+    // Pula a leitura (que bloquearia o loop no timeout) ate o cooldown expirar.
+    if (_ds${idx}.cooldown_until && (long)(millis() - _ds${idx}.cooldown_until) < 0) return;
+
     uint16_t buf[${totalRegs}];
     if (!_read_dev_${idx}_raw(buf)) {
         _ds${idx}.fail_streak++;
         Serial.printf("[MB] ${topicName}: falha leitura (consecutivas: %d)\\n", _ds${idx}.fail_streak);
+        if (_ds${idx}.fail_streak >= MODBUS_FAIL_COOLDOWN_N) {
+            _ds${idx}.cooldown_until = millis() + MODBUS_COOLDOWN_MS;
+            if (_ds${idx}.cooldown_until == 0) _ds${idx}.cooldown_until = 1;  // 0 = sentinela "sem cooldown"
+            Serial.printf("[MB] ${topicName}: cooldown %lus (nao responde) — loop liberado p/ LoRa/cmd\\n",
+                          (unsigned long)(MODBUS_COOLDOWN_MS/1000));
+        }
         return;
     }
     diag_last_successful_read_ms = millis();
+    _ds${idx}.cooldown_until = 0;
     if (_ds${idx}.fail_streak > 0) {
         Serial.printf("[MB] ${topicName}: OK (apos %d falhas consecutivas)\\n", _ds${idx}.fail_streak);
         _ds${idx}.fail_streak = 0;
@@ -2261,7 +3413,12 @@ static void _sample_dev_${idx}() {
             const t = cat.tp_tc;
             const sTp = (Number(t.scale_tp) || 1).toFixed(1);
             const sTc = (Number(t.scale_tc) || 1).toFixed(1);
-            cpp += `    // TP/TC para escalonamento (lido a cada ciclo, replica refs PlatformIO)
+            // Override explicito do diagrama (tc_ratio/tp_ratio): deterministico, NAO
+            // depende do registrador do medidor. Critico onde nao tem OTA.
+            const _tcOv = this._parseScaleOverride(dev.tc_ratio);
+            const _tpOv = this._parseScaleOverride(dev.tp_ratio);
+            cpp += `    // TP/TC para escalonamento. Le do medidor (reg ${t.register}) pra log; se houver
+    // override no diagrama (tc_ratio/tp_ratio), usa o valor FIXO (deterministico).
     float _fTP = 1.0f, _fTC = 1.0f, _fatorEnergia = 1.0f;
     {
         delay(40);
@@ -2271,9 +3428,44 @@ static void _sample_dev_${idx}() {
             uint16_t _tc_raw = _mb.getResponseBuffer(${t.tc_offset});
             _fTP = (float)_tp_raw / ${sTp}f;
             _fTC = (float)_tc_raw / ${sTc}f;
-            _fatorEnergia = _fTP * _fTC;
+            Serial.printf("[M160] medidor reporta TP=%.0f TC=%.0f (raw tp=%u tc=%u)\\n", _fTP, _fTC, _tp_raw, _tc_raw);
         } else {
-            // Mantém defaults 1.0 — energia/potência ficam sem fator (TP=TC=1)
+            Serial.println("[M160] leitura TP/TC FALHOU (rc!=0)");
+        }
+${_tpOv ? `        _fTP = ${_tpOv.toFixed(1)}f;  // override tp_ratio (diagrama)\n` : ''}${_tcOv ? `        _fTC = ${_tcOv.toFixed(1)}f;  // override tc_ratio (diagrama) — deterministico\n` : ''}        _fatorEnergia = _fTP * _fTC;
+        Serial.printf("[M160] usando TP=%.0f TC=%.0f -> fatorEnergia=%.0f\\n", _fTP, _fTC, _fatorEnergia);
+    }
+
+`;
+        }
+
+        // Bloco DPT/DCT/DPQ (casa decimal dinamica, M160). Lê reg35/36 e calcula
+        // fatores _fDPT/_fDCT/_fDPQ como DELTA do expoente lido vs baseline do scale
+        // fixo do catalogo. value = raw*10^(exp-baseline). Default 1.0 = degrade graceful.
+        if (cat.decimal_regs && !this._tpTcDisabled()) {
+            const d = cat.decimal_regs, L = d.layout || {};
+            const ext = (s) => {
+                const cfg = L[s]; if (!cfg) return null;
+                const w = cfg.word || 0, base = (cfg.baseline ?? 4);
+                const expr = cfg.byte === 'hi' ? `(_dec${w} >> 8) & 0xFF` : `_dec${w} & 0xFF`;
+                return { expr, base, w };
+            };
+            const dpt = ext('dpt'), dct = ext('dct'), dpq = ext('dpq');
+            cpp += `    // Casas decimais (reg ${d.register}: DPT/DCT/DPQ). value = raw*10^(exp-baseline) relativo ao scale fixo.
+    float _fDPT = 1.0f, _fDCT = 1.0f, _fDPQ = 1.0f;
+    {
+        delay(40);
+        uint8_t rc_dec = _mb.readHoldingRegisters(${d.register}, ${d.count});
+        if (rc_dec == _mb.ku8MBSuccess) {
+            uint16_t _dec0 = _mb.getResponseBuffer(0);
+            uint16_t _dec1 = _mb.getResponseBuffer(${d.count > 1 ? 1 : 0});
+            uint8_t _eDPT = ${dpt ? dpt.expr : '0'};
+            uint8_t _eDCT = ${dct ? dct.expr : '0'};
+            uint8_t _eDPQ = ${dpq ? dpq.expr : '0'};
+            uint8_t _sign = _dec1 & 0xFF;
+${dpt ? `            _fDPT = _pow10i((int)_eDPT - ${dpt.base});\n` : ''}${dct ? `            _fDCT = _pow10i((int)_eDCT - ${dct.base});\n` : ''}${dpq ? `            _fDPQ = _pow10i((int)_eDPQ - ${dpq.base});\n` : ''}            Serial.printf("[M160] DPT=%u DCT=%u DPQ=%u SIGN=0x%02X (raw r35=0x%04X r36=0x%04X) -> fDPT=%.4f fDCT=%.4f fDPQ=%.4f\\n", _eDPT, _eDCT, _eDPQ, _sign, _dec0, _dec1, _fDPT, _fDCT, _fDPQ);
+        } else {
+            Serial.printf("[M160] leitura DPT/DCT/DPQ FALHOU (rc=0x%02X) — usando fatores 1.0\\n", rc_dec);
         }
     }
 
@@ -2364,7 +3556,10 @@ static void _publish_dev_${idx}(modbus_publish_fn publish) {
     }
 
     int n = _ds${idx}.samples;
-    StaticJsonDocument<3072> d;
+    // JSON na heap (nao na stack). loopTask tem 8KB de stack; alocar 3KB+3KB
+    // aqui (doc + payload) causava Panic em ~200s no projeto Chimarrao com
+    // Power_Meter + 2 inversores. Heap fica em ~280KB livres.
+    DynamicJsonDocument d(3072);
 `;
 
         // --- Resolver path JSON para cada pid (usa DEVICE_POINTS[tipo]) ---
@@ -2516,14 +3711,20 @@ static void _publish_dev_${idx}(modbus_publish_fn publish) {
         }
 
         cpp += `
-    char payload[3072];
-    size_t sz = serializeJson(d, payload, sizeof(payload));
+    // Payload na heap — mesma razao do JSON doc acima.
+    char* payload = (char*)malloc(3072);
+    if (!payload) {
+        Serial.println("[RS485] malloc payload falhou — pulando publish");
+        return;
+    }
+    size_t sz = serializeJson(d, payload, 3072);
     if (sz > 0) {
         publish("${deviceName}/data", payload);
         Serial.printf("\\n===== PUBLICADO: ${topicName} (%d amostras) =====\\n", n);
         Serial.println(payload);
         Serial.println();
     }
+    free(payload);
 
     // Reset do ciclo (preserva 'first_delta' da ultima amostra para o proximo intervalo)
 `;
@@ -2661,7 +3862,12 @@ static void _publish_dev_${idx}(modbus_publish_fn publish) {
 `;
 
         if (spec.has_relays) cpp += `#include "relays.h"\n`;
-        if (spec.wifi) cpp += `#include "mqtt.h"\n#include "ota.h"\n`;
+        // mqtt.h sempre incluido: mesmo sem WiFi, o stub (mqtt.cpp gerado para
+        // LoRa-only) define mqtt_publish/mqtt_connected como no-op, e os helpers
+        // de comando (_publish_cmd_ack) e o bloco de I/O os referenciam. ota.h
+        // depende de WiFi (download HTTP) — só quando ha rede.
+        cpp += `#include "mqtt.h"\n`;
+        if (spec.wifi) cpp += `#include "ota.h"\n`;
         if (spec.has_lora) cpp += `#include "lora.h"\n`;
         if (spec.rs485_devices.length > 0) cpp += `#include "modbus_meter.h"\n`;
         if (spec.tcp_devices.length > 0) cpp += `#include "inverter_tcp.h"\n`;
@@ -2694,7 +3900,10 @@ static void mqtt_publish_sub(const char* sub, const char* payload) {
 //   TON publica resposta em <BASE>/cmd/ack: {"cmd_id","status","msg","ts"}
 //   status: "ok" | "error" | "duplicate"
 // Backward-compat: se nao houver cmd_id, executa sem publicar ack (legado).
-#define CMD_DEDUP_SIZE 16
+// Dedup ring-buffer: tamanho 32 da' folga pra ate ~10s de retries do backend
+// (timeout 5s x 3 attempts) e do gateway LoRa (timeout 2s x 3 attempts) sem
+// que cmd_ids antigos sejam sobrescritos.
+#define CMD_DEDUP_SIZE 32
 static char _cmdSeen[CMD_DEDUP_SIZE][40];
 static int  _cmdSeenIdx = 0;
 
@@ -2828,7 +4037,16 @@ static void process_command(const char* raw) {
     }
 }
 
-// Motivo do ultimo reset (diagnostico)
+`;
+        // ===== Handler LoRa RX (gateway vs satellite) =====
+        if (spec.has_lora) {
+            cpp += this._genLoraRouter(spec);
+        } else {
+            // Sem LoRa: stub vazio (chamado sempre no loop)
+            cpp += `static inline void lora_handle_rx(const char*) {}\n`;
+        }
+
+        cpp += `// Motivo do ultimo reset (diagnostico)
 static const char* _resetReason() {
     switch (esp_reset_reason()) {
         case ESP_RST_POWERON:  return "Power-on";
@@ -2992,34 +4210,35 @@ void loop() {
         // proxima reconexao republica o estado atual. Antes (mqtt_publish) lotava
         // o SD com milhares de copias do mesmo estado quando MQTT oscilava.
         if (spec.wifi) cpp += `            mqtt_publish_raw(MQTT_TOPIC_INPUTS, buf);\n`;
-        if (spec.has_lora && spec.lora?.mode === 'tx') cpp += `            lora_send(buf);\n`;
+        if (spec.lora_role === 'satellite') cpp += `            lora_publish_data("inputs", buf);\n`;
         cpp += `        }
-`;
-        if (spec.wifi) {
-            cpp += `
-        // Saidas transistor (TR1-4) on-change (mqtt_publish_raw — nao grava SD)
+
+        // Saidas transistor (TR1-4) on-change. Em satellite vai via LoRa.
         uint8_t os = outputs_get_state();
         if (_io_force || os != _prev_out) {
             _prev_out = os;
             char obuf[60];
             snprintf(obuf, sizeof(obuf), "{\\"tr1\\":%d,\\"tr2\\":%d,\\"tr3\\":%d,\\"tr4\\":%d}",
                 os&1, (os>>1)&1, (os>>2)&1, (os>>3)&1);
-            mqtt_publish_raw(MQTT_TOPIC_OUTPUTS, obuf);
-        }
 `;
-            if (spec.has_relays) {
-                cpp += `
-        // Reles (R1-6) on-change (mqtt_publish_raw — nao grava SD)
+        if (spec.wifi) cpp += `            mqtt_publish_raw(MQTT_TOPIC_OUTPUTS, obuf);\n`;
+        if (spec.lora_role === 'satellite') cpp += `            lora_publish_data("outputs", obuf);\n`;
+        cpp += `        }
+`;
+        if (spec.has_relays) {
+            cpp += `
+        // Reles (R1-6) on-change.
         uint8_t rl = relays_get_state();
         if (_io_force || rl != _prev_rl) {
             _prev_rl = rl;
             char rbuf[80];
             snprintf(rbuf, sizeof(rbuf), "{\\"r1\\":%d,\\"r2\\":%d,\\"r3\\":%d,\\"r4\\":%d,\\"r5\\":%d,\\"r6\\":%d}",
                 (rl>>1)&1, (rl>>2)&1, (rl>>3)&1, (rl>>4)&1, (rl>>5)&1, (rl>>6)&1);
-            mqtt_publish_raw(MQTT_TOPIC_RELAYS, rbuf);
-        }
 `;
-            }
+            if (spec.wifi) cpp += `            mqtt_publish_raw(MQTT_TOPIC_RELAYS, rbuf);\n`;
+            if (spec.lora_role === 'satellite') cpp += `            lora_publish_data("relays", rbuf);\n`;
+            cpp += `        }
+`;
         }
         cpp += `        _io_force = false;
     }
@@ -3028,7 +4247,9 @@ void loop() {
         if (spec.rs485_devices.length > 0) {
             const pubCall = spec.wifi
                 ? `modbus_publish_all(mqtt_publish_sub);`
-                : `modbus_publish_all([](const char* sub, const char* payload){ Serial.printf("[MB] %s %s\\n", sub, payload); });`;
+                : (spec.lora_role === 'satellite'
+                    ? `modbus_publish_all([](const char* sub, const char* payload){ lora_publish_data(sub, payload); });`
+                    : `modbus_publish_all([](const char* sub, const char* payload){ Serial.printf("[MB] %s %s\\n", sub, payload); });`);
             cpp += `
     // Modbus: sample 1 device por ciclo (round-robin) a cada METER_CYCLE_MS
     if (now - last_sample >= METER_CYCLE_MS) {
@@ -3076,15 +4297,21 @@ void loop() {
 
         if (spec.has_lora) {
             cpp += `
-    // LoRa RX
+    // LoRa RX — dispatcher consciente do papel (gateway vs satellite).
     if (lora_available()) {
         String msg = lora_read();
         if (msg.length() > 0) {
             Serial.printf("[LORA] RX: %s\\n", msg.c_str());
-            process_command(msg.c_str());
+            lora_handle_rx(msg.c_str());
         }
     }
 `;
+            if (spec.lora_role === 'gateway' || spec.lora_role === 'satellite') {
+                cpp += `
+    // LoRa tick — gateway processa retries do pending queue; satellite emite heartbeat.
+    lora_loop_tick();
+`;
+            }
         }
 
         cpp += `}

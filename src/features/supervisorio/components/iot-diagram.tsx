@@ -10,6 +10,7 @@ import { api } from '@/config/api';
 import { BASE_URL } from '@/config/constants';
 import { iotApiService, type IoTProjeto, type IoTDiagrama } from '@/services/iot.services';
 import { TonBoConfigModal } from './TonBoConfigModal';
+import { TonBiConfigModal } from './TonBiConfigModal';
 
 /**
  * Resposta do OtaController.compileAndPublish (com envelope ResponseInterceptor):
@@ -191,7 +192,7 @@ function ensureIoTScripts(): Promise<void> {
     //
     // O catalogo de dispositivos foi movido pro backend (GET /iot-catalog/device-catalog.js)
     // — ele revalida sozinho via ETag. Os demais ainda sao estaticos.
-    const IOT_SCRIPTS_VERSION = '20260610-datalogger-generico';
+    const IOT_SCRIPTS_VERSION = '20260618-tcp-tptc';
     const scripts = [
       `${BASE_URL}/iot-catalog/device-catalog.js`,
       `/iot-firmware-base.v2.js?v=${IOT_SCRIPTS_VERSION}`,
@@ -266,6 +267,10 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
   const [boConfigOpen, setBoConfigOpen] = useState(false);
   const [boConfigTonId, setBoConfigTonId] = useState<string | null>(null);
   const [boConfigTonNome, setBoConfigTonNome] = useState<string | undefined>(undefined);
+  // Modal de configuracao/estado de BIs (Boolean Inputs) — toda TON tem 6 entradas opto.
+  const [biConfigOpen, setBiConfigOpen] = useState(false);
+  const [biConfigTonId, setBiConfigTonId] = useState<string | null>(null);
+  const [biConfigTonNome, setBiConfigTonNome] = useState<string | undefined>(undefined);
   const [propsValues, setPropsValues] = useState<Record<string, any>>({});
 
   // Picker de equipamento NexOn para o campo `equipamento_id` dos componentes TON.
@@ -651,21 +656,25 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
       serialAddLine(idx, `[CONECTADO] ${chipName} (115200 baud)`);
 
       const writer = port.writable.getWriter();
-      setSerialPanels(prev => {
-        const next = [...prev] as [SerialPanel, SerialPanel];
-        next[idx] = { ...next[idx], connected: true, port, writer, reading: true, label };
-        return next;
-      });
-
       const reader = port.readable.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
+
+      // Guarda reader+writer no estado pra o Desconectar conseguir cancelar.
+      // (Bug anterior: o reader nunca era salvo -> cancel() no disconnect nao
+      //  fazia nada -> o read loop seguia segurando o lock da porta -> close()
+      //  falhava em silencio e a serial "continuava conectada".)
+      setSerialPanels(prev => {
+        const next = [...prev] as [SerialPanel, SerialPanel];
+        next[idx] = { ...next[idx], connected: true, port, writer, reader, reading: true, label };
+        return next;
+      });
 
       (async () => {
         try {
           while (true) {
             const { value, done } = await reader.read();
-            if (done) break;
+            if (done) break;  // reader.cancel() (disconnect) resolve aqui
             buffer += decoder.decode(value, { stream: true });
             const parts = buffer.split('\n');
             buffer = parts.pop() || '';
@@ -675,13 +684,20 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
             }
           }
         } catch (e: unknown) {
+          // Device desplugado fisicamente cai aqui; cancel() manual nao (resolve done).
           serialAddLine(idx, `[DESCONECTADO] ${e instanceof Error ? e.message : ''}`);
+        } finally {
+          // Cleanup unico (disconnect manual OU device caiu): solta os locks e
+          // FECHA a porta de verdade, depois limpa o estado.
+          try { reader.releaseLock(); } catch {}
+          try { writer.releaseLock(); } catch {}
+          try { await port.close(); } catch {}
+          setSerialPanels(prev => {
+            const next = [...prev] as [SerialPanel, SerialPanel];
+            next[idx] = { ...next[idx], connected: false, port: null, reader: null, writer: null, reading: false };
+            return next;
+          });
         }
-        setSerialPanels(prev => {
-          const next = [...prev] as [SerialPanel, SerialPanel];
-          next[idx] = { ...next[idx], connected: false, reading: false };
-          return next;
-        });
       })();
 
     } catch (e: unknown) {
@@ -694,16 +710,10 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
 
   const serialDisconnect = useCallback(async (idx: number) => {
     const panel = serialPanels[idx];
+    // Cancela o reader -> o read loop quebra (done) e faz TODO o cleanup no
+    // finally (releaseLock + port.close + limpa estado). Nao mexemos no lock/
+    // porta aqui pra nao competir com o loop que ainda segura o reader.
     try { await panel.reader?.cancel(); } catch {}
-    try { panel.reader?.releaseLock(); } catch {}
-    try { await panel.writer?.close(); } catch {}
-    try { panel.writer?.releaseLock(); } catch {}
-    try { await panel.port?.close(); } catch {}
-    setSerialPanels(prev => {
-      const next = [...prev] as [SerialPanel, SerialPanel];
-      next[idx] = { ...next[idx], connected: false, port: null, reader: null, writer: null, reading: false };
-      return next;
-    });
     serialAddLine(idx, '[DESCONECTADO]');
   }, [serialPanels, serialAddLine]);
 
@@ -732,7 +742,7 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
     binData: any | null;
   } | null>(null);
 
-  const handleGenerateFirmware = () => {
+  const handleGenerateFirmware = async () => {
     if (!editorRef.current || !window.FirmwareGenerator) return;
     const gen = new window.FirmwareGenerator(editorRef.current);
     const projects = gen.generateAll();
@@ -740,7 +750,29 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
       alert('Nenhum controlador TON encontrado no diagrama.');
       return;
     }
-    setFirmwareModal({ projects, selected: 0, status: 'idle', log: [], binData: null });
+    // Resolve o nome do equipamento NexOn vinculado a cada TON (equipamento_id ->
+    // nome, ex: "TON4-1") pra rotular o seletor de controlador. Carrega aqui
+    // porque availableTonsForPicker só é populado ao abrir o painel de
+    // propriedades de uma TON — e o usuário gera firmware sem necessariamente
+    // ter aberto esse painel. Atribui direto em _displayName pra não depender
+    // do timing do setState.
+    const idToNome = new Map<string, string>();
+    try {
+      if (unidadeId) {
+        const { equipamentosApi } = await import('@/services/equipamentos.services');
+        const resp = await equipamentosApi.findByUnidade(unidadeId, { limit: 100 });
+        (resp.data ?? []).forEach((e: any) => {
+          if (e?.id) idToNome.set(String(e.id).trim(), e.nome);
+        });
+      }
+    } catch (err) {
+      console.warn('[iot-diagram] Falha ao resolver nomes de TON pro seletor:', err);
+    }
+    const enriched = projects.map((p: any) => {
+      const eqId = (p?.spec?.equipamentoId || '').trim();
+      return { ...p, _displayName: (eqId && idToNome.get(eqId)) || '' };
+    });
+    setFirmwareModal({ projects: enriched, selected: 0, status: 'idle', log: [], binData: null });
   };
 
   const firmwareCompile = async () => {
@@ -1324,6 +1356,31 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
                 Configurar BOs
               </Button>
             )}
+            {/* Botao "Configurar BIs" — toda TON tem 6 entradas opto integradas.
+                Exige equipamento_id ja vinculado a um equipamento real do NexOn. */}
+            {(propsComp?._def?.integrated?.opto_inputs?.count ?? 0) > 0 && (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!String(propsValues.equipamento_id ?? '').trim()}
+                title={
+                  String(propsValues.equipamento_id ?? '').trim()
+                    ? 'Configurar entradas digitais e ver estado ao vivo'
+                    : 'Defina o Equipamento NexOn primeiro'
+                }
+                onClick={() => {
+                  const eid = String(propsValues.equipamento_id ?? '').trim();
+                  if (!eid) return;
+                  setBiConfigTonId(eid);
+                  setBiConfigTonNome(
+                    String(propsValues.name ?? propsComp?._def?.label ?? 'TON'),
+                  );
+                  setBiConfigOpen(true);
+                }}
+              >
+                Configurar BIs
+              </Button>
+            )}
             <Button variant="outline" onClick={() => setPropsModalOpen(false)}>Fechar</Button>
             <Button onClick={saveComponentProps}>Salvar</Button>
           </DialogFooter>
@@ -1336,6 +1393,14 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
         tonId={boConfigTonId}
         unidadeId={unidadeId}
         tonNome={boConfigTonNome}
+      />
+
+      <TonBiConfigModal
+        open={biConfigOpen}
+        onClose={() => setBiConfigOpen(false)}
+        tonId={biConfigTonId}
+        unidadeId={unidadeId}
+        tonNome={biConfigTonNome}
       />
 
       {/* Create Project Modal */}
@@ -1686,9 +1751,20 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
                     value={firmwareModal.selected}
                     onChange={e => setFirmwareModal(prev => prev ? { ...prev, selected: parseInt(e.target.value), status: 'idle', log: [], binData: null } : null)}
                   >
-                    {firmwareModal.projects.map((p: any, i: number) => (
-                      <option key={i} value={i}>{p.name} ({p.spec?.tonType?.toUpperCase()})</option>
-                    ))}
+                    {firmwareModal.projects.map((p: any, i: number) => {
+                      // Rótulo limpo: nome do equipamento NexOn vinculado (resolvido
+                      // em handleGenerateFirmware -> _displayName, ex: "TON4-1").
+                      // Fallback: nome do componente no diagrama (se renomeado) >
+                      // "tipo #índice" como último recurso (garante unicidade).
+                      const spec = p.spec || {};
+                      const tonType = spec.tonType?.toUpperCase() || 'TON';
+                      const label = p._displayName
+                        || (p.name && p.name !== tonType ? p.name : '')
+                        || `${tonType} #${i + 1}`;
+                      return (
+                        <option key={i} value={i}>{label}</option>
+                      );
+                    })}
                   </select>
                 </div>
               )}
@@ -1705,7 +1781,10 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
 
               {/* Project info */}
               <div className="bg-muted/50 rounded-md p-3 text-xs font-mono">
-                <p><strong>Projeto:</strong> {firmwareModal.projects[firmwareModal.selected]?.name}</p>
+                <p><strong>Projeto:</strong> {
+                  firmwareModal.projects[firmwareModal.selected]?._displayName
+                  || firmwareModal.projects[firmwareModal.selected]?.name
+                }</p>
                 <p><strong>Tipo:</strong> {firmwareModal.projects[firmwareModal.selected]?.spec?.tonType?.toUpperCase()}</p>
                 <p><strong>Arquivos:</strong> {Object.keys(firmwareModal.projects[firmwareModal.selected]?.files || {}).join(', ')}</p>
                 {firmwareModal.projects[firmwareModal.selected]?.spec?.rs485_devices?.length > 0 && (

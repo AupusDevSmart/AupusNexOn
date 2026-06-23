@@ -1264,7 +1264,7 @@ var DEVICE_MODELS = {
         modelo: 'PD666',
         tipo: 'medidor_energia',
         protocolo: 'rtu',
-        connection_note: 'RS485 direto ou Modbus TCP via USR. Func 0x03 (holding registers) p/ tudo.',
+        connection_note: 'RS485 direto ou Modbus TCP via USR. Func 0x03 (holding registers) p/ tudo. ATENCAO PARIDADE: default de fabrica n.2 = 8N2; TON usa 8N1 — setar Prot=3/n.1 no medidor ou eSetup, igual ao P3U30.',
         // TP/TC lido a cada ciclo (refs PlatformIO EV-PD666_USR_MQTT/main.cpp:587-595)
         // 0x0006=IrAt(TC), 0x0007=UrAt(TP). Ambos uint16. Scale TP=/10, TC=/1.
         tp_tc: {
@@ -1281,8 +1281,8 @@ var DEVICE_MODELS = {
             // Energias (cumulativos): cada um e' lido isolado (registradores nao contiguos)
             { start: 0x101E, count: 2, func: 0x03, label: 'PHF - Energia Ativa Forward (kWh)'  },
             { start: 0x1028, count: 2, func: 0x03, label: 'PHR - Energia Ativa Reverse (kWh)'  },
-            { start: 0x1032, count: 2, func: 0x03, label: 'QHF - Energia Reativa Q1 (kvarh)'   },
-            { start: 0x103C, count: 2, func: 0x03, label: 'QHR - Energia Reativa Q2 (kvarh)'   },
+            { start: 0x1032, count: 2, func: 0x03, label: 'Q1Eq (reativa Q1, indutiva) (kvarh)' },
+            { start: 0x103C, count: 2, func: 0x03, label: 'Q2Eq (reativa Q2, capacitiva) (kvarh)' },
         ],
         ai_map: {
             // --- Bloco 0 (V/I/P/Q/S/FP) ---
@@ -1331,7 +1331,8 @@ var DEVICE_MODELS = {
         connection_note: 'RS485 direto, 9600 8N1. Registers 16-bit, não IEEE float.',
         // TP/TC lido a cada ciclo (refs PlatformIO LORA_TX_MODBUS/main.cpp:135-141)
         // reg 3 = TP (PT ratio), reg 4 = TC (CT ratio). Ambos uint16, scale=1.
-        // No M-160 só ENERGIAS precisam do fator (V/I/P/Q/S já vêm calculados).
+        // CORRENTE/POTENCIA/ENERGIA precisam do fator: o M160 entrega esses registros
+        // no lado SECUNDARIO (pre-TC); o mostrador aplica o TC. Tensao/FP nao (TP=1 sem PT).
         tp_tc: {
             register: 3,
             count: 2,
@@ -1339,6 +1340,21 @@ var DEVICE_MODELS = {
             tc_offset: 1,
             scale_tp: 1,
             scale_tc: 1,
+        },
+        // Casa decimal dinamica (auto-range do M160). Formula oficial: valor = raw*10^(exp-4).
+        // O `scale` fixo de cada campo ja codifica o expoente TIPICO (baseline): V scale=10 -> DPT
+        // baseline 3; I scale=100 -> DCT baseline 2; P/Q/S scale=1 -> DPQ baseline 4. O firmware
+        // aplica o DELTA: _fDPT=10^(dpt-3), _fDCT=10^(dct-2), _fDPQ=10^(dpq-4). No ponto tipico = 1.0.
+        // reg35="DPT,DCT" big-endian (DPT=hi, DCT=lo); reg36="DPQ,SIGN" (DPQ=hi, SIGN=lo, Tabela 3).
+        decimal_regs: {
+            register: 35,
+            count: 2,
+            layout: {
+                dpt: { word: 0, byte: 'hi', baseline: 3 }, // reg35>>8
+                dct: { word: 0, byte: 'lo', baseline: 2 }, // reg35 & 0xFF
+                dpq: { word: 1, byte: 'hi', baseline: 4 }, // reg36>>8
+            },
+            sign: { word: 1, byte: 'lo' }, // reg36 & 0xFF — Tabela 3 (so' p/ log)
         },
         ai_blocks: [
             { start: 37, count: 34, func: 0x03, label: 'V, I, P, Q, FP, S, Energia (37..70)' },
@@ -1352,21 +1368,23 @@ var DEVICE_MODELS = {
             'consumo_qhf': { block: 0, offset: 31, scale: 1000, dataType: 'U16', mode: 'delta', apply_factor: 'tp_tc', clamp_negative: true },
             'consumo_qhr': { block: 0, offset: 33, scale: 1000, dataType: 'U16', mode: 'delta', apply_factor: 'tp_tc', clamp_negative: true },
             // Tensões (regs 37, 38, 39 — uint16, /10)
-            'va': { block: 0, offset: 0, scale: 10, dataType: 'U16' },
-            'vb': { block: 0, offset: 1, scale: 10, dataType: 'U16' },
-            'vc': { block: 0, offset: 2, scale: 10, dataType: 'U16' },
-            // Correntes (regs 43, 44, 45 — uint16, /100)
-            'ia': { block: 0, offset: 6, scale: 100, dataType: 'U16' },
-            'ib': { block: 0, offset: 7, scale: 100, dataType: 'U16' },
-            'ic': { block: 0, offset: 8, scale: 100, dataType: 'U16' },
-            // FP por fase (regs 54-56 — int16, /1000)
+            'va': { block: 0, offset: 0, scale: 10, dataType: 'U16', decimal_src: 'dpt' },
+            'vb': { block: 0, offset: 1, scale: 10, dataType: 'U16', decimal_src: 'dpt' },
+            'vc': { block: 0, offset: 2, scale: 10, dataType: 'U16', decimal_src: 'dpt' },
+            // Correntes (regs 43, 44, 45 — uint16, /100). ×TC: o registrador traz o
+            // valor PRE-TC (lado secundario); o mostrador do M160 aplica o TC. Confirmado
+            // em campo (TON4-3 bombas): registrador=2.97A, mostrador=~238A, TC=80.
+            'ia': { block: 0, offset: 6, scale: 100, dataType: 'U16', apply_factor: 'tc', decimal_src: 'dct' },
+            'ib': { block: 0, offset: 7, scale: 100, dataType: 'U16', apply_factor: 'tc', decimal_src: 'dct' },
+            'ic': { block: 0, offset: 8, scale: 100, dataType: 'U16', apply_factor: 'tc', decimal_src: 'dct' },
+            // FP por fase (regs 54-56 — int16, /1000). FP NAO escala com TP/TC.
             'fp_a': { block: 0, offset: 17, scale: 1000, dataType: 'S16' },
             'fp_b': { block: 0, offset: 18, scale: 1000, dataType: 'S16' },
             'fp_c': { block: 0, offset: 19, scale: 1000, dataType: 'S16' },
-            // Potências totais (regs 49=PA total, 53=QT, 61=ST)
-            'pt': { block: 0, offset: 12, scale: 1, dataType: 'S16' },
-            'qt': { block: 0, offset: 16, scale: 1, dataType: 'S16' },
-            'st': { block: 0, offset: 24, scale: 1, dataType: 'U16' },
+            // Potencias totais (regs 49=PA total, 53=QT, 61=ST). ×TP*TC (= ×TC quando TP=1).
+            'pt': { block: 0, offset: 12, scale: 1, dataType: 'S16', apply_factor: 'tp_tc', decimal_src: 'dpq' },
+            'qt': { block: 0, offset: 16, scale: 1, dataType: 'S16', apply_factor: 'tp_tc', decimal_src: 'dpq' },
+            'st': { block: 0, offset: 24, scale: 1, dataType: 'U16', apply_factor: 'tp_tc', decimal_src: 'dpq' },
         },
         bi_map: {},
         bo_map: {},

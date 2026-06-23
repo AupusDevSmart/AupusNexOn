@@ -134,7 +134,6 @@ var COMPONENT_TYPES = {
             ota_hostname: '',
             mqtt_topic_base: '',
             equipamento_id: '',
-            lora_mode: 'tx',
         },
         fields: [
             { key: 'name', label: 'Nome', type: 'text' },
@@ -142,7 +141,9 @@ var COMPONENT_TYPES = {
             { key: 'mqtt_topic_base', label: 'Tópico Base', type: 'text', placeholder: 'PROPRIETARIO/ESTADO/PLANTA/INSTALACAO' },
             { key: '_topic_preview', label: 'Tópicos Dispositivos', type: 'topic_preview' },
             { key: 'equipamento_id', label: 'Equipamento NexOn (ID)', type: 'text', placeholder: 'CUID 26 chars — necessário para Implantar OTA' },
-            { key: 'lora_mode', label: 'LoRa Modo', type: 'select', options: [['tx', 'TX (Envia)'], ['rx', 'RX (Recebe)'], ['hub', 'Hub (TX+RX)']] },
+            // LoRa modo TX/RX removido: half-duplex bidirecional sempre. Role
+            // (gateway/satellite) e' resolvido automaticamente pelo layout
+            // (tem internet + peer LoRa = gateway; sem internet + peer = satellite).
         ]
     },
     ton3: {
@@ -212,7 +213,6 @@ var COMPONENT_TYPES = {
             ota_hostname: '',
             mqtt_topic_base: '',
             equipamento_id: '',
-            lora_mode: 'tx',
         },
         fields: [
             { key: 'name', label: 'Nome', type: 'text' },
@@ -220,7 +220,8 @@ var COMPONENT_TYPES = {
             { key: 'mqtt_topic_base', label: 'Tópico Base', type: 'text', placeholder: 'PROPRIETARIO/ESTADO/PLANTA/INSTALACAO' },
             { key: '_topic_preview', label: 'Tópicos Dispositivos', type: 'topic_preview' },
             { key: 'equipamento_id', label: 'Equipamento NexOn (ID)', type: 'text', placeholder: 'CUID 26 chars — necessário para Implantar OTA' },
-            { key: 'lora_mode', label: 'LoRa Modo', type: 'select', options: [['tx', 'TX (Envia)'], ['rx', 'RX (Recebe)'], ['hub', 'Hub (TX+RX)']] },
+            // LoRa modo TX/RX removido — half-duplex bidirecional sempre.
+            // Vide nota acima em ton2.
         ]
     },
 
@@ -298,6 +299,34 @@ var COMPONENT_TYPES = {
         ]
     },
 
+    // Conversor serial->TCP (ex: USR-W610) em modo TRANSPARENTE: os medidores atras
+    // dele falam Modbus RTU puro, lidos via RTU-sobre-TCP + CRC16 (nao MBAP/datalogger).
+    conversor: {
+        label: 'Conversor', category: 'infra', color: '#A855F7',
+        // Swap/exchange icon
+        icon: 'M8 7h12m0 0l-4-4m4 4l-4 4m4 6H4m0 0l4 4m-4-4l4-4',
+        ports: ['top', 'bottom', 'left', 'right'],
+        generates_firmware: false,
+        defaults: {
+            name: 'Conversor',
+            modelo: 'usr-w610',
+            ip: '',
+            tcp_port: 502,
+            timeout_ms: 3000,
+        },
+        fields: [
+            { key: 'name', label: 'Nome', type: 'text' },
+            { key: 'modelo', label: 'Modelo', type: 'select', options: [
+                ['usr-w610', 'USR-W610 (WiFi/Eth-RS485)'],
+                ['usr-tcp232', 'USR-TCP232 (Eth-RS485)'],
+                ['generico-rtu-tcp', 'Conversor RTU-TCP generico'],
+            ]},
+            { key: 'ip', label: 'IP na rede', type: 'text', placeholder: '192.168.1.111' },
+            { key: 'tcp_port', label: 'Porta TCP', type: 'number', placeholder: '502' },
+            { key: 'timeout_ms', label: 'Timeout (ms)', type: 'number', placeholder: '3000' },
+        ]
+    },
+
     // ============================================================
     // DISPOSITIVOS (equipamentos externos que conectam ao TON)
     // ============================================================
@@ -320,13 +349,15 @@ var COMPONENT_TYPES = {
         icon: 'M13 10V3L4 14h7v7l9-11h-7z',
         ports: ['top', 'bottom', 'left', 'right'],
         generates_firmware: false,
-        defaults: { name: 'Power Meter', catalog_id: '', modbus_address: 1, current_scale_override: '', voltage_scale_override: '' },
+        defaults: { name: 'Power Meter', catalog_id: '', modbus_address: 1, current_scale_override: '', voltage_scale_override: '', tc_ratio: '', tp_ratio: '' },
         fields: [
             { key: 'name', label: 'Nome', type: 'text' },
             { key: 'catalog_id', label: 'Modelo', type: 'device_select', device_type: 'medidor_energia' },
             { key: 'modbus_address', label: 'Endereco Modbus', type: 'number' },
             { key: 'current_scale_override', label: 'Override scale corrente (vazio = padrao)', type: 'number', placeholder: 'ex: 100, 1000' },
             { key: 'voltage_scale_override', label: 'Override scale tensao (vazio = padrao)', type: 'number', placeholder: 'ex: 10, 100' },
+            { key: 'tc_ratio', label: 'Relacao TC (vazio = ler do medidor)', type: 'number', placeholder: 'ex: 80, 100' },
+            { key: 'tp_ratio', label: 'Relacao TP (vazio = 1, sem PT)', type: 'number', placeholder: 'ex: 1' },
         ]
     },
     medidor_comum: {
@@ -334,13 +365,15 @@ var COMPONENT_TYPES = {
         icon: 'M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z',
         ports: ['top', 'bottom', 'left', 'right'],
         generates_firmware: false,
-        defaults: { name: 'Medidor', catalog_id: '', modbus_address: 1, current_scale_override: '', voltage_scale_override: '' },
+        defaults: { name: 'Medidor', catalog_id: '', modbus_address: 1, current_scale_override: '', voltage_scale_override: '', tc_ratio: '', tp_ratio: '' },
         fields: [
             { key: 'name', label: 'Nome', type: 'text' },
             { key: 'catalog_id', label: 'Modelo', type: 'device_select', device_type: 'medidor_energia' },
             { key: 'modbus_address', label: 'Endereco Modbus', type: 'number' },
             { key: 'current_scale_override', label: 'Override scale corrente (vazio = padrao)', type: 'number', placeholder: 'ex: 100, 1000' },
             { key: 'voltage_scale_override', label: 'Override scale tensao (vazio = padrao)', type: 'number', placeholder: 'ex: 10, 100' },
+            { key: 'tc_ratio', label: 'Relacao TC (vazio = ler do medidor)', type: 'number', placeholder: 'ex: 80, 100' },
+            { key: 'tp_ratio', label: 'Relacao TP (vazio = 1, sem PT)', type: 'number', placeholder: 'ex: 1' },
         ]
     },
     rele_protecao: {
@@ -359,7 +392,7 @@ var COMPONENT_TYPES = {
 
 var CATEGORIES = [
     { id: 'controller', label: 'Controladores TON', types: ['ton1', 'ton2', 'ton3', 'ton4'] },
-    { id: 'infra', label: 'Infraestrutura', types: ['wifi_router', 'mqtt_broker', 'meter_gateway', 'inverter_datalogger'] },
+    { id: 'infra', label: 'Infraestrutura', types: ['wifi_router', 'mqtt_broker', 'meter_gateway', 'inverter_datalogger', 'conversor'] },
     { id: 'device', label: 'Dispositivos', types: ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao'] },
 ];
 
@@ -996,6 +1029,15 @@ var DiagramEditor = class {
             return ['tcp'];
         }
 
+        // Conversor serial->TCP: RS485 para os medidores, TCP para o TON
+        if (types.includes('conversor')) {
+            const other = from.type === 'conversor' ? to.type : from.type;
+            if (other === 'inversor' || other === 'power_meter' ||
+                other === 'medidor_comum' || other === 'rele_protecao') return ['rs485'];
+            if (tonTypes.includes(other)) return ['tcp'];
+            return ['tcp'];
+        }
+
         // TON ↔ device = rs485 or tcp
         const deviceTypes = ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao'];
         if (types.some(t => tonTypes.includes(t)) && types.some(t => deviceTypes.includes(t))) {
@@ -1459,10 +1501,18 @@ var DiagramEditor = class {
         const tonTypes = ['ton1', 'ton2', 'ton3', 'ton4'];
         const deviceTypes = ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao'];
 
-        // Rule 1: TON to TON — only allowed if BOTH are TON2 (LoRa)
+        // Rule 1: TON to TON — apenas entre TONs com LoRa (TON2 ou TON4).
+        // Topologia gateway/satellite: TON2 (com WiFi/Eth + LoRa) atua como
+        // ponte MQTT<->LoRa, TON4s (sem WiFi, só LoRa+RS485) ficam em campo
+        // remoto e recebem comandos via LoRa do TON2.
         if (types.every(t => tonTypes.includes(t))) {
-            if (from.type !== 'ton2' || to.type !== 'ton2') {
-                return { allowed: false, reason: 'Conexão entre TONs só é permitida entre dois TON2 (LoRa)' };
+            const loraTons = ['ton2', 'ton4'];
+            if (!loraTons.includes(from.type) || !loraTons.includes(to.type)) {
+                return { allowed: false, reason: 'Conexão entre TONs só é permitida via LoRa (TON2 ou TON4)' };
+            }
+            // Bloquear TON4↔TON4 (sat-to-sat não tem caminho pro broker)
+            if (from.type === 'ton4' && to.type === 'ton4') {
+                return { allowed: false, reason: 'Dois TON4 não podem se conectar diretamente (precisam de TON2 como gateway)' };
             }
         }
 
@@ -1493,9 +1543,9 @@ var DiagramEditor = class {
         // Rule 5: TON connects to: Router WiFi, devices (RS485), Datalogger (TCP), or another TON2 (LoRa)
         if (types.some(t => tonTypes.includes(t))) {
             const otherType = tonTypes.includes(from.type) ? to.type : from.type;
-            const allowedTargets = ['wifi_router', 'inverter_datalogger', ...deviceTypes, 'ton2'];
+            const allowedTargets = ['wifi_router', 'inverter_datalogger', 'conversor', ...deviceTypes, 'ton2'];
             if (!allowedTargets.includes(otherType)) {
-                return { allowed: false, reason: 'TON se conecta a: Router WiFi, Datalogger ou dispositivos' };
+                return { allowed: false, reason: 'TON se conecta a: Router WiFi, Datalogger, Conversor ou dispositivos' };
             }
         }
 
@@ -1514,6 +1564,15 @@ var DiagramEditor = class {
             const allowedTargets = ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao', 'wifi_router', ...tonTypes];
             if (!allowedTargets.includes(other)) {
                 return { allowed: false, reason: 'Datalogger se conecta a: Dispositivos Modbus (RS485), Router (WiFi) ou TON (TCP)' };
+            }
+        }
+
+        // Rule 7b: Conversor conecta a: Dispositivos Modbus (RS485) ou TON (TCP)
+        if (types.includes('conversor')) {
+            const other = from.type === 'conversor' ? to.type : from.type;
+            const allowedTargets = ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao', ...tonTypes];
+            if (!allowedTargets.includes(other)) {
+                return { allowed: false, reason: 'Conversor se conecta a: Dispositivos Modbus (RS485) ou TON (TCP)' };
             }
         }
 
@@ -1540,6 +1599,13 @@ var DiagramEditor = class {
         )) return 'rs485';
         // Datalogger ↔ TON = TCP
         if (types.includes('inverter_datalogger') && types.some(t => tonTypes.includes(t))) return 'tcp';
+        // Conversor ↔ Dispositivo Modbus = RS485
+        if (types.includes('conversor') && (
+            types.includes('inversor') || types.includes('power_meter') ||
+            types.includes('medidor_comum') || types.includes('rele_protecao')
+        )) return 'rs485';
+        // Conversor ↔ TON = TCP
+        if (types.includes('conversor') && types.some(t => tonTypes.includes(t))) return 'tcp';
         // TON/anything to Router = WiFi (default, can switch to ethernet)
         if (types.includes('wifi_router')) return 'wifi';
         // TON to device = RS485 (via conversor integrado)
