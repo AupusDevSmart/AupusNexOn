@@ -3,7 +3,8 @@ import { Layout } from '@/components/common/Layout';
 import { TitleCard } from '@/components/common/title-card';
 import { BaseTable } from '@/components/common/base-table/BaseTable';
 import { BaseFilters } from '@/components/common/base-filters/BaseFilters';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, X } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
 import { useGenericModal } from '@/hooks/useGenericModal';
 import { toast } from '@/hooks/use-toast';
 import { LogMqttDetailModal } from './log-mqtt-detail-modal';
@@ -27,6 +28,10 @@ export function LogsMqttPage() {
   const { logs, total, loading, filters, setFilters, refresh } = useLogsMqtt();
   const { modalState, openModal, closeModal } = useGenericModal<LogMqtt>();
   const [deleteId, setDeleteId] = useState<string | null>(null);
+
+  const location = useLocation();
+  const unidadeNome = (location.state as { unidadeNome?: string } | null)?.unidadeNome;
+  const unidadeFiltrada = !!filters.unidadeId && filters.unidadeId !== 'all';
 
   const handleDelete = async () => {
     if (!deleteId) return;
@@ -67,6 +72,22 @@ export function LogsMqttPage() {
               <span>Atualizar</span>
             </button>
           </div>
+
+          {unidadeFiltrada && (
+            <div className="mb-3 flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-sm border border-border bg-muted px-2 py-1 text-xs text-muted-foreground">
+                Unidade: {unidadeNome ?? 'filtrada'}
+                <button
+                  type="button"
+                  onClick={() => setFilters({ unidadeId: 'all' })}
+                  aria-label="Remover filtro de unidade"
+                  className="hover:text-foreground"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            </div>
+          )}
 
           <div className="flex-1 min-h-0 overflow-hidden">
             <BaseTable

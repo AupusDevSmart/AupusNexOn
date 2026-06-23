@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useLocation } from 'react-router-dom';
 import { LogsMqttService } from '@/services/logs-mqtt.services';
 import { LogMqtt, LogsMqttFilters } from '../types';
 
 const initialFilters: LogsMqttFilters = {
   search: '',
   equipamentoId: 'all',
+  unidadeId: 'all',
   severidade: 'all',
   dataInicial: '',
   dataFinal: '',
@@ -13,10 +15,14 @@ const initialFilters: LogsMqttFilters = {
 };
 
 export function useLogsMqtt() {
+  const location = useLocation();
+  // Permite pre-filtrar via navegacao (ex.: "ver todas" do sinoptico passa unidadeId)
+  const filtrosIniciais = (location.state as { filters?: Partial<LogsMqttFilters> } | null)?.filters;
+
   const [logs, setLogs] = useState<LogMqtt[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState<LogsMqttFilters>(initialFilters);
+  const [filters, setFilters] = useState<LogsMqttFilters>({ ...initialFilters, ...filtrosIniciais });
 
   const fetchLogs = useCallback(async (currentFilters = filters) => {
     try {
@@ -26,6 +32,7 @@ export function useLogsMqtt() {
         limit: currentFilters.limit,
         search: currentFilters.search || undefined,
         equipamentoId: currentFilters.equipamentoId,
+        unidadeId: currentFilters.unidadeId,
         severidade: currentFilters.severidade !== 'all' ? currentFilters.severidade : undefined,
         dataInicial: currentFilters.dataInicial || undefined,
         dataFinal: currentFilters.dataFinal || undefined,

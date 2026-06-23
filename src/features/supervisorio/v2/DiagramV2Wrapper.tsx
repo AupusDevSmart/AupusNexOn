@@ -31,14 +31,9 @@ import React, { useEffect, useState } from 'react';
 import { DiagramV2 } from './DiagramV2';
 import { useDiagramStore } from './hooks/useDiagramStore';
 import type { Equipment } from './types/diagram.types';
-import { SinopticoGraficosV2 } from '../components/sinoptico-graficos-v2';
 import { EquipamentoCommandModal } from './components/EquipamentoCommandModal';
 import { EquipamentoAcionarModal } from './components/EquipamentoAcionarModal';
 import { getCommandsForCategoria } from './utils/commandRegistry';
-import { Button } from '@/components/ui/button';
-import { BarChart3, X } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
-import { api } from '@/config/api';
 
 // ============================================================================
 // TIPOS LEGADOS (Compatibilidade)
@@ -106,6 +101,13 @@ interface DiagramV2WrapperProps {
   onBackgroundClick?: () => void;
 
   /**
+   * Callback (admin) para abrir a config de pontos (caixas de dados R8) de um
+   * equipamento. Necessario porque o modal de comandos eh aberto DENTRO do
+   * wrapper (nao passa pelo onComponenteClick da pagina).
+   */
+  onConfigurarPontos?: (eq: { id: string; nome: string; categoria: string }) => void;
+
+  /**
    * Mostrar grid de fundo (padrão: true)
    */
   mostrarGrid?: boolean;
@@ -131,6 +133,7 @@ export const DiagramV2Wrapper: React.FC<DiagramV2WrapperProps> = ({
   componentes,
   onComponenteClick,
   onBackgroundClick,
+  onConfigurarPontos,
   mostrarGrid = true,
   modoEdicao = false,
   availableEquipments = [],
@@ -144,49 +147,12 @@ export const DiagramV2Wrapper: React.FC<DiagramV2WrapperProps> = ({
   // Estado local para equipamentos disponíveis
   const [equipamentosDisponiveis, setEquipamentosDisponiveis] = useState<AvailableEquipment[]>(availableEquipments);
 
-  // Estado para mostrar/ocultar gráficos - SEMPRE começa OCULTO
-  const [showGraficos, setShowGraficos] = useState(false);
-
-  // Auto-refit quando o painel de gráficos alterna — viewport real muda de
-  // largura, fit do IoT consegue isso de graça via editor.centerView() na
-  // troca de mode, aqui precisamos chamar explícito após o reflow.
-  useEffect(() => {
-    const t = setTimeout(() => {
-      useDiagramStore.getState().fitToContent();
-    }, 250);
-    return () => clearTimeout(t);
-  }, [showGraficos]);
-
   // Estado do modal de comando MQTT — abre ao clicar em equipamento cuja
   // categoria tem comandos registrados (ex: TON com botoes de rele/transistor).
   const [commandModalEquipment, setCommandModalEquipment] = useState<Equipment | null>(null);
   // Modal de acionamento de pontos (Fase C-3): aberto ao clicar em equipamento com automacao=true
   // que NAO eh uma TON (TONs caem no fluxo de comandos diretos via commandRegistry).
   const [acionarModalEquipment, setAcionarModalEquipment] = useState<Equipment | null>(null);
-
-  // Buscar demanda contratada da unidade
-  const { data: unidadeData } = useQuery({
-    queryKey: ['unidade-demanda', diagrama?.unidadeId],
-    queryFn: async () => {
-      if (!diagrama?.unidadeId) return null;
-      console.log('🔍 [DiagramV2Wrapper] Buscando unidade:', diagrama.unidadeId);
-      const response = await api.get(`/unidades/${diagrama.unidadeId}`);
-      console.log('🔍 [DiagramV2Wrapper] Response completa:', response.data);
-      console.log('🔍 [DiagramV2Wrapper] response.data.data:', response.data?.data);
-      console.log('🔍 [DiagramV2Wrapper] demanda_geracao:', response.data?.data?.demanda_geracao || response.data?.demanda_geracao);
-      return response.data?.data || response.data;
-    },
-    enabled: !!diagrama?.unidadeId,
-    refetchInterval: false,
-    staleTime: 0, // ✅ Sempre buscar dados frescos
-    gcTime: 0, // ✅ Não manter cache (cacheTime foi renomeado para gcTime em TanStack v5)
-  });
-
-  // Extrair demanda contratada (demandaGeracao em camelCase da API)
-  const unidadeTyped = unidadeData as { demandaGeracao?: number | string } | null | undefined;
-  const demandaContratada = unidadeTyped?.demandaGeracao ? parseFloat(unidadeTyped.demandaGeracao.toString()) : 2500;
-  console.log('📊 [DiagramV2Wrapper] unidadeData:', unidadeData);
-  console.log('📊 [DiagramV2Wrapper] Demanda final:', demandaContratada, '(demandaGeracao:', unidadeTyped?.demandaGeracao, ')');
 
   const setEquipamentos = (equipamentos: Equipment[]) => {
     const store = useDiagramStore.getState();
@@ -396,59 +362,10 @@ export const DiagramV2Wrapper: React.FC<DiagramV2WrapperProps> = ({
 
   return (
     <div className="diagram-v2-wrapper" style={{ width: '100%', height: '100%', position: 'relative' }}>
-      {/* Botão Toggle Gráficos - Posicionado no canto inferior direito, acima dos controles de zoom */}
-      {/* NUNCA mostrar gráficos em modo de edição */}
-      {temGraficosVisiveis && !isEditMode && (
-        <div className={`fixed xl:absolute bottom-12 right-2 xl:bottom-[5.5rem] xl:right-6 z-[60] ${showGraficos ? 'hidden xl:block' : ''}`}>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowGraficos(!showGraficos)}
-            aria-label={showGraficos ? 'Ocultar gráficos' : 'Mostrar gráficos'}
-            className="gap-2 bg-background/95 backdrop-blur-sm shadow-lg border-2 rounded-sm"
-          >
-            <BarChart3 className="h-4 w-4" />
-            <span className="hidden sm:inline">{showGraficos ? 'Ocultar Gráficos' : 'Mostrar Gráficos'}</span>
-          </Button>
-        </div>
-      )}
-
-      {/* Layout com Grid Responsivo - Removido overflow-hidden para permitir scroll */}
-      <div className={`grid grid-cols-1 ${showGraficos && !isEditMode ? 'xl:grid-cols-3' : ''} gap-2 sm:gap-4 h-full`}>
-        {/* Gráficos - Painel Lateral (1/3 da largura em telas grandes) - Com scroll próprio */}
-        {/* NUNCA mostrar gráficos em modo de edição */}
-        {showGraficos && !isEditMode && (
-          <>
-            {/* Backdrop — só mobile (no desktop o painel é coluna inline do grid) */}
-            <div
-              className="fixed inset-0 z-40 bg-black/60 xl:hidden"
-              onClick={() => setShowGraficos(false)}
-              aria-hidden
-            />
-            {/* Painel de gráficos: bottom-sheet fixo sobre o diagrama no mobile;
-                coluna inline (1/3) no desktop (xl). Uma única instância. */}
-            <div
-              className="fixed inset-x-0 bottom-0 z-50 flex max-h-[85dvh] flex-col gap-4 overflow-y-auto rounded-t-2xl border-t bg-background p-3 pt-6 shadow-2xl xl:static xl:z-auto xl:col-span-1 xl:max-h-full xl:rounded-none xl:border-0 xl:bg-transparent xl:p-0 xl:pr-2 xl:shadow-none"
-              style={{ overscrollBehavior: 'contain' }}
-            >
-              <button
-                onClick={() => setShowGraficos(false)}
-                className="absolute right-3 top-2 rounded-sm p-1 text-muted-foreground hover:bg-muted xl:hidden"
-                aria-label="Fechar gráficos"
-              >
-                <X className="h-4 w-4" />
-              </button>
-              <SinopticoGraficosV2
-                unidadeId={unidadeIdParaGraficos}
-                valorContratado={demandaContratada}
-                percentualAdicional={5}
-              />
-            </div>
-          </>
-        )}
-
-        {/* Diagrama - Ocupa o restante do espaço (tela cheia no mobile) */}
-        <div className={`${showGraficos ? 'xl:col-span-2' : ''} flex min-h-[55vh] xl:min-h-0`} style={{ position: 'relative' }}>
+      {/* Layout — apenas o diagrama (graficos movidos para o overview do sinoptico) */}
+      <div className="grid grid-cols-1 gap-2 sm:gap-4 h-full">
+        {/* Diagrama */}
+        <div className="flex min-h-[55vh] xl:min-h-0" style={{ position: 'relative' }}>
           <DiagramV2
             diagramaId={diagramaId || unidadeIdFromUrl || 'static-diagram'}
             mode={modoEdicao ? 'edit' : 'view'}
@@ -500,6 +417,19 @@ export const DiagramV2Wrapper: React.FC<DiagramV2WrapperProps> = ({
             topico_mqtt: commandModalEquipment.topicoMqtt ?? null,
             categoria: commandModalEquipment.categoria ?? null,
           }}
+          onConfigurarPontos={
+            onConfigurarPontos
+              ? () => {
+                  const eq = commandModalEquipment;
+                  setCommandModalEquipment(null); // fecha o modal de comandos
+                  onConfigurarPontos({
+                    id: eq.id.trim(),
+                    nome: eq.nome,
+                    categoria: eq.categoria ?? '',
+                  });
+                }
+              : undefined
+          }
         />
       )}
 

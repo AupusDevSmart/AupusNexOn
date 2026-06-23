@@ -18,6 +18,8 @@ interface PowerMeterModalProps {
   onClose: () => void;
   componenteData?: any;
   nomeComponente?: string;
+  /** Abre a configuracao dos pontos do diagrama (R8). Renderiza o botao se definido. */
+  onConfigurarPontos?: () => void;
 }
 
 const ABAS: Array<{ value: Aba; label: string }> = [
@@ -31,6 +33,7 @@ export function PowerMeterModal({
   onClose,
   componenteData,
   nomeComponente,
+  onConfigurarPontos,
 }: PowerMeterModalProps) {
   const equipamentoId = (
     componenteData?.dados?.equipamento_id || componenteData?.id
@@ -60,6 +63,15 @@ export function PowerMeterModal({
                 </div>
               )}
             </div>
+            {onConfigurarPontos && (
+              <button
+                type="button"
+                onClick={onConfigurarPontos}
+                className="rounded-sm border border-border px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-muted"
+              >
+                Configurar pontos
+              </button>
+            )}
           </DialogTitle>
         </DialogHeader>
 

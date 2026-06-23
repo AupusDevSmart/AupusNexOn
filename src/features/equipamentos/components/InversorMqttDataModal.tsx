@@ -16,6 +16,8 @@ interface InversorMqttDataModalProps {
   equipamentoId: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Abre a configuracao dos pontos do diagrama (R8). Renderiza o botao se definido. */
+  onConfigurarPontos?: () => void;
 }
 
 // Helper para formatar números com 2 casas decimais
@@ -24,7 +26,7 @@ const formatNumber = (value: number | undefined | null): string => {
   return value.toFixed(2);
 };
 
-export function InversorMqttDataModal({ equipamentoId, open, onOpenChange }: InversorMqttDataModalProps) {
+export function InversorMqttDataModal({ equipamentoId, open, onOpenChange, onConfigurarPontos }: InversorMqttDataModalProps) {
   // EARLY RETURN: Não renderizar nada se o modal não está aberto ou não há equipamento
   if (!open || !equipamentoId) {
     return null;
@@ -208,6 +210,11 @@ export function InversorMqttDataModal({ equipamentoId, open, onOpenChange }: Inv
                   <Clock className="h-4 w-4" />
                   Atualizado às {lastUpdate.toLocaleTimeString('pt-BR')}
                 </div>
+              )}
+              {onConfigurarPontos && (
+                <Button size="sm" variant="outline" onClick={onConfigurarPontos}>
+                  Configurar pontos
+                </Button>
               )}
               <Button size="sm" variant="outline" onClick={refetch} disabled={loading}>
                 {loading ? (

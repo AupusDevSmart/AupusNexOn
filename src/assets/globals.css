@@ -366,58 +366,25 @@
     flex-shrink: 0;
   }
 
-  /* Estilos para Fullscreen - preserva tema NexON */
-  :fullscreen {
-    background: hsl(var(--background)) !important;
-    color: hsl(var(--foreground)) !important;
-  }
-
-  :-webkit-full-screen {
-    background: hsl(var(--background)) !important;
-    color: hsl(var(--foreground)) !important;
-  }
-
-  :-moz-full-screen {
-    background: hsl(var(--background)) !important;
-    color: hsl(var(--foreground)) !important;
-  }
-
+  /* Fullscreen — preserva o tema NexON.
+     IMPORTANTE: as vars (--background, --foreground) JA contem hsl(...), entao
+     usar var(--x) DIRETO. Envolver em hsl() gera hsl(hsl(...)) = invalido — era o
+     bug que deixava o fundo transparente (backdrop preto) no light em tela cheia.
+     So o elemento RAIZ recebe um fundo opaco do tema (cobre o ::backdrop preto);
+     os filhos mantem seus proprios fundos do Tailwind (bg-muted, bg-card, bg-accent),
+     entao botoes e sidebar continuam visiveis e corretos. */
+  :fullscreen,
+  :-webkit-full-screen,
+  :-moz-full-screen,
   :-ms-fullscreen {
-    background: hsl(var(--background)) !important;
-    color: hsl(var(--foreground)) !important;
+    background: var(--background);
+    color: var(--foreground);
   }
 
-  /* Garante que elementos internos herdam o tema em fullscreen */
-  /* EXCETO o overlay de conexões que precisa manter background transparente */
-  :fullscreen *:not(.nexon-connections-overlay):not(.nexon-connection-path):not(.nexon-connection-point):not(.nexon-connection-label) {
-    background: inherit;
-  }
-
-  :-webkit-full-screen *:not(.nexon-connections-overlay):not(.nexon-connection-path):not(.nexon-connection-point):not(.nexon-connection-label) {
-    background: inherit;
-  }
-
-  :-moz-full-screen *:not(.nexon-connections-overlay):not(.nexon-connection-path):not(.nexon-connection-point):not(.nexon-connection-label) {
-    background: inherit;
-  }
-
-  :-ms-fullscreen *:not(.nexon-connections-overlay):not(.nexon-connection-path):not(.nexon-connection-point):not(.nexon-connection-label) {
-    background: inherit;
-  }
-
-  /* Exceções para elementos que precisam de backgrounds específicos */
-  :fullscreen .bg-background,
-  :-webkit-full-screen .bg-background,
-  :-moz-full-screen .bg-background,
-  :-ms-fullscreen .bg-background {
-    background: hsl(var(--background)) !important;
-  }
-
-  :fullscreen .bg-card,
-  :-webkit-full-screen .bg-card,
-  :-moz-full-screen .bg-card,
-  :-ms-fullscreen .bg-card {
-    background: hsl(var(--card)) !important;
+  /* O ::backdrop padrao e preto; deixa transparente pra nunca vazar atras do tema */
+  :fullscreen::backdrop,
+  :-webkit-full-screen::backdrop {
+    background: var(--background);
   }
 
   /* ========================================

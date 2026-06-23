@@ -219,7 +219,10 @@ export const DiagramConnections: React.FC<DiagramConnectionsProps> = ({
   const handleConnectionDoubleClick = (conexaoId: string, e: React.MouseEvent) => {
     e.stopPropagation();
 
-    if (editor.mode === 'edit' && confirm('Deletar esta conexão?')) {
+    // Remove direto no duplo-clique. Nao usar window.confirm: o dialog nativo
+    // forca a saida do modo tela cheia. A linha sumir ja e o feedback; e ainda
+    // da pra remover por selecionar + tecla Delete.
+    if (editor.mode === 'edit') {
       removeConexao(conexaoId);
     }
   };

@@ -6,7 +6,7 @@
  */
 
 import { Point, PortPosition, Equipment } from '../types/diagram.types';
-import { getEquipmentSizeInPixels, gridToPixels } from './diagramConstants';
+import { getEquipmentSizeInPixels, gridToPixels, GRID } from './diagramConstants';
 
 // ============================================================================
 // TIPOS
@@ -122,142 +122,87 @@ export const calculateOrthogonalRoute = (
   const start = getPortPoint(origem, portaOrigem);
   const end = getPortPoint(destino, portaDestino);
 
-  // Distância mínima para sair do equipamento antes de fazer curva
-  const MIN_OFFSET = 20;
+  // Roteador direcao-aware: a linha SAI reta da porta de origem E ENTRA reta na
+  // porta de destino (perpendicular as faces), com todas as dobras no grid.
+  const off = GRID.SIZE; // 1 celula de afastamento antes de virar
+  const snap = (v: number) => Math.round(v / GRID.SIZE) * GRID.SIZE;
+  const dirVec = (d: 'up' | 'down' | 'left' | 'right') =>
+    d === 'up' ? { x: 0, y: -1 } :
+    d === 'down' ? { x: 0, y: 1 } :
+    d === 'left' ? { x: -1, y: 0 } :
+    { x: 1, y: 0 };
 
-  const pontos: Point[] = [];
+  const S = start.point;
+  const E = end.point;
+  const dS = dirVec(start.direction);
+  const dE = dirVec(end.direction);
 
-  // Sempre começa no ponto da porta
-  pontos.push(start.point);
+  // Troncos: um passo perpendicular pra fora de cada porta (garante saida/entrada retas).
+  const S1 = { x: snap(S.x + dS.x * off), y: snap(S.y + dS.y * off) };
+  const E1 = { x: snap(E.x + dE.x * off), y: snap(E.y + dE.y * off) };
 
-  // ============================================================================
-  // CASO 1: CONEXÃO SIMPLES (L-SHAPE)
-  // ============================================================================
+  const pontos: Point[] = [S, S1];
 
-  // Se a origem é top/bottom e destino é left/right (ou vice-versa)
-  // Podemos fazer uma única curva em L
-  if (
-    (start.direction === 'up' || start.direction === 'down') &&
-    (end.direction === 'left' || end.direction === 'right')
-  ) {
-    // Primeiro segmento: sai verticalmente
-    const offsetY = start.direction === 'up' ? -MIN_OFFSET : MIN_OFFSET;
-    const midY = start.point.y + offsetY;
+  const sHoriz = dS.x !== 0; // origem sai na horizontal?
+  const eHoriz = dE.x !== 0; // destino entra na horizontal?
 
-    pontos.push({ x: start.point.x, y: midY });
-
-    // Segunda curva: vai horizontal até a linha do destino
-    pontos.push({ x: end.point.x, y: midY });
-
-    // Terceiro segmento: desce/sobe até o destino
-    pontos.push(end.point);
-
-    return pontos;
+  if (sHoriz && !eHoriz) {
+    // origem horizontal + destino vertical -> "L": vai ate o X do destino e sobe/desce reto
+    pontos.push({ x: E1.x, y: S1.y });
+  } else if (!sHoriz && eHoriz) {
+    // origem vertical + destino horizontal -> "L": sobe/desce ate o Y do destino e vai reto
+    pontos.push({ x: S1.x, y: E1.y });
+  } else if (sHoriz && eHoriz) {
+    // ambos horizontais -> "Z" com trecho vertical no meio (no grid)
+    const midX = snap((S1.x + E1.x) / 2);
+    pontos.push({ x: midX, y: S1.y });
+    pontos.push({ x: midX, y: E1.y });
+  } else {
+    // ambos verticais -> "Z" com trecho horizontal no meio (no grid)
+    const midY = snap((S1.y + E1.y) / 2);
+    pontos.push({ x: S1.x, y: midY });
+    pontos.push({ x: E1.x, y: midY });
   }
 
-  if (
-    (start.direction === 'left' || start.direction === 'right') &&
-    (end.direction === 'up' || end.direction === 'down')
-  ) {
-    // Primeiro segmento: sai horizontalmente
-    const offsetX = start.direction === 'left' ? -MIN_OFFSET : MIN_OFFSET;
-    const midX = start.point.x + offsetX;
+  pontos.push(E1, E);
 
-    pontos.push({ x: midX, y: start.point.y });
+  return simplifyOrthogonal(pontos);
+};
 
-    // Segunda curva: vai vertical até a linha do destino
-    pontos.push({ x: midX, y: end.point.y });
-
-    // Terceiro segmento: vai horizontal até o destino
-    pontos.push(end.point);
-
-    return pontos;
+/**
+ * Remove pontos duplicados e funde segmentos colineares — elimina "dobras
+ * fantasma" (ex.: o tronco que sai colinear com o primeiro segmento vira reta).
+ */
+const simplifyOrthogonal = (pts: Point[]): Point[] => {
+  const dedup: Point[] = [];
+  for (const p of pts) {
+    const last = dedup[dedup.length - 1];
+    if (!last || Math.abs(last.x - p.x) > 0.01 || Math.abs(last.y - p.y) > 0.01) {
+      dedup.push(p);
+    }
   }
 
-  // ============================================================================
-  // CASO 2: CONEXÃO PARALELA (Z-SHAPE)
-  // ============================================================================
+  // So funde o ponto do meio se ele estiver ENTRE os vizinhos (redundante mesmo).
+  // Se a linha "volta" (nao-monotonica), mantem o ponto: e o degrau de 1 celula que
+  // garante sair/entrar reto na frente da porta antes de virar.
+  const between = (m: number, p: number, q: number) =>
+    m >= Math.min(p, q) - 0.01 && m <= Math.max(p, q) + 0.01;
 
-  // Ambas as portas são top/bottom (paralelas verticais)
-  if (
-    (start.direction === 'up' || start.direction === 'down') &&
-    (end.direction === 'up' || end.direction === 'down')
-  ) {
-    // Sai verticalmente
-    const offsetY = start.direction === 'up' ? -MIN_OFFSET : MIN_OFFSET;
-    const midY = start.point.y + offsetY;
-
-    pontos.push({ x: start.point.x, y: midY });
-
-    // Vai horizontal até o X do destino
-    pontos.push({ x: end.point.x, y: midY });
-
-    // Desce/sobe até o destino
-    pontos.push(end.point);
-
-    return pontos;
+  const out: Point[] = [];
+  for (let i = 0; i < dedup.length; i++) {
+    if (i > 0 && i < dedup.length - 1) {
+      const a = dedup[i - 1];
+      const b = dedup[i];
+      const c = dedup[i + 1];
+      const redundanteH =
+        Math.abs(a.y - b.y) < 0.01 && Math.abs(b.y - c.y) < 0.01 && between(b.x, a.x, c.x);
+      const redundanteV =
+        Math.abs(a.x - b.x) < 0.01 && Math.abs(b.x - c.x) < 0.01 && between(b.y, a.y, c.y);
+      if (redundanteH || redundanteV) continue;
+    }
+    out.push(dedup[i]);
   }
-
-  // Ambas as portas são left/right (paralelas horizontais)
-  if (
-    (start.direction === 'left' || start.direction === 'right') &&
-    (end.direction === 'left' || end.direction === 'right')
-  ) {
-    // Sai horizontalmente
-    const offsetX = start.direction === 'left' ? -MIN_OFFSET : MIN_OFFSET;
-    const midX = start.point.x + offsetX;
-
-    pontos.push({ x: midX, y: start.point.y });
-
-    // Vai vertical até o Y do destino
-    pontos.push({ x: midX, y: end.point.y });
-
-    // Vai horizontal até o destino
-    pontos.push(end.point);
-
-    return pontos;
-  }
-
-  // ============================================================================
-  // CASO 3: CONEXÃO OPOSTA (U-SHAPE)
-  // ============================================================================
-
-  // Se as direções são opostas (ex: origin.right → destino.left)
-  // Precisa fazer um U
-
-  if (
-    (start.direction === 'up' && end.direction === 'down') ||
-    (start.direction === 'down' && end.direction === 'up')
-  ) {
-    // Sai verticalmente
-    const offsetY = start.direction === 'up' ? -MIN_OFFSET : MIN_OFFSET;
-    const midY = (start.point.y + end.point.y) / 2;
-
-    pontos.push({ x: start.point.x, y: midY });
-    pontos.push({ x: end.point.x, y: midY });
-    pontos.push(end.point);
-
-    return pontos;
-  }
-
-  if (
-    (start.direction === 'left' && end.direction === 'right') ||
-    (start.direction === 'right' && end.direction === 'left')
-  ) {
-    // Sai horizontalmente
-    const offsetX = start.direction === 'left' ? -MIN_OFFSET : MIN_OFFSET;
-    const midX = (start.point.x + end.point.x) / 2;
-
-    pontos.push({ x: midX, y: start.point.y });
-    pontos.push({ x: midX, y: end.point.y });
-    pontos.push(end.point);
-
-    return pontos;
-  }
-
-  // Fallback: linha reta (não deveria acontecer)
-  pontos.push(end.point);
-  return pontos;
+  return out;
 };
 
 // ============================================================================

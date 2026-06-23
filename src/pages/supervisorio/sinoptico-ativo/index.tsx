@@ -79,6 +79,10 @@ import { useUserStore } from '@/store/useUserStore';
 // 🆕 V2: Imports do diagrama refatorado
 import { DiagramV2Wrapper } from '@/features/supervisorio/v2/DiagramV2Wrapper';
 
+// Overview do sinoptico (KPIs, grandezas, demanda, alarmes, grafico) ao redor do diagrama
+import { SinopticoOverview } from '@/features/supervisorio/sinoptico/components/SinopticoOverview';
+import { ConfigPontosModal } from '@/features/supervisorio/sinoptico/components/ConfigPontosModal';
+
 // Tipos - CORRIGIDOS com interfaces locais caso os imports falhem
 import type { ComponenteDU } from "@/types/dtos/sinoptico-ativo";
 
@@ -2091,6 +2095,10 @@ export function SinopticoAtivoPage() {
   // Estados para modal MQTT do inversor
   const [inversorMqttModalOpen, setInversorMqttModalOpen] = useState(false);
   const [selectedInversorMqttId, setSelectedInversorMqttId] = useState<string | null>(null);
+  // R8: modal de pontos do diagrama (Transformador/Disjuntor)
+  const [configPontos, setConfigPontos] = useState<{ id: string; nome: string; categoria: string } | null>(null);
+  // R8: alvo capturado no ultimo clique (para abrir config de pontos a partir dos modais Inversor/PM)
+  const [pontosAlvo, setPontosAlvo] = useState<{ id: string; nome: string; categoria: string } | null>(null);
   const [pivoModalOpen, setPivoModalOpen] = useState(false);
   const [selectedPivoId, setSelectedPivoId] = useState<string | null>(null);
 
@@ -2136,6 +2144,7 @@ export function SinopticoAtivoPage() {
   const [componenteDragId, setComponenteDragId] = useState<string | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const diagramCardRef = useRef<HTMLDivElement>(null);
+  const editDiagramCardRef = useRef<HTMLDivElement>(null);
 
   // Helper para pegar o canvas correto baseado no contexto
   const getActiveCanvasRef = useCallback(() => {
@@ -2144,11 +2153,13 @@ export function SinopticoAtivoPage() {
 
   // Funções para gerenciar fullscreen nativo
   const toggleFullscreen = useCallback(async () => {
-    if (!diagramCardRef.current) return;
+    // Modo view usa diagramCardRef; modo edicao usa editDiagramCardRef (o outro fica null).
+    const cardEl = diagramCardRef.current || editDiagramCardRef.current;
+    if (!cardEl) return;
 
     try {
       if (!document.fullscreenElement) {
-        await diagramCardRef.current.requestFullscreen();
+        await cardEl.requestFullscreen();
         setDiagramaFullscreen(true);
       } else {
         await document.exitFullscreen();
@@ -2793,6 +2804,20 @@ export function SinopticoAtivoPage() {
   // Throttle com requestAnimationFrame para performance máxima
   const rafIdRef = useRef<number | null>(null);
   const lastMousePosRef = useRef<{ x: number; y: number } | null>(null);
+  // Posicao "ao vivo" do no arrastado (ref, nao state). Durante o arrasto movemos
+  // o DOM diretamente por aqui (sem setComponentes) pra NAO re-renderizar a pagina
+  // inteira a cada frame; so commitamos no state no mouseup.
+  const dragLivePosRef = useRef<{ x: number; y: number } | null>(null);
+
+  // Posicao a usar no render: durante o arrasto, a posicao ao vivo do no arrastado
+  // (evita "snap-back" caso a pagina re-renderize no meio do arrasto, ex.: MQTT).
+  const getNodeRenderPos = useCallback(
+    (comp: { id: string; posicao: { x: number; y: number } }) =>
+      isDragging && componenteDragId === comp.id && dragLivePosRef.current
+        ? dragLivePosRef.current
+        : comp.posicao,
+    [isDragging, componenteDragId]
+  );
 
   const handleMouseMove = useCallback(
   (e: MouseEvent) => {
@@ -2828,14 +2853,17 @@ export function SinopticoAtivoPage() {
       newX = Math.max(2, Math.min(98, newX));
       newY = Math.max(2, Math.min(98, newY));
 
-      // Atualização otimizada - cria novo array apenas uma vez
-      setComponentes(prevComponentes =>
-        prevComponentes.map((comp) =>
-          comp.id === componenteDragId
-            ? { ...comp, posicao: { x: newX, y: newY } }
-            : comp
-        )
+      // Mover o DOM DIRETAMENTE (sem setComponentes) — a pagina nao re-renderiza
+      // por frame. O overlay de conexoes remede o DOM a ~60fps, entao as linhas
+      // seguem o no sozinhas. O commit no state acontece so no mouseup.
+      dragLivePosRef.current = { x: newX, y: newY };
+      const nodes = activeCanvas.current.querySelectorAll<HTMLElement>(
+        `[data-node-id="${componenteDragId}"], [data-drag-follow="${componenteDragId}"]`
       );
+      nodes.forEach((el) => {
+        el.style.left = `${newX}%`;
+        el.style.top = `${newY}%`;
+      });
     });
   },
   [isDragging, componenteDragId, dragOffset, getActiveCanvasRef]
@@ -2850,9 +2878,23 @@ export function SinopticoAtivoPage() {
       rafIdRef.current = null;
     }
 
+    // Commit UNICO da posicao final no state (so agora a pagina re-renderiza).
+    const finalPos = dragLivePosRef.current;
+    const dragId = componenteDragId;
+    if (finalPos && dragId) {
+      setComponentes((prev) =>
+        prev.map((comp) =>
+          comp.id === dragId
+            ? { ...comp, posicao: { x: finalPos.x, y: finalPos.y } }
+            : comp
+        )
+      );
+    }
+    dragLivePosRef.current = null;
+
     setIsDragging(false);
     setComponenteDragId(null);
-  }, [isDragging]);
+  }, [isDragging, componenteDragId]);
 
   // === DRAG DE LABELS ===
   const handleLabelMouseDown = useCallback(
@@ -2965,6 +3007,25 @@ export function SinopticoAtivoPage() {
       }
     },
     [modoFerramenta, modoEdicao, connecting, connections, updateDiagram]
+  );
+
+  // Para a juncao (1 ponto so): escolhe a porta pela direcao do outro componente,
+  // pra linha entrar/sair pelo lado certo. So afeta o roteamento ortogonal — o
+  // ponto visual continua sendo um unico no recebendo das 4 direcoes.
+  const portaParaJuncao = useCallback(
+    (
+      juncao: { id: string; posicao?: { x: number; y: number } },
+      conectando: { from: string; port: string } | null
+    ): "top" | "bottom" | "left" | "right" => {
+      if (!conectando) return "bottom";
+      const outro = componentes.find((c) => c.id === conectando.from);
+      if (!outro?.posicao || !juncao?.posicao) return "bottom";
+      const dx = outro.posicao.x - juncao.posicao.x;
+      const dy = outro.posicao.y - juncao.posicao.y;
+      if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? "right" : "left";
+      return dy >= 0 ? "bottom" : "top";
+    },
+    [componentes]
   );
 
   // Funções de controle
@@ -3700,7 +3761,8 @@ if (import.meta.env.PROD) {
 
         <div className="w-full h-full flex flex-col">
           {/* Header */}
-          <div className="flex-none flex flex-row items-center gap-2 sm:gap-3 p-3 sm:p-4 min-w-0">
+          {/* Header + Abas (Unifilar | IoT) na mesma linha no desktop */}
+          <div className="flex-none flex flex-wrap items-center gap-2 sm:gap-3 p-3 sm:p-4 min-w-0">
             <Button
               variant="outline"
               size="sm"
@@ -3712,8 +3774,8 @@ if (import.meta.env.PROD) {
               <span className="hidden sm:inline">Voltar</span>
             </Button>
 
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 flex-1 w-full sm:w-auto min-w-0">
-              <h1 className="text-lg sm:text-2xl font-bold text-foreground truncate min-w-0 max-w-full">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 flex-1 min-w-0">
+              <h1 className="text-base sm:text-lg font-bold text-foreground truncate min-w-0 max-w-full">
                 <span className="hidden sm:inline">Sinóptico: </span>
                 {(() => {
                   // Log removido
@@ -3744,53 +3806,68 @@ if (import.meta.env.PROD) {
             </div>
 
             {/* Debug info */}
-            <div className="text-xs text-muted-foreground hidden lg:block">
+            <div className="text-xs text-muted-foreground hidden xl:block">
               Componentes: {componentes.length} | Equipamentos: {Array.isArray(equipamentos) ? equipamentos.length : 0}
             </div>
 
-          </div>
-
-          {/* Abas: Unifilar | IoT */}
-          {unidadeId && (
-            <div className="flex justify-center gap-1 pt-3 pb-1" style={{ zIndex: 10 }}>
-              <button
-                onClick={() => setSinopticoTab('unifilar')}
-                className={`px-3 sm:px-5 py-1.5 text-sm font-medium rounded-[2px] transition-colors ${
-                  sinopticoTab === 'unifilar'
-                    ? 'bg-muted text-foreground'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-                }`}
-              >
-                <span className="hidden sm:inline">Diagrama </span>Unifilar
-              </button>
-              {podeVerIot && (
+            {/* Abas: Unifilar | IoT — inline no desktop, abaixo (centralizado) no mobile */}
+            {unidadeId && (
+              <div className="flex gap-1 basis-full justify-center sm:basis-auto sm:justify-end sm:ml-auto" style={{ zIndex: 10 }}>
                 <button
-                  onClick={() => setSinopticoTab('iot')}
+                  onClick={() => setSinopticoTab('unifilar')}
                   className={`px-3 sm:px-5 py-1.5 text-sm font-medium rounded-[2px] transition-colors ${
-                    sinopticoTab === 'iot'
+                    sinopticoTab === 'unifilar'
                       ? 'bg-muted text-foreground'
                       : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                   }`}
                 >
-                  IoT
+                  <span className="hidden sm:inline">Diagrama </span>Unifilar
                 </button>
-              )}
-            </div>
-          )}
+                {podeVerIot && (
+                  <button
+                    onClick={() => setSinopticoTab('iot')}
+                    className={`px-3 sm:px-5 py-1.5 text-sm font-medium rounded-[2px] transition-colors ${
+                      sinopticoTab === 'iot'
+                        ? 'bg-muted text-foreground'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                    }`}
+                  >
+                    IoT
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
 
-          {/* V2: Diagrama Unifilar */}
+          {/* V2: Diagrama Unifilar + Overview (KPIs, grandezas, demanda, alarmes, grafico) */}
           {unidadeId && sinopticoTab === 'unifilar' && (
-            <div className="flex-1 min-h-0 border-x border-b border-border rounded-b-lg overflow-hidden">
+            <div className="flex-1 min-h-0 overflow-hidden">
+              <SinopticoOverview
+                unidadeId={unidadeId}
+                unidadeNome={unidadeAtual?.nome}
+                plantaNome={plantaAtual?.nome}
+              >
               <DiagramV2Wrapper
                 unidadeIdFromUrl={unidadeId}
                 modoEdicao={false}
                 availableEquipments={equipamentos}
+                onConfigurarPontos={
+                  isAdmin() ? (eq) => setConfigPontos(eq) : undefined
+                }
                 onComponenteClick={(comp) => {
                   // ✅ Modo visualizar: apenas abre modal, sem seleção visual
 
                   const tag = comp.tag || '';
                   const tipo = comp.tipo || '';
                   const nome = comp.nome || '';
+
+                  // R8: guarda o alvo do clique para a config de pontos (modais Inversor/PM)
+                  const categoriaComp =
+                    comp.dados?.tipoEquipamento?.categoria?.nome ||
+                    comp.dados?.tipo_equipamento_rel?.categoria?.nome ||
+                    comp.categoria ||
+                    '';
+                  setPontosAlvo({ id: comp.id, nome: comp.nome, categoria: categoriaComp });
 
                   console.log('[DiagramV2] Equipment clicked:', {
                     id: comp.id,
@@ -3840,9 +3917,26 @@ if (import.meta.env.PROD) {
                     };
                     setComponenteSelecionado(componenteV1);
                     setModalAberto('A966');
+                  } else {
+                    // Transformador / Disjuntor (sem telemetria propria): abre o
+                    // modal de pontos do diagrama (R8).
+                    const categoria =
+                      comp.dados?.tipoEquipamento?.categoria?.nome ||
+                      comp.dados?.tipo_equipamento_rel?.categoria?.nome ||
+                      comp.categoria ||
+                      '';
+                    if (
+                      categoria.includes('Transformador') ||
+                      categoria.includes('Disjuntor') ||
+                      tipo.includes('TRANSFORMADOR') ||
+                      tipo.includes('DISJUNTOR')
+                    ) {
+                      setConfigPontos({ id: comp.id, nome: comp.nome, categoria });
+                    }
                   }
                 }}
               />
+              </SinopticoOverview>
             </div>
           )}
 
@@ -4360,13 +4454,39 @@ if (import.meta.env.PROD) {
 
             {/* Modo Edição - Tela Cheia */}
             {modoEdicao && (
-              <Card className="flex flex-col min-h-[900px] bg-slate-50 dark:bg-slate-900">
+              <Card
+                ref={editDiagramCardRef}
+                className={`flex flex-col overflow-hidden bg-slate-50 dark:bg-slate-900 ${
+                  diagramaFullscreen
+                    ? "fixed inset-0 z-50 m-0 rounded-none border-0 !bg-slate-50 dark:!bg-slate-900"
+                    : "min-h-[900px]"
+                }`}
+              >
                 <div className="flex items-center justify-between p-4 pb-2 border-b flex-shrink-0 bg-slate-50 dark:bg-black">
                   <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
                     <Network className="h-5 w-5" />
                     Diagrama Unifilar
                   </h3>
                   <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={toggleFullscreen}
+                      className="flex items-center gap-1 sm:gap-2"
+                      title={diagramaFullscreen ? "Sair da tela cheia" : "Expandir diagrama"}
+                    >
+                      {diagramaFullscreen ? (
+                        <>
+                          <Minimize className="h-4 w-4" />
+                          <span className="hidden sm:inline">Sair</span>
+                        </>
+                      ) : (
+                        <>
+                          <Maximize className="h-4 w-4" />
+                          <span className="hidden sm:inline">Tela Cheia</span>
+                        </>
+                      )}
+                    </Button>
                     <Button
                       variant="outline"
                       size="sm"
@@ -4450,8 +4570,8 @@ if (import.meta.env.PROD) {
                           data-node-id={componente.id}
                           className="absolute"
                           style={{
-                            left: `${componente.posicao.x}%`,
-                            top: `${componente.posicao.y}%`,
+                            left: `${getNodeRenderPos(componente).x}%`,
+                            top: `${getNodeRenderPos(componente).y}%`,
                             transform: "translate(-50%, -50%)",
                           }}
                         >
@@ -4490,8 +4610,8 @@ if (import.meta.env.PROD) {
                           data-node-id={componente.id}
                           className="absolute"
                           style={{
-                            left: `${componente.posicao.x}%`,
-                            top: `${componente.posicao.y}%`,
+                            left: `${getNodeRenderPos(componente).x}%`,
+                            top: `${getNodeRenderPos(componente).y}%`,
                             transform: "translate(-50%, -50%)",
                             width: "30px",
                             height: "30px",
@@ -4519,55 +4639,17 @@ if (import.meta.env.PROD) {
                             </div>
                           )}
 
-                          {/* Portas de Conexão para Junction Points */}
+                          {/* Ponto de conexao UNICO da juncao — recebe ligacao das 4 direcoes.
+                              A porta e escolhida pela direcao do outro componente (so afeta o roteamento). */}
                           {modoFerramenta === "conectar" && (
-                            <>
-                              {[
-                                {
-                                  port: "top",
-                                  style: {
-                                    left: "50%",
-                                    top: "-10px",
-                                    transform: "translateX(-50%)",
-                                  },
-                                },
-                                {
-                                  port: "bottom",
-                                  style: {
-                                    left: "50%",
-                                    bottom: "-10px",
-                                    transform: "translateX(-50%)",
-                                  },
-                                },
-                                {
-                                  port: "left",
-                                  style: {
-                                    left: "-10px",
-                                    top: "50%",
-                                    transform: "translateY(-50%)",
-                                  },
-                                },
-                                {
-                                  port: "right",
-                                  style: {
-                                    right: "-10px",
-                                    top: "50%",
-                                    transform: "translateY(-50%)",
-                                  },
-                                },
-                              ].map(({ port, style }) => (
-                                <button
-                                  key={port}
-                                  className="absolute w-4 h-4 bg-blue-500 hover:bg-blue-600 border-2 border-white rounded-full pointer-events-auto transition-all hover:scale-125 shadow-md z-50"
-                                  style={style}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    startConnection(componente.id, port as "top" | "bottom" | "left" | "right");
-                                  }}
-                                  title={`Conectar ${port}`}
-                                />
-                              ))}
-                            </>
+                            <button
+                              className="absolute left-1/2 top-1/2 w-4 h-4 -translate-x-1/2 -translate-y-1/2 bg-blue-500 hover:bg-blue-600 border-2 border-white rounded-full pointer-events-auto transition-all hover:scale-125 shadow-md z-50"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                startConnection(componente.id, portaParaJuncao(componente, connecting));
+                              }}
+                              title={connecting ? "Finalizar conexao" : "Iniciar conexao"}
+                            />
                           )}
 
                           {/* Área de Interação */}
@@ -4613,10 +4695,11 @@ if (import.meta.env.PROD) {
                       .map((componente) => (
                         <div
                           key={`overlay-${componente.id}`}
+                          data-drag-follow={componente.id}
                           className="absolute"
                           style={{
-                            left: `${componente.posicao.x}%`,
-                            top: `${componente.posicao.y}%`,
+                            left: `${getNodeRenderPos(componente).x}%`,
+                            top: `${getNodeRenderPos(componente).y}%`,
                             transform: "translate(-50%, -50%)",
                             width: "60px",
                             height: "60px",
@@ -4785,6 +4868,9 @@ if (import.meta.env.PROD) {
           onClose={fecharModal}
           componenteData={componenteSelecionado}
           nomeComponente={componenteSelecionado?.nome || "Power Meter"}
+          onConfigurarPontos={
+            isAdmin() && pontosAlvo ? () => setConfigPontos(pontosAlvo) : undefined
+          }
         />
 
         <InversorModal
@@ -4799,7 +4885,24 @@ if (import.meta.env.PROD) {
           equipamentoId={selectedInversorMqttId}
           open={inversorMqttModalOpen}
           onOpenChange={setInversorMqttModalOpen}
+          onConfigurarPontos={
+            isAdmin() && pontosAlvo ? () => setConfigPontos(pontosAlvo) : undefined
+          }
         />
+
+        {/* Modal de pontos do diagrama (Transformador/Disjuntor) — R8 */}
+        {unidadeId && configPontos && (
+          <ConfigPontosModal
+            open={!!configPontos}
+            onOpenChange={(o) => {
+              if (!o) setConfigPontos(null);
+            }}
+            unidadeId={unidadeId}
+            equipamentoId={configPontos.id}
+            nome={configPontos.nome}
+            categoria={configPontos.categoria}
+          />
+        )}
 
         {/* Modal do Pivô */}
         {pivoModalOpen && selectedPivoId && (() => {

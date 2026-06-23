@@ -282,14 +282,38 @@ export const getEquipmentIcon = (categoria: string | undefined | null): IconComp
 
   // Buscar ícone no mapa (primeiro tenta com underscores, depois com espaços)
   const IconComponent = ICON_MAP[categoriaNormalizada] || ICON_MAP[categoriaNormalizada.replace(/_/g, ' ')];
+  if (IconComponent) return IconComponent;
 
-  // Se não encontrar, retornar ícone padrão (medidor como fallback)
-  if (!IconComponent) {
-    console.warn(`Ícone não encontrado para categoria "${categoria}". Usando ícone padrão.`);
-    return MedidorIcon;
-  }
+  // Fallback tolerante por palavra-chave (sem acento): captura codigos de tipo
+  // com sufixos/variacoes que nao batem exato no mapa — ex.: PIVO_ABERTO,
+  // PIVO_FECHADO, INVERSOR_FRONIUS_X — antes de cair no padrao (MedidorIcon).
+  const keywordIcon = matchIconByKeyword(categoriaNormalizada);
+  if (keywordIcon) return keywordIcon;
 
-  return IconComponent;
+  console.warn(`Ícone não encontrado para categoria "${categoria}". Usando ícone padrão.`);
+  return MedidorIcon;
+};
+
+/**
+ * Resolve o icone por palavra-chave, ignorando acentos. So roda quando o
+ * ICON_MAP exato falha — nao altera mapeamentos corretos, so melhora o fallback.
+ */
+const matchIconByKeyword = (norm: string): IconComponent | null => {
+  const k = norm.normalize('NFD').replace(/[̀-ͯ]/g, ''); // tira acentos
+  if (k.includes('PIVO')) return PivoIcon;
+  if (k.includes('INVERSOR')) return InversorIcon;
+  if (k.includes('TRANSFORMADOR') || k.includes('TRAFO')) return TransformadorIcon;
+  if (k.includes('DISJUNTOR')) return DisjuntorIcon;
+  if (k.includes('CHAVE')) return ChaveIcon;
+  if (k.includes('CARREGADOR')) return CarregadorEletricoIcon;
+  if (k.includes('MOTOR')) return MotorEletricoIcon;
+  if (k.includes('CAPACITOR')) return BancoCapacitorIcon;
+  if (k.includes('MODULO') || k.includes('PAINEL_SOLAR') || k.includes('PLACA')) return ModulosPVIcon;
+  if (k.includes('QGBT') || k.includes('QUADRO')) return QGBTIcon;
+  if (k.includes('CONCESSIONARIA') || k.includes('REDE')) return RedeConcessionariaIcon;
+  if (k.includes('JUNCTION') || k.includes('JUNCAO') || k === 'JP' || k === 'PONTO') return JunctionPointIcon;
+  if (k.includes('MEDIDOR') || k.includes('POWER_METER') || k.includes('METER')) return MedidorIcon;
+  return null;
 };
 
 // ============================================================================

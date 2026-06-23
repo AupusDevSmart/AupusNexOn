@@ -41,7 +41,7 @@ export const CATEGORIA_FLUXO: Record<string, FluxoEnergia> = {
   'Motor Elétrico': 'CONSUMO',
   'Inversor Frequência': 'CONSUMO',
   'Pivô': 'CONSUMO',
-  'Power Meter (PM)': 'CONSUMO',
+  'Power Meter': 'CONSUMO',
 
   // Ambiguos — admin decide caso a caso
   'Medidor SSU': 'AMBIGUO',

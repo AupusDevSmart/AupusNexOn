@@ -9,9 +9,10 @@
  * - Aplica transformações CSS (translate + scale)
  */
 
-import React, { useRef, useCallback, useEffect, MouseEvent } from 'react';
+import React, { useRef, useCallback, useEffect, useState, MouseEvent } from 'react';
 import { useDiagramStore } from '../../hooks/useDiagramStore';
-import { CANVAS, GRID, VIEWPORT, getThemeColors, pixelsToGrid } from '../../utils/diagramConstants';
+import { CANVAS, GRID, VIEWPORT, getThemeColors, pixelsToGrid, PORT } from '../../utils/diagramConstants';
+import { getPortPoint } from '../../utils/orthogonalRouting';
 import './DiagramViewport.css';
 
 interface DiagramViewportProps {
@@ -34,6 +35,14 @@ export const DiagramViewport: React.FC<DiagramViewportProps> = ({ children, onBa
   const svgRef = useRef<SVGSVGElement>(null);
   const isDraggingRef = useRef(false);
   const lastMousePosRef = useRef({ x: 0, y: 0 });
+
+  // Ponta da linha "elastica" (rubber-band) enquanto conecta — coords SVG.
+  const [connMouse, setConnMouse] = useState<{ x: number; y: number } | null>(null);
+
+  // Zerar a linha elastica quando nao ha conexao em andamento (evita flash ao reiniciar).
+  useEffect(() => {
+    if (!editor.connectingFrom) setConnMouse(null);
+  }, [editor.connectingFrom]);
 
   const themeColors = getThemeColors(theme);
 
@@ -202,6 +211,18 @@ export const DiagramViewport: React.FC<DiagramViewportProps> = ({ children, onBa
 
   const handleMouseMove = useCallback(
     (e: MouseEvent<SVGSVGElement>) => {
+      // Linha "elastica": enquanto conecta, a ponta segue o cursor (coords SVG).
+      if (editor.mode === 'connecting' && editor.connectingFrom) {
+        const svg = svgRef.current;
+        if (svg) {
+          const pt = svg.createSVGPoint();
+          pt.x = e.clientX;
+          pt.y = e.clientY;
+          const p = pt.matrixTransform(svg.getScreenCTM()?.inverse());
+          setConnMouse({ x: p.x, y: p.y });
+        }
+      }
+
       // Verificar se está arrastando um equipamento
       if (editor.draggingEquipmentId && editor.dragOffset) {
         const svg = svgRef.current;
@@ -238,7 +259,7 @@ export const DiagramViewport: React.FC<DiagramViewportProps> = ({ children, onBa
       // Atualizar pan
       setPan(viewport.x + deltaX, viewport.y + deltaY);
     },
-    [editor.draggingEquipmentId, editor.dragOffset, editor.snapToGrid, viewport.x, viewport.y, viewport.scale, setPan, updateEquipamentoPosition]
+    [editor.draggingEquipmentId, editor.dragOffset, editor.snapToGrid, editor.mode, editor.connectingFrom, viewport.x, viewport.y, viewport.scale, setPan, updateEquipamentoPosition]
   );
 
   const handleMouseUp = useCallback(() => {
@@ -369,6 +390,7 @@ export const DiagramViewport: React.FC<DiagramViewportProps> = ({ children, onBa
             transformOrigin: 'center center',
             transition: viewport.isDragging ? 'none' : 'transform 0.1s ease-out',
             touchAction: 'none',
+            cursor: editor.draggingEquipmentId ? 'grabbing' : undefined,
           }}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
@@ -397,27 +419,49 @@ export const DiagramViewport: React.FC<DiagramViewportProps> = ({ children, onBa
           )}
 
           {/* Conteúdo (equipamentos, conexões, etc) */}
-          <g className="diagram-content">{children}</g>
+          <g className="diagram-content">
+            {children}
+
+            {/* Linha "elastica" (rubber-band): da porta de origem ate o cursor */}
+            {editor.mode === 'connecting' && editor.connectingFrom && connMouse && (() => {
+              const fromEq = equipamentos.find(eq => eq.id === editor.connectingFrom!.equipamentoId);
+              if (!fromEq) return null;
+              const start = getPortPoint(fromEq, editor.connectingFrom!.porta).point;
+              return (
+                <line
+                  x1={start.x}
+                  y1={start.y}
+                  x2={connMouse.x}
+                  y2={connMouse.y}
+                  stroke={PORT.COLOR_ACTIVE}
+                  strokeWidth={3}
+                  strokeDasharray="8 5"
+                  strokeLinecap="round"
+                  pointerEvents="none"
+                />
+              );
+            })()}
+          </g>
         </svg>
       </div>
 
       {/* Controles de zoom - FORA do viewport-wrapper para não serem cortados */}
       <div
-        className="absolute bottom-2 right-2 z-[1000] flex items-center gap-1.5 rounded-lg bg-black/70 p-1.5 sm:bottom-5 sm:right-5 sm:gap-2 sm:p-2.5"
+        className="absolute bottom-2 right-2 z-[1000] flex items-center gap-1 rounded-md bg-black/70 p-1 sm:bottom-4 sm:right-4 sm:gap-1.5 sm:p-1.5"
         style={{ pointerEvents: 'auto' }}
       >
         <button
           onClick={() => setZoom(viewport.scale + VIEWPORT.ZOOM_STEP)}
           title="Zoom In"
-          className="cursor-pointer rounded bg-neutral-700 px-2 py-0.5 text-sm leading-none text-white sm:px-3 sm:py-1.5 sm:text-base"
+          className="cursor-pointer rounded bg-neutral-700 px-1.5 py-0.5 text-xs leading-none text-white sm:px-2 sm:py-1 sm:text-sm"
         >
           +
         </button>
-        <span className="tabular-nums text-xs text-white sm:text-sm">{Math.round(viewport.scale * 100)}%</span>
+        <span className="tabular-nums text-[10px] text-white sm:text-xs">{Math.round(viewport.scale * 100)}%</span>
         <button
           onClick={() => setZoom(viewport.scale - VIEWPORT.ZOOM_STEP)}
           title="Zoom Out"
-          className="cursor-pointer rounded bg-neutral-700 px-2 py-0.5 text-sm leading-none text-white sm:px-3 sm:py-1.5 sm:text-base"
+          className="cursor-pointer rounded bg-neutral-700 px-1.5 py-0.5 text-xs leading-none text-white sm:px-2 sm:py-1 sm:text-sm"
         >
           −
         </button>

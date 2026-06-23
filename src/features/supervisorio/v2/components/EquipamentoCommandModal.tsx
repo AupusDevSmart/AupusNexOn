@@ -22,7 +22,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Settings2 } from 'lucide-react';
 import {
   equipamentosApi,
   type CommandResult,
@@ -42,6 +42,8 @@ export interface EquipamentoCommandModalProps {
     topico_mqtt?: string | null;
     categoria?: string | null;
   };
+  /** Se fornecido (admin), exibe o botao "Configurar Pontos" (caixas de dados R8). */
+  onConfigurarPontos?: () => void;
 }
 
 interface PendingState {
@@ -63,6 +65,7 @@ export const EquipamentoCommandModal: React.FC<EquipamentoCommandModalProps> = (
   open,
   onClose,
   equipamento,
+  onConfigurarPontos,
 }) => {
   const [pending, setPending] = useState<PendingState>({});
 
@@ -187,6 +190,21 @@ export const EquipamentoCommandModal: React.FC<EquipamentoCommandModalProps> = (
             </div>
           </section>
         ))}
+
+        {onConfigurarPontos && (
+          <div className="mt-2 flex justify-end border-t pt-3">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onConfigurarPontos}
+              className="gap-2"
+            >
+              <Settings2 className="h-4 w-4" />
+              Configurar Pontos
+            </Button>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );

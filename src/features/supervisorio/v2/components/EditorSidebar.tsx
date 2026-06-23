@@ -84,9 +84,11 @@ export const EditorSidebar: React.FC<EditorSidebarProps> = ({
         </div>
       )}
 
-      {/* Conteúdo da sidebar - só mostra quando expandido */}
+      {/* Conteúdo da sidebar - só mostra quando expandido.
+          Um unico container rolavel envolve TODAS as secoes, pra dar pra rolar a
+          sidebar inteira quando ela e baixa (e nao so a secao "No Diagrama"). */}
       {isExpanded && (
-        <>
+        <div className="flex-1 min-h-0 overflow-y-auto">
       {/* Seção: Adicionar Equipamento */}
       <div className="px-4 py-3 border-b">
         <h3 className="text-xs font-semibold text-foreground mb-2">Adicionar Equipamento</h3>
@@ -154,13 +156,13 @@ export const EditorSidebar: React.FC<EditorSidebarProps> = ({
         </div>
       )}
 
-      {/* Seção: No Diagrama */}
-      <div className="px-4 py-3 border-b flex-1 overflow-hidden flex flex-col">
+      {/* Seção: No Diagrama (flui naturalmente — quem rola e o container externo) */}
+      <div className="px-4 py-3 border-b">
         <h3 className="text-xs font-semibold text-foreground mb-2">
           No Diagrama ({equipamentos.length})
         </h3>
 
-        <div className="flex flex-col gap-1 overflow-y-auto flex-1">
+        <div className="flex flex-col gap-1">
           {equipamentos.length === 0 ? (
             <p className="text-xs text-muted-foreground py-4 text-center">
               Nenhum equipamento adicionado
@@ -239,7 +241,7 @@ export const EditorSidebar: React.FC<EditorSidebarProps> = ({
           </div>
         </div>
       </div>
-      </>
+      </div>
       )}
     </div>
   );

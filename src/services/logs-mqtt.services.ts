@@ -24,6 +24,7 @@ export interface FindAllLogsMqttParams {
   limit?: number;
   search?: string;
   equipamentoId?: string;
+  unidadeId?: string;
   regraId?: string;
   severidade?: string;
   dataInicial?: string;

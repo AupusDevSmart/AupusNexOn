@@ -23,6 +23,7 @@ import {
   YAxis,
 } from "recharts";
 import { ConfiguracaoDemandaModal, ConfiguracaoDemanda, EquipamentoConfig } from "./ConfiguracaoDemandaModal";
+import type { ReactNode } from "react";
 import { CATEGORIA_FLUXO, resolverFluxoEquipamento } from "../utils/categoria-fluxo";
 import { useDemandaAgregada, PeriodoFiltro } from "@/hooks/useDemandaAgregada";
 import { useDadosM160 } from "@/hooks/useDadosM160";
@@ -45,6 +46,10 @@ interface SinopticoGraficosV2Props {
   valorContratado?: number;
   percentualAdicional?: number;
   onConfigSaved?: () => void;
+  /** Quando definido, renderiza apenas um dos graficos (controlado externamente). */
+  apenasGrafico?: 'demanda' | 'tensao' | 'fp';
+  /** Conteudo extra ao lado do titulo do grafico (ex.: toggles de variavel). */
+  controleVariavel?: ReactNode;
 }
 
 interface CustomTooltipProps {
@@ -107,6 +112,8 @@ export function SinopticoGraficosV2({
   valorContratado = 2500,
   percentualAdicional = 5,
   onConfigSaved,
+  apenasGrafico,
+  controleVariavel,
 }: SinopticoGraficosV2Props) {
   const { theme } = useTheme();
   const isMobile = useIsMobile();
@@ -602,15 +609,16 @@ export function SinopticoGraficosV2({
   }, [periodo]);
 
   return (
-    <div className={`w-full flex flex-col gap-4 ${soDemanda ? 'xl:flex-1 xl:min-h-0' : ''}`}>
+    <div className={`w-full flex flex-col gap-4 ${soDemanda && !apenasGrafico ? 'xl:flex-1 xl:min-h-0' : ''}`}>
       {/* Gráfico de Demanda */}
-      {temEquipamentosDisponiveis && (
-      <Card className={soDemanda ? 'xl:flex-1 xl:min-h-0 xl:flex xl:flex-col' : undefined}>
+      {temEquipamentosDisponiveis && (!apenasGrafico || apenasGrafico === 'demanda') && (
+      <Card className={soDemanda && !apenasGrafico ? 'xl:flex-1 xl:min-h-0 xl:flex xl:flex-col' : undefined}>
         <CardHeader className="p-2 space-y-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Zap className="h-5 w-5 text-yellow-500" />
               <CardTitle>Demanda</CardTitle>
+              {controleVariavel}
             </div>
             <div className="flex items-center gap-1">
               <Button
@@ -695,7 +703,7 @@ export function SinopticoGraficosV2({
           </div>
         </CardHeader>
 
-        <CardContent className={`p-2 ${soDemanda ? 'xl:flex-1 xl:min-h-0 xl:flex xl:flex-col' : ''}`}>
+        <CardContent className={`p-2 ${soDemanda && !apenasGrafico ? 'xl:flex-1 xl:min-h-0 xl:flex xl:flex-col' : ''}`}>
           {/* Alerta de qualidade — só em modo 'dia' */}
           {periodo.tipo === 'dia' && qualidadeDados.status !== 'OK' && (
             <div className="mb-3 p-2 rounded-md bg-muted/40">
@@ -710,12 +718,12 @@ export function SinopticoGraficosV2({
           )}
 
           {isInitialLoading ? (
-            <div className="flex flex-col items-center justify-center h-[300px] space-y-3">
+            <div className={`flex flex-col items-center justify-center space-y-3 ${apenasGrafico ? 'h-[150px]' : 'h-[300px]'}`}>
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
               <p className="text-sm text-muted-foreground">Carregando dados do gráfico...</p>
             </div>
           ) : dadosFormatadosPotencia.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-[300px] space-y-3">
+            <div className={`flex flex-col items-center justify-center space-y-3 ${apenasGrafico ? 'h-[150px]' : 'h-[300px]'}`}>
               <AlertTriangle className="h-8 w-8 text-muted-foreground" />
               <div className="text-center space-y-2">
                 <p className="text-sm font-medium text-muted-foreground">
@@ -729,12 +737,12 @@ export function SinopticoGraficosV2({
               </div>
             </div>
           ) : ehSeriesPotencia ? (
-            <div className={soDemanda ? 'h-[350px] xl:h-auto xl:flex-1 xl:min-h-0' : 'h-[350px]'}>
+            <div className={apenasGrafico ? 'h-[150px]' : soDemanda ? 'h-[350px] xl:h-auto xl:flex-1 xl:min-h-0' : 'h-[350px]'}>
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={dadosFormatadosPotencia}>
                 <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                 <XAxis dataKey="hora" fontSize={isMobile ? 10 : 12} interval="preserveStartEnd" minTickGap={isMobile ? 28 : 12} />
-                <YAxis fontSize={12} label={{ value: unidadeGrafico, angle: -90, position: 'insideLeft' }} />
+                <YAxis fontSize={10} label={{ value: unidadeGrafico, angle: -90, position: 'insideLeft' }} />
                 <Tooltip content={<CustomTooltip unidade={unidadeGrafico} />} />
                 <Legend wrapperStyle={{ fontSize: isMobile ? '10px' : '12px' }} iconType="line" />
                 <Line
@@ -773,12 +781,12 @@ export function SinopticoGraficosV2({
             </ResponsiveContainer>
             </div>
           ) : (
-            <div className={soDemanda ? 'h-[350px] xl:h-auto xl:flex-1 xl:min-h-0' : 'h-[350px]'}>
+            <div className={apenasGrafico ? 'h-[150px]' : soDemanda ? 'h-[350px] xl:h-auto xl:flex-1 xl:min-h-0' : 'h-[350px]'}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={dadosFormatadosPotencia}>
                 <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                 <XAxis dataKey="label" fontSize={isMobile ? 10 : 12} interval="preserveStartEnd" minTickGap={isMobile ? 28 : 12} />
-                <YAxis fontSize={12} label={{ value: unidadeGrafico, angle: -90, position: 'insideLeft' }} />
+                <YAxis fontSize={10} label={{ value: unidadeGrafico, angle: -90, position: 'insideLeft' }} />
                 <Tooltip content={<CustomTooltip unidade={unidadeGrafico} />} />
                 <Legend wrapperStyle={{ fontSize: isMobile ? '10px' : '12px' }} iconType="rect" />
                 <Bar dataKey="energia" name="Energia" fill={corLinhaDemanda} radius={[2, 2, 0, 0]} />
@@ -791,13 +799,14 @@ export function SinopticoGraficosV2({
       )}
 
       {/* Gráfico de Tensão - Só mostra se tiver M160 */}
-      {temM160Disponivel && (
+      {temM160Disponivel && (!apenasGrafico || apenasGrafico === 'tensao') && (
       <Card>
         <CardHeader className="p-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Activity className="h-5 w-5 text-blue-500" />
               <CardTitle>Tensão</CardTitle>
+              {controleVariavel}
             </div>
             <div className="flex items-center gap-2">
               <Button
@@ -814,15 +823,13 @@ export function SinopticoGraficosV2({
         </CardHeader>
         <CardContent className="p-2">
           {/* Controles */}
-          <div className="mb-4 space-y-3">
-            {/* Select M160 */}
-            <div className="flex items-center gap-2">
-              <Label htmlFor="m160-tensao" className="text-sm min-w-[80px]">
-                Medidor:
-              </Label>
+          <div className={`flex flex-wrap items-center gap-x-3 gap-y-2 ${apenasGrafico ? 'mb-2' : 'mb-4'}`}>
+            {/* Medidor + Fases na mesma linha, compactos */}
+            <div className="flex items-center gap-1.5">
+              <Label htmlFor="m160-tensao" className="text-xs text-muted-foreground">Medidor</Label>
               <Select value={m160Selecionado} onValueChange={setM160Selecionado}>
-                <SelectTrigger id="m160-tensao" className="w-full sm:w-[250px]">
-                  <SelectValue placeholder="Selecione um M160" />
+                <SelectTrigger id="m160-tensao" className="h-7 w-[150px] text-xs">
+                  <SelectValue placeholder="Selecione" />
                 </SelectTrigger>
                 <SelectContent>
                   {equipamentosM160.map((eq) => (
@@ -833,59 +840,36 @@ export function SinopticoGraficosV2({
                 </SelectContent>
               </Select>
             </div>
-
-            {/* Checkboxes Fases */}
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-              <Label className="text-sm min-w-[80px]">Fases:</Label>
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2.5">
+              <span className="text-xs text-muted-foreground">Fases:</span>
+              {(['A', 'B', 'C'] as const).map((f) => (
+                <label
+                  key={f}
+                  htmlFor={`fase-${f.toLowerCase()}-tensao`}
+                  className="flex items-center gap-1 text-xs cursor-pointer"
+                >
                   <Checkbox
-                    id="fase-a-tensao"
-                    checked={fasesTensao.A}
+                    id={`fase-${f.toLowerCase()}-tensao`}
+                    className="h-3.5 w-3.5"
+                    checked={fasesTensao[f]}
                     onCheckedChange={(checked) =>
-                      setFasesTensao((prev) => ({ ...prev, A: !!checked }))
+                      setFasesTensao((prev) => ({ ...prev, [f]: !!checked }))
                     }
                   />
-                  <Label htmlFor="fase-a-tensao" className="text-sm cursor-pointer">
-                    Fase A
-                  </Label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="fase-b-tensao"
-                    checked={fasesTensao.B}
-                    onCheckedChange={(checked) =>
-                      setFasesTensao((prev) => ({ ...prev, B: !!checked }))
-                    }
-                  />
-                  <Label htmlFor="fase-b-tensao" className="text-sm cursor-pointer">
-                    Fase B
-                  </Label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="fase-c-tensao"
-                    checked={fasesTensao.C}
-                    onCheckedChange={(checked) =>
-                      setFasesTensao((prev) => ({ ...prev, C: !!checked }))
-                    }
-                  />
-                  <Label htmlFor="fase-c-tensao" className="text-sm cursor-pointer">
-                    Fase C
-                  </Label>
-                </div>
-              </div>
+                  {f}
+                </label>
+              ))}
             </div>
           </div>
 
           {/* Gráfico */}
           {isInitialLoadingM160 ? (
-            <div className="flex flex-col items-center justify-center h-[300px] space-y-3">
+            <div className={`flex flex-col items-center justify-center space-y-3 ${apenasGrafico ? 'h-[150px]' : 'h-[300px]'}`}>
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
               <p className="text-sm text-muted-foreground">Carregando dados...</p>
             </div>
           ) : !m160Selecionado ? (
-            <div className="flex flex-col items-center justify-center h-[300px] space-y-3">
+            <div className={`flex flex-col items-center justify-center space-y-3 ${apenasGrafico ? 'h-[150px]' : 'h-[300px]'}`}>
               <Activity className="h-12 w-12 text-muted-foreground/50" />
               <div className="text-center space-y-1">
                 <p className="text-sm font-medium text-muted-foreground">
@@ -897,7 +881,7 @@ export function SinopticoGraficosV2({
               </div>
             </div>
           ) : dadosFormatadosTensao.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-[300px] space-y-3">
+            <div className={`flex flex-col items-center justify-center space-y-3 ${apenasGrafico ? 'h-[150px]' : 'h-[300px]'}`}>
               <Activity className="h-12 w-12 text-muted-foreground/50" />
               <div className="text-center space-y-1">
                 <p className="text-sm font-medium text-muted-foreground">
@@ -910,7 +894,7 @@ export function SinopticoGraficosV2({
             </div>
           ) : (
             <div className="bg-card p-4 rounded-lg border">
-              <ResponsiveContainer width="100%" height={300}>
+              <ResponsiveContainer width="100%" height={apenasGrafico ? 150 : 300}>
                 <LineChart data={dadosFormatadosTensao}>
                   <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                 <XAxis dataKey="hora" fontSize={isMobile ? 10 : 12} interval="preserveStartEnd" minTickGap={isMobile ? 28 : 12} />
@@ -971,13 +955,14 @@ export function SinopticoGraficosV2({
       )}
 
       {/* Gráfico de Fator de Potência - Só mostra se tiver M160 */}
-      {temM160Disponivel && (
+      {temM160Disponivel && (!apenasGrafico || apenasGrafico === 'fp') && (
       <Card>
         <CardHeader className="p-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <TrendingUp className="h-5 w-5 text-purple-500" />
               <CardTitle>Fator de Potência</CardTitle>
+              {controleVariavel}
             </div>
             <div className="flex items-center gap-2">
               <Button
@@ -994,15 +979,13 @@ export function SinopticoGraficosV2({
         </CardHeader>
         <CardContent className="p-2">
           {/* Controles */}
-          <div className="mb-4 space-y-3">
-            {/* Select M160 */}
-            <div className="flex items-center gap-2">
-              <Label htmlFor="m160-fp" className="text-sm min-w-[80px]">
-                Medidor:
-              </Label>
+          <div className={`flex flex-wrap items-center gap-x-3 gap-y-2 ${apenasGrafico ? 'mb-2' : 'mb-4'}`}>
+            {/* Medidor + Fases na mesma linha, compactos */}
+            <div className="flex items-center gap-1.5">
+              <Label htmlFor="m160-fp" className="text-xs text-muted-foreground">Medidor</Label>
               <Select value={m160Selecionado} onValueChange={setM160Selecionado}>
-                <SelectTrigger id="m160-fp" className="w-full sm:w-[250px]">
-                  <SelectValue placeholder="Selecione um M160" />
+                <SelectTrigger id="m160-fp" className="h-7 w-[150px] text-xs">
+                  <SelectValue placeholder="Selecione" />
                 </SelectTrigger>
                 <SelectContent>
                   {equipamentosM160.map((eq) => (
@@ -1013,59 +996,36 @@ export function SinopticoGraficosV2({
                 </SelectContent>
               </Select>
             </div>
-
-            {/* Checkboxes Fases */}
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-              <Label className="text-sm min-w-[80px]">Fases:</Label>
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2.5">
+              <span className="text-xs text-muted-foreground">Fases:</span>
+              {(['A', 'B', 'C'] as const).map((f) => (
+                <label
+                  key={f}
+                  htmlFor={`fase-${f.toLowerCase()}-fp`}
+                  className="flex items-center gap-1 text-xs cursor-pointer"
+                >
                   <Checkbox
-                    id="fase-a-fp"
-                    checked={fasesFP.A}
+                    id={`fase-${f.toLowerCase()}-fp`}
+                    className="h-3.5 w-3.5"
+                    checked={fasesFP[f]}
                     onCheckedChange={(checked) =>
-                      setFasesFP((prev) => ({ ...prev, A: !!checked }))
+                      setFasesFP((prev) => ({ ...prev, [f]: !!checked }))
                     }
                   />
-                  <Label htmlFor="fase-a-fp" className="text-sm cursor-pointer">
-                    Fase A
-                  </Label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="fase-b-fp"
-                    checked={fasesFP.B}
-                    onCheckedChange={(checked) =>
-                      setFasesFP((prev) => ({ ...prev, B: !!checked }))
-                    }
-                  />
-                  <Label htmlFor="fase-b-fp" className="text-sm cursor-pointer">
-                    Fase B
-                  </Label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="fase-c-fp"
-                    checked={fasesFP.C}
-                    onCheckedChange={(checked) =>
-                      setFasesFP((prev) => ({ ...prev, C: !!checked }))
-                    }
-                  />
-                  <Label htmlFor="fase-c-fp" className="text-sm cursor-pointer">
-                    Fase C
-                  </Label>
-                </div>
-              </div>
+                  {f}
+                </label>
+              ))}
             </div>
           </div>
 
           {/* Gráfico */}
           {isInitialLoadingM160 ? (
-            <div className="flex flex-col items-center justify-center h-[300px] space-y-3">
+            <div className={`flex flex-col items-center justify-center space-y-3 ${apenasGrafico ? 'h-[150px]' : 'h-[300px]'}`}>
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
               <p className="text-sm text-muted-foreground">Carregando dados...</p>
             </div>
           ) : !m160Selecionado ? (
-            <div className="flex flex-col items-center justify-center h-[300px] space-y-3">
+            <div className={`flex flex-col items-center justify-center space-y-3 ${apenasGrafico ? 'h-[150px]' : 'h-[300px]'}`}>
               <TrendingUp className="h-12 w-12 text-muted-foreground/50" />
               <div className="text-center space-y-1">
                 <p className="text-sm font-medium text-muted-foreground">
@@ -1077,7 +1037,7 @@ export function SinopticoGraficosV2({
               </div>
             </div>
           ) : dadosFormatadosFP.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-[300px] space-y-3">
+            <div className={`flex flex-col items-center justify-center space-y-3 ${apenasGrafico ? 'h-[150px]' : 'h-[300px]'}`}>
               <TrendingUp className="h-12 w-12 text-muted-foreground/50" />
               <div className="text-center space-y-1">
                 <p className="text-sm font-medium text-muted-foreground">
@@ -1090,7 +1050,7 @@ export function SinopticoGraficosV2({
             </div>
           ) : (
             <div className="bg-card p-4 rounded-lg border">
-              <ResponsiveContainer width="100%" height={300}>
+              <ResponsiveContainer width="100%" height={apenasGrafico ? 150 : 300}>
                 <LineChart data={dadosFormatadosFP}>
                   <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                   <XAxis dataKey="hora" fontSize={isMobile ? 10 : 12} interval="preserveStartEnd" minTickGap={isMobile ? 28 : 12} />
@@ -1212,7 +1172,7 @@ export function SinopticoGraficosV2({
                 <LineChart data={dadosFormatadosPotencia}>
                   <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                   <XAxis dataKey="hora" fontSize={isMobile ? 10 : 12} interval="preserveStartEnd" minTickGap={isMobile ? 28 : 12} />
-                  <YAxis fontSize={12} label={{ value: unidadeGrafico, angle: -90, position: 'insideLeft' }} />
+                  <YAxis fontSize={10} label={{ value: unidadeGrafico, angle: -90, position: 'insideLeft' }} />
                   <Tooltip content={<CustomTooltip unidade={unidadeGrafico} />} />
                   <Legend wrapperStyle={{ fontSize: isMobile ? '10px' : '12px' }} iconType="line" />
                   <Brush
@@ -1261,7 +1221,7 @@ export function SinopticoGraficosV2({
                 <BarChart data={dadosFormatadosPotencia}>
                   <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                   <XAxis dataKey="label" fontSize={isMobile ? 10 : 12} interval="preserveStartEnd" minTickGap={isMobile ? 28 : 12} />
-                  <YAxis fontSize={12} label={{ value: unidadeGrafico, angle: -90, position: 'insideLeft' }} />
+                  <YAxis fontSize={10} label={{ value: unidadeGrafico, angle: -90, position: 'insideLeft' }} />
                   <Tooltip content={<CustomTooltip unidade={unidadeGrafico} />} />
                   <Legend wrapperStyle={{ fontSize: isMobile ? '10px' : '12px' }} iconType="rect" />
                   <Bar dataKey="energia" name="Energia" fill={corLinhaDemanda} radius={[2, 2, 0, 0]} />

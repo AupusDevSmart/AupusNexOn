@@ -10,8 +10,8 @@
  * - Salvamento atômico (PUT /layout)
  */
 
-import React, { useEffect, useState } from 'react';
-import { CircuitBoard } from 'lucide-react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { CircuitBoard, Maximize2, Minimize2 } from 'lucide-react';
 import { useDiagramStore } from './hooks/useDiagramStore';
 import { DiagramViewport } from './components/DiagramViewer/DiagramViewport';
 import { DiagramConnections } from './components/DiagramViewer/DiagramConnections';
@@ -109,6 +109,41 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
   const [showCreateEquipmentModal, setShowCreateEquipmentModal] = useState(false);
 
   const { toast } = useToast();
+
+  // ==========================================================================
+  // FULLSCREEN (botao Expandir, ao lado do Ajustar Zoom)
+  // ==========================================================================
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  const toggleFullscreen = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    if (!document.fullscreenElement) {
+      el.requestFullscreen?.();
+    } else {
+      document.exitFullscreen?.();
+    }
+  }, []);
+
+  useEffect(() => {
+    const onFs = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', onFs);
+    return () => document.removeEventListener('fullscreenchange', onFs);
+  }, []);
+
+  // Callbacks ESTAVEIS para os nos (permitem React.memo no EquipmentNode — so o no
+  // arrastado re-renderiza, nao todos). Mudam so quando o modo muda.
+  const handleNodeClick = useCallback((equipment: Equipment) => {
+    if (currentMode === 'view' && onEquipmentClick) onEquipmentClick(equipment);
+  }, [currentMode, onEquipmentClick]);
+
+  const handleNodeDoubleClick = useCallback((equipment: Equipment) => {
+    if (currentMode === 'edit') {
+      setEditingEquipment(equipment);
+      setShowEditModal(true);
+    }
+  }, [currentMode]);
 
   // ==========================================================================
   // LIFECYCLE
@@ -507,7 +542,7 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
   }
 
   return (
-    <div className="w-full h-full flex flex-col overflow-hidden">
+    <div ref={containerRef} className="w-full h-full flex flex-col overflow-hidden bg-background">
       {/* Toolbar superior */}
       <div className="flex justify-between items-center px-5 py-2 bg-muted/30 min-h-[56px]">
         <div className="flex items-center gap-3">
@@ -521,6 +556,18 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Botão de expandir (tela cheia) — à esquerda do Ajustar Zoom */}
+          <Button
+            onClick={toggleFullscreen}
+            variant="ghost"
+            size="sm"
+            className="h-8 gap-2"
+            title={isFullscreen ? 'Sair da tela cheia' : 'Expandir diagrama (tela cheia)'}
+          >
+            {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+            <span className="hidden sm:inline">{isFullscreen ? 'Sair' : 'Expandir'}</span>
+          </Button>
+
           {/* Botão de ajustar zoom */}
           <Button
             onClick={fitToContent}
@@ -594,7 +641,7 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
       </div>
 
       {/* Container principal com sidebar (se modo edição) */}
-      <div className="flex-1 flex relative" style={{ overflow: 'visible' }}>
+      <div className="flex-1 flex relative min-h-0" style={{ overflow: 'visible' }}>
         {/* Viewport com diagrama */}
         <DiagramViewport onBackgroundClick={onBackgroundClick}>
           {/* Camada 1: Conexões (atrás dos equipamentos) */}
@@ -609,8 +656,8 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
               <EquipmentNode
                 key={equipment.id}
                 equipment={equipment}
-                onClick={currentMode === 'view' && onEquipmentClick ? () => onEquipmentClick(equipment) : undefined}
-                onDoubleClick={currentMode === 'edit' ? () => handleEditEquipment(equipment) : undefined}
+                onClick={handleNodeClick}
+                onDoubleClick={handleNodeDoubleClick}
               />
             ))}
           </g>

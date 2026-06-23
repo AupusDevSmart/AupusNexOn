@@ -22,15 +22,16 @@ import {
   getThemeColors,
 } from '../../utils/diagramConstants';
 import { EquipmentIconWrapper } from '../icons/EquipmentIconFactory';
+import { DiagramaPontosBox } from '@/features/supervisorio/sinoptico/components/DiagramaPontosBox';
 import './EquipmentNode.css';
 
 interface EquipmentNodeProps {
   equipment: Equipment;
-  onClick?: () => void;
-  onDoubleClick?: () => void;
+  onClick?: (equipment: Equipment) => void;
+  onDoubleClick?: (equipment: Equipment) => void;
 }
 
-export const EquipmentNode: React.FC<EquipmentNodeProps> = ({ equipment, onClick, onDoubleClick }) => {
+const EquipmentNodeImpl: React.FC<EquipmentNodeProps> = ({ equipment, onClick, onDoubleClick }) => {
   const theme = useDiagramStore(state => state.theme);
   const editor = useDiagramStore(state => state.editor);
   const selectEquipamento = useDiagramStore(state => state.selectEquipamento);
@@ -74,7 +75,7 @@ export const EquipmentNode: React.FC<EquipmentNodeProps> = ({ equipment, onClick
     // Modo VIEW: Chamar callback onClick se fornecido
     if (editor.mode === 'view') {
       if (onClick) {
-        onClick();
+        onClick(equipment);
       }
       return;
     }
@@ -143,7 +144,7 @@ export const EquipmentNode: React.FC<EquipmentNodeProps> = ({ equipment, onClick
         key={porta}
         cx={portX}
         cy={portY}
-        r={PORT.SIZE / 2}
+        r={6}
         fill={isConnecting ? PORT.COLOR_ACTIVE : PORT.COLOR}
         stroke="white"
         strokeWidth="2"
@@ -356,10 +357,10 @@ export const EquipmentNode: React.FC<EquipmentNodeProps> = ({ equipment, onClick
         width={size.width}
         height={size.height}
         fill="transparent"
-        style={{ cursor: editor.mode === 'edit' ? 'move' : 'pointer' }}
+        style={{ cursor: editor.mode === 'edit' ? (isDragging ? 'grabbing' : 'grab') : 'pointer' }}
         onMouseDown={handleMouseDown}
         onMouseUp={handleMouseUp}
-        onDoubleClick={onDoubleClick}
+        onDoubleClick={onDoubleClick ? () => onDoubleClick(equipment) : undefined}
       />
 
       {/* Ícone (ocultar junction points no modo view) */}
@@ -368,15 +369,42 @@ export const EquipmentNode: React.FC<EquipmentNodeProps> = ({ equipment, onClick
       {/* Label (ocultar para junction points no modo view) */}
       {!(isJunctionPoint && editor.mode === 'view') && renderLabel()}
 
+      {/* Caixas de dados (R8) — apenas no modo view e fora de junction points */}
+      {editor.mode === 'view' && !isJunctionPoint && (
+        <DiagramaPontosBox equipment={equipment} />
+      )}
+
       {/* Portas (visíveis no modo edit ou connecting) */}
       {(editor.mode === 'edit' || editor.mode === 'connecting') && (
         <g className="ports">
-          {renderPort('top')}
-          {renderPort('bottom')}
-          {renderPort('left')}
-          {renderPort('right')}
+          {isJunctionPoint ? (
+            // Ponto de juncao: UM unico no central que recebe ligacao das 4 direcoes
+            // (todas as portas da juncao convergem no centro — ver getPortPoint).
+            <circle
+              cx={size.width / 2}
+              cy={size.height / 2}
+              r={6}
+              fill={isConnecting ? PORT.COLOR_ACTIVE : PORT.COLOR}
+              stroke="white"
+              strokeWidth="2"
+              className="equipment-port"
+              onClick={e => handlePortClick('bottom', e)}
+              style={{ cursor: 'pointer' }}
+            />
+          ) : (
+            <>
+              {renderPort('top')}
+              {renderPort('bottom')}
+              {renderPort('left')}
+              {renderPort('right')}
+            </>
+          )}
         </g>
       )}
     </g>
   );
 };
+
+// Memo: durante o arrasto so o no movido (e as conexoes) re-renderiza — os demais
+// nos sao pulados (props estaveis), eliminando o re-render de todos os icones por frame.
+export const EquipmentNode = React.memo(EquipmentNodeImpl);

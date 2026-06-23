@@ -22,6 +22,7 @@ export interface LogMqtt {
 export interface LogsMqttFilters {
   search: string;
   equipamentoId: string;
+  unidadeId: string;
   severidade: string;
   dataInicial: string;
   dataFinal: string;
