@@ -33,13 +33,16 @@ const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
 >(({ className, children, ...props }, ref) => {
-  // Verificar se há um container fullscreen disponível
+  // Em fullscreen o navegador poe o elemento numa "top layer" que pinta ACIMA de
+  // tudo; um portal pro document.body fica ATRAS dela (z-index nao resolve). Entao
+  // renderiza o modal DENTRO do elemento em fullscreen. Fora do fullscreen,
+  // fullscreenElement eh null e o Radix cai no default (body).
   const fullscreenContainer = typeof document !== 'undefined'
-    ? document.getElementById('fullscreen-modal-container')
+    ? (document.fullscreenElement as HTMLElement | null)
     : null;
 
   return (
-    <DialogPortal container={fullscreenContainer}>
+    <DialogPortal container={fullscreenContainer ?? undefined}>
       <DialogOverlay />
       <DialogPrimitive.Content
         ref={ref}
