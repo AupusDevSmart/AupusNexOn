@@ -10,6 +10,18 @@
 var GRID_SIZE = 40;
 var NODE_SIZE = 80;
 var PORT_RADIUS = 5;
+
+// Capacidades por tipo de TON — espelha o gerador. A lógica de aresta LoRa
+// lê a flag `lora`, não o número da TON (assim novos arranjos funcionam).
+//   ton1=(sem lora, sem comando) · ton2=(lora) · ton3=(comando) · ton4=(lora+comando)
+var TON_CAPS = {
+    ton1: { lora: false, comando: false },
+    ton2: { lora: true,  comando: false },
+    ton3: { lora: false, comando: true  },
+    ton4: { lora: true,  comando: true  },
+};
+function tonCaps(type) { return TON_CAPS[type] || { lora: false, comando: false }; }
+function isLoraNode(type) { return tonCaps(type).lora; }
 var PORT_RADIUS_HOVER = 7;
 var SNAP = GRID_SIZE;
 var ROUTE_OFFSET = 30;
@@ -388,12 +400,44 @@ var COMPONENT_TYPES = {
             { key: 'modbus_address', label: 'Endereco Modbus', type: 'number' },
         ]
     },
+
+    // ============================================================
+    // IRRIGACAO — Pivo central (acionado pela TON via reles/entradas)
+    // ============================================================
+    pivo: {
+        label: 'Pivô', category: 'irrigacao', color: '#06B6D4',
+        // Icone de rotacao (o pivo gira em torno do centro)
+        icon: 'M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15',
+        ports: ['top', 'bottom', 'left', 'right'],
+        generates_firmware: false,
+        defaults: {
+            name: 'Pivô',
+            equipamento_id: '',
+            bi_pressostato: 1, bi_emergencia: 0, bi_desalinhamento: 0, bi_fim_curso: 0,
+            bo_movimento: 1, bo_sentido_dir: 0, bo_sentido_esq: 0, bo_canhao: 0,
+            tempo_pressao_s: 120,
+        },
+        fields: [
+            { key: 'name', label: 'Nome', type: 'text' },
+            { key: 'equipamento_id', label: 'Equipamento NexON (automação/configs)', type: 'text' },
+            { key: 'bi_pressostato', label: 'BI Pressostato — água chegou', type: 'number', placeholder: '1-6' },
+            { key: 'bi_emergencia', label: 'BI Emergência (0 = não usa)', type: 'number' },
+            { key: 'bi_desalinhamento', label: 'BI Desalinhamento (0 = não usa)', type: 'number' },
+            { key: 'bi_fim_curso', label: 'BI Fim de curso (0 = não usa)', type: 'number' },
+            { key: 'bo_movimento', label: 'BO Movimento / Start', type: 'number', placeholder: '1-6' },
+            { key: 'bo_sentido_dir', label: 'BO Sentido Direita (0 = sem)', type: 'number' },
+            { key: 'bo_sentido_esq', label: 'BO Sentido Esquerda (0 = sem)', type: 'number' },
+            { key: 'bo_canhao', label: 'BO Canhão / end-gun (0 = sem)', type: 'number' },
+            { key: 'tempo_pressao_s', label: 'Tempo p/ pressão (s)', type: 'number', placeholder: '120' },
+        ]
+    },
 };
 
 var CATEGORIES = [
     { id: 'controller', label: 'Controladores TON', types: ['ton1', 'ton2', 'ton3', 'ton4'] },
     { id: 'infra', label: 'Infraestrutura', types: ['wifi_router', 'mqtt_broker', 'meter_gateway', 'inverter_datalogger', 'conversor'] },
     { id: 'device', label: 'Dispositivos', types: ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao'] },
+    { id: 'irrigacao', label: 'Irrigação', types: ['pivo'] },
 ];
 
 var CONNECTION_STYLES = {
@@ -1007,8 +1051,7 @@ var DiagramEditor = class {
         const tonTypes = ['ton1', 'ton2', 'ton3', 'ton4'];
 
         // TON com LoRa ↔ TON com LoRa = LoRa (TON2 e TON4 têm LoRa)
-        const loraTypes = ['ton2', 'ton4'];
-        if (types.every(t => loraTypes.includes(t))) return ['lora_radio'];
+        if (types.every(t => isLoraNode(t))) return ['lora_radio'];
 
         // Anything ↔ Router = wifi or ethernet (RJ45)
         if (types.includes('wifi_router')) return ['wifi', 'ethernet'];
@@ -1506,14 +1549,13 @@ var DiagramEditor = class {
         // ponte MQTT<->LoRa, TON4s (sem WiFi, só LoRa+RS485) ficam em campo
         // remoto e recebem comandos via LoRa do TON2.
         if (types.every(t => tonTypes.includes(t))) {
-            const loraTons = ['ton2', 'ton4'];
-            if (!loraTons.includes(from.type) || !loraTons.includes(to.type)) {
-                return { allowed: false, reason: 'Conexão entre TONs só é permitida via LoRa (TON2 ou TON4)' };
+            if (!isLoraNode(from.type) || !isLoraNode(to.type)) {
+                return { allowed: false, reason: 'Conexão entre TONs só é permitida entre nós com capacidade LoRa' };
             }
-            // Bloquear TON4↔TON4 (sat-to-sat não tem caminho pro broker)
-            if (from.type === 'ton4' && to.type === 'ton4') {
-                return { allowed: false, reason: 'Dois TON4 não podem se conectar diretamente (precisam de TON2 como gateway)' };
-            }
+            // TON4↔TON4 (sat↔sat) É PERMITIDO: usado p/ malha LoRa com repasse
+            // (um TON4 relaia a mensagem do gateway pra outro TON4 mais distante).
+            // O caminho pro broker é multi-hop via o TON2 gateway. O firmware do
+            // satélite precisa ter a lógica de forwarding (TTL+dedup) p/ funcionar.
         }
 
         // Rule 2: MQTT Broker only connects to Router WiFi
@@ -1543,7 +1585,7 @@ var DiagramEditor = class {
         // Rule 5: TON connects to: Router WiFi, devices (RS485), Datalogger (TCP), or another TON2 (LoRa)
         if (types.some(t => tonTypes.includes(t))) {
             const otherType = tonTypes.includes(from.type) ? to.type : from.type;
-            const allowedTargets = ['wifi_router', 'inverter_datalogger', 'conversor', ...deviceTypes, 'ton2'];
+            const allowedTargets = ['wifi_router', 'inverter_datalogger', 'conversor', ...deviceTypes, 'ton2', 'ton4', 'pivo'];
             if (!allowedTargets.includes(otherType)) {
                 return { allowed: false, reason: 'TON se conecta a: Router WiFi, Datalogger, Conversor ou dispositivos' };
             }
@@ -1576,6 +1618,14 @@ var DiagramEditor = class {
             }
         }
 
+        // Rule 8: Pivô conecta só a uma TON (que o controla via relés/entradas digitais)
+        if (types.includes('pivo')) {
+            const other = from.type === 'pivo' ? to.type : from.type;
+            if (!tonTypes.includes(other)) {
+                return { allowed: false, reason: 'Pivô só se conecta a uma TON (que o controla via relés/entradas)' };
+            }
+        }
+
         return { allowed: true };
     }
 
@@ -1587,8 +1637,9 @@ var DiagramEditor = class {
         const tonTypes = ['ton1', 'ton2', 'ton3', 'ton4'];
         const deviceTypes = ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao'];
         // TON com LoRa ↔ TON com LoRa = LoRa (TON2 e TON4)
-        const loraTypes = ['ton2', 'ton4'];
-        if (types.some(t => loraTypes.includes(t)) && types.every(t => tonTypes.includes(t))) return 'lora_radio';
+        if (types.some(t => isLoraNode(t)) && types.every(t => tonTypes.includes(t))) return 'lora_radio';
+        // Pivô ↔ TON = controle (fio de relés/entradas; visualmente como RS485)
+        if (types.includes('pivo')) return 'rs485';
         // Router to Broker MQTT = WiFi
         if (types.includes('mqtt_broker') && types.includes('wifi_router')) return 'wifi';
         // Datalogger ↔ Inversor = RS485

@@ -192,7 +192,7 @@ function ensureIoTScripts(): Promise<void> {
     //
     // O catalogo de dispositivos foi movido pro backend (GET /iot-catalog/device-catalog.js)
     // — ele revalida sozinho via ETag. Os demais ainda sao estaticos.
-    const IOT_SCRIPTS_VERSION = '20260618-tcp-tptc';
+    const IOT_SCRIPTS_VERSION = '20260625-tstamp';
     const scripts = [
       `${BASE_URL}/iot-catalog/device-catalog.js`,
       `/iot-firmware-base.v2.js?v=${IOT_SCRIPTS_VERSION}`,
@@ -740,12 +740,19 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
     status: 'idle' | 'compiling' | 'compiled' | 'flashing' | 'deploying' | 'deployed' | 'done' | 'error';
     log: string[];
     binData: any | null;
+    simulate?: boolean;
   } | null>(null);
 
-  const handleGenerateFirmware = async () => {
+  const handleGenerateFirmware = async (simulate: boolean = simulating) => {
     if (!editorRef.current || !window.FirmwareGenerator) return;
+    // Modo simulação/lab: ligado ao botão "Simular" do diagrama. Se a simulação
+    // está ativa, o firmware sai em modo LAB — leitores devolvem valores plausíveis
+    // (sem periférico real) e o tópico ganha prefixo "TESTE/". Reseta logo após
+    // gerar pra não vazar. (Pode forçar via argumento, mas o padrão é o estado.)
+    (window as any).IOT_SIMULATE = simulate;
     const gen = new window.FirmwareGenerator(editorRef.current);
     const projects = gen.generateAll();
+    (window as any).IOT_SIMULATE = false;
     if (projects.length === 0) {
       alert('Nenhum controlador TON encontrado no diagrama.');
       return;
@@ -772,7 +779,7 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
       const eqId = (p?.spec?.equipamentoId || '').trim();
       return { ...p, _displayName: (eqId && idToNome.get(eqId)) || '' };
     });
-    setFirmwareModal({ projects: enriched, selected: 0, status: 'idle', log: [], binData: null });
+    setFirmwareModal({ projects: enriched, selected: 0, status: 'idle', log: [], binData: null, simulate });
   };
 
   const firmwareCompile = async () => {
@@ -1061,8 +1068,13 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
             <Button variant="outline" size="sm" onClick={toggleSimulation}>
               <Play className="h-4 w-4 sm:mr-1" /><span className="hidden sm:inline">{simulating ? 'Parar' : 'Simular'}</span>
             </Button>
-            <Button variant="outline" size="sm" onClick={handleGenerateFirmware}>
-              <Download className="h-4 w-4 sm:mr-1" /><span className="hidden sm:inline">Firmware</span>
+            <Button variant="outline" size="sm" onClick={() => handleGenerateFirmware()}
+              className={simulating ? 'border-amber-500 text-amber-600' : undefined}
+              title={simulating
+                ? 'Modo Simular ATIVO → gera firmware de LAB: dados plausíveis (sem periférico real), publica em TESTE/, sem OTA. Pare a simulação pra gerar o firmware real.'
+                : 'Gera o firmware real do projeto'}>
+              <Download className="h-4 w-4 sm:mr-1" />
+              <span className="hidden sm:inline">{simulating ? 'Firmware 🧪' : 'Firmware'}</span>
             </Button>
             <Button variant="outline" size="sm" onClick={() => setBenchTestModal({ selectedTest: 0, checklist: {} })}>
               <Zap className="h-4 w-4 sm:mr-1" /><span className="hidden sm:inline">Teste Bancada</span>
@@ -1811,9 +1823,15 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
                   <Button variant="outline" onClick={firmwareDownloadCode}>
                     <Download className="h-4 w-4 mr-1" /> Codigo Fonte
                   </Button>
-                  <Button variant="outline" onClick={firmwareDeployOta} title="Compila no servidor e envia OTA via MQTT (TON em campo)">
-                    <Zap className="h-4 w-4 mr-1" /> Implantar OTA
-                  </Button>
+                  {firmwareModal.simulate ? (
+                    <span className="text-xs text-amber-600 self-center mr-auto" title="Firmware de simulação não usa OTA: o OTA registra versão/MAC no banco e mira o equipamento real. Grave por USB.">
+                      🧪 Simulação — só USB (não toca o banco)
+                    </span>
+                  ) : (
+                    <Button variant="outline" onClick={firmwareDeployOta} title="Compila no servidor e envia OTA via MQTT (TON em campo)">
+                      <Zap className="h-4 w-4 mr-1" /> Implantar OTA
+                    </Button>
+                  )}
                   <Button onClick={firmwareCompile} title="Compila no servidor para gravar via USB local (Web Serial)">
                     <Zap className="h-4 w-4 mr-1" /> Compilar
                   </Button>

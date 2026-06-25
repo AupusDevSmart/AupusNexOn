@@ -6,6 +6,26 @@
  * Fluxo: Diagrama → analyze() → generateProject() → ZIP download
  */
 
+// ================================================================
+// CAPACIDADES POR TIPO DE TON — desacopla "papel na malha" do "tipo".
+// O número da TON é só um atalho pro combo de capacidades; toda a
+// lógica de LoRa/role/roteamento lê estas FLAGS, nunca o número.
+//   lora    -> participa da malha LoRa (repassa/recebe por rádio)
+//   comando -> aciona saídas (relé/BO)
+//   (uplink -> tem internet; é derivado da rede, não do tipo)
+// ================================================================
+var TON_CAPS = {
+    ton1: { lora: false, comando: false },
+    ton2: { lora: true,  comando: false },
+    ton3: { lora: false, comando: true  },
+    ton4: { lora: true,  comando: true  },
+};
+function tonCaps(type) { return TON_CAPS[type] || { lora: false, comando: false }; }
+
+// TTL inicial das mensagens LoRa (numero maximo de saltos). 4 cobre topologias
+// realistas (gateway -> 3 hops). Old/ausente no envelope -> tratado como direto.
+var LORA_DEFAULT_TTL = 4;
+
 var FirmwareGenerator = class FirmwareGenerator {
     constructor(diagramEditor) {
         this.editor = diagramEditor;
@@ -19,7 +39,163 @@ var FirmwareGenerator = class FirmwareGenerator {
         const connections = this.editor.connections;
         const tonTypes = ['ton1', 'ton2', 'ton3', 'ton4'];
         const tons = components.filter(c => tonTypes.includes(c.type));
-        return tons.map(ton => this._analyzeTon(ton, components, connections));
+        const specs = tons.map(ton => this._analyzeTon(ton, components, connections));
+        // ADITIVO: calcula a malha LoRa global e anexa a tabela de rotas
+        // (next_hop por destino) em cada spec LoRa. Roda DEPOIS de todos os
+        // specs porque precisa do grafo inteiro (todas as arestas lora_radio).
+        // Nao toca em specs sem LoRa -> firmware deles continua byte-identico.
+        this._buildLoraRoutes(specs, components, connections);
+        return specs;
+    }
+
+    // ================================================================
+    // MALHA LoRa MULTI-HOP — grafo global + next_hop por BFS (defined-path).
+    // ----------------------------------------------------------------
+    // Constroi o grafo nao-direcionado de TODAS as arestas 'lora_radio' entre
+    // TONs com capacidade LoRa. Para CADA no, roda BFS e descobre o MAC do
+    // vizinho direto (next_hop) em direcao a cada outro no alcancavel. O
+    // resultado vira spec.lora_routes = [{dst, nh}] (so destinos alcancaveis,
+    // sem o proprio no). 1-salto e' o caso onde nh == dst (vizinho direto).
+    //
+    // MAC de cada no: props.mac_address, senao extraido do sufixo
+    // '/satellite/<MAC>' do mqtt_topic_base (convencao ja usada no projeto).
+    // No sem MAC conhecido (ex: gateway, que so' aprende MACs em runtime) NAO
+    // vira destino na tabela dos outros — mas ainda roteia (o no de borda
+    // aprende o gateway pelo 'from' e roteia o ACK de volta pelo next_hop).
+    // ================================================================
+    _loraNodeMac(comp) {
+        if (!comp || !comp.props) return '';
+        const explicit = (comp.props.mac_address || '').trim();
+        if (explicit) return explicit;
+        // Extrai do mqtt_topic_base: .../satellite/<MAC>
+        const tb = comp.props.mqtt_topic_base || '';
+        const m = tb.match(/\/satellite\/([0-9A-Fa-f]{2}(?:[:\-][0-9A-Fa-f]{2}){5})/);
+        return m ? m[1] : '';
+    }
+
+    _buildLoraRoutes(specs, components, connections) {
+        // 1) Nos LoRa = TONs com capacidade LoRa que participam de >=1 aresta lora_radio.
+        // 2) Arestas = pares (a,b) de lora_radio onde ambos tem cap LoRa.
+        const adj = {};       // tonId -> Set(tonId vizinho)
+        const macOf = {};     // tonId -> MAC (string, pode ser '')
+        const compOf = {};    // tonId -> component
+        for (const c of components) {
+            if (TON_CAPS[c.type] && TON_CAPS[c.type].lora) {
+                compOf[c.id] = c;
+                macOf[c.id] = this._loraNodeMac(c);
+                adj[c.id] = adj[c.id] || new Set();
+            }
+        }
+        for (const conn of connections) {
+            if (conn.style !== 'lora_radio') continue;
+            const a = conn.from.componentId, b = conn.to.componentId;
+            if (!adj[a] || !adj[b]) continue;  // alguma ponta nao e' no LoRa
+            if (a === b) continue;
+            adj[a].add(b);
+            adj[b].add(a);
+        }
+
+        // 3) BFS por no -> next_hop[dst] (vizinho direto em direcao a dst).
+        const idToSpec = {};
+        for (const s of specs) idToSpec[s.tonId] = s;
+
+        for (const srcId of Object.keys(adj)) {
+            const spec = idToSpec[srcId];
+            if (!spec) continue;
+            // BFS guardando o PRIMEIRO salto que levou a cada no.
+            const firstHop = {};   // dstId -> neighborId (primeiro salto)
+            const visited = new Set([srcId]);
+            const queue = [];
+            for (const nb of adj[srcId]) {
+                firstHop[nb] = nb;  // vizinho direto: primeiro salto e' ele mesmo
+                visited.add(nb);
+                queue.push(nb);
+            }
+            while (queue.length) {
+                const cur = queue.shift();
+                for (const nb of adj[cur]) {
+                    if (visited.has(nb)) continue;
+                    visited.add(nb);
+                    firstHop[nb] = firstHop[cur];  // herda o salto inicial do caminho
+                    queue.push(nb);
+                }
+            }
+            // 4) Emite linhas {dst, nh} so' p/ destinos com MAC conhecido E
+            //    cujo next_hop tambem tem MAC conhecido (precisa enderecar o salto).
+            const routes = [];
+            for (const dstId of Object.keys(firstHop)) {
+                const dstMac = macOf[dstId];
+                const nhMac = macOf[firstHop[dstId]];
+                if (!dstMac || !nhMac) continue;
+                routes.push({ dst: dstMac, nh: nhMac });
+            }
+            spec.lora_routes = routes;
+        }
+
+        // 5) POLL TARGETS (modo MESTRE-PUXA) — pro role gateway, lista os satelites
+        //    com device que ele deve POLLar (round-robin). Um satelite e' alvo se:
+        //      - participa da malha LoRa deste gateway (BFS o alcanca);
+        //      - tem MAC conhecido (precisa enderecar o POLL);
+        //      - NAO e' o proprio gateway (tem peer mas sem internet -> satellite);
+        //      - tem >=1 device pra ler (rs485/tcp/pivo) — so' faz sentido pollar quem
+        //        produz telemetria. I/O puro continua edge-triggered (nao entra aqui).
+        //    A lista vai pro spec.poll_targets do gateway; o orquestrador C++ a usa.
+        //    Nos sem device (ou sem MAC) ficam de fora -> nao sao pollados.
+        for (const srcId of Object.keys(adj)) {
+            const spec = idToSpec[srcId];
+            if (!spec) continue;
+            if ((spec.lora_role || 'tx') !== 'gateway') continue;  // so' o mestre orquestra
+            // BFS p/ achar TODOS os nos LoRa alcancaveis a partir do gateway.
+            const reachable = new Set();
+            const visited = new Set([srcId]);
+            const queue = [...adj[srcId]];
+            queue.forEach(n => { visited.add(n); reachable.add(n); });
+            while (queue.length) {
+                const cur = queue.shift();
+                for (const nb of adj[cur]) {
+                    if (visited.has(nb)) continue;
+                    visited.add(nb);
+                    reachable.add(nb);
+                    queue.push(nb);
+                }
+            }
+            const targets = [];
+            for (const nodeId of reachable) {
+                const ns = idToSpec[nodeId];
+                if (!ns) continue;
+                if ((ns.lora_role || 'tx') !== 'satellite') continue;  // so' satelite reativo
+                const mac = macOf[nodeId];
+                if (!mac) continue;                                    // sem MAC -> nao enderecavel
+                if (!this._satelliteHasDevice(ns)) continue;           // sem device -> nada a pollar
+                targets.push({ mac, name: ns.name || nodeId });
+            }
+            // Ordena por MAC pra round-robin deterministico (independe da ordem do grafo).
+            targets.sort((a, b) => a.mac.localeCompare(b.mac));
+            spec.poll_targets = targets;
+        }
+
+        // 6) gw_direct: o no alcanca o gateway em 1 salto (vizinho direto)?
+        //    A telemetria BINARIA ("$B$") so' roteia 1-salto (sem to/ttl); se um
+        //    satelite com device binario estiver a 2+ saltos, o firmware avisa em
+        //    build/Serial (sem falha silenciosa). 1-salto -> nenhuma mudanca.
+        const gwIds = new Set(Object.keys(adj).filter(id =>
+            idToSpec[id] && (idToSpec[id].lora_role || 'tx') === 'gateway'));
+        for (const nodeId of Object.keys(adj)) {
+            const ns = idToSpec[nodeId];
+            if (!ns) continue;
+            ns.lora_gw_direct = [...adj[nodeId]].some(nb => gwIds.has(nb));
+        }
+    }
+
+    // Um satelite e' "pollavel" (tem device a ler) se tem Modbus RS485, Modbus TCP
+    // ou um pivo. I/O digital puro NAO conta — ele e' edge-triggered e o satelite
+    // continua publicando on-change. Usado pra montar a lista poll_targets do gateway
+    // e pra decidir se o satelite emite o handler reativo de POLL.
+    _satelliteHasDevice(spec) {
+        if (!spec) return false;
+        return (spec.rs485_devices && spec.rs485_devices.length > 0) ||
+               (spec.tcp_devices && spec.tcp_devices.length > 0) ||
+               !!spec.pivo;
     }
 
     _analyzeTon(ton, components, connections) {
@@ -56,6 +232,12 @@ var FirmwareGenerator = class FirmwareGenerator {
 
             if (conn.style === 'wifi' || conn.style === 'ethernet') {
                 this._processNetwork(ton, other, result, components, connections);
+            } else if (other.type === 'pivo') {
+                // Pivô conecta como 'rs485' (fio de relés/entradas), mas NÃO é um
+                // device Modbus: a TON é o cérebro e controla o painel "burro" via
+                // BO (relés) lendo o painel via BI (entradas). Roteia pra cá ANTES
+                // do _processRS485 (que o ignoraria de qualquer forma).
+                this._processPivo(ton, other, result);
             } else if (conn.style === 'rs485') {
                 this._processRS485(ton, other, result, components, connections);
             } else if (conn.style === 'tcp') {
@@ -281,8 +463,7 @@ var FirmwareGenerator = class FirmwareGenerator {
     }
 
     _processLoRa(ton, other, result) {
-        const loraTypes = ['ton2', 'ton4'];
-        if (!loraTypes.includes(other.type)) return;
+        if (!tonCaps(other.type).lora) return;   // só nós com capacidade LoRa entram na malha
         // Acumula peers — TON2 pode ter varios TON4s satelites.
         if (!result.lora_peers) result.lora_peers = [];
         if (result.lora_peers.find(p => p.peer_id === other.id)) return;
@@ -300,6 +481,41 @@ var FirmwareGenerator = class FirmwareGenerator {
                 peer_name: result.lora_peers[0].peer_name,
                 peer_id: result.lora_peers[0].peer_id,
             };
+        }
+    }
+
+    // Pivô (Cenário B): painel "burro", a TON é o cérebro. Anexa a config do
+    // pivô ao spec da TON (espelha como _processLoRa/_processDevice anexam seus
+    // dados). Apenas UMA TON controla o pivô (regra do diagrama). BI=entradas
+    // digitais (1-6, 0=não usa), BO=relés (1-6, 0=não usa). A máquina de estados
+    // e o parser de comando só são emitidos quando result.pivo existe.
+    _processPivo(ton, other, result) {
+        if (result.pivo) return;  // só um pivô por TON
+        const p = other.props || {};
+        const num = (v) => {
+            const n = parseInt(v, 10);
+            return Number.isFinite(n) && n >= 1 && n <= 6 ? n : 0;  // 0 = não usa
+        };
+        result.pivo = {
+            componentId: other.id,
+            name: p.name || COMPONENT_TYPES[other.type].label,
+            equipamento_id: (p.equipamento_id || '').trim(),
+            bi_pressostato:    num(p.bi_pressostato),
+            bi_emergencia:     num(p.bi_emergencia),
+            bi_desalinhamento: num(p.bi_desalinhamento),
+            bi_fim_curso:      num(p.bi_fim_curso),
+            bo_movimento:      num(p.bo_movimento),
+            bo_sentido_dir:    num(p.bo_sentido_dir),
+            bo_sentido_esq:    num(p.bo_sentido_esq),
+            bo_canhao:         num(p.bo_canhao),
+            tempo_pressao_s:   (() => { const t = parseInt(p.tempo_pressao_s, 10); return Number.isFinite(t) && t > 0 ? t : 120; })(),
+        };
+        // O controle do pivô depende de relés (BO). TON1/TON2 não têm relés —
+        // sem eles a máquina de estados não consegue acionar o painel.
+        if (!result.has_relays) {
+            result.warnings.push('Pivô conectado a uma TON sem relés (BO) — controle do pivô não será gerado. Use TON3/TON4.');
+        } else if (!result.pivo.bo_movimento) {
+            result.warnings.push('Pivô sem BO Movimento configurado — máquina de estados não terá como acionar o pivô.');
         }
     }
 
@@ -813,9 +1029,15 @@ static bool _read_tcp_inv_${idx}_raw(uint16_t *buf) {
 `;
         // Despacha por gateway: datalogger -> MBAP; conversor -> RTU+CRC. ip/port/
         // timeout inline (cada device carrega seu gateway — suporta 2 na mesma TON).
+        // Declarado fora do bloco sim/real porque o leitor TP/TC (em _sample_tcp_inv)
+        // tambem usa _readFn/_gwArgs.
         const gw = inv.gateway || {};
         const _readFn = (gw.mode === 'rtu_tcp') ? '_modbus_rtu_tcp_read' : '_modbus_tcp_read';
         const _gwArgs = `"${gw.ip || ''}", ${gw.port || 502}, ${gw.timeout_ms || 2000}`;
+        if (this._simMode()) {
+            cpp += this._genSimFill(aiMap, blocks, blockOffsets);
+            cpp += `}\n`;
+        } else {
         blocks.forEach((b, bi) => {
             const off = blockOffsets[bi];
             const fnHex = '0x' + b.func.toString(16).padStart(2, '0');
@@ -837,7 +1059,10 @@ static bool _read_tcp_inv_${idx}_raw(uint16_t *buf) {
 
         cpp += `    return true;
 }
+`;
+        }  // fim do else (caminho de leitura TCP real — pulado em sim mode)
 
+        cpp += `
 // Le + acumula. Chamar a cada READ_INTERVAL_MS (round-robin em inverter_tcp_sample_one).
 static void _sample_tcp_inv_${idx}() {
     // Back-off: device TCP que nao responde fica em cooldown — pula a leitura
@@ -899,20 +1124,22 @@ ${_tpOv ? `        _fTP = ${_tpOv.toFixed(1)}f;  // override tp_ratio (diagrama)
                 return { expr, base, var: `_f${s.toUpperCase()}` };
             };
             const dpt = ext('dpt'), dct = ext('dct'), dpq = ext('dpq');
-            cpp += `    // Casas decimais (reg ${d.register}: DPT/DCT/DPQ). value = raw*10^(exp-baseline) relativo ao scale fixo.
+            cpp += `    // Casas decimais (reg ${d.register}: DPT/DCT/DPQ). value = raw*10^(exp-baseline).
+    // Cache do ultimo valor bom (init=baseline => fator 1.0): expoentes mudam raro, entao
+    // se a leitura falhar usa o ultimo lido em vez de cair pra 1.0. Retry 3x (flush interno do _readFn).
+    static uint8_t _lDPT = ${dpt ? dpt.base : 4}, _lDCT = ${dct ? dct.base : 4}, _lDPQ = ${dpq ? dpq.base : 4};
     float _fDPT = 1.0f, _fDCT = 1.0f, _fDPQ = 1.0f;
     {
         uint16_t _dec[${d.count}];
-        if (${_readFn}(${_gwArgs}, ${slave}, 0x03, ${d.register}, ${d.count}, _dec)) {
-            uint8_t _eDPT = ${dpt ? dpt.expr : '0'};
-            uint8_t _eDCT = ${dct ? dct.expr : '0'};
-            uint8_t _eDPQ = ${dpq ? dpq.expr : '0'};
-            uint8_t _sign = _dec[${(d.sign && d.sign.word) || 1}] & 0xFF;
-${dpt ? `            _fDPT = _pow10i((int)_eDPT - ${dpt.base});\n` : ''}${dct ? `            _fDCT = _pow10i((int)_eDCT - ${dct.base});\n` : ''}${dpq ? `            _fDPQ = _pow10i((int)_eDPQ - ${dpq.base});\n` : ''}            Serial.printf("[M160] DPT=%u DCT=%u DPQ=%u SIGN=0x%02X (raw r35=0x%04X r36=0x%04X) -> fDPT=%.4f fDCT=%.4f fDPQ=%.4f\\n", _eDPT, _eDCT, _eDPQ, _sign, _dec[0], _dec[${d.count > 1 ? 1 : 0}], _fDPT, _fDCT, _fDPQ);
+        bool _okDec = false;
+        for (int _t = 0; _t < 3 && !_okDec; _t++) _okDec = ${_readFn}(${_gwArgs}, ${slave}, 0x03, ${d.register}, ${d.count}, _dec);
+        if (_okDec) {
+${dpt ? `            _lDPT = ${dpt.expr};\n` : ''}${dct ? `            _lDCT = ${dct.expr};\n` : ''}${dpq ? `            _lDPQ = ${dpq.expr};\n` : ''}            uint8_t _sign = _dec[${(d.sign && d.sign.word) || 1}] & 0xFF;
+            Serial.printf("[M160] DPT=%u DCT=%u DPQ=%u SIGN=0x%02X (raw r35=0x%04X r36=0x%04X)\\n", _lDPT, _lDCT, _lDPQ, _sign, _dec[0], _dec[${d.count > 1 ? 1 : 0}]);
         } else {
-            Serial.println("[M160] leitura DPT/DCT/DPQ FALHOU (rc!=0) — usando fatores 1.0");
+            Serial.printf("[M160] reg35 falhou — usando ultimo bom DPT=%u DCT=%u DPQ=%u\\n", _lDPT, _lDCT, _lDPQ);
         }
-    }
+${dpt ? `        _fDPT = _pow10i((int)_lDPT - ${dpt.base});\n` : ''}${dct ? `        _fDCT = _pow10i((int)_lDCT - ${dct.base});\n` : ''}${dpq ? `        _fDPQ = _pow10i((int)_lDPQ - ${dpq.base});\n` : ''}    }
 `;
         }
         // Decode + acumulacao avg
@@ -1223,7 +1450,7 @@ static void _publish_tcp_inv_${idx}(tcp_publish_fn publish) {
 // (ex: 10 IPs reais em campo conectavam com "TON1-TON1" simultaneamente, derrubando
 // uns aos outros no broker - 26k+ desconexoes/dia). Veja docs/IOT-MQTT-CLIENTID-UNICO.md.
 extern char MQTT_CLIENT_ID[20];
-#define MQTT_TOPIC_BASE     "${spec.mqtt.topic_base}"
+#define MQTT_TOPIC_BASE     "${this._simMode() ? 'TESTE/' : ''}${spec.mqtt.topic_base}"
 #define MQTT_TOPIC_CMD      MQTT_TOPIC_BASE "/cmd"
 #define MQTT_TOPIC_RELAYS   MQTT_TOPIC_BASE "/relays"
 #define MQTT_TOPIC_INPUTS   MQTT_TOPIC_BASE "/inputs"
@@ -1243,7 +1470,7 @@ extern char MQTT_CLIENT_ID[20];
             h += `
 // MQTT ausente (LoRa-only). MQTT_TOPIC_BASE definido apenas pra compilar os
 // helpers de comando — nenhuma publicacao MQTT real ocorre nesta TON.
-#define MQTT_TOPIC_BASE     "${spec.topicBase || spec.name || 'TON'}"
+#define MQTT_TOPIC_BASE     "${this._simMode() ? 'TESTE/' : ''}${spec.topicBase || spec.name || 'TON'}"
 #define DIAG_INTERVAL_MS    60000
 `;
         }
@@ -1511,9 +1738,11 @@ bool mqtt_connected() { return false; }
 #include "config.h"
 #include <WiFi.h>
 #include <PubSubClient.h>
+#include <EthernetUdp.h>
 #include <esp_task_wdt.h>
 #include <string.h>
 #include <time.h>
+#include <sys/time.h>
 
 // Janelas de retry/drain — evita saturar o broker ao reconectar.
 // Publicacoes sao feitas normalmente em tempo real; a drenagem do SD e gradual.
@@ -1672,6 +1901,66 @@ static void _start_ntp() {
     configTime(-3 * 3600, 0, "pool.ntp.org", "time.google.com", "200.160.7.193");
 }
 
+// NTP pela pilha do W5500 (Ethernet.h tem TCP/IP PROPRIO, separado do lwIP do
+// ESP32). O configTime/SNTP roda no lwIP -> so' sai pelo WiFi; em locais que so'
+// tem Ethernet (cabo), o SNTP nunca sincroniza. Aqui montamos a query NTP (UDP
+// 123) na mao e enviamos pela pilha do W5500 (EthernetUDP), depois setamos o
+// relogio com settimeofday. IPs fixos (sem DNS). O configTime ja' setou o TZ (-3),
+// entao localtime() continua certo. Retorna true se sincronizou.
+static bool _ntp_eth_sync() {
+    if (!eth_has_ip()) return false;
+    static const char* NTP_IPS[] = { "200.160.7.193", "200.186.125.195", "162.159.200.123" };
+    // 1 servidor por chamada, rotacionando. Assim o bloqueio do loop e' <=800ms
+    // (nao 3 x 1.2s = 3.6s), pra nao atrapalhar o orquestrador LoRa enquanto o NTP
+    // ainda nao sincronizou. As chamadas seguintes (retry a cada 5s/30s) cobrem os
+    // outros servidores. Quando sincroniza, _timeSynced=true e isto nao roda mais.
+    static uint8_t _ntpSrv = 0;
+    const char* srvIp = NTP_IPS[_ntpSrv];
+    _ntpSrv = (_ntpSrv + 1) % 3;
+    IPAddress ip;
+    if (!ip.fromString(srvIp)) return false;
+    EthernetUDP _ntpUdp;
+    if (!_ntpUdp.begin(2390)) return false;  // socket do W5500 (8 disponiveis, MQTT usa 1)
+    uint8_t pkt[48];
+    memset(pkt, 0, sizeof(pkt));
+    pkt[0] = 0xE3;  // LI=3 (nao-sync), VN=4, Mode=3 (client)
+    pkt[1] = 0; pkt[2] = 6; pkt[3] = 0xEC;
+    bool sent = false;
+    if (_ntpUdp.beginPacket(ip, 123)) {
+        _ntpUdp.write(pkt, 48);
+        sent = _ntpUdp.endPacket();
+    }
+    bool ok = false;
+    if (sent) {
+        unsigned long t0 = millis();
+        while (millis() - t0 < 800) {
+            // So' aceita resposta DO servidor que perguntei (origem confere) — evita
+            // que um datagrama qualquer na porta injete um timestamp.
+            if (_ntpUdp.parsePacket() >= 48 && _ntpUdp.remoteIP() == ip) {
+                _ntpUdp.read(pkt, 48);
+                // Transmit Timestamp (segundos desde 1900) nos bytes 40..43.
+                unsigned long secs1900 = ((unsigned long)pkt[40] << 24) | ((unsigned long)pkt[41] << 16)
+                                       | ((unsigned long)pkt[42] << 8)  |  (unsigned long)pkt[43];
+                if (secs1900 > 2208988800UL) {
+                    unsigned long epoch = secs1900 - 2208988800UL;  // 1900 -> 1970
+                    if (epoch > 1700000000UL) {                     // sanity (>= 2023)
+                        struct timeval tv; tv.tv_sec = (time_t)epoch; tv.tv_usec = 0;
+                        settimeofday(&tv, nullptr);
+                        Serial.printf("[NTP-ETH] sincronizado via W5500 (%s)! epoch=%lu\\n",
+                                      srvIp, epoch);
+                        ok = true;
+                    }
+                }
+                break;  // resposta do servidor certo recebida (valida ou nao)
+            }
+            delay(10);
+            esp_task_wdt_reset();
+        }
+    }
+    _ntpUdp.stop();  // libera o socket do W5500
+    return ok;
+}
+
 // Salva no SD com timestamp injetado no JSON (se possivel).
 // Formato: "{\\"ts\\":<epoch>, ... resto do payload}"
 // Se o relogio nao estiver sincronizado, ou o payload nao for JSON,
@@ -1755,7 +2044,8 @@ void mqtt_init(mqtt_cmd_callback_t callback) {
         WiFi.mode(WIFI_OFF);
         _wifiStarted = false;
         _setActiveIf(NET_ETH);
-        _start_ntp();   // NTP via Ethernet (configTime nao depende do WiFi)
+        _start_ntp();        // seta o TZ (-3h); o SNTP/lwIP NAO sai pela pilha do W5500
+        _ntp_eth_sync();     // sincroniza JA pela pilha do W5500 (NTP via EthernetUDP)
     } else {
         _start_wifi();
         Serial.printf("[WIFI] Conectando a '%s'...\\n", WIFI_SSID);
@@ -1851,7 +2141,10 @@ void mqtt_loop() {
             unsigned long retryInterval = (millis() < 300000UL) ? 5000UL : 30000UL;
             if (millis() - _lastNtpKick > retryInterval) {
                 _lastNtpKick = millis();
-                _start_ntp();
+                // Ethernet (W5500) tem pilha TCP/IP propria -> SNTP/lwIP nao roteia
+                // por ela. Usa o NTP via EthernetUDP. WiFi usa o SNTP (lwIP) normal.
+                if (_activeIf == NET_ETH) _ntp_eth_sync();
+                else _start_ntp();
                 Serial.printf("[NTP] retry (uptime=%lus, epoch=%lu)\\n",
                               (unsigned long)(millis()/1000), (unsigned long)now);
             }
@@ -2203,6 +2496,14 @@ bool lora_ready() { return digitalRead(LORA_AUX) == HIGH; }
     // ============================================================
     _genLoraRouter(spec) {
         const role = spec.lora_role || 'tx';
+        // MESTRE-PUXA: o gateway orquestra (polling round-robin) por padrao. NAO exige
+        // alvos no diagrama: a lista de alvos e' DINAMICA — o gateway DESCOBRE os
+        // satelites polláveis pelos heartbeats ("poll":1) e passa a pollá-los (como o
+        // push antigo aprendia o MAC do 'from' em runtime). Os alvos do diagrama (se
+        // houver) so' semeiam a lista. O fallback autonomo (_loraAutonomousPush) desliga
+        // o orquestrador e volta o satellite a empurrar sozinho (comportamento antigo).
+        const pollTargets = (spec.poll_targets || []);
+        const gwOrchestrate = role === 'gateway' && !this._loraAutonomousPush();
 
         // Detecta dispositivos M160 (mesmo field-set binario) entre os RS485 do
         // satellite e gera o mapeamento subtopic-real -> type_code. Isso conserta
@@ -2259,6 +2560,65 @@ static bool _lora_mac_eq(const char* a, const char* b) {
     return true;
 }
 
+// ============================================================
+// REPASSE MULTI-HOP (defined-path) — tabela de rotas + next_hop.
+// ----------------------------------------------------------------
+// O 'to' do envelope e' o destino FINAL. Esta tabela (gerada do grafo LoRa
+// pelo gerador, via BFS) diz qual o MAC do PROXIMO SALTO em direcao a cada
+// destino alcancavel. 1-salto: nh == dst (vizinho direto). Multi-hop: nh e'
+// um intermediario. Se o destino nao esta na tabela (ex: gateway que so'
+// aprende MACs em runtime), _lora_next_hop devolve o proprio dst -> envia
+// direto (compat: comportamento ponto-a-ponto antigo).
+#define LORA_DEFAULT_TTL ${LORA_DEFAULT_TTL}
+
+typedef struct { const char* dst; const char* nh; } LoraRoute;
+static const LoraRoute _LORA_ROUTES[] = {
+${(spec.lora_routes || []).map(r => `    { "${cEsc(r.dst)}", "${cEsc(r.nh)}" },`).join('\n')}
+};
+static const int _LORA_ROUTES_N = sizeof(_LORA_ROUTES) / sizeof(_LORA_ROUTES[0]);
+
+// Retorna o MAC do proximo salto em direcao a 'dst'. Se 'dst' nao esta na
+// tabela, devolve o proprio 'dst' (envio direto/compat ponto-a-ponto).
+static const char* _lora_next_hop(const char* dst) {
+    if (!dst || !dst[0]) return dst;
+    for (int i = 0; i < _LORA_ROUTES_N; i++) {
+        if (_lora_mac_eq(_LORA_ROUTES[i].dst, dst)) return _LORA_ROUTES[i].nh;
+    }
+    return dst;  // desconhecido -> tenta direto
+}
+
+// ----- Dedup por cmd_id (ring buffer) — compartilhado por todos os roles LoRa.
+// Usado pra: (sat) nao reaplicar cmd reenviado; (todos) anti-loop no repasse
+// multi-hop (nao repassar o mesmo cmd_id 2x). Retorna true se ja' visto.
+#define LORA_DEDUP_SIZE 32
+// [72] = from(17) + "|" + cmd_id(ate' 39, igual LoraPending.cmd_id) + "|" + type
+// (ate' "pollresp") sem truncar.
+static char _loraDedup[LORA_DEDUP_SIZE][72];
+static int _loraDedupIdx = 0;
+static bool _sat_seen_or_add(const char* cmd_id, const char* type, const char* from) {
+    if (!cmd_id || !cmd_id[0]) return false;
+    // Chave "from|cmd_id|type" (originador + id + direcao). Dois motivos:
+    //  1) o MESMO cmd_id viaja como pergunta E resposta (POLL<->POLLRESP,
+    //     cmd<->ack reusam o id) -> o 'type' separa ida da volta, senao a
+    //     repetidora marcava a ida e descartava a volta como duplicada (offline
+    //     indevido a 2+ saltos).
+    //  2) o cmd_id de telemetria ("d<seq>") e' por-no (cada satelite tem seu
+    //     contador) -> sem o 'from', dois irmaos atras da MESMA repetidora
+    //     gerariam "d1|data" identico e a repetidora descartaria a telemetria de
+    //     um deles. O 'from' (originador, ja' no envelope) torna a chave unica por
+    //     no SEM inchar o id -> o id curto cabe no MTU 200 (ex.: status do pivo).
+    char key[72];
+    snprintf(key, sizeof(key), "%s|%s|%s",
+             (from && from[0]) ? from : "?", cmd_id, (type && type[0]) ? type : "-");
+    for (int i = 0; i < LORA_DEDUP_SIZE; i++) {
+        if (_loraDedup[i][0] && strcmp(_loraDedup[i], key) == 0) return true;
+    }
+    strncpy(_loraDedup[_loraDedupIdx], key, sizeof(_loraDedup[0]) - 1);
+    _loraDedup[_loraDedupIdx][sizeof(_loraDedup[0]) - 1] = 0;
+    _loraDedupIdx = (_loraDedupIdx + 1) % LORA_DEDUP_SIZE;
+    return false;
+}
+
 // CSMA simples: aguarda canal idle (AUX=HIGH) + jitter random pra evitar
 // colisao quando varios devices transmitem perto no tempo. Retorna false
 // (sem transmitir) se passou do MTU do E220 (200 bytes) — caller decide o que
@@ -2280,6 +2640,20 @@ static bool _lora_safe_send(const char* msg) {
     delay(30 + (esp_random() % 120));
     lora_send(msg);
     return true;
+}
+
+// REPASSE (forward) — re-serializa o envelope JSON cru com ttl decrementado e
+// re-transmite (CSMA via _lora_safe_send). 'to'/'from'/'cmd_id'/payload ficam
+// INTACTOS; so' o ttl muda. Compartilhado por todos os roles LoRa.
+static void _lora_forward(JsonDocument& env, int ttl) {
+    env["ttl"] = ttl;
+    char buf[LORA_MAX_PAYLOAD + 20];
+    int n = serializeJson(env, buf, sizeof(buf));
+    if (n <= 0 || n >= (int)sizeof(buf)) {
+        Serial.printf("[LORA] forward: envelope %d bytes nao cabe — descartado\\n", n);
+        return;
+    }
+    _lora_safe_send(buf);
 }
 
 // ============================================================
@@ -2467,29 +2841,29 @@ static int _lora_b64_decode(const char* in, size_t in_len, uint8_t* out, size_t 
         if (role === 'satellite') {
             cpp += `
 // Satellite: recebe envelope LoRa, processa só se 'to' bater com meu MAC.
-// Dedup local (32 entradas) evita reaplicar cmd quando gateway re-envia por
-// timeout. Heartbeat a cada 30s pro gateway saber que estamos vivos.
+// Dedup (_sat_seen_or_add, ring compartilhado) evita reaplicar cmd quando
+// gateway re-envia por timeout. Heartbeat a cada 30s pro gateway saber vivo.
 
-#define LORA_SAT_DEDUP_SIZE 32
 #define LORA_SAT_HEARTBEAT_MS 30000UL
+// 1 = gateway e' vizinho direto (1 salto); 0 = atras de repetidora (2+ saltos).
+// Telemetria binaria ("$B$") so' roteia 1-salto -> a 2+ saltos o firmware avisa.
+#define LORA_GW_DIRECT ${spec.lora_gw_direct ? 1 : 0}
 
 static String _ton2_gw_mac = "";  // MAC do gateway (descoberto na 1a msg recebida)
-static char _satDedup[LORA_SAT_DEDUP_SIZE][40];
-static int _satDedupIdx = 0;
 static unsigned long _lastHeartbeat = 0;
 
-static bool _sat_seen_or_add(const char* cmd_id) {
-    if (!cmd_id || !cmd_id[0]) return false;
-    for (int i = 0; i < LORA_SAT_DEDUP_SIZE; i++) {
-        if (_satDedup[i][0] && strcmp(_satDedup[i], cmd_id) == 0) return true;
-    }
-    strncpy(_satDedup[_satDedupIdx], cmd_id, sizeof(_satDedup[0]) - 1);
-    _satDedup[_satDedupIdx][sizeof(_satDedup[0]) - 1] = 0;
-    _satDedupIdx = (_satDedupIdx + 1) % LORA_SAT_DEDUP_SIZE;
-    return false;
-}
+// MESTRE-PUXA: definida no main.cpp (la' tem acesso aos leitores Modbus/TCP/IO).
+// Lê o device, publica a telemetria via lora_publish_data e fecha com pollresp.
+// Forward-decl aqui pois lora_handle_rx a chama ao receber um POLL.
+void lora_poll_respond(const char* gw_mac, const char* req_id);
+// Envia o envelope de CONCLUSAO do poll (type:"pollresp") — def. abaixo de
+// lora_send_envelope (que ela usa). Chamada por lora_poll_respond no main.cpp.
+void lora_send_pollresp(const char* gw_mac, const char* req_id);
 
 // Empacota envelope JSON e envia via _lora_safe_send (CSMA + jitter).
+// 'to_mac' e' o destino FINAL. O campo "ttl" (multi-hop) limita os saltos —
+// intermediarios repassam ate ttl chegar a 0. Em 1-salto o destino e' vizinho
+// direto e o ttl nem e' consumido.
 static void lora_send_envelope(const char* to_mac, const char* type, const char* cmd_id,
                                 const char* status, const char* msg,
                                 const char* subtopic, const char* payload_json) {
@@ -2503,12 +2877,27 @@ static void lora_send_envelope(const char* to_mac, const char* type, const char*
     if (msg && msg[0]) n += snprintf(buf + n, sizeof(buf) - n, ",\\"msg\\":\\"%s\\"", msg);
     if (subtopic && subtopic[0]) n += snprintf(buf + n, sizeof(buf) - n, ",\\"subtopic\\":\\"%s\\"", subtopic);
     if (payload_json && payload_json[0]) n += snprintf(buf + n, sizeof(buf) - n, ",\\"payload\\":%s", payload_json);
-    n += snprintf(buf + n, sizeof(buf) - n, ",\\"ts\\":%lu}", (unsigned long)(millis()/1000));
+    n += snprintf(buf + n, sizeof(buf) - n, ",\\"ttl\\":%d", LORA_DEFAULT_TTL);
+    // "data" e "status" omitem o "ts" do envelope (o gateway republica so' o
+    // payload e nao usa esse ts) — economiza ~13B pro MTU 200 (telemetria do pivo,
+    // heartbeat com "poll":1). ack/pollresp mantem o ts.
+    if (!type || (strcmp(type, "data") != 0 && strcmp(type, "status") != 0))
+        n += snprintf(buf + n, sizeof(buf) - n, ",\\"ts\\":%lu", (unsigned long)(millis()/1000));
+    n += snprintf(buf + n, sizeof(buf) - n, "}");
     if (n <= 0 || n >= (int)sizeof(buf)) {
         Serial.printf("[LORA-SAT] envelope montagem falhou (n=%d)\\n", n);
         return;
     }
     _lora_safe_send(buf);  // descarta se > MTU 200, com log
+}
+
+// MESTRE-PUXA: fecha o ciclo de poll respondendo o req_id pro mestre. A
+// telemetria em si ja' foi enviada por lora_poll_respond via lora_publish_data;
+// este envelope so' sinaliza "terminei, req_id=X" pro mestre avancar.
+void lora_send_pollresp(const char* gw_mac, const char* req_id) {
+    const char* gw = (gw_mac && gw_mac[0]) ? gw_mac
+                   : (_ton2_gw_mac.length() ? _ton2_gw_mac.c_str() : "*");
+    lora_send_envelope(gw, "pollresp", req_id, "ok", nullptr, nullptr, nullptr);
 }
 
 static void lora_handle_rx(const char* raw) {
@@ -2524,19 +2913,53 @@ static void lora_handle_rx(const char* raw) {
     const char* to = env["to"] | "";
     const char* from = env["from"] | "";
     String myMac = WiFi.macAddress();
-    if (!_lora_mac_eq(to, myMac.c_str())) return;  // broadcast — nao e' pra mim
+    const char* cmd_id = env["cmd_id"] | "";
+    bool forMe = _lora_mac_eq(to, myMac.c_str());
 
+    // MULTI-HOP: nao e' pra mim. Tenta REPASSAR (defined-path) em direcao ao
+    // destino FINAL. Dedup por cmd_id evita repassar 2x (anti-loop), junto com o
+    // TTL. 1-salto (gateway<->satellite direto) NUNCA cai aqui (to == myMac).
+    if (!forMe) {
+        // Dedup PRIMEIRO: ja' repassado/processado -> descarta (nem reprocessa
+        // nem re-encaminha). Conta como "visto" pra nao repassar de novo.
+        if (cmd_id[0] && _sat_seen_or_add(cmd_id, env["type"] | "", from)) return;
+        int ttl = env["ttl"] | 0;   // ausente -> 0 -> nao repassa (compat: era so' p/ mim)
+        if (ttl <= 0) return;       // esgotou TTL ou envelope antigo sem ttl
+        const char* nh = _lora_next_hop(to);
+        if (!nh || !nh[0] || _lora_mac_eq(nh, myMac.c_str())) return;  // sem rota
+        Serial.printf("[LORA-SAT] FORWARD to=%s nh=%s ttl=%d->%d\\n", to, nh, ttl, ttl - 1);
+        _lora_forward(env, ttl - 1);  // re-send com to/from/cmd_id intactos, ttl-1
+        return;
+    }
+
+    // ---- Daqui pra baixo: 'to' == meu MAC (fluxo ponto-a-ponto original) ----
     // Memoriza MAC do gateway pra responder ack/telemetria.
     if (from[0] && _ton2_gw_mac.length() == 0) {
         _ton2_gw_mac = String(from);
         Serial.printf("[LORA-SAT] Gateway descoberto: %s\\n", from);
     }
 
-    const char* cmd_id = env["cmd_id"] | "";
+    // MESTRE-PUXA (satellite REATIVO): POLL endereçado a mim. O mestre pergunta;
+    // eu leio o device + faco os calculos (decode/escala EXISTENTE) e respondo
+    // DATA(req_id) pela malha. req_id = cmd_id deste POLL (correlaciona no mestre).
+    // NAO entra no dedup: cada POLL e' um pedido novo; se o mestre re-perguntar
+    // (retransmissao), responder de novo com dado fresco e' o correto. So' um POLL
+    // em voo por vez (mestre serializa), entao nao ha burst.
+    {
+        const char* _ptype = env["type"] | "";
+        if (strcmp(_ptype, "poll") == 0) {
+            Serial.printf("[LORA-SAT] POLL recebido req_id=%s de %s — lendo device e respondendo\\n",
+                          cmd_id[0] ? cmd_id : "(sem)", from);
+            // Responde p/ quem perguntou (o mestre). Le devices + publica telemetria
+            // via lora_publish_data (mesmo caminho do push antigo) e fecha com pollresp.
+            lora_poll_respond(from, cmd_id);
+            return;
+        }
+    }
 
     // Dedup: gateway pode reenviar mesmo cmd_id se nosso ACK se perdeu.
     // Resposta correta e' re-enviar ack 'duplicate' (gateway libera pendente).
-    if (cmd_id[0] && _sat_seen_or_add(cmd_id)) {
+    if (cmd_id[0] && _sat_seen_or_add(cmd_id, env["type"] | "", from)) {
         Serial.printf("[LORA-SAT] Duplicado cmd_id=%s — re-enviando ack 'duplicate'\\n", cmd_id);
         lora_send_envelope(from, "ack", cmd_id, "duplicate", "already_seen", nullptr, nullptr);
         return;
@@ -2626,6 +3049,17 @@ static bool _lora_try_publish_binary(const char* subtopic, const char* payload_j
 // nao ha field-set conhecido, cai pro JSON envelope — que pode exceder o MTU.
 // FAIL-LOUD: avisa no Serial quando vai pro JSON, pra diagnosticar perda.
 static void lora_publish_data(const char* subtopic, const char* payload_json) {
+#if !LORA_GW_DIRECT
+    // Este satelite esta a 2+ saltos do gateway. O frame binario "$B$" NAO carrega
+    // to/ttl -> a repetidora (que so' repassa JSON) o descarta e a telemetria nao
+    // chega. Avisa ALTO (sem silencio). Correcao: colocar o medidor a 1 salto do
+    // gateway, ou aguardar o suporte a binario roteavel multi-hop (TODO).
+    if (_lora_typecode_for_subtopic(subtopic)) {
+        Serial.printf("[LORA-SAT] ⚠ sub=%s usa telemetria BINARIA e este no esta a 2+ saltos do "
+                      "gateway — o frame nao roteia multi-hop ainda; a telemetria deste device NAO "
+                      "chegara. Coloque o medidor a 1 salto do gateway.\\n", subtopic ? subtopic : "?");
+    }
+#endif
     if (_lora_try_publish_binary(subtopic, payload_json)) return;
     size_t plen = payload_json ? strlen(payload_json) : 0;
     if (plen > 120) {
@@ -2636,8 +3070,20 @@ static void lora_publish_data(const char* subtopic, const char* payload_json) {
                       "Cadastre um field-set p/ este device.\\n",
                       subtopic ? subtopic : "?", (unsigned)plen);
     }
+    // cmd_id de telemetria "d<seq>" (CURTO). A unicidade ENTRE satelites vem do
+    // 'from' na chave de dedup (from|cmd_id|type), nao do id — assim o id fica curto
+    // e o envelope cabe no MTU 200 (ex.: status do pivo). O seq por-no basta pra
+    // o anti-loop/dedup dos proprios frames repassados.
+    // Semeado com esp_random() no boot (init do static, 1a chamada): apos um reboot
+    // os ids NAO recomecam de 'd1' (que poderia ainda estar no ring de dedup da
+    // repetidora e fazer a telemetria pos-reboot ser dropada como duplicata por
+    // alguns ciclos). Comeco aleatorio -> sem reuso de id entre reinicios. O id
+    // maximo (uint32) ainda cabe no MTU 200 (verificado).
+    static uint32_t _data_seq = esp_random();
+    char _data_id[16];
+    snprintf(_data_id, sizeof(_data_id), "d%lu", (unsigned long)(++_data_seq));
     const char* gw = _ton2_gw_mac.length() ? _ton2_gw_mac.c_str() : "*";
-    lora_send_envelope(gw, "data", nullptr, nullptr, nullptr, subtopic, payload_json);
+    lora_send_envelope(gw, "data", _data_id, nullptr, nullptr, subtopic, payload_json);
 }
 
 // Heartbeat periodico pro gateway saber que satellite esta vivo.
@@ -2648,10 +3094,12 @@ void lora_loop_tick() {
     if (now - _lastHeartbeat < LORA_SAT_HEARTBEAT_MS) return;
     _lastHeartbeat = now;
     char payload[180];
+    // "poll":1 anuncia que este satelite e' POLLAVEL (reativo, tem device) — o
+    // gateway usa isso pra DESCOBRIR o alvo sem precisar do MAC no diagrama.
     snprintf(payload, sizeof(payload),
-             "{\\"online\\":true,\\"version\\":\\"%s\\",\\"uptime\\":%lu,\\"free_heap\\":%u,\\"min_heap\\":%u}",
+             "{\\"online\\":true,${(role === 'satellite' && !this._loraAutonomousPush() && this._satelliteHasDevice(spec)) ? '\\"poll\\":1,' : ''}\\"version\\":\\"%s\\",\\"uptime\\":%lu,\\"free_heap\\":%u}",
              FIRMWARE_VERSION, (unsigned long)(now/1000),
-             (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMinFreeHeap());
+             (unsigned)ESP.getFreeHeap());
     const char* gw = _ton2_gw_mac.length() ? _ton2_gw_mac.c_str() : "*";
     lora_send_envelope(gw, "status", nullptr, nullptr, nullptr, nullptr, payload);
 }
@@ -2754,9 +3202,12 @@ void gateway_handle_satellite_mqtt(const char* mac_alvo, const char* payload) {
     strncpy(p.cmd_id, cmd_id, sizeof(p.cmd_id) - 1); p.cmd_id[sizeof(p.cmd_id) - 1] = 0;
     strncpy(p.target_mac, mac_alvo, sizeof(p.target_mac) - 1); p.target_mac[sizeof(p.target_mac) - 1] = 0;
     String myMac = WiFi.macAddress();
+    // MULTI-HOP: 'to' = destino FINAL (mac_alvo). O "ttl" permite que nos
+    // intermediarios repassem ate o satellite. Em 1-salto o satellite e' vizinho
+    // direto: _lora_next_hop(mac_alvo) == mac_alvo, e o satellite ja' ve to==myMac.
     int n = snprintf(p.envelope, sizeof(p.envelope),
-                     "{\\"to\\":\\"%s\\",\\"from\\":\\"%s\\",\\"cmd_id\\":\\"%s\\",\\"cmd\\":%s,\\"ts\\":%lu}",
-                     mac_alvo, myMac.c_str(), cmd_id, inner_buf, (unsigned long)(millis()/1000));
+                     "{\\"to\\":\\"%s\\",\\"from\\":\\"%s\\",\\"cmd_id\\":\\"%s\\",\\"cmd\\":%s,\\"ttl\\":%d,\\"ts\\":%lu}",
+                     mac_alvo, myMac.c_str(), cmd_id, inner_buf, LORA_DEFAULT_TTL, (unsigned long)(millis()/1000));
     if (n <= 0 || n >= (int)sizeof(p.envelope)) {
         Serial.println("[LORA-GW] envelope > buffer — descartado");
         _pending_release(idx);
@@ -2777,8 +3228,23 @@ void gateway_handle_satellite_mqtt(const char* mac_alvo, const char* payload) {
     Serial.printf("[LORA-GW] TX#1 -> %s cmd_id=%s slot=%d (%d bytes)\\n", mac_alvo, cmd_id, idx, n);
 }
 
+// Quantos cmds estao em voo (pending queue). O orquestrador de poll so' POLLa
+// quando o canal esta livre de comandos (comando tem prioridade).
+static int _pending_count() {
+    int n = 0;
+    for (int i = 0; i < LORA_PENDING_MAX; i++) if (_loraPending[i].in_use) n++;
+    return n;
+}
+${gwOrchestrate ? this._genGatewayOrchestrator(spec) : `
+// Orquestrador de poll DESLIGADO (modo autonomo/fallback ou sem satelite com
+// device). Stubs no-op pra manter a interface de lora_loop_tick uniforme.
+static void _gw_poll_tick() {}
+static bool _gw_poll_match(const char* req_id, const char* from) { (void)req_id; (void)from; return false; }
+static void _poll_note_activity(const char* from) { (void)from; }
+`}
 // Tick periodico — chamado do loop() do main. Reenvia pendentes que estouraram
-// timeout, e descarta os que esgotaram tentativas (publica ack de erro).
+// timeout, e descarta os que esgotaram tentativas (publica ack de erro). Depois
+// roda o orquestrador de poll (mestre-puxa), que so' transmite com o canal livre.
 void lora_loop_tick() {
     unsigned long now = millis();
     for (int i = 0; i < LORA_PENDING_MAX; i++) {
@@ -2798,6 +3264,8 @@ void lora_loop_tick() {
                           p.attempts, p.target_mac, p.cmd_id);
         }
     }
+    // MESTRE-PUXA: orquestra o polling round-robin dos satelites. No-op no fallback.
+    _gw_poll_tick();
 }
 
 // Decodifica frame "$B$" + Base64( type, version, from_mac[6], sublen, subtopic, payload ).
@@ -2842,6 +3310,16 @@ static bool _lora_handle_binary(const char* raw, size_t raw_len) {
 
     char from_str[20];
     _lora_mac_bytes_to_str(from_bytes, from_str);
+    _poll_note_activity(from_str);  // frame do alvo -> estende a janela do poll
+
+    // CARIMBO de hora no GATEWAY: o satelite nao tem internet/NTP e o frame binario
+    // nao carrega timestamp. Como o gateway TEM hora (NTP) e o dado e' fresco (acabou
+    // de ser lido sob POLL), carimba aqui com a hora do gateway (epoch s). So' se o
+    // relogio ja' sincronizou (senao deixa sem -> backend usa a hora de chegada).
+    {
+        time_t _tnow = time(nullptr);
+        if (_tnow > 1700000000) doc["timestamp"] = (long)_tnow;
+    }
 
     char topic[220];
     snprintf(topic, sizeof(topic), "%s/satellite/%s/%s",
@@ -2879,13 +3357,46 @@ static void lora_handle_rx(const char* raw) {
     // broker -> impossivel cadastrar. Aceitando "*", o satellite aparece online
     // assim que liga, revelando o MAC pra cadastro.
     bool isBroadcast = (to[0] == '*' && to[1] == 0);
-    if (!isBroadcast && !_lora_mac_eq(to, myMac.c_str())) return;  // nao e' pra mim
+    bool forMe = _lora_mac_eq(to, myMac.c_str());
+    // MULTI-HOP: envelope endereçado a OUTRO no (nem eu nem broadcast). Repassa
+    // em direcao ao destino FINAL (defined-path). Dedup por cmd_id + TTL evitam
+    // loop. 1-salto e broadcast "*" NAO caem aqui. (Frames binarios "$B$" sao
+    // 1-salto e ja' foram tratados acima — multi-hop so' vale p/ envelope JSON.)
+    if (!isBroadcast && !forMe) {
+        const char* cmd_id = env["cmd_id"] | "";
+        if (cmd_id[0] && _sat_seen_or_add(cmd_id, env["type"] | "", from)) return;  // ja' repassado -> descarta
+        int ttl = env["ttl"] | 0;
+        if (ttl <= 0) return;
+        const char* nh = _lora_next_hop(to);
+        if (!nh || !nh[0] || _lora_mac_eq(nh, myMac.c_str())) return;
+        Serial.printf("[LORA-GW] FORWARD to=%s nh=%s ttl=%d->%d\\n", to, nh, ttl, ttl - 1);
+        _lora_forward(env, ttl - 1);
+        return;
+    }
     if (!from[0]) {
         Serial.println("[LORA-GW] envelope sem 'from' — descartado");
         return;
     }
+    _poll_note_activity(from);  // frame do alvo (pollresp/data/status) -> estende a janela
 
     const char* type = env["type"] | "";
+
+    // MESTRE-PUXA: resposta de conclusao do POLL. O satellite ja' mandou a
+    // telemetria em envelopes "data" (republicados acima/abaixo); este "pollresp"
+    // so' diz "terminei, req_id=X". O orquestrador casa pelo req_id (ignora se nao
+    // estava esperando esse req_id) e avanca pro proximo satellite. No fallback
+    // autonomo _gw_poll_match e' stub (retorna false) -> cai e e' ignorado.
+    if (strcmp(type, "pollresp") == 0) {
+        const char* req_id = env["cmd_id"] | "";
+        if (_gw_poll_match(req_id, from)) {
+            Serial.printf("[LORA-GW] POLLRESP req_id=%s de %s — satellite respondeu, avancando\\n",
+                          req_id, from);
+        } else {
+            Serial.printf("[LORA-GW] POLLRESP req_id=%s de %s ignorado (nao esperado)\\n",
+                          req_id, from);
+        }
+        return;
+    }
 
     // ACK do satellite — libera pendente e publica em <BASE>/satellite/<from>/cmd/ack
     if (!type[0] || strcmp(type, "ack") == 0) {
@@ -2916,8 +3427,14 @@ static void lora_handle_rx(const char* raw) {
         char topic[200];
         snprintf(topic, sizeof(topic), "%s/satellite/%s/%s", MQTT_TOPIC_BASE, from, subtopic);
         char payload_buf[600];
-        JsonVariantConst payload = env["payload"];
+        JsonVariant payload = env["payload"];  // mutavel (env nao e' const) p/ carimbar a hora
         if (payload.isNull()) return;
+        // CARIMBO de hora no gateway (mesmo motivo do binario): so' se sincronizou e
+        // se o payload e' objeto. Sobrescreve um "timestamp":0 que o satelite mande.
+        {
+            time_t _tnow = time(nullptr);
+            if (_tnow > 1700000000 && payload.is<JsonObject>()) payload["timestamp"] = (long)_tnow;
+        }
         size_t n = serializeJson(payload, payload_buf, sizeof(payload_buf));
         if (n > 0) mqtt_publish_raw(topic, payload_buf);
         return;
@@ -2925,10 +3442,13 @@ static void lora_handle_rx(const char* raw) {
 
     // Heartbeat/status do satellite — publica em <BASE>/satellite/<from>/status (retain)
     if (strcmp(type, "status") == 0) {
-        char topic[200];
+        JsonVariantConst payload = env["payload"];
+        ${gwOrchestrate ? `// DESCOBERTA DINAMICA: satelite que anuncia "poll":1 com MAC novo
+        // entra na fila de polling (sem precisar do MAC no diagrama).
+        if (!payload.isNull() && ((payload["poll"] | 0) == 1)) _poll_add(from, "");
+        ` : ``}char topic[200];
         snprintf(topic, sizeof(topic), "%s/satellite/%s/status", MQTT_TOPIC_BASE, from);
         char status_buf[400];
-        JsonVariantConst payload = env["payload"];
         if (payload.isNull()) {
             // Sem payload aninhado: re-serializa envelope inteiro
             size_t n = serializeJson(env, status_buf, sizeof(status_buf));
@@ -2952,6 +3472,193 @@ static void lora_handle_rx(const char* raw) {
 `;
         }
         return cpp;
+    }
+
+    // ============================================================
+    // MESTRE-PUXA — Orquestrador de polling do GATEWAY.
+    // ----------------------------------------------------------------
+    // Gera a tabela de satelites a pollar (do grafo, via spec.poll_targets) + a
+    // maquina de estados round-robin: envia POLL(req_id) pra UM satelite por vez,
+    // espera POLLRESP(req_id) ate POLL_TIMEOUT_MS, casa pelo req_id, republica o
+    // que chegou (os "data" ja' foram tratados em lora_handle_rx) e avanca. Apos
+    // POLL_MAX_TIMEOUTS seguidos marca o satelite offline e segue. So' um satelite
+    // transmite por vez -> sem colisao. O POLL roteia pela malha (to=mac + ttl).
+    // O orquestrador so' transmite com o canal de COMANDO livre (_pending_count==0):
+    // comando tem prioridade. Os 3s de timeout ja' cobrem os saltos multi-hop.
+    // ============================================================
+    _genGatewayOrchestrator(spec) {
+        const cEsc = (s) => String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+        const targets = spec.poll_targets || [];
+        const seedCalls = targets.map(t =>
+            `    _poll_add("${cEsc(t.mac)}", "${cEsc(t.name || '')}");`).join('\n');
+        return `
+// ===== MESTRE-PUXA: orquestrador de polling (round-robin, alvos DINAMICOS) =====
+#define POLL_TIMEOUT_MS    10000UL  // janela de espera por POLLRESP. Cobre a resposta
+                                     // COMPLETA do satelite: leitura + N frames de
+                                     // telemetria (1 por device) + pollresp, cada um
+                                     // com airtime LoRa + CSMA (~1.7s/frame medido).
+                                     // _poll_note_activity ESTENDE a cada frame do alvo,
+                                     // entao o timeout so' dispara se o satelite ficar
+                                     // MUDO por 10s (morto), nao por demorar a terminar.
+#define POLL_MAX_TIMEOUTS  3        // N timeouts seguidos -> marca satelite offline
+#define POLL_GAP_MS        200UL    // respiro entre o fim de um poll e o proximo TX
+#define POLL_MIN_INTERVAL_MS 60000UL // cadencia minima por alvo (casa com PUBLISH_INTERVAL_MS):
+                                     // o satelite zera o acumulador a cada POLL, entao espacar
+                                     // os polls garante uma janela cheia de amostras (METER_CYCLE_MS)
+                                     // e media com a MESMA qualidade do push antigo.
+#define POLL_MAX_TARGETS   16        // teto de satelites polláveis (diagrama + descobertos)
+
+// Lista de alvos MUTAVEL: semeada pelos alvos do diagrama (se houver) e CRESCE
+// com descoberta dinamica (heartbeat "poll":1).
+typedef struct { char mac[20]; char name[24]; } PollTarget;
+static PollTarget    _poll_targets[POLL_MAX_TARGETS];
+static int           _poll_n = 0;     // alvos ativos
+
+static int  _poll_idx      = -1;      // indice do satelite POLLado por ultimo
+static bool _poll_waiting  = false;   // true enquanto espera POLLRESP
+static char _poll_req_id[16] = {0};   // req_id do POLL em voo
+static unsigned long _poll_deadline = 0;
+static unsigned long _poll_next_ms  = 0;
+static uint32_t _poll_seq   = 0;
+static uint8_t  _poll_timeouts[POLL_MAX_TARGETS];  // timeouts seguidos por satelite
+static bool     _poll_online[POLL_MAX_TARGETS];    // estado de presenca conhecido
+static unsigned long _poll_last_ms[POLL_MAX_TARGETS]; // millis do ultimo POLL (0=nunca)
+
+// Adiciona um alvo (se novo e ha espaco). Semeia o diagrama E a descoberta
+// dinamica: ao ouvir o heartbeat de um satelite pollável (status "poll":1) com
+// MAC novo, o gateway passa a pollá-lo — sem precisar do MAC no diagrama (como o
+// push antigo, que aprendia o 'from' em runtime). Retorna true se adicionou.
+static bool _poll_add(const char* mac, const char* name) {
+    if (!mac || !mac[0]) return false;
+    for (int i = 0; i < _poll_n; i++)
+        if (_lora_mac_eq(_poll_targets[i].mac, mac)) return false;  // ja' na lista
+    if (_poll_n >= POLL_MAX_TARGETS) { Serial.println("[LORA-GW] poll: lista cheia"); return false; }
+    strncpy(_poll_targets[_poll_n].mac, mac, sizeof(_poll_targets[0].mac) - 1);
+    _poll_targets[_poll_n].mac[sizeof(_poll_targets[0].mac) - 1] = 0;
+    strncpy(_poll_targets[_poll_n].name, (name && name[0]) ? name : mac, sizeof(_poll_targets[0].name) - 1);
+    _poll_targets[_poll_n].name[sizeof(_poll_targets[0].name) - 1] = 0;
+    _poll_timeouts[_poll_n] = 0; _poll_online[_poll_n] = false; _poll_last_ms[_poll_n] = 0;
+    Serial.printf("[LORA-GW] alvo de poll +%s (%s) total=%d\\n",
+                  mac, _poll_targets[_poll_n].name, _poll_n + 1);
+    _poll_n++;
+    return true;
+}
+
+// Semeia os alvos vindos do DIAGRAMA (pode ser 0 — descoberta dinamica supre).
+static void _poll_seed_init() {
+${seedCalls}
+}
+
+// Publica presenca do satelite (online/offline) em <BASE>/satellite/<mac>/status.
+static void _poll_publish_presence(int idx, bool online) {
+    char topic[200];
+    snprintf(topic, sizeof(topic), "%s/satellite/%s/status", MQTT_TOPIC_BASE, _poll_targets[idx].mac);
+    char buf[200];
+    snprintf(buf, sizeof(buf),
+             "{\\"online\\":%s,\\"source\\":\\"poll\\",\\"ts\\":%lu}",
+             online ? "true" : "false", (unsigned long)(millis()/1000));
+    mqtt_publish_raw(topic, buf);
+}
+
+// Monta e envia o POLL pro satelite idx. 'to' = MAC final; roteia pela malha
+// (_lora_next_hop + ttl). req_id curto ("p<seq>") correlaciona a resposta.
+static void _poll_send(int idx) {
+    snprintf(_poll_req_id, sizeof(_poll_req_id), "p%lu", (unsigned long)(++_poll_seq));
+    String myMac = WiFi.macAddress();
+    char env[200];
+    int n = snprintf(env, sizeof(env),
+        "{\\"to\\":\\"%s\\",\\"from\\":\\"%s\\",\\"cmd_id\\":\\"%s\\",\\"type\\":\\"poll\\",\\"ttl\\":%d,\\"ts\\":%lu}",
+        _poll_targets[idx].mac, myMac.c_str(), _poll_req_id, LORA_DEFAULT_TTL,
+        (unsigned long)(millis()/1000));
+    if (n <= 0 || n >= (int)sizeof(env)) { Serial.println("[LORA-GW] POLL envelope overflow"); return; }
+    // Semeia o proprio POLL no dedup (chave cmd_id|type): se uma repetidora
+    // re-emitir este POLL e o gateway ouvir de volta, o forward reconhece como
+    // ja' visto e NAO re-repassa o proprio POLL (evita TX duplicado na malha).
+    _sat_seen_or_add(_poll_req_id, "poll", myMac.c_str());
+    Serial.printf("[LORA-GW] POLL -> %s (%s) req_id=%s\\n",
+                  _poll_targets[idx].mac, _poll_targets[idx].name, _poll_req_id);
+    // So' abre a janela de espera se o CSMA REALMENTE transmitiu. Se o canal
+    // estava ocupado/overflow, _lora_safe_send devolve false: nao adianta esperar
+    // POLLRESP de um POLL que nem saiu — agenda o proximo apos o respiro.
+    if (_lora_safe_send(env)) {
+        _poll_waiting  = true;
+        _poll_deadline = millis() + POLL_TIMEOUT_MS;
+        _poll_last_ms[idx] = millis();  // marca a cadencia so' quando o POLL saiu de fato
+    } else {
+        _poll_next_ms = millis() + POLL_GAP_MS;
+    }
+}
+
+// Casa um POLLRESP recebido com o POLL em voo. So' aceita se: estamos esperando,
+// o req_id bate E o 'from' e' o satelite que estamos pollando (ignora o resto).
+// Em match: marca online, zera timeouts, libera a janela e agenda o proximo.
+static bool _gw_poll_match(const char* req_id, const char* from) {
+    if (!_poll_waiting || _poll_idx < 0 || _poll_idx >= _poll_n) return false;
+    if (!req_id || !req_id[0] || strcmp(req_id, _poll_req_id) != 0) return false;
+    if (!_lora_mac_eq(from, _poll_targets[_poll_idx].mac)) return false;  // resposta de outro no
+    if (!_poll_online[_poll_idx]) {
+        _poll_online[_poll_idx] = true;
+        _poll_publish_presence(_poll_idx, true);
+        Serial.printf("[LORA-GW] %s ONLINE (poll)\\n", _poll_targets[_poll_idx].mac);
+    }
+    _poll_timeouts[_poll_idx] = 0;
+    _poll_waiting = false;
+    _poll_next_ms = millis() + POLL_GAP_MS;  // respira antes do proximo TX
+    return true;
+}
+
+// Qualquer frame recebido DO satelite que estamos pollando (data binario/JSON,
+// status) prova que ele esta vivo e respondendo -> ESTENDE a janela de espera.
+// Assim uma resposta multi-frame (varios devices) ou cold-start lento NAO dispara
+// timeout falso: o timeout so' vale se o alvo ficar MUDO por POLL_TIMEOUT_MS.
+static void _poll_note_activity(const char* from) {
+    if (!_poll_waiting || _poll_idx < 0 || _poll_idx >= _poll_n) return;
+    if (from && from[0] && _lora_mac_eq(from, _poll_targets[_poll_idx].mac))
+        _poll_deadline = millis() + POLL_TIMEOUT_MS;
+}
+
+// Tick do orquestrador (chamado de lora_loop_tick). Avanca a maquina round-robin.
+static void _gw_poll_tick() {
+    static bool _seeded = false;
+    if (!_seeded) { _seeded = true; _poll_seed_init(); }  // alvos do diagrama (1x)
+    if (_poll_n <= 0) return;  // sem alvos ainda (nem diagrama nem descoberto) -> idle
+    unsigned long now = millis();
+    // Comando tem prioridade: nao POLLa enquanto ha cmd em voo (evita colisao no
+    // canal half-duplex). O retry do cmd ja' e' gerido acima no lora_loop_tick.
+    if (_pending_count() > 0) return;
+
+    if (_poll_waiting) {
+        if ((long)(now - _poll_deadline) < 0) return;  // ainda dentro da janela
+        // TIMEOUT: nenhum POLLRESP casou em POLL_TIMEOUT_MS.
+        if (_poll_idx >= 0 && _poll_idx < _poll_n) {
+            if (_poll_timeouts[_poll_idx] < 255) _poll_timeouts[_poll_idx]++;
+            Serial.printf("[LORA-GW] POLL timeout %s (%u/%d) req_id=%s\\n",
+                          _poll_targets[_poll_idx].mac, _poll_timeouts[_poll_idx],
+                          POLL_MAX_TIMEOUTS, _poll_req_id);
+            if (_poll_timeouts[_poll_idx] >= POLL_MAX_TIMEOUTS && _poll_online[_poll_idx]) {
+                _poll_online[_poll_idx] = false;
+                _poll_publish_presence(_poll_idx, false);
+                Serial.printf("[LORA-GW] %s OFFLINE apos %d timeouts\\n",
+                              _poll_targets[_poll_idx].mac, POLL_MAX_TIMEOUTS);
+            }
+        }
+        _poll_waiting = false;
+        _poll_next_ms = now + POLL_GAP_MS;
+        return;
+    }
+
+    // Canal livre e nao esperando: agenda o proximo satelite (round-robin).
+    if ((long)(now - _poll_next_ms) < 0) return;  // respiro entre polls
+    // Cadencia minima por alvo: nao re-POLLa um satelite antes de POLL_MIN_INTERVAL_MS
+    // (ele precisa acumular uma janela de amostras entre respostas — senao a media
+    // degrada). Espera estrita pelo proximo da fila: como todos foram pollados em
+    // sequencia, ficam "vencidos" por volta do mesmo instante.
+    int _next = (_poll_idx + 1) % _poll_n;
+    if (_poll_last_ms[_next] != 0 && (long)(now - _poll_last_ms[_next]) < (long)POLL_MIN_INTERVAL_MS) return;
+    _poll_idx = _next;
+    _poll_send(_poll_idx);
+}
+`;
     }
 
     // ============================================================
@@ -3320,6 +4027,11 @@ static bool _read_dev_${idx}_raw(uint16_t *buf) {
     _select(${dev.modbus_address});
 `;
 
+        if (this._simMode()) {
+            cpp += this._genSimFill(aiMap, blocks, blockOffsets);
+            cpp += `}\n`;
+        } else {
+
         if (cat.handshake) {
             const h = cat.handshake;
             const fn = h.func === 0x04 ? 'readInputRegisters' : 'readHoldingRegisters';
@@ -3377,7 +4089,10 @@ static bool _read_dev_${idx}_raw(uint16_t *buf) {
 
         cpp += `    return true;
 }
+`;
+        }  // fim do else (caminho de leitura real — pulado em sim mode)
 
+        cpp += `
 // Le + acumula. Chamar a cada READ_INTERVAL_MS.
 static void _sample_dev_${idx}() {
     // Back-off: device que falhou MODBUS_FAIL_COOLDOWN_N vezes fica em cooldown.
@@ -3451,23 +4166,27 @@ ${_tpOv ? `        _fTP = ${_tpOv.toFixed(1)}f;  // override tp_ratio (diagrama)
                 return { expr, base, w };
             };
             const dpt = ext('dpt'), dct = ext('dct'), dpq = ext('dpq');
-            cpp += `    // Casas decimais (reg ${d.register}: DPT/DCT/DPQ). value = raw*10^(exp-baseline) relativo ao scale fixo.
+            cpp += `    // Casas decimais (reg ${d.register}: DPT/DCT/DPQ). value = raw*10^(exp-baseline).
+    // Cache do ultimo valor bom (init=baseline => fator 1.0): expoentes mudam raro, entao se a
+    // leitura falhar usa o ultimo lido em vez de cair pra 1.0. Flush+retry (mesmo do bloco principal).
+    static uint8_t _lDPT = ${dpt ? dpt.base : 4}, _lDCT = ${dct ? dct.base : 4}, _lDPQ = ${dpq ? dpq.base : 4};
     float _fDPT = 1.0f, _fDCT = 1.0f, _fDPQ = 1.0f;
     {
-        delay(40);
-        uint8_t rc_dec = _mb.readHoldingRegisters(${d.register}, ${d.count});
+        uint8_t rc_dec = 0xFF;
+        for (int _t = 0; _t < 3 && rc_dec != _mb.ku8MBSuccess; _t++) {
+            while (_rs485.available()) _rs485.read();   // drena residual — corrige 0xE0 (dessincronia)
+            delay(20);
+            rc_dec = _mb.readHoldingRegisters(${d.register}, ${d.count});
+        }
         if (rc_dec == _mb.ku8MBSuccess) {
             uint16_t _dec0 = _mb.getResponseBuffer(0);
             uint16_t _dec1 = _mb.getResponseBuffer(${d.count > 1 ? 1 : 0});
-            uint8_t _eDPT = ${dpt ? dpt.expr : '0'};
-            uint8_t _eDCT = ${dct ? dct.expr : '0'};
-            uint8_t _eDPQ = ${dpq ? dpq.expr : '0'};
-            uint8_t _sign = _dec1 & 0xFF;
-${dpt ? `            _fDPT = _pow10i((int)_eDPT - ${dpt.base});\n` : ''}${dct ? `            _fDCT = _pow10i((int)_eDCT - ${dct.base});\n` : ''}${dpq ? `            _fDPQ = _pow10i((int)_eDPQ - ${dpq.base});\n` : ''}            Serial.printf("[M160] DPT=%u DCT=%u DPQ=%u SIGN=0x%02X (raw r35=0x%04X r36=0x%04X) -> fDPT=%.4f fDCT=%.4f fDPQ=%.4f\\n", _eDPT, _eDCT, _eDPQ, _sign, _dec0, _dec1, _fDPT, _fDCT, _fDPQ);
+${dpt ? `            _lDPT = ${dpt.expr};\n` : ''}${dct ? `            _lDCT = ${dct.expr};\n` : ''}${dpq ? `            _lDPQ = ${dpq.expr};\n` : ''}            uint8_t _sign = _dec1 & 0xFF;
+            Serial.printf("[M160] DPT=%u DCT=%u DPQ=%u SIGN=0x%02X (raw r35=0x%04X r36=0x%04X)\\n", _lDPT, _lDCT, _lDPQ, _sign, _dec0, _dec1);
         } else {
-            Serial.printf("[M160] leitura DPT/DCT/DPQ FALHOU (rc=0x%02X) — usando fatores 1.0\\n", rc_dec);
+            Serial.printf("[M160] reg35 falhou (rc=0x%02X) — usando ultimo bom DPT=%u DCT=%u DPQ=%u\\n", rc_dec, _lDPT, _lDCT, _lDPQ);
         }
-    }
+${dpt ? `        _fDPT = _pow10i((int)_lDPT - ${dpt.base});\n` : ''}${dct ? `        _fDCT = _pow10i((int)_lDCT - ${dct.base});\n` : ''}${dpq ? `        _fDPQ = _pow10i((int)_lDPQ - ${dpq.base});\n` : ''}    }
 
 `;
         }
@@ -3835,8 +4554,264 @@ static void _publish_dev_${idx}(modbus_publish_fn publish) {
         catch (_) { return false; }
     }
 
+    // Flag de MODO SIMULACAO/LAB. Quando ativo, os leitores Modbus (RS485/TCP)
+    // preenchem o buffer com valores PLAUSIVEIS em vez de ler dos perifericos
+    // (que nao existem na bancada). O decode+publish REAIS rodam por cima e o
+    // topico ganha prefixo "TESTE/". Ativar via window.IOT_SIMULATE=true (browser)
+    // ou editor.simulate=true (harness/headless).
+    _simMode() {
+        try { if (typeof window !== 'undefined' && window.IOT_SIMULATE === true) return true; } catch (_) {}
+        return !!(this.editor && this.editor.simulate);
+    }
+
+    // Flag de FALLBACK do fluxo LoRa. Por padrao (false) o gerador emite o modo
+    // MESTRE-PUXA (polling orquestrado): o gateway POLLa os satelites um a um e o
+    // satelite responde DATA(req_id) so' quando perguntado — nada de push por timer.
+    // Quando ativo (window.IOT_LORA_AUTONOMOUS===true OU editor.loraAutonomous),
+    // volta o comportamento ANTIGO: o satelite EMPURRA telemetria sozinho por
+    // timer e o gateway nao orquestra. Usado como escape-hatch/retrocompat.
+    _loraAutonomousPush() {
+        try { if (typeof window !== 'undefined' && window.IOT_LORA_AUTONOMOUS === true) return true; } catch (_) {}
+        return !!(this.editor && this.editor.loraAutonomous);
+    }
+
+    // Heuristica de valor PLAUSIVEL por campo (sim mode). Devolve o RAW que, apos
+    // dividir pela `scale` no decode, aproxima o `target` de engenharia.
+    // Prioriza m.json/m.unit/pid (lowercase). Assume equipamento OK — so' plausivel.
+    _simRawForField(pid, m) {
+        const hint = `${(m && m.json) || ''} ${(m && m.unit) || ''} ${pid || ''}`.toLowerCase();
+        let target;
+        if (/cosfi|cosphi|\bfp\b|fp[_-]?|\bpf\b/.test(hint)) target = 0.92;
+        else if (/temp/.test(hint)) target = 45;
+        else if (/\bhz\b|freq/.test(hint)) target = 60;
+        else if (/var/.test(hint)) target = 800;          // antes de "v" (substring)
+        else if (/\bkw\b|\bw\b|pot|power|\bpt\b|\bpa\b/.test(hint)) target = 5000;
+        else if (/\ba\b|amp|corrente|curr|\bi[abc]\b/.test(hint)) target = 30;
+        else if (/\bv\b|volt|tens|\bv[abc]\b/.test(hint)) target = 220;
+        else target = 100;
+        let scale = (typeof (m && m.scale) === 'number' && m.scale > 0) ? m.scale : 100;
+        let raw = Math.round(target * scale);
+        if (raw < 0) raw = 0;
+        if (raw > 65535) raw = 65535;
+        return raw;
+    }
+
+    // Gera o bloco C++ de preenchimento do buf com valores plausiveis (sim mode).
+    // Compartilhado entre RS485 (_read_dev) e TCP (_read_tcp_inv): mesma heuristica.
+    // Zera buf inteiro, escreve cada campo do aiMap via blockOffsets, aplica wobble
+    // leve em ate 2 correntes pra os graficos mexerem. Retorna true (pula leitura real).
+    _genSimFill(aiMap, blocks, blockOffsets, indent = '    ') {
+        let total = 0;
+        for (const b of blocks) total += (Number(b.count) || 0);
+        total = Math.max(total, 1);
+        let cpp = `${indent}// MODO SIMULACAO/LAB: sem periferico real — preenche valores plausiveis.\n`;
+        cpp += `${indent}uint32_t _w = (millis() / 1000) % 7;  // wobble leve p/ graficos nao congelarem\n`;
+        cpp += `${indent}(void)_w;\n`;
+        cpp += `${indent}for (uint16_t i = 0; i < ${total}; i++) buf[i] = 0;\n`;
+        let wobbleLeft = 2;
+        for (const [pid, m] of Object.entries(aiMap)) {
+            if (m.block === undefined || m.offset === undefined) continue;
+            if (m.block >= blocks.length) continue;
+            const off = blockOffsets[m.block] + m.offset;
+            const raw = this._simRawForField(pid, m);
+            const regsPer = Number(m.regs_per) || ((m.dataType === 'U32' || m.dataType === 'S32' || m.dataType === 'FLOAT' || m.dataType === 'U32_SUM3') ? 2 : 1);
+            const isCurrent = this._isCurrentPid(pid);
+            const wob = (isCurrent && wobbleLeft > 0) ? ' + _w' : '';
+            if (wob) wobbleLeft--;
+            if (regsPer >= 2) {
+                // U32/U32_SUM3 etc: valor no registrador BAIXO, 0 no alto.
+                cpp += `${indent}buf[${off}] = 0; buf[${off} + 1] = (uint16_t)(${raw}${wob});  // ${pid}\n`;
+            } else {
+                cpp += `${indent}buf[${off}] = (uint16_t)(${raw}${wob});  // ${pid}\n`;
+            }
+        }
+        cpp += `${indent}return true;\n`;
+        return cpp;
+    }
+
     _escStr(s) {
         return String(s || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    }
+
+    // ---- Máquina de estados do pivô (Cenário B) ----
+    // Emitida só quando spec.pivo existe e a TON tem relés. Reusa:
+    //   - inputs_get_state()  -> leitura das BI (entradas digitais)
+    //   - relay_set(num, on)  -> acionamento das BO (relés)
+    //   - mqtt_publish_sub / lora_publish_data -> publicacao de status
+    // BI/BO == 0 significam "não usa" e são omitidos (sem monitoramento/acionamento).
+    _genPivot(spec) {
+        const p = spec.pivo;
+        const biPress = p.bi_pressostato;   // 1-6 ou 0
+        const biEmerg = p.bi_emergencia;
+        const biDesal = p.bi_desalinhamento;
+        const boMov   = p.bo_movimento;
+        const boDir   = p.bo_sentido_dir;
+        const boEsq   = p.bo_sentido_esq;
+        const tempo   = p.tempo_pressao_s;
+
+        // Helpers de geração: leitura de BI (1=ativo). Numero 0 => expressao "false".
+        const biRead = (n) => n ? `((inputs_get_state() >> ${n - 1}) & 1)` : 'false';
+
+        // Status publish: usa o mesmo mecanismo dos demais I/O.
+        let pubLine = `    Serial.printf("[PIVO] %s\\n", payload);`;
+        if (spec.wifi) {
+            pubLine = `    mqtt_publish_sub("pivo", payload);`;
+        } else if (spec.lora_role === 'satellite') {
+            pubLine = `    lora_publish_data("pivo", payload);`;
+        }
+
+        let cpp = `// ===== PIVÔ: máquina de estados (Cenário B — a TON é o cérebro) =====
+// Painel "burro": a TON aciona os relés (BO) e lê o painel pelas entradas (BI).
+// Config (do diagrama): BI pressostato=${biPress || '—'}, BI emergencia=${biEmerg || '—'},
+//   BI desalinhamento=${biDesal || '—'}; BO movimento=${boMov || '—'}, BO dir=${boDir || '—'},
+//   BO esq=${boEsq || '—'}; timeout pressão=${tempo}s.
+`;
+        // Forward-decl: em satellite o helper lora_publish_data e' definido mais
+        // abaixo (no router LoRa). O modulo do pivo o referencia antes — declara aqui.
+        if (!spec.wifi && spec.lora_role === 'satellite') {
+            cpp += `static void lora_publish_data(const char* subtopic, const char* payload_json);  // def. no router LoRa abaixo
+`;
+        }
+        cpp += `
+enum PivotState {
+    PIVO_OCIOSO = 0,        // parado, aguardando comando "pivot on"
+    PIVO_ESPERANDO_PRESSAO, // comando recebido; esperando pressostato (água chegar)
+    PIVO_RODANDO,           // água OK; BO movimento acionado
+    PIVO_FALHA_PRESSAO,     // timeout sem pressão
+    PIVO_PARADO,            // parado por comando "pivot off" ou por falha de segurança
+};
+
+static PivotState   _pivot_state    = PIVO_OCIOSO;
+static unsigned long _pivot_t_wait   = 0;     // millis em que entrou em ESPERANDO_PRESSAO
+static char          _pivot_dir      = 'R';   // sentido pedido ('L'/'R'); aplicado ao rodar
+static const char*   _pivot_falha    = "";    // motivo da ultima parada por seguranca
+#define PIVO_TIMEOUT_MS  ${tempo}000UL        // ${tempo}s para a água chegar
+
+static const char* _pivot_state_str(PivotState s) {
+    switch (s) {
+        case PIVO_OCIOSO:            return "ocioso";
+        case PIVO_ESPERANDO_PRESSAO: return "esperando_pressao";
+        case PIVO_RODANDO:           return "rodando";
+        case PIVO_FALHA_PRESSAO:     return "falha_pressao";
+        case PIVO_PARADO:            return "parado";
+        default:                     return "?";
+    }
+}
+
+// Abre TODOS os BO do pivô (movimento + sentidos). Chamado ao parar.
+static void _pivot_relays_off() {
+`;
+        if (boMov) cpp += `    relay_set(${boMov}, false);  // BO movimento\n`;
+        if (boDir) cpp += `    relay_set(${boDir}, false);  // BO sentido direita\n`;
+        if (boEsq) cpp += `    relay_set(${boEsq}, false);  // BO sentido esquerda\n`;
+        cpp += `}
+
+// Aplica o sentido atual (_pivot_dir) aos BO de sentido (se configurados).
+static void _pivot_apply_dir() {
+`;
+        if (boDir || boEsq) {
+            if (boDir) cpp += `    relay_set(${boDir}, _pivot_dir == 'R');  // direita\n`;
+            if (boEsq) cpp += `    relay_set(${boEsq}, _pivot_dir == 'L');  // esquerda\n`;
+        } else {
+            cpp += `    // Sem BO de sentido configurado (pivô só liga/desliga).\n`;
+        }
+        cpp += `}
+
+`;
+        // Publica status do pivô — espelha inputs/relays.
+        cpp += `// Publica estado do pivô em <BASE>/pivo (ou via LoRa em satellite).
+static void _pivot_publish_status() {
+    // Payload COMPACTO pra caber no MTU 200 do LoRa (envelope + payload). Chaves:
+    // estado, ps (pressostato), dir (sentido), falha. "rodando" foi removido —
+    // e' derivavel de estado=="rodando". (Consumidor backend ainda e' stub.)
+    char payload[120];
+    snprintf(payload, sizeof(payload),
+        "{\\"estado\\":\\"%s\\",\\"ps\\":%d,\\"dir\\":\\"%c\\",\\"falha\\":\\"%s\\"}",
+        _pivot_state_str(_pivot_state),
+        ${biPress ? biRead(biPress) : '0'},
+        _pivot_dir,
+        _pivot_falha);
+${pubLine}
+}
+
+// ----- Comandos (chamados pelo parser em _process_command_inner) -----
+static void pivot_cmd_start() {
+    _pivot_falha = "";
+    _pivot_t_wait = millis();
+    _pivot_state = PIVO_ESPERANDO_PRESSAO;
+    Serial.println("[PIVO] start -> ESPERANDO_PRESSAO");
+    _pivot_publish_status();
+}
+
+static void pivot_cmd_stop() {
+    _pivot_relays_off();
+    _pivot_state = PIVO_PARADO;
+    Serial.println("[PIVO] stop -> PARADO");
+    _pivot_publish_status();
+}
+
+static void pivot_cmd_dir(char d) {
+    _pivot_dir = (d == 'L') ? 'L' : 'R';
+    Serial.printf("[PIVO] sentido = %c\\n", _pivot_dir);
+    // Se ja' esta rodando, aplica imediatamente.
+    if (_pivot_state == PIVO_RODANDO) _pivot_apply_dir();
+    _pivot_publish_status();
+}
+
+// ----- Loop da máquina de estados (chamado no loop() principal) -----
+void pivot_loop() {
+    bool press = ${biRead(biPress)};
+`;
+        // Monitoramento de segurança: só os sinais configurados (BI != 0) geram
+        // checagem de parada — emitidos condicionalmente no case RODANDO abaixo.
+        cpp += `
+    switch (_pivot_state) {
+        case PIVO_OCIOSO:
+        case PIVO_PARADO:
+        case PIVO_FALHA_PRESSAO:
+            // Estados terminais/idle: nada a fazer ate' o proximo comando.
+            break;
+
+        case PIVO_ESPERANDO_PRESSAO:
+            if (press) {
+                // Água chegou: aciona movimento + sentido e vai para RODANDO.
+`;
+        if (boMov) cpp += `                relay_set(${boMov}, true);  // BO movimento\n`;
+        cpp += `                _pivot_apply_dir();
+                _pivot_state = PIVO_RODANDO;
+                Serial.println("[PIVO] pressao OK -> RODANDO");
+                _pivot_publish_status();
+            } else if (millis() - _pivot_t_wait >= PIVO_TIMEOUT_MS) {
+                _pivot_relays_off();
+                _pivot_falha = "timeout";
+                _pivot_state = PIVO_FALHA_PRESSAO;
+                Serial.println("[PIVO] timeout sem pressao -> FALHA_PRESSAO");
+                _pivot_publish_status();
+            }
+            break;
+
+        case PIVO_RODANDO: {
+            // Monitora condicoes de parada de seguranca.
+            bool stop = false;
+            const char* motivo = "";
+            if (!press) { stop = true; motivo = "press_caiu"; }
+`;
+        if (biEmerg) cpp += `            if (${biRead(biEmerg)}) { stop = true; motivo = "emergencia"; }\n`;
+        if (biDesal) cpp += `            if (${biRead(biDesal)}) { stop = true; motivo = "desalinhamento"; }\n`;
+        cpp += `            if (stop) {
+                _pivot_relays_off();
+                _pivot_falha = motivo;
+                _pivot_state = PIVO_PARADO;
+                Serial.printf("[PIVO] parada de seguranca (%s) -> PARADO\\n", motivo);
+                _pivot_publish_status();
+            }
+            break;
+        }
+    }
+}
+
+`;
+        return cpp;
     }
 
     // ---- main.cpp ----
@@ -3927,7 +4902,15 @@ static void _publish_cmd_ack(const char* cmd_id, const char* status, const char*
     mqtt_publish(topic, payload);
 }
 
-// Executa o comando bruto (sem envelope). Preenche result_msg com descricao curta.
+`;
+        // ===== Maquina de estados do Pivô (Cenário B: TON é o cérebro) =====
+        // Emitida apenas quando ha um pivô conectado a esta TON (spec.pivo) e a
+        // TON tem relés (BO). Reusa inputs_get_state() (BI) e relay_set() (BO).
+        if (spec.pivo && spec.has_relays) {
+            cpp += this._genPivot(spec);
+        }
+
+        cpp += `// Executa o comando bruto (sem envelope). Preenche result_msg com descricao curta.
 // Retorna true em sucesso, false em erro.
 static bool _process_command_inner(const char* raw, char* result_msg, size_t msg_sz) {
     if (!raw || !*raw) { snprintf(result_msg, msg_sz, "empty"); return false; }
@@ -3978,7 +4961,37 @@ static bool _process_command_inner(const char* raw, char* result_msg, size_t msg
         snprintf(result_msg, msg_sz, "tr%c_%s", cmd[2], on ? "on" : "off");
         return true;
     }
-    if (cmd == "status") {
+`;
+        // ===== Comandos do pivô (só quando ha um pivô conectado a esta TON) =====
+        // pivot on/start  -> liga (entra em ESPERANDO_PRESSAO)
+        // pivot off/stop  -> para (abre os BO)
+        // pivot dir l/r   -> sentido esquerda/direita
+        if (spec.pivo && spec.has_relays) {
+            cpp += `    if (cmd.startsWith("pivot")) {
+        if (cmd.indexOf("off") >= 0 || cmd.indexOf("stop") >= 0) {
+            pivot_cmd_stop();
+            snprintf(result_msg, msg_sz, "pivot_off");
+            return true;
+        }
+        if (cmd.indexOf("dir") >= 0) {
+            // "pivot dir l" / "pivot dir r" — define sentido (aplicado ao iniciar/rodando)
+            char d = (cmd.indexOf(" l") >= 0 || cmd.endsWith("l")) ? 'L'
+                   : (cmd.indexOf(" r") >= 0 || cmd.endsWith("r")) ? 'R' : 0;
+            if (d) { pivot_cmd_dir(d); snprintf(result_msg, msg_sz, "pivot_dir_%c", d); return true; }
+            snprintf(result_msg, msg_sz, "pivot_dir_invalida");
+            return false;
+        }
+        if (cmd.indexOf("on") >= 0 || cmd.indexOf("start") >= 0) {
+            pivot_cmd_start();
+            snprintf(result_msg, msg_sz, "pivot_on");
+            return true;
+        }
+        snprintf(result_msg, msg_sz, "pivot_cmd_desconhecido");
+        return false;
+    }
+`;
+        }
+        cpp += `    if (cmd == "status") {
         Serial.printf("Entradas: %02X  Saidas: %02X\\n", inputs_get_state(), outputs_get_state());
         snprintf(result_msg, msg_sz, "status_printed");
         return true;
@@ -4161,7 +5174,48 @@ void setup() {
     esp_task_wdt_reset();
     Serial.println("\\nPronto!");
 }
+`;
 
+        // MESTRE-PUXA — satellite REATIVO. Quando o mestre POLLa, esta funcao le o
+        // device (medias ja' acumuladas pelo sample_one no loop) + faz os calculos
+        // (decode/escala EXISTENTE via modbus_publish_all/inverter_tcp_publish_all)
+        // e ENVIA a telemetria pelo MESMO caminho do push antigo (lora_publish_data),
+        // fechando com pollresp(req_id). O corpo so' le device quando satReactive
+        // (default + tem device). lora_poll_respond e' SEMPRE definida no satellite
+        // (o handler de POLL em lora.cpp a referencia) — em fallback/no-device vira
+        // um stub que so' responde pollresp (inerte: nenhum POLL chega no fallback).
+        const satReactive = spec.lora_role === 'satellite' && !this._loraAutonomousPush() && this._satelliteHasDevice(spec);
+        if (spec.lora_role === 'satellite') {
+            cpp += `
+// MESTRE-PUXA: responde um POLL do mestre. Le+publica a telemetria do device
+// (mesmo decode/escala/empacotamento do push antigo) e sinaliza fim com pollresp.
+void lora_poll_respond(const char* gw_mac, const char* req_id) {
+    Serial.printf("[LORA-SAT] POLL req_id=%s -> lendo device e respondendo p/ %s\\n",
+                  req_id && req_id[0] ? req_id : "(sem)", gw_mac ? gw_mac : "*");
+`;
+            if (satReactive && spec.rs485_devices.length > 0) {
+                cpp += `    // RS485: publica medias acumuladas (mesmo caminho do modo autonomo).
+    modbus_publish_all([](const char* sub, const char* payload){ lora_publish_data(sub, payload); });
+`;
+            }
+            const TCP_READABLE_TYPES = ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao'];
+            if (satReactive && (spec.tcp_devices || []).filter(d => TCP_READABLE_TYPES.includes(d.type)).length > 0) {
+                cpp += `    // Modbus TCP (datalogger/conversor): publica medias acumuladas via LoRa.
+    inverter_tcp_publish_all([](const char* sub, const char* payload){ lora_publish_data(sub, payload); });
+`;
+            }
+            if (satReactive && spec.pivo && spec.has_relays) {
+                cpp += `    // Pivo: republica o estado atual da maquina (mesmo helper do push).
+    _pivot_publish_status();
+`;
+            }
+            cpp += `    // Fecha o ciclo: o mestre casa pelo req_id, republica o que chegou e avanca.
+    lora_send_pollresp(gw_mac, req_id);
+}
+`;
+        }
+
+        cpp += `
 void loop() {
     esp_task_wdt_reset();
     diag_tick();  // atualiza min_free_heap a cada loop
@@ -4244,6 +5298,14 @@ void loop() {
     }
 `;
 
+        // Máquina de estados do pivô — roda a cada loop (timing interno próprio).
+        if (spec.pivo && spec.has_relays) {
+            cpp += `
+    // Pivô: máquina de estados (lê BI das entradas, aciona BO via relés).
+    pivot_loop();
+`;
+        }
+
         if (spec.rs485_devices.length > 0) {
             const pubCall = spec.wifi
                 ? `modbus_publish_all(mqtt_publish_sub);`
@@ -4256,13 +5318,25 @@ void loop() {
         last_sample = now;
         modbus_sample_one();
     }
-
+`;
+            // MESTRE-PUXA: o satellite reativo NAO publica por timer — quem dispara o
+            // publish e' o POLL do mestre (via lora_poll_respond). O sample_one acima
+            // continua rodando pra acumular as medias que serao enviadas no proximo poll.
+            if (satReactive) {
+                cpp += `    // (mestre-puxa) sem publish autonomo: a telemetria sai em lora_poll_respond
+    // quando o mestre POLLa. O accumulator (sample_one) segue rodando pra ter
+    // media fresca pronta na hora do POLL. (void)last_publish;
+    (void)last_publish;
+`;
+            } else {
+                cpp += `
     // Publicacao periodica: medias + deltas + last a cada PUBLISH_INTERVAL_MS
     if (now - last_publish >= PUBLISH_INTERVAL_MS) {
         last_publish = now;
         ${pubCall}
     }
 `;
+            }
         }
 
         // Leitura de devices via TCP (datalogger) — inclui inversores, power_meters, etc.
@@ -4280,11 +5354,19 @@ void loop() {
         last_sample_tcp = now;
         inverter_tcp_sample_one();
     }
-    if (now - last_publish_tcp >= PUBLISH_INTERVAL_MS) {
+`;
+            // MESTRE-PUXA: idem RS485 — o satellite reativo so' publica TCP quando POLLado.
+            if (satReactive) {
+                cpp += `    // (mestre-puxa) publish TCP sai em lora_poll_respond no POLL do mestre.
+    (void)last_publish_tcp;
+`;
+            } else {
+                cpp += `    if (now - last_publish_tcp >= PUBLISH_INTERVAL_MS) {
         last_publish_tcp = now;
         ${tcpPubCall}
     }
 `;
+            }
         }
 
         cpp += `
