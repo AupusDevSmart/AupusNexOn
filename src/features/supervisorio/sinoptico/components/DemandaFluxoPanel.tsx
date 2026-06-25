@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowRight, Settings2 } from "lucide-react";
+import { Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConfiguracaoDemandaModal } from "@/features/supervisorio/components/ConfiguracaoDemandaModal";
 import { PanelCard } from "./PanelCard";
@@ -20,51 +20,86 @@ function pctDe(v: number | null, ref: number | null): number | undefined {
   return (v / ref) * 100;
 }
 
-/** Barra de progresso de demanda (carga/geração). */
-function BarraDemanda({
+/**
+ * Medidor circular (ring) minimalista: a demanda atual no centro e o anel
+ * preenchido pela % em relacao a demanda contratada. Monocromatico (token do
+ * tema); quando passa de 100% (acima da contratada) o anel fica ambar.
+ */
+function GaugeDemanda({
   rotulo,
   valor,
   unidade,
   pct,
-  referencia,
+  contratada,
 }: {
   rotulo: string;
   valor?: string;
   unidade?: string;
   pct?: number;
-  referencia?: string;
+  contratada?: string;
 }) {
+  const p = Math.min(100, Math.max(0, pct ?? 0));
+  const R = 42;
+  const C = 2 * Math.PI * R;
+  const dash = (p / 100) * C;
+  const acimaDaContratada = (pct ?? 0) > 100;
+
   return (
-    <div className="flex flex-col gap-1">
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          {rotulo}
-        </span>
-        <span className="text-sm font-semibold text-foreground tabular-nums">
-          {valor ?? "--"}
-          {unidade && <span className="ml-1 text-xs font-normal text-muted-foreground">{unidade}</span>}
+    <div className="flex min-w-0 flex-col items-center gap-1">
+      <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        {rotulo}
+      </span>
+
+      <div className="relative aspect-square w-full max-w-[116px]">
+        <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90">
+          {/* trilho */}
+          <circle
+            cx="50"
+            cy="50"
+            r={R}
+            fill="none"
+            strokeWidth="7"
+            stroke="currentColor"
+            className="text-muted"
+          />
+          {/* progresso */}
+          <circle
+            cx="50"
+            cy="50"
+            r={R}
+            fill="none"
+            strokeWidth="7"
+            strokeLinecap="round"
+            stroke="currentColor"
+            strokeDasharray={`${dash} ${C}`}
+            className={`transition-all ${acimaDaContratada ? "text-amber-500" : "text-foreground"}`}
+          />
+        </svg>
+
+        <div className="absolute inset-0 flex flex-col items-center justify-center leading-none">
+          <span className="text-sm font-semibold tabular-nums text-foreground">{valor ?? "--"}</span>
+          <span className="text-[9px] text-muted-foreground">{unidade}</span>
           {pct != null && (
-            <span className="ml-2 text-[11px] font-normal text-muted-foreground">{Math.round(pct)}%</span>
+            <span className="mt-0.5 text-[11px] font-medium tabular-nums text-foreground/70">
+              {Math.round(pct)}%
+            </span>
           )}
-        </span>
+        </div>
       </div>
-      <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-        <div
-          className="h-full rounded-full bg-foreground/60 transition-all"
-          style={{ width: `${Math.min(100, Math.max(0, pct ?? 0))}%` }}
-        />
-      </div>
-      {referencia && <span className="text-[11px] text-muted-foreground/70">{referencia}</span>}
+
+      <span className="text-center text-[10px] leading-tight text-muted-foreground/70">
+        {contratada ? `de ${contratada} kW contratada` : "contratada —"}
+      </span>
     </div>
   );
 }
 
 /**
- * Painel Demanda / Fluxo (R4). Carga (consumo) e Geração separados por fluxo,
- * reusando a config de demanda (useDemandaFluxo). Saldo = Geração − Carga.
+ * Painel Demanda / Fluxo (R4): demanda de Carga e de Geracao como medidores
+ * circulares (% da contratada), lado a lado. Sem saldo.
  */
 export function DemandaFluxoPanel({ unidadeId }: DemandaFluxoPanelProps) {
-  const { cargaKw, geracaoKw, saldoKw, demandaCarga, demandaGeracao } = useDemandaFluxo(unidadeId);
+  const { cargaKw, geracaoKw, demandaCarga, demandaGeracao } = useDemandaFluxo(unidadeId);
   const { configuracao, equipamentosDisponiveis, salvar } = useConfiguracaoDemanda(unidadeId);
   const [configOpen, setConfigOpen] = useState(false);
 
@@ -85,32 +120,24 @@ export function DemandaFluxoPanel({ unidadeId }: DemandaFluxoPanelProps) {
           </Button>
         }
       >
-      <div className="flex flex-col gap-2">
-        <BarraDemanda
-          rotulo="Carga"
-          valor={fmt(cargaKw)}
-          unidade="kW"
-          pct={pctDe(cargaKw, demandaCarga)}
-          referencia={demandaCarga != null ? `Demanda contratada ${fmt(demandaCarga)} kW` : "Demanda contratada"}
-        />
-        <BarraDemanda
-          rotulo="Geração"
-          valor={fmt(geracaoKw)}
-          unidade="kW"
-          pct={pctDe(geracaoKw, demandaGeracao)}
-          referencia={demandaGeracao != null ? `Demanda de geração ${fmt(demandaGeracao)} kW` : "Demanda de geração"}
-        />
-        <div className="flex items-center justify-between border-t border-border pt-2">
-          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Saldo
-          </span>
-          <span className="flex items-center gap-1 text-sm font-semibold text-foreground tabular-nums">
-            {fmt(saldoKw) ?? "--"} kW
-            <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" />
-          </span>
+        <div className="grid grid-cols-2 gap-3">
+          <GaugeDemanda
+            rotulo="Carga"
+            valor={fmt(cargaKw)}
+            unidade="kW"
+            pct={pctDe(cargaKw, demandaCarga)}
+            contratada={fmt(demandaCarga)}
+          />
+          <GaugeDemanda
+            rotulo="Geração"
+            valor={fmt(geracaoKw)}
+            unidade="kW"
+            pct={pctDe(geracaoKw, demandaGeracao)}
+            contratada={fmt(demandaGeracao)}
+          />
         </div>
-      </div>
       </PanelCard>
+
       <ConfiguracaoDemandaModal
         open={configOpen}
         onOpenChange={setConfigOpen}

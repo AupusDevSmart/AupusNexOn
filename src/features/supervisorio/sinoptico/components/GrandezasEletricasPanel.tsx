@@ -78,10 +78,11 @@ export function GrandezasEletricasPanel({ unidadeId }: GrandezasEletricasPanelPr
           <Grandeza rotulo="IB" valor={fmt(c?.IB, 1)} unidade="A" />
           <Grandeza rotulo="IC" valor={fmt(c?.IC, 1)} unidade="A" />
         </Bloco>
-        <Bloco titulo="Desequilíbrio">
-          <Grandeza rotulo="Tensão" valor={fmt(grandezas?.desequilibrioTensao, 1)} unidade="%" />
-          <Grandeza rotulo="Corrente" valor={fmt(grandezas?.desequilibrioCorrente, 1)} unidade="%" />
-        </Bloco>
+        {/* Desequilibrio (sem titulo de bloco): Tensao a esquerda, Corrente a direita */}
+        <div className="col-span-2 grid grid-cols-2 gap-x-4">
+          <Grandeza rotulo="Desequilíbrio Tensão" valor={fmt(grandezas?.desequilibrioTensao, 1)} unidade="%" />
+          <Grandeza rotulo="Desequilíbrio Corrente" valor={fmt(grandezas?.desequilibrioCorrente, 1)} unidade="%" />
+        </div>
       </div>
       </PanelCard>
       <ConfigGrandezasModal open={configOpen} onOpenChange={setConfigOpen} unidadeId={unidadeId} />

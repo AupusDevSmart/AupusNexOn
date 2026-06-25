@@ -80,6 +80,11 @@ interface DiagramV2WrapperProps {
    */
   unidadeIdFromUrl?: string;
 
+  /**
+   * Nome da unidade — exibido no titulo da toolbar do diagrama ("Diagrama Unifilar: <unidade>").
+   */
+  unidadeNome?: string;
+
   // ===== MODO 2: Dados Estáticos (Legado) =====
   /**
    * Componentes no formato legado (usado em páginas MQTT)
@@ -130,6 +135,7 @@ interface DiagramV2WrapperProps {
 export const DiagramV2Wrapper: React.FC<DiagramV2WrapperProps> = ({
   diagramaId,
   unidadeIdFromUrl,
+  unidadeNome,
   componentes,
   onComponenteClick,
   onBackgroundClick,
@@ -369,6 +375,7 @@ export const DiagramV2Wrapper: React.FC<DiagramV2WrapperProps> = ({
           <DiagramV2
             diagramaId={diagramaId || unidadeIdFromUrl || 'static-diagram'}
             mode={modoEdicao ? 'edit' : 'view'}
+            unidadeNome={unidadeNome}
             availableEquipments={equipamentosDisponiveis}
             onBackgroundClick={onBackgroundClick}
             onEquipmentClick={(equipment) => {

@@ -26,11 +26,14 @@ export function AppTemplate() {
         <div className="flex h-[100dvh] w-screen overflow-hidden bg-secondary">
           <AppSidebar />
           <SidebarInset className="flex flex-col w-full h-full bg-secondary">
-            <header className="flex-none flex items-center justify-between bg-secondary">
-              <div className="flex h-12 items-center gap-2 px-4 bg-secondary">
+            <header className="flex-none flex items-center justify-between gap-2 bg-secondary">
+              <div className="flex h-12 items-center gap-2 px-4 bg-secondary shrink-0">
                 <SidebarTrigger className="w-4 h-4 mr-2" />
                 <CustomBreadcrumbs />
               </div>
+              {/* Slot pra acoes da pagina na linha dos breadcrumbs (preenchido via
+                  portal — ex.: toggle Unifilar/IoT do sinoptico). Vazio nas demais telas. */}
+              <div id="app-header-slot" className="flex flex-1 items-center justify-end gap-2 min-w-0 px-2" />
               <NotificacoesSheet />
             </header>
             <main className="flex-1 overflow-auto bg-secondary w-full min-h-0">

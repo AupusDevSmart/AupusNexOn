@@ -609,15 +609,15 @@ export function SinopticoGraficosV2({
   }, [periodo]);
 
   return (
-    <div className={`w-full flex flex-col gap-4 ${soDemanda && !apenasGrafico ? 'xl:flex-1 xl:min-h-0' : ''}`}>
+    <div className={`w-full flex flex-col gap-4 ${(soDemanda && !apenasGrafico) || apenasGrafico ? 'xl:flex-1 xl:min-h-0' : ''}`}>
       {/* Gráfico de Demanda */}
       {temEquipamentosDisponiveis && (!apenasGrafico || apenasGrafico === 'demanda') && (
-      <Card className={soDemanda && !apenasGrafico ? 'xl:flex-1 xl:min-h-0 xl:flex xl:flex-col' : undefined}>
-        <CardHeader className="p-2 space-y-2">
+      <Card className={(soDemanda && !apenasGrafico) || apenasGrafico ? 'xl:flex-1 xl:min-h-0 xl:flex xl:flex-col' : undefined}>
+        <CardHeader className={apenasGrafico ? 'p-1.5 space-y-1' : 'p-2 space-y-2'}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Zap className="h-5 w-5 text-yellow-500" />
-              <CardTitle>Demanda</CardTitle>
+              <Zap className={apenasGrafico ? 'h-4 w-4 text-yellow-500' : 'h-5 w-5 text-yellow-500'} />
+              <CardTitle className={apenasGrafico ? 'text-base' : undefined}>Demanda</CardTitle>
               {controleVariavel}
             </div>
             <div className="flex items-center gap-1">
@@ -626,7 +626,7 @@ export function SinopticoGraficosV2({
                 size="icon"
                 onClick={() => setModalExpandidoOpen(true)}
                 title="Expandir gráfico"
-                className="h-8 w-8 hover:bg-transparent"
+                className={`hover:bg-transparent ${apenasGrafico ? 'h-7 w-7' : 'h-8 w-8'}`}
               >
                 <Expand className="h-4 w-4" />
               </Button>
@@ -635,7 +635,7 @@ export function SinopticoGraficosV2({
                 size="icon"
                 onClick={() => setModalOpen(true)}
                 title="Configurações"
-                className="h-8 w-8 hover:bg-transparent"
+                className={`hover:bg-transparent ${apenasGrafico ? 'h-7 w-7' : 'h-8 w-8'}`}
               >
                 <Settings className="h-4 w-4" />
               </Button>
@@ -646,10 +646,10 @@ export function SinopticoGraficosV2({
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-1">
               <Tabs value={periodo.tipo === 'custom' ? '' : periodo.tipo} onValueChange={handlePeriodoTipoChange}>
-                <TabsList className="h-8 gap-1 rounded-[2px] bg-transparent p-0">
-                  <TabsTrigger value="dia" className="text-xs h-7 px-3 rounded-[2px] data-[state=active]:bg-accent">Dia</TabsTrigger>
-                  <TabsTrigger value="mes" className="text-xs h-7 px-3 rounded-[2px] data-[state=active]:bg-accent">Mês</TabsTrigger>
-                  <TabsTrigger value="ano" className="text-xs h-7 px-3 rounded-[2px] data-[state=active]:bg-accent">Ano</TabsTrigger>
+                <TabsList className={`gap-1 rounded-[2px] bg-transparent p-0 ${apenasGrafico ? 'h-7' : 'h-8'}`}>
+                  <TabsTrigger value="dia" className={`text-xs rounded-[2px] data-[state=active]:bg-accent ${apenasGrafico ? 'h-6 px-2' : 'h-7 px-3'}`}>Dia</TabsTrigger>
+                  <TabsTrigger value="mes" className={`text-xs rounded-[2px] data-[state=active]:bg-accent ${apenasGrafico ? 'h-6 px-2' : 'h-7 px-3'}`}>Mês</TabsTrigger>
+                  <TabsTrigger value="ano" className={`text-xs rounded-[2px] data-[state=active]:bg-accent ${apenasGrafico ? 'h-6 px-2' : 'h-7 px-3'}`}>Ano</TabsTrigger>
                 </TabsList>
               </Tabs>
 
@@ -703,7 +703,7 @@ export function SinopticoGraficosV2({
           </div>
         </CardHeader>
 
-        <CardContent className={`p-2 ${soDemanda && !apenasGrafico ? 'xl:flex-1 xl:min-h-0 xl:flex xl:flex-col' : ''}`}>
+        <CardContent className={`p-2 ${(soDemanda && !apenasGrafico) || apenasGrafico ? 'xl:flex-1 xl:min-h-0 xl:flex xl:flex-col' : ''}`}>
           {/* Alerta de qualidade — só em modo 'dia' */}
           {periodo.tipo === 'dia' && qualidadeDados.status !== 'OK' && (
             <div className="mb-3 p-2 rounded-md bg-muted/40">
@@ -718,12 +718,12 @@ export function SinopticoGraficosV2({
           )}
 
           {isInitialLoading ? (
-            <div className={`flex flex-col items-center justify-center space-y-3 ${apenasGrafico ? 'h-[150px]' : 'h-[300px]'}`}>
+            <div className={`flex flex-col items-center justify-center space-y-3 ${apenasGrafico ? 'h-[150px] xl:h-auto xl:flex-1 xl:min-h-0' : 'h-[300px]'}`}>
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
               <p className="text-sm text-muted-foreground">Carregando dados do gráfico...</p>
             </div>
           ) : dadosFormatadosPotencia.length === 0 ? (
-            <div className={`flex flex-col items-center justify-center space-y-3 ${apenasGrafico ? 'h-[150px]' : 'h-[300px]'}`}>
+            <div className={`flex flex-col items-center justify-center space-y-3 ${apenasGrafico ? 'h-[150px] xl:h-auto xl:flex-1 xl:min-h-0' : 'h-[300px]'}`}>
               <AlertTriangle className="h-8 w-8 text-muted-foreground" />
               <div className="text-center space-y-2">
                 <p className="text-sm font-medium text-muted-foreground">
@@ -737,7 +737,7 @@ export function SinopticoGraficosV2({
               </div>
             </div>
           ) : ehSeriesPotencia ? (
-            <div className={apenasGrafico ? 'h-[150px]' : soDemanda ? 'h-[350px] xl:h-auto xl:flex-1 xl:min-h-0' : 'h-[350px]'}>
+            <div className={apenasGrafico ? 'h-[150px] xl:h-auto xl:flex-1 xl:min-h-0' : soDemanda ? 'h-[350px] xl:h-auto xl:flex-1 xl:min-h-0' : 'h-[350px]'}>
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={dadosFormatadosPotencia}>
                 <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
@@ -781,7 +781,7 @@ export function SinopticoGraficosV2({
             </ResponsiveContainer>
             </div>
           ) : (
-            <div className={apenasGrafico ? 'h-[150px]' : soDemanda ? 'h-[350px] xl:h-auto xl:flex-1 xl:min-h-0' : 'h-[350px]'}>
+            <div className={apenasGrafico ? 'h-[150px] xl:h-auto xl:flex-1 xl:min-h-0' : soDemanda ? 'h-[350px] xl:h-auto xl:flex-1 xl:min-h-0' : 'h-[350px]'}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={dadosFormatadosPotencia}>
                 <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
@@ -800,12 +800,12 @@ export function SinopticoGraficosV2({
 
       {/* Gráfico de Tensão - Só mostra se tiver M160 */}
       {temM160Disponivel && (!apenasGrafico || apenasGrafico === 'tensao') && (
-      <Card>
-        <CardHeader className="p-2">
+      <Card className={apenasGrafico ? 'xl:flex-1 xl:min-h-0 xl:flex xl:flex-col' : undefined}>
+        <CardHeader className={apenasGrafico ? 'p-1.5' : 'p-2'}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Activity className="h-5 w-5 text-blue-500" />
-              <CardTitle>Tensão</CardTitle>
+              <Activity className={apenasGrafico ? 'h-4 w-4 text-blue-500' : 'h-5 w-5 text-blue-500'} />
+              <CardTitle className={apenasGrafico ? 'text-base' : undefined}>Tensão</CardTitle>
               {controleVariavel}
             </div>
             <div className="flex items-center gap-2">
@@ -814,14 +814,14 @@ export function SinopticoGraficosV2({
                 size="icon"
                 onClick={() => setModalTensaoOpen(true)}
                 title="Expandir gráfico"
-                className="h-8 w-8 hover:bg-transparent"
+                className={`hover:bg-transparent ${apenasGrafico ? 'h-7 w-7' : 'h-8 w-8'}`}
               >
                 <Expand className="h-4 w-4" />
               </Button>
             </div>
           </div>
         </CardHeader>
-        <CardContent className="p-2">
+        <CardContent className={`p-2 ${apenasGrafico ? 'xl:flex-1 xl:min-h-0 xl:flex xl:flex-col' : ''}`}>
           {/* Controles */}
           <div className={`flex flex-wrap items-center gap-x-3 gap-y-2 ${apenasGrafico ? 'mb-2' : 'mb-4'}`}>
             {/* Medidor + Fases na mesma linha, compactos */}
@@ -864,12 +864,12 @@ export function SinopticoGraficosV2({
 
           {/* Gráfico */}
           {isInitialLoadingM160 ? (
-            <div className={`flex flex-col items-center justify-center space-y-3 ${apenasGrafico ? 'h-[150px]' : 'h-[300px]'}`}>
+            <div className={`flex flex-col items-center justify-center space-y-3 ${apenasGrafico ? 'h-[150px] xl:h-auto xl:flex-1 xl:min-h-0' : 'h-[300px]'}`}>
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
               <p className="text-sm text-muted-foreground">Carregando dados...</p>
             </div>
           ) : !m160Selecionado ? (
-            <div className={`flex flex-col items-center justify-center space-y-3 ${apenasGrafico ? 'h-[150px]' : 'h-[300px]'}`}>
+            <div className={`flex flex-col items-center justify-center space-y-3 ${apenasGrafico ? 'h-[150px] xl:h-auto xl:flex-1 xl:min-h-0' : 'h-[300px]'}`}>
               <Activity className="h-12 w-12 text-muted-foreground/50" />
               <div className="text-center space-y-1">
                 <p className="text-sm font-medium text-muted-foreground">
@@ -881,7 +881,7 @@ export function SinopticoGraficosV2({
               </div>
             </div>
           ) : dadosFormatadosTensao.length === 0 ? (
-            <div className={`flex flex-col items-center justify-center space-y-3 ${apenasGrafico ? 'h-[150px]' : 'h-[300px]'}`}>
+            <div className={`flex flex-col items-center justify-center space-y-3 ${apenasGrafico ? 'h-[150px] xl:h-auto xl:flex-1 xl:min-h-0' : 'h-[300px]'}`}>
               <Activity className="h-12 w-12 text-muted-foreground/50" />
               <div className="text-center space-y-1">
                 <p className="text-sm font-medium text-muted-foreground">
@@ -893,8 +893,8 @@ export function SinopticoGraficosV2({
               </div>
             </div>
           ) : (
-            <div className="bg-card p-4 rounded-lg border">
-              <ResponsiveContainer width="100%" height={apenasGrafico ? 150 : 300}>
+            <div className={`bg-card p-4 rounded-lg border ${apenasGrafico ? 'xl:flex-1 xl:min-h-0' : ''}`}>
+              <ResponsiveContainer width="100%" height={apenasGrafico ? (isMobile ? 150 : '100%') : 300}>
                 <LineChart data={dadosFormatadosTensao}>
                   <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                 <XAxis dataKey="hora" fontSize={isMobile ? 10 : 12} interval="preserveStartEnd" minTickGap={isMobile ? 28 : 12} />
@@ -956,12 +956,12 @@ export function SinopticoGraficosV2({
 
       {/* Gráfico de Fator de Potência - Só mostra se tiver M160 */}
       {temM160Disponivel && (!apenasGrafico || apenasGrafico === 'fp') && (
-      <Card>
-        <CardHeader className="p-2">
+      <Card className={apenasGrafico ? 'xl:flex-1 xl:min-h-0 xl:flex xl:flex-col' : undefined}>
+        <CardHeader className={apenasGrafico ? 'p-1.5' : 'p-2'}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-purple-500" />
-              <CardTitle>Fator de Potência</CardTitle>
+              <TrendingUp className={apenasGrafico ? 'h-4 w-4 text-purple-500' : 'h-5 w-5 text-purple-500'} />
+              <CardTitle className={apenasGrafico ? 'text-base' : undefined}>Fator de Potência</CardTitle>
               {controleVariavel}
             </div>
             <div className="flex items-center gap-2">
@@ -970,14 +970,14 @@ export function SinopticoGraficosV2({
                 size="icon"
                 onClick={() => setModalFPOpen(true)}
                 title="Expandir gráfico"
-                className="h-8 w-8 hover:bg-transparent"
+                className={`hover:bg-transparent ${apenasGrafico ? 'h-7 w-7' : 'h-8 w-8'}`}
               >
                 <Expand className="h-4 w-4" />
               </Button>
             </div>
           </div>
         </CardHeader>
-        <CardContent className="p-2">
+        <CardContent className={`p-2 ${apenasGrafico ? 'xl:flex-1 xl:min-h-0 xl:flex xl:flex-col' : ''}`}>
           {/* Controles */}
           <div className={`flex flex-wrap items-center gap-x-3 gap-y-2 ${apenasGrafico ? 'mb-2' : 'mb-4'}`}>
             {/* Medidor + Fases na mesma linha, compactos */}
@@ -1020,12 +1020,12 @@ export function SinopticoGraficosV2({
 
           {/* Gráfico */}
           {isInitialLoadingM160 ? (
-            <div className={`flex flex-col items-center justify-center space-y-3 ${apenasGrafico ? 'h-[150px]' : 'h-[300px]'}`}>
+            <div className={`flex flex-col items-center justify-center space-y-3 ${apenasGrafico ? 'h-[150px] xl:h-auto xl:flex-1 xl:min-h-0' : 'h-[300px]'}`}>
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
               <p className="text-sm text-muted-foreground">Carregando dados...</p>
             </div>
           ) : !m160Selecionado ? (
-            <div className={`flex flex-col items-center justify-center space-y-3 ${apenasGrafico ? 'h-[150px]' : 'h-[300px]'}`}>
+            <div className={`flex flex-col items-center justify-center space-y-3 ${apenasGrafico ? 'h-[150px] xl:h-auto xl:flex-1 xl:min-h-0' : 'h-[300px]'}`}>
               <TrendingUp className="h-12 w-12 text-muted-foreground/50" />
               <div className="text-center space-y-1">
                 <p className="text-sm font-medium text-muted-foreground">
@@ -1037,7 +1037,7 @@ export function SinopticoGraficosV2({
               </div>
             </div>
           ) : dadosFormatadosFP.length === 0 ? (
-            <div className={`flex flex-col items-center justify-center space-y-3 ${apenasGrafico ? 'h-[150px]' : 'h-[300px]'}`}>
+            <div className={`flex flex-col items-center justify-center space-y-3 ${apenasGrafico ? 'h-[150px] xl:h-auto xl:flex-1 xl:min-h-0' : 'h-[300px]'}`}>
               <TrendingUp className="h-12 w-12 text-muted-foreground/50" />
               <div className="text-center space-y-1">
                 <p className="text-sm font-medium text-muted-foreground">
@@ -1049,8 +1049,8 @@ export function SinopticoGraficosV2({
               </div>
             </div>
           ) : (
-            <div className="bg-card p-4 rounded-lg border">
-              <ResponsiveContainer width="100%" height={apenasGrafico ? 150 : 300}>
+            <div className={`bg-card p-4 rounded-lg border ${apenasGrafico ? 'xl:flex-1 xl:min-h-0' : ''}`}>
+              <ResponsiveContainer width="100%" height={apenasGrafico ? (isMobile ? 150 : '100%') : 300}>
                 <LineChart data={dadosFormatadosFP}>
                   <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                   <XAxis dataKey="hora" fontSize={isMobile ? 10 : 12} interval="preserveStartEnd" minTickGap={isMobile ? 28 : 12} />

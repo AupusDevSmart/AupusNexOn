@@ -20,10 +20,11 @@ export function KpiRow({ unidadeId }: KpiRowProps) {
   const { grandezas, loading } = useGrandezasAgregadas(unidadeId);
 
   return (
-    <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
+    <div className="grid grid-cols-4 gap-2 sm:gap-3">
       <KpiCard
         icon={Zap}
         titulo="Potência líquida"
+        abrev="Pot."
         valor={fmt(grandezas?.potenciaKw, 1)}
         unidade="kW"
         legenda="Soma dos medidores"
@@ -32,6 +33,7 @@ export function KpiRow({ unidadeId }: KpiRowProps) {
       <KpiCard
         icon={Activity}
         titulo="Tensão média (L-N)"
+        abrev="Tensão"
         valor={fmt(grandezas?.tensaoMediaLN, 0)}
         unidade="V"
         legenda="Média dos medidores"
@@ -40,6 +42,7 @@ export function KpiRow({ unidadeId }: KpiRowProps) {
       <KpiCard
         icon={Gauge}
         titulo="Fator de potência"
+        abrev="FP"
         valor={grandezas?.fatorPotencia != null ? grandezas.fatorPotencia.toFixed(2) : undefined}
         legenda="Pt / St dos medidores"
         loading={loading}
@@ -47,6 +50,7 @@ export function KpiRow({ unidadeId }: KpiRowProps) {
       <KpiCard
         icon={Waves}
         titulo="Corrente média"
+        abrev="Corr."
         valor={fmt(grandezas?.correnteMedia, 1)}
         unidade="A"
         legenda="Média das fases dos medidores"

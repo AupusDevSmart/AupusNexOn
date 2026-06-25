@@ -49,6 +49,7 @@ interface AvailableEquipment {
 interface DiagramV2Props {
   diagramaId: string;
   mode?: 'view' | 'edit';
+  unidadeNome?: string; // Nome da unidade — exibido no titulo da toolbar
   availableEquipments?: AvailableEquipment[]; // Lista de equipamentos da unidade disponíveis
   onBackgroundClick?: () => void; // Callback quando clica no background
   onEquipmentClick?: (equipment: Equipment) => void; // Callback quando clica em equipamento
@@ -57,6 +58,7 @@ interface DiagramV2Props {
 export const DiagramV2: React.FC<DiagramV2Props> = ({
   diagramaId,
   mode: initialMode = 'view',
+  unidadeNome,
   availableEquipments = [],
   onBackgroundClick,
   onEquipmentClick,
@@ -548,7 +550,9 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
         <div className="flex items-center gap-3">
           <CircuitBoard className="h-4 w-4 text-foreground" />
           <div className="flex flex-col">
-            <h2 className="text-sm font-medium text-foreground tracking-tight">{diagrama.nome}</h2>
+            <h2 className="text-sm font-medium text-foreground tracking-tight">
+              {diagrama.nome}{unidadeNome ? `: ${unidadeNome}` : ''}
+            </h2>
             {diagrama.descricao && (
               <p className="text-xs text-muted-foreground mt-0.5">{diagrama.descricao}</p>
             )}

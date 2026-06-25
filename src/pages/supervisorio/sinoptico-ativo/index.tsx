@@ -31,6 +31,7 @@ import {
   Zap,
 } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 
 // Componentes implementados
@@ -1804,6 +1805,13 @@ export function SinopticoAtivoPage() {
 
   // Tab ativa: 'unifilar' ou 'iot'
   const [sinopticoTab, setSinopticoTab] = useState<'unifilar' | 'iot'>('unifilar');
+
+  // Slot no header do shell (linha dos breadcrumbs) onde o toggle + nome da unidade
+  // sao renderizados via portal, liberando o header da pagina pro diagrama.
+  const [headerSlot, setHeaderSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    setHeaderSlot(document.getElementById('app-header-slot'));
+  }, []);
 
   // Listen for tab change events from DiagramV2
   useEffect(() => {
@@ -3760,84 +3768,36 @@ if (import.meta.env.PROD) {
         )}
 
         <div className="w-full h-full flex flex-col">
-          {/* Header */}
-          {/* Header + Abas (Unifilar | IoT) na mesma linha no desktop */}
-          <div className="flex-none flex flex-wrap items-center gap-2 sm:gap-3 p-3 sm:p-4 min-w-0">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => navigate(-1)}
-              disabled={isSavingDiagrama}
-              className="flex items-center gap-2 rounded-sm shrink-0"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              <span className="hidden sm:inline">Voltar</span>
-            </Button>
-
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 flex-1 min-w-0">
-              <h1 className="text-base sm:text-lg font-bold text-foreground truncate min-w-0 max-w-full">
-                <span className="hidden sm:inline">Sinóptico: </span>
-                {(() => {
-                  // Log removido
-
-                  if (unidadeAtual) {
-                    return (
-                      <>
-                        {plantaAtual?.nome && (
-                          <span className="hidden md:inline">{plantaAtual.nome} - </span>
-                        )}
-                        {unidadeAtual.nome}
-                      </>
-                    );
-                  } else if (unidadeId) {
-                    return <span className="text-muted-foreground animate-pulse">Carregando unidade...</span>;
-                  } else {
-                    return 'Selecione uma Unidade';
-                  }
-                })()}
-              </h1>
-
-              {loadingDiagrama && (
-                <div className="flex items-center gap-2 text-xs sm:text-sm text-blue-600">
-                  <div className="animate-spin rounded-full h-3 w-3 sm:h-4 sm:w-4 border-b-2 border-blue-600"></div>
-                  <span className="hidden sm:inline">Carregando...</span>
-                </div>
-              )}
-            </div>
-
-            {/* Debug info */}
-            <div className="text-xs text-muted-foreground hidden xl:block">
-              Componentes: {componentes.length} | Equipamentos: {Array.isArray(equipamentos) ? equipamentos.length : 0}
-            </div>
-
-            {/* Abas: Unifilar | IoT — inline no desktop, abaixo (centralizado) no mobile */}
-            {unidadeId && (
-              <div className="flex gap-1 basis-full justify-center sm:basis-auto sm:justify-end sm:ml-auto" style={{ zIndex: 10 }}>
+          {/* Header da pagina removido: o toggle Unifilar/IoT vai pra linha dos
+              breadcrumbs (shell) via portal. O nome da unidade aparece no titulo
+              do proprio diagrama (toolbar do DiagramV2). */}
+          {headerSlot && unidadeId && createPortal(
+            <div className="flex shrink-0 gap-1" style={{ zIndex: 10 }}>
+              <button
+                onClick={() => setSinopticoTab('unifilar')}
+                className={`px-3 py-1 text-sm font-medium rounded-[2px] transition-colors ${
+                  sinopticoTab === 'unifilar'
+                    ? 'bg-muted text-foreground'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                }`}
+              >
+                Unifilar
+              </button>
+              {podeVerIot && (
                 <button
-                  onClick={() => setSinopticoTab('unifilar')}
-                  className={`px-3 sm:px-5 py-1.5 text-sm font-medium rounded-[2px] transition-colors ${
-                    sinopticoTab === 'unifilar'
+                  onClick={() => setSinopticoTab('iot')}
+                  className={`px-3 py-1 text-sm font-medium rounded-[2px] transition-colors ${
+                    sinopticoTab === 'iot'
                       ? 'bg-muted text-foreground'
                       : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                   }`}
                 >
-                  <span className="hidden sm:inline">Diagrama </span>Unifilar
+                  IoT
                 </button>
-                {podeVerIot && (
-                  <button
-                    onClick={() => setSinopticoTab('iot')}
-                    className={`px-3 sm:px-5 py-1.5 text-sm font-medium rounded-[2px] transition-colors ${
-                      sinopticoTab === 'iot'
-                        ? 'bg-muted text-foreground'
-                        : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-                    }`}
-                  >
-                    IoT
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
+              )}
+            </div>,
+            headerSlot
+          )}
 
           {/* V2: Diagrama Unifilar + Overview (KPIs, grandezas, demanda, alarmes, grafico) */}
           {unidadeId && sinopticoTab === 'unifilar' && (
@@ -3849,6 +3809,7 @@ if (import.meta.env.PROD) {
               >
               <DiagramV2Wrapper
                 unidadeIdFromUrl={unidadeId}
+                unidadeNome={unidadeAtual?.nome}
                 modoEdicao={false}
                 availableEquipments={equipamentos}
                 onConfigurarPontos={
