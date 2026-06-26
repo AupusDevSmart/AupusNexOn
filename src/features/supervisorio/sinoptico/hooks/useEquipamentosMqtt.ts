@@ -7,6 +7,14 @@ export interface EquipamentoMqtt {
   nome: string;
 }
 
+/** Garante que uma chamada nao trave a lista pra sempre: rejeita apos `ms`. */
+function comTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error("timeout")), ms)),
+  ]);
+}
+
 /**
  * Lista os equipamentos da unidade que recebem MQTT E ja tem campos no JSON
  * (ultimo payload). Exclui mqtt_habilitado sem dados (ex.: TON), que retornariam
@@ -29,10 +37,11 @@ export function useEquipamentosMqtt(unidadeId?: string) {
       }));
 
       // Mantem so os que tem campos JSON disponiveis (= tem ultimo payload).
+      // Timeout por chamada pra um getCampos pendurado nao travar a lista inteira.
       const comCampos = await Promise.all(
         equips.map(async (e) => {
           try {
-            const campos = await RegrasLogsService.getCampos(e.id);
+            const campos = await comTimeout(RegrasLogsService.getCampos(e.id), 8000);
             return campos.length > 0 ? e : null;
           } catch {
             return null;
@@ -43,5 +52,6 @@ export function useEquipamentosMqtt(unidadeId?: string) {
     },
     enabled: !!unidadeId,
     staleTime: 60_000,
+    retry: 2,
   });
 }

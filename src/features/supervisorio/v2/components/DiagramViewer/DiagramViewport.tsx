@@ -445,23 +445,26 @@ export const DiagramViewport: React.FC<DiagramViewportProps> = ({ children, onBa
         </svg>
       </div>
 
-      {/* Controles de zoom - FORA do viewport-wrapper para não serem cortados */}
+      {/* Controles de zoom — discretos (sem caixa): icones + percentual em cor
+          muted, tema-aware, com hover sutil. */}
       <div
-        className="absolute bottom-2 right-2 z-[1000] flex items-center gap-1 rounded-md bg-black/70 p-1 sm:bottom-4 sm:right-4 sm:gap-1.5 sm:p-1.5"
+        className="absolute bottom-2 right-2 z-[1000] flex items-center gap-0.5 sm:bottom-3 sm:right-3"
         style={{ pointerEvents: 'auto' }}
       >
         <button
           onClick={() => setZoom(viewport.scale + VIEWPORT.ZOOM_STEP)}
           title="Zoom In"
-          className="cursor-pointer rounded bg-neutral-700 px-1.5 py-0.5 text-xs leading-none text-white sm:px-2 sm:py-1 sm:text-sm"
+          className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-sm text-base leading-none text-muted-foreground/60 transition-colors hover:bg-muted/60 hover:text-foreground"
         >
           +
         </button>
-        <span className="tabular-nums text-[10px] text-white sm:text-xs">{Math.round(viewport.scale * 100)}%</span>
+        <span className="px-0.5 tabular-nums text-[10px] text-muted-foreground/60">
+          {Math.round(viewport.scale * 100)}%
+        </span>
         <button
           onClick={() => setZoom(viewport.scale - VIEWPORT.ZOOM_STEP)}
           title="Zoom Out"
-          className="cursor-pointer rounded bg-neutral-700 px-1.5 py-0.5 text-xs leading-none text-white sm:px-2 sm:py-1 sm:text-sm"
+          className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-sm text-base leading-none text-muted-foreground/60 transition-colors hover:bg-muted/60 hover:text-foreground"
         >
           −
         </button>

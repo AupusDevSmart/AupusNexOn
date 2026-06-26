@@ -448,6 +448,19 @@ export const DiagramV2Wrapper: React.FC<DiagramV2WrapperProps> = ({
             id: acionarModalEquipment.id,
             nome: acionarModalEquipment.nome,
           }}
+          onConfigurarPontos={
+            onConfigurarPontos
+              ? () => {
+                  const eq = acionarModalEquipment;
+                  setAcionarModalEquipment(null); // fecha o modal de acionamento
+                  onConfigurarPontos({
+                    id: eq.id.trim(),
+                    nome: eq.nome,
+                    categoria: eq.categoria ?? '',
+                  });
+                }
+              : undefined
+          }
         />
       )}
     </div>

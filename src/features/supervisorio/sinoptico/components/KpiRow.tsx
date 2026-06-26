@@ -20,7 +20,7 @@ export function KpiRow({ unidadeId }: KpiRowProps) {
   const { grandezas, loading } = useGrandezasAgregadas(unidadeId);
 
   return (
-    <div className="grid grid-cols-4 gap-2 sm:gap-3">
+    <div className="grid grid-cols-4 gap-1.5">
       <KpiCard
         icon={Zap}
         titulo="Potência líquida"

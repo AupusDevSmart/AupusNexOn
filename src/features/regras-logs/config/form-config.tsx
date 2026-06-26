@@ -79,28 +79,59 @@ const PlantaUnidadeEquipamentoSelector = ({ value, onChange, disabled, onMultipl
     fetch();
   }, [selectedUnidadeId]);
 
+  // View (disabled): a regra so guarda equipamento_id (os _plantaId/_unidadeId sao
+  // transitorios da edicao). Resolve nome/unidade/planta buscando o equipamento,
+  // que ja traz unidade.planta.
+  const [viewEq, setViewEq] = useState<any>(null);
+  const [loadingViewEq, setLoadingViewEq] = useState(false);
+  useEffect(() => {
+    if (!disabled || !value) {
+      setViewEq(null);
+      return;
+    }
+    let cancelado = false;
+    (async () => {
+      try {
+        setLoadingViewEq(true);
+        const resp: any = await equipamentosApi.findOne(String(value).trim());
+        // findOne pode vir desembrulhado (equipamento) ou em { data: equipamento }.
+        const eq = resp?.nome || resp?.unidade ? resp : resp?.data ?? resp;
+        if (!cancelado) setViewEq(eq);
+      } catch (error) {
+        console.error('Erro ao carregar equipamento (view):', error);
+        if (!cancelado) setViewEq(null);
+      } finally {
+        if (!cancelado) setLoadingViewEq(false);
+      }
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, [disabled, value]);
+
   if (disabled) {
-    const eq = equipamentos.find((e) => e.id === value);
-    const planta = plantas.find((p) => p.id === selectedPlantaId);
-    const unidade = unidades.find((u) => u.id === selectedUnidadeId);
+    const plantaNome = viewEq?.unidade?.planta?.nome ?? viewEq?.planta?.nome;
+    const unidadeNome = viewEq?.unidade?.nome;
+    const eqNome = viewEq?.nome ?? formData?.equipamento?.nome;
+    const fallback = loadingViewEq ? 'Carregando...' : '-';
     return (
       <div className="space-y-3">
         <div>
           <label className="text-sm font-medium">Planta</label>
           <div className="w-full px-3 py-2 border border-border bg-muted rounded-md text-foreground text-sm">
-            {planta?.nome || '-'}
+            {plantaNome || fallback}
           </div>
         </div>
         <div>
           <label className="text-sm font-medium">Unidade</label>
           <div className="w-full px-3 py-2 border border-border bg-muted rounded-md text-foreground text-sm">
-            {unidade?.nome || '-'}
+            {unidadeNome || fallback}
           </div>
         </div>
         <div>
           <label className="text-sm font-medium">Equipamento</label>
           <div className="w-full px-3 py-2 border border-border bg-muted rounded-md text-foreground text-sm">
-            {eq?.nome || value || 'N/A'}
+            {eqNome || (loadingViewEq ? 'Carregando...' : value) || 'N/A'}
           </div>
         </div>
       </div>

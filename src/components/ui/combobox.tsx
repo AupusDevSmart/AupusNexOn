@@ -45,6 +45,15 @@ export function Combobox({
 }: ComboboxProps) {
   const [open, setOpen] = React.useState(false)
   const [search, setSearch] = React.useState("")
+  const triggerRef = React.useRef<HTMLButtonElement>(null)
+  // Se o combobox estiver dentro de um Dialog, porta o dropdown pro proprio
+  // dialog — senao o scroll-lock do Radix bloqueia a rodinha do mouse no dropdown.
+  const [dialogContainer, setDialogContainer] = React.useState<HTMLElement | null>(null)
+  React.useEffect(() => {
+    setDialogContainer(
+      (triggerRef.current?.closest('[role="dialog"]') as HTMLElement | null) ?? null
+    )
+  }, [open])
 
   const selectedOption = React.useMemo(
     () => options.find((option) => option.value === value),
@@ -62,6 +71,7 @@ export function Combobox({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
+          ref={triggerRef}
           variant="outline"
           role="combobox"
           aria-expanded={open}
@@ -78,7 +88,11 @@ export function Combobox({
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[--radix-popover-trigger-width] p-0 rounded-sm z-[10000]" align="start">
+      <PopoverContent
+        container={dialogContainer}
+        className="w-[--radix-popover-trigger-width] p-0 rounded-sm z-[10000]"
+        align="start"
+      >
         <Command shouldFilter={false}>
           <CommandInput
             placeholder={searchPlaceholder}

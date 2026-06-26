@@ -17,7 +17,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Loader2, Power } from 'lucide-react';
+import { Loader2, Power, Settings2 } from 'lucide-react';
 import {
   equipamentoPontosApi,
   type EquipamentoPonto,
@@ -31,6 +31,8 @@ export interface EquipamentoAcionarModalProps {
     id: string;
     nome: string;
   };
+  /** Se fornecido (admin), exibe o botao "Configurar Pontos" (caixas de dados R8). */
+  onConfigurarPontos?: () => void;
 }
 
 interface PendingState {
@@ -42,6 +44,7 @@ export const EquipamentoAcionarModal: React.FC<EquipamentoAcionarModalProps> = (
   open,
   onClose,
   equipamento,
+  onConfigurarPontos,
 }) => {
   const [loading, setLoading] = useState(false);
   const [pontos, setPontos] = useState<EquipamentoPonto[]>([]);
@@ -125,7 +128,21 @@ export const EquipamentoAcionarModal: React.FC<EquipamentoAcionarModalProps> = (
       <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
         <DialogContent className="sm:max-w-lg max-h-[80dvh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{equipamento.nome}</DialogTitle>
+            <div className="flex items-center justify-between gap-2 pr-7">
+              <DialogTitle>{equipamento.nome}</DialogTitle>
+              {onConfigurarPontos && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={onConfigurarPontos}
+                  className="h-7 shrink-0 gap-1.5 rounded-sm"
+                >
+                  <Settings2 className="h-3.5 w-3.5" />
+                  Configurar Pontos
+                </Button>
+              )}
+            </div>
             <DialogDescription className="text-xs">
               Pontos de comando disponiveis. O acionamento dispara o pulso no TON
               mapeado para o ponto (configurado no editor IoT).

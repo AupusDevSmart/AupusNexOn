@@ -3,8 +3,18 @@ import { getEquipmentSizeInPixels } from "@/features/supervisorio/v2/utils/diagr
 import type { Equipment } from "@/features/supervisorio/v2/types/diagram.types";
 import { useSinopticoConfig } from "../hooks/useSinopticoConfig";
 
-type SlotKey = "kW" | "V" | "A" | "Hz";
-const SLOT_ORDER: SlotKey[] = ["kW", "V", "A", "Hz"];
+type SlotKey = "kW" | "V" | "A" | "Ia" | "Ib" | "Ic" | "Hz";
+const SLOT_ORDER: SlotKey[] = ["kW", "V", "A", "Ia", "Ib", "Ic", "Hz"];
+// Unidade exibida ao lado do valor (Ia/Ib/Ic sao 3 correntes -> unidade "A").
+const SLOT_UNIT: Record<SlotKey, string> = {
+  kW: "kW",
+  V: "V",
+  A: "A",
+  Ia: "A",
+  Ib: "A",
+  Ic: "A",
+  Hz: "Hz",
+};
 
 interface Ponto {
   equipamentoFonteId?: string;
@@ -27,7 +37,7 @@ function PontoValor({ slot, ponto }: { slot: SlotKey; ponto: Ponto }) {
   return (
     <div className="flex items-baseline justify-between gap-2">
       <span className="font-semibold">{val}</span>
-      <span className="text-[11px] opacity-60">{slot}</span>
+      <span className="text-[11px] opacity-60">{SLOT_UNIT[slot] ?? slot}</span>
     </div>
   );
 }

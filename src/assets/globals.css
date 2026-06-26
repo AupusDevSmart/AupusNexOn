@@ -30,10 +30,10 @@
     --card-hover: hsl(200, 18%, 90%);
     --card-foreground-hover: hsl(220, 80%, 5%);
 
-    --popover: hsl(221, 12%, 48%);
-    --popover-foreground: hsl(224, 72%, 25%);
-    --popover-hover: hsl(226, 14%, 48%);
-    --popover-foreground-hover: hsl(224, 67%, 30%);
+    --popover: hsl(0, 0%, 100%);
+    --popover-foreground: hsl(222.2, 84%, 4.9%);
+    --popover-hover: hsl(0, 0%, 96%);
+    --popover-foreground-hover: hsl(222.2, 84%, 4.9%);
 
     --primary: hsl(0, 0%, 100%);
     --primary-foreground: hsl(0, 0%, 0%);
@@ -148,9 +148,9 @@
     --card-hover: hsl(222.2, 79%, 9%);
     --card-foreground-hover: hsl(210, 35%, 93%);
 
-    --popover: hsl(215, 87%, 15%);
+    --popover: hsl(0, 0%, 0%);
     --popover-foreground: hsl(210, 40%, 98%);
-    --popover-hover: hsl(223, 83%, 30%);
+    --popover-hover: hsl(0, 0%, 10%);
     --popover-foreground-hover: hsl(210, 35%, 93%);
 
     --primary: hsl(0, 0%, 0%);

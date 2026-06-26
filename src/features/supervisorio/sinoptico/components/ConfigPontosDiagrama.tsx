@@ -2,12 +2,13 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Combobox } from "@/components/ui/combobox";
 import { Button } from "@/components/ui/button";
+import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { RegrasLogsService } from "@/services/regras-logs.services";
 import { useSinopticoConfig } from "../hooks/useSinopticoConfig";
 import { useEquipamentosMqtt, type EquipamentoMqtt } from "../hooks/useEquipamentosMqtt";
 
-type SlotKey = "kW" | "V" | "A" | "Hz";
+type SlotKey = "kW" | "V" | "A" | "Ia" | "Ib" | "Ic" | "Hz";
 
 interface PontoVal {
   equipamentoFonteId?: string;
@@ -20,6 +21,9 @@ const SLOT_LABEL: Record<SlotKey, string> = {
   kW: "Potência (kW)",
   V: "Tensão (V)",
   A: "Corrente (A)",
+  Ia: "Corrente A (A)",
+  Ib: "Corrente B (A)",
+  Ic: "Corrente C (A)",
   Hz: "Frequência (Hz)",
 };
 
@@ -28,7 +32,7 @@ function slotsParaCategoria(categoria: string | null | undefined): SlotKey[] {
   const c = (categoria ?? "").toLowerCase();
   if (c.includes("inversor")) return ["kW", "V", "A"];
   if (c.includes("transformador")) return ["kW", "V", "A"];
-  if (c.includes("disjuntor")) return ["A"];
+  if (c.includes("disjuntor")) return ["Ia", "Ib", "Ic"];
   if (c.includes("power meter") || c.includes("medidor")) return ["kW", "V", "A"];
   return ["kW", "V", "A"];
 }
@@ -48,11 +52,12 @@ function SeletorPonto({
   const fonteId = value.equipamentoFonteId;
 
   // Campos do JSON do equipamento-fonte (mesma logica das regras de log).
-  const { data: campos = [] } = useQuery({
+  const { data: campos = [], isLoading: loadingCampos } = useQuery({
     queryKey: ["sinoptico-campos", fonteId],
     queryFn: () => RegrasLogsService.getCampos(fonteId!),
     enabled: !!fonteId,
     staleTime: 60_000,
+    retry: 2,
   });
 
   const equipOptions = equipamentos.map((e) => ({ value: e.id, label: e.nome }));
@@ -75,10 +80,12 @@ function SeletorPonto({
         options={campoOptions}
         value={value.campoJson ?? ""}
         onValueChange={(campo) => onChange({ equipamentoFonteId: fonteId, campoJson: campo })}
-        placeholder={fonteId ? "Campo do JSON" : "Selecione o equipamento"}
+        placeholder={
+          !fonteId ? "Selecione o equipamento" : loadingCampos ? "Carregando campos..." : "Campo do JSON"
+        }
         searchPlaceholder="Buscar campo..."
-        emptyText="Nenhum campo"
-        disabled={!fonteId}
+        emptyText={loadingCampos ? "Carregando..." : "Nenhum campo"}
+        disabled={!fonteId || loadingCampos}
       />
     </div>
   );
@@ -98,9 +105,11 @@ export function ConfigPontosDiagrama({
   equipamentoId: string;
   categoria?: string;
 }) {
-  const { diagramaPontos, salvarPontos } = useSinopticoConfig(unidadeId);
-  const equipamentos = useEquipamentosMqtt(unidadeId).data ?? EMPTY_EQUIP;
+  const { diagramaPontos, salvarPontos, loading: loadingConfig } = useSinopticoConfig(unidadeId);
+  const equipQuery = useEquipamentosMqtt(unidadeId);
+  const equipamentos = equipQuery.data ?? EMPTY_EQUIP;
   const slots = slotsParaCategoria(categoria);
+  const carregando = loadingConfig || equipQuery.isLoading;
 
   const [pontos, setPontos] = useState<Record<string, PontoVal>>({});
   const [salvando, setSalvando] = useState(false);
@@ -137,20 +146,41 @@ export function ConfigPontosDiagrama({
       <p className="text-xs text-muted-foreground">
         Escolha o equipamento e o campo do JSON que alimentam cada caixa de dados deste item no diagrama.
       </p>
-      <div className="flex flex-col gap-2">
-        {slots.map((slot) => (
-          <SeletorPonto
-            key={slot}
-            slot={slot}
-            equipamentos={equipamentos}
-            value={pontos[slot] ?? {}}
-            onChange={(v) => setSlot(slot, v)}
-          />
-        ))}
-      </div>
-      <Button size="sm" className="self-end rounded-sm" onClick={onSalvar} disabled={salvando}>
-        Salvar pontos
-      </Button>
+      {carregando ? (
+        <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Carregando equipamentos e pontos...
+        </div>
+      ) : equipQuery.isError ? (
+        <div className="flex flex-col items-center gap-2 py-6 text-center text-sm text-muted-foreground">
+          Não foi possível carregar os equipamentos.
+          <Button
+            size="sm"
+            variant="outline"
+            className="rounded-sm"
+            onClick={() => equipQuery.refetch()}
+          >
+            Tentar novamente
+          </Button>
+        </div>
+      ) : (
+        <>
+          <div className="flex flex-col gap-2">
+            {slots.map((slot) => (
+              <SeletorPonto
+                key={slot}
+                slot={slot}
+                equipamentos={equipamentos}
+                value={pontos[slot] ?? {}}
+                onChange={(v) => setSlot(slot, v)}
+              />
+            ))}
+          </div>
+          <Button size="sm" className="self-end rounded-sm" onClick={onSalvar} disabled={salvando}>
+            Salvar pontos
+          </Button>
+        </>
+      )}
     </div>
   );
 }

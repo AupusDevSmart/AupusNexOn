@@ -123,7 +123,21 @@ export const EquipamentoCommandModal: React.FC<EquipamentoCommandModalProps> = (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="sm:max-w-2xl max-h-[85dvh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{equipamento.nome}</DialogTitle>
+          <div className="flex items-center justify-between gap-2 pr-7">
+            <DialogTitle>{equipamento.nome}</DialogTitle>
+            {onConfigurarPontos && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={onConfigurarPontos}
+                className="h-7 shrink-0 gap-1.5 rounded-sm"
+              >
+                <Settings2 className="h-3.5 w-3.5" />
+                Configurar Pontos
+              </Button>
+            )}
+          </div>
           <DialogDescription>
             {equipamento.topico_mqtt ? (
               <span className="font-mono text-xs">
@@ -190,21 +204,6 @@ export const EquipamentoCommandModal: React.FC<EquipamentoCommandModalProps> = (
             </div>
           </section>
         ))}
-
-        {onConfigurarPontos && (
-          <div className="mt-2 flex justify-end border-t pt-3">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={onConfigurarPontos}
-              className="gap-2"
-            >
-              <Settings2 className="h-4 w-4" />
-              Configurar Pontos
-            </Button>
-          </div>
-        )}
       </DialogContent>
     </Dialog>
   );

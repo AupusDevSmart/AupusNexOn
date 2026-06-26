@@ -11,16 +11,20 @@ const PopoverAnchor = PopoverPrimitive.Anchor
 
 const PopoverContent = React.forwardRef<
   React.ElementRef<typeof PopoverPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Content>
->(({ className, align = "center", sideOffset = 4, ...props }, ref) => {
-  // Mesmo motivo do Dialog: em fullscreen o portal precisa cair DENTRO do
-  // elemento em tela cheia, senao o dropdown (ex.: combobox em modal) fica atras.
+  React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Content> & {
+    /** Container do portal. Use o dialog ancestral pra a rodinha do mouse rolar
+     *  (o scroll-lock do Radix Dialog bloqueia wheel fora do conteudo dele). */
+    container?: HTMLElement | null;
+  }
+>(({ className, align = "center", sideOffset = 4, container, ...props }, ref) => {
+  // Em fullscreen o portal precisa cair DENTRO do elemento em tela cheia, senao
+  // o dropdown fica atras. Prioridade: container explicito > fullscreen > default.
   const fullscreenContainer = typeof document !== 'undefined'
     ? (document.fullscreenElement as HTMLElement | null)
     : null;
 
   return (
-    <PopoverPrimitive.Portal container={fullscreenContainer ?? undefined}>
+    <PopoverPrimitive.Portal container={container ?? fullscreenContainer ?? undefined}>
       <PopoverPrimitive.Content
         ref={ref}
         align={align}
