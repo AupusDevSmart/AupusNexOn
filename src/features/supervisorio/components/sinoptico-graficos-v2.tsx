@@ -1133,12 +1133,14 @@ export function SinopticoGraficosV2({
       )}
 
       {/* Fallback: a variavel selecionada nao tem como renderizar (ex.: Tensao/FP
-          numa unidade SEM M160 — caso comum em prod). Evita o "buraco" transparente
-          e mantem os toggles pro usuario voltar pra Demanda. */}
+          numa unidade SEM Power Meter — caso comum em prod). Evita o "buraco"
+          transparente e mantem os toggles pro usuario voltar pra Demanda.
+          flex/flex-col + min-h em TODOS os breakpoints (so xl: nao basta — em telas
+          menores o card colapsa pra altura do texto e sobra vazio). */}
       {apenasGrafico &&
         ((apenasGrafico === 'demanda' && !temEquipamentosDisponiveis) ||
           ((apenasGrafico === 'tensao' || apenasGrafico === 'fp') && !temM160Disponivel)) && (
-        <Card className="xl:flex xl:flex-1 xl:min-h-0 xl:flex-col">
+        <Card className="flex flex-col min-h-[240px] xl:min-h-0 xl:flex-1">
           <CardHeader className="p-1.5">
             <div className="flex items-center gap-2">
               <CardTitle className="text-base">
@@ -1155,11 +1157,11 @@ export function SinopticoGraficosV2({
             <div className="text-center text-sm text-muted-foreground">
               {apenasGrafico === 'demanda'
                 ? 'Nenhum equipamento disponível nesta unidade.'
-                : 'Nenhum M160 disponível nesta unidade.'}
+                : 'Nenhum Power Meter disponível nesta unidade.'}
               <div className="mt-1 text-xs">
                 {apenasGrafico === 'demanda'
                   ? 'Adicione equipamentos com MQTT para ver a demanda.'
-                  : 'Tensão e fator de potência precisam de um medidor M160 com MQTT.'}
+                  : 'Tensão e fator de potência precisam de um Power Meter com MQTT.'}
               </div>
             </div>
           </CardContent>
