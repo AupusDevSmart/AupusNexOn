@@ -1132,6 +1132,40 @@ export function SinopticoGraficosV2({
       </Card>
       )}
 
+      {/* Fallback: a variavel selecionada nao tem como renderizar (ex.: Tensao/FP
+          numa unidade SEM M160 — caso comum em prod). Evita o "buraco" transparente
+          e mantem os toggles pro usuario voltar pra Demanda. */}
+      {apenasGrafico &&
+        ((apenasGrafico === 'demanda' && !temEquipamentosDisponiveis) ||
+          ((apenasGrafico === 'tensao' || apenasGrafico === 'fp') && !temM160Disponivel)) && (
+        <Card className="xl:flex xl:flex-1 xl:min-h-0 xl:flex-col">
+          <CardHeader className="p-1.5">
+            <div className="flex items-center gap-2">
+              <CardTitle className="text-base">
+                {apenasGrafico === 'tensao'
+                  ? 'Tensão'
+                  : apenasGrafico === 'fp'
+                    ? 'Fator de Potência'
+                    : 'Demanda'}
+              </CardTitle>
+              {controleVariavel}
+            </div>
+          </CardHeader>
+          <CardContent className="flex flex-1 items-center justify-center p-2">
+            <div className="text-center text-sm text-muted-foreground">
+              {apenasGrafico === 'demanda'
+                ? 'Nenhum equipamento disponível nesta unidade.'
+                : 'Nenhum M160 disponível nesta unidade.'}
+              <div className="mt-1 text-xs">
+                {apenasGrafico === 'demanda'
+                  ? 'Adicione equipamentos com MQTT para ver a demanda.'
+                  : 'Tensão e fator de potência precisam de um medidor M160 com MQTT.'}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Modal Expandido - Gráfico de Demanda */}
       <Dialog open={modalExpandidoOpen} onOpenChange={setModalExpandidoOpen}>
         <DialogContent className="flex flex-col gap-2 p-3 w-screen h-[100dvh] max-w-none rounded-none sm:rounded-none md:w-full md:h-auto md:max-h-[90dvh] md:max-w-[90vw] md:gap-4 md:p-6 md:rounded-lg">
