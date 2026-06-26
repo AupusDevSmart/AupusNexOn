@@ -146,7 +146,6 @@ var COMPONENT_TYPES = {
             ota_hostname: '',
             mqtt_topic_base: '',
             equipamento_id: '',
-            mac_address: '',
         },
         fields: [
             { key: 'name', label: 'Nome', type: 'text' },
@@ -154,7 +153,6 @@ var COMPONENT_TYPES = {
             { key: 'mqtt_topic_base', label: 'Tópico Base', type: 'text', placeholder: 'PROPRIETARIO/ESTADO/PLANTA/INSTALACAO' },
             { key: '_topic_preview', label: 'Tópicos Dispositivos', type: 'topic_preview' },
             { key: 'equipamento_id', label: 'Equipamento NexOn (ID)', type: 'text', placeholder: 'CUID 26 chars — necessário para Implantar OTA' },
-            { key: 'mac_address', label: 'MAC LoRa', type: 'text', placeholder: 'AA:BB:CC:DD:EE:FF (do [BOOT] no Serial) — necessário p/ malha multi-hop' },
             // LoRa modo TX/RX removido: half-duplex bidirecional sempre. Role
             // (gateway/satellite) e' resolvido automaticamente pelo layout
             // (tem internet + peer LoRa = gateway; sem internet + peer = satellite).
@@ -227,7 +225,6 @@ var COMPONENT_TYPES = {
             ota_hostname: '',
             mqtt_topic_base: '',
             equipamento_id: '',
-            mac_address: '',
         },
         fields: [
             { key: 'name', label: 'Nome', type: 'text' },
@@ -235,7 +232,6 @@ var COMPONENT_TYPES = {
             { key: 'mqtt_topic_base', label: 'Tópico Base', type: 'text', placeholder: 'PROPRIETARIO/ESTADO/PLANTA/INSTALACAO' },
             { key: '_topic_preview', label: 'Tópicos Dispositivos', type: 'topic_preview' },
             { key: 'equipamento_id', label: 'Equipamento NexOn (ID)', type: 'text', placeholder: 'CUID 26 chars — necessário para Implantar OTA' },
-            { key: 'mac_address', label: 'MAC LoRa', type: 'text', placeholder: 'AA:BB:CC:DD:EE:FF (do [BOOT] no Serial) — necessário p/ malha multi-hop' },
             // LoRa modo TX/RX removido — half-duplex bidirecional sempre.
             // Vide nota acima em ton2.
         ]
