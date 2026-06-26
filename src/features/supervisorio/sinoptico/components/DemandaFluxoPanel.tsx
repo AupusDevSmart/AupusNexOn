@@ -50,7 +50,7 @@ function GaugeDemanda({
         {rotulo}
       </span>
 
-      <div className="relative aspect-square w-full max-w-[116px]">
+      <div className="relative aspect-square w-full max-w-[100px]">
         <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90">
           {/* trilho */}
           <circle
@@ -106,8 +106,8 @@ export function DemandaFluxoPanel({ unidadeId }: DemandaFluxoPanelProps) {
   return (
     <>
       <PanelCard
-        titulo="Demanda / Fluxo"
-        className="xl:flex-[1.1] xl:min-h-0"
+        titulo="Demanda"
+        className="xl:min-h-0"
         action={
           <Button
             variant="ghost"

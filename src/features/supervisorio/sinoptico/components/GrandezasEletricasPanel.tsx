@@ -54,7 +54,7 @@ export function GrandezasEletricasPanel({ unidadeId }: GrandezasEletricasPanelPr
     <>
       <PanelCard
         titulo="Grandezas elétricas"
-        className="xl:flex-[1] xl:min-h-0"
+        className="xl:min-h-0"
         action={
           <Button
             variant="ghost"
@@ -69,9 +69,9 @@ export function GrandezasEletricasPanel({ unidadeId }: GrandezasEletricasPanelPr
       >
       <div className="grid grid-cols-2 gap-x-4 gap-y-2">
         <Bloco titulo="Tensões (L-N)">
-          <Grandeza rotulo="AN" valor={fmt(t?.AN, 0)} unidade="V" />
-          <Grandeza rotulo="BN" valor={fmt(t?.BN, 0)} unidade="V" />
-          <Grandeza rotulo="CN" valor={fmt(t?.CN, 0)} unidade="V" />
+          <Grandeza rotulo="Van" valor={fmt(t?.AN, 0)} unidade="V" />
+          <Grandeza rotulo="Vbn" valor={fmt(t?.BN, 0)} unidade="V" />
+          <Grandeza rotulo="Vcn" valor={fmt(t?.CN, 0)} unidade="V" />
         </Bloco>
         <Bloco titulo="Correntes">
           <Grandeza rotulo="IA" valor={fmt(c?.IA, 1)} unidade="A" />

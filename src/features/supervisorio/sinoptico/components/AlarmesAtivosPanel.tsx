@@ -32,7 +32,7 @@ export function AlarmesAtivosPanel({ unidadeId, unidadeNome }: AlarmesAtivosPane
   };
 
   return (
-    <PanelCard titulo="Alarmes ativos" className="xl:flex-[1.8] xl:min-h-0">
+    <PanelCard titulo="Alarmes ativos" className="xl:min-h-0">
       {isLoading ? (
         <div className="flex min-h-[3rem] items-center justify-center text-xs text-muted-foreground">
           Carregando...
@@ -46,7 +46,7 @@ export function AlarmesAtivosPanel({ unidadeId, unidadeNome }: AlarmesAtivosPane
           {alarmes.map((a) => (
             <li
               key={a.id}
-              className="flex items-start gap-2 border-b border-border/50 py-1.5 last:border-0"
+              className="flex items-start gap-2 border-b border-border/50 py-1 last:border-0"
             >
               <span
                 className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${

@@ -546,26 +546,29 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
   return (
     <div ref={containerRef} className="w-full h-full flex flex-col overflow-hidden bg-background">
       {/* Toolbar superior */}
-      <div className="flex justify-between items-center px-5 py-2 bg-muted/30 min-h-[56px]">
-        <div className="flex items-center gap-3">
-          <CircuitBoard className="h-4 w-4 text-foreground" />
-          <div className="flex flex-col">
-            <h2 className="text-sm font-medium text-foreground tracking-tight">
+      <div className="flex justify-between items-center px-5 py-1 bg-muted/30 min-h-[28px]">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <CircuitBoard className="h-4 w-4 shrink-0 text-foreground" />
+          <div className="flex min-w-0 flex-col">
+            <h2
+              className="truncate text-sm font-medium text-foreground tracking-tight"
+              title={`${diagrama.nome}${unidadeNome ? `: ${unidadeNome}` : ''}`}
+            >
               {diagrama.nome}{unidadeNome ? `: ${unidadeNome}` : ''}
             </h2>
             {diagrama.descricao && (
-              <p className="text-xs text-muted-foreground mt-0.5">{diagrama.descricao}</p>
+              <p className="truncate text-xs text-muted-foreground mt-0.5">{diagrama.descricao}</p>
             )}
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           {/* Botão de expandir (tela cheia) — à esquerda do Ajustar Zoom */}
           <Button
             onClick={toggleFullscreen}
             variant="ghost"
             size="sm"
-            className="h-8 gap-2"
+            className="h-6 gap-2"
             title={isFullscreen ? 'Sair da tela cheia' : 'Expandir diagrama (tela cheia)'}
           >
             {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
@@ -577,7 +580,7 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
             onClick={fitToContent}
             variant="ghost"
             size="sm"
-            className="h-8 gap-2"
+            className="h-6 gap-2"
             title="Ajustar zoom para mostrar todo o diagrama"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -586,7 +589,7 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
               <path d="M11 8v6"></path>
               <path d="M8 11h6"></path>
             </svg>
-            <span>Ajustar Zoom</span>
+            <span className="hidden sm:inline">Ajustar Zoom</span>
           </Button>
 
           {/* Toggle Edit/View Mode - Apenas para admin ou super_admin */}
@@ -595,7 +598,7 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
               onClick={() => setCurrentMode(currentMode === 'edit' ? 'view' : 'edit')}
               variant={currentMode === 'edit' ? 'secondary' : 'ghost'}
               size="sm"
-              className="h-8 gap-2"
+              className="h-6 gap-2"
               title={currentMode === 'view' ? 'Ativar modo de edição' : 'Sair do modo de edição'}
             >
               {currentMode === 'view' ? (
@@ -604,7 +607,7 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
                     <path d="M12 20h9"></path>
                     <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
                   </svg>
-                  <span>Editar</span>
+                  <span className="hidden sm:inline">Editar</span>
                 </>
               ) : (
                 <>
@@ -612,7 +615,7 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
                     <path d="M9 11l-6 6v3h3l6-6m0 0l3-3m-3 3l3-3m2-5l-3 3m0 0l-3-3"></path>
                     <line x1="18" y1="13" x2="6" y2="1"></line>
                   </svg>
-                  <span>Sair da Edição</span>
+                  <span className="hidden sm:inline">Sair da Edição</span>
                 </>
               )}
             </Button>
@@ -629,7 +632,7 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
               onClick={handleSave}
               variant="default"
               size="sm"
-              className="h-8 gap-2"
+              className="h-6 gap-2"
               disabled={!isDirty}
               title="Salvar layout (Ctrl+S)"
             >
@@ -638,7 +641,7 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
                 <polyline points="17 21 17 13 7 13 7 21"></polyline>
                 <polyline points="7 3 7 8 15 8"></polyline>
               </svg>
-              <span>Salvar</span>
+              <span className="hidden sm:inline">Salvar</span>
             </Button>
           )}
         </div>
