@@ -192,7 +192,7 @@ function ensureIoTScripts(): Promise<void> {
     //
     // O catalogo de dispositivos foi movido pro backend (GET /iot-catalog/device-catalog.js)
     // — ele revalida sozinho via ETag. Os demais ainda sao estaticos.
-    const IOT_SCRIPTS_VERSION = '20260625-tstamp';
+    const IOT_SCRIPTS_VERSION = '20260626-macfield';
     const scripts = [
       `${BASE_URL}/iot-catalog/device-catalog.js`,
       `/iot-firmware-base.v2.js?v=${IOT_SCRIPTS_VERSION}`,
@@ -404,6 +404,10 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
       clearTimeout(saveTimerRef.current);
       saveTimerRef.current = setTimeout(() => saveCurrentDiagram(), 1500);
     };
+    // Mostra o motivo quando uma conexão é rejeitada (antes falhava em silêncio).
+    editor.onValidationError = (reason: string) => {
+      import('sonner').then(({ toast }) => toast.error(reason));
+    };
     editor.onSelect = (comp: any) => { if (comp && !editor.editMode) openComponentProps(comp); };
     editor.onDblClick = (comp: any) => { if (comp) openComponentProps(comp); };
     editor.onConnectionMenu = (conn: any, allowed: string[], e: MouseEvent) => {
@@ -586,6 +590,48 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
     if (!editorRef.current) return;
     if (simulating) { editorRef.current.stopSimulation(); setSimulating(false); }
     else { editorRef.current.startSimulation(); setSimulating(true); }
+  };
+
+  // ===== Painel de COMANDO DE TESTE (modo Simular) =====
+  // Envia comando pra TON de simulação publicando em TESTE/<topico>/cmd (via
+  // POST /equipamentos/:id/cmd com sim:true). Testa o pipeline real de comando
+  // (backend->MQTT->TON-sim->aciona->ack) sem tocar o equipamento de produção.
+  // O Unifilar continua mandando comando real; aqui é só pra bancada/sim.
+  const [cmdSimModal, setCmdSimModal] = useState<{
+    tons: { id: string; name: string; type: string }[];
+    selected: number;
+    cmd: string;
+    sending: boolean;
+    result: { ok: boolean; text: string } | null;
+  } | null>(null);
+
+  const openCmdSimModal = () => {
+    if (!editorRef.current) return;
+    const tons = (editorRef.current.components || [])
+      .filter((c: any) => typeof c.type === 'string' && c.type.startsWith('ton') && (c.props?.equipamento_id || '').trim())
+      .map((c: any) => ({ id: String(c.props.equipamento_id).trim(), name: c.props?.name || c.type, type: c.type }));
+    if (tons.length === 0) {
+      alert('Nenhuma TON com equipamento NexOn vinculado no diagrama (defina o equipamento na TON pra poder comandar).');
+      return;
+    }
+    setCmdSimModal({ tons, selected: 0, cmd: 'status', sending: false, result: null });
+  };
+
+  const sendSimCommand = async () => {
+    if (!cmdSimModal) return;
+    const ton = cmdSimModal.tons[cmdSimModal.selected];
+    const cmd = cmdSimModal.cmd.trim();
+    if (!ton || !cmd) return;
+    setCmdSimModal({ ...cmdSimModal, sending: true, result: null });
+    try {
+      const { equipamentosApi } = await import('@/services/equipamentos.services');
+      const res: any = await equipamentosApi.sendCommand(ton.id, cmd, true); // sim=true -> TESTE/
+      const lat = res?.latency_ms != null ? ` (${res.latency_ms}ms)` : '';
+      setCmdSimModal((m) => m && ({ ...m, sending: false, result: { ok: true, text: `ack: ${res?.status ?? '?'}${res?.msg ? ' — ' + res.msg : ''}${lat}` } }));
+    } catch (e: any) {
+      const msg = e?.response?.data?.error?.message || e?.response?.data?.message || e?.message || 'erro ao enviar';
+      setCmdSimModal((m) => m && ({ ...m, sending: false, result: { ok: false, text: String(msg) } }));
+    }
   };
 
   const handleAddComponent = (type: string) => {
@@ -1076,6 +1122,13 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
               <Download className="h-4 w-4 sm:mr-1" />
               <span className="hidden sm:inline">{simulating ? 'Firmware 🧪' : 'Firmware'}</span>
             </Button>
+            {simulating && (
+              <Button variant="outline" size="sm" onClick={openCmdSimModal}
+                className="border-amber-500 text-amber-600"
+                title="Envia comando de teste pra TON de simulação (publica em TESTE/<tópico>/cmd). Testa o pipeline de comando sem tocar o equipamento de produção.">
+                <Zap className="h-4 w-4 sm:mr-1" /><span className="hidden sm:inline">Comando 🧪</span>
+              </Button>
+            )}
             <Button variant="outline" size="sm" onClick={() => setBenchTestModal({ selectedTest: 0, checklist: {} })}>
               <Zap className="h-4 w-4 sm:mr-1" /><span className="hidden sm:inline">Teste Bancada</span>
             </Button>
@@ -1554,6 +1607,59 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Painel de Comando de Teste (modo Simular) — publica em TESTE/<topico>/cmd */}
+      {cmdSimModal && (
+        <Dialog open={true} onOpenChange={() => setCmdSimModal(null)}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>🧪 Comando de Teste (Simulação)</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              <p className="text-xs text-amber-600">
+                Publica em <code>TESTE/&lt;tópico&gt;/cmd</code> — a TON de simulação recebe, aciona (os relés são reais na bancada) e responde o ack. Não toca o equipamento de produção.
+              </p>
+              <div>
+                <Label className="text-xs">TON</Label>
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {cmdSimModal.tons.map((t, i) => (
+                    <Button key={t.id} size="sm" variant={i === cmdSimModal.selected ? 'default' : 'outline'}
+                      onClick={() => setCmdSimModal({ ...cmdSimModal, selected: i, result: null })}>
+                      {t.name}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <Label className="text-xs">Atalhos</Label>
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {['status', 'r1 on', 'r1 off', 'r2 on', 'r2 off', 'pivot on', 'pivot off', 'pivot dir D'].map((q) => (
+                    <Button key={q} size="sm" variant="outline" className="text-xs h-7 px-2"
+                      onClick={() => setCmdSimModal({ ...cmdSimModal, cmd: q })}>{q}</Button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <Label className="text-xs">Comando</Label>
+                <div className="flex gap-2 mt-1">
+                  <Input value={cmdSimModal.cmd}
+                    onChange={(e) => setCmdSimModal({ ...cmdSimModal, cmd: e.target.value })}
+                    placeholder="ex: r1 on"
+                    onKeyDown={(e) => { if (e.key === 'Enter') sendSimCommand(); }} />
+                  <Button onClick={sendSimCommand} disabled={cmdSimModal.sending || !cmdSimModal.cmd.trim()}>
+                    {cmdSimModal.sending ? 'Enviando…' : 'Enviar'}
+                  </Button>
+                </div>
+              </div>
+              {cmdSimModal.result && (
+                <div className={`text-sm rounded p-2 ${cmdSimModal.result.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                  {cmdSimModal.result.ok ? '✅ ' : '❌ '}{cmdSimModal.result.text}
+                </div>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* Bench Test Modal */}
       {benchTestModal && window.BENCH_TESTS && (

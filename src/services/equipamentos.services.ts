@@ -495,10 +495,13 @@ export class EquipamentosApiService {
   async sendCommand(
     id: string,
     cmd: EquipamentoCommand,
+    sim = false,
   ): Promise<CommandResult> {
+    // sim=true: backend publica em TESTE/<topico>/cmd (firmware de simulacao),
+    // sem tocar o equipamento de producao. Usado pelo painel de comando do IoT.
     const response = await api.post<CommandResult>(
       `${this.baseEndpoint}/${id.trim()}/cmd`,
-      { cmd },
+      sim ? { cmd, sim: true } : { cmd },
     );
     return response.data;
   }
