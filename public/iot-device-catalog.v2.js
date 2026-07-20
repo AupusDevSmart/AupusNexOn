@@ -791,9 +791,6 @@ var DEVICE_MODELS = {
             { id: 'sg2', label: 'Setting Group 2', coil: 130, func: 0x05 },
             { id: 'sg3', label: 'Setting Group 3', coil: 131, func: 0x05 },
             { id: 'sg4', label: 'Setting Group 4', coil: 132, func: 0x05 },
-            // LED Reset NAO vem no mapa default — o usuario ADICIONA a linha no Reydisp
-            // (Edit Modbus TCP > Coils > ponto "LED reset" no endereco 00100, PDU 99).
-            { id: 'led_reset', label: 'LED Reset (rearme) — mapear coil 00100 no Reydisp', coil: 99, func: 0x05 },
         ],
     },
 
