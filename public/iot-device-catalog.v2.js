@@ -701,26 +701,28 @@ var DEVICE_MODELS = {
         tipo: 'rele_protecao',
         protocolo: 'tcp',
         default_port: 502,
-        connection_note: 'Modbus TCP porta 502 (habilitar no Reydisp Manager 2; vem off de fabrica, sem IP). Unit ID = station addr 1-247. Mapa espelhado do 7SR10 (ver IOT-SIEMENS-7SR5111-PREP.md). RTU 38400 tambem disponivel.',
+        connection_note: 'Modbus TCP porta 502 (mapa DEFAULT de fabrica 30160+, NAO espelha 7SR10). Unit ID = station addr 1-247.',
         word_order: 'high_first',
+        // Mapa = default de fabrica do 7SR5111 (Reydisp "Edit Modbus TCP", print 20/jul):
+        // INT32 (S32) stride 2 continuo a partir de 30160. PDU = addr - 30001.
+        // Scaling "Primary" Mult 1 -> valores em unidades PRIMARIAS inteiras (scale 1);
+        // Frequency Mult 100 -> /100; Total PF Mult 1000 -> /1000 (mapeado em cosfi_a
+        // ate confirmar PF por fase abaixo de 30222 no print completo).
         ai_blocks: [
-            { start: 15,  count: 74, func: 0x04, label: 'V, freq, I, In (espelho 7SR10)' },
-            { start: 117, count: 24, func: 0x04, label: 'P, Q, PF (espelho 7SR10)' },
+            { start: 159, count: 64, func: 0x04, label: 'Default SIRIUS 30160-30223: I, V, P/Q, PF, freq' },
         ],
         ai_map: {
-            'va':   { block: 0, offset: 0,  scale: 1000, dataType: 'S32' },
-            'vb':   { block: 0, offset: 2,  scale: 1000, dataType: 'S32' },
-            'vc':   { block: 0, offset: 4,  scale: 1000, dataType: 'S32' },
-            'freq': { block: 0, offset: 44, scale: 1000, dataType: 'S32' },
-            'ia':   { block: 0, offset: 48, scale: 1000, dataType: 'S32' },
-            'ib':   { block: 0, offset: 50, scale: 1000, dataType: 'S32' },
-            'ic':   { block: 0, offset: 52, scale: 1000, dataType: 'S32' },
-            'in':   { block: 0, offset: 72, scale: 1000, dataType: 'S32' },
-            'pa_total': { block: 1, offset: 0,  scale: 1000, dataType: 'S32' },  // ⚠️escala (Mult - validar bancada)
-            'pr_total': { block: 1, offset: 8,  scale: 1000, dataType: 'S32' },  // ⚠️escala (Mult - validar bancada)
-            'cosfi_a':  { block: 1, offset: 18, scale: 1000, dataType: 'S32' },
-            'cosfi_b':  { block: 1, offset: 20, scale: 1000, dataType: 'S32' },
-            'cosfi_c':  { block: 1, offset: 22, scale: 1000, dataType: 'S32' },
+            'ia':   { block: 0, offset: 0,  scale: 1,    dataType: 'S32' },  // 30160 Current PhA (A prim.)
+            'ib':   { block: 0, offset: 4,  scale: 1,    dataType: 'S32' },  // 30164 Current PhB
+            'ic':   { block: 0, offset: 8,  scale: 1,    dataType: 'S32' },  // 30168 Current PhC
+            'in':   { block: 0, offset: 12, scale: 1,    dataType: 'S32' },  // 30172 Current Neutral
+            'va':   { block: 0, offset: 20, scale: 1,    dataType: 'S32' },  // 30180 Voltage PhA (V prim.)
+            'vb':   { block: 0, offset: 24, scale: 1,    dataType: 'S32' },  // 30184 Voltage PhB
+            'vc':   { block: 0, offset: 28, scale: 1,    dataType: 'S32' },  // 30188 Voltage PhC
+            'pa_total': { block: 0, offset: 46, scale: 1,    dataType: 'S32' },  // 30206 Total W
+            'pr_total': { block: 0, offset: 48, scale: 1,    dataType: 'S32' },  // 30208 Total VAr
+            'cosfi_a':  { block: 0, offset: 52, scale: 1000, dataType: 'S32' },  // 30212 Total PF (Mult 1000)
+            'freq':     { block: 0, offset: 54, scale: 100,  dataType: 'S32' },  // 30214 Frequency (Mult 100)
         },
         bi_block: { start: 101, count: 302, func: 0x02 },
         bi_map: {
