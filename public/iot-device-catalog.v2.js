@@ -699,17 +699,19 @@ var DEVICE_MODELS = {
         fabricante: 'Siemens',
         modelo: '7SR5111',
         tipo: 'rele_protecao',
-        protocolo: 'tcp',
+        protocolo: 'tcp/rtu',
         default_port: 502,
-        connection_note: 'Modbus TCP porta 502 (mapa DEFAULT de fabrica 30160+, NAO espelha 7SR10). Unit ID = station addr 1-247.',
+        connection_note: 'TCP porta 502 OU RS485 — a escolha e a CONEXAO no diagrama (link TCP com IP no modal, ou link RS485 com endereco). RTU: configurar porta serial do rele p/ 9600 (bus da TON) e conferir no Reydisp que o mapa RTU = mapa TCP (default).',
         word_order: 'high_first',
-        // Mapa = default de fabrica do 7SR5111 (Reydisp "Edit Modbus TCP", print 20/jul):
+        // Mapa = default de fabrica do 7SR5111 (Reydisp "Edit Modbus TCP", prints 20/jul):
         // INT32 (S32) stride 2 continuo a partir de 30160. PDU = addr - 30001.
         // Scaling "Primary" Mult 1 -> valores em unidades PRIMARIAS inteiras (scale 1);
-        // Frequency Mult 100 -> /100; Total PF Mult 1000 -> /1000 (mapeado em cosfi_a
-        // ate confirmar PF por fase abaixo de 30222 no print completo).
+        // Frequency Mult 100 -> /100; PF por fase Mult 1000 -> /1000.
+        // 2 blocos de 40 regs (nao 1 de 80): ModbusMaster (RS485) tem buffer de 64 —
+        // mesmo catalogo serve TCP e RTU.
         ai_blocks: [
-            { start: 159, count: 80, func: 0x04, label: 'Default SIRIUS 30160-30239: I, V, P/Q por fase, PF, freq' },
+            { start: 159, count: 40, func: 0x04, label: 'SIRIUS 30160-30199: correntes + tensoes' },
+            { start: 199, count: 40, func: 0x04, label: 'SIRIUS 30200-30239: Vab.., P/Q/S, PF, freq' },
         ],
         ai_map: {
             'ia':   { block: 0, offset: 0,  scale: 1,    dataType: 'S32' },  // 30160 Current PhA (A prim.)
@@ -719,12 +721,12 @@ var DEVICE_MODELS = {
             'va':   { block: 0, offset: 20, scale: 1,    dataType: 'S32' },  // 30180 Voltage PhA (V prim.)
             'vb':   { block: 0, offset: 24, scale: 1,    dataType: 'S32' },  // 30184 Voltage PhB
             'vc':   { block: 0, offset: 28, scale: 1,    dataType: 'S32' },  // 30188 Voltage PhC
-            'pa_total': { block: 0, offset: 46, scale: 1,    dataType: 'S32' },  // 30206 Total W
-            'pr_total': { block: 0, offset: 48, scale: 1,    dataType: 'S32' },  // 30208 Total VAr
-            'freq':     { block: 0, offset: 54, scale: 100,  dataType: 'S32' },  // 30214 Frequency (Mult 100)
-            'cosfi_a':  { block: 0, offset: 74, scale: 1000, dataType: 'S32' },  // 30234 PF PhA (Mult 1000)
-            'cosfi_b':  { block: 0, offset: 76, scale: 1000, dataType: 'S32' },  // 30236 PF PhB
-            'cosfi_c':  { block: 0, offset: 78, scale: 1000, dataType: 'S32' },  // 30238 PF PhC
+            'pa_total': { block: 1, offset: 6,  scale: 1,    dataType: 'S32' },  // 30206 Total W
+            'pr_total': { block: 1, offset: 8,  scale: 1,    dataType: 'S32' },  // 30208 Total VAr
+            'freq':     { block: 1, offset: 14, scale: 100,  dataType: 'S32' },  // 30214 Frequency (Mult 100)
+            'cosfi_a':  { block: 1, offset: 34, scale: 1000, dataType: 'S32' },  // 30234 PF PhA (Mult 1000)
+            'cosfi_b':  { block: 1, offset: 36, scale: 1000, dataType: 'S32' },  // 30236 PF PhB
+            'cosfi_c':  { block: 1, offset: 38, scale: 1000, dataType: 'S32' },  // 30238 PF PhC
         },
         // Bits ESPARSOS no mapa default (endereco nao-mapeado da excecao 2) ->
         // um bloco FC02 por cluster mapeado. bi_map novo: {block, bit}.

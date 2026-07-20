@@ -4245,6 +4245,9 @@ bool modbus_exec_command(const char* device_name, const char* cmd_id) {
             // Step pode ser:
             //   { func: 0x05, coil: NNN }          -> writeSingleCoil
             //   { func: 0x06, register: NNN, value: V } -> writeSingleRegister
+            //   { func: 0x0F, addr: NNN, count: C, value: V } -> writeMultipleCoils
+            //       (DPC double-bit, ex: CB-1 do 7SR5: value 1=Off/abre, 2=On/fecha;
+            //        bits vao no transmit buffer, LSB = primeiro coil)
             // Retorna o trecho cpp com "if (!_mb.writeXxx(...)) return false;"
             const emitStep = (step) => {
                 const sFunc = step.func || 0x06;
@@ -4261,6 +4264,15 @@ bool modbus_exec_command(const char* device_name, const char* cmd_id) {
                     }
                     const v = (step.value !== undefined) ? step.value : 1;
                     return `            if (_mb.writeSingleRegister(${step.register}, ${v}) != _mb.ku8MBSuccess) return false;\n`;
+                } else if (sFunc === 0x0F) {
+                    if (step.addr === undefined) {
+                        console.warn(`[gen] step func 0x0F exige 'addr'`);
+                        return null;
+                    }
+                    const cnt = Number(step.count) || 2;
+                    const bits = Number(step.value) || 1;
+                    return `            _mb.setTransmitBuffer(0, ${bits});\n`
+                         + `            if (_mb.writeMultipleCoils(${step.addr}, ${cnt}) != _mb.ku8MBSuccess) return false;\n`;
                 }
                 console.warn(`[gen] step func 0x${sFunc.toString(16)} nao suportada`);
                 return null;
@@ -4312,6 +4324,19 @@ bool modbus_exec_command(const char* device_name, const char* cmd_id) {
                     const value = (m.value !== undefined) ? m.value : 1;
                     cpp += `        if (strcmp(cmd_id, "${this._escStr(cid)}") == 0) {\n`;
                     cpp += `            return _mb.writeSingleRegister(${m.register}, ${value}) == _mb.ku8MBSuccess;\n`;
+                    cpp += `        }\n`;
+                } else if (func === 0x0F) {
+                    // Write Multiple Coils — DPC double-bit (CB-1 do 7SR5):
+                    // value 1 = Off (bits 01, ABRE) | 2 = On (bits 10, FECHA).
+                    if (m.addr === undefined) {
+                        console.warn(`[gen] bo_map ${cid}: func 0x0F exige 'addr' (cadastro do ${dev.name})`);
+                        return;
+                    }
+                    const cnt = Number(m.count) || 2;
+                    const bits = Number(m.value) || 1;
+                    cpp += `        if (strcmp(cmd_id, "${this._escStr(cid)}") == 0) {\n`;
+                    cpp += `            _mb.setTransmitBuffer(0, ${bits});\n`;
+                    cpp += `            return _mb.writeMultipleCoils(${m.addr}, ${cnt}) == _mb.ku8MBSuccess;\n`;
                     cpp += `        }\n`;
                 } else {
                     console.warn(`[gen] bo_map ${cid}: func 0x${func.toString(16)} nao suportada (cadastro do ${dev.name})`);
@@ -4527,11 +4552,25 @@ static void _tcp_evt_poll_dev_${idx}(tcp_publish_fn publish) {
     _genDeviceReader(dev, idx) {
         const cat = dev.catalog_device;
         const blocks = cat.ai_blocks || [];
+        // ModbusMaster tem buffer de resposta de 64 words — bloco AI maior que isso
+        // trunca silenciosamente no RS485 (o TCP le ate 125). Catalogo compartilhado
+        // entre transportes (ex: 7SR5111 tcp/rtu) deve manter blocos <= 64.
+        blocks.forEach((b, i) => {
+            if (b.count > 64) console.warn(`[gen] ${dev.name}: ai_block ${i} count=${b.count} > 64 (limite ModbusMaster RS485) — dividir o bloco no catalogo`);
+        });
         // Aplica overrides do diagrama (props.current_scale_override / voltage_scale_override)
         // antes de processar o ai_map.
         const aiMap = this._applyScaleOverrides(cat.ai_map || {}, dev);
         const biBlock = cat.bi_block || null;
         const biMap = cat.bi_map || {};
+        // Esquema NOVO de BI (bits esparsos): bi_blocks [{start,count,func}] +
+        // bi_map {pid:{block,bit}} — igual ao caminho TCP. Quando presente, substitui
+        // o legado bi_block/coil (que permanece intacto pra Pextron/7SR10).
+        const biBlocksNew = Array.isArray(cat.bi_blocks) && cat.bi_blocks.length > 0 ? cat.bi_blocks : null;
+        const biEntriesNew = biBlocksNew
+            ? Object.entries(biMap)
+                .filter(([, m]) => m.bit !== undefined && m.block !== undefined && m.block < biBlocksNew.length)
+            : [];
         const scales = cat.scales || {};
         const topicName = `${dev.name || 'dev'}_${dev.modbus_address}`;
         const deviceName = this._escStr(topicName);
@@ -4589,13 +4628,15 @@ static void _tcp_evt_poll_dev_${idx}(tcp_publish_fn publish) {
             else avgFields.push(entry);
         }
 
-        const biCount = biBlock && Object.keys(biMap).length > 0 ? Object.keys(biMap).length : 0;
+        const biCount = biBlocksNew
+            ? biEntriesNew.length
+            : (biBlock && Object.keys(biMap).length > 0 ? Object.keys(biMap).length : 0);
 
         let cpp = `
 // =========================================================================
 // ${dev.name} (${cat.fabricante || '?'} ${cat.modelo || cat.tipo || '?'})
 // Endereco Modbus: ${dev.modbus_address}
-// Modos: ${avgFields.length} avg, ${lastFields.length} last, ${deltaFields.length} delta
+// Modos: ${avgFields.length} avg, ${lastFields.length} last, ${deltaFields.length} delta${biBlocksNew ? ` | BI: ${biCount} pontos em ${biBlocksNew.length} blocos` : ''}
 // =========================================================================
 
 struct _Dev${idx}State {
@@ -4609,7 +4650,8 @@ struct _Dev${idx}State {
     bool has_first_delta;
     // Estados BI da ultima leitura
     uint8_t bi_[${Math.max(biCount, 1)}];
-    bool valid;
+${biBlocksNew ? `    bool bi_valid;              // >=1 ciclo com TODOS os blocos BI lidos OK
+` : ''}    bool valid;
     int fail_streak;            // leituras consecutivas falhas
     unsigned long cooldown_until;  // millis() ate quando pular este device (back-off)
 };
@@ -4840,7 +4882,28 @@ ${dpt ? `        _fDPT = _pow10i((int)_lDPT - ${dpt.base});\n` : ''}${dct ? `   
         cpp += `    Serial.println();\n`;
 
         // BI
-        if (biCount > 0) {
+        if (biCount > 0 && biBlocksNew) {
+            // Esquema NOVO: N blocos FC02/FC01 pequenos (bits esparsos, ex: 7SR5111).
+            // Cada bloco le e desempacota imediatamente (o response buffer e' reusado).
+            // bi_valid so' liga com TODOS os blocos OK no ciclo — nunca publica bit chutado.
+            cpp += `
+    // BI ${biCount} pontos em ${biBlocksNew.length} bloco(s)
+    {
+        bool _biOk = true;
+`;
+            biBlocksNew.forEach((b, bIdx) => {
+                const fn = (b.func || 0x02) === 0x02 ? 'readDiscreteInputs' : 'readCoils';
+                cpp += `        if (_mb.${fn}(${b.start}, ${b.count}) == _mb.ku8MBSuccess) {\n`;
+                biEntriesNew.forEach(([pid, m], k) => {
+                    if (m.block !== bIdx) return;
+                    cpp += `            _ds${idx}.bi_[${k}] = (_mb.getResponseBuffer(${Math.floor(m.bit / 16)}) >> ${m.bit % 16}) & 1;  // ${pid}\n`;
+                });
+                cpp += `        } else _biOk = false;\n`;
+            });
+            cpp += `        if (_biOk) _ds${idx}.bi_valid = true;
+    }
+`;
+        } else if (biCount > 0) {
             // func 0x01 = Coils (Pextron); func 0x02 = Discrete Inputs (Siemens 7SR).
             // Ambos empacotam bits em words no response buffer -> mesmo bit-unpack.
             const biReadFn = biBlock.func === 0x02 ? 'readDiscreteInputs' : 'readCoils';
@@ -4931,7 +4994,12 @@ static void _publish_dev_${idx}(modbus_publish_fn publish) {
             // Placeholder — real expr resolvido ao emitir (usa variavel local dv_pid)
             fieldSources[f.pid] = { expr: `dv_${f.pid}`, format: f.format, raw: false };
         });
-        if (biCount > 0) {
+        if (biCount > 0 && biBlocksNew) {
+            // Esquema novo: indices casam com biEntriesNew; flag bi -> guarda bi_valid na emissao
+            biEntriesNew.forEach(([pid], k) => {
+                fieldSources[pid] = { expr: `_ds${idx}.bi_[${k}]`, format: null, raw: false, bi: true };
+            });
+        } else if (biCount > 0) {
             let bi = 0;
             for (const [pid, m] of Object.entries(biMap)) {
                 if (m.coil === undefined) continue;
@@ -4984,11 +5052,13 @@ static void _publish_dev_${idx}(modbus_publish_fn publish) {
         });
 
         // --- Emitir top-level fields ---
+        // src.bi (esquema bi_blocks) ganha guarda bi_valid — nunca publica bit chutado.
         topLevelFields.forEach(({ key, src }) => {
+            const guard = src.bi ? `if (_ds${idx}.bi_valid) ` : '';
             if (src.format === 'hex') {
-                cpp += `    { char _h[8]; snprintf(_h, sizeof(_h), "%x", (uint16_t)(${src.expr})); d["${this._escStr(key)}"] = String(_h); }\n`;
+                cpp += `    ${guard}{ char _h[8]; snprintf(_h, sizeof(_h), "%x", (uint16_t)(${src.expr})); d["${this._escStr(key)}"] = String(_h); }\n`;
             } else {
-                cpp += `    d["${this._escStr(key)}"] = ${src.expr};\n`;
+                cpp += `    ${guard}d["${this._escStr(key)}"] = ${src.expr};\n`;
             }
         });
 
@@ -5008,10 +5078,11 @@ static void _publish_dev_${idx}(modbus_publish_fn publish) {
             const gvar = `g_${groupKey.replace(/[^a-zA-Z0-9_]/g, '_')}`;
             cpp += `    JsonObject ${gvar} = d.createNestedObject("${this._escStr(groupKey)}");\n`;
             fields.forEach(({ subKey, src }) => {
+                const guard = src.bi ? `if (_ds${idx}.bi_valid) ` : '';
                 if (src.format === 'hex') {
-                    cpp += `    { char _h[8]; snprintf(_h, sizeof(_h), "%x", (uint16_t)(${src.expr})); ${gvar}["${this._escStr(subKey)}"] = String(_h); }\n`;
+                    cpp += `    ${guard}{ char _h[8]; snprintf(_h, sizeof(_h), "%x", (uint16_t)(${src.expr})); ${gvar}["${this._escStr(subKey)}"] = String(_h); }\n`;
                 } else {
-                    cpp += `    ${gvar}["${this._escStr(subKey)}"] = ${src.expr};\n`;
+                    cpp += `    ${guard}${gvar}["${this._escStr(subKey)}"] = ${src.expr};\n`;
                 }
             });
             // status.work_state_text: se o grupo for 'status' e tivermos work_state, adiciona o texto tambem
