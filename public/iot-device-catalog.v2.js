@@ -769,6 +769,29 @@ var DEVICE_MODELS = {
             'cmd_abrir':  { func: 0x0F, addr: 12, count: 2, value: 1 },
             'cmd_fechar': { func: 0x0F, addr: 12, count: 2, value: 2 },
         },
+        // Saidas fisicas/logicas do mapa DEFAULT (aba Coils do Reydisp, print 20/jul) —
+        // alimenta o select do "Configurar I/O" (DeviceIoConfigModal). PDU = Modicon - 1.
+        // DOUBLE_BIT (CB-1, DPDOns) via FC15 (addr/count/value); BIT via FC05 (coil).
+        bo_outputs: [
+            { id: 'cb1_abre',  label: 'CB-1 Abrir (DPC)',  func: 0x0F, addr: 12, count: 2, value: 1 },
+            { id: 'cb1_fecha', label: 'CB-1 Fechar (DPC)', func: 0x0F, addr: 12, count: 2, value: 2 },
+            { id: 'spdon1', label: 'SPDOns1', coil: 564, func: 0x05 },  // 00565
+            { id: 'spdon2', label: 'SPDOns2', coil: 565, func: 0x05 },
+            { id: 'spdon3', label: 'SPDOns3', coil: 566, func: 0x05 },
+            { id: 'spdon4', label: 'SPDOns4', coil: 567, func: 0x05 },
+            { id: 'dpdon1_on',  label: 'DPDOns1 On',  func: 0x0F, addr: 632, count: 2, value: 2 },  // 00633
+            { id: 'dpdon1_off', label: 'DPDOns1 Off', func: 0x0F, addr: 632, count: 2, value: 1 },
+            { id: 'dpdon2_on',  label: 'DPDOns2 On',  func: 0x0F, addr: 634, count: 2, value: 2 },
+            { id: 'dpdon2_off', label: 'DPDOns2 Off', func: 0x0F, addr: 634, count: 2, value: 1 },
+            { id: 'dpdon3_on',  label: 'DPDOns3 On',  func: 0x0F, addr: 636, count: 2, value: 2 },
+            { id: 'dpdon3_off', label: 'DPDOns3 Off', func: 0x0F, addr: 636, count: 2, value: 1 },
+            { id: 'dpdon4_on',  label: 'DPDOns4 On',  func: 0x0F, addr: 638, count: 2, value: 2 },
+            { id: 'dpdon4_off', label: 'DPDOns4 Off', func: 0x0F, addr: 638, count: 2, value: 1 },
+            { id: 'sg1', label: 'Setting Group 1', coil: 129, func: 0x05 },  // 00130
+            { id: 'sg2', label: 'Setting Group 2', coil: 130, func: 0x05 },
+            { id: 'sg3', label: 'Setting Group 3', coil: 131, func: 0x05 },
+            { id: 'sg4', label: 'Setting Group 4', coil: 132, func: 0x05 },
+        ],
     },
 
     // --------------------------------------------------------

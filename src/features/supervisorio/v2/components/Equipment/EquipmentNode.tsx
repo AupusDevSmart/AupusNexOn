@@ -23,6 +23,7 @@ import {
 } from '../../utils/diagramConstants';
 import { EquipmentIconWrapper } from '../icons/EquipmentIconFactory';
 import { DiagramaPontosBox } from '@/features/supervisorio/sinoptico/components/DiagramaPontosBox';
+import { useDisjuntorEstado } from '../../hooks/useDisjuntorEstado';
 import './EquipmentNode.css';
 
 interface EquipmentNodeProps {
@@ -48,6 +49,16 @@ const EquipmentNodeImpl: React.FC<EquipmentNodeProps> = ({ equipment, onClick, o
 
   const themeColors = getThemeColors(theme);
   const size = getEquipmentSizeInPixels(equipment.tipo);
+
+  // Status do disjuntor (vermelho=fechado / verde=aberto). O dado vem do relé
+  // que lê os auxiliares 52a/52b — ver useDisjuntorEstado. Hook chamado sempre
+  // (id null quando não é disjuntor) pra não quebrar a ordem dos hooks.
+  const ehDisjuntor = /DISJUNTOR/i.test(
+    `${equipment.categoria ?? ''} ${equipment.tipo ?? ''}`,
+  );
+  const { estado: estadoDisjuntor } = useDisjuntorEstado(
+    ehDisjuntor ? equipment.id : null,
+  );
 
   // Para junction points, centralizar no vértice
   const isJunctionPoint = equipment.tipo === 'JUNCTION_POINT';
@@ -325,6 +336,66 @@ const EquipmentNodeImpl: React.FC<EquipmentNodeProps> = ({ equipment, onClick, o
   };
 
   // ==========================================================================
+  // STATUS DO DISJUNTOR (aberto/fechado)
+  // ==========================================================================
+  // O ícone do disjuntor é um <img> estático (não aceita recolorir), então o
+  // status vai num ANEL em volta do nó + um rótulo escrito — que é o que dá pra
+  // ler de longe num sinóptico.
+  const renderStatusDisjuntor = () => {
+    if (!ehDisjuntor || estadoDisjuntor === 'sem_fonte') return null;
+
+    const cor =
+      estadoDisjuntor === 'fechado'
+        ? '#ef4444' // vermelho = fechado (energizado / passando corrente)
+        : estadoDisjuntor === 'aberto'
+          ? '#22c55e' // verde = aberto (seccionado)
+          : '#9ca3af'; // cinza = indeterminado (sinais iguais / sem leitura ainda)
+    const texto =
+      estadoDisjuntor === 'fechado'
+        ? 'FECHADO'
+        : estadoDisjuntor === 'aberto'
+          ? 'ABERTO'
+          : '—';
+    const larguraBadge = 62;
+
+    return (
+      <g pointerEvents="none" className="disjuntor-status">
+        {/* Anel em volta do equipamento */}
+        <rect
+          x={-4}
+          y={-4}
+          width={size.width + 8}
+          height={size.height + 8}
+          rx={5}
+          fill="none"
+          stroke={cor}
+          strokeWidth={3}
+        />
+        {/* Rótulo escrito, logo abaixo do nó */}
+        <rect
+          x={size.width / 2 - larguraBadge / 2}
+          y={size.height + 6}
+          width={larguraBadge}
+          height={16}
+          rx={3}
+          fill={cor}
+        />
+        <text
+          x={size.width / 2}
+          y={size.height + 18}
+          textAnchor="middle"
+          fontSize={10}
+          fontWeight={700}
+          fill="#ffffff"
+          style={{ userSelect: 'none' }}
+        >
+          {texto}
+        </text>
+      </g>
+    );
+  };
+
+  // ==========================================================================
   // SELEÇÃO
   // ==========================================================================
 
@@ -374,6 +445,9 @@ const EquipmentNodeImpl: React.FC<EquipmentNodeProps> = ({ equipment, onClick, o
 
       {/* Ícone (ocultar junction points no modo view) */}
       {!(isJunctionPoint && editor.mode === 'view') && renderIcon()}
+
+      {/* Status aberto/fechado do disjuntor */}
+      {renderStatusDisjuntor()}
 
       {/* Label (ocultar para junction points no modo view) */}
       {!(isJunctionPoint && editor.mode === 'view') && renderLabel()}

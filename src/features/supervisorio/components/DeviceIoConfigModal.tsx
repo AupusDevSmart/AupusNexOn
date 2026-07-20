@@ -17,13 +17,16 @@ import { equipamentosApi } from '@/services/equipamentos.services';
 import { equipamentoPontosApi, type EquipamentoPonto } from '@/services/equipamento-pontos.services';
 
 // coil/func = OVERRIDE por instância do endereço Modbus do comando (o catálogo é só default).
-export interface IoMapEntry { equipamento_id?: string; ponto_id?: string; coil?: number; func?: number; register?: number; }
+// addr/count/value: comandos FC15 (write multiple coils / DPC double-bit, ex: CB-1 do
+// 7SR5111 — par de bits 01=abre/10=fecha). bo_id: id da saída escolhida em bo_outputs
+// (mantém o select do modal amarrado mesmo sem coil).
+export interface IoMapEntry { equipamento_id?: string; ponto_id?: string; coil?: number; func?: number; register?: number; addr?: number; count?: number; value?: number; bo_id?: string; }
 export interface DeviceIoConfig { bi?: Record<string, IoMapEntry>; bo?: Record<string, IoMapEntry>; }
 
 interface CatalogPoint { id: string; label: string; unit?: string; group?: string; }
 interface CatalogPoints { ai?: CatalogPoint[]; bi?: CatalogPoint[]; bo?: CatalogPoint[]; }
 
-interface Link { key: string; tipo?: 'bi' | 'bo'; catalogId?: string; equipamentoId?: string; pontoId?: string; coil?: number; func?: number; }
+interface Link { key: string; tipo?: 'bi' | 'bo'; catalogId?: string; equipamentoId?: string; pontoId?: string; coil?: number; func?: number; addr?: number; count?: number; value?: number; boId?: string; }
 
 interface DeviceIoConfigModalProps {
   open: boolean;
@@ -55,10 +58,10 @@ export const DeviceIoConfigModal: React.FC<DeviceIoConfigModalProps> = ({
   );
   // Catálogo do modelo: lista de saídas físicas (bo_outputs) do relé.
   const catDev = useMemo(() => {
-    return (window as unknown as { getCatalogDevice?: (c: string) => { bo_outputs?: Array<{ id: string; label: string; coil: number; func?: number }> } })
+    return (window as unknown as { getCatalogDevice?: (c: string) => { bo_outputs?: Array<{ id: string; label: string; coil?: number; func?: number; addr?: number; count?: number; value?: number }> } })
       .getCatalogDevice?.(catalogId ?? '') ?? {};
   }, [catalogId]);
-  const boOutputs = (catDev.bo_outputs ?? []) as Array<{ id: string; label: string; coil: number; func?: number }>;
+  const boOutputs = (catDev.bo_outputs ?? []) as Array<{ id: string; label: string; coil?: number; func?: number; addr?: number; count?: number; value?: number }>;
   const bi = points.bi ?? [];
   const ai = points.ai ?? [];
 
@@ -72,7 +75,7 @@ export const DeviceIoConfigModal: React.FC<DeviceIoConfigModalProps> = ({
     if (!open) return;
     const ls: Link[] = [];
     for (const [cid, m] of Object.entries(ioConfig.bo ?? {})) {
-      ls.push({ key: newKey(), tipo: 'bo', catalogId: cid, equipamentoId: (m.equipamento_id ?? '').trim(), pontoId: (m.ponto_id ?? '').trim(), coil: m.coil, func: m.func });
+      ls.push({ key: newKey(), tipo: 'bo', catalogId: cid, equipamentoId: (m.equipamento_id ?? '').trim(), pontoId: (m.ponto_id ?? '').trim(), coil: m.coil, func: m.func, addr: m.addr, count: m.count, value: m.value, boId: m.bo_id });
     }
     for (const [cid, m] of Object.entries(ioConfig.bi ?? {})) {
       ls.push({ key: newKey(), tipo: 'bi', catalogId: cid, equipamentoId: (m.equipamento_id ?? '').trim(), pontoId: (m.ponto_id ?? '').trim() });
@@ -124,12 +127,15 @@ export const DeviceIoConfigModal: React.FC<DeviceIoConfigModalProps> = ({
       if (l.tipo === 'bo') {
         // Comando: vínculo em 1 passo — ponto do equipamento → BO. A chave é o ponto_id
         // (vira o cmd_id no firmware); não há mais "sinal do catálogo" no meio.
-        if (l.coil == null) continue;
+        // FC15 (DPC double-bit, ex: CB-1 do 7SR5111) usa addr/count/value em vez de coil.
+        if (l.coil == null && l.addr == null) continue;
         outBo[l.pontoId.trim()] = {
           equipamento_id: l.equipamentoId.trim(),
           ponto_id: l.pontoId.trim(),
-          coil: l.coil,
-          func: l.func ?? 5,
+          ...(l.coil != null ? { coil: l.coil } : {}),
+          func: l.func ?? (l.addr != null ? 15 : 5),
+          ...(l.addr != null ? { addr: l.addr, count: l.count ?? 2, value: l.value ?? 1 } : {}),
+          ...(l.boId ? { bo_id: l.boId } : {}),
         };
       } else if (l.tipo === 'bi' && l.catalogId) {
         // Status (leitura): ainda referencia o sinal BI do catálogo (registrador fixo).
@@ -199,17 +205,19 @@ export const DeviceIoConfigModal: React.FC<DeviceIoConfigModalProps> = ({
                     {pontoTipo === 'comando' ? (
                       boOutputs.length > 0 ? (
                         <select
-                          value={l.coil != null ? String(l.coil) : ''}
+                          value={l.boId ?? (l.coil != null ? (boOutputs.find((o) => o.coil === l.coil)?.id ?? '') : '')}
                           disabled={!l.pontoId}
                           title="Binary Output do relé que este comando aciona (amarrada no Reydisp)"
                           onChange={(e) => {
-                            const out = boOutputs.find((o) => String(o.coil) === e.target.value);
-                            patchLink(l.key, out ? { coil: out.coil, func: out.func ?? 5 } : { coil: undefined, func: undefined });
+                            const out = boOutputs.find((o) => o.id === e.target.value);
+                            patchLink(l.key, out
+                              ? { boId: out.id, coil: out.coil, func: out.func ?? (out.addr != null ? 15 : 5), addr: out.addr, count: out.count, value: out.value }
+                              : { boId: undefined, coil: undefined, func: undefined, addr: undefined, count: undefined, value: undefined });
                           }}
                           className="h-7 rounded border border-input bg-background dark:bg-black px-1 disabled:opacity-50"
                         >
                           <option value="">— saída (BO) —</option>
-                          {boOutputs.map((o) => <option key={o.id} value={String(o.coil)}>{o.label}</option>)}
+                          {boOutputs.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
                         </select>
                       ) : (
                         <input
@@ -237,7 +245,7 @@ export const DeviceIoConfigModal: React.FC<DeviceIoConfigModalProps> = ({
                     {isBo && onEnviarComando ? (
                       <Button
                         size="sm" variant="outline" className="h-7 px-2 shrink-0"
-                        disabled={l.coil == null || sendingKey === l.key}
+                        disabled={(l.coil == null && l.addr == null) || sendingKey === l.key}
                         onClick={async () => {
                           if (!onEnviarComando || !l.pontoId) return;
                           const p = pts.find((x) => x.id === l.pontoId) as any;

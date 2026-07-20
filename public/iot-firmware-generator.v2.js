@@ -327,6 +327,10 @@ var FirmwareGenerator = class FirmwareGenerator {
             if (ov.coil != null && ov.coil !== '') entry.coil = Number(ov.coil);
             if (ov.func != null && ov.func !== '') entry.func = Number(ov.func);
             if (ov.register != null && ov.register !== '') entry.register = Number(ov.register);
+            // FC15 (DPC double-bit, ex: CB-1 do 7SR5111): addr/count/value do io_config
+            if (ov.addr != null && ov.addr !== '') entry.addr = Number(ov.addr);
+            if (ov.count != null && ov.count !== '') entry.count = Number(ov.count);
+            if (ov.value != null && ov.value !== '') entry.value = Number(ov.value);
             boMap[cid] = entry;
         }
         return Object.assign({}, dev, { bo_map: boMap });
