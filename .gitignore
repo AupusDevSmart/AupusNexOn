@@ -13,6 +13,11 @@ dist.previous
 dist.new
 dist-ssr
 *.local
+# Snapshots de deploy (dist antigos preservados pelo fluxo de swap) — nunca commitar
+dist-bak/
+dist-old-*/
+dist.bak-*/
+*.PREPULL.js
 
 # Editor directories and files
 .vscode/*

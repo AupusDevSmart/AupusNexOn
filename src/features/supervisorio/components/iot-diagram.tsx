@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Plus, Play, Download, Edit3, Maximize2, Minimize2, ZoomIn, Trash2, FolderPlus, Move, MousePointer2, Save, X, Network, Zap, Terminal } from 'lucide-react';
+import { Plus, Play, Download, Edit3, Maximize2, Minimize2, ZoomIn, Trash2, FolderPlus, Move, MousePointer2, Save, X, Network, Zap, Terminal, Power } from 'lucide-react';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { ESPLoader, Transport } from 'esptool-js';
 import { api } from '@/config/api';
@@ -11,6 +11,9 @@ import { BASE_URL } from '@/config/constants';
 import { iotApiService, type IoTProjeto, type IoTDiagrama } from '@/services/iot.services';
 import { TonBoConfigModal } from './TonBoConfigModal';
 import { TonBiConfigModal } from './TonBiConfigModal';
+import { EquipamentoCommandModal } from '../v2/components/EquipamentoCommandModal';
+import { DeviceIoConfigModal, tipoTemIo, type DeviceIoConfig } from './DeviceIoConfigModal';
+import { dominioDoTipo } from '../v2/utils/dominioEquipamento';
 
 /**
  * Resposta do OtaController.compileAndPublish (com envelope ResponseInterceptor):
@@ -192,7 +195,7 @@ function ensureIoTScripts(): Promise<void> {
     //
     // O catalogo de dispositivos foi movido pro backend (GET /iot-catalog/device-catalog.js)
     // — ele revalida sozinho via ETag. Os demais ainda sao estaticos.
-    const IOT_SCRIPTS_VERSION = '20260626-flood';
+    const IOT_SCRIPTS_VERSION = '20260720-rele-tcp-ip';
     const scripts = [
       `${BASE_URL}/iot-catalog/device-catalog.js`,
       `/iot-firmware-base.v2.js?v=${IOT_SCRIPTS_VERSION}`,
@@ -241,6 +244,17 @@ function ensureIoTScripts(): Promise<void> {
   return (window as any).__iotScriptsPromise;
 }
 
+// Agrupa os BOs (comandos) por dispositivo-alvo (ponto.equipamento_nome) pro
+// painel de comando de teste exibir "SoftStarter_1: [ligar] [desligar]".
+function groupBosByDevice(bos: any[]): Record<string, any[]> {
+  const g: Record<string, any[]> = {};
+  for (const b of bos) {
+    const dev = b?.ponto?.equipamento_nome || 'Dispositivo';
+    (g[dev] = g[dev] || []).push(b);
+  }
+  return g;
+}
+
 export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<any>(null);
@@ -271,7 +285,21 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
   const [biConfigOpen, setBiConfigOpen] = useState(false);
   const [biConfigTonId, setBiConfigTonId] = useState<string | null>(null);
   const [biConfigTonNome, setBiConfigTonNome] = useState<string | undefined>(undefined);
+
+  // Modal de COMANDOS reais (relés/transistores/status) do TON — reusa o do unifilar.
+  const [cmdRealModal, setCmdRealModal] = useState<{ id: string; nome: string; topico_mqtt?: string } | null>(null);
+
+  // Modal de I/O genérico (catálogo-driven) — relé e devices com BI/BO no catálogo.
+  const [ioModalOpen, setIoModalOpen] = useState(false);
   const [propsValues, setPropsValues] = useState<Record<string, any>>({});
+  // Disjuntores da unidade (unifilar) — pra associar um Power Meter ao disjuntor que ele
+  // mede. O PM é só-IoT; sua exibição acontece via o disjuntor associado (Fase C).
+  const [disjuntoresUnidade, setDisjuntoresUnidade] = useState<Array<{ id: string; nome: string }>>([]);
+
+  // Prompt "qual ativo do unifilar é este?" ao CRIAR inversor/medidor/TON no IoT.
+  const [associarComp, setAssociarComp] = useState<any>(null);
+  const [associarLista, setAssociarLista] = useState<Array<{ id: string; nome: string }>>([]);
+  const [associarBusy, setAssociarBusy] = useState(false);
 
   // Picker de equipamento NexOn para o campo `equipamento_id` dos componentes TON.
   // Substitui input de texto livre (CUID 26 chars) por um select com TONs da unidade.
@@ -362,6 +390,7 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
         };
         editor.onSelect = (comp: any) => { if (comp && !editor.editMode) openComponentProps(comp); };
         editor.onDblClick = (comp: any) => { if (comp) openComponentProps(comp); };
+        editor.onComponentAdded = (comp: any) => { abrirAssociar(comp); };
         editor.onConnectionMenu = (conn: any, allowed: string[], e: MouseEvent) => {
           setConnMenu({ conn, allowed, x: e.clientX, y: e.clientY });
         };
@@ -410,6 +439,7 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
     };
     editor.onSelect = (comp: any) => { if (comp && !editor.editMode) openComponentProps(comp); };
     editor.onDblClick = (comp: any) => { if (comp) openComponentProps(comp); };
+    editor.onComponentAdded = (comp: any) => { abrirAssociar(comp); };
     editor.onConnectionMenu = (conn: any, allowed: string[], e: MouseEvent) => {
       setConnMenu({ conn, allowed, x: e.clientX, y: e.clientY });
     };
@@ -513,6 +543,31 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
     };
   }, []);
 
+  // true se o componente IoT é um Power Meter (medidor) — tipos do diagrama IoT.
+  const isPmComp = (type: any): boolean =>
+    ['power_meter', 'medidor_comum'].includes(String(type || '').toLowerCase());
+
+  // Lista os DISJUNTORES da unidade (unifilar) pra associar a um Power Meter.
+  const carregarDisjuntoresUnidade = async () => {
+    if (!unidadeId) { setDisjuntoresUnidade([]); return; }
+    try {
+      const { equipamentosApi } = await import('@/services/equipamentos.services');
+      const resp = await equipamentosApi.findByUnidade(unidadeId, { limit: 200 });
+      const list = (resp.data ?? [])
+        .filter((e: any) => {
+          if (e.deleted_at) return false;
+          const codigo =
+            e.tipo_equipamento_rel?.codigo ?? e.tipoEquipamento?.codigo ?? e.tipo_equipamento ?? '';
+          return /DISJUNTOR/i.test(`${codigo} ${e.nome ?? ''}`);
+        })
+        .map((e: any) => ({ id: (e.id || '').trim(), nome: e.nome }));
+      setDisjuntoresUnidade(list);
+    } catch (err) {
+      console.warn('[iot-diagram] carregarDisjuntoresUnidade falhou:', err);
+      setDisjuntoresUnidade([]);
+    }
+  };
+
   const openComponentProps = async (comp: any) => {
     if (!comp || !window.COMPONENT_TYPES) return;
     const def = window.COMPONENT_TYPES[comp.type];
@@ -521,42 +576,168 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
     setPropsValues({ ...comp.props });
     setPropsModalOpen(true);
 
-    // Carrega TONs da unidade para o picker do campo equipamento_id.
-    // Acontece quando o componente eh uma TON (def tem `equipamento_id` em fields).
+    // Picker do campo equipamento_id: MESMA lista do prompt de criação (por família,
+    // excluindo os já vinculados a outro nó do diagrama) — mantém consistência.
     const hasEquipamentoIdField = Array.isArray(def.fields)
       && def.fields.some((f: any) => f?.key === 'equipamento_id');
     if (hasEquipamentoIdField && unidadeId) {
-      try {
-        const { equipamentosApi } = await import('@/services/equipamentos.services');
-        // Backend limita query param `limit` a 100. Se a unidade tiver mais que isso,
-        // virar paginacao no futuro.
-        const resp = await equipamentosApi.findByUnidade(unidadeId, { limit: 100 });
-        const lista = (resp.data ?? []).filter((e: any) => {
-          if (e.deleted_at) return false;
-          // Filtra equipamentos cuja categoria eh 'TON' (case-insensitive).
-          const catNome =
-            e.tipo_equipamento_rel?.categoria?.nome
-            ?? e.tipoEquipamento?.categoria?.nome
-            ?? '';
-          return typeof catNome === 'string' && catNome.trim().toUpperCase() === 'TON';
-        });
-        setAvailableTonsForPicker(
-          lista.map((e: any) => ({ id: (e.id || '').trim(), nome: e.nome })),
-        );
-      } catch (err) {
-        console.warn('[iot-diagram] Falha ao carregar TONs para picker:', err);
-        setAvailableTonsForPicker([]);
-      }
+      setAvailableTonsForPicker(await listarAtivosParaVinculo(comp));
     }
+    // Power Meter: carrega os disjuntores da unidade pro campo "Disjuntor associado".
+    if (isPmComp(comp.type)) void carregarDisjuntoresUnidade();
   };
 
   const saveComponentProps = async () => {
     if (!propsComp || !editorRef.current) return;
+    const compSalvo = { type: propsComp.type, props: { ...propsValues } };
     editorRef.current.updateComponentProps(propsComp.id, propsValues);
     setPropsModalOpen(false);
     setPropsComp(null);
     // Persistir alteracao no backend imediatamente
     await saveCurrentDiagram();
+    // Espelha o modelo (catalog_id) no ativo vinculado, se for device 'ambos'.
+    await espelharModeloNoAtivo(compSalvo);
+  };
+
+  // ---- Associação na criação (inversor/medidor/TON) ----
+  // Mapa componente IoT -> tipo_equipamento p/ "Criar novo" (ativos 'ambos').
+  // TON não cria aqui (é Fase 2, auto-create no backend). Ids semeados (estáveis).
+  const TIPO_POR_COMPONENTE: Record<string, string> = {
+    inversor: '01JAQTE1INVERSOR000000005',
+    power_meter: '01JAQTE1MEDIDOR00000001',
+    medidor_comum: '01JAQTE1MEDIDOR00000001',
+    rele_protecao: '01JAQTE1RELE0000000000016', // Relé de Proteção (cat. Relê Proteção)
+  };
+
+  const familiaCasa = (tipoComp: string, codigo: string, nome: string): boolean => {
+    const hay = `${codigo || ''} ${nome || ''}`;
+    if (tipoComp === 'inversor') return /INVERSOR|SUN2000/i.test(hay);
+    if (tipoComp === 'power_meter' || tipoComp === 'medidor_comum')
+      return /METER|MEDIDOR|LANDIS|M160|M300|PD666|A966/i.test(hay);
+    if (tipoComp === 'rele_protecao') return /RELE/i.test(hay);
+    return true;
+  };
+
+  // Lista os ativos da unidade vinculáveis a ESTE componente: por família
+  // (inversor↔inversores, medidor↔medidores, TON↔categoria 'TON') e EXCLUINDO os
+  // já vinculados a outro nó deste diagrama (1:1 no projeto → não deixa escolher repetido).
+  const listarAtivosParaVinculo = async (comp: any): Promise<Array<{ id: string; nome: string }>> => {
+    if (!comp || !unidadeId) return [];
+    const tipo = String(comp.type || '').toLowerCase();
+    try {
+      const { equipamentosApi } = await import('@/services/equipamentos.services');
+      const resp = await equipamentosApi.findByUnidade(unidadeId, { limit: 100 });
+      const isTon = tipo.startsWith('ton');
+      const jaVinculados = new Set(
+        (editorRef.current?.components ?? [])
+          .filter((c: any) => c.id !== comp.id)
+          .map((c: any) => String(c.props?.equipamento_id || '').trim())
+          .filter(Boolean),
+      );
+      return (resp.data ?? [])
+        .filter((e: any) => {
+          if (e.deleted_at) return false;
+          if (jaVinculados.has(String(e.id || '').trim())) return false;
+          const catNome =
+            e.tipo_equipamento_rel?.categoria?.nome ?? e.tipoEquipamento?.categoria?.nome ?? '';
+          const codigo =
+            e.tipo_equipamento_rel?.codigo ?? e.tipoEquipamento?.codigo ?? e.tipo_equipamento ?? '';
+          if (isTon) return String(catNome).trim().toUpperCase() === 'TON';
+          // Identidade = componente IoT ↔ SEU equipamento Modbus (inversor 'ambos',
+          // PM/relé 'iot'). Exclui só ativos de POTÊNCIA pura (disjuntor/trafo) — esses
+          // não são identidade; o PM apenas os ASSOCIA depois (disjuntor associado).
+          if (dominioDoTipo(codigo, e.nome) === 'potencia') return false;
+          return familiaCasa(tipo, codigo, e.nome);
+        })
+        .map((e: any) => ({ id: (e.id || '').trim(), nome: e.nome }));
+    } catch (err) {
+      console.warn('[iot-diagram] listarAtivosParaVinculo falhou:', err);
+      return [];
+    }
+  };
+
+  // Abre o prompt de associação logo ao criar um inversor/medidor/TON.
+  const abrirAssociar = async (comp: any) => {
+    if (!comp || !unidadeId) return;
+    const tipo = String(comp.type || '').toLowerCase();
+    const isTon = tipo.startsWith('ton');
+    const linkavel =
+      isTon ||
+      ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao'].includes(tipo);
+    if (!linkavel) return;
+    const lista = await listarAtivosParaVinculo(comp);
+    // TON sem nenhum equipamento livre → NÃO pergunta: o backend (ensureTonEquipamentos)
+    // cria o equipamento correto (topico/automação) e associa ao salvar. Se houver TON(s)
+    // livre(s), aí sim abre o picker (associar a um existente OU criar novo).
+    if (isTon && lista.length === 0) {
+      import('sonner').then(({ toast }) => toast.info('Nenhum TON livre — um novo será criado e associado ao salvar.'));
+      return;
+    }
+    setAssociarLista(lista);
+    setAssociarComp(comp);
+  };
+
+  const aplicarVinculo = async (equipId: string) => {
+    if (!associarComp || !editorRef.current) return;
+    const compVinculado = { type: associarComp.type, props: { ...associarComp.props, equipamento_id: equipId } };
+    editorRef.current.updateComponentProps(associarComp.id, {
+      ...associarComp.props,
+      equipamento_id: equipId,
+    });
+    setAssociarComp(null);
+    await saveCurrentDiagram();
+    // Espelha o modelo no ativo recém-vinculado (se já tiver catalog_id).
+    await espelharModeloNoAtivo(compVinculado);
+  };
+
+  const criarNovoAtivo = async () => {
+    if (!associarComp || !unidadeId) return;
+    const tipoComp = String(associarComp.type || '').toLowerCase();
+    // TON: não cria via /rapido (o equipamento precisa dos campos certos — topico_mqtt,
+    // automação). Fecha sem vínculo → o backend cria+associa o TON no save (ensureTonEquipamentos).
+    if (tipoComp.startsWith('ton')) {
+      setAssociarComp(null);
+      import('sonner').then(({ toast }) => toast.info('Novo TON será criado e associado ao salvar.'));
+      return;
+    }
+    const tipoId = TIPO_POR_COMPONENTE[tipoComp];
+    if (!tipoId) return;
+    setAssociarBusy(true);
+    try {
+      const { equipamentosApi } = await import('@/services/equipamentos.services');
+      const resp = await equipamentosApi.criarEquipamentoRapido(
+        unidadeId,
+        tipoId,
+        associarComp.props?.name,
+      );
+      const novoId = ((resp?.data as any)?.id || '').trim();
+      if (novoId) await aplicarVinculo(novoId);
+    } catch (err) {
+      console.warn('[iot-diagram] criarNovoAtivo falhou:', err);
+      import('sonner').then(({ toast }) => toast.error('Falha ao criar equipamento.'));
+    } finally {
+      setAssociarBusy(false);
+    }
+  };
+
+  // Espelha o MODELO do IoT (catalog_id) no ativo vinculado: escreve fabricante+modelo
+  // em equipamentos → aparece no unifilar (mesma linha). Só p/ device 'ambos' vinculado.
+  const espelharModeloNoAtivo = async (comp: any) => {
+    const tipo = String(comp?.type || '').toLowerCase();
+    if (!['inversor', 'power_meter', 'medidor_comum', 'rele_protecao'].includes(tipo)) return;
+    const equipId = String(comp?.props?.equipamento_id || '').trim();
+    const catalogId = String(comp?.props?.catalog_id || '').trim();
+    if (!equipId || !catalogId) return;
+    if (typeof getCatalogDevice !== 'function') return;
+    const dev: any = getCatalogDevice(catalogId);
+    if (!dev || (!dev.fabricante && !dev.modelo)) return;
+    try {
+      const { equipamentosApi } = await import('@/services/equipamentos.services');
+      await equipamentosApi.update(equipId, { fabricante: dev.fabricante, modelo: dev.modelo });
+      console.warn('[iot-diagram] modelo espelhado no ativo:', equipId, dev.fabricante, dev.modelo);
+    } catch (err) {
+      console.warn('[iot-diagram] espelharModeloNoAtivo falhou:', err);
+    }
   };
 
   const setToolMode = (mode: 'move' | 'select') => {
@@ -592,45 +773,132 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
     else { editorRef.current.startSimulation(); setSimulating(true); }
   };
 
-  // ===== Painel de COMANDO DE TESTE (modo Simular) =====
-  // Envia comando pra TON de simulação publicando em TESTE/<topico>/cmd (via
-  // POST /equipamentos/:id/cmd com sim:true). Testa o pipeline real de comando
-  // (backend->MQTT->TON-sim->aciona->ack) sem tocar o equipamento de produção.
-  // O Unifilar continua mandando comando real; aqui é só pra bancada/sim.
+  // ===== Painel de COMANDO DE TESTE (modo Simular) — DATA-DRIVEN =====
+  // Espelha o Unifilar: lista os pontos CADASTRADOS da TON (BOs = comandos por
+  // dispositivo, ex. "ligar → SoftStarter_1"; BIs = status). Aciona via
+  // acionarPonto em modo SIM → o mesmo pulso ON->OFF, mas em TESTE/<topico>/cmd
+  // (firmware de simulação), sem tocar produção. Campo manual (avançado) de fallback.
   const [cmdSimModal, setCmdSimModal] = useState<{
-    tons: { id: string; name: string; type: string }[];
+    tons: { id: string; name: string }[];
     selected: number;
-    cmd: string;
-    sending: boolean;
+    loading: boolean;
+    loadErr: string | null;
+    bos: any[];   // TonBo[] mapeados+ativos (comandos)
+    bis: any[];   // TonBi[] mapeados (status)
+    acting: string | null;   // ponto.id sendo acionado
     result: { ok: boolean; text: string } | null;
+    manualCmd: string;
+    sendingManual: boolean;
+    benchSats: any[];        // boards de bancada vivos no TESTE/ (discovery)
+    benchLoading: boolean;
+    testMac: string | null;  // MAC do board de bancada escolhido p/ esta sessão (remap)
   } | null>(null);
+
+  // Discovery dos boards de bancada vivos no TESTE/ (pro remap). Auto-seleciona se
+  // só há um; mantém o escolhido se ainda vivo; senão deixa o usuário escolher.
+  const loadBenchSats = async () => {
+    setCmdSimModal((m) => m && ({ ...m, benchLoading: true }));
+    try {
+      const { simBenchApi } = await import('@/services/sim-bench.services');
+      const sats = await simBenchApi.list();
+      setCmdSimModal((m) => {
+        if (!m) return m;
+        // Auto-casa: board cujo label (nome da TON no firmware 🧪) == TON selecionada.
+        // Senão mantém o escolhido se vivo; senão auto-seleciona se só há um.
+        const tonName = m.tons[m.selected]?.name;
+        const match = sats.find((s: any) => s.label && tonName && s.label === tonName);
+        const keep = m.testMac && sats.some((s: any) => s.mac === m.testMac);
+        const testMac = match ? match.mac : (keep ? m.testMac : (sats.length === 1 ? sats[0].mac : null));
+        return { ...m, benchLoading: false, benchSats: sats, testMac };
+      });
+    } catch {
+      setCmdSimModal((m) => m && ({ ...m, benchLoading: false, benchSats: [] }));
+    }
+  };
+
+  const loadTonPoints = async (tonEqId: string) => {
+    setCmdSimModal((m) => m && ({ ...m, loading: true, loadErr: null, bos: [], bis: [] }));
+    try {
+      const [{ tonBoApi }, { tonBiApi }] = await Promise.all([
+        import('@/services/ton-bo.services'),
+        import('@/services/ton-bi.services'),
+      ]);
+      const [bosAll, bisAll] = await Promise.all([
+        tonBoApi.list(tonEqId).catch(() => [] as any[]),
+        tonBiApi.list(tonEqId).catch(() => [] as any[]),
+      ]);
+      const bos = (bosAll || []).filter((b: any) => b.ponto && b.ativo);
+      const bis = (bisAll || []).filter((b: any) => b.ponto);
+      setCmdSimModal((m) => m && ({ ...m, loading: false, bos, bis }));
+    } catch (e: any) {
+      setCmdSimModal((m) => m && ({ ...m, loading: false, loadErr: e?.message || 'erro ao carregar pontos' }));
+    }
+  };
 
   const openCmdSimModal = () => {
     if (!editorRef.current) return;
     const tons = (editorRef.current.components || [])
       .filter((c: any) => typeof c.type === 'string' && c.type.startsWith('ton') && (c.props?.equipamento_id || '').trim())
-      .map((c: any) => ({ id: String(c.props.equipamento_id).trim(), name: c.props?.name || c.type, type: c.type }));
+      .map((c: any) => ({ id: String(c.props.equipamento_id).trim(), name: c.props?.name || c.type }));
     if (tons.length === 0) {
       alert('Nenhuma TON com equipamento NexOn vinculado no diagrama (defina o equipamento na TON pra poder comandar).');
       return;
     }
-    setCmdSimModal({ tons, selected: 0, cmd: 'status', sending: false, result: null });
+    setCmdSimModal({ tons, selected: 0, loading: true, loadErr: null, bos: [], bis: [], acting: null, result: null, manualCmd: 'status', sendingManual: false, benchSats: [], benchLoading: true, testMac: null });
+    loadTonPoints(tons[0].id);
+    loadBenchSats();
   };
 
-  const sendSimCommand = async () => {
+  const selectCmdSimTon = (i: number) => {
+    if (!cmdSimModal) return;
+    // Re-casa o board de bancada pela TON nova (por nome); senão único; senão nada.
+    const tonName = cmdSimModal.tons[i]?.name;
+    const match = cmdSimModal.benchSats.find((s: any) => s.label && s.label === tonName);
+    const testMac = match ? match.mac : (cmdSimModal.benchSats.length === 1 ? cmdSimModal.benchSats[0].mac : null);
+    setCmdSimModal({ ...cmdSimModal, selected: i, result: null, testMac });
+    loadTonPoints(cmdSimModal.tons[i].id);
+  };
+
+  // Aciona um ponto de comando (pulso ON->OFF) em modo SIM (TESTE/).
+  const acionarSimPonto = async (bo: any) => {
+    if (!cmdSimModal || !bo?.ponto) return;
+    // Se há board(s) de bancada vivos mas nenhum escolhido, exige o remap antes de
+    // acionar — senão o comando iria pro MAC cadastrado/placeholder e daria timeout.
+    if (cmdSimModal.benchSats.length > 0 && !cmdSimModal.testMac) {
+      setCmdSimModal((m) => m && ({ ...m, result: { ok: false, text: 'Escolha abaixo o board de bancada que representa esta TON antes de acionar.' } }));
+      return;
+    }
+    setCmdSimModal((m) => m && ({ ...m, acting: bo.ponto.id, result: null }));
+    try {
+      const { acionarPontoApi } = await import('@/services/acionar-ponto.services');
+      const res: any = await acionarPontoApi.acionar(bo.ponto.equipamento_id, bo.ponto.id, true, cmdSimModal.testMac || undefined); // sim=true + remap
+      const lat = res?.latency_ms != null ? ` (${res.latency_ms}ms)` : '';
+      setCmdSimModal((m) => m && ({ ...m, acting: null, result: { ok: true, text: `${res?.comando_semantico || bo.ponto.nome}: ${res?.status ?? 'ok'}${lat} [${res?.comando_tecnico || ('r' + bo.bo_numero)}]` } }));
+    } catch (e: any) {
+      const msg = e?.response?.data?.error?.message || e?.response?.data?.message || e?.message || 'erro';
+      setCmdSimModal((m) => m && ({ ...m, acting: null, result: { ok: false, text: String(msg) } }));
+    }
+  };
+
+  // Comando manual (avançado) — texto livre via TESTE/<topico>/cmd.
+  const sendSimManual = async () => {
     if (!cmdSimModal) return;
     const ton = cmdSimModal.tons[cmdSimModal.selected];
-    const cmd = cmdSimModal.cmd.trim();
+    const cmd = (cmdSimModal.manualCmd || '').trim();
     if (!ton || !cmd) return;
-    setCmdSimModal({ ...cmdSimModal, sending: true, result: null });
+    if (cmdSimModal.benchSats.length > 0 && !cmdSimModal.testMac) {
+      setCmdSimModal((m) => m && ({ ...m, result: { ok: false, text: 'Escolha abaixo o board de bancada antes de enviar o comando.' } }));
+      return;
+    }
+    setCmdSimModal((m) => m && ({ ...m, sendingManual: true, result: null }));
     try {
       const { equipamentosApi } = await import('@/services/equipamentos.services');
-      const res: any = await equipamentosApi.sendCommand(ton.id, cmd, true); // sim=true -> TESTE/
+      const res: any = await equipamentosApi.sendCommand(ton.id, cmd, true, cmdSimModal.testMac || undefined);
       const lat = res?.latency_ms != null ? ` (${res.latency_ms}ms)` : '';
-      setCmdSimModal((m) => m && ({ ...m, sending: false, result: { ok: true, text: `ack: ${res?.status ?? '?'}${res?.msg ? ' — ' + res.msg : ''}${lat}` } }));
+      setCmdSimModal((m) => m && ({ ...m, sendingManual: false, result: { ok: true, text: `ack: ${res?.status ?? '?'}${res?.msg ? ' — ' + res.msg : ''}${lat}` } }));
     } catch (e: any) {
-      const msg = e?.response?.data?.error?.message || e?.response?.data?.message || e?.message || 'erro ao enviar';
-      setCmdSimModal((m) => m && ({ ...m, sending: false, result: { ok: false, text: String(msg) } }));
+      const msg = e?.response?.data?.error?.message || e?.response?.data?.message || e?.message || 'erro';
+      setCmdSimModal((m) => m && ({ ...m, sendingManual: false, result: { ok: false, text: String(msg) } }));
     }
   };
 
@@ -790,7 +1058,11 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
   } | null>(null);
 
   const handleGenerateFirmware = async (simulate: boolean = simulating) => {
-    if (!editorRef.current || !window.FirmwareGenerator) return;
+    if (!editorRef.current) return;
+    if (!window.FirmwareGenerator) {
+      alert('Os scripts do gerador de firmware não carregaram. Recarregue a página (Ctrl+F5). Se persistir, avise o suporte.');
+      return;
+    }
     // Modo simulação/lab: ligado ao botão "Simular" do diagrama. Se a simulação
     // está ativa, o firmware sai em modo LAB — leitores devolvem valores plausíveis
     // (sem periférico real) e o tópico ganha prefixo "TESTE/". Reseta logo após
@@ -1265,6 +1537,52 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
       )}
 
       {/* Component Properties Modal */}
+      {/* Associação na CRIAÇÃO: "qual ativo do unifilar é este?" */}
+      <Dialog open={!!associarComp} onOpenChange={(o) => { if (!o) setAssociarComp(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              Qual {String(associarComp?.type || '').toLowerCase().startsWith('ton')
+                ? 'TON'
+                : String(associarComp?.type || '').toLowerCase() === 'inversor'
+                ? 'inversor'
+                : String(associarComp?.type || '').toLowerCase() === 'rele_protecao'
+                ? 'relé'
+                : 'medidor'} do unifilar é este?
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-1 max-h-[50dvh] overflow-y-auto py-1">
+            {associarLista.length === 0 && (
+              <p className="text-xs text-muted-foreground py-2">
+                Nenhum ativo dessa família disponível nesta unidade.
+                {!String(associarComp?.type || '').toLowerCase().startsWith('ton') && ' Crie um novo abaixo.'}
+              </p>
+            )}
+            {associarLista.map((a) => (
+              <button
+                key={a.id}
+                onClick={() => aplicarVinculo(a.id)}
+                className="text-left text-sm rounded border border-input px-3 py-2 hover:bg-accent"
+              >
+                {a.nome}
+              </button>
+            ))}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button onClick={criarNovoAtivo} disabled={associarBusy}>
+              <Plus className="h-4 w-4 mr-1" />
+              {associarBusy ? 'Criando…' : 'Criar novo'}
+            </Button>
+            {/* TON sempre tem equipamento (comando/OTA ancoram nele) → sem "sem vínculo". */}
+            {associarComp && !String(associarComp.type || '').toLowerCase().startsWith('ton') && (
+              <Button variant="outline" onClick={() => setAssociarComp(null)}>
+                Deixar sem vínculo
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={propsModalOpen} onOpenChange={setPropsModalOpen}>
         <DialogContent className="sm:max-w-lg max-h-[80dvh] overflow-y-auto">
           <DialogHeader>
@@ -1288,7 +1606,7 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
                       }
                       className="w-full h-8 text-sm rounded border border-input bg-background dark:bg-black px-2 focus:outline-none focus:ring-1 focus:ring-ring"
                     >
-                      <option value="">— Selecionar TON do NexOn —</option>
+                      <option value="">— Selecionar equipamento do NexON —</option>
                       {availableTonsForPicker.map((ton) => (
                         <option key={ton.id} value={ton.id}>
                           {ton.nome}
@@ -1304,7 +1622,7 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
                         )}
                     </select>
                     <p className="text-[10px] text-muted-foreground">
-                      TONs cadastrados como equipamento desta unidade.
+                      Vincula o ativo real desta unidade ao nó do IoT (TON, inversor ou medidor).
                     </p>
                   </>
                 )}
@@ -1362,12 +1680,41 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
                   >
                     <option value="">-- Selecionar Modelo --</option>
                     {(typeof getCatalogByType === 'function' ? getCatalogByType(f.device_type) : []).map((d: any) => (
-                      <option key={d.id} value={d.id}>{d.fabricante} {d.modelo}</option>
+                      <option key={d.id} value={d.id}>
+                        {d.fabricante} {d.modelo}{d.protocolo ? ` · ${String(d.protocolo).toUpperCase()}` : ''}
+                      </option>
                     ))}
                   </select>
                 )}
               </div>
             ))}
+
+            {/* Power Meter: disjuntor associado (o PM é só-IoT; exibido via disjuntor). */}
+            {isPmComp(propsComp?.type) && (
+              <div className="space-y-1 pt-2 border-t">
+                <Label className="text-xs">Disjuntor associado (unifilar)</Label>
+                <select
+                  value={propsValues['disjuntor_equipamento_id'] ?? ''}
+                  onChange={e => setPropsValues(prev => ({ ...prev, disjuntor_equipamento_id: e.target.value }))}
+                  className="w-full h-8 text-sm rounded border border-input bg-background dark:bg-black px-2 focus:outline-none focus:ring-1 focus:ring-ring"
+                >
+                  <option value="">— Nenhum —</option>
+                  {disjuntoresUnidade.map(d => (
+                    <option key={d.id} value={d.id}>{d.nome}</option>
+                  ))}
+                  {propsValues['disjuntor_equipamento_id']
+                    && !disjuntoresUnidade.some(d => d.id === propsValues['disjuntor_equipamento_id'])
+                    && (
+                      <option value={propsValues['disjuntor_equipamento_id']} className="text-amber-600">
+                        ⚠ {String(propsValues['disjuntor_equipamento_id'])} (fora da unidade ou removido)
+                      </option>
+                    )}
+                </select>
+                <p className="text-[10px] text-muted-foreground">
+                  Este medidor é só-IoT (coleta de dados). Seus dados aparecem ao clicar no disjuntor associado no unifilar.
+                </p>
+              </div>
+            )}
 
             {/* Show connections */}
             {propsComp && editorRef.current && (() => {
@@ -1446,6 +1793,36 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
                 Configurar BIs
               </Button>
             )}
+            {/* Botao "Comandos" — TONs: envia reles(TON3/4)/transistores/status ao TON real. */}
+            {String(propsComp?.type ?? '').toLowerCase().startsWith('ton') && (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!String(propsValues.equipamento_id ?? '').trim()}
+                title={
+                  String(propsValues.equipamento_id ?? '').trim()
+                    ? 'Enviar comandos (relés/transistores/status) ao TON'
+                    : 'Defina o Equipamento NexON primeiro'
+                }
+                onClick={() => {
+                  const eid = String(propsValues.equipamento_id ?? '').trim();
+                  if (!eid) return;
+                  setCmdRealModal({
+                    id: eid,
+                    nome: String(propsValues.name ?? propsComp?._def?.label ?? 'TON'),
+                    topico_mqtt: String(propsValues.mqtt_topic_base ?? '') || undefined,
+                  });
+                }}
+              >
+                Comandos
+              </Button>
+            )}
+            {/* Botao "Configurar I/O" — devices com BI/BO no catalogo (relé, etc.). */}
+            {tipoTemIo(propsComp?.type) && (
+              <Button type="button" variant="outline" onClick={() => setIoModalOpen(true)}>
+                Configurar I/O
+              </Button>
+            )}
             <Button variant="outline" onClick={() => setPropsModalOpen(false)}>Fechar</Button>
             <Button onClick={saveComponentProps}>Salvar</Button>
           </DialogFooter>
@@ -1466,6 +1843,78 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
         tonId={biConfigTonId}
         unidadeId={unidadeId}
         tonNome={biConfigTonNome}
+      />
+
+      {/* Comandos reais do TON (relés/transistores/status) — reusa o modal do unifilar. */}
+      <EquipamentoCommandModal
+        open={!!cmdRealModal}
+        onClose={() => setCmdRealModal(null)}
+        equipamento={{
+          id: cmdRealModal?.id ?? '',
+          nome: cmdRealModal?.nome ?? '',
+          categoria: 'TON',
+          topico_mqtt: cmdRealModal?.topico_mqtt ?? null,
+        }}
+      />
+
+      {/* Config de I/O genérica (catálogo-driven): relé e devices com BI/BO. */}
+      <DeviceIoConfigModal
+        open={ioModalOpen}
+        onClose={() => setIoModalOpen(false)}
+        compType={String(propsComp?.type ?? '')}
+        compNome={String(propsValues.name ?? propsComp?._def?.label ?? '')}
+        catalogId={String(propsValues.catalog_id ?? '')}
+        unidadeId={unidadeId}
+        ioConfig={(propsValues.io_config ?? {}) as DeviceIoConfig}
+        onSave={(ioCfg) => {
+          const merged = { ...propsValues, io_config: ioCfg };
+          setPropsValues(merged);
+          if (propsComp && editorRef.current) {
+            editorRef.current.updateComponentProps(propsComp.id, merged);
+            void saveCurrentDiagram();
+          }
+        }}
+        onEnviarComando={async (cmdId, cmdLabel) => {
+          if (!propsComp || !editorRef.current) return;
+          // Resolve a TON gateway pela topologia (BFS nas conexões do diagrama):
+          // o comando do relé vai pro tópico da TON que o lê; a TON faz o write Modbus.
+          const ed: any = editorRef.current;
+          const comps: any[] = ed.components ?? [];
+          const conns: any[] = ed.connections ?? [];
+          const isTon = (t: string) => String(t || '').toLowerCase().startsWith('ton');
+          const adj = new Map<string, string[]>();
+          for (const c of conns) {
+            const a = c?.from?.componentId, b = c?.to?.componentId;
+            if (!a || !b) continue;
+            if (!adj.has(a)) adj.set(a, []);
+            if (!adj.has(b)) adj.set(b, []);
+            adj.get(a)!.push(b); adj.get(b)!.push(a);
+          }
+          const byId = new Map<string, any>(comps.map((c) => [c.id, c]));
+          const start = propsComp.id;
+          const visited = new Set<string>([start]);
+          const queue: string[] = [start];
+          let ton: any = null;
+          while (queue.length) {
+            const id = queue.shift() as string;
+            const comp = byId.get(id);
+            if (id !== start && comp && isTon(comp.type) && String(comp.props?.equipamento_id ?? '').trim()) { ton = comp; break; }
+            for (const nb of (adj.get(id) ?? [])) { if (!visited.has(nb)) { visited.add(nb); queue.push(nb); } }
+          }
+          const { toast } = await import('sonner');
+          if (!ton) { toast.error('TON gateway não encontrada — ligue o relé a uma TON (com equipamento) no diagrama.'); return; }
+          const tonEquipId = String(ton.props.equipamento_id).trim();
+          const relayName = String(propsValues.name ?? propsComp?._def?.label ?? '');
+          try {
+            const { equipamentosApi } = await import('@/services/equipamentos.services');
+            const payload = JSON.stringify({ device: relayName, cmd: cmdId });
+            const res = await equipamentosApi.sendCommand(tonEquipId, payload as never, false);
+            const msg = (res as { msg?: string } | undefined)?.msg;
+            toast.success(`"${cmdLabel}" enviado via ${String(ton.props?.name ?? 'TON')}`, { description: typeof msg === 'string' ? msg : undefined });
+          } catch {
+            toast.error(`Falha ao enviar "${cmdLabel}"`);
+          }
+        }}
       />
 
       {/* Create Project Modal */}
@@ -1608,54 +2057,144 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
         </SheetContent>
       </Sheet>
 
-      {/* Painel de Comando de Teste (modo Simular) — publica em TESTE/<topico>/cmd */}
+      {/* Painel de Comando de Teste (modo Simular) — data-driven pelos pontos cadastrados, em TESTE/ */}
       {cmdSimModal && (
         <Dialog open={true} onOpenChange={() => setCmdSimModal(null)}>
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>🧪 Comando de Teste (Simulação)</DialogTitle>
             </DialogHeader>
             <div className="space-y-3">
               <p className="text-xs text-amber-600">
-                Publica em <code>TESTE/&lt;tópico&gt;/cmd</code> — a TON de simulação recebe, aciona (os relés são reais na bancada) e responde o ack. Não toca o equipamento de produção.
+                Aciona os pontos <b>cadastrados</b> desta TON em <code>TESTE/&lt;tópico&gt;/cmd</code> — mesmo pulso ON→OFF do Unifilar, no tópico de teste. Os relés acionam de verdade na bancada. Não toca produção.
               </p>
-              <div>
-                <Label className="text-xs">TON</Label>
-                <div className="flex flex-wrap gap-1 mt-1">
-                  {cmdSimModal.tons.map((t, i) => (
-                    <Button key={t.id} size="sm" variant={i === cmdSimModal.selected ? 'default' : 'outline'}
-                      onClick={() => setCmdSimModal({ ...cmdSimModal, selected: i, result: null })}>
-                      {t.name}
-                    </Button>
-                  ))}
-                </div>
+              {/* TON selector */}
+              <div className="flex flex-wrap gap-1">
+                {cmdSimModal.tons.map((t, i) => (
+                  <Button key={t.id} size="sm" variant={i === cmdSimModal.selected ? 'default' : 'outline'}
+                    onClick={() => selectCmdSimTon(i)}>{t.name}</Button>
+                ))}
               </div>
-              <div>
-                <Label className="text-xs">Atalhos</Label>
-                <div className="flex flex-wrap gap-1 mt-1">
-                  {['status', 'r1 on', 'r1 off', 'r2 on', 'r2 off', 'pivot on', 'pivot off', 'pivot dir D'].map((q) => (
-                    <Button key={q} size="sm" variant="outline" className="text-xs h-7 px-2"
-                      onClick={() => setCmdSimModal({ ...cmdSimModal, cmd: q })}>{q}</Button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <Label className="text-xs">Comando</Label>
-                <div className="flex gap-2 mt-1">
-                  <Input value={cmdSimModal.cmd}
-                    onChange={(e) => setCmdSimModal({ ...cmdSimModal, cmd: e.target.value })}
-                    placeholder="ex: r1 on"
-                    onKeyDown={(e) => { if (e.key === 'Enter') sendSimCommand(); }} />
-                  <Button onClick={sendSimCommand} disabled={cmdSimModal.sending || !cmdSimModal.cmd.trim()}>
-                    {cmdSimModal.sending ? 'Enviando…' : 'Enviar'}
-                  </Button>
-                </div>
-              </div>
+
+              {/* Board de bancada — auto-casado pelo NOME que o firmware 🧪 anuncia
+                  (você não lida com MAC). MAC distinto do de campo => nunca aciona o real. */}
+              {(() => {
+                const tonName = cmdSimModal.tons[cmdSimModal.selected]?.name;
+                const matched = cmdSimModal.benchSats.find((s: any) => s.label && s.label === tonName);
+                const selectedSat = cmdSimModal.benchSats.find((s: any) => s.mac === cmdSimModal.testMac);
+                return (
+                  <div className="border rounded p-2 bg-amber-50/40">
+                    <div className="flex items-center justify-between mb-1">
+                      <Label className="text-xs font-semibold">Board de bancada</Label>
+                      <Button size="sm" variant="ghost" className="h-6 px-2 text-xs"
+                        onClick={loadBenchSats} disabled={cmdSimModal.benchLoading}>
+                        {cmdSimModal.benchLoading ? '…' : '↻ atualizar'}
+                      </Button>
+                    </div>
+                    {cmdSimModal.benchLoading ? (
+                      <p className="text-[11px] text-muted-foreground">procurando boards de bancada…</p>
+                    ) : cmdSimModal.benchSats.length === 0 ? (
+                      <p className="text-[11px] text-muted-foreground">
+                        Nenhum board vivo no TESTE/. Grave o <b>Firmware 🧪</b> de <b>{tonName}</b> e ligue o board — ele se identifica e aparece aqui sozinho.
+                      </p>
+                    ) : matched ? (
+                      <p className="text-[11px] text-green-700">
+                        ✓ <b>{tonName}</b> → board vivo <code>{matched.mac}</code> ({Math.round((matched.ageMs || 0) / 1000)}s). Comandos roteados pra ele — cadastro intocado.
+                      </p>
+                    ) : (
+                      <>
+                        <p className="text-[11px] text-amber-700">
+                          Nenhum board anunciou ser <b>{tonName}</b>. Regrave o <b>Firmware 🧪</b> (passa a se identificar sozinho) ou escolha manualmente:
+                        </p>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {cmdSimModal.benchSats.map((s: any) => (
+                            <Button key={s.mac} size="sm" variant={cmdSimModal.testMac === s.mac ? 'default' : 'outline'}
+                              className="h-7 text-[11px]"
+                              onClick={() => setCmdSimModal((m) => m && ({ ...m, testMac: s.mac, result: null }))}>
+                              <span className={s.label ? '' : 'font-mono'}>{s.label || s.mac}</span>
+                              <span className="opacity-50 ml-1">{Math.round((s.ageMs || 0) / 1000)}s</span>
+                            </Button>
+                          ))}
+                        </div>
+                        {selectedSat && (
+                          <p className="text-[10px] text-green-700 mt-1">
+                            Roteando pro board <code>{selectedSat.label || selectedSat.mac}</code> (cadastro intocado).
+                          </p>
+                        )}
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {cmdSimModal.loading && <p className="text-sm text-muted-foreground">Carregando pontos cadastrados…</p>}
+              {cmdSimModal.loadErr && <p className="text-sm text-red-600">Erro ao carregar pontos: {cmdSimModal.loadErr}</p>}
+
+              {!cmdSimModal.loading && !cmdSimModal.loadErr && (
+                <>
+                  {/* COMANDOS (BOs) agrupados por dispositivo */}
+                  {cmdSimModal.bos.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Nenhum comando cadastrado nesta TON. Configure os pontos (BO) em <b>"Configurar pontos"</b> do equipamento — vincule o dispositivo (ex. SoftStarter) a um relé.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      <Label className="text-xs font-semibold">Comandos</Label>
+                      {Object.entries(groupBosByDevice(cmdSimModal.bos)).map(([dev, list]) => (
+                        <div key={dev} className="border rounded p-2">
+                          <div className="text-xs text-muted-foreground mb-1">{dev}</div>
+                          <div className="flex flex-wrap gap-1">
+                            {(list as any[]).map((bo: any) => (
+                              <Button key={bo.id || bo.bo_numero} size="sm" variant="outline" className="h-7"
+                                disabled={cmdSimModal.acting === bo.ponto.id}
+                                onClick={() => acionarSimPonto(bo)}>
+                                <Power className="h-3 w-3 mr-1" />
+                                {bo.ponto.nome}<span className="opacity-50 ml-1">R{bo.bo_numero}</span>
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* STATUS (BIs cadastrados) */}
+                  {cmdSimModal.bis.length > 0 && (
+                    <div className="space-y-1">
+                      <Label className="text-xs font-semibold">Status (entradas cadastradas)</Label>
+                      <div className="flex flex-wrap gap-1">
+                        {cmdSimModal.bis.map((bi: any) => (
+                          <span key={bi.id || bi.bi_numero} className="text-xs border rounded px-2 py-0.5 text-muted-foreground">
+                            {bi.ponto.nome} <span className="opacity-50">({bi.ponto.equipamento_nome} · D{bi.bi_numero})</span>
+                          </span>
+                        ))}
+                      </div>
+                      <p className="text-[10px] text-muted-foreground">Estado ao vivo do BI ainda não em simulação (o backend lê do tópico real, não do TESTE/).</p>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Resultado do acionamento */}
               {cmdSimModal.result && (
                 <div className={`text-sm rounded p-2 ${cmdSimModal.result.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
                   {cmdSimModal.result.ok ? '✅ ' : '❌ '}{cmdSimModal.result.text}
                 </div>
               )}
+
+              {/* Comando manual (avançado) */}
+              <details className="text-xs">
+                <summary className="cursor-pointer text-muted-foreground">Comando manual (avançado)</summary>
+                <div className="flex gap-2 mt-1">
+                  <Input value={cmdSimModal.manualCmd}
+                    onChange={(e) => setCmdSimModal({ ...cmdSimModal, manualCmd: e.target.value })}
+                    placeholder="ex: r1 on, status"
+                    onKeyDown={(e) => { if (e.key === 'Enter') sendSimManual(); }} />
+                  <Button size="sm" onClick={sendSimManual} disabled={cmdSimModal.sendingManual || !cmdSimModal.manualCmd.trim()}>
+                    {cmdSimModal.sendingManual ? '…' : 'Enviar'}
+                  </Button>
+                </div>
+              </details>
             </div>
           </DialogContent>
         </Dialog>

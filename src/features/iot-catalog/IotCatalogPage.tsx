@@ -1,6 +1,9 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
-import { Plus, Copy, Trash2, Pencil, Cpu, Tag, Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Plus, Copy, Trash2, Pencil, Cpu, Tag, Search, ChevronLeft, ChevronRight, Download, Upload } from 'lucide-react';
+import { toast } from 'sonner';
+import { baixarTemplateModelo, parseModeloPlanilha, type ModeloImportado } from './catalogo-planilha';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent } from '@/components/ui/card';
@@ -30,13 +33,14 @@ import type {
   IotDeviceModelo,
   IotDeviceTipo,
 } from '@/services/iot-catalog.services';
-import { toast } from 'sonner';
 import { formatApiError } from '@/utils/api-error';
 import { TipoFormModal } from './TipoFormModal';
 import { ModeloFormModal } from './ModeloFormModal';
 
 type TipoModalState = { open: false } | { open: true; tipo: IotDeviceTipo | null };
-type ModeloModalState = { open: false } | { open: true; modelo: IotDeviceModelo | null };
+type ModeloModalState =
+  | { open: false }
+  | { open: true; modelo: IotDeviceModelo | null; importData?: ModeloImportado };
 
 const PAGE_SIZE = 15;
 
@@ -114,6 +118,21 @@ export function IotCatalogPage() {
 
   const [tipoModal, setTipoModal] = useState<TipoModalState>({ open: false });
   const [modeloModal, setModeloModal] = useState<ModeloModalState>({ open: false });
+  const [templateDialog, setTemplateDialog] = useState(false);
+  const fileImportRef = useRef<HTMLInputElement>(null);
+
+  const baixarTemplate = async (tipo: IotDeviceTipo) => {
+    setTemplateDialog(false);
+    try { await baixarTemplateModelo(tipo); } catch (e: any) { toast.error('Falha ao gerar template: ' + (e?.message || e)); }
+  };
+  const onImportPlanilha = async (file: File) => {
+    try {
+      const parsed = await parseModeloPlanilha(file);
+      const nRegs = Object.keys((parsed.mapeamento as any).ai_map || {}).length;
+      setModeloModal({ open: true, modelo: null, importData: parsed });
+      toast.success(`Planilha lida: ${nRegs} registrador(es). Revise e salve.`);
+    } catch (e: any) { toast.error('Falha ao importar: ' + (e?.message || e)); }
+  };
 
   // Filtros
   const [modeloSearch, setModeloSearch] = useState('');
@@ -206,7 +225,7 @@ export function IotCatalogPage() {
   };
 
   return (
-    <div className="container mx-auto p-6 space-y-4">
+    <div className="p-4 md:p-6 space-y-4">
       <div>
         <h1 className="text-2xl font-semibold text-foreground">Catalogo IoT</h1>
         <p className="text-sm text-muted-foreground mt-1">
@@ -235,19 +254,29 @@ export function IotCatalogPage() {
         <TabsContent value="modelos" className="mt-4">
           <Card>
             <CardContent className="pt-4 space-y-3">
-              <div className="flex justify-between items-center">
+              <div className="flex justify-between items-center gap-3 flex-wrap">
                 <p className="text-sm text-muted-foreground">
                   Cada modelo aponta pra um tipo e contem o mapeamento Modbus
                   (ai_blocks, ai_map, etc.).
                 </p>
-                <Button
-                  size="sm"
-                  onClick={() => setModeloModal({ open: true, modelo: null })}
-                  disabled={tipos.length === 0}
-                  title={tipos.length === 0 ? 'Crie um tipo antes' : undefined}
-                >
-                  <Plus className="h-4 w-4 mr-1" /> Novo modelo
-                </Button>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Button size="sm" variant="outline" onClick={() => setTemplateDialog(true)} disabled={tipos.length === 0}>
+                    <Download className="h-4 w-4 mr-1" /> Template
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => fileImportRef.current?.click()} disabled={tipos.length === 0}>
+                    <Upload className="h-4 w-4 mr-1" /> Importar
+                  </Button>
+                  <input ref={fileImportRef} type="file" accept=".xlsx" className="hidden"
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) onImportPlanilha(f); e.currentTarget.value = ''; }} />
+                  <Button
+                    size="sm"
+                    onClick={() => setModeloModal({ open: true, modelo: null })}
+                    disabled={tipos.length === 0}
+                    title={tipos.length === 0 ? 'Crie um tipo antes' : undefined}
+                  >
+                    <Plus className="h-4 w-4 mr-1" /> Novo modelo
+                  </Button>
+                </div>
               </div>
 
               <div className="flex gap-2">
@@ -467,10 +496,33 @@ export function IotCatalogPage() {
       {modeloModal.open && (
         <ModeloFormModal
           modelo={modeloModal.modelo}
+          importData={modeloModal.importData}
           tipos={tipos}
           onClose={() => setModeloModal({ open: false })}
         />
       )}
+
+      <Dialog open={templateDialog} onOpenChange={setTemplateDialog}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Baixar template — escolha o tipo</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-1 py-1 max-h-[60dvh] overflow-y-auto">
+            {tipos.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => baixarTemplate(t)}
+                className="text-left text-sm rounded border border-input px-3 py-2 hover:bg-accent flex items-center gap-2"
+              >
+                <Download className="h-4 w-4 text-muted-foreground shrink-0" />
+                <span>{t.nome}</span>
+                <span className="text-xs text-muted-foreground">({t.codigo})</span>
+              </button>
+            ))}
+            {tipos.length === 0 && <p className="text-xs text-muted-foreground">Nenhum tipo cadastrado.</p>}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

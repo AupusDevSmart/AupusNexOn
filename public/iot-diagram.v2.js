@@ -347,10 +347,11 @@ var COMPONENT_TYPES = {
         icon: 'M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z',
         ports: ['top', 'bottom', 'left', 'right'],
         generates_firmware: false,
-        defaults: { name: 'Inversor', catalog_id: '', modbus_address: 1, num_mppts: 1, num_strings: 1 },
+        defaults: { name: 'Inversor', catalog_id: '', equipamento_id: '', modbus_address: 1, num_mppts: 1, num_strings: 1 },
         fields: [
             { key: 'name', label: 'Nome', type: 'text' },
             { key: 'catalog_id', label: 'Modelo', type: 'device_select', device_type: 'inversor_solar' },
+            { key: 'equipamento_id', label: 'Equipamento NexON (vincular ativo do unifilar)', type: 'text' },
             { key: 'modbus_address', label: 'Endereco Modbus', type: 'number' },
             { key: 'num_mppts', label: 'Qtd MPPTs', type: 'number', placeholder: '1-12' },
             { key: 'num_strings', label: 'Qtd Strings', type: 'number', placeholder: '1-24' },
@@ -361,10 +362,11 @@ var COMPONENT_TYPES = {
         icon: 'M13 10V3L4 14h7v7l9-11h-7z',
         ports: ['top', 'bottom', 'left', 'right'],
         generates_firmware: false,
-        defaults: { name: 'Power Meter', catalog_id: '', modbus_address: 1, current_scale_override: '', voltage_scale_override: '', tc_ratio: '', tp_ratio: '' },
+        defaults: { name: 'Power Meter', catalog_id: '', equipamento_id: '', modbus_address: 1, current_scale_override: '', voltage_scale_override: '', tc_ratio: '', tp_ratio: '' },
         fields: [
             { key: 'name', label: 'Nome', type: 'text' },
             { key: 'catalog_id', label: 'Modelo', type: 'device_select', device_type: 'medidor_energia' },
+            { key: 'equipamento_id', label: 'Equipamento NexON (vincular ativo do unifilar)', type: 'text' },
             { key: 'modbus_address', label: 'Endereco Modbus', type: 'number' },
             { key: 'current_scale_override', label: 'Override scale corrente (vazio = padrao)', type: 'number', placeholder: 'ex: 100, 1000' },
             { key: 'voltage_scale_override', label: 'Override scale tensao (vazio = padrao)', type: 'number', placeholder: 'ex: 10, 100' },
@@ -393,11 +395,15 @@ var COMPONENT_TYPES = {
         icon: 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z',
         ports: ['top', 'bottom', 'left', 'right'],
         generates_firmware: false,
-        defaults: { name: 'Rele', catalog_id: '', modbus_address: 1 },
+        defaults: { name: 'Rele', catalog_id: '', modbus_address: 1, ip: '', tcp_port: '' },
         fields: [
             { key: 'name', label: 'Nome', type: 'text' },
             { key: 'catalog_id', label: 'Modelo', type: 'device_select', device_type: 'rele_protecao' },
             { key: 'modbus_address', label: 'Endereco Modbus', type: 'number' },
+            // Rele com Modbus TCP nativo (ex: Siemens 7SR5111) conectado DIRETO na TON
+            // (sem no Conversor/Datalogger): o IP e' do proprio rele. Vazio = conexao RS485.
+            { key: 'ip', label: 'IP (Modbus TCP direto)', type: 'text', placeholder: 'ex: 192.168.1.100 — vazio se RS485' },
+            { key: 'tcp_port', label: 'Porta TCP (vazio = 502)', type: 'number', placeholder: '502' },
         ]
     },
 
@@ -918,6 +924,9 @@ var DiagramEditor = class {
         this.components.push(comp);
         this._renderComponent(comp);
         if (this.onChange) this.onChange();
+        // Hook de criacao: React usa p/ abrir o prompt "qual ativo do unifilar e este?"
+        // (associacao na hora de criar). Undefined ate o React setar -> no-op.
+        if (this.onComponentAdded) this.onComponentAdded(comp);
         return comp;
     }
 

@@ -308,6 +308,30 @@ var FirmwareGenerator = class FirmwareGenerator {
         }
     }
 
+    // O comando de relé vem POR INSTÂNCIA do io_config (editor IoT → Configurar I/O):
+    // cada entrada `io_config.bo[cmd] = { coil, func }` vira um comando. O catálogo NÃO
+    // define mais coil (só lista bo_outputs); a amarração comando→BO é da instalação.
+    // Merge = catálogo (base, ex: comandos compostos/steps de outros relés) + io_config
+    // (ADICIONA/sobrescreve por chave). O cmd_id passa a ser a chave do io_config — o
+    // frontend usa o ponto_id do equipamento, então o comando fica definido por
+    // "ponto do equipamento → BO", sem sinal fixo de catálogo no meio.
+    _mergeIoBo(dev, props) {
+        if (!dev || !props) return dev;
+        const io = props.io_config;
+        if (!io || !io.bo) return dev;
+        const boMap = Object.assign({}, dev.bo_map || {});
+        for (const cid in io.bo) {
+            const ov = io.bo[cid];
+            if (!ov) continue;
+            const entry = Object.assign({}, boMap[cid] || {});   // ADD (não exige existir no catálogo)
+            if (ov.coil != null && ov.coil !== '') entry.coil = Number(ov.coil);
+            if (ov.func != null && ov.func !== '') entry.func = Number(ov.func);
+            if (ov.register != null && ov.register !== '') entry.register = Number(ov.register);
+            boMap[cid] = entry;
+        }
+        return Object.assign({}, dev, { bo_map: boMap });
+    }
+
     _processRS485(ton, other, result, components, connections) {
         const deviceTypes = ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao'];
         if (!deviceTypes.includes(other.type)) return;
@@ -322,7 +346,7 @@ var FirmwareGenerator = class FirmwareGenerator {
             type: other.type,
             modbus_address: other.props.modbus_address || 1,
             catalog_id: catalogId || null,
-            catalog_device: dev,
+            catalog_device: this._mergeIoBo(dev, other.props),
             registros: dev ? dev.registros : [],
             current_scale_override: this._parseScaleOverride(other.props.current_scale_override),
             voltage_scale_override: this._parseScaleOverride(other.props.voltage_scale_override),
@@ -381,7 +405,7 @@ var FirmwareGenerator = class FirmwareGenerator {
                         type: inv.type,
                         modbus_address: inv.props.modbus_address || 1,
                         catalog_id: catalogId || null,
-                        catalog_device: dev,
+                        catalog_device: this._mergeIoBo(dev, inv.props),
                         registros: dev ? dev.registros : [],
                         gateway: gateway,
                         current_scale_override: this._parseScaleOverride(inv.props.current_scale_override),
@@ -427,7 +451,7 @@ var FirmwareGenerator = class FirmwareGenerator {
                         type: dev.type,
                         modbus_address: dev.props.modbus_address || 1,
                         catalog_id: catalogId || null,
-                        catalog_device: catDev,
+                        catalog_device: this._mergeIoBo(catDev, dev.props),
                         registros: catDev ? catDev.registros : [],
                         gateway: gateway,
                         current_scale_override: this._parseScaleOverride(dev.props.current_scale_override),
@@ -440,11 +464,26 @@ var FirmwareGenerator = class FirmwareGenerator {
             return;
         }
 
-        // Caso 2: TON ↔ Dispositivo TCP direto (sem datalogger)
+        // Caso 2: TON ↔ Dispositivo TCP direto (sem datalogger/conversor).
+        // O device e' o proprio endpoint Modbus TCP (ex: Siemens 7SR5111 com Ethernet
+        // nativa, porta 502). O IP vem de props.ip do componente (campo no modal);
+        // porta de props.tcp_port > default_port do catalogo > 502. Transporte MBAP
+        // (mode 'datalogger') — device TCP nativo fala Modbus TCP puro, nao RTU+CRC.
         if (!deviceTypes.includes(other.type)) return;
 
         const catalogId = other.props.catalog_id;
         const dev = catalogId && typeof getCatalogDevice === 'function' ? getCatalogDevice(catalogId) : null;
+
+        const directIp = (other.props.ip || '').trim();
+        const directPort = Number(other.props.tcp_port) || (dev && Number(dev.default_port)) || 502;
+        if (!directIp) {
+            // Sem IP o firmware nao teria endereco pra conectar — device seria
+            // silenciosamente descartado no filtro `d.gateway` do _genInverterTcpCpp.
+            // Warning explicito pro usuario ver o motivo no console/validacao.
+            const nm = other.props.name || COMPONENT_TYPES[other.type].label;
+            console.warn(`[gen] ${nm}: conexao TCP direta SEM IP — preencha "IP (Modbus TCP direto)" no modal do componente. Device ignorado no firmware.`);
+            if (result.warnings) result.warnings.push(`${nm}: conexao TCP direta sem IP — leitura nao sera gerada`);
+        }
 
         result.tcp_devices.push({
             componentId: other.id,
@@ -452,9 +491,15 @@ var FirmwareGenerator = class FirmwareGenerator {
             type: other.type,
             modbus_address: other.props.modbus_address || 1,
             catalog_id: catalogId || null,
-            catalog_device: dev,
+            catalog_device: this._mergeIoBo(dev, other.props),
             registros: dev ? dev.registros : [],
-            gateway: null,
+            gateway: directIp ? {
+                name: (other.props.name || 'direct') + '_tcp',
+                ip: directIp,
+                port: directPort,
+                timeout_ms: 2000,     // mesmo default dos gateways datalogger/conversor
+                mode: 'datalogger',   // MBAP nativo
+            } : null,
             current_scale_override: this._parseScaleOverride(other.props.current_scale_override),
             voltage_scale_override: this._parseScaleOverride(other.props.voltage_scale_override),
             tc_ratio: this._parseScaleOverride(other.props.tc_ratio),
@@ -609,6 +654,15 @@ void inverter_tcp_sample_one();
 // Chamar a cada PUBLISH_INTERVAL_MS. Zera acumuladores apos publicar.
 void inverter_tcp_publish_all(tcp_publish_fn publish);
 
+// Executa comando (bo_map) de um device TCP direto pelo nome — write de coil
+// (FC05) ou registrador (FC06) via MBAP. Retorna false se o device/cmd nao
+// existir no lado TCP (o chamador tenta RS485 primeiro; este e' o fallback).
+bool inverter_tcp_exec_command(const char* device_name, const char* cmd_id);
+
+// SOE: drena a fila de eventos (EVENTCOUNT + EVENT via FC04) dos devices TCP
+// cujo catalogo tem a chave 'eventos'. Publica evento cru no subtopico "evt".
+void inverter_tcp_events_poll(tcp_publish_fn publish);
+
 #define TCP_INVERTER_COUNT ${count}
 extern const uint8_t TCP_INVERTER_IDS[];
 
@@ -630,6 +684,8 @@ extern const uint8_t TCP_INVERTER_IDS[];
 void inverter_tcp_init() {}
 void inverter_tcp_sample_one() {}
 void inverter_tcp_publish_all(tcp_publish_fn) {}
+bool inverter_tcp_exec_command(const char*, const char*) { return false; }
+void inverter_tcp_events_poll(tcp_publish_fn) {}
 const uint8_t TCP_INVERTER_IDS[] = {};
 `;
         }
@@ -658,6 +714,10 @@ const uint8_t TCP_INVERTER_IDS[] = {${ids}};
 
 static WiFiClient _wifiTcpClient;
 static uint16_t _txId = 0;
+
+// Motivo da ultima falha de leitura TCP (timeout/exception/id_fc/bytecount/incomplete).
+// Publicado no payload no_samples pra diagnostico REMOTO (sem serial).
+static const char* _tcp_last_fail_reason = "none";
 
 // Helpers locais — duplicados do modbus_meter.cpp para escopo deste arquivo.
 // Mantemos copia local porque _publish_tcp_inv_<idx> (gerada abaixo) os usa
@@ -762,8 +822,16 @@ static uint16_t _modbus_crc16(const uint8_t* buf, uint16_t len) {
 
 // Helper Modbus TCP (MBAP) — datalogger. Comportamento identico ao anterior;
 // so' passou a receber ip/port/timeout e usar o gerenciador de conexao.
+// Ultimo codigo de excecao Modbus visto pelo _modbus_tcp_read (0 = nenhum).
+// Necessario pro SOE: excecao (tip. 2) na leitura do EVENT = fila vazia (NORMAL, nao erro).
+static uint8_t _tcp_last_exc = 0;
+// SOE seta true em volta da leitura do EVENT: excecao esperada (fila vazia) nao loga —
+// senao o Serial seria inundado com "Excecao 0x02" a cada poll de fila vazia (~2s).
+static bool _tcp_quiet_exc = false;
+
 static bool _modbus_tcp_read(const char* ip, uint16_t port, uint32_t timeout,
                              uint8_t slave, uint8_t func, uint16_t addr, uint16_t count, uint16_t *out) {
+    _tcp_last_exc = 0;
     Client* tcp = _tcp_ensure_conn(ip, port, timeout);
     if (!tcp) return false;
 
@@ -789,14 +857,17 @@ static bool _modbus_tcp_read(const char* ip, uint16_t port, uint32_t timeout,
     }
     if (tcp->available() < 9) {
         Serial.printf("[TCP-INV] Timeout slave=%d func=%d addr=%d\\n", slave, func, addr);
+        _tcp_last_fail_reason = "timeout";
         return false;
     }
 
     uint8_t hdr[9];
     tcp->readBytes(hdr, 9);
     if (hdr[7] & 0x80) {
-        Serial.printf("[TCP-INV] Excecao Modbus slave=%d: 0x%02X\\n", slave, hdr[8]);
+        _tcp_last_exc = hdr[8];
+        if (!_tcp_quiet_exc) Serial.printf("[TCP-INV] Excecao Modbus slave=%d: 0x%02X\\n", slave, hdr[8]);
         while (tcp->available()) tcp->read();
+        _tcp_last_fail_reason = "exception";
         return false;
     }
 
@@ -808,6 +879,103 @@ static bool _modbus_tcp_read(const char* ip, uint16_t port, uint32_t timeout,
         out[i] = (buf[i*2] << 8) | buf[i*2+1];
     }
     return true;
+}
+
+// Helper Modbus TCP (MBAP) para BITS — FC02 (discrete inputs) / FC01 (coils).
+// Resposta empacota bits em bytes (LSB primeiro), diferente dos registradores.
+// out deve ter ceil(count/8) bytes. Usado pelos blocos BI dos reles (protecoes).
+static bool _modbus_tcp_read_bits(const char* ip, uint16_t port, uint32_t timeout,
+                                  uint8_t slave, uint8_t func, uint16_t addr, uint16_t count, uint8_t *out) {
+    Client* tcp = _tcp_ensure_conn(ip, port, timeout);
+    if (!tcp) return false;
+
+    _txId++;
+    uint8_t req[12];
+    req[0] = _txId >> 8; req[1] = _txId & 0xFF;
+    req[2] = 0; req[3] = 0;
+    req[4] = 0; req[5] = 6;
+    req[6] = slave;
+    req[7] = func;
+    req[8] = addr >> 8; req[9] = addr & 0xFF;
+    req[10] = count >> 8; req[11] = count & 0xFF;
+
+    tcp->write(req, 12);
+    tcp->flush();
+
+    uint32_t t0 = millis();
+    while (tcp->available() < 9 && millis() - t0 < timeout) {
+        delay(5);
+        esp_task_wdt_reset();
+    }
+    if (tcp->available() < 9) {
+        Serial.printf("[TCP-INV] Timeout(bits) slave=%d func=%d addr=%d\\n", slave, func, addr);
+        _tcp_last_fail_reason = "timeout_bits";
+        return false;
+    }
+
+    uint8_t hdr[9];
+    tcp->readBytes(hdr, 9);
+    if (hdr[7] & 0x80) {
+        Serial.printf("[TCP-INV] Excecao Modbus(bits) slave=%d: 0x%02X\\n", slave, hdr[8]);
+        while (tcp->available()) tcp->read();
+        _tcp_last_fail_reason = "exception_bits";
+        return false;
+    }
+
+    uint8_t byteCount = hdr[8];
+    uint8_t expected = (count + 7) / 8;
+    if (byteCount > 250 || byteCount < expected) {
+        Serial.printf("[TCP-INV] byteCount(bits) invalido: %d (esperado %d)\\n", byteCount, expected);
+        while (tcp->available()) tcp->read();
+        _tcp_last_fail_reason = "bytecount_bits";
+        return false;
+    }
+    tcp->readBytes(out, expected);
+    // Drena bytes excedentes (byteCount > esperado nao deveria ocorrer, mas nao trava)
+    for (uint8_t i = expected; i < byteCount; i++) tcp->read();
+    return true;
+}
+
+// Helper Modbus TCP (MBAP) para ESCRITA — FC05 (write single coil) / FC06 (write
+// single register). Usado pelos comandos (bo_map) de reles TCP diretos (trip/close/
+// reset). Resposta de sucesso e' o eco do request (12 bytes); excecao vem com 0x80.
+static bool _modbus_tcp_write(const char* ip, uint16_t port, uint32_t timeout,
+                              uint8_t slave, uint8_t func, uint16_t addr, uint16_t value) {
+    Client* tcp = _tcp_ensure_conn(ip, port, timeout);
+    if (!tcp) return false;
+
+    _txId++;
+    uint8_t req[12];
+    req[0] = _txId >> 8; req[1] = _txId & 0xFF;
+    req[2] = 0; req[3] = 0;
+    req[4] = 0; req[5] = 6;
+    req[6] = slave;
+    req[7] = func;
+    req[8] = addr >> 8; req[9] = addr & 0xFF;
+    req[10] = value >> 8; req[11] = value & 0xFF;
+
+    tcp->write(req, 12);
+    tcp->flush();
+
+    uint32_t t0 = millis();
+    while (tcp->available() < 9 && millis() - t0 < timeout) {
+        delay(5);
+        esp_task_wdt_reset();
+    }
+    if (tcp->available() < 9) {
+        Serial.printf("[TCP-INV] Timeout(write) slave=%d func=%d addr=%d\\n", slave, func, addr);
+        _tcp_last_fail_reason = "timeout_write";
+        return false;
+    }
+    uint8_t resp[12];
+    uint8_t got = tcp->readBytes(resp, 9);
+    if (resp[7] & 0x80) {
+        Serial.printf("[TCP-INV] Excecao Modbus(write) slave=%d func=%d: 0x%02X\\n", slave, func, resp[8]);
+        while (tcp->available()) tcp->read();
+        return false;
+    }
+    while (tcp->available()) tcp->read();   // resto do eco
+    return got >= 9 && resp[7] == func;
 }
 
 // Helper Modbus RTU-sobre-TCP + CRC16 — conversor (USR transparente). Espelha o
@@ -838,6 +1006,7 @@ static bool _modbus_rtu_tcp_read(const char* ip, uint16_t port, uint32_t timeout
     }
     if (tcp->available() < 5) {
         Serial.printf("[TCP-INV] Timeout(rtu) slave=%d func=%d addr=%d\\n", slave, func, addr);
+        _tcp_last_fail_reason = "timeout";
         return false;
     }
 
@@ -846,17 +1015,20 @@ static bool _modbus_rtu_tcp_read(const char* ip, uint16_t port, uint32_t timeout
     if (hdr[1] & 0x80) {
         Serial.printf("[TCP-INV] Excecao Modbus(rtu) slave=%d: 0x%02X\\n", slave, hdr[1]);
         while (tcp->available()) tcp->read();
+        _tcp_last_fail_reason = "exception";
         return false;
     }
     if (hdr[0] != slave || hdr[1] != func) {
         Serial.printf("[TCP-INV] ID/FC invalido(rtu) slave=%d\\n", slave);
         while (tcp->available()) tcp->read();
+        _tcp_last_fail_reason = "id_fc";
         return false;
     }
     uint8_t byteCount = hdr[2];
     if (byteCount != count * 2) {
         Serial.printf("[TCP-INV] byteCount invalido(rtu) slave=%d: %d\\n", slave, byteCount);
         while (tcp->available()) tcp->read();
+        _tcp_last_fail_reason = "bytecount";
         return false;
     }
 
@@ -867,6 +1039,7 @@ static bool _modbus_rtu_tcp_read(const char* ip, uint16_t port, uint32_t timeout
     }
     if (tcp->available() < (byteCount + 2)) {
         Serial.printf("[TCP-INV] Resposta(rtu) incompleta slave=%d\\n", slave);
+        _tcp_last_fail_reason = "incomplete";
         return false;
     }
 
@@ -896,6 +1069,7 @@ static bool _modbus_rtu_tcp_read(const char* ip, uint16_t port, uint32_t timeout
         // Gera state + sample + publish por inversor
         invs.forEach((inv, idx) => {
             cpp += this._genTcpInverterReader(inv, idx);
+            cpp += this._genTcpDeviceEventPoll(inv, idx);   // SOE (so se cat.eventos + MBAP)
         });
 
         // Round-robin sample (1 inversor por chamada)
@@ -923,6 +1097,73 @@ void inverter_tcp_publish_all(tcp_publish_fn publish) {
             cpp += `    _publish_tcp_inv_${idx}(publish);\n`;
         });
         cpp += `}
+
+// Comandos (bo_map) de devices TCP diretos — write FC05/FC06 via MBAP.
+// Espelha modbus_exec_command (RS485): match por nome do device + cmd_id;
+// steps[] = multi-write sequencial (SBO). So devices MBAP (datalogger/direto);
+// rele atras de conversor rtu_tcp nao entra (write RTU+CRC nao implementado).
+bool inverter_tcp_exec_command(const char* device_name, const char* cmd_id) {
+    if (!device_name || !cmd_id) return false;
+`;
+        invs.forEach((dev) => {
+            const bo = (dev.catalog_device && dev.catalog_device.bo_map) || {};
+            const cmds = Object.entries(bo);
+            const gwd = dev.gateway || {};
+            if (cmds.length === 0 || gwd.mode === 'rtu_tcp') return;
+            const wArgs = `"${gwd.ip || ''}", ${gwd.port || 502}, ${gwd.timeout_ms || 2000}, ${dev.modbus_address}`;
+            cpp += `    if (strcmp(device_name, "${this._escStr(dev.name)}") == 0) {\n`;
+            // Um "step" vira uma chamada _modbus_tcp_write:
+            //   { func: 0x05, coil: N }              -> FC05, valor 0xFF00 (ON)
+            //   { func: 0x06, register: N, value: V } -> FC06
+            const emitTcpStep = (step) => {
+                const sFunc = step.func || 0x06;
+                if (sFunc === 0x05) {
+                    if (step.coil === undefined) { console.warn('[gen] step tcp func 0x05 exige coil'); return null; }
+                    return `            if (!_modbus_tcp_write(${wArgs}, 0x05, ${step.coil}, 0xFF00)) return false;\n`;
+                } else if (sFunc === 0x06) {
+                    if (step.register === undefined) { console.warn('[gen] step tcp func 0x06 exige register'); return null; }
+                    const v = (step.value !== undefined) ? step.value : 1;
+                    return `            if (!_modbus_tcp_write(${wArgs}, 0x06, ${step.register}, ${v})) return false;\n`;
+                }
+                console.warn(`[gen] step tcp func 0x${sFunc.toString(16)} nao suportada`);
+                return null;
+            };
+            cmds.forEach(([cid, m]) => {
+                if (Array.isArray(m.steps)) {
+                    cpp += `        if (strcmp(cmd_id, "${this._escStr(cid)}") == 0) {\n`;
+                    const delayMs = m.delay_ms || 0;
+                    let valid = 0;
+                    m.steps.forEach((step, sIdx) => {
+                        if (sIdx > 0 && delayMs > 0) cpp += `            delay(${delayMs});\n`;
+                        const line = emitTcpStep(step);
+                        if (line) { cpp += line; valid++; }
+                    });
+                    cpp += valid > 0 ? `            return true;\n        }\n` : `        }\n`;
+                } else {
+                    const line = emitTcpStep(m);
+                    if (line) {
+                        cpp += `        if (strcmp(cmd_id, "${this._escStr(cid)}") == 0) {\n`;
+                        cpp += line;
+                        cpp += `            return true;\n        }\n`;
+                    }
+                }
+            });
+            cpp += `        return false;   // device achado mas cmd_id desconhecido\n    }\n`;
+        });
+        cpp += `    return false;
+}
+
+// SOE: drena a fila de eventos dos devices TCP que tem buffer no catalogo (MBAP).
+void inverter_tcp_events_poll(tcp_publish_fn publish) {
+    if (!publish) return;
+`;
+        invs.forEach((dev, idx) => {
+            const gwd = dev.gateway || {};
+            if (dev.catalog_device && dev.catalog_device.eventos && gwd.mode !== 'rtu_tcp') {
+                cpp += `    _tcp_evt_poll_dev_${idx}(publish);\n`;
+            }
+        });
+        cpp += `}
 `;
         return cpp;
     }
@@ -939,6 +1180,19 @@ void inverter_tcp_publish_all(tcp_publish_fn publish) {
         const aiMap = this._applyScaleOverrides(cat.ai_map || {}, inv);
         const scales = cat.scales || {};
         const wordOrder = cat.word_order || 'high_first';
+        // BI (protecoes/status de rele) via FC02: suportado no transporte MBAP
+        // (datalogger/direto). No modo rtu_tcp (conversor USR) ainda nao — o parse
+        // de bits RTU+CRC nao foi implementado; rele atras de conversor le so AI.
+        const biBlock = cat.bi_block || null;
+        const biMapAll = cat.bi_map || {};
+        const biMbap = inv.gateway && inv.gateway.mode !== 'rtu_tcp';
+        const biEntries = (biBlock && biMbap)
+            ? Object.entries(biMapAll).filter(([, m]) => m.coil !== undefined)
+            : [];
+        const biCount = biEntries.length;
+        if (biBlock && !biMbap && Object.keys(biMapAll).length > 0) {
+            console.warn(`[gen] ${inv.name}: bi_block via conversor (rtu_tcp) nao suportado — protecoes/BI nao serao lidas`);
+        }
         const slave = inv.modbus_address;
         const name = inv.name || `inv_${slave}`;
         const nameEsc = this._escStr(name);
@@ -1008,7 +1262,7 @@ static void _publish_tcp_inv_${idx}(tcp_publish_fn publish) {
         let cpp = `
 // =============================================================================
 // ${name} — ${cat.fabricante || '?'} ${cat.modelo || cat.tipo || '?'} (slave ${slave})
-// ${blocks.length} blocos | ${totalFields} pontos AI (${avgFields.length} avg, ${lastFields.length} last, ${deltaFields.length} delta)
+// ${blocks.length} blocos | ${totalFields} pontos AI (${avgFields.length} avg, ${lastFields.length} last, ${deltaFields.length} delta)${biCount > 0 ? ` | ${biCount} pontos BI (FC02)` : ''}
 // word_order: ${wordOrder}
 // =============================================================================
 struct _TcpDs${idx}State {
@@ -1020,7 +1274,10 @@ struct _TcpDs${idx}State {
     bool valid;
     int fail_streak;
     unsigned long cooldown_until;  // millis() ate quando pular este device (back-off)
-};
+    uint32_t tcp_reconnects;       // reconexoes forcadas apos falha (diagnostico remoto)
+${biCount > 0 ? `    uint8_t bi_[${biCount}];               // bits de protecao/status (FC02)
+    bool bi_valid;                 // ja houve >=1 leitura boa de BI (evita publicar 0 falso)
+` : ''}};
 static _TcpDs${idx}State _tds${idx} = {};
 
 // Le todos os blocos do inversor e popula buf concatenado.
@@ -1073,6 +1330,15 @@ static void _sample_tcp_inv_${idx}() {
 
     uint16_t buf[${totalRegs}];
     if (!_read_tcp_inv_${idx}_raw(buf)) {
+        // Falha: fecha o socket p/ o PROXIMO tick reconectar. Reconectar resincroniza
+        // o stream RTU-sobre-TCP e faz o conversor resetar o bridge RS485 — e' o que o
+        // reboot faz p/ dar 1 leitura boa, aqui a cada falha (e apos cada cooldown, pois
+        // o socket fica fechado). Leitura UNICA no ciclo (sem retry) pra nao dobrar o
+        // bloqueio do loop se o device estiver mudo — a recuperacao vem no proximo tick.
+        Client* _rc = _active_tcp_client();
+        if (_rc) _rc->stop();
+        _tcp_cur_ip[0] = 0; _tcp_cur_port = 0;   // forca _tcp_ensure_conn a reconectar
+        _tds${idx}.tcp_reconnects++;
         _tds${idx}.fail_streak++;
         Serial.printf("[TCP-INV] ${nameEsc}(id${slave}): falha leitura (consecutivas: %d)\\n", _tds${idx}.fail_streak);
         if (_tds${idx}.fail_streak >= MODBUS_FAIL_COOLDOWN_N) {
@@ -1166,6 +1432,28 @@ ${dpt ? `        _fDPT = _pow10i((int)_lDPT - ${dpt.base});\n` : ''}${dct ? `   
         cpp += `    _tds${idx}.samples++;\n`;
         cpp += `    _tds${idx}.valid = true;\n`;
 
+        // BI: protecoes/status via FC02 (discrete inputs), MBAP. Falha de BI NAO
+        // invalida o ciclo AI — mantem o ultimo estado; bi_valid so vira true apos
+        // a primeira leitura boa (gate na publicacao: nunca publica 0 "chutado").
+        if (biCount > 0) {
+            const biFunc = '0x' + (biBlock.func || 0x02).toString(16).padStart(2, '0');
+            const biBytes = Math.ceil(biBlock.count / 8);
+            cpp += `
+    // BI ${biCount} pontos — bloco FC${biFunc} start=${biBlock.start} count=${biBlock.count} (${biBytes} bytes)
+    {
+        uint8_t _bits[${biBytes}];
+        if (_modbus_tcp_read_bits(${_gwArgs}, ${slave}, ${biFunc}, ${biBlock.start}, ${biBlock.count}, _bits)) {
+`;
+            biEntries.forEach(([pid, m], k) => {
+                const off = m.coil;
+                cpp += `            _tds${idx}.bi_[${k}] = (_bits[${Math.floor(off / 8)}] >> ${off % 8}) & 1;  // ${pid}\n`;
+            });
+            cpp += `            _tds${idx}.bi_valid = true;
+        }
+    }
+`;
+        }
+
         // Log de debug — espelha a lista do RS485 _genDeviceReader.
         // Antes so' listava campos de inversor — power_meter ia silencioso (sem log de sample).
         const preferredOrder = ['vab', 'vbc', 'vca', 'va', 'vb', 'vc',
@@ -1201,7 +1489,12 @@ ${dpt ? `        _fDPT = _pow10i((int)_lDPT - ${dpt.base});\n` : ''}${dct ? `   
 // para resolver json paths, agrupar por top-level key, e respeitar tipo.group_order.
 static void _publish_tcp_inv_${idx}(tcp_publish_fn publish) {
     if (!_tds${idx}.valid || _tds${idx}.samples == 0) {
-        publish("${subtopicEsc}", "{\\"error\\":\\"no_samples\\"}");
+        // Enriquecido p/ diagnostico REMOTO: motivo da ultima falha + nº de reconexoes.
+        char _nsbuf[112];
+        snprintf(_nsbuf, sizeof(_nsbuf),
+                 "{\\"error\\":\\"no_samples\\",\\"last_fail\\":\\"%s\\",\\"reconnects\\":%lu}",
+                 _tcp_last_fail_reason, (unsigned long)_tds${idx}.tcp_reconnects);
+        publish("${subtopicEsc}", _nsbuf);
         return;
     }
 
@@ -1268,6 +1561,11 @@ static void _publish_tcp_inv_${idx}(tcp_publish_fn publish) {
             // Placeholder — real expr resolvido ao emitir (usa variavel local dv_pid)
             fieldSources[f.pid] = { expr: `dv_${f.pid}`, format: f.format, raw: false };
         });
+        // BI (FC02): publica so apos primeira leitura boa (flag bi na fonte -> guarda
+        // _tds.bi_valid na emissao). Espelha o formato do RS485 (0/1 flat por pid).
+        biEntries.forEach(([pid], k) => {
+            fieldSources[pid] = { expr: `_tds${idx}.bi_[${k}]`, format: null, raw: false, bi: true };
+        });
 
         // --- Agrupar por top-level key do json path ---
         // Pre-popular groups na ordem definida pelo tipo
@@ -1312,11 +1610,14 @@ static void _publish_tcp_inv_${idx}(tcp_publish_fn publish) {
         });
 
         // --- Emitir top-level fields ---
+        // Campos BI ganham guarda _tds.bi_valid: nunca publica 0 "chutado" antes da
+        // primeira leitura boa de FC02 (estado de protecao/DJ errado e' pior que ausente).
         topLevelFields.forEach(({ key, src }) => {
+            const guard = src.bi ? `if (_tds${idx}.bi_valid) ` : '';
             if (src.format === 'hex') {
-                cpp += `    { char _h[8]; snprintf(_h, sizeof(_h), "%x", (uint16_t)(${src.expr})); d["${this._escStr(key)}"] = String(_h); }\n`;
+                cpp += `    ${guard}{ char _h[8]; snprintf(_h, sizeof(_h), "%x", (uint16_t)(${src.expr})); d["${this._escStr(key)}"] = String(_h); }\n`;
             } else {
-                cpp += `    d["${this._escStr(key)}"] = ${src.expr};\n`;
+                cpp += `    ${guard}d["${this._escStr(key)}"] = ${src.expr};\n`;
             }
         });
 
@@ -1335,10 +1636,11 @@ static void _publish_tcp_inv_${idx}(tcp_publish_fn publish) {
             const gvar = `g_${groupKey.replace(/[^a-zA-Z0-9_]/g, '_')}`;
             cpp += `    JsonObject ${gvar} = d.createNestedObject("${this._escStr(groupKey)}");\n`;
             fields.forEach(({ subKey, src }) => {
+                const guard = src.bi ? `if (_tds${idx}.bi_valid) ` : '';
                 if (src.format === 'hex') {
-                    cpp += `    { char _h[8]; snprintf(_h, sizeof(_h), "%x", (uint16_t)(${src.expr})); ${gvar}["${this._escStr(subKey)}"] = String(_h); }\n`;
+                    cpp += `    ${guard}{ char _h[8]; snprintf(_h, sizeof(_h), "%x", (uint16_t)(${src.expr})); ${gvar}["${this._escStr(subKey)}"] = String(_h); }\n`;
                 } else {
-                    cpp += `    ${gvar}["${this._escStr(subKey)}"] = ${src.expr};\n`;
+                    cpp += `    ${guard}${gvar}["${this._escStr(subKey)}"] = ${src.expr};\n`;
                 }
             });
             // status.work_state_text: se o grupo for 'status' e tivermos work_state, adiciona o texto
@@ -3097,7 +3399,7 @@ void lora_loop_tick() {
     // "poll":1 anuncia que este satelite e' POLLAVEL (reativo, tem device) — o
     // gateway usa isso pra DESCOBRIR o alvo sem precisar do MAC no diagrama.
     snprintf(payload, sizeof(payload),
-             "{\\"online\\":true,${(role === 'satellite' && !this._loraAutonomousPush() && this._satelliteHasDevice(spec)) ? '\\"poll\\":1,' : ''}\\"version\\":\\"%s\\",\\"uptime\\":%lu,\\"free_heap\\":%u}",
+             "{\\"online\\":true,${this._simMode() ? ('\\"sim\\":\\"' + (spec.name || '').replace(/[^\w .:-]/g, '') + '\\",') : ''}${(role === 'satellite' && !this._loraAutonomousPush() && this._satelliteHasDevice(spec)) ? '\\"poll\\":1,' : ''}\\"version\\":\\"%s\\",\\"uptime\\":%lu,\\"free_heap\\":%u}",
              FIRMWARE_VERSION, (unsigned long)(now/1000),
              (unsigned)ESP.getFreeHeap());
     const char* gw = _ton2_gw_mac.length() ? _ton2_gw_mac.c_str() : "*";
@@ -3686,6 +3988,10 @@ void modbus_publish_all(modbus_publish_fn publish);
 // Wrapper legado: faz sample de todos e publica imediatamente (sem media).
 void modbus_read_all(modbus_publish_fn publish);
 
+// SOE: drena a fila de eventos dos devices que expoem buffer (chave 'eventos' no catalogo).
+// Publica cada evento CRU no subtopico "evt". Chamar a cada EVT_POLL_MS.
+void modbus_events_poll(modbus_publish_fn publish);
+
 // Executa comando BO (write coil). device_name do catalogo, cmd_id conforme bo_map.
 bool modbus_exec_command(const char* device_name, const char* cmd_id);
 
@@ -3801,14 +4107,16 @@ void modbus_init() {
             cpp += `void modbus_sample_one() {}
 void modbus_publish_all(modbus_publish_fn) {}
 void modbus_read_all(modbus_publish_fn) {}
+void modbus_events_poll(modbus_publish_fn) {}
 bool modbus_exec_command(const char*, const char*) { return false; }
 `;
             return cpp;
         }
 
-        // Um bloco de codigo por device
+        // Um bloco de codigo por device (+ poll de evento, se o catalogo expuser buffer)
         devs.forEach((dev, idx) => {
             cpp += this._genDeviceReader(dev, idx);
+            cpp += this._genDeviceEventPoll(dev, idx);
         });
 
         // Round-robin sample: 1 device por chamada
@@ -3840,6 +4148,17 @@ void modbus_read_all(modbus_publish_fn publish) {
 `;
         devs.forEach((_, idx) => {
             cpp += `    _sample_dev_${idx}();\n    _publish_dev_${idx}(publish);\n`;
+        });
+        cpp += `}
+
+// SOE: drena a fila de eventos de cada device que tem buffer no catalogo.
+void modbus_events_poll(modbus_publish_fn publish) {
+    if (!publish) return;
+`;
+        devs.forEach((dev, idx) => {
+            if (dev.catalog_device && dev.catalog_device.eventos) {
+                cpp += `    _evt_poll_dev_${idx}(publish);\n`;
+            }
         });
         cpp += `}
 
@@ -3905,7 +4224,12 @@ bool modbus_exec_command(const char* device_name, const char* cmd_id) {
                 // Caso 2: comando simples (1 write). Formato legado.
                 const func = m.func || 0x05;
                 if (func === 0x05) {
-                    // Write Single Coil — convencao Pextron URP6000 e similares
+                    // Write Single Coil. Sem coil = placeholder do catálogo (comando não
+                    // vinculado a BO nessa instância) — pula (o vínculo é no editor IoT).
+                    if (m.coil == null) {
+                        console.warn(`[gen] bo_map ${cid}: sem coil (comando não vinculado a BO) — skip`);
+                        return;
+                    }
                     cpp += `        if (strcmp(cmd_id, "${this._escStr(cid)}") == 0) {\n`;
                     cpp += `            return _mb.writeSingleCoil(${m.coil}, true) == _mb.ku8MBSuccess;\n`;
                     cpp += `        }\n`;
@@ -3929,6 +4253,200 @@ bool modbus_exec_command(const char* device_name, const char* cmd_id) {
 }
 `;
         return cpp;
+    }
+
+    // ========================================================================
+    // SOE — buffer de eventos do relé (método privado IEC-103-like sobre Modbus).
+    // Só gera se o catálogo do device tiver `eventos` (ver docs/IOT-SOE-EVENTOS-RELE.md).
+    //
+    // Mecanismo (7SR manual §6.1): EVENTCOUNT diz quantos eventos há na fila; ler o
+    // registrador EVENT (qty EXATAMENTE 8) devolve o mais antigo e DÁ POP. Exceção 0x02
+    // = fila vazia — é o fim normal da drenagem, NÃO é erro (não pode cair no back-off).
+    //
+    // O firmware publica o evento CRU (type/FUN/INF/timestamp/RT/F#/Meas); a tradução
+    // FUN/INF -> função de proteção é do backend (dado curável, e é o que deixa o DNP3
+    // plugar depois no mesmo modelo canônico).
+    // ========================================================================
+    _genDeviceEventPoll(dev, idx) {
+        const cat = dev.catalog_device || {};
+        const evt = cat.eventos;
+        if (!evt || !evt.count || !evt.record) return '';
+        const slave = dev.modbus_address;
+        const topicName = `${dev.name || 'dev'}_${dev.modbus_address}`;
+        const nameEsc = this._escStr(topicName);
+        // catalog_id vai no payload: o mapa FUN/INF é POR MODELO (o do 7SR10 != o do
+        // 7SR5111). Sem isso o backend não sabe qual tabela aplicar e rotula errado.
+        const catIdEsc = this._escStr(String(dev.catalog_id || ''));
+        const cntReg = Number(evt.count.reg) || 0;
+        const recReg = Number(evt.record.reg) || 1;
+        const qty = Number(evt.record.qty) || 8;
+        const excVazio = Number(evt.excecao_vazio) || 2;
+
+        return `
+// ===== SOE (eventos) — ${dev.name} =====
+static void _evt_emit_dev_${idx}(modbus_publish_fn publish, const uint8_t* b) {
+    uint8_t type = b[0];
+    if (type != 1 && type != 2 && type != 4) return;   // tipo desconhecido: ignora
+    uint8_t fun = b[2], inf = b[3];
+    uint16_t ms = 0; uint8_t mi = 0, ho = 0;
+    int dpi = -1; long rt = -1, fnum = -1;
+    bool hasMeas = false; float meas = 0.0f;
+    if (type == 1) {
+        dpi = b[4];
+    } else if (type == 2) {
+        dpi = b[4];
+        rt   = (long)b[5]  | ((long)b[6]  << 8);
+        fnum = (long)b[7]  | ((long)b[8]  << 8);
+    } else { // type 4: Meas (R32.23, LSB first) nos bytes 4-7
+        uint32_t u = (uint32_t)b[4] | ((uint32_t)b[5] << 8) | ((uint32_t)b[6] << 16) | ((uint32_t)b[7] << 24);
+        memcpy(&meas, &u, sizeof(float)); hasMeas = true;
+        rt   = (long)b[8]  | ((long)b[9]  << 8);
+        fnum = (long)b[10] | ((long)b[11] << 8);
+    }
+    ms = (uint16_t)b[12] | ((uint16_t)b[13] << 8);   // ms L, ms H
+    mi = b[14]; ho = b[15];
+    bool hora_ok = !(mi & 0x80);      // MSB de Mi = hora invalida (relogio nao setado)
+    bool dst     = (ho & 0x80) != 0;  // MSB de Ho = horario de verao
+    uint8_t mins = mi & 0x7F, hrs = ho & 0x7F;
+
+    char p[320]; int n = 0;
+    n += snprintf(p + n, sizeof(p) - n,
+        "{\\"dev\\":\\"${nameEsc}\\",\\"cat\\":\\"${catIdEsc}\\",\\"proto\\":\\"modbus_7sr\\""
+        ",\\"type\\":%u,\\"fun\\":%u,\\"inf\\":%u"
+        ",\\"ho\\":%u,\\"mi\\":%u,\\"ms\\":%u,\\"hora_ok\\":%s,\\"dst\\":%s,\\"ts_rx\\":%ld",
+        type, fun, inf, hrs, mins, ms, hora_ok ? "true" : "false", dst ? "true" : "false",
+        (long)time(nullptr));
+    if (dpi  >= 0) n += snprintf(p + n, sizeof(p) - n, ",\\"dpi\\":%d", dpi);
+    if (rt   >= 0) n += snprintf(p + n, sizeof(p) - n, ",\\"rt\\":%ld", rt);
+    if (fnum >= 0) n += snprintf(p + n, sizeof(p) - n, ",\\"fault\\":%ld", fnum);
+    if (hasMeas)   n += snprintf(p + n, sizeof(p) - n, ",\\"meas\\":%.3f", meas);
+    snprintf(p + n, sizeof(p) - n, "}");
+
+    Serial.printf("[EVT] ${nameEsc} t%u FUN=%u INF=%u %02u:%02u:%06.3f%s\\n",
+                  type, fun, inf, hrs, mins, ms / 1000.0, hora_ok ? "" : " (HORA INVALIDA)");
+    publish("evt", p);
+}
+
+// Drena a fila de eventos. Oportunista: se o rele nao responder, sai quieto (a
+// telemetria ja loga falha; evento nao deve poluir nem entrar no back-off).
+static void _evt_poll_dev_${idx}(modbus_publish_fn publish) {
+    _select(${slave});
+    _mb.clearResponseBuffer();
+    if (_mb.readInputRegisters(${cntReg}, 1) != _mb.ku8MBSuccess) return;
+    uint16_t cnt = _mb.getResponseBuffer(0);
+    if (cnt == 0) return;
+    Serial.printf("[EVT] ${nameEsc}: %u evento(s) no buffer\\n", (unsigned)cnt);
+    for (int guard = 0; guard < 32; guard++) {   // teto: nunca travar o loop principal
+        _select(${slave});
+        _mb.clearResponseBuffer();
+        uint8_t rc = _mb.readInputRegisters(${recReg}, ${qty});
+        if (rc == 0x${excVazio.toString(16).padStart(2, '0')}) break;  // fila vazia = fim (NORMAL)
+        if (rc != _mb.ku8MBSuccess) {
+            Serial.printf("[EVT] ${nameEsc}: leitura de evento rc=0x%02X — aborta ciclo\\n", rc);
+            break;
+        }
+        uint8_t b[16];
+        for (int i = 0; i < 8; i++) {
+            uint16_t r = _mb.getResponseBuffer(i);
+            b[i * 2] = (uint8_t)(r >> 8); b[i * 2 + 1] = (uint8_t)(r & 0xFF);
+        }
+        _evt_emit_dev_${idx}(publish, b);
+    }
+}
+`;
+    }
+
+    // SOE via TCP — espelho do _genDeviceEventPoll para devices TCP diretos (MBAP).
+    // Mesmo mecanismo (EVENTCOUNT FC04 qty1 + EVENT FC04 qty8, excecao 2 = fila vazia),
+    // transporte _modbus_tcp_read. Fila-vazia detectada via _tcp_last_exc (o helper nao
+    // devolve o codigo no retorno); _tcp_quiet_exc suprime o log da excecao esperada.
+    // So MBAP: rele atras de conversor rtu_tcp nao drena eventos (limitacao documentada).
+    _genTcpDeviceEventPoll(inv, idx) {
+        const cat = inv.catalog_device || {};
+        const evt = cat.eventos;
+        if (!evt || !evt.count || !evt.record) return '';
+        const gw = inv.gateway || {};
+        if (gw.mode === 'rtu_tcp') return '';
+        const gwArgs = `"${gw.ip || ''}", ${gw.port || 502}, ${gw.timeout_ms || 2000}`;
+        const slave = inv.modbus_address;
+        const topicName = `${inv.name || 'dev'}_${inv.modbus_address}`;
+        const nameEsc = this._escStr(topicName);
+        const catIdEsc = this._escStr(String(inv.catalog_id || ''));
+        const cntReg = Number(evt.count.reg) || 0;
+        const recReg = Number(evt.record.reg) || 1;
+        const qty = Number(evt.record.qty) || 8;
+        const excVazio = Number(evt.excecao_vazio) || 2;
+
+        return `
+// ===== SOE (eventos) via TCP — ${inv.name} =====
+static void _tcp_evt_emit_dev_${idx}(tcp_publish_fn publish, const uint8_t* b) {
+    uint8_t type = b[0];
+    if (type != 1 && type != 2 && type != 4) return;   // tipo desconhecido: ignora
+    uint8_t fun = b[2], inf = b[3];
+    uint16_t ms = 0; uint8_t mi = 0, ho = 0;
+    int dpi = -1; long rt = -1, fnum = -1;
+    bool hasMeas = false; float meas = 0.0f;
+    if (type == 1) {
+        dpi = b[4];
+    } else if (type == 2) {
+        dpi = b[4];
+        rt   = (long)b[5]  | ((long)b[6]  << 8);
+        fnum = (long)b[7]  | ((long)b[8]  << 8);
+    } else { // type 4: Meas (R32.23, LSB first) nos bytes 4-7
+        uint32_t u = (uint32_t)b[4] | ((uint32_t)b[5] << 8) | ((uint32_t)b[6] << 16) | ((uint32_t)b[7] << 24);
+        memcpy(&meas, &u, sizeof(float)); hasMeas = true;
+        rt   = (long)b[8]  | ((long)b[9]  << 8);
+        fnum = (long)b[10] | ((long)b[11] << 8);
+    }
+    ms = (uint16_t)b[12] | ((uint16_t)b[13] << 8);   // ms L, ms H
+    mi = b[14]; ho = b[15];
+    bool hora_ok = !(mi & 0x80);      // MSB de Mi = hora invalida (relogio nao setado)
+    bool dst     = (ho & 0x80) != 0;  // MSB de Ho = horario de verao
+    uint8_t mins = mi & 0x7F, hrs = ho & 0x7F;
+
+    char p[320]; int n = 0;
+    n += snprintf(p + n, sizeof(p) - n,
+        "{\\"dev\\":\\"${nameEsc}\\",\\"cat\\":\\"${catIdEsc}\\",\\"proto\\":\\"modbus_7sr\\""
+        ",\\"type\\":%u,\\"fun\\":%u,\\"inf\\":%u"
+        ",\\"ho\\":%u,\\"mi\\":%u,\\"ms\\":%u,\\"hora_ok\\":%s,\\"dst\\":%s,\\"ts_rx\\":%ld",
+        type, fun, inf, hrs, mins, ms, hora_ok ? "true" : "false", dst ? "true" : "false",
+        (long)time(nullptr));
+    if (dpi  >= 0) n += snprintf(p + n, sizeof(p) - n, ",\\"dpi\\":%d", dpi);
+    if (rt   >= 0) n += snprintf(p + n, sizeof(p) - n, ",\\"rt\\":%ld", rt);
+    if (fnum >= 0) n += snprintf(p + n, sizeof(p) - n, ",\\"fault\\":%ld", fnum);
+    if (hasMeas)   n += snprintf(p + n, sizeof(p) - n, ",\\"meas\\":%.3f", meas);
+    snprintf(p + n, sizeof(p) - n, "}");
+
+    Serial.printf("[EVT] ${nameEsc} t%u FUN=%u INF=%u %02u:%02u:%06.3f%s\\n",
+                  type, fun, inf, hrs, mins, ms / 1000.0, hora_ok ? "" : " (HORA INVALIDA)");
+    publish("evt", p);
+}
+
+// Drena a fila de eventos via MBAP. Oportunista: rele mudo = sai quieto (a telemetria
+// ja loga falha; evento nao entra no back-off do sample).
+static void _tcp_evt_poll_dev_${idx}(tcp_publish_fn publish) {
+    uint16_t _cnt_r[1];
+    if (!_modbus_tcp_read(${gwArgs}, ${slave}, 0x04, ${cntReg}, 1, _cnt_r)) return;
+    if (_cnt_r[0] == 0) return;
+    Serial.printf("[EVT] ${nameEsc}: %u evento(s) no buffer\\n", (unsigned)_cnt_r[0]);
+    for (int guard = 0; guard < 32; guard++) {   // teto: nunca travar o loop principal
+        uint16_t _rec[${qty}];
+        _tcp_quiet_exc = true;
+        bool ok = _modbus_tcp_read(${gwArgs}, ${slave}, 0x04, ${recReg}, ${qty}, _rec);
+        _tcp_quiet_exc = false;
+        if (!ok) {
+            if (_tcp_last_exc == 0x${excVazio.toString(16).padStart(2, '0')}) break;  // fila vazia = fim (NORMAL)
+            Serial.printf("[EVT] ${nameEsc}: leitura de evento falhou (exc=0x%02X) — aborta ciclo\\n", _tcp_last_exc);
+            break;
+        }
+        uint8_t b[16];
+        for (int i = 0; i < 8; i++) {
+            b[i * 2] = (uint8_t)(_rec[i] >> 8); b[i * 2 + 1] = (uint8_t)(_rec[i] & 0xFF);
+        }
+        _tcp_evt_emit_dev_${idx}(publish, b);
+    }
+}
+`;
     }
 
     // Gera _sample_dev_<idx>() (acumula) e _publish_dev_<idx>(publish) (processa + reseta)
@@ -4249,9 +4767,13 @@ ${dpt ? `        _fDPT = _pow10i((int)_lDPT - ${dpt.base});\n` : ''}${dct ? `   
 
         // BI
         if (biCount > 0) {
+            // func 0x01 = Coils (Pextron); func 0x02 = Discrete Inputs (Siemens 7SR).
+            // Ambos empacotam bits em words no response buffer -> mesmo bit-unpack.
+            const biReadFn = biBlock.func === 0x02 ? 'readDiscreteInputs' : 'readCoils';
+            const biKind = biBlock.func === 0x02 ? 'discrete inputs (0x02)' : 'coils (0x01)';
             cpp += `
-    // BI coils
-    if (_mb.readCoils(${biBlock.start}, ${biBlock.count}) == _mb.ku8MBSuccess) {
+    // BI ${biKind}
+    if (_mb.${biReadFn}(${biBlock.start}, ${biBlock.count}) == _mb.ku8MBSuccess) {
 `;
             let bi = 0;
             for (const [pid, m] of Object.entries(biMap)) {
@@ -4850,10 +5372,12 @@ void pivot_loop() {
         cpp += `
 // Estado / timers
 static unsigned long last_input_scan = 0;
+static unsigned long last_evt        = 0;  // SOE: drenagem da fila de eventos do rele
 static unsigned long last_sample     = 0;  // leitura Modbus RS485 (round-robin)
 static unsigned long last_publish    = 0;  // publicacao MQTT RS485 (medias/deltas)
 static unsigned long last_sample_tcp = 0;  // leitura Modbus TCP (round-robin via datalogger)
 static unsigned long last_publish_tcp = 0; // publicacao MQTT TCP (medias/deltas)
+static unsigned long last_evt_tcp    = 0;  // SOE: drenagem de eventos de rele TCP direto
 
 `;
 
@@ -4924,8 +5448,22 @@ static bool _process_command_inner(const char* raw, char* result_msg, size_t msg
             const char* cid = j["cmd"] | "";
             if (dev[0] && cid[0]) {
 `;
-        if (spec.rs485_devices.length > 0) {
+        // Despacho: RS485 primeiro (match por nome; false = nao achou OU write falhou),
+        // depois devices TCP diretos (inverter_tcp_exec_command). Cada modulo so' tem
+        // seus proprios devices, entao no maximo um deles reconhece o nome.
+        if (spec.rs485_devices.length > 0 && spec.tcp_devices.length > 0) {
             cpp += `                bool ok = modbus_exec_command(dev, cid);
+                if (!ok) ok = inverter_tcp_exec_command(dev, cid);
+                snprintf(result_msg, msg_sz, "%s/%s:%s", dev, cid, ok ? "OK" : "FAIL");
+                return ok;
+`;
+        } else if (spec.rs485_devices.length > 0) {
+            cpp += `                bool ok = modbus_exec_command(dev, cid);
+                snprintf(result_msg, msg_sz, "%s/%s:%s", dev, cid, ok ? "OK" : "FAIL");
+                return ok;
+`;
+        } else if (spec.tcp_devices.length > 0) {
+            cpp += `                bool ok = inverter_tcp_exec_command(dev, cid);
                 snprintf(result_msg, msg_sz, "%s/%s:%s", dev, cid, ok ? "OK" : "FAIL");
                 return ok;
 `;
@@ -5319,6 +5857,29 @@ void loop() {
         modbus_sample_one();
     }
 `;
+            // SOE: drenagem da fila de eventos (só se algum device expõe buffer no catálogo).
+            // Barato: 1 registrador (EVENTCOUNT) quando não há evento — por isso pode rodar
+            // mais rápido que o sample sem pesar no barramento 9600.
+            const evtDevs = spec.rs485_devices.filter((d) => d.catalog_device && d.catalog_device.eventos);
+            if (evtDevs.length > 0) {
+                const evtMs = Math.max(
+                    500,
+                    Math.min(...evtDevs.map((d) => Number(d.catalog_device.eventos.poll_ms) || 2000)),
+                );
+                const evtPub = spec.wifi
+                    ? `mqtt_publish_sub`
+                    : (spec.lora_role === 'satellite'
+                        ? `[](const char* sub, const char* payload){ lora_publish_data(sub, payload); }`
+                        : `[](const char* sub, const char* payload){ Serial.printf("[EVT] %s %s\\n", sub, payload); }`);
+                cpp += `
+    // SOE: drena a fila de eventos do rele a cada ${evtMs}ms. O evento ja vem carimbado
+    // pelo rele (ms na fonte) — poll rapido de estado NAO substitui isso.
+    if (now - last_evt >= ${evtMs}) {
+        last_evt = now;
+        modbus_events_poll(${evtPub});
+    }
+`;
+            }
             // MESTRE-PUXA: o satellite reativo NAO publica por timer — quem dispara o
             // publish e' o POLL do mestre (via lora_poll_respond). O sample_one acima
             // continua rodando pra acumular as medias que serao enviadas no proximo poll.
@@ -5366,6 +5927,33 @@ void loop() {
         ${tcpPubCall}
     }
 `;
+            }
+
+            // SOE via TCP: espelho do timer RS485 — so se algum device TCP direto (MBAP)
+            // expoe buffer de eventos no catalogo. Barato: 1 reg (EVENTCOUNT) sem evento.
+            const tcpEvtDevs = tcpInvs.filter((d) =>
+                d.catalog_device && d.catalog_device.eventos &&
+                d.gateway && d.gateway.mode !== 'rtu_tcp');
+            if (tcpEvtDevs.length > 0) {
+                const tcpEvtMs = Math.max(
+                    500,
+                    Math.min(...tcpEvtDevs.map((d) => Number(d.catalog_device.eventos.poll_ms) || 2000)),
+                );
+                const tcpEvtPub = spec.wifi
+                    ? `mqtt_publish_sub`
+                    : (spec.lora_role === 'satellite'
+                        ? `[](const char* sub, const char* payload){ lora_publish_data(sub, payload); }`
+                        : `[](const char* sub, const char* payload){ Serial.printf("[EVT] %s %s\\n", sub, payload); }`);
+                cpp += `
+    // SOE (TCP): drena a fila de eventos do rele a cada ${tcpEvtMs}ms — evento ja vem
+    // carimbado pelo rele (ms na fonte).
+    if (now - last_evt_tcp >= ${tcpEvtMs}) {
+        last_evt_tcp = now;
+        inverter_tcp_events_poll(${tcpEvtPub});
+    }
+`;
+            } else {
+                cpp += `    (void)last_evt_tcp;\n`;
             }
         }
 
