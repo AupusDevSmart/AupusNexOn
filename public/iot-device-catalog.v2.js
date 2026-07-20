@@ -709,7 +709,7 @@ var DEVICE_MODELS = {
         // Frequency Mult 100 -> /100; Total PF Mult 1000 -> /1000 (mapeado em cosfi_a
         // ate confirmar PF por fase abaixo de 30222 no print completo).
         ai_blocks: [
-            { start: 159, count: 64, func: 0x04, label: 'Default SIRIUS 30160-30223: I, V, P/Q, PF, freq' },
+            { start: 159, count: 80, func: 0x04, label: 'Default SIRIUS 30160-30239: I, V, P/Q por fase, PF, freq' },
         ],
         ai_map: {
             'ia':   { block: 0, offset: 0,  scale: 1,    dataType: 'S32' },  // 30160 Current PhA (A prim.)
@@ -721,25 +721,51 @@ var DEVICE_MODELS = {
             'vc':   { block: 0, offset: 28, scale: 1,    dataType: 'S32' },  // 30188 Voltage PhC
             'pa_total': { block: 0, offset: 46, scale: 1,    dataType: 'S32' },  // 30206 Total W
             'pr_total': { block: 0, offset: 48, scale: 1,    dataType: 'S32' },  // 30208 Total VAr
-            'cosfi_a':  { block: 0, offset: 52, scale: 1000, dataType: 'S32' },  // 30212 Total PF (Mult 1000)
             'freq':     { block: 0, offset: 54, scale: 100,  dataType: 'S32' },  // 30214 Frequency (Mult 100)
+            'cosfi_a':  { block: 0, offset: 74, scale: 1000, dataType: 'S32' },  // 30234 PF PhA (Mult 1000)
+            'cosfi_b':  { block: 0, offset: 76, scale: 1000, dataType: 'S32' },  // 30236 PF PhB
+            'cosfi_c':  { block: 0, offset: 78, scale: 1000, dataType: 'S32' },  // 30238 PF PhC
         },
-        bi_block: { start: 101, count: 302, func: 0x02 },
+        // Bits ESPARSOS no mapa default (endereco nao-mapeado da excecao 2) ->
+        // um bloco FC02 por cluster mapeado. bi_map novo: {block, bit}.
+        // PDU = addr - 10001. CB-1 Status (10013) e' DOUBLE_BIT: 2 bits em 12-13;
+        // convencao DPI 01=aberto/10=fechado — ⚠️ CONFIRMAR polaridade em bancada.
+        bi_blocks: [
+            { start: 12,  count: 2, func: 0x02, label: 'CB-1 Status (double-bit)' },   // b0
+            { start: 99,  count: 1, func: 0x02, label: '27-1' },    // b1
+            { start: 111, count: 1, func: 0x02, label: '32-1' },    // b2
+            { start: 126, count: 1, func: 0x02, label: '46DT-1' },  // b3
+            { start: 144, count: 1, func: 0x02, label: '47-1' },    // b4
+            { start: 152, count: 1, func: 0x02, label: '50-1' },    // b5
+            { start: 178, count: 1, func: 0x02, label: '50N-1' },   // b6
+            { start: 194, count: 1, func: 0x02, label: '51-1' },    // b7
+            { start: 212, count: 1, func: 0x02, label: '51N-1' },   // b8
+            { start: 220, count: 1, func: 0x02, label: '59-1' },    // b9
+            { start: 233, count: 1, func: 0x02, label: '59NIT-1' }, // b10
+            { start: 240, count: 1, func: 0x02, label: '81-1' },    // b11
+        ],
         bi_map: {
-            'local_remoto': { coil: 2 },
-            'f51a': { coil: 20 }, 'f50a': { coil: 21 }, 'f51n': { coil: 22 }, 'f50n': { coil: 23 },
-            'f51b': { coil: 26 }, 'f50b': { coil: 27 }, 'f51c': { coil: 32 }, 'f50c': { coil: 33 },
-            'fba':  { coil: 44 }, 'f46':  { coil: 48 }, 'f47':  { coil: 50 },
-            'f59n': { coil: 57 }, 'f81':  { coil: 59 },
-            'dj_bloqueado': { coil: 72 }, 'dj_aberto': { coil: 117 },
-            'f27a': { coil: 299 }, 'f59a': { coil: 299 },
-            'f27b': { coil: 300 }, 'f59b': { coil: 300 },
-            'f27c': { coil: 301 }, 'f59c': { coil: 301 },
+            'dj_aberto':  { block: 0, bit: 0 },   // CB-1 bit baixo (⚠️ confirmar)
+            'dj_fechado': { block: 0, bit: 1 },   // CB-1 bit alto (⚠️ confirmar)
+            'f27a': { block: 1,  bit: 0 },  // 27-1 Operated (por ELEMENTO, nao fase)
+            'f32a': { block: 2,  bit: 0 },  // 32-1
+            'f46':  { block: 3,  bit: 0 },  // 46DT-1
+            'f47':  { block: 4,  bit: 0 },  // 47-1
+            'f50a': { block: 5,  bit: 0 },  // 50-1
+            'f50n': { block: 6,  bit: 0 },  // 50N-1
+            'f51a': { block: 7,  bit: 0 },  // 51-1
+            'f51n': { block: 8,  bit: 0 },  // 51N-1
+            'f59a': { block: 9,  bit: 0 },  // 59-1
+            'f59n': { block: 10, bit: 0 },  // 59NIT-1
+            'f81':  { block: 11, bit: 0 },  // 81-1
         },
+        // Comando do disjuntor: CB-1 (coil 00013, PDU 12) e' DOUBLE_BIT -> DPC via
+        // FC15 nos 2 bits: value 1 = Off (01, ABRE) | value 2 = On (10, FECHA).
+        // ⚠️ Polaridade Off=abre a confirmar em bancada. Sem coil de LED reset no
+        // mapa default -> cmd_reset removido.
         bo_map: {
-            'cmd_abrir':  { coil: 226, func: 0x05 },  // ⚠️ Cmd Trip - desliga disjuntor
-            'cmd_fechar': { coil: 108, func: 0x05 },  // ⚠️ confirmar close
-            'cmd_reset':  { coil: 99,  func: 0x05 },
+            'cmd_abrir':  { func: 0x0F, addr: 12, count: 2, value: 1 },
+            'cmd_fechar': { func: 0x0F, addr: 12, count: 2, value: 2 },
         },
     },
 

@@ -978,6 +978,50 @@ static bool _modbus_tcp_write(const char* ip, uint16_t port, uint32_t timeout,
     return got >= 9 && resp[7] == func;
 }
 
+// Helper Modbus TCP (MBAP) — FC15 (write multiple coils), ate 8 bits num byte.
+// Necessario para comandos DPC (double-bit, ex: CB-1 do 7SR5): manual manda
+// escrever o PAR de bits via FC15 com valor 01 (Off/abre) ou 10 (On/fecha).
+static bool _modbus_tcp_write_coils(const char* ip, uint16_t port, uint32_t timeout,
+                                    uint8_t slave, uint16_t addr, uint16_t count, uint8_t bits) {
+    if (count == 0 || count > 8) return false;
+    Client* tcp = _tcp_ensure_conn(ip, port, timeout);
+    if (!tcp) return false;
+
+    _txId++;
+    uint8_t req[14];
+    req[0] = _txId >> 8; req[1] = _txId & 0xFF;
+    req[2] = 0; req[3] = 0;
+    req[4] = 0; req[5] = 8;          // length: unit(1)+fc(1)+addr(2)+cnt(2)+bytecount(1)+data(1)
+    req[6] = slave;
+    req[7] = 0x0F;
+    req[8] = addr >> 8; req[9] = addr & 0xFF;
+    req[10] = count >> 8; req[11] = count & 0xFF;
+    req[12] = 1;                     // byte count
+    req[13] = bits;                  // LSB = primeiro coil
+
+    tcp->write(req, 14);
+    tcp->flush();
+
+    uint32_t t0 = millis();
+    while (tcp->available() < 9 && millis() - t0 < timeout) {
+        delay(5);
+        esp_task_wdt_reset();
+    }
+    if (tcp->available() < 9) {
+        Serial.printf("[TCP-INV] Timeout(fc15) slave=%d addr=%d\\n", slave, addr);
+        return false;
+    }
+    uint8_t resp[12];
+    uint8_t got = tcp->readBytes(resp, 9);
+    if (resp[7] & 0x80) {
+        Serial.printf("[TCP-INV] Excecao Modbus(fc15) slave=%d: 0x%02X\\n", slave, resp[8]);
+        while (tcp->available()) tcp->read();
+        return false;
+    }
+    while (tcp->available()) tcp->read();
+    return got >= 9 && resp[7] == 0x0F;
+}
+
 // Helper Modbus RTU-sobre-TCP + CRC16 — conversor (USR transparente). Espelha o
 // readModbusBlock antigo: frame RTU com CRC, valida ID/FC/byteCount/CRC e REJEITA
 // frame corrompido (em link instavel nao deixa passar 0xFFFF/lixo como dado).
@@ -1112,9 +1156,11 @@ bool inverter_tcp_exec_command(const char* device_name, const char* cmd_id) {
             if (cmds.length === 0 || gwd.mode === 'rtu_tcp') return;
             const wArgs = `"${gwd.ip || ''}", ${gwd.port || 502}, ${gwd.timeout_ms || 2000}, ${dev.modbus_address}`;
             cpp += `    if (strcmp(device_name, "${this._escStr(dev.name)}") == 0) {\n`;
-            // Um "step" vira uma chamada _modbus_tcp_write:
-            //   { func: 0x05, coil: N }              -> FC05, valor 0xFF00 (ON)
-            //   { func: 0x06, register: N, value: V } -> FC06
+            // Um "step" vira uma chamada _modbus_tcp_write / _modbus_tcp_write_coils:
+            //   { func: 0x05, coil: N }               -> FC05, valor 0xFF00 (ON)
+            //   { func: 0x06, register: N, value: V }  -> FC06
+            //   { func: 0x0F, addr: N, count: C, value: V } -> FC15 (DPC double-bit:
+            //       value 1 = Off/abre [bits 01], value 2 = On/fecha [bits 10])
             const emitTcpStep = (step) => {
                 const sFunc = step.func || 0x06;
                 if (sFunc === 0x05) {
@@ -1124,6 +1170,11 @@ bool inverter_tcp_exec_command(const char* device_name, const char* cmd_id) {
                     if (step.register === undefined) { console.warn('[gen] step tcp func 0x06 exige register'); return null; }
                     const v = (step.value !== undefined) ? step.value : 1;
                     return `            if (!_modbus_tcp_write(${wArgs}, 0x06, ${step.register}, ${v})) return false;\n`;
+                } else if (sFunc === 0x0F) {
+                    if (step.addr === undefined) { console.warn('[gen] step tcp func 0x0F exige addr'); return null; }
+                    const cnt = Number(step.count) || 2;
+                    const bits = Number(step.value) || 1;
+                    return `            if (!_modbus_tcp_write_coils(${wArgs}, ${step.addr}, ${cnt}, ${bits})) return false;\n`;
                 }
                 console.warn(`[gen] step tcp func 0x${sFunc.toString(16)} nao suportada`);
                 return null;
@@ -1183,15 +1234,27 @@ void inverter_tcp_events_poll(tcp_publish_fn publish) {
         // BI (protecoes/status de rele) via FC02: suportado no transporte MBAP
         // (datalogger/direto). No modo rtu_tcp (conversor USR) ainda nao — o parse
         // de bits RTU+CRC nao foi implementado; rele atras de conversor le so AI.
-        const biBlock = cat.bi_block || null;
+        //
+        // Dois esquemas de catalogo:
+        //   legado: bi_block {start,count} unico + bi_map {pid:{coil}} (coil rel. ao start)
+        //   novo:   bi_blocks [{start,count},...] + bi_map {pid:{block,bit}}
+        // O novo existe porque o mapa do 7SR5 tem bits ESPARSOS (enderecos nao
+        // mapeados entre eles dao excecao 2) — cada cluster mapeado vira um bloco.
         const biMapAll = cat.bi_map || {};
         const biMbap = inv.gateway && inv.gateway.mode !== 'rtu_tcp';
-        const biEntries = (biBlock && biMbap)
-            ? Object.entries(biMapAll).filter(([, m]) => m.coil !== undefined)
+        const biBlocks = Array.isArray(cat.bi_blocks) && cat.bi_blocks.length > 0
+            ? cat.bi_blocks
+            : (cat.bi_block ? [cat.bi_block] : []);
+        // Normaliza: legado {coil} -> {block:0, bit:coil}
+        const biEntries = (biBlocks.length > 0 && biMbap)
+            ? Object.entries(biMapAll)
+                .map(([pid, m]) => [pid, (m.bit !== undefined && m.block !== undefined)
+                    ? m : (m.coil !== undefined ? { block: 0, bit: m.coil } : null)])
+                .filter(([, m]) => m && m.block < biBlocks.length)
             : [];
         const biCount = biEntries.length;
-        if (biBlock && !biMbap && Object.keys(biMapAll).length > 0) {
-            console.warn(`[gen] ${inv.name}: bi_block via conversor (rtu_tcp) nao suportado — protecoes/BI nao serao lidas`);
+        if (biBlocks.length > 0 && !biMbap && Object.keys(biMapAll).length > 0) {
+            console.warn(`[gen] ${inv.name}: bi via conversor (rtu_tcp) nao suportado — protecoes/BI nao serao lidas`);
         }
         const slave = inv.modbus_address;
         const name = inv.name || `inv_${slave}`;
@@ -1434,19 +1497,26 @@ ${dpt ? `        _fDPT = _pow10i((int)_lDPT - ${dpt.base});\n` : ''}${dct ? `   
 
         // BI: protecoes/status via FC02 (discrete inputs), MBAP. Falha de BI NAO
         // invalida o ciclo AI — mantem o ultimo estado; bi_valid so vira true apos
-        // a primeira leitura boa (gate na publicacao: nunca publica 0 "chutado").
+        // TODOS os blocos lerem bem no ciclo (gate na publicacao: nunca publica 0
+        // "chutado"). Blocos separados porque bits nao-mapeados dao excecao 2.
         if (biCount > 0) {
-            const biFunc = '0x' + (biBlock.func || 0x02).toString(16).padStart(2, '0');
-            const biBytes = Math.ceil(biBlock.count / 8);
             cpp += `
-    // BI ${biCount} pontos — bloco FC${biFunc} start=${biBlock.start} count=${biBlock.count} (${biBytes} bytes)
+    // BI ${biCount} pontos em ${biBlocks.length} bloco(s) FC02
     {
-        uint8_t _bits[${biBytes}];
-        if (_modbus_tcp_read_bits(${_gwArgs}, ${slave}, ${biFunc}, ${biBlock.start}, ${biBlock.count}, _bits)) {
+        bool _biOk = true;
+`;
+            biBlocks.forEach((b, bIdx) => {
+                const biFunc = '0x' + (b.func || 0x02).toString(16).padStart(2, '0');
+                const biBytes = Math.ceil(b.count / 8);
+                cpp += `        uint8_t _bits${bIdx}[${biBytes}];  // start=${b.start} count=${b.count}${b.label ? ' — ' + b.label : ''}
+        if (!_modbus_tcp_read_bits(${_gwArgs}, ${slave}, ${biFunc}, ${b.start}, ${b.count}, _bits${bIdx})) _biOk = false;
+`;
+            });
+            cpp += `        if (_biOk) {
 `;
             biEntries.forEach(([pid, m], k) => {
-                const off = m.coil;
-                cpp += `            _tds${idx}.bi_[${k}] = (_bits[${Math.floor(off / 8)}] >> ${off % 8}) & 1;  // ${pid}\n`;
+                const off = m.bit;
+                cpp += `            _tds${idx}.bi_[${k}] = (_bits${m.block}[${Math.floor(off / 8)}] >> ${off % 8}) & 1;  // ${pid}\n`;
             });
             cpp += `            _tds${idx}.bi_valid = true;
         }
@@ -4426,7 +4496,11 @@ static void _tcp_evt_emit_dev_${idx}(tcp_publish_fn publish, const uint8_t* b) {
 // ja loga falha; evento nao entra no back-off do sample).
 static void _tcp_evt_poll_dev_${idx}(tcp_publish_fn publish) {
     uint16_t _cnt_r[1];
-    if (!_modbus_tcp_read(${gwArgs}, ${slave}, 0x04, ${cntReg}, 1, _cnt_r)) return;
+    // Quiet: rele sem 30001 no mapa (EVENTCOUNT) daria excecao logada a cada poll.
+    _tcp_quiet_exc = true;
+    bool _cntOk = _modbus_tcp_read(${gwArgs}, ${slave}, 0x04, ${cntReg}, 1, _cnt_r);
+    _tcp_quiet_exc = false;
+    if (!_cntOk) return;
     if (_cnt_r[0] == 0) return;
     Serial.printf("[EVT] ${nameEsc}: %u evento(s) no buffer\\n", (unsigned)_cnt_r[0]);
     for (int guard = 0; guard < 32; guard++) {   // teto: nunca travar o loop principal
