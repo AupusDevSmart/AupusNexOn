@@ -69,8 +69,11 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
   const setEditorMode = useDiagramStore(state => state.setEditorMode);
   const setTheme = useDiagramStore(state => state.setTheme);
   const addEquipamento = useDiagramStore(state => state.addEquipamento);
-  const removeEquipamento = useDiagramStore(state => state.removeEquipamento);
   const clearSelection = useDiagramStore(state => state.clearSelection);
+  const copySelection = useDiagramStore(state => state.copySelection);
+  const pasteClipboard = useDiagramStore(state => state.pasteClipboard);
+  const deleteEquipamentos = useDiagramStore(state => state.deleteEquipamentos);
+  const undo = useDiagramStore(state => state.undo);
   const fitToContent = useDiagramStore(state => state.fitToContent);
 
   const diagrama = useDiagramStore(state => state.diagrama);
@@ -81,8 +84,6 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
   const error = useDiagramStore(state => state.error);
   const errorType = useDiagramStore(state => state.errorType);
   const isDirty = useDiagramStore(state => state.isDirty);
-  const selectedIds = useDiagramStore(state => state.editor.selectedEquipmentIds);
-  const selectedConnectionIds = useDiagramStore(state => state.editor.selectedConnectionIds);
   const removeConexao = useDiagramStore(state => state.removeConexao);
 
   // Verificação de permissões
@@ -300,11 +301,16 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
     const equipment = equipamentos.find(eq => eq.id === equipmentId);
     if (!equipment) return;
 
-    removeEquipamento(equipmentId);
-    toast({
-      title: 'Equipamento removido',
-      description: `${equipment.nome} foi removido do diagrama`,
-    });
+    void deleteEquipamentos([equipmentId])
+      .then(() => toast({
+        title: 'Equipamento apagado',
+        description: `${equipment.nome} foi apagado. Ctrl+Z desfaz.`,
+      }))
+      .catch(() => toast({
+        title: 'Erro ao apagar',
+        description: 'Não foi possível apagar o equipamento. Veja o console.',
+        variant: 'destructive',
+      }));
   };
 
   // Handler para adicionar equipamento da unidade ao diagrama
@@ -349,25 +355,71 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
       handleSave();
     }
 
-    // Del para deletar selecionado (equipamentos ou conexões)
+    // Ctrl+C / Ctrl+V — copiar/colar (só no modo edição, fora de campos de texto).
+    // Lê o estado FRESCO do store (evita closure velha do listener registrado uma vez).
+    const tgt = e.target as HTMLElement | null;
+    const inField = !!tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.isContentEditable);
+    if (!inField && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
+      const st = useDiagramStore.getState();
+      if (st.editor.mode === 'edit' && st.editor.selectedEquipmentIds.length > 0) {
+        e.preventDefault();
+        copySelection();
+        toast({ title: 'Copiado', description: `${st.editor.selectedEquipmentIds.length} equipamento(s) na área de transferência` });
+      }
+      return;
+    }
+    if (!inField && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
+      const st = useDiagramStore.getState();
+      if (st.editor.mode === 'edit' && st.clipboard && st.clipboard.equipamentos.length > 0) {
+        e.preventDefault();
+        const n = st.clipboard.equipamentos.length;
+        toast({ title: 'Colando…', description: `Criando ${n} equipamento(s) novo(s)…` });
+        void pasteClipboard()
+          .then(() => toast({ title: 'Colado', description: `${n} equipamento(s) criado(s) e adicionado(s) ao diagrama` }))
+          .catch(() => toast({ title: 'Erro ao colar', description: 'Não foi possível criar os equipamentos. Veja o console.' }));
+      }
+      return;
+    }
+
+    // Ctrl+Z — desfaz última ação (colar/apagar/mover). Só no modo edição, fora de campos.
+    if (!inField && (e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
+      const st = useDiagramStore.getState();
+      if (st.editor.mode === 'edit' && st.undoStack.length > 0) {
+        e.preventDefault();
+        void undo().then(ok => { if (ok) toast({ title: 'Desfeito', description: 'Última ação revertida.' }); });
+      }
+      return;
+    }
+
+    // Ferramenta (só no modo edição, fora de campos): 'v' = Mover (mão/pan), 's' = Selecionar (caixa)
+    if (!inField && !e.ctrlKey && !e.metaKey && useDiagramStore.getState().editor.mode === 'edit') {
+      if (e.key === 'v' || e.key === 'V') { useDiagramStore.getState().setToolMode('move'); return; }
+      if (e.key === 's' || e.key === 'S') { useDiagramStore.getState().setToolMode('select'); return; }
+    }
+
+    // Del: apaga DE VERDADE os equipamentos selecionados (+ remove conexões). Estado FRESCO
+    // (o listener é registrado 1x com deps [], então a closure de selectedIds seria velha).
     if (e.key === 'Delete' || e.key === 'Del') {
+      const st = useDiagramStore.getState();
+      if (st.editor.mode !== 'edit') return;
+      const eqIds = [...st.editor.selectedEquipmentIds];
+      const connIds = [...st.editor.selectedConnectionIds];
+      if (eqIds.length === 0 && connIds.length === 0) return;
       e.preventDefault();
 
-      // Deletar equipamentos selecionados
-      if (selectedIds.length > 0) {
-        selectedIds.forEach(id => handleDeleteEquipment(id));
+      // Conexões: remove localmente
+      if (connIds.length > 0) {
+        connIds.forEach(id => removeConexao(id));
+        toast({ title: 'Conexão removida', description: `${connIds.length} conexão(ões) removida(s)` });
       }
-
-      // Deletar conexões selecionadas
-      if (selectedConnectionIds.length > 0) {
-        selectedConnectionIds.forEach(id => removeConexao(id));
-        toast({
-          title: 'Conexão removida',
-          description: `${selectedConnectionIds.length} conexão(ões) removida(s)`,
-        });
+      // Equipamentos: apaga de verdade (backend + diagrama) em 1 ação de undo
+      if (eqIds.length > 0) {
+        void deleteEquipamentos(eqIds)
+          .then(() => toast({ title: 'Apagado', description: `${eqIds.length} equipamento(s) apagado(s). Ctrl+Z desfaz.` }))
+          .catch(() => toast({ title: 'Erro ao apagar', description: 'Veja o console.', variant: 'destructive' }));
       }
-
       clearSelection();
+      return;
     }
 
     // Esc para limpar seleção

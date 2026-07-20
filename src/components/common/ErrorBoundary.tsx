@@ -28,7 +28,10 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    // console.error('Error caught by Error Boundary: ', error, errorInfo);
+    // Mantido ativo: sem isto, um crash de render vira só um ícone e o
+    // diagnóstico exige reinstrumentar. Aqui pelo menos fica no console.
+    // eslint-disable-next-line no-console
+    console.error('Error caught by Error Boundary: ', error, errorInfo);
   }
 
   render() {

@@ -31,6 +31,12 @@ import { CANVAS, VIEWPORT } from '../utils/diagramConstants';
 // TIPOS DA STORE
 // ============================================================================
 
+// Ações reversíveis pelo Ctrl+Z (undo)
+type UndoAction =
+  | { kind: 'paste'; ids: string[] }
+  | { kind: 'delete'; equipamentos: Equipment[]; conexoes: Connection[] }
+  | { kind: 'move'; positions: Array<{ id: string; posicaoX: number; posicaoY: number }> };
+
 interface DiagramState {
   // Dados do diagrama
   diagrama: Diagrama | null;
@@ -58,6 +64,14 @@ interface DiagramState {
 
   // Dirty flag (indica se há alterações não salvas)
   isDirty: boolean;
+
+  // Clipboard (copiar/colar) — guarda equipamentos + conexões internas ao grupo copiado
+  clipboard: { equipamentos: Equipment[]; conexoes: Connection[] } | null;
+
+  // Undo (Ctrl+Z) — pilha de ações reversíveis (paste/delete/move)
+  undoStack: UndoAction[];
+  // Snapshot de posições no início do arraste (registra 1 entrada de undo por arraste)
+  _dragStartPos: Array<{ id: string; posicaoX: number; posicaoY: number }> | null;
 }
 
 interface DiagramActions {
@@ -194,6 +208,7 @@ interface DiagramActions {
    * Define modo do editor
    */
   setEditorMode: (mode: EditorMode) => void;
+  setToolMode: (mode: 'move' | 'select') => void;
 
   /**
    * Seleciona equipamento(s)
@@ -204,6 +219,34 @@ interface DiagramActions {
    * Deseleciona todos
    */
   clearSelection: () => void;
+
+  // ============================================================================
+  // MULTI-SELEÇÃO / COPIAR-COLAR (paridade com o diagrama IoT)
+  // ============================================================================
+
+  /** Alterna um equipamento na seleção (shift/ctrl-click) */
+  toggleSelectEquipamento: (equipamentoId: string) => void;
+
+  /** Seleciona todos os equipamentos cujo CENTRO está dentro da caixa (marquee, coords de grid) */
+  selectInBox: (x1: number, y1: number, x2: number, y2: number, additive?: boolean) => void;
+
+  /** Move todos os selecionados pelo mesmo delta (em grid) */
+  moveSelectionBy: (dxGrid: number, dyGrid: number) => void;
+
+  /** Remove todos os equipamentos selecionados (e suas conexões) */
+  deleteSelection: () => void;
+
+  /** Copia os selecionados (+ conexões internas) para o clipboard */
+  copySelection: () => void;
+
+  /** Cola o clipboard: CRIA equipamentos novos no backend (/rapido), posiciona, reconecta e seleciona */
+  pasteClipboard: () => Promise<void>;
+
+  /** Apaga equipamentos DE VERDADE (backend + diagrama) e registra no undo (Ctrl+Z) */
+  deleteEquipamentos: (ids: string[]) => Promise<void>;
+
+  /** Desfaz a última ação (Ctrl+Z): colar→apaga criados, apagar→recria, mover→volta posições */
+  undo: () => Promise<boolean>;
 
   /**
    * Seleciona conexão
@@ -270,6 +313,39 @@ type DiagramStore = DiagramState & DiagramActions;
 // ESTADO INICIAL
 // ============================================================================
 
+// Gera o nome de uma cópia: incrementa o PRIMEIRO número do nome (1→2, 1.1→2.1),
+// repetindo até achar um nome livre; se não houver número, adiciona "(Cópia)".
+function incrementFirstNumber(nome: string): string | null {
+  const m = /\d+/.exec(nome);
+  if (!m) return null;
+  const digits = m[0];
+  const inc = String(parseInt(digits, 10) + 1);
+  // preserva zeros à esquerda (ex "01" → "02")
+  const rep = digits.length > inc.length && digits.startsWith('0')
+    ? inc.padStart(digits.length, '0')
+    : inc;
+  return nome.slice(0, m.index) + rep + nome.slice(m.index + digits.length);
+}
+
+function nextCopyName(nome: string, taken: Set<string>): string {
+  if (/\d/.test(nome)) {
+    let candidate = nome;
+    for (let i = 0; i < 9999; i++) {
+      const next = incrementFirstNumber(candidate);
+      if (next == null) break;
+      candidate = next;
+      if (!taken.has(candidate)) return candidate;
+    }
+  }
+  const base = `${nome} (Cópia)`;
+  if (!taken.has(base)) return base;
+  for (let i = 2; i < 9999; i++) {
+    const c = `${nome} (Cópia ${i})`;
+    if (!taken.has(c)) return c;
+  }
+  return base;
+}
+
 const initialState: DiagramState = {
   diagrama: null,
   equipamentos: [],
@@ -287,6 +363,7 @@ const initialState: DiagramState = {
 
   editor: {
     mode: 'view',
+    toolMode: 'move',
     selectedEquipmentIds: [],
     selectedConnectionIds: [],
     connectingFrom: null,
@@ -302,6 +379,9 @@ const initialState: DiagramState = {
   error: null,
   errorType: null,
   isDirty: false,
+  clipboard: null,
+  undoStack: [],
+  _dragStartPos: null,
 };
 
 // ============================================================================
@@ -1441,6 +1521,12 @@ if (import.meta.env.PROD) {
         }));
       },
 
+      setToolMode: (toolMode: 'move' | 'select') => {
+        set(state => ({
+          editor: { ...state.editor, toolMode },
+        }));
+      },
+
       selectEquipamento: (equipamentoId: string, multi: boolean = false) => {
         set(state => ({
           editor: {
@@ -1460,6 +1546,301 @@ if (import.meta.env.PROD) {
             selectedConnectionIds: [],
           },
         }));
+      },
+
+      // ======================================================================
+      // MULTI-SELEÇÃO / COPIAR-COLAR
+      // ======================================================================
+
+      toggleSelectEquipamento: (equipamentoId: string) => {
+        set(state => {
+          const sel = state.editor.selectedEquipmentIds;
+          const next = sel.includes(equipamentoId)
+            ? sel.filter(id => id !== equipamentoId)
+            : [...sel, equipamentoId];
+          return { editor: { ...state.editor, selectedEquipmentIds: next, selectedConnectionIds: [] } };
+        });
+      },
+
+      selectInBox: (x1, y1, x2, y2, additive = false) => {
+        const minX = Math.min(x1, x2), maxX = Math.max(x1, x2);
+        const minY = Math.min(y1, y2), maxY = Math.max(y1, y2);
+        set(state => {
+          const dentro = state.equipamentos
+            .filter(eq =>
+              eq.tipo !== 'JUNCTION_POINT' &&
+              eq.posicaoX >= minX && eq.posicaoX <= maxX &&
+              eq.posicaoY >= minY && eq.posicaoY <= maxY
+            )
+            .map(eq => eq.id);
+          const base = additive ? state.editor.selectedEquipmentIds : [];
+          const next = Array.from(new Set([...base, ...dentro]));
+          return { editor: { ...state.editor, selectedEquipmentIds: next, selectedConnectionIds: [] } };
+        });
+      },
+
+      moveSelectionBy: (dxGrid, dyGrid) => {
+        if (dxGrid === 0 && dyGrid === 0) return;
+        set(state => ({
+          equipamentos: state.equipamentos.map(eq =>
+            state.editor.selectedEquipmentIds.includes(eq.id)
+              ? { ...eq, posicaoX: eq.posicaoX + dxGrid, posicaoY: eq.posicaoY + dyGrid }
+              : eq
+          ),
+          isDirty: true,
+        }));
+        get().recalcularRotas();
+      },
+
+      deleteSelection: () => {
+        const ids = [...get().editor.selectedEquipmentIds];
+        if (ids.length === 0) return;
+        ids.forEach(id => get().removeEquipamento(id));
+        set(state => ({ editor: { ...state.editor, selectedEquipmentIds: [] } }));
+      },
+
+      copySelection: () => {
+        const { equipamentos, conexoes, editor } = get();
+        const ids = new Set(editor.selectedEquipmentIds);
+        if (ids.size === 0) return;
+        const eqs = equipamentos
+          .filter(eq => ids.has(eq.id) && eq.tipo !== 'JUNCTION_POINT')
+          .map(eq => ({ ...eq }));
+        const conns = conexoes
+          .filter(c => ids.has((c.equipamentoOrigemId ?? '').trim()) && ids.has((c.equipamentoDestinoId ?? '').trim()))
+          .map(c => ({ ...c }));
+        set({ clipboard: { equipamentos: eqs, conexoes: conns } });
+      },
+
+      pasteClipboard: async () => {
+        const { clipboard, diagrama } = get();
+        if (!clipboard || clipboard.equipamentos.length === 0 || !diagrama) return;
+
+        const { equipamentosApi } = await import('@/services/equipamentos.services');
+        const OFFSET = 3; // deslocamento em células de grid (visível, sem sobrepor)
+        const idMap: Record<string, string> = {};
+        const novosIds: string[] = [];
+        // Nomes já em uso (evita nome duplicado ao incrementar número / gerar "(Cópia)")
+        const taken = new Set(get().equipamentos.map(e => (e.nome ?? '').trim()));
+
+        for (const eq of clipboard.equipamentos) {
+          const tipoEqId = (eq as unknown as { dados?: { tipo_equipamento_id?: string } })
+            .dados?.tipo_equipamento_id;
+          if (!tipoEqId) {
+            console.warn('[pasteClipboard] sem tipo_equipamento_id, ignorado:', eq.nome);
+            continue;
+          }
+          try {
+            const nomeCopia = nextCopyName((eq.nome ?? '').trim(), taken);
+            taken.add(nomeCopia);
+            const resp = await equipamentosApi.criarEquipamentoRapido(
+              diagrama.unidadeId,
+              tipoEqId,
+              nomeCopia
+            );
+            const novo = resp.data as unknown as {
+              id: string; nome: string; tag?: string; numero_serie?: string;
+              mqtt_habilitado?: boolean; topico_mqtt?: string; automacao?: boolean;
+            };
+            const novoId = novo.id.trim(); // IDs do backend podem vir com espaço; o store trima
+            const novoEq = {
+              id: novoId,
+              nome: novo.nome,
+              tag: novo.tag || novo.numero_serie || '',
+              tipo: eq.tipo,
+              categoria: eq.categoria,
+              unidadeId: diagrama.unidadeId,
+              diagramaId: diagrama.id,
+              posicaoX: eq.posicaoX + OFFSET,
+              posicaoY: eq.posicaoY + OFFSET,
+              rotacao: eq.rotacao,
+              labelPosition: eq.labelPosition,
+              labelOffsetX: eq.labelOffsetX,
+              labelOffsetY: eq.labelOffsetY,
+              largura: eq.largura,
+              altura: eq.altura,
+              mqttHabilitado: novo.mqtt_habilitado,
+              topicoMqtt: novo.topico_mqtt,
+              automacao: novo.automacao === true,
+              status: 'normal' as const,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+              deletedAt: null,
+              dados: { ...novo, tipo_equipamento_id: tipoEqId },
+            } as unknown as Equipment;
+            get().addEquipamento(novoEq);
+            idMap[eq.id.trim()] = novoId;
+            novosIds.push(novoId);
+          } catch (err) {
+            console.error('[pasteClipboard] erro ao criar equipamento:', eq.nome, err);
+          }
+        }
+
+        // Recriar conexões internas ao grupo colado (remap de IDs antigos -> novos)
+        for (const c of clipboard.conexoes) {
+          const o = idMap[(c.equipamentoOrigemId ?? '').trim()];
+          const d = idMap[(c.equipamentoDestinoId ?? '').trim()];
+          if (o && d && c.portaOrigem && c.portaDestino) {
+            get().addConexao(o, c.portaOrigem, d, c.portaDestino);
+          }
+        }
+
+        // Empilhar offset do clipboard pro próximo Ctrl+V (ainda NÃO mexe na seleção)
+        set(state => ({
+          clipboard: state.clipboard
+            ? {
+                equipamentos: state.clipboard.equipamentos.map(e => ({
+                  ...e, posicaoX: e.posicaoX + OFFSET, posicaoY: e.posicaoY + OFFSET,
+                })),
+                conexoes: state.clipboard.conexoes,
+              }
+            : null,
+        }));
+
+        // Persiste: associa os novos equipamentos ao diagrama + salva posições/conexões
+        try {
+          await get().saveLayout();
+        } catch (err) {
+          console.error('[pasteClipboard] erro ao salvar layout após colar:', err);
+        }
+
+        // DEPOIS de persistir (evita re-render do saveLayout atropelar): selecionar os
+        // colados e trocar pra ferramenta Mover, pra arrastar já mover o grupo inteiro
+        // sem o marquee do modo Selecionar limpar a seleção.
+        set(state => ({
+          editor: {
+            ...state.editor,
+            selectedEquipmentIds: novosIds,
+            selectedConnectionIds: [],
+            toolMode: 'move',
+          },
+        }));
+        console.warn('[pasteClipboard] colados e selecionados:', novosIds.length, novosIds);
+
+        // Registra no undo (Ctrl+Z apaga os equipamentos criados)
+        if (novosIds.length > 0) {
+          set(state => ({
+            undoStack: [...state.undoStack.slice(-49), { kind: 'paste', ids: [...novosIds] }],
+          }));
+        }
+      },
+
+      deleteEquipamentos: async (ids) => {
+        const alvo = ids.map(id => (id ?? '').trim()).filter(Boolean);
+        if (alvo.length === 0) return;
+        const setAlvo = new Set(alvo);
+        const { equipamentos, conexoes } = get();
+
+        // Captura pro undo ANTES de remover: equipamentos + conexões que tocam algum deles
+        const equipamentosRemovidos = equipamentos.filter(eq => setAlvo.has(eq.id)).map(e => ({ ...e }));
+        const conexoesRemovidas = conexoes
+          .filter(c => setAlvo.has((c.equipamentoOrigemId ?? '').trim()) || setAlvo.has((c.equipamentoDestinoId ?? '').trim()))
+          .map(c => ({ ...c }));
+
+        // Apaga no backend (soft-delete) os registros reais; junction point é virtual
+        const { equipamentosApi } = await import('@/services/equipamentos.services');
+        for (const eq of equipamentosRemovidos) {
+          if (eq.tipo === 'JUNCTION_POINT') continue;
+          try {
+            await equipamentosApi.remove(eq.id);
+          } catch (err) {
+            console.error('[deleteEquipamentos] erro ao apagar no backend:', eq.nome, err);
+          }
+        }
+
+        // Remove do diagrama (local) + registra undo
+        alvo.forEach(id => get().removeEquipamento(id));
+        set(state => ({
+          undoStack: [
+            ...state.undoStack.slice(-49),
+            { kind: 'delete', equipamentos: equipamentosRemovidos, conexoes: conexoesRemovidas },
+          ],
+          editor: {
+            ...state.editor,
+            selectedEquipmentIds: state.editor.selectedEquipmentIds.filter(id => !setAlvo.has(id)),
+          },
+        }));
+
+        try { await get().saveLayout(); } catch (err) { console.error('[deleteEquipamentos] saveLayout:', err); }
+      },
+
+      undo: async () => {
+        const stack = get().undoStack;
+        if (stack.length === 0) return false;
+        const action = stack[stack.length - 1];
+        set(state => ({ undoStack: state.undoStack.slice(0, -1) }));
+
+        // MOVER: volta as posições anteriores
+        if (action.kind === 'move') {
+          action.positions.forEach(p => get().updateEquipamentoPosition(p.id, p.posicaoX, p.posicaoY));
+          try { await get().saveLayout(); } catch (e) { console.error('[undo move] saveLayout:', e); }
+          return true;
+        }
+
+        // COLAR: apaga os equipamentos que foram criados
+        if (action.kind === 'paste') {
+          const { equipamentosApi } = await import('@/services/equipamentos.services');
+          for (const id of action.ids) {
+            try { await equipamentosApi.remove(id); } catch (e) { console.error('[undo paste] remove:', id, e); }
+            get().removeEquipamento(id);
+          }
+          set(state => ({ editor: { ...state.editor, selectedEquipmentIds: [], selectedConnectionIds: [] } }));
+          try { await get().saveLayout(); } catch (e) { console.error('[undo paste] saveLayout:', e); }
+          return true;
+        }
+
+        // APAGAR: recria os equipamentos (modo rápido) e reconecta
+        if (action.kind === 'delete') {
+          const { diagrama } = get();
+          if (!diagrama) return false;
+          const { equipamentosApi } = await import('@/services/equipamentos.services');
+          const idMap: Record<string, string> = {};
+          const restauradosIds: string[] = [];
+
+          for (const eq of action.equipamentos) {
+            if (eq.tipo === 'JUNCTION_POINT') continue; // virtual — volta via reconexão
+            const tipoEqId = (eq as unknown as { dados?: { tipo_equipamento_id?: string } }).dados?.tipo_equipamento_id;
+            if (!tipoEqId) continue;
+            try {
+              const resp = await equipamentosApi.criarEquipamentoRapido(diagrama.unidadeId, tipoEqId, (eq.nome ?? '').trim());
+              const novo = resp.data as unknown as {
+                id: string; nome: string; mqtt_habilitado?: boolean; topico_mqtt?: string; automacao?: boolean;
+              };
+              const novoId = novo.id.trim();
+              get().addEquipamento({
+                ...eq,
+                id: novoId,
+                nome: novo.nome,
+                diagramaId: diagrama.id,
+                unidadeId: diagrama.unidadeId,
+                dados: { ...(eq as unknown as { dados?: object }).dados, ...novo, tipo_equipamento_id: tipoEqId },
+              } as unknown as Equipment);
+              idMap[eq.id.trim()] = novoId;
+              restauradosIds.push(novoId);
+            } catch (e) {
+              console.error('[undo delete] recriar:', eq.nome, e);
+            }
+          }
+
+          // Reconecta: endpoints deletados remapeiam pro novo id; sobreviventes mantêm o id
+          for (const c of action.conexoes) {
+            const o = idMap[(c.equipamentoOrigemId ?? '').trim()] ?? (c.equipamentoOrigemId ?? '').trim();
+            const d = idMap[(c.equipamentoDestinoId ?? '').trim()] ?? (c.equipamentoDestinoId ?? '').trim();
+            const existeO = get().equipamentos.some(e => e.id === o);
+            const existeD = get().equipamentos.some(e => e.id === d);
+            if (existeO && existeD && c.portaOrigem && c.portaDestino) {
+              get().addConexao(o, c.portaOrigem, d, c.portaDestino);
+            }
+          }
+
+          set(state => ({
+            editor: { ...state.editor, selectedEquipmentIds: restauradosIds, selectedConnectionIds: [], toolMode: 'move' },
+          }));
+          try { await get().saveLayout(); } catch (e) { console.error('[undo delete] saveLayout:', e); }
+          return true;
+        }
+
+        return false;
       },
 
       selectConnection: (conexaoId: string, multi: boolean = false) => {
@@ -1536,6 +1917,8 @@ if (import.meta.env.PROD) {
 
       startDraggingEquipamento: (equipamentoId: string, offset: Point) => {
         set(state => ({
+          // snapshot das posições atuais pra registrar 1 undo caso o arraste mude algo
+          _dragStartPos: state.equipamentos.map(e => ({ id: e.id, posicaoX: e.posicaoX, posicaoY: e.posicaoY })),
           editor: {
             ...state.editor,
             draggingEquipmentId: equipamentoId,
@@ -1545,7 +1928,22 @@ if (import.meta.env.PROD) {
       },
 
       endDraggingEquipamento: () => {
+        // Se o arraste mudou alguma posição, registra 1 entrada de undo (posições antigas)
+        const { _dragStartPos, equipamentos } = get();
+        if (_dragStartPos) {
+          const atual = new Map(equipamentos.map(e => [e.id, e]));
+          const mudou = _dragStartPos.filter(p => {
+            const e = atual.get(p.id);
+            return e && (e.posicaoX !== p.posicaoX || e.posicaoY !== p.posicaoY);
+          });
+          if (mudou.length > 0) {
+            set(state => ({
+              undoStack: [...state.undoStack.slice(-49), { kind: 'move', positions: mudou.map(p => ({ ...p })) }],
+            }));
+          }
+        }
         set(state => ({
+          _dragStartPos: null,
           editor: {
             ...state.editor,
             draggingEquipmentId: null,

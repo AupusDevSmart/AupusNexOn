@@ -496,12 +496,20 @@ export class EquipamentosApiService {
     id: string,
     cmd: EquipamentoCommand,
     sim = false,
+    testMac?: string,
   ): Promise<CommandResult> {
     // sim=true: backend publica em TESTE/<topico>/cmd (firmware de simulacao),
     // sem tocar o equipamento de producao. Usado pelo painel de comando do IoT.
+    // testMac (remap de bancada): backend reescreve .../satellite/<MAC> pro MAC do
+    // board físico de bancada, roteando o teste pra ele sem tocar no cadastro.
+    const body = sim
+      ? testMac
+        ? { cmd, sim: true, testMac }
+        : { cmd, sim: true }
+      : { cmd };
     const response = await api.post<CommandResult>(
       `${this.baseEndpoint}/${id.trim()}/cmd`,
-      sim ? { cmd, sim: true } : { cmd },
+      body,
     );
     return response.data;
   }

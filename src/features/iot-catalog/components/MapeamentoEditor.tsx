@@ -158,6 +158,12 @@ export function MapeamentoEditor({ value, onChange, hasTipo }: Props) {
               <p className="text-xs text-muted-foreground">
                 Uma linha por ponto do tipo. Preencha block/offset dos que o modelo expoe.
               </p>
+              {value.aiBlocks.length === 0 && (
+                <p className="text-xs text-amber-600 dark:text-amber-500 mt-1">
+                  Nenhum bloco definido — adicione um em "Blocos AI (ai_blocks)" acima para poder
+                  selecioná-lo na coluna "block". (Ou use o import por planilha, que deriva os blocos sozinho.)
+                </p>
+              )}
             </div>
             {value.aiRows.length === 0 ? (
               <p className="text-xs text-muted-foreground py-2">Tipo sem pontos AI.</p>

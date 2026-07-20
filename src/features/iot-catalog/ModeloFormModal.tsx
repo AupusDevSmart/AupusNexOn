@@ -41,11 +41,12 @@ interface Props {
   modelo: IotDeviceModelo | null; // null = create
   tipos: IotDeviceTipo[];
   onClose: () => void;
+  importData?: import('./catalogo-planilha').ModeloImportado | null; // pré-preenche (create) a partir de planilha
 }
 
 const pretty = (o: unknown) => JSON.stringify(o, null, 2);
 
-export function ModeloFormModal({ modelo, tipos, onClose }: Props) {
+export function ModeloFormModal({ modelo, tipos, onClose, importData }: Props) {
   const create = useCreateIotDeviceModelo();
   const update = useUpdateIotDeviceModelo();
 
@@ -56,8 +57,6 @@ export function ModeloFormModal({ modelo, tipos, onClose }: Props) {
   const [fabricante, setFabricante] = useState('');
   const [modeloNome, setModeloNome] = useState('');
   const [protocolo, setProtocolo] = useState('rtu');
-  const [connectionNote, setConnectionNote] = useState('');
-  const [catalogId, setCatalogId] = useState('');
   const [form, setForm] = useState<MapeamentoForm>(emptyMapeamentoForm);
   const [tab, setTab] = useState<'form' | 'json'>('form');
   const [jsonDraft, setJsonDraft] = useState('');
@@ -72,14 +71,21 @@ export function ModeloFormModal({ modelo, tipos, onClose }: Props) {
       setFabricante(modelo.fabricante);
       setModeloNome(modelo.modelo);
       setProtocolo(modelo.protocolo);
-      setConnectionNote(modelo.connection_note ?? '');
       const map = { ...modelo.mapeamento } as Record<string, unknown>;
-      const cId = (map.catalog_id as string | undefined) ?? '';
+      delete map.catalog_id; // preservado no backend; não editável aqui
+      setForm(mapeamentoToForm(map, tipo?.pontos));
+    } else if (importData) {
+      // Create pré-preenchido a partir de planilha importada.
+      const tipo = tipoByCodigo.get(importData.tipoCodigo);
+      setTipoCodigo(tipo?.codigo ?? importData.tipoCodigo);
+      setFabricante(importData.fabricante);
+      setModeloNome(importData.modelo);
+      setProtocolo(importData.protocolo || 'rtu');
+      const map = { ...importData.mapeamento } as Record<string, unknown>;
       delete map.catalog_id;
-      setCatalogId(cId);
       setForm(mapeamentoToForm(map, tipo?.pontos));
     }
-  }, [modelo, tipoById]);
+  }, [modelo, importData, tipoById, tipoByCodigo]);
 
   // Mudar o tipo: regenera linhas a partir dos pontos do novo tipo, preservando
   // o que ja foi preenchido (casado por pointId; nao-casados viram orfaos).
@@ -146,8 +152,6 @@ export function ModeloFormModal({ modelo, tipos, onClose }: Props) {
       fabricante,
       modelo: modeloNome,
       protocolo,
-      connection_note: connectionNote || undefined,
-      catalog_id: catalogId || undefined,
       mapeamento,
     };
 
@@ -236,27 +240,6 @@ export function ModeloFormModal({ modelo, tipos, onClose }: Props) {
                 value={modeloNome}
                 onChange={(e) => setModeloNome(e.target.value)}
                 placeholder="SG250CX"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <Label htmlFor="catalog_id">Catalog ID (opcional)</Label>
-              <Input
-                id="catalog_id"
-                value={catalogId}
-                onChange={(e) => setCatalogId(e.target.value)}
-                placeholder="sungrow-sg250cx (vazio = derivado)"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="connection_note">Nota de conexao</Label>
-              <Input
-                id="connection_note"
-                value={connectionNote}
-                onChange={(e) => setConnectionNote(e.target.value)}
-                placeholder="RS485 direto (9600 8N1)"
               />
             </div>
           </div>

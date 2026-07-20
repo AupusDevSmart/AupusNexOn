@@ -551,6 +551,196 @@ var DEVICE_MODELS = {
         },
     },
 
+    // Siemens 7SR10 (Reyrolle) - rele de protecao (sobrecorrente/tensao/frequencia).
+    // Protocolo: Modbus RTU (RS485), default 19200 baud, slave 1-247.
+    // Manual: /var/www/iot_nexon/mapa_modbus/SIEMENS/C53000-L7040-C002-7_en_Communication_Protocol_Manual_7SR10.pdf
+    // Doc de cadastro: service-nexon/docs/IOT-SIEMENS-7SR-CADASTRO.md
+    //
+    // FORMATOS SIEMENS:
+    //   FP_32BITS_3DP = inteiro 32-bit fixed-point, 3 casas (123.456 -> 123456), 2's complement,
+    //                   big-endian high-word-first -> dataType 'S32' + scale 1000 (valor = int32/1000).
+    //   FLOAT_IEEE_754 -> 'FLOAT'. UINT16/32 -> U16/U32.
+    // ENDERECAMENTO Modicon: frame PDU = (4 digitos) - 1.
+    //   Input Registers (medicoes) 30xxx -> FC04 -> frame = Modicon - 30001
+    //   Inputs (protecoes)         10xxx -> FC02 -> frame = Modicon - 10001
+    //   Coils (comandos)           00xxx -> FC05 -> frame = Modicon - 1
+    //
+    // ATENCAO - validar em bancada (doc secao 9):
+    //   - Escala de POTENCIA (pa_total/pr_total): manual mostra Mult=1e-6 nos FP_32BITS_3DP de
+    //     potencia. Aqui usamos scale 1000 (default do formato) -> valor em W. CONFIRMAR com o
+    //     display do rele e ajustar scale se necessario.
+    //   - cmd_fechar (coil 108 "CB 1"): confirmar se fecha ou e toggle.
+    //   - Offset de endereco: confirmar lendo Va e comparando com display.
+    //   - Protecoes 50/51 sao por ESTAGIO (1-4), mapeadas nos pids a/b/c da NexOn.
+    //   - 27/59 por fase (10401-403) e COMBINADO (sub+sobre) -> f27x e f59x apontam pro
+    //     MESMO bit em v1. Separar em v2 com 59 PhAB/BC/CA (11125-27) + 27 PhAB/BC/CA (11128-30).
+    'siemens-7sr10': {
+        fabricante: 'Siemens',
+        modelo: '7SR10',
+        tipo: 'rele_protecao',
+        protocolo: 'rtu',
+        connection_note: 'RS485 default 19200 baud, slave 1-247. Confirmar paridade (TON=8N1).',
+        word_order: 'high_first',
+        // Medicoes: Input Registers (FC04). 2 blocos compactos (< 125 regs cada).
+        ai_blocks: [
+            { start: 15,  count: 74, func: 0x04, label: 'V, freq, I, In (Modicon 30016-30089)' },
+            { start: 117, count: 24, func: 0x04, label: 'P, Q, PF (Modicon 30118-30141)' },
+        ],
+        ai_map: {
+            // Bloco 0 (start frame 15). Todos FP_32BITS_3DP -> S32/1000, 2 regs. offset = frame-15.
+            'va':   { block: 0, offset: 0,  scale: 1000, dataType: 'S32' },  // 30016 Va Primary
+            'vb':   { block: 0, offset: 2,  scale: 1000, dataType: 'S32' },  // 30018 Vb Primary
+            'vc':   { block: 0, offset: 4,  scale: 1000, dataType: 'S32' },  // 30020 Vc Primary
+            'freq': { block: 0, offset: 44, scale: 1000, dataType: 'S32' },  // 30060 Frequency
+            'ia':   { block: 0, offset: 48, scale: 1000, dataType: 'S32' },  // 30064 Ia Primary
+            'ib':   { block: 0, offset: 50, scale: 1000, dataType: 'S32' },  // 30066 Ib Primary
+            'ic':   { block: 0, offset: 52, scale: 1000, dataType: 'S32' },  // 30068 Ic Primary
+            'in':   { block: 0, offset: 72, scale: 1000, dataType: 'S32' },  // 30088 In Primary
+            // Bloco 1 (start frame 117). offset = frame-117.
+            'pa_total': { block: 1, offset: 0,  scale: 1000, dataType: 'S32' },  // 30118 P(3P) W  ⚠️escala
+            'pr_total': { block: 1, offset: 8,  scale: 1000, dataType: 'S32' },  // 30126 Q(3P) VAr ⚠️escala
+            'cosfi_a':  { block: 1, offset: 18, scale: 1000, dataType: 'S32' },  // 30136 PF A
+            'cosfi_b':  { block: 1, offset: 20, scale: 1000, dataType: 'S32' },  // 30138 PF B
+            'cosfi_c':  { block: 1, offset: 22, scale: 1000, dataType: 'S32' },  // 30140 PF C
+        },
+        // Protecoes: Inputs (FC02). Bloco unico frames 101..402 (302 bits = 19 words < 64).
+        // coil = offset do bit relativo a start=101 (= frame - 101).
+        bi_block: { start: 101, count: 302, func: 0x02 },
+        bi_map: {
+            'local_remoto': { coil: 2 },    // 10104 Local Mode
+            'f51a': { coil: 20 },  // 10122 51-1 (estagio 1)
+            'f50a': { coil: 21 },  // 10123 50-1
+            'f51n': { coil: 22 },  // 10124 51N-1
+            'f50n': { coil: 23 },  // 10125 50N-1
+            'f51b': { coil: 26 },  // 10128 51-2 (estagio 2)
+            'f50b': { coil: 27 },  // 10129 50-2
+            'f51c': { coil: 32 },  // 10134 51-3 (estagio 3)
+            'f50c': { coil: 33 },  // 10135 50-3
+            'fba':  { coil: 44 },  // 10146 50BF
+            'f46':  { coil: 48 },  // 10150 46IT
+            'f47':  { coil: 50 },  // 10152 47-1
+            'f59n': { coil: 57 },  // 10159 59N-IT
+            'f81':  { coil: 59 },  // 10161 81-1
+            'dj_bloqueado': { coil: 72 },   // 10174 Lockout
+            'dj_aberto':    { coil: 117 },  // 10219 CB 1 Opened
+            // 27/59 por fase (combinado sub+sobre) -> f27x e f59x no mesmo bit (v1)
+            'f27a': { coil: 299 }, 'f59a': { coil: 299 },  // 10401 27/59 PhA
+            'f27b': { coil: 300 }, 'f59b': { coil: 300 },  // 10402 27/59 PhB
+            'f27c': { coil: 301 }, 'f59c': { coil: 301 },  // 10403 27/59 PhC
+        },
+        // Comandos: Coils (FC05). coil = frame PDU absoluto (Modicon - 1).
+        // ⚠️ cmd_abrir (Cmd Trip) DESLIGA o disjuntor. Exige envelope+ack + confirmacao dupla na UI.
+        bo_map: {
+            'cmd_abrir':  { coil: 226, func: 0x05 },  // 00227 Cmd Trip
+            'cmd_fechar': { coil: 108, func: 0x05 },  // 00109 CB 1 (⚠️ confirmar close)
+            'cmd_reset':  { coil: 99,  func: 0x05 },  // 00100 LED reset
+        },
+    },
+
+    // Siemens 7SR5 - rele de protecao. MESMO mapa do 7SR10 (decisao: espelhar).
+    // O 7SR5 NAO tem mapa Modbus fixo - e configuravel por dispositivo via Reydisp Manager 2.
+    // Este cadastro ASSUME que o 7SR5 foi configurado no Reydisp para espelhar os enderecos do
+    // 7SR10 (doc secao 6). Se o dispositivo usar outro mapa, exportar o arquivo de mapeamento
+    // do Reydisp e ajustar os offsets. Protocolo RTU (RS485) default 38400 baud (!= 7SR10=19200).
+    // 7SR5 tambem suporta Modbus TCP porta 502 - trocar 'protocolo' p/ 'tcp' se usar Ethernet.
+    'siemens-7sr5': {
+        fabricante: 'Siemens',
+        modelo: '7SR5',
+        tipo: 'rele_protecao',
+        protocolo: 'rtu',
+        connection_note: 'RS485 default 38400 baud, slave 1-247. Mapa espelhado do 7SR10 via Reydisp Manager 2. TCP porta 502 disponivel.',
+        word_order: 'high_first',
+        ai_blocks: [
+            { start: 15,  count: 74, func: 0x04, label: 'V, freq, I, In (espelho 7SR10)' },
+            { start: 117, count: 24, func: 0x04, label: 'P, Q, PF (espelho 7SR10)' },
+        ],
+        ai_map: {
+            'va':   { block: 0, offset: 0,  scale: 1000, dataType: 'S32' },
+            'vb':   { block: 0, offset: 2,  scale: 1000, dataType: 'S32' },
+            'vc':   { block: 0, offset: 4,  scale: 1000, dataType: 'S32' },
+            'freq': { block: 0, offset: 44, scale: 1000, dataType: 'S32' },
+            'ia':   { block: 0, offset: 48, scale: 1000, dataType: 'S32' },
+            'ib':   { block: 0, offset: 50, scale: 1000, dataType: 'S32' },
+            'ic':   { block: 0, offset: 52, scale: 1000, dataType: 'S32' },
+            'in':   { block: 0, offset: 72, scale: 1000, dataType: 'S32' },
+            'pa_total': { block: 1, offset: 0,  scale: 1000, dataType: 'S32' },  // ⚠️escala
+            'pr_total': { block: 1, offset: 8,  scale: 1000, dataType: 'S32' },  // ⚠️escala
+            'cosfi_a':  { block: 1, offset: 18, scale: 1000, dataType: 'S32' },
+            'cosfi_b':  { block: 1, offset: 20, scale: 1000, dataType: 'S32' },
+            'cosfi_c':  { block: 1, offset: 22, scale: 1000, dataType: 'S32' },
+        },
+        bi_block: { start: 101, count: 302, func: 0x02 },
+        bi_map: {
+            'local_remoto': { coil: 2 },
+            'f51a': { coil: 20 }, 'f50a': { coil: 21 }, 'f51n': { coil: 22 }, 'f50n': { coil: 23 },
+            'f51b': { coil: 26 }, 'f50b': { coil: 27 }, 'f51c': { coil: 32 }, 'f50c': { coil: 33 },
+            'fba':  { coil: 44 }, 'f46':  { coil: 48 }, 'f47':  { coil: 50 },
+            'f59n': { coil: 57 }, 'f81':  { coil: 59 },
+            'dj_bloqueado': { coil: 72 }, 'dj_aberto': { coil: 117 },
+            'f27a': { coil: 299 }, 'f59a': { coil: 299 },
+            'f27b': { coil: 300 }, 'f59b': { coil: 300 },
+            'f27c': { coil: 301 }, 'f59c': { coil: 301 },
+        },
+        bo_map: {
+            'cmd_abrir':  { coil: 226, func: 0x05 },  // ⚠️ Cmd Trip - desliga disjuntor
+            'cmd_fechar': { coil: 108, func: 0x05 },  // ⚠️ confirmar close
+            'cmd_reset':  { coil: 99,  func: 0x05 },
+        },
+    },
+
+    // Siemens 7SR5111 (7SR51 sobrecorrente da familia 7SR5), variante TCP.
+    // Modelo especifico usado em campo. Mapa Modbus e definido por dispositivo:
+    // o 7SR5111 deve ser configurado no Reydisp Manager 2 para ESPELHAR os
+    // enderecos do 7SR10 (doc IOT-SIEMENS-7SR5111-PREP.md, planilha de enderecos).
+    // Modbus TCP vem desabilitado de fabrica -> habilitar + IP + Unit ID no Reydisp.
+    // Medicao completa (I+V+P/Q/FP) -> requer entradas de TV ligadas no rele.
+    // Identico ao siemens-7sr5, muda protocolo (tcp/502) e connection_note.
+    'siemens-7sr5111': {
+        fabricante: 'Siemens',
+        modelo: '7SR5111',
+        tipo: 'rele_protecao',
+        protocolo: 'tcp',
+        default_port: 502,
+        connection_note: 'Modbus TCP porta 502 (habilitar no Reydisp Manager 2; vem off de fabrica, sem IP). Unit ID = station addr 1-247. Mapa espelhado do 7SR10 (ver IOT-SIEMENS-7SR5111-PREP.md). RTU 38400 tambem disponivel.',
+        word_order: 'high_first',
+        ai_blocks: [
+            { start: 15,  count: 74, func: 0x04, label: 'V, freq, I, In (espelho 7SR10)' },
+            { start: 117, count: 24, func: 0x04, label: 'P, Q, PF (espelho 7SR10)' },
+        ],
+        ai_map: {
+            'va':   { block: 0, offset: 0,  scale: 1000, dataType: 'S32' },
+            'vb':   { block: 0, offset: 2,  scale: 1000, dataType: 'S32' },
+            'vc':   { block: 0, offset: 4,  scale: 1000, dataType: 'S32' },
+            'freq': { block: 0, offset: 44, scale: 1000, dataType: 'S32' },
+            'ia':   { block: 0, offset: 48, scale: 1000, dataType: 'S32' },
+            'ib':   { block: 0, offset: 50, scale: 1000, dataType: 'S32' },
+            'ic':   { block: 0, offset: 52, scale: 1000, dataType: 'S32' },
+            'in':   { block: 0, offset: 72, scale: 1000, dataType: 'S32' },
+            'pa_total': { block: 1, offset: 0,  scale: 1000, dataType: 'S32' },  // ⚠️escala (Mult - validar bancada)
+            'pr_total': { block: 1, offset: 8,  scale: 1000, dataType: 'S32' },  // ⚠️escala (Mult - validar bancada)
+            'cosfi_a':  { block: 1, offset: 18, scale: 1000, dataType: 'S32' },
+            'cosfi_b':  { block: 1, offset: 20, scale: 1000, dataType: 'S32' },
+            'cosfi_c':  { block: 1, offset: 22, scale: 1000, dataType: 'S32' },
+        },
+        bi_block: { start: 101, count: 302, func: 0x02 },
+        bi_map: {
+            'local_remoto': { coil: 2 },
+            'f51a': { coil: 20 }, 'f50a': { coil: 21 }, 'f51n': { coil: 22 }, 'f50n': { coil: 23 },
+            'f51b': { coil: 26 }, 'f50b': { coil: 27 }, 'f51c': { coil: 32 }, 'f50c': { coil: 33 },
+            'fba':  { coil: 44 }, 'f46':  { coil: 48 }, 'f47':  { coil: 50 },
+            'f59n': { coil: 57 }, 'f81':  { coil: 59 },
+            'dj_bloqueado': { coil: 72 }, 'dj_aberto': { coil: 117 },
+            'f27a': { coil: 299 }, 'f59a': { coil: 299 },
+            'f27b': { coil: 300 }, 'f59b': { coil: 300 },
+            'f27c': { coil: 301 }, 'f59c': { coil: 301 },
+        },
+        bo_map: {
+            'cmd_abrir':  { coil: 226, func: 0x05 },  // ⚠️ Cmd Trip - desliga disjuntor
+            'cmd_fechar': { coil: 108, func: 0x05 },  // ⚠️ confirmar close
+            'cmd_reset':  { coil: 99,  func: 0x05 },
+        },
+    },
+
     // --------------------------------------------------------
     // INVERSORES SOLARES
     // --------------------------------------------------------

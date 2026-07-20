@@ -31,6 +31,7 @@ import React, { useEffect, useState } from 'react';
 import { DiagramV2 } from './DiagramV2';
 import { useDiagramStore } from './hooks/useDiagramStore';
 import type { Equipment } from './types/diagram.types';
+import { equipamentoApareceNoUnifilar } from './utils/dominioEquipamento';
 import { EquipamentoCommandModal } from './components/EquipamentoCommandModal';
 import { EquipamentoAcionarModal } from './components/EquipamentoAcionarModal';
 import { getCommandsForCategoria } from './utils/commandRegistry';
@@ -183,9 +184,12 @@ export const DiagramV2Wrapper: React.FC<DiagramV2WrapperProps> = ({
 
           const equipamentos = equipamentosResponse.data;
 
-          console.log('[DiagramV2Wrapper] Equipamentos carregados:', equipamentos.length);
+          // Domínio: TON (e outros 'iot') NÃO aparecem no unifilar — são gerenciados pelo IoT.
+          const visiveis = equipamentos.filter(equipamentoApareceNoUnifilar);
 
-          setEquipamentosDisponiveis(equipamentos);
+          console.log('[DiagramV2Wrapper] Equipamentos carregados:', equipamentos.length, '→ visíveis no unifilar:', visiveis.length);
+
+          setEquipamentosDisponiveis(visiveis);
         } catch (error) {
           console.error('[DiagramV2Wrapper] Error loading equipamentos:', error);
         }
@@ -193,8 +197,8 @@ export const DiagramV2Wrapper: React.FC<DiagramV2WrapperProps> = ({
 
       loadEquipments();
     } else if (availableEquipments.length > 0) {
-      // Se foram passados como prop, usar eles
-      setEquipamentosDisponiveis(availableEquipments);
+      // Se foram passados como prop, usar eles (também filtrando os de domínio 'iot').
+      setEquipamentosDisponiveis(availableEquipments.filter(equipamentoApareceNoUnifilar));
     }
   }, [diagramaId, diagrama?.unidadeId, availableEquipments]);
 

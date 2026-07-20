@@ -103,6 +103,13 @@ const IotPage = lazy(() =>
   }))
 );
 
+// ✅ SOE — eventos de proteção de relé (timestamp da fonte)
+const ReleEventosPage = lazy(() =>
+  import("@/features/rele-eventos/ReleEventosPage").then((module) => ({
+    default: module.ReleEventosPage,
+  }))
+);
+
 
 // Shared pages are now imported directly from @aupus/shared-pages (see top of file)
 
@@ -112,6 +119,10 @@ const CadastroRegrasLogsPage = lazy(() =>
 
 const CadastroIotCatalogPage = lazy(() =>
   import("@/pages/cadastros/iot-catalog")
+);
+
+const CadastroGeracaoFvPage = lazy(() =>
+  import("@/pages/cadastros/geracao-fv")
 );
 
 const LogsMqttPage = lazy(() =>
@@ -370,6 +381,24 @@ export const appRoutes = createBrowserRouter([
           <RequirePermission permission="equipamentos.iot_catalog">
             <Suspense fallback={<div>Carregando...</div>}>
               <CadastroIotCatalogPage />
+            </Suspense>
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "supervisorio/eventos-protecao",
+        element: (
+          <Suspense fallback={<div>Carregando...</div>}>
+            <ReleEventosPage />
+          </Suspense>
+        ),
+      },
+      {
+        path: "supervisorio/bdo-ufvs",
+        element: (
+          <RequirePermission permission="Monitoramento">
+            <Suspense fallback={<div>Carregando...</div>}>
+              <CadastroGeracaoFvPage />
             </Suspense>
           </RequirePermission>
         ),

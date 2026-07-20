@@ -8,7 +8,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
 import { Activity, Settings, TrendingUp, Zap, AlertTriangle, Loader2, Expand } from "lucide-react";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
   Bar,
   BarChart,
@@ -122,6 +122,8 @@ export function SinopticoGraficosV2({
 
   // Período do gráfico de Demanda
   const [periodo, setPeriodo] = useState<PeriodoFiltro>({ tipo: 'dia' });
+  // Zoom/pan do gráfico de Demanda (janela de índices sobre os dados; null = tudo).
+  const [zoomWin, setZoomWin] = useState<{ start: number; end: number } | null>(null);
   const [customAberto, setCustomAberto] = useState(false);
   const [customInicio, setCustomInicio] = useState<string>(() => {
     const d = new Date();
@@ -608,6 +610,76 @@ export function SinopticoGraficosV2({
     return `${fmt(periodo.inicio)} – ${fmt(periodo.fim)}`;
   }, [periodo]);
 
+  // ===== Zoom (scroll) + Pan (arrastar com botão direito) do gráfico de Demanda =====
+  // Recharts com eixo X categórico não tem domínio numérico → fatiamos os dados numa
+  // janela [start,end]. Scroll = zoom no cursor; arrastar c/ botão direito = pan;
+  // duplo-clique reseta. Wheel via listener NATIVO (não-passivo) p/ preventDefault valer.
+  const chartWrapElRef = useRef<HTMLDivElement | null>(null);
+  const wheelCleanupRef = useRef<(() => void) | null>(null);
+  const dragRef = useRef<{ x: number; start: number; end: number } | null>(null);
+  const zoomWinRef = useRef(zoomWin);
+  const dataLenRef = useRef(0);
+  zoomWinRef.current = zoomWin;
+  dataLenRef.current = dadosFormatadosPotencia.length;
+
+  useEffect(() => { setZoomWin(null); }, [periodo.tipo, periodo.inicio, periodo.fim]);
+
+  const dadosVisiveis = useMemo(() => {
+    const tp = dadosFormatadosPotencia.length;
+    if (!zoomWin || tp === 0) return dadosFormatadosPotencia;
+    const s = Math.max(0, Math.min(zoomWin.start, tp - 2));
+    const e = Math.max(s + 1, Math.min(zoomWin.end, tp - 1));
+    return dadosFormatadosPotencia.slice(s, e + 1);
+  }, [dadosFormatadosPotencia, zoomWin]);
+
+  const setChartWrap = useCallback((el: HTMLDivElement | null) => {
+    chartWrapElRef.current = el;
+    if (wheelCleanupRef.current) { wheelCleanupRef.current(); wheelCleanupRef.current = null; }
+    if (!el) return;
+    const onWheelNative = (ev: WheelEvent) => {
+      const tp = dataLenRef.current;
+      if (tp < 3) return;
+      ev.preventDefault();
+      const cur = zoomWinRef.current ?? { start: 0, end: tp - 1 };
+      const rect = el.getBoundingClientRect();
+      const frac = Math.min(1, Math.max(0, (ev.clientX - rect.left) / rect.width));
+      const span = cur.end - cur.start;
+      const cursorIdx = cur.start + frac * span;
+      let newSpan = Math.round(span * (ev.deltaY < 0 ? 0.8 : 1.25)); // scroll up = zoom in
+      newSpan = Math.max(2, Math.min(tp - 1, newSpan));
+      if (newSpan >= tp - 1) { setZoomWin(null); return; } // voltou ao total
+      let ns = Math.round(cursorIdx - frac * newSpan);
+      let ne = ns + newSpan;
+      if (ns < 0) { ns = 0; ne = newSpan; }
+      if (ne > tp - 1) { ne = tp - 1; ns = ne - newSpan; }
+      setZoomWin({ start: Math.max(0, ns), end: ne });
+    };
+    el.addEventListener('wheel', onWheelNative, { passive: false });
+    wheelCleanupRef.current = () => el.removeEventListener('wheel', onWheelNative);
+  }, []);
+
+  const handleChartMouseDown = (ev: React.MouseEvent<HTMLDivElement>) => {
+    if ((ev.button !== 0 && ev.button !== 2) || dataLenRef.current < 3) return; // esquerdo ou direito
+    ev.preventDefault();
+    const tp = dataLenRef.current;
+    const cur = zoomWinRef.current ?? { start: 0, end: tp - 1 };
+    dragRef.current = { x: ev.clientX, start: cur.start, end: cur.end };
+  };
+  const handleChartMouseMove = (ev: React.MouseEvent<HTMLDivElement>) => {
+    if (!dragRef.current || !chartWrapElRef.current) return;
+    const tp = dataLenRef.current;
+    const rect = chartWrapElRef.current.getBoundingClientRect();
+    const span = dragRef.current.end - dragRef.current.start;
+    const dxFrac = (ev.clientX - dragRef.current.x) / rect.width;
+    const shift = Math.round(-dxFrac * span); // arrastar p/ direita = ver mais cedo
+    let ns = dragRef.current.start + shift;
+    let ne = dragRef.current.end + shift;
+    if (ns < 0) { ns = 0; ne = span; }
+    if (ne > tp - 1) { ne = tp - 1; ns = ne - span; }
+    setZoomWin({ start: Math.max(0, ns), end: ne });
+  };
+  const endChartDrag = () => { dragRef.current = null; };
+
   return (
     <div className={`w-full flex flex-col gap-4 ${(soDemanda && !apenasGrafico) || apenasGrafico ? 'xl:flex-1 xl:min-h-0' : ''}`}>
       {/* Gráfico de Demanda */}
@@ -737,9 +809,19 @@ export function SinopticoGraficosV2({
               </div>
             </div>
           ) : ehSeriesPotencia ? (
-            <div className={apenasGrafico ? 'h-[150px] xl:h-auto xl:flex-1 xl:min-h-0' : soDemanda ? 'h-[350px] xl:h-auto xl:flex-1 xl:min-h-0' : 'h-[350px]'}>
+            <div
+              ref={setChartWrap}
+              onMouseDown={handleChartMouseDown}
+              onMouseMove={handleChartMouseMove}
+              onMouseUp={endChartDrag}
+              onMouseLeave={endChartDrag}
+              onContextMenu={(e) => e.preventDefault()}
+              onDoubleClick={() => setZoomWin(null)}
+              title="Scroll = zoom nas horas · segurar e arrastar = mover · duplo-clique = resetar"
+              className={`${apenasGrafico ? 'h-[150px] xl:h-auto xl:flex-1 xl:min-h-0' : soDemanda ? 'h-[350px] xl:h-auto xl:flex-1 xl:min-h-0' : 'h-[350px]'} select-none cursor-grab active:cursor-grabbing`}
+            >
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={dadosFormatadosPotencia}>
+              <LineChart data={dadosVisiveis}>
                 <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                 <XAxis dataKey="hora" fontSize={isMobile ? 10 : 12} interval="preserveStartEnd" minTickGap={isMobile ? 28 : 12} />
                 <YAxis fontSize={10} label={{ value: unidadeGrafico, angle: -90, position: 'insideLeft' }} />

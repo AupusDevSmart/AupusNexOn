@@ -35,6 +35,7 @@ const EquipmentNodeImpl: React.FC<EquipmentNodeProps> = ({ equipment, onClick, o
   const theme = useDiagramStore(state => state.theme);
   const editor = useDiagramStore(state => state.editor);
   const selectEquipamento = useDiagramStore(state => state.selectEquipamento);
+  const toggleSelectEquipamento = useDiagramStore(state => state.toggleSelectEquipamento);
   const startDraggingEquipamento = useDiagramStore(state => state.startDraggingEquipamento);
   const endDraggingEquipamento = useDiagramStore(state => state.endDraggingEquipamento);
   const updateEquipamentoPosition = useDiagramStore(state => state.updateEquipamentoPosition);
@@ -99,7 +100,15 @@ const EquipmentNodeImpl: React.FC<EquipmentNodeProps> = ({ equipment, onClick, o
       y: svgP.y - y,
     };
 
-    selectEquipamento(equipment.id);
+    const multi = e.shiftKey || e.ctrlKey || e.metaKey;
+    if (multi) {
+      // shift/ctrl-click: alterna este equipamento na seleção (multi-seleção)
+      toggleSelectEquipamento(equipment.id);
+    } else if (!editor.selectedEquipmentIds.includes(equipment.id)) {
+      // clique simples em item NÃO selecionado: seleção única
+      selectEquipamento(equipment.id);
+    }
+    // clique simples em item JÁ selecionado mantém a seleção → permite arrastar o grupo todo
     startDraggingEquipamento(equipment.id, offset);
   };
 

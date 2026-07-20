@@ -109,6 +109,16 @@ export class IoTApiService {
   async delete(id: string): Promise<void> {
     await api.delete<SuccessResponse>(`${this.baseEndpoint}/${id}`);
   }
+
+  /** Resolve o Power Meter (IoT) associado a um disjuntor do unifilar (ou null). */
+  async powerMeterByDisjuntor(
+    disjuntorEquipId: string,
+  ): Promise<{ equipamento_id: string; nome: string | null } | null> {
+    const response = await api.get<{
+      data: { equipamento_id: string; nome: string | null } | null;
+    }>(`/iot/power-meter-by-disjuntor/${encodeURIComponent(disjuntorEquipId.trim())}`);
+    return response.data.data;
+  }
 }
 
 export const iotApiService = new IoTApiService();

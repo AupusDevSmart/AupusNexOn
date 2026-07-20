@@ -134,8 +134,33 @@ export const calculateOrthogonalRoute = (
 
   const S = start.point;
   const E = end.point;
-  const dS = dirVec(start.direction);
-  const dE = dirVec(end.direction);
+
+  // Para JUNCTION POINTS a "porta" é sempre o centro (o JP é um ponto), então a
+  // direção da porta armazenada não tem sentido — se ficou top/bottom, uma conexão
+  // horizontal saía reto pra baixo, atravessava e subia ("U"). Aqui a direção do JP
+  // segue a GEOMETRIA (em direção ao outro ponto): mesmo Y -> sai/entra na horizontal
+  // (reta); mesmo X -> vertical. Portas de equipamentos reais continuam sendo respeitadas.
+  const isJP = (eq: Equipment) => eq.tipo === 'JUNCTION_POINT';
+
+  // JP é um PONTO (não tem "face"): se ele está alinhado (mesmo X ou mesmo Y) com o
+  // outro ponto, a conexão é uma RETA direta — sem tronco perpendicular nem desvio.
+  // Isso mata de vez o "U" (descer, atravessar, subir) numa ligação horizontal entre JPs.
+  if (isJP(origem) || isJP(destino)) {
+    if (Math.abs(S.y - E.y) < 0.01) return [{ x: S.x, y: S.y }, { x: E.x, y: S.y }];
+    if (Math.abs(S.x - E.x) < 0.01) return [{ x: S.x, y: S.y }, { x: S.x, y: E.y }];
+  }
+
+  const geomDir = (
+    fromX: number, fromY: number, toX: number, toY: number,
+  ): 'up' | 'down' | 'left' | 'right' => {
+    const dx = toX - fromX;
+    const dy = toY - fromY;
+    return Math.abs(dx) >= Math.abs(dy) ? (dx >= 0 ? 'right' : 'left') : (dy >= 0 ? 'down' : 'up');
+  };
+  const dirS = isJP(origem) ? geomDir(S.x, S.y, E.x, E.y) : start.direction;
+  const dirE = isJP(destino) ? geomDir(E.x, E.y, S.x, S.y) : end.direction;
+  const dS = dirVec(dirS);
+  const dE = dirVec(dirE);
 
   // Troncos: um passo perpendicular pra fora de cada porta (garante saida/entrada retas).
   const S1 = { x: snap(S.x + dS.x * off), y: snap(S.y + dS.y * off) };

@@ -52,6 +52,7 @@ import { LandisGyrModal } from "@/features/supervisorio/components/landisgyr-mod
 import { M300Modal } from "@/features/supervisorio/components/m300-modal";
 import { PowerMeterModal } from "@/features/supervisorio/components/power-meter/PowerMeterModal";
 import { isPowerMeter } from "@/features/supervisorio/components/power-meter/helpers";
+import { iotApiService } from "@/services/iot.services";
 import { SinopticoDiagrama } from "@/features/supervisorio/components/sinoptico-diagrama";
 import { SinopticoGraficosV2 } from "@/features/supervisorio/components/sinoptico-graficos-v2";
 import { TransformadorModal } from "@/features/supervisorio/components/transformador-modal";
@@ -3886,12 +3887,35 @@ if (import.meta.env.PROD) {
                       comp.dados?.tipo_equipamento_rel?.categoria?.nome ||
                       comp.categoria ||
                       '';
-                    if (
-                      categoria.includes('Transformador') ||
-                      categoria.includes('Disjuntor') ||
-                      tipo.includes('TRANSFORMADOR') ||
-                      tipo.includes('DISJUNTOR')
-                    ) {
+                    const ehDisjuntor =
+                      categoria.includes('Disjuntor') || tipo.includes('DISJUNTOR');
+                    const ehTrafo =
+                      categoria.includes('Transformador') || tipo.includes('TRANSFORMADOR');
+                    if (ehDisjuntor) {
+                      // Disjuntor pode ter um Power Meter (só-IoT) associado. Se tiver,
+                      // clicar no disjuntor abre o modal do PM (dados do medidor). Senão,
+                      // cai no modal de config de pontos (R8) como antes.
+                      const disjEquipId = String(comp.dados?.equipamento_id || comp.id || '').trim();
+                      iotApiService
+                        .powerMeterByDisjuntor(disjEquipId)
+                        .then((pm) => {
+                          if (pm?.equipamento_id) {
+                            setComponenteSelecionado({
+                              id: pm.equipamento_id,
+                              tipo: comp.tipo,
+                              nome: pm.nome || comp.nome,
+                              tag: comp.tag,
+                              posicao: { x: comp.posicaoX, y: comp.posicaoY },
+                              status: (comp.status?.toUpperCase() as any) || 'NORMAL',
+                              dados: { equipamento_id: pm.equipamento_id },
+                            } as ComponenteDU);
+                            setModalAberto('POWER_METER');
+                          } else {
+                            setConfigPontos({ id: comp.id, nome: comp.nome, categoria });
+                          }
+                        })
+                        .catch(() => setConfigPontos({ id: comp.id, nome: comp.nome, categoria }));
+                    } else if (ehTrafo) {
                       setConfigPontos({ id: comp.id, nome: comp.nome, categoria });
                     }
                   }

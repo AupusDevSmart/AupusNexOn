@@ -8,7 +8,7 @@
 
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Hand, BoxSelect } from 'lucide-react';
 import { useDiagramStore } from '../hooks/useDiagramStore';
 import type { Equipment } from '../types/diagram.types';
 
@@ -37,6 +37,9 @@ export const EditorSidebar: React.FC<EditorSidebarProps> = ({
 }) => {
   const equipamentos = useDiagramStore(state => state.equipamentos);
   const selectedIds = useDiagramStore(state => state.editor.selectedEquipmentIds);
+  const mode = useDiagramStore(state => state.editor.mode);
+  const toolMode = useDiagramStore(state => state.editor.toolMode);
+  const setToolMode = useDiagramStore(state => state.setToolMode);
 
   // Estado para controlar se a sidebar está expandida
   const [isExpanded, setIsExpanded] = useState(true);
@@ -89,6 +92,38 @@ export const EditorSidebar: React.FC<EditorSidebarProps> = ({
           sidebar inteira quando ela e baixa (e nao so a secao "No Diagrama"). */}
       {isExpanded && (
         <div className="flex-1 min-h-0 overflow-y-auto">
+      {/* Seção: Ferramenta (Mover/Selecionar) — só no modo edição */}
+      {mode === 'edit' && (
+        <div className="px-4 py-3 border-b">
+          <h3 className="text-xs font-semibold text-foreground mb-2">Ferramenta</h3>
+          <div className="flex gap-1">
+            <Button
+              size="sm"
+              variant={toolMode === 'move' ? 'default' : 'outline'}
+              className="flex-1 h-8"
+              onClick={() => setToolMode('move')}
+              title="Mover / navegar — arraste a tela pra deslocar (atalho: V)"
+            >
+              <Hand className="h-4 w-4 mr-1.5" /> Mover
+            </Button>
+            <Button
+              size="sm"
+              variant={toolMode === 'select' ? 'default' : 'outline'}
+              className="flex-1 h-8"
+              onClick={() => setToolMode('select')}
+              title="Selecionar — arraste uma caixa pra pegar vários (atalho: S)"
+            >
+              <BoxSelect className="h-4 w-4 mr-1.5" /> Selecionar
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground mt-1.5">
+            {toolMode === 'move'
+              ? 'Arraste a tela pra navegar. Shift/Ctrl+clique adiciona à seleção.'
+              : 'Arraste uma caixa pra selecionar vários. Ctrl+C copia, Ctrl+V cola (cria novos).'}
+          </p>
+        </div>
+      )}
+
       {/* Seção: Adicionar Equipamento */}
       <div className="px-4 py-3 border-b">
         <h3 className="text-xs font-semibold text-foreground mb-2">Adicionar Equipamento</h3>
@@ -217,7 +252,11 @@ export const EditorSidebar: React.FC<EditorSidebarProps> = ({
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center justify-between text-xs">
             <kbd className="px-1.5 py-0.5 bg-muted rounded text-xs font-mono">Del</kbd>
-            <span className="text-muted-foreground ml-2">Deletar selecionado</span>
+            <span className="text-muted-foreground ml-2">Apagar equipamento</span>
+          </div>
+          <div className="flex items-center justify-between text-xs">
+            <kbd className="px-1.5 py-0.5 bg-muted rounded text-xs font-mono">Ctrl+Z</kbd>
+            <span className="text-muted-foreground ml-2">Desfazer última ação</span>
           </div>
           <div className="flex items-center justify-between text-xs">
             <kbd className="px-1.5 py-0.5 bg-muted rounded text-xs font-mono text-[10px]">Duplo-click</kbd>
@@ -226,6 +265,18 @@ export const EditorSidebar: React.FC<EditorSidebarProps> = ({
           <div className="flex items-center justify-between text-xs">
             <kbd className="px-1.5 py-0.5 bg-muted rounded text-xs font-mono">Ctrl+S</kbd>
             <span className="text-muted-foreground ml-2">Salvar layout</span>
+          </div>
+          <div className="flex items-center justify-between text-xs">
+            <kbd className="px-1.5 py-0.5 bg-muted rounded text-xs font-mono text-[10px]">Ctrl+C / V</kbd>
+            <span className="text-muted-foreground ml-2">Copiar / colar (cria novos)</span>
+          </div>
+          <div className="flex items-center justify-between text-xs">
+            <kbd className="px-1.5 py-0.5 bg-muted rounded text-xs font-mono">V / S</kbd>
+            <span className="text-muted-foreground ml-2">Ferramenta Mover / Selecionar</span>
+          </div>
+          <div className="flex items-center justify-between text-xs">
+            <kbd className="px-1.5 py-0.5 bg-muted rounded text-xs font-mono text-[10px]">Shift+clique</kbd>
+            <span className="text-muted-foreground ml-2">Selecionar vários</span>
           </div>
           <div className="flex items-center justify-between text-xs">
             <kbd className="px-1.5 py-0.5 bg-muted rounded text-xs font-mono">Scroll</kbd>

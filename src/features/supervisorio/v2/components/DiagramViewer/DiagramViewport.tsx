@@ -11,7 +11,7 @@
 
 import React, { useRef, useCallback, useEffect, useState, MouseEvent } from 'react';
 import { useDiagramStore } from '../../hooks/useDiagramStore';
-import { CANVAS, GRID, VIEWPORT, getThemeColors, pixelsToGrid, PORT } from '../../utils/diagramConstants';
+import { CANVAS, GRID, VIEWPORT, getThemeColors, pixelsToGrid, gridToPixels, PORT } from '../../utils/diagramConstants';
 import { getPortPoint } from '../../utils/orthogonalRouting';
 import './DiagramViewport.css';
 
@@ -31,10 +31,16 @@ export const DiagramViewport: React.FC<DiagramViewportProps> = ({ children, onBa
   const endViewportDrag = useDiagramStore(state => state.endViewportDrag);
   const updateEquipamentoPosition = useDiagramStore(state => state.updateEquipamentoPosition);
   const endDraggingEquipamento = useDiagramStore(state => state.endDraggingEquipamento);
+  const moveSelectionBy = useDiagramStore(state => state.moveSelectionBy);
+  const selectInBox = useDiagramStore(state => state.selectInBox);
 
   const svgRef = useRef<SVGSVGElement>(null);
   const isDraggingRef = useRef(false);
   const lastMousePosRef = useRef({ x: 0, y: 0 });
+
+  // Caixa de seleção (marquee) — coords de grid
+  const marqueeRef = useRef(false);
+  const [marquee, setMarquee] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
 
   // Ponta da linha "elastica" (rubber-band) enquanto conecta — coords SVG.
   const [connMouse, setConnMouse] = useState<{ x: number; y: number } | null>(null);
@@ -200,13 +206,31 @@ export const DiagramViewport: React.FC<DiagramViewportProps> = ({ children, onBa
         return;
       }
 
+      // MODO EDIT + ferramenta SELEÇÃO: arrastar em área vazia = caixa de seleção (marquee).
+      // Com a ferramenta MOVER (default), o arrastar em vazio faz PAN (cai no fluxo abaixo).
+      if (editor.mode === 'edit' && editor.toolMode === 'select') {
+        const svg = svgRef.current;
+        if (svg) {
+          const pt = svg.createSVGPoint();
+          pt.x = e.clientX; pt.y = e.clientY;
+          const p = pt.matrixTransform(svg.getScreenCTM()?.inverse());
+          const gx = pixelsToGrid(p.x, false);
+          const gy = pixelsToGrid(p.y, false);
+          marqueeRef.current = true;
+          setMarquee({ x1: gx, y1: gy, x2: gx, y2: gy });
+          if (!e.shiftKey) useDiagramStore.getState().clearSelection();
+        }
+        e.preventDefault();
+        return;
+      }
+
       isDraggingRef.current = true;
       lastMousePosRef.current = { x: e.clientX, y: e.clientY };
       startViewportDrag();
 
       e.preventDefault();
     },
-    [startViewportDrag, editor.mode, editor.connectingFrom, editor.snapToGrid, equipamentos, onBackgroundClick]
+    [startViewportDrag, editor.mode, editor.toolMode, editor.connectingFrom, editor.snapToGrid, equipamentos, onBackgroundClick]
   );
 
   const handleMouseMove = useCallback(
@@ -221,6 +245,18 @@ export const DiagramViewport: React.FC<DiagramViewportProps> = ({ children, onBa
           const p = pt.matrixTransform(svg.getScreenCTM()?.inverse());
           setConnMouse({ x: p.x, y: p.y });
         }
+      }
+
+      // Atualiza a caixa de seleção (marquee)
+      if (marqueeRef.current) {
+        const svg = svgRef.current;
+        if (svg) {
+          const pt = svg.createSVGPoint();
+          pt.x = e.clientX; pt.y = e.clientY;
+          const p = pt.matrixTransform(svg.getScreenCTM()?.inverse());
+          setMarquee(m => (m ? { ...m, x2: pixelsToGrid(p.x, false), y2: pixelsToGrid(p.y, false) } : m));
+        }
+        return;
       }
 
       // Verificar se está arrastando um equipamento
@@ -243,8 +279,18 @@ export const DiagramViewport: React.FC<DiagramViewportProps> = ({ children, onBa
         const gridX = pixelsToGrid(equipmentX, editor.snapToGrid);
         const gridY = pixelsToGrid(equipmentY, editor.snapToGrid);
 
-        // Atualizar posição do equipamento
-        updateEquipamentoPosition(editor.draggingEquipmentId, gridX, gridY);
+        // Multi-seleção: se o item arrastado faz parte dela, move todos pelo mesmo delta
+        const dragId = editor.draggingEquipmentId;
+        if (editor.selectedEquipmentIds.length > 1 && editor.selectedEquipmentIds.includes(dragId)) {
+          const eqAtual = equipamentos.find(eq2 => eq2.id === dragId);
+          if (eqAtual) {
+            const dx = gridX - eqAtual.posicaoX;
+            const dy = gridY - eqAtual.posicaoY;
+            if (dx !== 0 || dy !== 0) moveSelectionBy(dx, dy);
+          }
+        } else {
+          updateEquipamentoPosition(dragId, gridX, gridY);
+        }
         return;
       }
 
@@ -259,10 +305,23 @@ export const DiagramViewport: React.FC<DiagramViewportProps> = ({ children, onBa
       // Atualizar pan
       setPan(viewport.x + deltaX, viewport.y + deltaY);
     },
-    [editor.draggingEquipmentId, editor.dragOffset, editor.snapToGrid, editor.mode, editor.connectingFrom, viewport.x, viewport.y, viewport.scale, setPan, updateEquipamentoPosition]
+    [editor.draggingEquipmentId, editor.dragOffset, editor.snapToGrid, editor.mode, editor.connectingFrom, editor.selectedEquipmentIds, equipamentos, viewport.x, viewport.y, viewport.scale, setPan, updateEquipamentoPosition, moveSelectionBy]
   );
 
   const handleMouseUp = useCallback(() => {
+    // Finalizar caixa de seleção (marquee)
+    if (marqueeRef.current) {
+      marqueeRef.current = false;
+      setMarquee(m => {
+        if (m) {
+          const moved = Math.abs(m.x2 - m.x1) > 0.2 || Math.abs(m.y2 - m.y1) > 0.2;
+          if (moved) selectInBox(m.x1, m.y1, m.x2, m.y2, true);
+        }
+        return null;
+      });
+      return;
+    }
+
     // Terminar drag de equipamento
     if (editor.draggingEquipmentId) {
       endDraggingEquipamento();
@@ -273,9 +332,14 @@ export const DiagramViewport: React.FC<DiagramViewportProps> = ({ children, onBa
       isDraggingRef.current = false;
       endViewportDrag();
     }
-  }, [editor.draggingEquipmentId, endDraggingEquipamento, endViewportDrag]);
+  }, [editor.draggingEquipmentId, endDraggingEquipamento, endViewportDrag, selectInBox]);
 
   const handleMouseLeave = useCallback(() => {
+    // Cancelar caixa de seleção se o mouse sair
+    if (marqueeRef.current) {
+      marqueeRef.current = false;
+      setMarquee(null);
+    }
     // Terminar drag de equipamento
     if (editor.draggingEquipmentId) {
       endDraggingEquipamento();
@@ -421,6 +485,20 @@ export const DiagramViewport: React.FC<DiagramViewportProps> = ({ children, onBa
           {/* Conteúdo (equipamentos, conexões, etc) */}
           <g className="diagram-content">
             {children}
+            {marquee && (
+              <rect
+                x={gridToPixels(Math.min(marquee.x1, marquee.x2))}
+                y={gridToPixels(Math.min(marquee.y1, marquee.y2))}
+                width={gridToPixels(Math.abs(marquee.x2 - marquee.x1))}
+                height={gridToPixels(Math.abs(marquee.y2 - marquee.y1))}
+                fill="rgba(59,130,246,0.12)"
+                stroke="#3B82F6"
+                strokeWidth={1}
+                strokeDasharray="4 3"
+                pointerEvents="none"
+                rx={2}
+              />
+            )}
 
             {/* Linha "elastica" (rubber-band): da porta de origem ate o cursor */}
             {editor.mode === 'connecting' && editor.connectingFrom && connMouse && (() => {

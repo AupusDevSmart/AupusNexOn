@@ -199,6 +199,8 @@ export type EditorMode = 'view' | 'edit' | 'connecting' | 'connecting-to-line';
 
 export interface EditorState {
   mode: EditorMode;
+  // Ferramenta ativa no modo edição: 'move' (mão/pan) ou 'select' (caixa de seleção)
+  toolMode: 'move' | 'select';
   selectedEquipmentIds: string[];
   selectedConnectionIds: string[];
 

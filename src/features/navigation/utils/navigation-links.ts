@@ -13,6 +13,7 @@ import {
   Database,
   Boxes,
   FileText,
+  Sun,
 } from "lucide-react";
 
 /**
@@ -91,6 +92,21 @@ export const navigationLinks: Array<NavigationLink> = [
         icon: FileText,
         label: "Logs MQTT",
         hint: "Logs gerados pelas regras MQTT",
+      },
+      {
+        key: "supervisorio-eventos-protecao",
+        path: "/supervisorio/eventos-protecao",
+        icon: Zap,
+        label: "Eventos de Proteção",
+        hint: "SOE — trips e atuações com a hora do próprio relé",
+      },
+      {
+        key: "supervisorio-bdo-ufvs",
+        featureKey: "Monitoramento",
+        path: "/supervisorio/bdo-ufvs",
+        icon: Sun,
+        label: "BDO UFVs",
+        hint: "Painel BDO + sync de nuvem + curadoria de geração FV",
       },
     ],
   },

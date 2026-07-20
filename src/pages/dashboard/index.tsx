@@ -479,12 +479,9 @@ export function DashboardPage() {
                               <th className="text-left py-2 px-2 font-medium">Nome</th>
                               <th className="text-center py-2 px-2 font-medium">Potência</th>
                               <th className="text-center py-2 px-2 font-medium">Potência Inst.</th>
-                              <th className="text-center py-2 px-2 font-medium">FC</th>
-                              <th className="text-center py-2 px-2 font-medium">Clima</th>
                               <th className="text-center py-2 px-2 font-medium">Status</th>
                               <th className="text-center py-2 px-2 font-medium">Trip</th>
                               <th className="text-center py-2 px-2 font-medium">Alarme</th>
-                              <th className="text-center py-2 px-2 font-medium">Update</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -497,7 +494,7 @@ export function DashboardPage() {
                               if (ufvs.length === 0) {
                                 return (
                                   <tr>
-                                    <td colSpan={9} className="text-center py-4 text-muted-foreground">
+                                    <td colSpan={6} className="text-center py-4 text-muted-foreground">
                                       Nenhuma unidade UFV encontrada
                                     </td>
                                   </tr>
@@ -533,31 +530,25 @@ export function DashboardPage() {
                                     }}
                                   >
                                     <td className="py-2 px-2 font-medium">{unidade.nome}</td>
-                                    <td className="text-center py-2 px-2">
-                                      <div className="flex flex-col items-center gap-1">
-                                        <div className="flex items-center gap-2 w-full">
-                                          <span className="text-xs font-medium whitespace-nowrap">{potenciaPercent}%</span>
-                                          <div className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                                            <div
-                                              className={`h-full rounded-full transition-all ${
-                                                potenciaPercent >= 90 ? 'bg-green-500' :
-                                                potenciaPercent >= 70 ? 'bg-yellow-500' :
-                                                'bg-red-500'
-                                              }`}
-                                              style={{ width: `${Math.min(potenciaPercent, 100)}%` }}
-                                            />
-                                          </div>
+                                    <td className="text-center py-2 px-2 whitespace-nowrap">
+                                      <div className="flex items-center gap-2 min-w-[110px]">
+                                        <span className="text-xs font-medium whitespace-nowrap">{potenciaPercent}%</span>
+                                        <div className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                                          <div
+                                            className={`h-full rounded-full transition-all ${
+                                              potenciaPercent >= 90 ? 'bg-green-500' :
+                                              potenciaPercent >= 70 ? 'bg-yellow-500' :
+                                              'bg-red-500'
+                                            }`}
+                                            style={{ width: `${Math.min(potenciaPercent, 100)}%` }}
+                                          />
                                         </div>
-                                        <span className="text-xs text-muted-foreground">{unidade.metricas.potenciaAtual.toFixed(1)} kW</span>
+                                        <span className="text-xs text-muted-foreground whitespace-nowrap">{unidade.metricas.potenciaAtual.toFixed(0)}kW</span>
                                       </div>
                                     </td>
                                     <td className="text-center py-2 px-2">
                                       <Badge variant="outline">0%</Badge>
                                     </td>
-                                    <td className="text-center py-2 px-2">
-                                      <Badge variant="outline">{fatorCarga.toFixed(0)}</Badge>
-                                    </td>
-                                    <td className="text-center py-2 px-2">-</td>
                                     <td className="text-center py-2 px-2">
                                       <div className={`w-3 h-3 rounded-full mx-auto ${
                                         unidade.status === 'ONLINE' ? 'bg-green-500' :
@@ -574,14 +565,6 @@ export function DashboardPage() {
                                       <Badge variant={hasAlarme ? "warning" : "outline"}>
                                         {hasAlarme ? '1' : '0'}
                                       </Badge>
-                                    </td>
-                                    <td className="text-center py-2 px-2">
-                                      {unidade.ultimaLeitura
-                                        ? new Date(unidade.ultimaLeitura).toLocaleTimeString("pt-BR", {
-                                            hour: '2-digit',
-                                            minute: '2-digit'
-                                          })
-                                        : '--:--'}
                                     </td>
                                   </tr>
                                 );
@@ -607,12 +590,9 @@ export function DashboardPage() {
                             <tr className="border-b">
                               <th className="text-left py-2 px-2 font-medium">Nome</th>
                               <th className="text-center py-2 px-2 font-medium">Energia Consumida</th>
-                              <th className="text-center py-2 px-2 font-medium">FC</th>
-                              <th className="text-center py-2 px-2 font-medium">Clima</th>
                               <th className="text-center py-2 px-2 font-medium">Status</th>
                               <th className="text-center py-2 px-2 font-medium">Trip</th>
                               <th className="text-center py-2 px-2 font-medium">Alarme</th>
-                              <th className="text-center py-2 px-2 font-medium">Update</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -625,7 +605,7 @@ export function DashboardPage() {
                               if (cargas.length === 0) {
                                 return (
                                   <tr>
-                                    <td colSpan={8} className="text-center py-4 text-muted-foreground">
+                                    <td colSpan={5} className="text-center py-4 text-muted-foreground">
                                       Nenhuma carga encontrada
                                     </td>
                                   </tr>
@@ -661,16 +641,9 @@ export function DashboardPage() {
                                     }}
                                   >
                                     <td className="py-2 px-2 font-medium">{unidade.nome}</td>
-                                    <td className="text-center py-2 px-2">
-                                      <div className="flex flex-col items-center gap-1">
-                                        <span className="text-sm font-bold">{formatEnergy(unidade.metricas.energiaHoje)}</span>
-                                        <span className="text-xs text-muted-foreground">Energia do dia</span>
-                                      </div>
+                                    <td className="text-center py-2 px-2 whitespace-nowrap">
+                                      <span className="text-sm font-bold">{formatEnergy(unidade.metricas.energiaHoje)}</span>
                                     </td>
-                                    <td className="text-center py-2 px-2">
-                                      <Badge variant="outline">{fatorCarga.toFixed(0)}</Badge>
-                                    </td>
-                                    <td className="text-center py-2 px-2">-</td>
                                     <td className="text-center py-2 px-2">
                                       <div className={`w-3 h-3 rounded-full mx-auto ${
                                         unidade.status === 'ONLINE' ? 'bg-green-500' :
@@ -687,14 +660,6 @@ export function DashboardPage() {
                                       <Badge variant={hasAlarme ? "warning" : "outline"}>
                                         {hasAlarme ? '1' : '0'}
                                       </Badge>
-                                    </td>
-                                    <td className="text-center py-2 px-2">
-                                      {unidade.ultimaLeitura
-                                        ? new Date(unidade.ultimaLeitura).toLocaleTimeString("pt-BR", {
-                                            hour: '2-digit',
-                                            minute: '2-digit'
-                                          })
-                                        : '--:--'}
                                     </td>
                                   </tr>
                                 );
