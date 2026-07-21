@@ -7,7 +7,10 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
-const unwrap = (r: any) => r?.data?.data?.data ?? r?.data?.data ?? r?.data;
+// A API responde { data: <payload> }. NAO descer um nivel a mais: o payload do
+// disparo tem um campo `data` (a data do boletim, string), e a busca gulosa de 3
+// niveis devolvia essa string em vez do resultado — zerando os alvos em silencio.
+const unwrap = (r: any) => r?.data?.data ?? r?.data;
 
 interface EnvioConfig {
   ativo: boolean;
