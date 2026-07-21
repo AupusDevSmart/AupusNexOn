@@ -14,11 +14,21 @@ var PORT_RADIUS = 5;
 // Capacidades por tipo de TON — espelha o gerador. A lógica de aresta LoRa
 // lê a flag `lora`, não o número da TON (assim novos arranjos funcionam).
 //   ton1=(sem lora, sem comando) · ton2=(lora) · ton3=(comando) · ton4=(lora+comando)
+// v2 (placa SCH-TON-v1b): mesmas variantes, contagens maiores — diferenças são
+// DADOS aqui, não ramificação (IOT-TON-V2-BRIEFING.md §2 opção B).
+// NOTA: o gerador V1 (iot-firmware-generator.v2.js) tem uma cópia deste objeto,
+// mas este arquivo carrega por último e o global vale — editar SÓ aqui.
+// O gerador V1 filtra por lista fechada ton1..ton4 e ignora os *v2; os tipos
+// v2 são consumidos exclusivamente pelo FirmwareGeneratorTonV2 (arquivo próprio).
 var TON_CAPS = {
-    ton1: { lora: false, comando: false },
-    ton2: { lora: true,  comando: false },
-    ton3: { lora: false, comando: true  },
-    ton4: { lora: true,  comando: true  },
+    ton1:   { lora: false, comando: false, versao: 1, bi_count: 6, bo_count: 0, pwm_count: 0 },
+    ton2:   { lora: true,  comando: false, versao: 1, bi_count: 6, bo_count: 0, pwm_count: 0 },
+    ton3:   { lora: false, comando: true,  versao: 1, bi_count: 6, bo_count: 6, pwm_count: 0 },
+    ton4:   { lora: true,  comando: true,  versao: 1, bi_count: 6, bo_count: 6, pwm_count: 0 },
+    ton1v2: { lora: false, comando: false, versao: 2, bi_count: 8, bo_count: 0, pwm_count: 8 },
+    ton2v2: { lora: true,  comando: false, versao: 2, bi_count: 8, bo_count: 0, pwm_count: 8 },
+    ton3v2: { lora: false, comando: true,  versao: 2, bi_count: 8, bo_count: 8, pwm_count: 8 },
+    ton4v2: { lora: true,  comando: true,  versao: 2, bi_count: 8, bo_count: 8, pwm_count: 8 },
 };
 function tonCaps(type) { return TON_CAPS[type] || { lora: false, comando: false }; }
 function isLoraNode(type) { return tonCaps(type).lora; }
@@ -439,8 +449,70 @@ var COMPONENT_TYPES = {
     },
 };
 
+// ============================================================
+// CONTROLADORES TON-V2 (placa SCH-TON-v1b, 2026-07)
+// Mesmo conceito de variantes; o que muda é dado (TON_CAPS) e pinout.
+// Fábrica única p/ o pinout v1b não divergir entre as 4 entradas.
+// Consumidos SÓ pelo FirmwareGeneratorTonV2 — o gerador V1 filtra por
+// lista fechada ton1..ton4 e ignora estes tipos.
+// Diferenças v1b → v1a: 8 opto GP0-GP7 · 8 relés GP0-GP7 (bobina 5V) ·
+// PCA9685@0x42 com 8 PWM AO3400 (X88) · AN divisor 7,67x · 2 entradas
+// 4-20mA (IO40/39 — ⚠️ sem ADC no S3, pendência de hardware) · SU+ IO48 ·
+// LoRa M0/M1 em GND (módulo pré-configurado) · RTC 2 fios IO3/IO9.
+// ============================================================
+(function () {
+    function tonV2Integrated(hasLora, hasRelays) {
+        var integ = {
+            mcu: 'ESP32-S3-WROOM-1-N8R2',
+            i2c: { sda: 4, scl: 5 },
+            rs485: { chip: 'MAX485CSA++', tx: 18, rx: 17, de_re: 8, connector: 'bornes A/B (RS485-1/RS485-2)' },
+            ethernet: { chip: 'W5500', spi: 'SPI2', mosi: 11, sclk: 12, cs: 10, miso: 13, rst: 14 },
+            sd_card: { spi: 'SPI3_HOST', mosi: 35, sclk: 36, cs: 38, miso: 37 },
+            rtc: { chip: '2 fios (part number a confirmar)', ck: 3, dt: 9 },
+            opto_inputs: { count: 8, chip: 'TLP183', mux: 'MCP23008@0x26', pins: 'GP0-GP7', connectors: 'X12-1..8' },
+            transistor_outputs: { count: 4, chip: 'BC817', pins: [1, 2, 42, 41], connector: 'X11' },
+            pwm: { count: 8, controller: 'PCA9685@0x42', mosfet: 'AO3400 (open-drain)', connector: 'X88-1..8' },
+            analog_inputs: { count: 2, pins: [6, 7], resolution: '12bit', divider: 7.67 },
+            current_loop_inputs: { count: 2, pins: [40, 39], shunt: '165R + polyfuse', connector: 'X77', note: '4-20mA; IO39/40 sem ADC no S3 — validar em bancada' },
+            supervision_input: { pin: 48, connector: 'X14', note: 'contato seco, pull-up 3V3 + TVS' },
+            usb: { type: 'USB-C', dn: 19, dp: 20 },
+        };
+        if (hasLora) integ.lora = { module: 'E220-900T30D', interface: 'UART2', tx: 16, rx: 15, aux: 47, m0m1: 'GND (fixo — módulo pré-configurado, sem lora config/pair)' };
+        if (hasRelays) integ.relays = { count: 8, driver: 'ULN2803ADW', mux: 'MCP23008@0x27', pins: 'GP0-GP7', relay: 'MKB-1M-05 (bobina 5V)', connectors: 'X1-X8 (NA/NF)' };
+        return integ;
+    }
+    function tonV2Type(num, color, hasLora, hasRelays, descr) {
+        var name = 'TON' + num + 'v2';
+        var def = {
+            label: 'TON' + num + ' v2', category: 'controller', color: color,
+            icon: COMPONENT_TYPES.ton1.icon,
+            ports: ['top', 'bottom', 'left', 'right'],
+            generates_firmware: true,
+            has_lora: hasLora,
+            has_relays: hasRelays,
+            description: descr,
+            integrated: tonV2Integrated(hasLora, hasRelays),
+            defaults: { name: name, ota_hostname: '', mqtt_topic_base: '', equipamento_id: '' },
+            fields: [
+                { key: 'name', label: 'Nome', type: 'text' },
+                { key: 'ota_hostname', label: 'Hostname OTA', type: 'text', placeholder: name + '-XXX' },
+                { key: 'mqtt_topic_base', label: 'Tópico Base', type: 'text', placeholder: 'PROPRIETARIO/ESTADO/PLANTA/INSTALACAO' },
+                { key: '_topic_preview', label: 'Tópicos Dispositivos', type: 'topic_preview' },
+                { key: 'equipamento_id', label: 'Equipamento NexOn (ID)', type: 'text', placeholder: 'CUID 26 chars — necessário para Implantar OTA' },
+            ],
+        };
+        if (hasLora) def.antennaIcon = COMPONENT_TYPES.ton2.antennaIcon;
+        if (hasRelays) def.relayIcon = COMPONENT_TYPES.ton3.relayIcon;
+        return def;
+    }
+    COMPONENT_TYPES.ton1v2 = tonV2Type(1, '#0891B2', false, false, 'v2: RS485 + Ethernet + SD + 8 entradas + 4 TR + 8 PWM + 2 AN + 2×4-20mA');
+    COMPONENT_TYPES.ton2v2 = tonV2Type(2, '#7C3AED', true, false, 'v2: RS485 + Ethernet + SD + LoRa + 8 entradas + 4 TR + 8 PWM + 2 AN + 2×4-20mA');
+    COMPONENT_TYPES.ton3v2 = tonV2Type(3, '#D97706', false, true, 'v2: RS485 + Ethernet + SD + 8 relés + 8 entradas + 4 TR + 8 PWM + 2 AN + 2×4-20mA');
+    COMPONENT_TYPES.ton4v2 = tonV2Type(4, '#DB2777', true, true, 'v2 completo: RS485 + Ethernet + SD + LoRa + 8 relés + 8 entradas + 4 TR + 8 PWM + 2 AN + 2×4-20mA');
+})();
+
 var CATEGORIES = [
-    { id: 'controller', label: 'Controladores TON', types: ['ton1', 'ton2', 'ton3', 'ton4'] },
+    { id: 'controller', label: 'Controladores TON', types: ['ton1', 'ton2', 'ton3', 'ton4', 'ton1v2', 'ton2v2', 'ton3v2', 'ton4v2'] },
     { id: 'infra', label: 'Infraestrutura', types: ['wifi_router', 'mqtt_broker', 'meter_gateway', 'inverter_datalogger', 'conversor'] },
     { id: 'device', label: 'Dispositivos', types: ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao'] },
     { id: 'irrigacao', label: 'Irrigação', types: ['pivo'] },
@@ -974,7 +1046,7 @@ var DiagramEditor = class {
     // Reassign modbus addresses based on distance from TON controller
     // Only auto-assigns devices that don't have _addr_manual flag
     _reassignModbusAddresses() {
-        const tons = this.components.filter(c => c.type === 'ton1' || c.type === 'ton2' || c.type === 'ton3' || c.type === 'ton4');
+        const tons = this.components.filter(c => !!TON_CAPS[c.type]);
         if (!tons.length) return;
 
         for (const ton of tons) {
@@ -1057,7 +1129,7 @@ var DiagramEditor = class {
         const to = this.components.find(c => c.id === toId);
         if (!from || !to) return ['rs485'];
         const types = [from.type, to.type];
-        const tonTypes = ['ton1', 'ton2', 'ton3', 'ton4'];
+        const tonTypes = Object.keys(TON_CAPS);
 
         // TON com LoRa ↔ TON com LoRa = LoRa (TON2 e TON4 têm LoRa)
         if (types.every(t => isLoraNode(t))) return ['lora_radio'];
@@ -1550,7 +1622,7 @@ var DiagramEditor = class {
         if (!from || !to) return { allowed: false, reason: 'Componente não encontrado' };
 
         const types = [from.type, to.type];
-        const tonTypes = ['ton1', 'ton2', 'ton3', 'ton4'];
+        const tonTypes = Object.keys(TON_CAPS);
         const deviceTypes = ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao'];
 
         // Rule 1: TON to TON — apenas entre TONs com LoRa (TON2 ou TON4).
@@ -1594,7 +1666,7 @@ var DiagramEditor = class {
         // Rule 5: TON connects to: Router WiFi, devices (RS485), Datalogger (TCP), or another TON2 (LoRa)
         if (types.some(t => tonTypes.includes(t))) {
             const otherType = tonTypes.includes(from.type) ? to.type : from.type;
-            const allowedTargets = ['wifi_router', 'inverter_datalogger', 'conversor', ...deviceTypes, 'ton2', 'ton4', 'pivo'];
+            const allowedTargets = ['wifi_router', 'inverter_datalogger', 'conversor', ...deviceTypes, ...tonTypes.filter(t => isLoraNode(t)), 'pivo'];
             if (!allowedTargets.includes(otherType)) {
                 return { allowed: false, reason: 'TON se conecta a: Router WiFi, Datalogger, Conversor ou dispositivos' };
             }
@@ -1643,7 +1715,7 @@ var DiagramEditor = class {
         const to = this.components.find(c => c.id === toId);
         if (!from || !to) return 'rs485';
         const types = [from.type, to.type];
-        const tonTypes = ['ton1', 'ton2', 'ton3', 'ton4'];
+        const tonTypes = Object.keys(TON_CAPS);
         const deviceTypes = ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao'];
         // TON com LoRa ↔ TON com LoRa = LoRa (TON2 e TON4)
         if (types.some(t => isLoraNode(t)) && types.every(t => tonTypes.includes(t))) return 'lora_radio';
@@ -2033,7 +2105,7 @@ var DiagramEditor = class {
 
     _buildSimFlows() {
         // Find TON controllers and build sequential data flow
-        const tons = this.components.filter(c => c.type === 'ton1' || c.type === 'ton2' || c.type === 'ton3' || c.type === 'ton4');
+        const tons = this.components.filter(c => !!TON_CAPS[c.type]);
         const flows = [];
 
         for (const ton of tons) {

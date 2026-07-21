@@ -5,7 +5,9 @@
 import { api } from '@/config/api';
 
 export const BO_NUMERO_MIN = 1;
-export const BO_NUMERO_MAX = 6;
+// Teto SINTATICO (ton3v2/ton4v2 tem 8). A contagem real vem da API (list
+// retorna 6/8/0 linhas conforme o modelo) — o grid renderiza da resposta.
+export const BO_NUMERO_MAX = 8;
 export const PULSO_MS_DEFAULT = 500;
 export const PULSO_MS_MIN = 50;
 export const PULSO_MS_MAX = 60_000;

@@ -84,6 +84,64 @@ function buildToggleCommands(
  * IMPORTANTE: chave eh case-sensitive e match exato com `categoria.nome` da DB.
  * Se a categoria 'TON' for renomeada no cadastro, atualizar aqui tambem.
  */
+/**
+ * Painel dos modelos TON-V2 (SCH-TON-v1b): 8 reles (so ton3v2/ton4v2),
+ * 4 TRs, 8 PWMs via PCA9685 (comando "pwm<N> <0-100>" — presets 100%/off;
+ * duty arbitrario via POST /equipamentos/:id/cmd).
+ */
+function tonV2Commands(hasRelays: boolean): CategoryCommands {
+  const pwmButtons: CommandButton[] = [];
+  for (let i = 1; i <= 8; i++) {
+    pwmButtons.push(
+      {
+        label: `PWM ${i} · 100%`,
+        cmd: `pwm${i} 100`,
+        variant: 'success',
+        hint: `Canal ${i} do PCA9685 a 100% (pwm${i} 100). Outro duty: enviar "pwm${i} <0-100>" via API.`,
+      },
+      {
+        label: `PWM ${i} · Off`,
+        cmd: `pwm${i} off`,
+        variant: 'outline',
+        hint: `Desliga o canal ${i} (pwm${i} off)`,
+      },
+    );
+  }
+  const groups: CommandGroup[] = [];
+  if (hasRelays) {
+    groups.push({
+      title: 'Reles',
+      description: '8 saidas via ULN2803 (bobina 5V). Disponiveis em TON3v2 e TON4v2.',
+      buttons: buildToggleCommands('r', 8, 'Rele'),
+    });
+  }
+  groups.push(
+    {
+      title: 'Transistores',
+      description: '4 saidas digitais. Disponiveis em todos os modelos.',
+      buttons: buildToggleCommands('tr', 4, 'TR'),
+    },
+    {
+      title: 'PWM (PCA9685)',
+      description: '8 canais 0-100%. Presets: 100% e Off — duty arbitrario via API (pwm<N> <0-100>).',
+      buttons: pwmButtons,
+    },
+    {
+      title: 'Diagnostico',
+      description: 'Comandos de debug — sem efeito fisico.',
+      buttons: [
+        {
+          label: 'Status',
+          cmd: 'status',
+          variant: 'default',
+          hint: 'Imprime estado dos I/Os no Serial Monitor do TON',
+        },
+      ],
+    },
+  );
+  return { groups };
+}
+
 export const COMMAND_REGISTRY: Record<string, CategoryCommands> = {
   TON: {
     groups: [
@@ -111,6 +169,13 @@ export const COMMAND_REGISTRY: Record<string, CategoryCommands> = {
       },
     ],
   },
+  // TON-V2 por MODELO (tipo_equipamento.codigo). O lookup tenta o tipo exato
+  // ANTES da categoria — assim os v2 ganham painel proprio (8 reles + PWM) e
+  // os v1 seguem caindo na chave 'TON' generica.
+  TON1V2: tonV2Commands(false),
+  TON2V2: tonV2Commands(false),
+  TON3V2: tonV2Commands(true),
+  TON4V2: tonV2Commands(true),
 };
 
 /**
@@ -138,6 +203,13 @@ export function getCommandsForCategoria(
   categoriaNome: string | null | undefined,
   tipoCodigo?: string | null,
 ): CategoryCommands | null {
+  // 0) Match exato pelo TIPO (modelo) — permite painel por modelo (TON*V2)
+  //    sem afetar categorias existentes (v1 nao tem chave por modelo).
+  if (tipoCodigo) {
+    const byTipo = COMMAND_REGISTRY[normalizeKey(tipoCodigo)];
+    if (byTipo) return byTipo;
+  }
+
   // 1) Match direto pela categoria
   if (categoriaNome) {
     const direct = COMMAND_REGISTRY[normalizeKey(categoriaNome)];

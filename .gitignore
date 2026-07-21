@@ -38,3 +38,10 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
+
+# Harness de regressao de firmware: os DADOS embutem topicos MQTT e nomes de
+# plantas reais (extraidos de iot_projetos). Versiona-se so' o harness (.mjs);
+# regenerar localmente com:  node scripts/regressao-firmware-v1.mjs --baseline
+scripts/regressao-corpus.json
+scripts/regressao-baseline.json
+scripts/regressao-catalog.snapshot.js

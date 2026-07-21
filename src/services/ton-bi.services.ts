@@ -5,7 +5,9 @@
 import { api } from '@/config/api';
 
 export const BI_NUMERO_MIN = 1;
-export const BI_NUMERO_MAX = 6;
+// Teto SINTATICO (TON-V2 tem 8). A contagem real vem da API (list retorna
+// 6 ou 8 linhas conforme o modelo) — o grid renderiza da resposta.
+export const BI_NUMERO_MAX = 8;
 
 export interface TonBiPontoRef {
   id: string;

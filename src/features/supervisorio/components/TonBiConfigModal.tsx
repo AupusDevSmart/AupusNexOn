@@ -163,7 +163,7 @@ export const TonBiConfigModal: React.FC<TonBiConfigModalProps> = ({
       if (event?.equipamentoId !== cleanId || !event?.estado) return;
       setRawInputs((prev) => {
         const next = { ...prev };
-        for (let n = 1; n <= 6; n++) {
+        for (let n = 1; n <= 8; n++) {   // v1 manda d1..d6; TON-V2 d1..d8
           const v = event.estado[`d${n}`];
           if (v !== undefined && v !== null) next[n] = v ? 1 : 0;
         }

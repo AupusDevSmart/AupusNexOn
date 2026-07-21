@@ -158,6 +158,7 @@ declare global {
     COMPONENT_TYPES: any;
     CATEGORIES: any;
     FirmwareGenerator: any;
+    FirmwareGeneratorTonV2: any;
     __iotScriptsReady: boolean;
   }
   // Functions from iot-device-catalog.js (loaded as global script)
@@ -195,11 +196,16 @@ function ensureIoTScripts(): Promise<void> {
     //
     // O catalogo de dispositivos foi movido pro backend (GET /iot-catalog/device-catalog.js)
     // — ele revalida sozinho via ETag. Os demais ainda sao estaticos.
-    const IOT_SCRIPTS_VERSION = '20260720-bo-dpc';
+    const IOT_SCRIPTS_VERSION = '20260721-tonv2-bench2';
     const scripts = [
       `${BASE_URL}/iot-catalog/device-catalog.js`,
       `/iot-firmware-base.v2.js?v=${IOT_SCRIPTS_VERSION}`,
       `/iot-firmware-generator.v2.js?v=${IOT_SCRIPTS_VERSION}`,
+      // TON-V2 (placa SCH-TON-v1b): base + gerador em arquivos SEPARADOS.
+      // O gerador V1 ignora os tipos ton*v2 e vice-versa; o iot-diagram.v2.js
+      // (carregado por último) define TON_CAPS/COMPONENT_TYPES com os 2 mundos.
+      `/iot-firmware-base.ton-v2.js?v=${IOT_SCRIPTS_VERSION}`,
+      `/iot-firmware-generator.ton-v2.js?v=${IOT_SCRIPTS_VERSION}`,
       `/iot-bench-tests.v2.js?v=${IOT_SCRIPTS_VERSION}`,
       `/iot-diagram.v2.js?v=${IOT_SCRIPTS_VERSION}`,
     ];
@@ -1068,8 +1074,14 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
     // (sem periférico real) e o tópico ganha prefixo "TESTE/". Reseta logo após
     // gerar pra não vazar. (Pode forçar via argumento, mas o padrão é o estado.)
     (window as any).IOT_SIMULATE = simulate;
+    // Dispatch V1 + V2: cada gerador só enxerga os próprios tipos (V1 filtra
+    // ton1..ton4; V2 filtra ton1v2..ton4v2) — diagrama misto gera N+M projetos.
     const gen = new window.FirmwareGenerator(editorRef.current);
     const projects = gen.generateAll();
+    if (window.FirmwareGeneratorTonV2) {
+      const genV2 = new window.FirmwareGeneratorTonV2(editorRef.current);
+      projects.push(...genV2.generateAll());
+    }
     (window as any).IOT_SIMULATE = false;
     if (projects.length === 0) {
       alert('Nenhum controlador TON encontrado no diagrama.');
