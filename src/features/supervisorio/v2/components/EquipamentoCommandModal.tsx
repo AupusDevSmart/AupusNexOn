@@ -41,6 +41,8 @@ export interface EquipamentoCommandModalProps {
     nome: string;
     topico_mqtt?: string | null;
     categoria?: string | null;
+    /** Modelo (ex.: 'ton4v2'). Tem precedencia sobre a categoria no registry. */
+    tipo?: string | null;
   };
   /** Se fornecido (admin), exibe o botao "Configurar Pontos" (caixas de dados R8). */
   onConfigurarPontos?: () => void;
@@ -69,7 +71,7 @@ export const EquipamentoCommandModal: React.FC<EquipamentoCommandModalProps> = (
 }) => {
   const [pending, setPending] = useState<PendingState>({});
 
-  const commands = getCommandsForCategoria(equipamento.categoria);
+  const commands = getCommandsForCategoria(equipamento.categoria, equipamento.tipo);
 
   const handleSend = useCallback(
     async (groupTitle: string, button: CommandButton) => {

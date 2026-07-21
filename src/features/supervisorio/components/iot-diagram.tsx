@@ -293,7 +293,7 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
   const [biConfigTonNome, setBiConfigTonNome] = useState<string | undefined>(undefined);
 
   // Modal de COMANDOS reais (relés/transistores/status) do TON — reusa o do unifilar.
-  const [cmdRealModal, setCmdRealModal] = useState<{ id: string; nome: string; topico_mqtt?: string } | null>(null);
+  const [cmdRealModal, setCmdRealModal] = useState<{ id: string; nome: string; topico_mqtt?: string; tipo?: string } | null>(null);
 
   // Modal de I/O genérico (catálogo-driven) — relé e devices com BI/BO no catálogo.
   const [ioModalOpen, setIoModalOpen] = useState(false);
@@ -1823,6 +1823,10 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
                     id: eid,
                     nome: String(propsValues.name ?? propsComp?._def?.label ?? 'TON'),
                     topico_mqtt: String(propsValues.mqtt_topic_base ?? '') || undefined,
+                    // Modelo vem do DIAGRAMA (ex.: 'ton4v2'), nao de tipos_equipamentos —
+                    // la' todas as TON apontam pra linha generica 'TON' e o painel da v2
+                    // (r7/r8 + PWM) nunca seria encontrado.
+                    tipo: String(propsComp?.type ?? '') || undefined,
                   });
                 }}
               >
@@ -1865,6 +1869,7 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
           id: cmdRealModal?.id ?? '',
           nome: cmdRealModal?.nome ?? '',
           categoria: 'TON',
+          tipo: cmdRealModal?.tipo ?? null,
           topico_mqtt: cmdRealModal?.topico_mqtt ?? null,
         }}
       />
