@@ -315,6 +315,32 @@ var FirmwareGenerator = class FirmwareGenerator {
     // (ADICIONA/sobrescreve por chave). O cmd_id passa a ser a chave do io_config — o
     // frontend usa o ponto_id do equipamento, então o comando fica definido por
     // "ponto do equipamento → BO", sem sinal fixo de catálogo no meio.
+    /**
+     * Seleciona a variante do mapa do catalogo conforme o TRANSPORTE que o device
+     * realmente fala.
+     *
+     * POR QUE ISSO EXISTE: o mesmo rele tem mapas Modbus DIFERENTES por transporte.
+     * No 7SR5111, em TCP o status do disjuntor e' UM ponto DOUBLE_BIT
+     * ("CB-1 Status", 10013); em RTU sao DOIS bits separados (CB Open 10568 /
+     * CB Closed 10562). Nao e' o mesmo mapa com outro transporte — e' outro mapa.
+     * Por isso o catalogo aceita `por_transporte: { rtu: {...}, tcp: {...} }` como
+     * OVERLAY sobre a base comum (so' entra no overlay o que difere).
+     *
+     * ⚠️ GOTCHA: 'rtu_tcp' (bridge transparente, ex. conversor USR) conta como
+     * **RTU**. O meio e' TCP, mas quem responde e' o rele falando RTU — vale o mapa
+     * dele, nao o do MBAP nativo. Usar o mapa TCP nesse caso le' endereco errado.
+     */
+    _catTransporte(cat, transporte) {
+        if (!cat || typeof cat !== 'object') return cat;
+        const overlay = cat.por_transporte && cat.por_transporte[transporte];
+        if (!overlay || typeof overlay !== 'object') return cat;   // sem overlay: base comum
+        const out = Object.assign({}, cat, overlay);
+        delete out.por_transporte;   // ja' resolvido — evita o resto do gerador se confundir
+        out._transporte = transporte;
+        console.log(`[gen] ${cat.modelo || cat.catalog_id || 'device'}: mapa "${transporte}" aplicado`);
+        return out;
+    }
+
     _mergeIoBo(dev, props) {
         if (!dev || !props) return dev;
         const io = props.io_config;
@@ -350,7 +376,7 @@ var FirmwareGenerator = class FirmwareGenerator {
             type: other.type,
             modbus_address: other.props.modbus_address || 1,
             catalog_id: catalogId || null,
-            catalog_device: this._mergeIoBo(dev, other.props),
+            catalog_device: this._mergeIoBo(this._catTransporte(dev, 'rtu'), other.props),
             registros: dev ? dev.registros : [],
             current_scale_override: this._parseScaleOverride(other.props.current_scale_override),
             voltage_scale_override: this._parseScaleOverride(other.props.voltage_scale_override),
@@ -409,7 +435,7 @@ var FirmwareGenerator = class FirmwareGenerator {
                         type: inv.type,
                         modbus_address: inv.props.modbus_address || 1,
                         catalog_id: catalogId || null,
-                        catalog_device: this._mergeIoBo(dev, inv.props),
+                        catalog_device: this._mergeIoBo(this._catTransporte(dev, 'tcp'), inv.props),
                         registros: dev ? dev.registros : [],
                         gateway: gateway,
                         current_scale_override: this._parseScaleOverride(inv.props.current_scale_override),
@@ -455,7 +481,8 @@ var FirmwareGenerator = class FirmwareGenerator {
                         type: dev.type,
                         modbus_address: dev.props.modbus_address || 1,
                         catalog_id: catalogId || null,
-                        catalog_device: this._mergeIoBo(catDev, dev.props),
+                        // bridge transparente (rtu_tcp): o rele fala RTU — vale o mapa RTU.
+                        catalog_device: this._mergeIoBo(this._catTransporte(catDev, 'rtu'), dev.props),
                         registros: catDev ? catDev.registros : [],
                         gateway: gateway,
                         current_scale_override: this._parseScaleOverride(dev.props.current_scale_override),
@@ -495,7 +522,7 @@ var FirmwareGenerator = class FirmwareGenerator {
             type: other.type,
             modbus_address: other.props.modbus_address || 1,
             catalog_id: catalogId || null,
-            catalog_device: this._mergeIoBo(dev, other.props),
+            catalog_device: this._mergeIoBo(this._catTransporte(dev, 'tcp'), other.props),
             registros: dev ? dev.registros : [],
             gateway: directIp ? {
                 name: (other.props.name || 'direct') + '_tcp',
