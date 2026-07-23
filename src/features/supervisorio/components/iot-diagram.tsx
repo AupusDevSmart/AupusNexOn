@@ -2055,7 +2055,7 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
                   {panel.connected && (
                     <div className="border-t border-gray-700 bg-gray-900 px-2 py-1 shrink-0">
                       <div className="flex flex-wrap gap-0.5">
-                        {['help','all','scan','id','din','rtest','trtest','adc','eth','sd','modbus'].map(cmd => (
+                        {['guia','help','id','all','scan','din','rtest','trtest','adc','pwmtest','eth','sd','modbus','lora eco'].map(cmd => (
                           <button
                             key={cmd}
                             onClick={() => serialSend(idx, cmd)}
