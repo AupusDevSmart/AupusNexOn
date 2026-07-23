@@ -11,7 +11,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 
-interface Unidade { unidade_id: string; nome: string; provedor: string | null }
+interface Unidade { unidade_id: string; nome: string; provedor: string | null; predicao: number | null }
 interface Linha { unidade_id: string; nome: string; data: string; kwh_realizado: number; kwh_previsto: number; origem: string }
 
 const hoje = () => new Date().toISOString().slice(0, 10);
@@ -49,6 +49,26 @@ export function GeracaoFvPage() {
 
   // novo lançamento
   const [novo, setNovo] = useState({ unidadeId: '', data: hoje(), real: '', prev: '' });
+  const [metasAbertas, setMetasAbertas] = useState(false);
+  const [metaEdits, setMetaEdits] = useState<Record<string, string>>({});
+  const [salvandoMeta, setSalvandoMeta] = useState<string | null>(null);
+
+  // Meta (kWh/dia) da usina = cadastro (unidades.predicao_diaria_kwh). Fonte unica: o cron e
+  // as telas leem daqui. Vale para toda usina, inclusive as manuais sem config de sync.
+  const salvarMeta = async (u: Unidade) => {
+    const raw = metaEdits[u.unidade_id];
+    const predicao = raw != null && raw.trim() !== '' ? parseNum(raw) : null;
+    if (predicao != null && (predicao < 0 || predicao == null)) { setStatus({ tipo: 'erro', msg: `Meta inválida em ${u.nome}` }); return; }
+    setSalvandoMeta(u.unidade_id);
+    try {
+      await api.put('/monitoramento-fv/geracao/unidades/meta', { unidadeId: u.unidade_id, predicao });
+      setUnidades((us) => us.map((x) => (x.unidade_id === u.unidade_id ? { ...x, predicao } : x)));
+      setMetaEdits((s) => { const n = { ...s }; delete n[u.unidade_id]; return n; });
+      setStatus({ tipo: 'ok', msg: `Meta de ${u.nome} salva: ${predicao ?? '—'} kWh/dia.` });
+    } catch (err: any) {
+      setStatus({ tipo: 'erro', msg: err?.response?.data?.message || 'Falha ao salvar meta' });
+    } finally { setSalvandoMeta(null); }
+  };
 
   const carregarUnidades = useCallback(async () => {
     try {
@@ -215,6 +235,40 @@ export function GeracaoFvPage() {
           </div>
         </div>
       </CardContent></Card>
+
+      {/* Metas das usinas (cadastro) — meta fixa kWh/dia por usina, a fonte do "% da meta" */}
+      <Card>
+        <CardContent className="p-3 sm:p-4">
+          <button type="button" onClick={() => setMetasAbertas((v) => !v)}
+            className="flex items-center gap-2 text-sm font-medium">
+            <span className={`transition-transform ${metasAbertas ? 'rotate-90' : ''}`}>▸</span>
+            Metas das usinas (kWh/dia)
+            <span className="text-xs text-muted-foreground font-normal">— meta fixa do cadastro; vale p/ todas, inclusive as manuais</span>
+          </button>
+          {metasAbertas && (
+            <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1">
+              {unidades.map((u) => {
+                const edit = metaEdits[u.unidade_id];
+                const val = edit != null ? edit : (u.predicao != null ? String(u.predicao) : '');
+                const dirty = edit != null && edit !== (u.predicao != null ? String(u.predicao) : '');
+                return (
+                  <div key={u.unidade_id} className="flex items-center gap-2 py-0.5">
+                    <span className="flex-1 text-sm truncate" title={u.nome}>{u.nome}</span>
+                    {(u.predicao == null || u.predicao === 0) && <span className="text-[11px] text-amber-500">sem meta</span>}
+                    <Input inputMode="decimal" value={val} placeholder="kWh/dia" className="h-7 w-28 text-right"
+                      onChange={(e) => setMetaEdits((s) => ({ ...s, [u.unidade_id]: e.target.value }))}
+                      onKeyDown={(e) => e.key === 'Enter' && salvarMeta(u)} />
+                    <Button size="sm" variant={dirty ? 'default' : 'outline'} className="h-7"
+                      disabled={salvandoMeta === u.unidade_id} onClick={() => salvarMeta(u)}>
+                      <Save className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Filtros */}
       <div className="flex flex-wrap gap-2 items-end">

@@ -82,7 +82,8 @@ var BENCH_TESTS = [
             'AN_C (4-20mA): leitura indisponivel nesta revisao (IO39/40 sem ADC) — passo registra ATENCAO, nao reprova',
         ],
         commands: [
-            { cmd: 'guia', desc: 'ASSISTENTE GUIADO 13 passos (recomendado)' },
+            { cmd: 'fabrica', desc: 'TESTE DE FABRICA automatico com jig (auto-descobre a fiacao; 1 pergunta so)' },
+            { cmd: 'guia', desc: 'ASSISTENTE GUIADO 13 passos (diagnostico manual)' },
             { cmd: 'lora eco', desc: 'Modo eco LoRa (rodar na 2a TON p/ testar LoRa)' },
             { cmd: 'all', desc: 'Teste completo (dump rapido, nao-guiado)' },
             { cmd: 'scan', desc: 'I2C scan (0x26/0x27/0x42)' },
