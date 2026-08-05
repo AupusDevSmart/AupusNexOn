@@ -68,6 +68,20 @@ export interface EquipamentoPai {
 // ============================================================================
 // EQUIPAMENTO - COMPATÍVEL COM API
 // ============================================================================
+/**
+ * Ponto de automacao como o transform devolve: e um subconjunto do
+ * `PontoEquipamento` do shared-pages, sem os timestamps, que a tela nao usa.
+ */
+export interface PontoEquipamentoResumo {
+  id: string;
+  equipamento_id: string;
+  tipo: string;
+  nome: string;
+  unidade?: string | null;
+  ordem: number;
+  ativo: boolean;
+}
+
 export interface Equipamento extends BaseEntity {
   // Herda id: string, criadoEm: string, atualizadoEm: string de BaseEntity
   id: string; // Explícito para garantir que existe
@@ -88,6 +102,9 @@ export interface Equipamento extends BaseEntity {
   planta?: Planta; // Mantido para compatibilidade (acessível via unidade.planta)
   equipamentoPai?: EquipamentoPai;
   
+  // Path relativo devolvido pelo upload; getUploadUrl resolve para URL completa
+  fotoUrl?: string;
+
   // Dados técnicos básicos
   fabricante?: string;
   modelo?: string;
@@ -130,6 +147,9 @@ export interface Equipamento extends BaseEntity {
 
   // Automacao (PR3) — expoe pontos para integracao com TONs
   automacao?: boolean;
+  // Mantido em snake_case: o modal do shared-pages le
+  // `dadosCompletos.equipamento_pontos` direto.
+  equipamento_pontos?: PontoEquipamentoResumo[];
 
   // Campos MCPSE
   mcpse?: boolean;
