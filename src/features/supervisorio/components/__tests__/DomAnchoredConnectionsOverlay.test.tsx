@@ -189,25 +189,49 @@ describe('DomAnchoredConnectionsOverlay', () => {
     expect(hasEndCoord).toBe(true);
   });
 
-  it('não renderiza SVG quando container tem dimensões zero', () => {
-    // Alterar dimensões do container para 0
-    if (containerRef.current) {
-      containerRef.current.style.width = '0px';
-      containerRef.current.style.height = '0px';
-    }
+  // A guarda de dimensao zero exige TAMBEM que nao haja paths calculados. Ao
+  // entrar em fullscreen o container mede zero por um frame, e sumir com as
+  // linhas ja calculadas nesse frame as fazia piscar.
+  //
+  // Zerar so o style do container nao basta: o mock de getBoundingClientRect
+  // do beforeEach responde 800x500 para #test-container independente do
+  // style, entao a dimensao zero precisa vir do proprio mock.
+  const zerarRectDoContainer = () => {
+    const rectOriginal = HTMLElement.prototype.getBoundingClientRect;
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
+      function (this: HTMLElement) {
+        if (this.id === 'test-container') {
+          return {
+            x: 0, y: 0, width: 0, height: 0,
+            left: 0, top: 0, right: 0, bottom: 0,
+            toJSON: () => {},
+          } as DOMRect;
+        }
+        return rectOriginal.call(this);
+      }
+    );
+  };
+
+  it('não renderiza SVG com container zerado e sem paths calculados', () => {
+    zerarRectDoContainer();
 
     const { container } = render(
       <DomAnchoredConnectionsOverlay
-        connections={connections}
+        connections={[]}
         componentes={componentes}
         containerRef={containerRef}
         modoEdicao={false}
       />
     );
 
-    // Componente deve retornar null
     expect(container.firstChild).toBeNull();
   });
+
+  // O caso simetrico — container que JA mediu e depois zera, no fullscreen —
+  // nao e testavel por aqui: o efeito de medicao faz early-return com rect
+  // invalido, entao dimensoes e paths ficam com o valor bom anterior e nada
+  // no harness dispara uma segunda medicao. E justamente esse early-return
+  // que segura as linhas na tela.
 
   it('ignora conexões com nós ausentes (anti-fantasma)', () => {
     const invalidConnection: Connection = {
