@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scanner MAC / SN — TONs Aupus</title>
+<style>
+  :root{
+    --navy:#16213e; --green:#3fe04f; --bg:#f4f6fb; --card:#fff; --ink:#16213e;
+    --muted:#5b6478; --line:#dfe4ee; --pend:#fff8e1; --pend-b:#f2c94c;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#0e1424; --card:#182036; --ink:#e8ecf5; --muted:#9aa4bd; --line:#2a3350; --pend:#2c2a12; --pend-b:#8a7420; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--ink);}
+  header{background:var(--navy);color:#fff;padding:14px 20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  header h1{font-size:18px;margin:0;font-weight:600}
+  header .dot{width:11px;height:11px;border-radius:50%;background:#c0392b;box-shadow:0 0 0 3px rgba(255,255,255,.12)}
+  header .dot.on{background:var(--green)}
+  header small{color:#aeb8d4}
+  .wrap{max-width:1040px;margin:0 auto;padding:18px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
+  .row{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end}
+  label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:.03em}
+  .seg{display:flex;gap:6px}
+  .seg button{min-width:46px;padding:10px 0;border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:8px;font-size:16px;font-weight:700;cursor:pointer}
+  .seg button.active{background:var(--navy);color:#fff;border-color:var(--navy)}
+  select,input[type=text],input[type=number]{padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);font-size:16px}
+  input[type=number]{width:110px;font-variant-numeric:tabular-nums;font-weight:700}
+  .btn{padding:11px 18px;border:none;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer}
+  .btn.primary{background:var(--green);color:#08351a}
+  .btn.navy{background:var(--navy);color:#fff}
+  .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--ink)}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  /* pending capture */
+  #pending{border:2px dashed var(--line);border-radius:12px;padding:18px;text-align:center;color:var(--muted)}
+  #pending.armed{background:var(--pend);border-color:var(--pend-b);color:var(--ink)}
+  #pending .mac{font-size:30px;font-weight:800;letter-spacing:.04em;font-family:ui-monospace,Menlo,Consolas,monospace}
+  #pending .willbe{font-size:15px;margin-top:6px}
+  #pending .willbe b{font-size:22px;color:var(--navy)}
+  @media (prefers-color-scheme: dark){ #pending .willbe b{color:var(--green)} }
+  #addBtn{margin-top:14px;font-size:18px;padding:14px 28px}
+  table{width:100%;border-collapse:collapse;font-size:15px}
+  th,td{padding:9px 10px;text-align:left;border-bottom:1px solid var(--line)}
+  th{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
+  td.mac,td.sn{font-family:ui-monospace,Menlo,Consolas,monospace}
+  td.seq{font-weight:800;font-variant-numeric:tabular-nums}
+  tr.dup{background:rgba(192,57,43,.12)}
+  .x{color:#c0392b;cursor:pointer;font-weight:700;border:none;background:none;font-size:16px}
+  .bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:12px}
+  .count{margin-left:auto;color:var(--muted);font-size:14px}
+  #log{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;color:var(--muted);background:rgba(0,0,0,.04);border-radius:8px;padding:8px;height:120px;overflow:auto;white-space:pre-wrap}
+  @media (prefers-color-scheme: dark){ #log{background:rgba(0,0,0,.25)} }
+  .hint{font-size:13px;color:var(--muted);line-height:1.5}
+  .warn{background:#c0392b;color:#fff;padding:10px 14px;border-radius:8px;margin-bottom:12px;display:none}
+  code{background:rgba(0,0,0,.06);padding:1px 5px;border-radius:4px}
+  @media (prefers-color-scheme: dark){ code{background:rgba(255,255,255,.08)} }
+</style>
+</head>
+<body>
+<header>
+  <span class="dot" id="dot"></span>
+  <h1>Scanner MAC / SN — TONs Aupus</h1>
+  <small id="hdrStatus">desconectado</small>
+</header>
+
+<div class="wrap">
+  <div class="warn" id="nosupport">⚠️ Este navegador não tem <b>Web Serial</b>. Use o <b>Google Chrome</b> ou <b>Edge</b> no computador (não funciona no celular).</div>
+
+  <!-- CONFIG -->
+  <div class="card">
+    <div class="row">
+      <div>
+        <label>Tipo da TON</label>
+        <div class="seg" id="tipoSeg">
+          <button data-t="1">1</button><button data-t="2">2</button>
+          <button data-t="3">3</button><button data-t="4">4</button>
+        </div>
+      </div>
+      <div>
+        <label>Versão</label>
+        <div style="display:flex;gap:6px">
+          <select id="versao"></select>
+          <button class="btn ghost" id="addVer" title="Nova versão">+ V</button>
+        </div>
+      </div>
+      <div>
+        <label>Próximo sequencial</label>
+        <input type="number" id="nextSeq" min="1" max="99999" value="1">
+      </div>
+      <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <label style="display:flex;align-items:center;gap:5px;font-size:12px;text-transform:none;letter-spacing:0;margin:0;font-weight:500;color:var(--ink)">
+          <input type="checkbox" id="autoFlash" checked> gravar se firmware antigo
+        </label>
+        <button class="btn navy" id="connBtn">Conectar USB</button>
+        <button class="btn ghost" id="snBtn" disabled>Ler MAC (sn)</button>
+        <button class="btn navy" id="flashBtn" disabled>⚡ Gravar novo</button>
+        <button class="btn ghost" id="resetBtn" disabled>Resetar (boot)</button>
+        <button class="btn ghost" id="discBtn" disabled>Desconectar</button>
+      </div>
+    </div>
+    <p class="hint" style="margin:12px 0 0">
+      Pluga a TON → a página <b>pede o MAC pelo comando 'sn'</b> (o firmware de teste responde na hora, <b>sem resetar</b>).
+      Se a TON tiver firmware <b>antigo</b> ("Comando desconhecido"), o scanner <b>grava o teste novo sozinho</b> e volta a ler o MAC (marque <i>gravar se firmware antigo</i>).
+      Anota na TON o <b>sequencial</b> mostrado e aperta <b>Adicionar</b> (ou <b>espaço</b>).
+      SN = <code>Tipo - Versão - Seq - MAC</code>.
+    </p>
+  </div>
+
+  <!-- PENDING -->
+  <div class="card">
+    <div id="pending">
+      <div class="mac" id="pMac">aguardando MAC…</div>
+      <div class="willbe" id="pWill"></div>
+      <button class="btn primary" id="addBtn" disabled>Adicionar (espaço)</button>
+    </div>
+  </div>
+
+  <!-- TABLE -->
+  <div class="card">
+    <table>
+      <thead><tr><th>Seq</th><th>Tipo</th><th>Versão</th><th>MAC</th><th>SN completo</th><th></th></tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+    <div class="bar">
+      <button class="btn navy" id="copyBtn">📋 Copiar pro Excel</button>
+      <button class="btn ghost" id="csvBtn">⬇ Baixar CSV</button>
+      <button class="btn ghost" id="clearBtn">🗑 Limpar tudo</button>
+      <span class="count" id="count">0 TONs</span>
+    </div>
+    <div class="bar" style="border-top:1px solid var(--line);padding-top:12px;margin-top:12px">
+      <span style="font-size:13px;color:var(--muted)">Corrigir seq</span>
+      <input type="number" id="fixFrom" min="1" placeholder="de" style="width:82px">
+      <input type="number" id="fixTo" min="1" placeholder="até" style="width:82px">
+      <span style="color:var(--muted)">→ Tipo</span>
+      <select id="fixTipo"><option value="">—</option><option>1</option><option>2</option><option>3</option><option>4</option></select>
+      <span style="color:var(--muted)">Versão</span>
+      <select id="fixVer"><option value="">—</option></select>
+      <button class="btn navy" id="fixApply">Aplicar correção</button>
+    </div>
+  </div>
+
+  <!-- LOG -->
+  <div class="card">
+    <label>Serial (diagnóstico)</label>
+    <div id="log"></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+const $=id=>document.getElementById(id);
+const LS="aupus_mac_scanner_v1";
+
+// ---------- estado persistente ----------
+let st = load();
+function load(){
+  try{ const s=JSON.parse(localStorage.getItem(LS)); if(s&&s.rows) return s; }catch(e){}
+  return { rows:[], nextSeq:1, tipo:"4", versao:"V1", versions:["V1","V2"] };
+}
+function save(){ localStorage.setItem(LS, JSON.stringify(st)); }
+const padSeq = n => String(n).padStart(5,"0");
+
+// ---------- UI init ----------
+function renderVersions(){
+  $("versao").innerHTML = st.versions.map(v=>`<option ${v===st.versao?"selected":""}>${v}</option>`).join("");
+  const fv=$("fixVer"); if(fv) fv.innerHTML = '<option value="">—</option>'+st.versions.map(v=>`<option>${v}</option>`).join("");
+}
+function applyFix(){
+  const a=parseInt($("fixFrom").value), b=parseInt($("fixTo").value);
+  if(isNaN(a)||isNaN(b)) return alert("Preencha 'de' e 'até'.");
+  const lo=Math.min(a,b), hi=Math.max(a,b), t=$("fixTipo").value, v=$("fixVer").value;
+  if(!t && !v) return alert("Escolha Tipo e/ou Versão pra aplicar.");
+  let c=0; st.rows.forEach(r=>{ const n=+r.seq; if(n>=lo&&n<=hi){ if(t)r.tipo=t; if(v)r.versao=v; c++; } });
+  if(!c) return alert("Nenhuma linha no intervalo "+lo+"–"+hi+".");
+  save(); renderTable(); beep(1200,90);
+  alert(c+" linha(s) corrigida(s) ("+lo+"–"+hi+")"+(t?" → tipo "+t:"")+(v?" → "+v:"")+".");
+}
+function setTipo(t){ st.tipo=String(t); [...$("tipoSeg").children].forEach(b=>b.classList.toggle("active",b.dataset.t===st.tipo)); save(); refreshWill(); }
+$("tipoSeg").addEventListener("click",e=>{ if(e.target.dataset.t) setTipo(e.target.dataset.t); });
+$("versao").addEventListener("change",e=>{ st.versao=e.target.value; save(); refreshWill(); });
+$("addVer").addEventListener("click",()=>{
+  const v=(prompt("Nova versão (ex: V3):","V"+(st.versions.length+1))||"").trim().toUpperCase();
+  if(v && !st.versions.includes(v)){ st.versions.push(v); st.versao=v; save(); renderVersions(); refreshWill(); }
+});
+$("nextSeq").addEventListener("change",e=>{ let n=parseInt(e.target.value)||1; n=Math.max(1,Math.min(99999,n)); st.nextSeq=n; e.target.value=n; save(); refreshWill(); });
+
+function snOf(r){ return `${r.tipo} - ${r.versao} - ${r.seq} - ${r.mac}`; }
+function renderTable(){
+  const macCount={}; st.rows.forEach(r=>macCount[r.mac]=(macCount[r.mac]||0)+1);
+  $("tbody").innerHTML = st.rows.map((r,i)=>`
+    <tr class="${macCount[r.mac]>1?'dup':''}">
+      <td class="seq">${r.seq}</td><td>TON ${r.tipo}</td><td>${r.versao}</td>
+      <td class="mac">${r.mac}</td><td class="sn">${snOf(r)}</td>
+      <td><button class="x" data-i="${i}" title="Remover">✕</button></td>
+    </tr>`).join("");
+  $("count").textContent = st.rows.length+" TONs";
+  $("nextSeq").value = st.nextSeq;
+}
+$("tbody").addEventListener("click",e=>{
+  const i=e.target.dataset.i;
+  if(i!=null && confirm("Remover a linha "+st.rows[i].seq+"?")){ st.rows.splice(i,1); save(); renderTable(); }
+});
+
+// ---------- captura pendente ----------
+let pendingMac=null, lastAddedMac=null;
+function refreshWill(){
+  if(pendingMac){
+    $("pending").classList.add("armed");
+    $("pMac").textContent = pendingMac;
+    $("pWill").innerHTML = `anote na TON: <b>${padSeq(st.nextSeq)}</b> &nbsp;→&nbsp; SN: ${st.tipo} - ${st.versao} - ${padSeq(st.nextSeq)} - ${pendingMac}`;
+    $("addBtn").disabled=false;
+  }else{
+    $("pending").classList.remove("armed");
+    $("pMac").textContent="aguardando MAC…"; $("pWill").textContent=""; $("addBtn").disabled=true;
+  }
+}
+function onMac(mac){
+  // tipo/versao sao MANUAIS (auto-deteccao de variante no firmware nao e' confiavel)
+  if(mac===lastAddedMac) return;          // mesma TON já adicionada
+  if(mac===pendingMac) return;            // já pendente
+  pendingMac=mac; beep(920,70); refreshWill();
+}
+function addRow(){
+  if(!pendingMac) return;
+  const exists = st.rows.find(r=>r.mac===pendingMac);
+  if(exists && !confirm(`⚠️ MAC já cadastrado no seq ${exists.seq}. Adicionar mesmo assim?`)) return;
+  st.rows.push({ seq:padSeq(st.nextSeq), tipo:st.tipo, versao:st.versao, mac:pendingMac });
+  lastAddedMac=pendingMac; st.nextSeq=Math.min(99999,st.nextSeq+1); pendingMac=null;
+  beep(1400,110); save(); renderTable(); refreshWill();
+}
+$("addBtn").addEventListener("click",addRow);
+window.addEventListener("keydown",e=>{ if(e.code==="Space" && !/input|select|textarea/i.test(e.target.tagName)){ e.preventDefault(); addRow(); }});
+
+// ---------- Web Serial ----------
+let port=null, reader=null, keepReading=false, lineBuf="";
+let flashing=false, autoFlashArmed=true;
+const TEST_BIN = "ton-teste-v2.bin";   // firmware de teste do HW V1 (com [SN]); V2 pendente
+const hasSerial = "serial" in navigator;
+if(!hasSerial){ $("nosupport").style.display="block"; $("connBtn").disabled=true; }
+
+function setConn(on){
+  $("dot").classList.toggle("on",on);
+  $("hdrStatus").textContent = on ? "conectado — lendo serial" : "desconectado";
+  $("connBtn").disabled = on || !hasSerial; $("discBtn").disabled = !on;
+  $("snBtn").disabled = !on; $("resetBtn").disabled = !on; $("flashBtn").disabled = !on;
+}
+function log(s){ const el=$("log"); el.textContent += s+"\n"; el.scrollTop=el.scrollHeight;
+  if(el.textContent.length>8000) el.textContent=el.textContent.slice(-6000); }
+
+async function connect(existing){
+  if(port || flashing) return;   // evita abertura dupla (ex.: evento 'connect' + reconexão)
+  try{
+    port = existing || await navigator.serial.requestPort();
+    await port.open({ baudRate:115200 });
+    autoFlashArmed=true;
+    setConn(true); log("[conectado @115200] — pedindo MAC via 'sn' (sem reset)");
+    keepReading=true; readLoop();
+    // O firmware de teste responde 'sn' SEM resetar. Reenvia 3x (a placa pode estar
+    // terminando de bootar). NÃO resetamos por padrão: DTR/RTS é instável no USB
+    // nativo do ESP32-S3 (às vezes cai em modo download = mudo). Reset = botão manual.
+    [400,1400,2600].forEach(t=>setTimeout(()=>sendCmd("sn"), t));
+  }catch(e){ log("[erro conexão] "+e.message); }
+}
+async function resetPulse(){
+  try{
+    await port.setSignals({ dataTerminalReady:false, requestToSend:true });  // EN low
+    await sleep(120);
+    await port.setSignals({ dataTerminalReady:false, requestToSend:false }); // boot
+    log("[reset enviado (DTR/RTS)]");
+  }catch(e){ log("[reset auto indisponível — use o RST da placa]"); }
+}
+async function readLoop(){
+  const dec=new TextDecoder();
+  try{
+    reader = port.readable.getReader();
+    while(keepReading){
+      const {value,done}=await reader.read();
+      if(done) break;
+      lineBuf += dec.decode(value,{stream:true});
+      let i;
+      while((i=lineBuf.indexOf("\n"))>=0){
+        const line=lineBuf.slice(0,i).replace(/\r$/,"").trim();
+        lineBuf=lineBuf.slice(i+1);
+        if(line){ log(line); handleLine(line); }
+      }
+    }
+  }catch(e){ log("[leitura interrompida] "+e.message); }
+  finally{ try{reader.releaseLock();}catch(e){} }
+}
+async function disconnect(){
+  keepReading=false;
+  try{ if(reader) await reader.cancel(); }catch(e){}
+  try{ if(port) await port.close(); }catch(e){}
+  port=null; setConn(false); log("[desconectado]");
+}
+async function sendCmd(cmd){
+  if(!port||!port.writable) return;
+  try{
+    const w=port.writable.getWriter();
+    await w.write(new TextEncoder().encode(cmd+"\n"));
+    w.releaseLock(); log("[enviado] "+cmd);
+  }catch(e){ log("[falha envio] "+e.message); }
+}
+
+// Grava o firmware de teste NOVO (com 'sn') via esptool-js e volta a ler o MAC.
+// Mesmo fluxo do NexON: otadata@0xe000 + app@0x10000. Só HW V1 por enquanto.
+async function flashFirmware(){
+  if(flashing || !port) return;
+  flashing=true; autoFlashArmed=false;
+  ["flashBtn","connBtn","snBtn","resetBtn","discBtn"].forEach(id=>$(id).disabled=true);
+  pendingMac=null; $("pending").classList.add("armed");
+  const setP=t=>$("pMac").textContent=t; $("pWill").textContent="";
+  try{
+    log("═══ GRAVANDO firmware de teste novo — NÃO desconecte ═══"); setP("preparando…");
+    // 1) libera a porta do readLoop pro esptool assumir
+    keepReading=false;
+    try{ if(reader) await reader.cancel(); }catch(e){}
+    try{ await port.close(); }catch(e){}
+    const flashPort=port; port=null;
+    // 2) baixa o firmware novo (base64) do mesmo endpoint que o NexON usa
+    setP("baixando firmware…");
+    const j=await (await fetch("/iot-compile/prebuilt/"+TEST_BIN,{cache:"no-store"})).json();
+    const fw=Uint8Array.from(atob(j.firmware), c=>c.charCodeAt(0));
+    const otadata=new Uint8Array(0x2000).fill(0xff);
+    log("firmware "+((fw.length/1024)|0)+" KB");
+    // 3) esptool-js
+    const { ESPLoader, Transport }=await import("./esptool-bundle.js");
+    const transport=new Transport(flashPort);
+    const terminal={ clean(){}, writeLine:d=>log(d), write:d=>{const t=(""+d).trim(); if(t) log(t);} };
+    const loader=new ESPLoader({ transport, baudrate:115200, terminal });
+    setP("conectando bootloader…"); log("conectando ao bootloader…");
+    const chip=await loader.main(); log("chip: "+chip);
+    await loader.changeBaud(460800);
+    await loader.writeFlash({
+      fileArray:[ {data:otadata,address:0xe000}, {data:fw,address:0x10000} ],
+      flashSize:"keep", flashMode:"keep", flashFreq:"keep", eraseAll:false, compress:true,
+      reportProgress:(i,w,t)=>setP("gravando "+Math.round(w/t*100)+"%")
+    });
+    log("flash ok — reiniciando…"); setP("reiniciando…");
+    try{ await loader.hardReset(); }catch(e){}
+    try{ await transport.disconnect(); }catch(e){}
+    log("✅ gravado! aguardando a TON reconectar (USB re-enumera) e ler o MAC…");
+    setConn(false);
+    // a TON re-enumera → evento 'connect' reabre e manda 'sn'. Fallback via getPorts:
+    setTimeout(async()=>{ if(port) return;
+      try{ const ps=await navigator.serial.getPorts(); if(ps&&ps.length) connect(ps[0]); }catch(e){}
+    }, 2600);
+  }catch(e){
+    log("[ERRO gravação] "+((e&&e.message)||e));
+    alert("Falha na gravação: "+((e&&e.message)||e)+"\n\nDesconecte/reconecte e tente de novo, ou grave pelo NexON.");
+    port=null; setConn(false); refreshWill();
+  }finally{ flashing=false; }
+}
+
+$("connBtn").addEventListener("click",()=>connect());
+$("discBtn").addEventListener("click",disconnect);
+$("snBtn").addEventListener("click",()=>sendCmd("sn"));
+$("flashBtn").addEventListener("click",flashFirmware);
+$("resetBtn").addEventListener("click",resetPulse);
+
+// auto-reabrir a MESMA porta ao replugar (jig com adaptador fixo)
+if(hasSerial){
+  navigator.serial.addEventListener("disconnect",e=>{ if(port && e.target===port) disconnect(); });
+  navigator.serial.addEventListener("connect",e=>{ if(!port) connect(e.target); });
+}
+
+// ---------- parse ----------
+function formatMac(raw){
+  const hex=raw.replace(/[:\-]/g,"").toUpperCase();
+  return hex.length===12 ? hex.match(/../g).join(":") : raw.toUpperCase();
+}
+function handleLine(line){
+  // firmware ANTIGO não conhece 'sn' → responde "Comando desconhecido" → grava o novo
+  if(autoFlashArmed && !flashing && /Comando desconhecido/i.test(line)){
+    autoFlashArmed=false;
+    if($("autoFlash").checked){ log("firmware ANTIGO (sem 'sn') → gravando o novo…"); flashFirmware(); }
+    else log("firmware ANTIGO — clique em ⚡ Gravar novo.");
+    return;
+  }
+  // firmware de teste: [SN] mac=28:37:...  (tipo NÃO vem — detecção de variante não é confiável; tipo é manual)
+  let m=line.match(/\[SN\][^]*?mac\s*=\s*([0-9A-Fa-f:\-]{12,17})/i);
+  if(m){ onMac(formatMac(m[1])); return; }
+  // boot normal: client_id (do MAC): TON-XXXXXXXXXXXX
+  m=line.match(/TON-([0-9A-Fa-f]{12})/);
+  if(m){ onMac(formatMac(m[1])); return; }
+  // fallback: [ETH] ... MAC 2A:37:...  (deriva WiFi: 1º octeto & ~0x02, último -1)
+  m=line.match(/W5500[^]*?MAC\s+([0-9A-Fa-f:]{17})/i);
+  if(m){ onMac(ethToWifi(m[1])); return; }
+}
+function ethToWifi(ethMac){
+  const b=ethMac.split(":").map(h=>parseInt(h,16));
+  if(b.length!==6||b.some(isNaN)) return formatMac(ethMac);
+  b[0]=b[0]&~0x02; b[5]=(b[5]-1)&0xFF;
+  return b.map(x=>x.toString(16).padStart(2,"0").toUpperCase()).join(":");
+}
+
+// ---------- export ----------
+function tsv(){
+  const head=["Sequencial","Tipo","Versao","MAC","SN"];
+  const lines=[head.join("\t")].concat(st.rows.map(r=>[r.seq,"TON "+r.tipo,r.versao,r.mac,snOf(r)].join("\t")));
+  return lines.join("\n");
+}
+$("copyBtn").addEventListener("click",async()=>{
+  try{ await navigator.clipboard.writeText(tsv()); $("copyBtn").textContent="✅ Copiado!"; setTimeout(()=>$("copyBtn").textContent="📋 Copiar pro Excel",1500); }
+  catch(e){ alert("Não consegui copiar. Use Baixar CSV."); }
+});
+$("csvBtn").addEventListener("click",()=>{
+  const head=["Sequencial","Tipo","Versao","MAC","SN"];
+  const esc=s=>/[",;\n]/.test(s)?'"'+String(s).replace(/"/g,'""')+'"':s;
+  const rows=[head.join(",")].concat(st.rows.map(r=>[r.seq,"TON "+r.tipo,r.versao,r.mac,snOf(r)].map(esc).join(",")));
+  const blob=new Blob(["\uFEFF"+rows.join("\r\n")],{type:"text/csv;charset=utf-8"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
+  a.download="tons_mac_sn.csv"; a.click(); URL.revokeObjectURL(a.href);
+});
+$("clearBtn").addEventListener("click",()=>{
+  if(confirm("Limpar TODA a tabela e zerar o sequencial? (exporte antes!)")){
+    st.rows=[]; st.nextSeq=1; save(); renderTable();
+  }
+});
+$("fixApply").addEventListener("click",applyFix);
+
+// ---------- beep ----------
+function beep(freq,dur){ try{
+  const ctx=beep.ctx||(beep.ctx=new (window.AudioContext||window.webkitAudioContext)());
+  const o=ctx.createOscillator(),g=ctx.createGain(); o.frequency.value=freq;
+  o.connect(g); g.connect(ctx.destination); g.gain.value=0.05; o.start();
+  setTimeout(()=>o.stop(),dur||90);
+}catch(e){} }
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+// ---------- boot UI ----------
+renderVersions(); setTipo(st.tipo); renderTable(); refreshWill();
+</script>
+</body>
+</html>

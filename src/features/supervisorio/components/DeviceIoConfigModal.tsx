@@ -20,13 +20,13 @@ import { equipamentoPontosApi, type EquipamentoPonto } from '@/services/equipame
 // addr/count/value: comandos FC15 (write multiple coils / DPC double-bit, ex: CB-1 do
 // 7SR5111 — par de bits 01=abre/10=fecha). bo_id: id da saída escolhida em bo_outputs
 // (mantém o select do modal amarrado mesmo sem coil).
-export interface IoMapEntry { equipamento_id?: string; ponto_id?: string; coil?: number; func?: number; register?: number; addr?: number; count?: number; value?: number; bo_id?: string; }
+export interface IoMapEntry { equipamento_id?: string; ponto_id?: string; coil?: number; func?: number; register?: number; addr?: number; count?: number; value?: number; bo_id?: string; hold?: boolean; }
 export interface DeviceIoConfig { bi?: Record<string, IoMapEntry>; bo?: Record<string, IoMapEntry>; }
 
 interface CatalogPoint { id: string; label: string; unit?: string; group?: string; }
 interface CatalogPoints { ai?: CatalogPoint[]; bi?: CatalogPoint[]; bo?: CatalogPoint[]; }
 
-interface Link { key: string; tipo?: 'bi' | 'bo'; catalogId?: string; equipamentoId?: string; pontoId?: string; coil?: number; func?: number; addr?: number; count?: number; value?: number; boId?: string; }
+interface Link { key: string; tipo?: 'bi' | 'bo'; catalogId?: string; equipamentoId?: string; pontoId?: string; coil?: number; func?: number; addr?: number; count?: number; value?: number; boId?: string; hold?: boolean; }
 
 interface DeviceIoConfigModalProps {
   open: boolean;
@@ -58,10 +58,10 @@ export const DeviceIoConfigModal: React.FC<DeviceIoConfigModalProps> = ({
   );
   // Catálogo do modelo: lista de saídas físicas (bo_outputs) do relé.
   const catDev = useMemo(() => {
-    return (window as unknown as { getCatalogDevice?: (c: string) => { bo_outputs?: Array<{ id: string; label: string; coil?: number; func?: number; addr?: number; count?: number; value?: number }> } })
+    return (window as unknown as { getCatalogDevice?: (c: string) => { bo_outputs?: Array<{ id: string; label: string; coil?: number; func?: number; addr?: number; count?: number; value?: number; hold?: boolean }> } })
       .getCatalogDevice?.(catalogId ?? '') ?? {};
   }, [catalogId]);
-  const boOutputs = (catDev.bo_outputs ?? []) as Array<{ id: string; label: string; coil?: number; func?: number; addr?: number; count?: number; value?: number }>;
+  const boOutputs = (catDev.bo_outputs ?? []) as Array<{ id: string; label: string; coil?: number; func?: number; addr?: number; count?: number; value?: number; hold?: boolean }>;
   const bi = points.bi ?? [];
   const ai = points.ai ?? [];
 
@@ -75,7 +75,7 @@ export const DeviceIoConfigModal: React.FC<DeviceIoConfigModalProps> = ({
     if (!open) return;
     const ls: Link[] = [];
     for (const [cid, m] of Object.entries(ioConfig.bo ?? {})) {
-      ls.push({ key: newKey(), tipo: 'bo', catalogId: cid, equipamentoId: (m.equipamento_id ?? '').trim(), pontoId: (m.ponto_id ?? '').trim(), coil: m.coil, func: m.func, addr: m.addr, count: m.count, value: m.value, boId: m.bo_id });
+      ls.push({ key: newKey(), tipo: 'bo', catalogId: cid, equipamentoId: (m.equipamento_id ?? '').trim(), pontoId: (m.ponto_id ?? '').trim(), coil: m.coil, func: m.func, addr: m.addr, count: m.count, value: m.value, boId: m.bo_id, hold: m.hold });
     }
     for (const [cid, m] of Object.entries(ioConfig.bi ?? {})) {
       ls.push({ key: newKey(), tipo: 'bi', catalogId: cid, equipamentoId: (m.equipamento_id ?? '').trim(), pontoId: (m.ponto_id ?? '').trim() });
@@ -136,6 +136,7 @@ export const DeviceIoConfigModal: React.FC<DeviceIoConfigModalProps> = ({
           func: l.func ?? (l.addr != null ? 15 : 5),
           ...(l.addr != null ? { addr: l.addr, count: l.count ?? 2, value: l.value ?? 1 } : {}),
           ...(l.boId ? { bo_id: l.boId } : {}),
+          ...(l.hold ? { hold: true } : {}),
         };
       } else if (l.tipo === 'bi' && l.catalogId) {
         // Status (leitura): ainda referencia o sinal BI do catálogo (registrador fixo).
@@ -177,7 +178,7 @@ export const DeviceIoConfigModal: React.FC<DeviceIoConfigModalProps> = ({
                     {/* equipamento */}
                     <select
                       value={l.equipamentoId ?? ''}
-                      onChange={(e) => { const v = e.target.value || undefined; patchLink(l.key, { equipamentoId: v, pontoId: undefined, catalogId: undefined, coil: undefined, func: undefined, tipo: undefined }); if (v) void loadPontos(v); }}
+                      onChange={(e) => { const v = e.target.value || undefined; patchLink(l.key, { equipamentoId: v, pontoId: undefined, catalogId: undefined, coil: undefined, func: undefined, tipo: undefined, boId: undefined, addr: undefined, count: undefined, value: undefined, hold: undefined }); if (v) void loadPontos(v); }}
                       className="h-7 rounded border border-input bg-background dark:bg-black px-1"
                     >
                       <option value="">— equipamento —</option>
@@ -191,7 +192,9 @@ export const DeviceIoConfigModal: React.FC<DeviceIoConfigModalProps> = ({
                         const v = e.target.value || undefined;
                         const p = pts.find((x) => x.id === v);
                         const tipo = p?.tipo === 'comando' ? 'bo' : p?.tipo === 'status' ? 'bi' : undefined;
-                        patchLink(l.key, { pontoId: v, tipo, catalogId: undefined, coil: undefined, func: undefined });
+                        // Limpa TUDO do BO anterior — sem isso, addr/hold/value de um BO FC15
+                        // escolhido antes vazam pro novo ponto (bug pego em review 24/jul).
+                        patchLink(l.key, { pontoId: v, tipo, catalogId: undefined, coil: undefined, func: undefined, boId: undefined, addr: undefined, count: undefined, value: undefined, hold: undefined });
                       }}
                       className="h-7 rounded border border-input bg-background dark:bg-black px-1 disabled:opacity-50"
                     >
@@ -211,8 +214,8 @@ export const DeviceIoConfigModal: React.FC<DeviceIoConfigModalProps> = ({
                           onChange={(e) => {
                             const out = boOutputs.find((o) => o.id === e.target.value);
                             patchLink(l.key, out
-                              ? { boId: out.id, coil: out.coil, func: out.func ?? (out.addr != null ? 15 : 5), addr: out.addr, count: out.count, value: out.value }
-                              : { boId: undefined, coil: undefined, func: undefined, addr: undefined, count: undefined, value: undefined });
+                              ? { boId: out.id, coil: out.coil, func: out.func ?? (out.addr != null ? 15 : 5), addr: out.addr, count: out.count, value: out.value, hold: out.hold }
+                              : { boId: undefined, coil: undefined, func: undefined, addr: undefined, count: undefined, value: undefined, hold: undefined });
                           }}
                           className="h-7 rounded border border-input bg-background dark:bg-black px-1 disabled:opacity-50"
                         >

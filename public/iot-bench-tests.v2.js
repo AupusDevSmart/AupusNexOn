@@ -65,7 +65,7 @@ var BENCH_TESTS = [
     {
         id: 'ton-v2-teste-completo',
         name: 'Teste Completo TON-V2',
-        version: '1.0',
+        version: '1.4',
         bin: 'ton-teste-ton-v2.bin',
         description: 'Placa TON-V2 (SCH-TON-v1b): assistente GUIADO de 13 passos — 8 entradas, 8 reles, PCA9685 (8 PWM), 4-20mA, SU+. ATENCAO: NAO gravar o teste da v1 numa placa V2 (mapa de reles deslocado — r1 acionaria RL2).',
         category: 'hardware',
@@ -82,8 +82,10 @@ var BENCH_TESTS = [
             'AN_C (4-20mA): leitura indisponivel nesta revisao (IO39/40 sem ADC) — passo registra ATENCAO, nao reprova',
         ],
         commands: [
-            { cmd: 'fabrica', desc: 'TESTE DE FABRICA automatico com jig (auto-descobre a fiacao; 1 pergunta so)' },
-            { cmd: 'guia', desc: 'ASSISTENTE GUIADO 13 passos (diagnostico manual)' },
+            { cmd: 'teste', desc: 'TESTE COMPLETO automatico com jig (auto-descobre a fiacao; 1 pergunta so)' },
+            { cmd: 'tensao', desc: 'Entradas analogicas de TENSAO (AN1-V/AN2-V) — presenca + resposta ao TR' },
+            { cmd: 'corrente', desc: 'Entradas analogicas de CORRENTE (AN1-C/AN2-C) — nivel digital (sem ADC nesta rev)' },
+            { cmd: 'guia', desc: 'ASSISTENTE GUIADO 13 passos + MAPA DO JIG (diagnostico manual)' },
             { cmd: 'lora eco', desc: 'Modo eco LoRa (rodar na 2a TON p/ testar LoRa)' },
             { cmd: 'all', desc: 'Teste completo (dump rapido, nao-guiado)' },
             { cmd: 'scan', desc: 'I2C scan (0x26/0x27/0x42)' },

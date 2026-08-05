@@ -357,6 +357,8 @@ var FirmwareGenerator = class FirmwareGenerator {
             if (ov.addr != null && ov.addr !== '') entry.addr = Number(ov.addr);
             if (ov.count != null && ov.count !== '') entry.count = Number(ov.count);
             if (ov.value != null && ov.value !== '') entry.value = Number(ov.value);
+            if (ov.hold === true || ov.hold === 'true') entry.hold = true;   // coil de ESTADO: nao rearma (nao escreve 0)
+            if (ov.rearm_ms != null && ov.rearm_ms !== '') entry.rearm_ms = Number(ov.rearm_ms); // duracao do pulso (coil=1) antes do rearme
             boMap[cid] = entry;
         }
         return Object.assign({}, dev, { bo_map: boMap });
@@ -1196,7 +1198,8 @@ bool inverter_tcp_exec_command(const char* device_name, const char* cmd_id) {
                 const sFunc = step.func || 0x06;
                 if (sFunc === 0x05) {
                     if (step.coil === undefined) { console.warn('[gen] step tcp func 0x05 exige coil'); return null; }
-                    return `            if (!_modbus_tcp_write(${wArgs}, 0x05, ${step.coil}, 0xFF00)) return false;\n`;
+                    const cv = (step.value === 0 || step.value === false) ? '0x0000' : '0xFF00';
+                    return `            if (!_modbus_tcp_write(${wArgs}, 0x05, ${step.coil}, ${cv})) return false;\n`;
                 } else if (sFunc === 0x06) {
                     if (step.register === undefined) { console.warn('[gen] step tcp func 0x06 exige register'); return null; }
                     const v = (step.value !== undefined) ? step.value : 1;
@@ -4272,6 +4275,19 @@ bool modbus_exec_command(const char* device_name, const char* cmd_id) {
             if (cmds.length === 0) return;
             cpp += `    if (strcmp(device_name, "${this._escStr(dev.name)}") == 0) {\n`;
             cpp += `        _select(${dev.modbus_address});\n`;
+            // Handshake PRE-COMANDO. Relés DNP3 com auto-reconhecimento Modbus (ex: URP6000)
+            // só respondem em Modbus logo após uma leitura do registro de identificação. O
+            // caminho de leitura (_read_dev_*) já faz isso todo ciclo — por isso a LEITURA
+            // funciona; o comando pulava e caía fora da janela Modbus (write timeout → FAIL).
+            // Espelhar aqui torna o comando tão confiável quanto a leitura.
+            {
+                const hsCmd = dev.catalog_device && dev.catalog_device.handshake;
+                if (hsCmd) {
+                    const hfn = hsCmd.func === 0x04 ? 'readInputRegisters' : 'readHoldingRegisters';
+                    cpp += `        _mb.${hfn}(${hsCmd.register}, ${hsCmd.count}); delay(30);  // handshake auto-Modbus\n`;
+                    cpp += `        while (_rs485.available()) _rs485.read();  // drena eco do handshake\n`;
+                }
+            }
             // Helper: emite UMA chamada Modbus pra um "step" do bo_map
             // Step pode ser:
             //   { func: 0x05, coil: NNN }          -> writeSingleCoil
@@ -4287,7 +4303,9 @@ bool modbus_exec_command(const char* device_name, const char* cmd_id) {
                         console.warn(`[gen] step func 0x05 exige 'coil'`);
                         return null;
                     }
-                    return `            if (_mb.writeSingleCoil(${step.coil}, true) != _mb.ku8MBSuccess) return false;\n`;
+                    // value 0 => desliga a coil (FC05 off); ausente/1 => liga (compat byte-identica).
+                    const on = (step.value === 0 || step.value === false) ? 'false' : 'true';
+                    return `            if (_mb.writeSingleCoil(${step.coil}, ${on}) != _mb.ku8MBSuccess) return false;\n`;
                 } else if (sFunc === 0x06) {
                     if (step.register === undefined) {
                         console.warn(`[gen] step func 0x06 exige 'register'`);
@@ -4344,7 +4362,33 @@ bool modbus_exec_command(const char* device_name, const char* cmd_id) {
                         return;
                     }
                     cpp += `        if (strcmp(cmd_id, "${this._escStr(cid)}") == 0) {\n`;
-                    cpp += `            return _mb.writeSingleCoil(${m.coil}, true) == _mb.ku8MBSuccess;\n`;
+                    cpp += `            uint8_t rc = _mb.writeSingleCoil(${m.coil}, true);\n`;
+                    cpp += `            if (rc != _mb.ku8MBSuccess) { delay(40); while (_rs485.available()) _rs485.read(); rc = _mb.writeSingleCoil(${m.coil}, true); }\n`;
+                    // Coil de COMANDO por pulso (ex: URP6000 abre/fecha/reset): o relé arma na
+                    // BORDA 0->1. Se a coil ficar em 1, o próximo comando não gera borda nova e
+                    // nada acontece (e um 1 pendente dispara sozinho ao sair de LOCAL->REMOTO).
+                    // Escrever 0 depois REARMA a coil. `hold:true` no cadastro desliga isso
+                    // (coil de ESTADO, ex: acionar RL direto, que deve permanecer).
+                    // rearm_ms: tempo coil=1 antes do 0 (default 3000; override por entrada).
+                    // Em relés DNP3+auto-Modbus a saída segue o nível da coil até o teto
+                    // T S TIME — o rearm_ms define na prática a duração do pulso físico.
+                    // O write(0) é CRÍTICO (0 perdido = coil travada = bug de volta): re-faz o
+                    // handshake (janela auto-Modbus pode expirar durante o delay) e tem retry.
+                    if (m.hold !== true) {
+                        const rearmMs = Number(m.rearm_ms) > 0 ? Number(m.rearm_ms) : 3000;
+                        cpp += `            delay(${rearmMs});\n`;
+                        const hsR = dev.catalog_device && dev.catalog_device.handshake;
+                        if (hsR) {
+                            const hfnR = hsR.func === 0x04 ? 'readInputRegisters' : 'readHoldingRegisters';
+                            cpp += `            _mb.${hfnR}(${hsR.register}, ${hsR.count}); delay(30);\n`;
+                            cpp += `            while (_rs485.available()) _rs485.read();\n`;
+                        }
+                        cpp += `            if (_mb.writeSingleCoil(${m.coil}, false) != _mb.ku8MBSuccess) {  // rearma coil de pulso\n`;
+                        cpp += `                delay(40); while (_rs485.available()) _rs485.read();\n`;
+                        cpp += `                _mb.writeSingleCoil(${m.coil}, false);\n`;
+                        cpp += `            }\n`;
+                    }
+                    cpp += `            return rc == _mb.ku8MBSuccess;\n`;
                     cpp += `        }\n`;
                 } else if (func === 0x06) {
                     // Write Single Register — Schneider via VI ou registro de comando direto
