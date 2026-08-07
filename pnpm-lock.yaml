@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@aupus/shared-pages':
-        specifier: git+https://github.com/AupusDevSmart/shared-pages.git#v0.15.3
-        version: git+https://github.com/AupusDevSmart/shared-pages.git#576d0986abfc2eb65e77656f8e742bcb74d88050(a70046af5c7e72a9c60be1715196c766)
+        specifier: git+https://github.com/AupusDevSmart/shared-pages.git#v0.15.4
+        version: git+https://github.com/AupusDevSmart/shared-pages.git#87f59a8665b712504d907a3b3c53ecc270cf7a68(a70046af5c7e72a9c60be1715196c766)
       '@hookform/resolvers':
         specifier: ^5.0.1
         version: 5.2.2(react-hook-form@7.72.1(react@19.2.5))
@@ -247,9 +247,9 @@ packages:
     resolution: {integrity: sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw==}
     engines: {node: '>=10'}
 
-  '@aupus/shared-pages@git+https://github.com/AupusDevSmart/shared-pages.git#576d0986abfc2eb65e77656f8e742bcb74d88050':
-    resolution: {commit: 576d0986abfc2eb65e77656f8e742bcb74d88050, repo: https://github.com/AupusDevSmart/shared-pages.git, type: git}
-    version: 0.15.3
+  '@aupus/shared-pages@git+https://github.com/AupusDevSmart/shared-pages.git#87f59a8665b712504d907a3b3c53ecc270cf7a68':
+    resolution: {commit: 87f59a8665b712504d907a3b3c53ecc270cf7a68, repo: https://github.com/AupusDevSmart/shared-pages.git, type: git}
+    version: 0.15.4
     peerDependencies:
       '@radix-ui/react-alert-dialog': ^1.0.0
       '@radix-ui/react-avatar': ^1.0.0
@@ -3234,7 +3234,7 @@ snapshots:
 
   '@alloc/quick-lru@5.2.0': {}
 
-  '@aupus/shared-pages@git+https://github.com/AupusDevSmart/shared-pages.git#576d0986abfc2eb65e77656f8e742bcb74d88050(a70046af5c7e72a9c60be1715196c766)':
+  '@aupus/shared-pages@git+https://github.com/AupusDevSmart/shared-pages.git#87f59a8665b712504d907a3b3c53ecc270cf7a68(a70046af5c7e72a9c60be1715196c766)':
     dependencies:
       '@radix-ui/react-alert-dialog': 1.1.15(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@radix-ui/react-avatar': 1.1.11(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
