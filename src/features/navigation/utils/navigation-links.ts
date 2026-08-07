@@ -180,14 +180,6 @@ export const navigationLinks: Array<NavigationLink> = [
         hint: "Gerenciar Plantas",
       },
       {
-        key: "cadastros-unidades",
-        featureKey: "unidades.view",
-        path: "/cadastros/unidades",
-        icon: Building2,
-        label: "Instalações",
-        hint: "Gerenciar Instalações",
-      },
-      {
         key: "cadastros-equipamentos",
         featureKey: "equipamentos.view",
         path: "/cadastros/equipamentos",

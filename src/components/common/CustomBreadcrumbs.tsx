@@ -72,10 +72,6 @@ export function CustomBreadcrumbs({ className = '' }: { className?: string }) {
       label: 'Plantas',
     },
     {
-      path: '/cadastros/unidades',
-      label: 'Instalações',
-    },
-    {
       path: '/equipamentos',
       label: 'Equipamentos',
     },

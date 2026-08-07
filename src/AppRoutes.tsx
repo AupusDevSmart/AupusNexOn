@@ -11,7 +11,6 @@ import { useUserStore } from "@/store/useUserStore";
 // Shared pages (from @aupus/shared-pages)
 import {
   EquipamentosPage,
-  UnidadesPage,
   UsuariosPage,
   PlantasPage,
   ConcessionariasPage,
@@ -340,14 +339,6 @@ export const appRoutes = createBrowserRouter([
         element: (
           <FeatureWrapper feature="Plantas">
             <PlantasPage />
-          </FeatureWrapper>
-        ),
-      },
-      {
-        path: "cadastros/unidades",
-        element: (
-          <FeatureWrapper feature="UnidadesConsumidoras">
-            <UnidadesPage />
           </FeatureWrapper>
         ),
       },
