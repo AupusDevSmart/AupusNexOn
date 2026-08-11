@@ -14,7 +14,7 @@
     "test:cov": "vitest run --coverage"
   },
   "dependencies": {
-    "@aupus/shared-pages": "git+https://github.com/AupusDevSmart/shared-pages.git#v0.16.0",
+    "@aupus/shared-pages": "git+https://github.com/AupusDevSmart/shared-pages.git#v0.16.1",
     "@hookform/resolvers": "^5.0.1",
     "@radix-ui/react-alert-dialog": "^1.1.15",
     "@radix-ui/react-avatar": "^1.1.10",
