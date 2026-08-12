@@ -570,19 +570,15 @@ export function useEquipamentos(): UseEquipamentosReturn {
         search: filters?.search || undefined,
         classificacao: (filters?.classificacao !== 'all' ? filters?.classificacao : undefined) as 'UC' | 'UAR' | undefined,
         criticidade: (filters?.criticidade !== 'all' ? filters?.criticidade : undefined) as '1' | '2' | '3' | '4' | '5' | undefined,
+        // Esconder PONTO e BARRAMENTO e trabalho da consulta, nao da tela.
+        ocultarVirtuais: true
       };
       
       const response = await equipamentosApi.findByPlanta(plantaId, params);
 
       // A API retorna: { success: true, data: { data: [], pagination: {}, planta: {} }, meta: {} }
       // Após o interceptor desempacotar, response é { data: [], pagination: {}, planta: {} }
-      const equipamentosTransformados = response.data.map(transformApiToFrontend);
-
-      // Filtrar para ocultar PONTOS e BARRAMENTOS
-      const equipamentosFiltrados = equipamentosTransformados.filter(eq => {
-        const tipoId = eq.tipo?.toUpperCase() || eq.tipoEquipamento?.toUpperCase() || '';
-        return tipoId !== 'PONTO' && tipoId !== 'BARRAMENTO';
-      });
+      const equipamentosFiltrados = response.data.map(transformApiToFrontend);
 
       setEquipamentos(equipamentosFiltrados);
       setTotalPages(response.pagination.pages);
