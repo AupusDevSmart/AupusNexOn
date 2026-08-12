@@ -194,6 +194,8 @@ export interface EquipamentosQueryParams {
   criticidade?: '1' | '2' | '3' | '4' | '5';
   equipamento_pai_id?: string;
   semPlano?: boolean;
+  /** Oculta PONTO e BARRAMENTO, os componentes visuais do diagrama. */
+  ocultarVirtuais?: boolean;
   mqtt_habilitado?: boolean;
   orderBy?: 'nome' | 'criticidade' | 'created_at' | 'fabricante' | 'valor_contabil';
   orderDirection?: 'asc' | 'desc';

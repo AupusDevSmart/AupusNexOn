@@ -519,7 +519,11 @@ export function useEquipamentos(): UseEquipamentosReturn {
         unidade_id: hasUnidade ? filters.unidadeId?.trim() : undefined,
         planta_id: hasUnidade ? undefined : (hasPlanta ? filters.plantaId?.trim() : undefined),
         proprietario_id: (hasUnidade || hasPlanta) ? undefined : (hasProprietario ? filters.proprietarioId?.trim() : undefined),
-        semPlano: filters?.semPlano || undefined
+        semPlano: filters?.semPlano || undefined,
+        // PONTO e BARRAMENTO ficam de fora no BACKEND. Filtrar aqui descartava
+        // itens da pagina ja recortada, e a tela mostrava menos de 10 por
+        // pagina — com o total ainda contando os escondidos.
+        ocultarVirtuais: true
       };
       
       const response = await equipamentosApi.findAll(params);
@@ -538,16 +542,7 @@ export function useEquipamentos(): UseEquipamentosReturn {
       //   console.log('📊 [DEBUG] Contagem FINAL que será usada:', primeiroUC.equipamentos_filhos?.length || primeiroUC.totalComponentes || 0);
       // }
 
-      const equipamentosTransformados = equipamentosArray.map(transformApiToFrontend);
-
-      // Filtrar para ocultar PONTOS e BARRAMENTOS
-      const equipamentosFiltrados = equipamentosTransformados.filter(eq => {
-        const tipoId = eq.tipo?.toUpperCase() || eq.tipoEquipamento?.toUpperCase() || '';
-        return tipoId !== 'PONTO' && tipoId !== 'BARRAMENTO';
-      });
-
-      console.log('🔢 [DEBUG PAGINACAO] response.pagination:', response.pagination);
-      console.log('🔢 [DEBUG PAGINACAO] array length:', equipamentosArray.length, 'filtrado:', equipamentosFiltrados.length);
+      const equipamentosFiltrados = equipamentosArray.map(transformApiToFrontend);
 
       setEquipamentos(equipamentosFiltrados);
       setTotalPages(response.pagination?.pages || 0);
