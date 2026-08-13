@@ -6,7 +6,8 @@ import {
   CreateEquipamentoApiData, 
   UpdateEquipamentoApiData,
   EquipamentosQueryParams,
-  EstatisticasPlantaResponse 
+  EstatisticasPlantaResponse,
+  ItemDoLoteApi,
 } from '@/services/equipamentos.services';
 import {
   Equipamento,
@@ -311,6 +312,16 @@ export interface UseEquipamentosReturn {
   
   // Operações CRUD
   createEquipamento: (data: any) => Promise<Equipamento>;
+  /** Cadastra varios equipamentos iguais de uma vez. */
+  createEquipamentosLote: (
+    data: any,
+    itens: ItemDoLoteApi[],
+  ) => Promise<{ total: number; equipamentos: Equipamento[] }>;
+  /** Copia a lista de anexos de um equipamento para outros. */
+  replicarAnexos: (
+    origemId: string,
+    destinoIds: string[],
+  ) => Promise<{ total: number; anexos_por_equipamento: number }>;
   updateEquipamento: (id: string, data: any) => Promise<Equipamento>;
   deleteEquipamento: (id: string) => Promise<void>;
   getEquipamento: (id: string) => Promise<Equipamento>;
@@ -422,6 +433,55 @@ export function useEquipamentos(): UseEquipamentosReturn {
       setLoading(false);
     }
   }, [handleError]);
+
+  /**
+   * Cadastra vários equipamentos iguais de uma vez.
+   *
+   * Os campos que variam entre eles são sobrescritos pelo backend a partir de
+   * `itens`, então mando o bloco comum já transformado, sem nome, TAG nem
+   * número de série — o que estivesse ali só confundiria a leitura do payload.
+   */
+  const createEquipamentosLote = useCallback(
+    async (data: any, itens: ItemDoLoteApi[]) => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const apiData = transformFrontendToApi(data) as any;
+        delete apiData.nome;
+        delete apiData.tag;
+        delete apiData.numero_serie;
+        delete apiData.localizacao_especifica;
+
+        const resposta = await equipamentosApi.createLote(apiData, itens);
+        const criados = (resposta.equipamentos || []).map(transformApiToFrontend);
+
+        setEquipamentos((prev) => [...criados, ...prev]);
+        setTotal((prev) => prev + criados.length);
+
+        return { total: resposta.total, equipamentos: criados };
+      } catch (err) {
+        handleError(err, 'createEquipamentosLote');
+        throw err;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [handleError],
+  );
+
+  /** Copia a lista de anexos de um equipamento para outros. */
+  const replicarAnexos = useCallback(
+    async (origemId: string, destinoIds: string[]) => {
+      try {
+        return await equipamentosApi.replicarAnexos(origemId, destinoIds);
+      } catch (err) {
+        handleError(err, 'replicarAnexos');
+        throw err;
+      }
+    },
+    [handleError],
+  );
 
   const updateEquipamento = useCallback(async (id: string, data: any): Promise<Equipamento> => {
     try {
@@ -751,6 +811,8 @@ export function useEquipamentos(): UseEquipamentosReturn {
     
     // Operações CRUD
     createEquipamento,
+    createEquipamentosLote,
+    replicarAnexos,
     updateEquipamento,
     deleteEquipamento,
     getEquipamento,

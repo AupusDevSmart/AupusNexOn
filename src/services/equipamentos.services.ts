@@ -280,6 +280,20 @@ export interface ComponentesGerenciamentoResponse {
 // SERVIÇO DE API
 // ============================================================================
 
+
+/** O que muda de um equipamento para o outro dentro de um lote. */
+export interface ItemDoLoteApi {
+  nome: string;
+  tag?: string;
+  numero_serie?: string;
+  localizacao_especifica?: string;
+}
+
+export interface RespostaLoteApi {
+  total: number;
+  equipamentos: EquipamentoApiResponse[];
+}
+
 export class EquipamentosApiService {
   private readonly baseEndpoint = '/equipamentos';
 
@@ -302,6 +316,42 @@ export class EquipamentosApiService {
     throw error;
   }
 }
+
+  /**
+   * Cadastra vários equipamentos iguais de uma vez.
+   *
+   * O backend cria os N numa transação só: ou entram todos, ou não entra
+   * nenhum. Disparar N chamadas de create daqui deixaria órfãos no meio do
+   * caminho quando um deles falhasse.
+   *
+   * O plano de manutenção não vai junto de propósito — é vinculado por
+   * equipamento, depois.
+   */
+  async createLote(
+    data: CreateEquipamentoApiData,
+    itens: ItemDoLoteApi[],
+  ): Promise<RespostaLoteApi> {
+    const response = await api.post<any>(`${this.baseEndpoint}/lote`, { ...data, itens });
+    // A resposta pode vir embrulhada em { success, data } pelo interceptor.
+    return response.data?.data ?? response.data;
+  }
+
+  /**
+   * Copia a lista de anexos de um equipamento para outros.
+   *
+   * Os registros são independentes, mas apontam para o mesmo arquivo no
+   * servidor — o upload acontece uma vez só.
+   */
+  async replicarAnexos(
+    origemId: string,
+    destinoIds: string[],
+  ): Promise<{ total: number; anexos_por_equipamento: number }> {
+    const response = await api.post<any>(`${this.baseEndpoint}/anexos/replicar`, {
+      origem_equipamento_id: origemId?.trim(),
+      destino_equipamento_ids: destinoIds.map((id) => id?.trim()).filter(Boolean),
+    });
+    return response.data?.data ?? response.data;
+  }
 
   /**
    * Cria um equipamento rapidamente com dados mínimos
