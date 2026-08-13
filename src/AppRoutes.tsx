@@ -346,7 +346,7 @@ export const appRoutes = createBrowserRouter([
         path: "cadastros/equipamentos",
         element: (
           <FeatureWrapper feature="Equipamentos">
-            <EquipamentosPage />
+            <EquipamentosPage mostrarSupervisorio />
           </FeatureWrapper>
         ),
       },
