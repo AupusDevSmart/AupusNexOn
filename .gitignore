@@ -45,3 +45,7 @@ lerna-debug.log*
 scripts/regressao-corpus.json
 scripts/regressao-baseline.json
 scripts/regressao-catalog.snapshot.js
+
+# Cache incremental do tsc. E artefato de build: cada `pnpm build` o reescreve,
+# entao rastreado ele suja a arvore no servidor e trava o deploy.sh.
+*.tsbuildinfo
