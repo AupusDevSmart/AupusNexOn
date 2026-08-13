@@ -337,6 +337,23 @@ export class EquipamentosApiService {
   }
 
   /**
+   * De onde continuar a numeracao de nomes e TAGs.
+   *
+   * Quem ja tem tres inversores e duplica o primeiro espera o quarto: o ponto
+   * de partida sai do que existe no banco, e nao do equipamento copiado.
+   */
+  async proximoSequencial(params: {
+    unidade_id?: string;
+    base_nome?: string;
+    base_tag?: string;
+  }): Promise<{ proximo_nome: number; proximo_tag: number }> {
+    const response = await api.get<any>(`${this.baseEndpoint}/proximo-sequencial`, {
+      params,
+    });
+    return response.data?.data ?? response.data;
+  }
+
+  /**
    * Copia a lista de anexos de um equipamento para outros.
    *
    * Os registros são independentes, mas apontam para o mesmo arquivo no

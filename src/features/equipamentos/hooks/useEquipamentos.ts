@@ -317,6 +317,12 @@ export interface UseEquipamentosReturn {
     data: any,
     itens: ItemDoLoteApi[],
   ) => Promise<{ total: number; equipamentos: Equipamento[] }>;
+  /** De onde continuar a numeração de nomes e TAGs. */
+  proximoSequencial: (params: {
+    unidade_id?: string;
+    base_nome?: string;
+    base_tag?: string;
+  }) => Promise<{ proximo_nome: number; proximo_tag: number }>;
   /** Copia a lista de anexos de um equipamento para outros. */
   replicarAnexos: (
     origemId: string,
@@ -468,6 +474,22 @@ export function useEquipamentos(): UseEquipamentosReturn {
       }
     },
     [handleError],
+  );
+
+  /**
+   * De onde continuar a numeração. Não passa por handleError de propósito: é
+   * uma sugestão de preenchimento, e o cadastro segue funcionando sem ela —
+   * derrubar a tela por causa de um palpite seria desproporcional.
+   */
+  const proximoSequencial = useCallback(
+    async (params: { unidade_id?: string; base_nome?: string; base_tag?: string }) => {
+      try {
+        return await equipamentosApi.proximoSequencial(params);
+      } catch {
+        return { proximo_nome: 1, proximo_tag: 1 };
+      }
+    },
+    [],
   );
 
   /** Copia a lista de anexos de um equipamento para outros. */
@@ -812,6 +834,7 @@ export function useEquipamentos(): UseEquipamentosReturn {
     // Operações CRUD
     createEquipamento,
     createEquipamentosLote,
+    proximoSequencial,
     replicarAnexos,
     updateEquipamento,
     deleteEquipamento,
