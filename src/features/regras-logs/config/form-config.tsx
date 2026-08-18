@@ -322,6 +322,33 @@ const SeveridadeSelector = ({ value, onChange, disabled }: any) => {
   );
 };
 
+const TIPO_REGRA = [
+  { value: 'valor', label: 'Valor (limiar de campo)' },
+  { value: 'sem_comunicacao', label: 'Sem comunicação (offline)' },
+];
+
+const TipoRegraSelector = ({ value, onChange, disabled }: any) => {
+  if (disabled) {
+    const t = TIPO_REGRA.find((o) => o.value === (value || 'valor'));
+    return (
+      <div className="flex items-center p-3 border rounded-md bg-muted/30">
+        <span className="text-sm font-medium">{t?.label || 'Valor'}</span>
+      </div>
+    );
+  }
+  return (
+    <Combobox
+      options={TIPO_REGRA}
+      value={value || 'valor'}
+      onValueChange={onChange}
+      placeholder="Selecione o tipo"
+      searchPlaceholder="Buscar tipo..."
+      emptyText="Nenhum tipo"
+      disabled={disabled}
+    />
+  );
+};
+
 export const regrasLogsFormFields: FormField[] = [
   {
     key: 'equipamento_id',
@@ -329,6 +356,16 @@ export const regrasLogsFormFields: FormField[] = [
     type: 'custom',
     required: true,
     render: PlantaUnidadeEquipamentoSelector,
+    group: 'equipamento_mqtt',
+    colSpan: 2,
+  } as any,
+  {
+    key: 'tipo',
+    label: 'Tipo de regra',
+    type: 'custom',
+    required: true,
+    defaultValue: 'valor',
+    render: TipoRegraSelector,
     group: 'equipamento_mqtt',
     colSpan: 2,
   } as any,
@@ -341,6 +378,7 @@ export const regrasLogsFormFields: FormField[] = [
     group: 'equipamento_mqtt',
     dependencies: ['equipamento_id'],
     colSpan: 2,
+    conditionalRender: (d: any) => d?.tipo !== 'sem_comunicacao',
   } as any,
   {
     key: 'nome',
@@ -359,6 +397,7 @@ export const regrasLogsFormFields: FormField[] = [
     defaultValue: '<',
     render: OperadorSelector,
     group: 'configuracao',
+    conditionalRender: (d: any) => d?.tipo !== 'sem_comunicacao',
   } as any,
   {
     key: 'valor',
@@ -367,7 +406,19 @@ export const regrasLogsFormFields: FormField[] = [
     required: true,
     placeholder: '0',
     group: 'configuracao',
-  },
+    conditionalRender: (d: any) => d?.tipo !== 'sem_comunicacao',
+  } as any,
+  {
+    key: 'minutos',
+    label: 'Minutos sem dado',
+    type: 'number',
+    required: true,
+    min: 1,
+    defaultValue: 10,
+    placeholder: '10',
+    group: 'configuracao',
+    conditionalRender: (d: any) => d?.tipo === 'sem_comunicacao',
+  } as any,
   {
     key: 'mensagem',
     label: 'Mensagem',
@@ -408,12 +459,12 @@ export const regrasLogsFormFields: FormField[] = [
 export const regrasLogsFormGroups = [
   {
     key: 'equipamento_mqtt',
-    title: 'Equipamento e Campo MQTT',
-    fields: ['equipamento_id', 'campo_json'],
+    title: 'Equipamento e Tipo',
+    fields: ['equipamento_id', 'tipo', 'campo_json'],
   },
   {
     key: 'configuracao',
     title: 'Configuracao da Regra',
-    fields: ['nome', 'operador', 'valor', 'mensagem', 'severidade', 'cooldown_minutos', 'ativo'],
+    fields: ['nome', 'operador', 'valor', 'minutos', 'mensagem', 'severidade', 'cooldown_minutos', 'ativo'],
   },
 ];

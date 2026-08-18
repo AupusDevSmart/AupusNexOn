@@ -109,6 +109,8 @@ const ReleEventosPage = lazy(() =>
   }))
 );
 
+const RelatoriosPage = lazy(() => import("@/features/relatorios/RelatoriosPage"));
+
 
 // Shared pages are now imported directly from @aupus/shared-pages (see top of file)
 
@@ -392,6 +394,16 @@ export const appRoutes = createBrowserRouter([
           <RequirePermission permission="Monitoramento">
             <Suspense fallback={<div>Carregando...</div>}>
               <CadastroGeracaoFvPage />
+            </Suspense>
+          </RequirePermission>
+        ),
+      },
+      {
+        path: "relatorios",
+        element: (
+          <RequirePermission permission="Monitoramento">
+            <Suspense fallback={<div>Carregando...</div>}>
+              <RelatoriosPage />
             </Suspense>
           </RequirePermission>
         ),

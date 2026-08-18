@@ -11,11 +11,12 @@
  */
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { CircuitBoard, Maximize2, Minimize2 } from 'lucide-react';
+import { CircuitBoard, Maximize2, Minimize2, Download } from 'lucide-react';
 import { useDiagramStore } from './hooks/useDiagramStore';
 import { DiagramViewport } from './components/DiagramViewer/DiagramViewport';
 import { DiagramConnections } from './components/DiagramViewer/DiagramConnections';
 import { EquipmentNode } from './components/Equipment/EquipmentNode';
+import { exportDiagram, type ExportFormat } from './utils/exportDiagram';
 import { EditorSidebar } from './components/EditorSidebar';
 import { EquipmentEditModal } from './components/EquipmentEditModal';
 import { ModalCriarEquipamentoRapido } from '../components/ModalCriarEquipamentoRapido';
@@ -119,21 +120,36 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
+  // Maximizar via CSS (overlay position:fixed) em vez da Fullscreen API nativa.
+  // A API nativa colocava só o container em fullscreen; os modais (Editar/Criar/
+  // Comando) são portais no document.body → ficavam FORA do elemento e sumiam
+  // ("a maioria das funcionalidades não funciona ao expandir"). Com overlay CSS
+  // os portais empilham normalmente por cima.
   const toggleFullscreen = useCallback(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    if (!document.fullscreenElement) {
-      el.requestFullscreen?.();
-    } else {
-      document.exitFullscreen?.();
-    }
+    setIsFullscreen(v => !v);
   }, []);
 
-  useEffect(() => {
-    const onFs = () => setIsFullscreen(!!document.fullscreenElement);
-    document.addEventListener('fullscreenchange', onFs);
-    return () => document.removeEventListener('fullscreenchange', onFs);
-  }, []);
+  // Export (PNG / SVG / JPEG)
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExport = async (format: ExportFormat) => {
+    setShowExportMenu(false);
+    setIsExporting(true);
+    try {
+      const base = `${diagrama?.nome || 'unifilar'}${unidadeNome ? `-${unidadeNome}` : ''}`;
+      await exportDiagram(format, base);
+      toast({ title: 'Exportado', description: `Diagrama exportado como ${format.toUpperCase()}.` });
+    } catch (err) {
+      toast({
+        title: 'Erro ao exportar',
+        description: err instanceof Error ? err.message : 'Não foi possível exportar o diagrama.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   // Callbacks ESTAVEIS para os nos (permitem React.memo no EquipmentNode — so o no
   // arrastado re-renderiza, nao todos). Mudam so quando o modo muda.
@@ -422,9 +438,10 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
       return;
     }
 
-    // Esc para limpar seleção
+    // Esc para limpar seleção (e sair do modo maximizado)
     if (e.key === 'Escape') {
       clearSelection();
+      setIsFullscreen(false);
     }
   };
 
@@ -596,7 +613,10 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
   }
 
   return (
-    <div ref={containerRef} className="w-full h-full flex flex-col overflow-hidden bg-background">
+    <div
+      ref={containerRef}
+      className={`flex flex-col overflow-hidden bg-background ${isFullscreen ? 'fixed inset-0 z-40' : 'w-full h-full'}`}
+    >
       {/* Toolbar superior */}
       <div className="flex justify-between items-center px-5 py-1 bg-muted/30 min-h-[28px]">
         <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -643,6 +663,46 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
             </svg>
             <span className="hidden sm:inline">Ajustar Zoom</span>
           </Button>
+
+          {/* Exportar (PNG / SVG / JPEG) */}
+          <div className="relative">
+            <Button
+              onClick={() => setShowExportMenu(v => !v)}
+              variant="ghost"
+              size="sm"
+              className="h-6 gap-2"
+              disabled={isExporting}
+              title="Exportar diagrama (PNG, SVG, JPEG)"
+            >
+              <Download className="h-4 w-4" />
+              <span className="hidden sm:inline">{isExporting ? 'Exportando…' : 'Exportar'}</span>
+            </Button>
+            {showExportMenu && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setShowExportMenu(false)} />
+                <div className="absolute right-0 top-7 z-50 min-w-[130px] rounded-md border bg-popover p-1 text-popover-foreground shadow-md">
+                  <button
+                    className="flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-muted"
+                    onClick={() => handleExport('png')}
+                  >
+                    PNG
+                  </button>
+                  <button
+                    className="flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-muted"
+                    onClick={() => handleExport('svg')}
+                  >
+                    SVG (vetor)
+                  </button>
+                  <button
+                    className="flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-muted"
+                    onClick={() => handleExport('jpeg')}
+                  >
+                    JPEG
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
 
           {/* Toggle Edit/View Mode - Apenas para admin ou super_admin */}
           {isAdmin() && (

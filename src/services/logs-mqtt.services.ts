@@ -60,6 +60,13 @@ class LogsMqttServiceClass {
   async remove(id: string) {
     await api.delete(`/logs-mqtt/${id.trim()}`);
   }
+
+  /** Marca o alarme como reconhecido (visto). Usado no modelo "fica ativo até o
+   * operador ver" (ex.: trip do relé) — limpa o vermelho no COA. */
+  async reconhecer(id: string) {
+    const { data } = await api.post(`/logs-mqtt/${id.trim()}/reconhecer`);
+    return unwrap(data);
+  }
 }
 
 export const LogsMqttService = new LogsMqttServiceClass();

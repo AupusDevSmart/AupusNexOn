@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { formatEnergy } from "@/utils/formatEnergy";
 import { Card } from "@/components/ui/card";
@@ -19,6 +19,7 @@ import {
   MapPin
 } from "lucide-react";
 import { UnidadeResumo } from "../api/coa-api";
+import { useTheme } from "@/components/theme-provider";
 
 interface MapaCoaProps {
   unidades: UnidadeResumo[];
@@ -31,12 +32,49 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
   const mapInstanceRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
   const clusterGroupRef = useRef<any>(null);
+  const tileLayerRef = useRef<any>(null);
 
   const [unidadeSelecionada, setUnidadeSelecionada] = useState<UnidadeResumo | null>(null);
   const [modalAberto, setModalAberto] = useState(false);
+  const [filtro, setFiltro] = useState<'trip' | 'semInfo' | 'alerta' | 'online' | 'nuvem' | null>(null);
+
+  const { theme: appTheme } = useTheme();
+  const isDark =
+    appTheme === 'dark' ||
+    (appTheme === 'system' &&
+      typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-color-scheme: dark)').matches);
 
   // Filtrar apenas unidades com coordenadas
   const unidadesComCoordenadas = unidades.filter(u => u.coordenadas);
+
+  // Resumo de estado (contagem) pra clareza imediata "o que funciona ou não".
+  // trip tem prioridade (uma usina tripada não conta como online/offline).
+  const resumoStatus = useMemo(() => {
+    let online = 0, semInfo = 0, alerta = 0, trip = 0, nuvem = 0;
+    for (const u of unidadesComCoordenadas) {
+      if (u.trip) trip++;
+      else if (u.status === "ONLINE") online++;
+      else if (u.status === "ALERTA") alerta++;
+      else if (u.nuvem) nuvem++;
+      else semInfo++;
+    }
+    return { online, semInfo, alerta, trip, nuvem };
+  }, [unidadesComCoordenadas]);
+
+  // Estado de uma unidade (mesma prioridade da legenda) — usado pelo filtro.
+  const estadoDaUnidade = (u: UnidadeResumo): 'trip' | 'semInfo' | 'alerta' | 'online' | 'nuvem' =>
+    u.trip ? 'trip'
+      : u.status === 'ONLINE' ? 'online'
+        : u.status === 'ALERTA' ? 'alerta'
+          : u.nuvem ? 'nuvem'
+            : 'semInfo';
+
+  // Filtro rápido: clicar num chip do resumo mostra só as usinas daquele estado.
+  const unidadesExibidas = useMemo(
+    () => (filtro ? unidadesComCoordenadas.filter(u => estadoDaUnidade(u) === filtro) : unidadesComCoordenadas),
+    [unidadesComCoordenadas, filtro],
+  );
 
   // Debug: ver quantas unidades temos
   console.log('[MapaCoa] Total de unidades recebidas:', unidades.length);
@@ -100,7 +138,7 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
 
       // SEMPRE iniciar em Goiás (Goiânia) independente de ter unidades
       const centerGoias = [-16.6869, -49.2648] as [number, number];
-      const zoomGoias = 5;
+      const zoomGoias = 7;
 
       // Criar mapa
       const map = L.map(mapRef.current, {
@@ -112,19 +150,28 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
         keyboard: true,
       }).setView(centerGoias, zoomGoias);
 
-      // Adicionar camada do mapa
-      L.tileLayer(
-        "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png",
-        {
-          attribution: "© OpenStreetMap contributors, © CartoDB",
-          maxZoom: 18,
-          minZoom: 4,
-        }
-      ).addTo(map);
-
       mapInstanceRef.current = map;
     }
   }, []); // Executar apenas uma vez na montagem
+
+  // Tiles conforme o tema (claro/escuro), com troca ao vivo.
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    const L = (window as any).L;
+    if (!map || !L) return;
+    if (tileLayerRef.current) {
+      map.removeLayer(tileLayerRef.current);
+      tileLayerRef.current = null;
+    }
+    const url = isDark
+      ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+      : "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png";
+    tileLayerRef.current = L.tileLayer(url, {
+      attribution: "© OpenStreetMap contributors, © CartoDB",
+      maxZoom: 18,
+      minZoom: 4,
+    }).addTo(map);
+  }, [isDark]);
 
   // Atualizar marcadores quando unidades mudarem
   useEffect(() => {
@@ -157,18 +204,25 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
         spiderfyOnMaxZoom: true,
         showCoverageOnHover: false,
         zoomToBoundsOnClick: true,
-        maxClusterRadius: 30,
+        // Raio pequeno: só agrupa bolinhas que REALMENTE se sobrepõem (mesmas
+        // coords). Usinas distintas aparecem individualmente → mapa verídico.
+        maxClusterRadius: 14,
         spiderfyDistanceMultiplier: 1.8,
         iconCreateFunction: (c: any) => {
           const total = c.getChildCount();
           const children = c.getAllChildMarkers();
           const statuses = children.map((m: any) => m.options.__status);
-          // Cor do cluster prioriza o "ligado": verde se PELO MENOS UMA estiver
-          // online (facilita achar usinas on dentro de um grupo); amber se nenhuma
-          // online mas houver alerta; cinza so quando TODAS estao offline.
-          let cor = "#6B7280";
-          if (statuses.some((s: string) => s === "ONLINE")) cor = "#10B981";
-          else if (statuses.some((s: string) => s === "ALERTA")) cor = "#F59E0B";
+          const temTrip = children.some((m: any) => m.options.__trip);
+          const temNuvem = children.some((m: any) => m.options.__nuvem);
+          const temSemInfo = children.some((m: any) => m.options.__status === "OFFLINE" && !m.options.__nuvem);
+          const temOnline = statuses.some((s: string) => s === "ONLINE");
+          const temAlerta = statuses.some((s: string) => s === "ALERTA");
+          // Cor VERÍDICA do cluster (pior estado): trip > sem info > alerta > online > nuvem.
+          let cor = "#10B981"; // verde = tem usina online (TON ao vivo)
+          if (temNuvem && !temOnline && !temAlerta && !temSemInfo) cor = "#3B82F6"; // só nuvem
+          if (temAlerta) cor = "#F59E0B";
+          if (temSemInfo) cor = "#6B7280";
+          if (temTrip) cor = "#EF4444";
           return L.divIcon({
             html: `
               <div style="
@@ -187,8 +241,8 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
       clusterGroupRef.current = cluster;
       map.addLayer(cluster);
 
-      // Adicionar novos marcadores
-      unidadesComCoordenadas.forEach((unidade) => {
+      // Adicionar novos marcadores (respeitando o filtro rápido)
+      unidadesExibidas.forEach((unidade) => {
         const getStatusColor = (status: string) => {
           switch (status) {
             case "ONLINE":
@@ -209,27 +263,33 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
         };
 
         const isSelected = unidadeSelecionada?.id === unidade.id;
+        const isTrip = !!unidade.trip;
+        const isNuvem = !isTrip && !!unidade.nuvem && unidade.status === 'OFFLINE';
+        // TRIP=vermelho; NUVEM=azul; senão a cor do status (OFFLINE real = cinza "sem info").
+        const cor = isTrip ? '#EF4444' : isNuvem ? '#3B82F6' : getStatusColor(unidade.status);
+        // Pisca no trip e no offline REAL (sem info). Nuvem é estado estável → não pisca.
+        const pulsar = isTrip || (unidade.status === 'OFFLINE' && !isNuvem) || isSelected;
 
         // Criar ícone customizado
         const icon = L.divIcon({
           html: `
             <div style="
               position: relative;
-              width: ${isSelected ? "32px" : "24px"};
-              height: ${isSelected ? "32px" : "24px"};
+              width: ${isSelected ? "22px" : "16px"};
+              height: ${isSelected ? "22px" : "16px"};
             ">
               <div style="
-                width: ${isSelected ? "28px" : "20px"};
-                height: ${isSelected ? "28px" : "20px"};
-                background-color: ${getStatusColor(unidade.status)};
+                width: ${isSelected ? "18px" : "13px"};
+                height: ${isSelected ? "18px" : "13px"};
+                background-color: ${cor};
                 border: 2px solid #fff;
                 border-radius: 50%;
                 box-shadow: 0 2px 8px rgba(0,0,0,0.3);
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                font-size: ${isSelected ? "14px" : "10px"};
-                ${isSelected ? "animation: pulse 2s infinite;" : ""}
+                font-size: ${isSelected ? "10px" : "8px"};
+                ${pulsar ? "animation: pulse 2s infinite;" : ""}
               ">${getTipoIcon(unidade.tipo)}</div>
               ${
                 unidade.status === "ALERTA"
@@ -249,14 +309,14 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
             </div>
           `,
           className: "custom-marker-coa",
-          iconSize: [isSelected ? 32 : 24, isSelected ? 32 : 24],
-          iconAnchor: [isSelected ? 16 : 12, isSelected ? 16 : 12],
+          iconSize: [isSelected ? 22 : 16, isSelected ? 22 : 16],
+          iconAnchor: [isSelected ? 11 : 8, isSelected ? 11 : 8],
         });
 
         // Criar marcador (vai dentro do cluster group, não direto no map)
         const marker = L.marker(
           [unidade.coordenadas!.latitude, unidade.coordenadas!.longitude],
-          { icon, __status: unidade.status } as any
+          { icon, __status: unidade.status, __trip: isTrip, __nuvem: isNuvem } as any
         );
         cluster.addLayer(marker);
 
@@ -281,6 +341,8 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
             <p style="margin: 4px 0; font-size: 12px;">
               <strong>Energia Hoje:</strong> ${formatEnergy(unidade.metricas.energiaHoje)}
             </p>
+            ${unidade.trip ? `<p style="margin: 6px 0 0; font-size: 12px; color: #dc2626; font-weight: 600;">⚠ TRIP ativo</p>` : ''}
+            ${unidade.equipamentosOffline && unidade.equipamentosOffline.length ? `<p style="margin: 6px 0 0; font-size: 12px; color: #b45309;"><strong>Sem comunicação:</strong> ${unidade.equipamentosOffline.join(', ')}</p>` : ''}
           </div>
         `;
 
@@ -305,7 +367,7 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
         markersRef.current.push(marker);
       });
     }
-  }, [unidadesComCoordenadas, unidadeSelecionada, calcularFocoInteligente]);
+  }, [unidadesComCoordenadas, unidadesExibidas, unidadeSelecionada, calcularFocoInteligente]);
 
   // Funções de controle de zoom
   const zoomIn = () => {
@@ -420,11 +482,60 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
               ) : null}
             </div>
 
-          {/* Indicador de unidades */}
-          <div className="absolute top-2 left-2 bg-background/90 backdrop-blur-sm border rounded-lg px-3 py-1.5 text-sm">
-            <div className="flex items-center gap-2">
-              <MapPin className="h-4 w-4" />
-              <span>{unidadesComCoordenadas.length} unidades no mapa</span>
+          {/* Indicador + resumo clicável (filtro rápido por estado) */}
+          <div className="absolute top-2 left-2 bg-background/90 backdrop-blur-sm border rounded-lg px-3 py-1.5 text-xs z-[400]">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <button
+                onClick={() => setFiltro(null)}
+                className={`flex items-center gap-1 font-medium ${filtro ? "opacity-50 hover:opacity-100" : ""}`}
+                title="Mostrar todas"
+              >
+                <MapPin className="h-3.5 w-3.5" />
+                {unidadesComCoordenadas.length}
+              </button>
+              {resumoStatus.trip > 0 && (
+                <button
+                  onClick={() => setFiltro(f => (f === "trip" ? null : "trip"))}
+                  className={`flex items-center gap-1 ${filtro && filtro !== "trip" ? "opacity-40 hover:opacity-100" : ""}`}
+                >
+                  <i className="inline-block w-2 h-2 rounded-full" style={{ background: "#EF4444" }} />
+                  {resumoStatus.trip} trip
+                </button>
+              )}
+              {resumoStatus.semInfo > 0 && (
+                <button
+                  onClick={() => setFiltro(f => (f === "semInfo" ? null : "semInfo"))}
+                  className={`flex items-center gap-1 ${filtro && filtro !== "semInfo" ? "opacity-40 hover:opacity-100" : ""}`}
+                >
+                  <i className="inline-block w-2 h-2 rounded-full" style={{ background: "#6B7280" }} />
+                  {resumoStatus.semInfo} sem info
+                </button>
+              )}
+              {resumoStatus.alerta > 0 && (
+                <button
+                  onClick={() => setFiltro(f => (f === "alerta" ? null : "alerta"))}
+                  className={`flex items-center gap-1 ${filtro && filtro !== "alerta" ? "opacity-40 hover:opacity-100" : ""}`}
+                >
+                  <i className="inline-block w-2 h-2 rounded-full" style={{ background: "#F59E0B" }} />
+                  {resumoStatus.alerta} alerta
+                </button>
+              )}
+              {resumoStatus.nuvem > 0 && (
+                <button
+                  onClick={() => setFiltro(f => (f === "nuvem" ? null : "nuvem"))}
+                  className={`flex items-center gap-1 ${filtro && filtro !== "nuvem" ? "opacity-40 hover:opacity-100" : ""}`}
+                >
+                  <i className="inline-block w-2 h-2 rounded-full" style={{ background: "#3B82F6" }} />
+                  {resumoStatus.nuvem} nuvem
+                </button>
+              )}
+              <button
+                onClick={() => setFiltro(f => (f === "online" ? null : "online"))}
+                className={`flex items-center gap-1 ${filtro && filtro !== "online" ? "opacity-40 hover:opacity-100" : ""}`}
+              >
+                <i className="inline-block w-2 h-2 rounded-full" style={{ background: "#10B981" }} />
+                {resumoStatus.online} ok
+              </button>
             </div>
           </div>
 
@@ -475,11 +586,19 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
                 <span>Alerta</span>
               </div>
               <div className="flex items-center gap-1">
+                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: "#EF4444" }} />
+                <span>Trip</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: "#3B82F6" }} />
+                <span>Nuvem</span>
+              </div>
+              <div className="flex items-center gap-1">
                 <div
                   className="w-2 h-2 rounded-full"
                   style={{ backgroundColor: getStatusColor("OFFLINE") }}
                 />
-                <span>Offline</span>
+                <span>Sem info</span>
               </div>
             </div>
           </div>

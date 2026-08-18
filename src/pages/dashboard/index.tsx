@@ -473,14 +473,11 @@ export function DashboardPage() {
                     </CardHeader>
                     <CardContent className="flex-1 overflow-hidden">
                       <div className="h-full overflow-y-auto overflow-x-auto">
-                        <table className="w-full text-xs min-w-[600px]">
+                        <table className="w-full text-xs">
                           <thead>
                             <tr className="border-b">
                               <th className="text-left py-2 px-2 font-medium">Nome</th>
                               <th className="text-center py-2 px-2 font-medium">Potência</th>
-                              <th className="text-center py-2 px-2 font-medium">Potência Inst.</th>
-                              <th className="text-center py-2 px-2 font-medium">Status</th>
-                              <th className="text-center py-2 px-2 font-medium">Trip</th>
                               <th className="text-center py-2 px-2 font-medium">Alarme</th>
                             </tr>
                           </thead>
@@ -494,7 +491,7 @@ export function DashboardPage() {
                               if (ufvs.length === 0) {
                                 return (
                                   <tr>
-                                    <td colSpan={6} className="text-center py-4 text-muted-foreground">
+                                    <td colSpan={3} className="text-center py-4 text-muted-foreground">
                                       Nenhuma unidade UFV encontrada
                                     </td>
                                   </tr>
@@ -508,13 +505,13 @@ export function DashboardPage() {
                                   : 0;
                                 const fatorCarga = unidade.metricas.fatorPotencia || 0;
                                 const statusStr = unidade.status as string;
-                                const hasTrip = statusStr === 'OFFLINE' || statusStr === 'FALHA';
+                                const hasTrip = unidade.trip === true; // trip REAL (SOE), não offline
                                 const hasAlarme = statusStr === 'ALERTA';
 
                                 return (
                                   <tr
                                     key={unidade.id}
-                                    className="border-b hover:bg-muted/30 cursor-pointer"
+                                    className={`border-b hover:bg-muted/30 cursor-pointer ${hasTrip ? 'trip-blink' : ''}`}
                                     onClick={() => {
                                       // Buscar planta da unidade para passar via state
                                       const plantaDaUnidade = data.plantas.find(p =>
@@ -533,7 +530,7 @@ export function DashboardPage() {
                                     <td className="text-center py-2 px-2 whitespace-nowrap">
                                       <div className="flex items-center gap-2 min-w-[110px]">
                                         <span className="text-xs font-medium whitespace-nowrap">{potenciaPercent}%</span>
-                                        <div className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                                        <div className="w-20 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
                                           <div
                                             className={`h-full rounded-full transition-all ${
                                               potenciaPercent >= 90 ? 'bg-green-500' :
@@ -545,21 +542,6 @@ export function DashboardPage() {
                                         </div>
                                         <span className="text-xs text-muted-foreground whitespace-nowrap">{unidade.metricas.potenciaAtual.toFixed(0)}kW</span>
                                       </div>
-                                    </td>
-                                    <td className="text-center py-2 px-2">
-                                      <Badge variant="outline">0%</Badge>
-                                    </td>
-                                    <td className="text-center py-2 px-2">
-                                      <div className={`w-3 h-3 rounded-full mx-auto ${
-                                        unidade.status === 'ONLINE' ? 'bg-green-500' :
-                                        unidade.status === 'ALERTA' ? 'bg-yellow-500' :
-                                        'bg-red-500'
-                                      }`} />
-                                    </td>
-                                    <td className="text-center py-2 px-2">
-                                      <Badge variant={hasTrip ? "destructive" : "outline"}>
-                                        {hasTrip ? '1' : '0'}
-                                      </Badge>
                                     </td>
                                     <td className="text-center py-2 px-2">
                                       <Badge variant={hasAlarme ? "warning" : "outline"}>
@@ -585,13 +567,11 @@ export function DashboardPage() {
                     </CardHeader>
                     <CardContent className="flex-1 overflow-hidden">
                       <div className="h-full overflow-y-auto overflow-x-auto">
-                        <table className="w-full text-xs min-w-[600px]">
+                        <table className="w-full text-xs">
                           <thead>
                             <tr className="border-b">
                               <th className="text-left py-2 px-2 font-medium">Nome</th>
                               <th className="text-center py-2 px-2 font-medium">Energia Consumida</th>
-                              <th className="text-center py-2 px-2 font-medium">Status</th>
-                              <th className="text-center py-2 px-2 font-medium">Trip</th>
                               <th className="text-center py-2 px-2 font-medium">Alarme</th>
                             </tr>
                           </thead>
@@ -605,7 +585,7 @@ export function DashboardPage() {
                               if (cargas.length === 0) {
                                 return (
                                   <tr>
-                                    <td colSpan={5} className="text-center py-4 text-muted-foreground">
+                                    <td colSpan={3} className="text-center py-4 text-muted-foreground">
                                       Nenhuma carga encontrada
                                     </td>
                                   </tr>
@@ -619,13 +599,13 @@ export function DashboardPage() {
                                   : 0;
                                 const fatorCarga = unidade.metricas.fatorPotencia || 0;
                                 const statusStr = unidade.status as string;
-                                const hasTrip = statusStr === 'OFFLINE' || statusStr === 'FALHA';
+                                const hasTrip = unidade.trip === true; // trip REAL (SOE), não offline
                                 const hasAlarme = statusStr === 'ALERTA';
 
                                 return (
                                   <tr
                                     key={unidade.id}
-                                    className="border-b hover:bg-muted/30 cursor-pointer"
+                                    className={`border-b hover:bg-muted/30 cursor-pointer ${hasTrip ? 'trip-blink' : ''}`}
                                     onClick={() => {
                                       // Buscar planta da unidade para passar via state
                                       const plantaDaUnidade = data.plantas.find(p =>
@@ -643,18 +623,6 @@ export function DashboardPage() {
                                     <td className="py-2 px-2 font-medium">{unidade.nome}</td>
                                     <td className="text-center py-2 px-2 whitespace-nowrap">
                                       <span className="text-sm font-bold">{formatEnergy(unidade.metricas.energiaHoje)}</span>
-                                    </td>
-                                    <td className="text-center py-2 px-2">
-                                      <div className={`w-3 h-3 rounded-full mx-auto ${
-                                        unidade.status === 'ONLINE' ? 'bg-green-500' :
-                                        unidade.status === 'ALERTA' ? 'bg-yellow-500' :
-                                        'bg-red-500'
-                                      }`} />
-                                    </td>
-                                    <td className="text-center py-2 px-2">
-                                      <Badge variant={hasTrip ? "destructive" : "outline"}>
-                                        {hasTrip ? '1' : '0'}
-                                      </Badge>
                                     </td>
                                     <td className="text-center py-2 px-2">
                                       <Badge variant={hasAlarme ? "warning" : "outline"}>

@@ -1,12 +1,10 @@
 /**
- * CHAVE ICON
- * Ícone para categoria: Chave
- * Usa IconWrapper para ajuste automático
+ * CHAVE SECCIONADORA ICON (estilo Traço / IEC) — vertical (2x4 / 80x160).
+ * Lâmina articulada (aberta) entre dois contatos + terminais.
+ * Inline SVG monocromático (currentColor) → recolorível e serializável.
  */
 
 import React from 'react';
-import { IconWrapper } from './IconWrapper';
-import chaveSvg from '@/assets/images/chave (2).svg';
 
 interface ChaveIconProps {
   width?: number;
@@ -18,16 +16,33 @@ interface ChaveIconProps {
 
 export const ChaveIcon: React.FC<ChaveIconProps> = ({
   width = 80,
-  height = 80,
+  height = 160,
+  color = 'currentColor',
+  strokeWidth = 2.4,
   className = '',
 }) => {
   return (
-    <IconWrapper
-      src={chaveSvg}
-      alt="Chave"
+    <svg
       width={width}
       height={height}
+      viewBox="0 0 80 160"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
       className={className}
-    />
+      style={{ color, display: 'block' }}
+      stroke="currentColor"
+      strokeWidth={strokeWidth}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {/* terminal superior + contato */}
+      <line x1="40" y1="18" x2="40" y2="52" />
+      <circle cx="40" cy="56" r="3.5" fill="currentColor" stroke="none" />
+      {/* lâmina articulada (aberta) */}
+      <line x1="40" y1="56" x2="22" y2="104" />
+      {/* contato inferior + terminal */}
+      <circle cx="40" cy="108" r="3.5" fill="currentColor" stroke="none" />
+      <line x1="40" y1="108" x2="40" y2="142" />
+    </svg>
   );
 };

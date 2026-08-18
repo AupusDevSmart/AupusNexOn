@@ -1,8 +1,12 @@
-import { ChevronRight } from "lucide-react";
+import { useState } from "react";
+import { Check, ChevronRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { PanelCard } from "./PanelCard";
 import { useAlarmesUnidade } from "../hooks/useAlarmesUnidade";
 import { formatarHoraLocal } from "../utils/tempo";
+import { LogsMqttService } from "@/services/logs-mqtt.services";
+import { useToast } from "@/hooks/use-toast";
 
 interface AlarmesAtivosPanelProps {
   unidadeId: string;
@@ -23,7 +27,27 @@ const SEV_DOT: Record<string, string> = {
  */
 export function AlarmesAtivosPanel({ unidadeId, unidadeNome }: AlarmesAtivosPanelProps) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
   const { data: alarmes = [], isLoading } = useAlarmesUnidade(unidadeId);
+  const [ackedIds, setAckedIds] = useState<Set<string>>(new Set());
+
+  // Reconhecer (marcar como visto) — limpa o vermelho do trip no COA.
+  const handleReconhecer = async (id: string) => {
+    setAckedIds((prev) => new Set(prev).add(id));
+    try {
+      await LogsMqttService.reconhecer(id);
+      toast({ title: "Reconhecido", description: "Alarme marcado como visto." });
+      queryClient.invalidateQueries({ queryKey: ["sinoptico-alarmes"] });
+    } catch {
+      setAckedIds((prev) => {
+        const n = new Set(prev);
+        n.delete(id);
+        return n;
+      });
+      toast({ title: "Erro", description: "Não foi possível reconhecer.", variant: "destructive" });
+    }
+  };
 
   const verTodas = () => {
     navigate("/logs/logs-mqtt", {
@@ -64,6 +88,20 @@ export function AlarmesAtivosPanel({ unidadeId, unidadeNome }: AlarmesAtivosPane
                 </div>
                 <div className="truncate text-[11px] text-muted-foreground">{a.mensagem}</div>
               </div>
+              {ackedIds.has(a.id) ? (
+                <span className="flex shrink-0 items-center gap-0.5 self-center text-[10px] text-muted-foreground">
+                  <Check className="h-3 w-3" /> visto
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => handleReconhecer(a.id)}
+                  className="shrink-0 self-center rounded border px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  title="Marcar alarme como visto (reconhecer)"
+                >
+                  Reconhecer
+                </button>
+              )}
             </li>
           ))}
         </ul>

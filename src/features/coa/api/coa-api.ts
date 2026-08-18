@@ -34,6 +34,9 @@ export interface UnidadeResumo {
   nome: string;
   tipo: string;
   status: 'ONLINE' | 'OFFLINE' | 'ALERTA';
+  trip?: boolean; // TRIP real (SOE não reconhecido) — vermelho no COA (distinto de OFFLINE/sem info)
+  nuvem?: boolean; // sem TON ao vivo, mas com geração de nuvem recente — cor própria (não é offline)
+  equipamentosOffline?: string[]; // nomes de equipamentos sem comunicação (pior-caso do status)
   ultimaLeitura: Date | null;
   coordenadas?: {
     latitude: number;

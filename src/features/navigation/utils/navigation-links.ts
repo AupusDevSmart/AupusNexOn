@@ -110,6 +110,14 @@ export const navigationLinks: Array<NavigationLink> = [
       },
     ],
   },
+  {
+    key: "relatorios",
+    featureKey: "Monitoramento",
+    path: "/relatorios",
+    icon: FileText,
+    label: "Relatórios",
+    hint: "Boletins de geração e consumo (PDF)",
+  },
   // Financeiro - OCULTO
   // {
   //   key: "financeiro",

@@ -1,8 +1,7 @@
 /**
- * JUNCTION POINT ICON - Ponto de Junção Invisível
- *
- * Renderiza um círculo pequeno para representar um ponto de junção
- * onde múltiplas conexões se encontram.
+ * JUNCTION POINT ICON — ponto de junção (nó de conexão).
+ * Pequeno ponto preenchido, centralizado no vértice.
+ * Inline SVG monocromático (currentColor) → recolorível e serializável.
  */
 
 import React from 'react';
@@ -16,29 +15,22 @@ interface JunctionPointIconProps {
 }
 
 export const JunctionPointIcon: React.FC<JunctionPointIconProps> = ({
-  width = 10,
-  height = 10,
+  width = 80,
+  height = 80,
   color = 'currentColor',
-  strokeWidth = 0,
   className = '',
 }) => {
   return (
     <svg
       width={width}
       height={height}
-      viewBox="0 0 10 10"
+      viewBox="0 0 80 80"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       className={className}
+      style={{ color, display: 'block' }}
     >
-      {/* Círculo pequeno preenchido */}
-      <circle
-        cx="5"
-        cy="5"
-        r="4"
-        fill={color}
-        stroke="none"
-      />
+      <circle cx="40" cy="40" r="10" fill="currentColor" stroke="none" />
     </svg>
   );
 };

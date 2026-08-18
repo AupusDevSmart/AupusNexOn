@@ -461,6 +461,13 @@ export const DiagramViewport: React.FC<DiagramViewportProps> = ({ children, onBa
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseLeave}
         >
+          {/* Sombra sutil dos nós (profundidade estilo IoT) — retirada no export */}
+          <defs>
+            <filter id="unifilar-node-shadow" x="-30%" y="-30%" width="160%" height="160%">
+              <feDropShadow dx="0" dy="1" stdDeviation="1.2" floodColor="#0f172a" floodOpacity="0.25" />
+            </filter>
+          </defs>
+
           {/* Fundo infinito */}
           <rect
             x={viewBox.split(' ')[0]}

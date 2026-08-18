@@ -24,6 +24,7 @@ import {
 import { EquipmentIconWrapper } from '../icons/EquipmentIconFactory';
 import { DiagramaPontosBox } from '@/features/supervisorio/sinoptico/components/DiagramaPontosBox';
 import { useDisjuntorEstado } from '../../hooks/useDisjuntorEstado';
+import { useAlarmesUnidade } from '@/features/supervisorio/sinoptico/hooks/useAlarmesUnidade';
 import './EquipmentNode.css';
 
 interface EquipmentNodeProps {
@@ -59,6 +60,33 @@ const EquipmentNodeImpl: React.FC<EquipmentNodeProps> = ({ equipment, onClick, o
   const { estado: estadoDisjuntor } = useDisjuntorEstado(
     ehDisjuntor ? equipment.id : null,
   );
+
+  // Saúde do equipamento: alarme ativo → símbolo muda de cor (trip = CRITICA
+  // pisca em vermelho; ALTA = laranja). Reusa os alarmes da unidade (mesma fonte
+  // do painel "Alarmes ativos"); o React Query dedupe → 1 request por unidade
+  // mesmo com N nós. É uma primeira versão por recência de log; a versão por
+  // "ativo até reconhecer" (ACK, reconhecido_em) entra depois.
+  const { data: alarmesUnidade = [] } = useAlarmesUnidade(equipment.unidadeId, 50);
+  const alarmeSeveridade = useMemo<'CRITICA' | 'ALTA' | null>(() => {
+    const id = equipment.id.trim();
+    let sev: 'CRITICA' | 'ALTA' | null = null;
+    for (const a of alarmesUnidade) {
+      if ((a as any)?.equipamento?.id?.trim() !== id) continue;
+      const s = String((a as any)?.severidade || '').toUpperCase();
+      if (s === 'CRITICA') return 'CRITICA';
+      if (s === 'ALTA') sev = 'ALTA';
+    }
+    return sev;
+  }, [alarmesUnidade, equipment.id]);
+  const alarmeCor = alarmeSeveridade === 'CRITICA' ? '#ef4444' : alarmeSeveridade === 'ALTA' ? '#f97316' : null;
+
+  // Estado do disjuntor vira COR DO PRÓPRIO SÍMBOLO (em vez de uma faixa/anel em
+  // volta): fechado=vermelho, aberto=verde, indeterminado=cinza. sem_fonte → neutro.
+  const corEstadoDisjuntor =
+    estadoDisjuntor === 'fechado' ? '#ef4444'
+    : estadoDisjuntor === 'aberto' ? '#22c55e'
+    : estadoDisjuntor === 'indeterminado' ? '#9ca3af'
+    : null;
 
   // Para junction points, centralizar no vértice
   const isJunctionPoint = equipment.tipo === 'JUNCTION_POINT';
@@ -301,7 +329,7 @@ const EquipmentNodeImpl: React.FC<EquipmentNodeProps> = ({ equipment, onClick, o
           y={labelY}
           fontSize={LABEL.FONT_SIZE}
           fontFamily={LABEL.FONT_FAMILY}
-          fill={themeColors.labelColor}
+          fill={alarmeCor ?? themeColors.labelColor}
           textAnchor={textAnchor}
           className="equipment-label"
           onMouseDown={isDraggable ? handleLabelMouseDown : undefined}
@@ -321,83 +349,69 @@ const EquipmentNodeImpl: React.FC<EquipmentNodeProps> = ({ equipment, onClick, o
   // ÍCONE
   // ==========================================================================
 
+  // Ícone renderizado como SVG NATIVO (nested <svg>), NÃO mais em <foreignObject>.
+  // Motivo: foreignObject é HTML dentro do SVG — não recolore de forma confiável e,
+  // principalmente, NÃO rasteriza no export (PNG/SVG). Como todos os ícones agora são
+  // inline SVG monocromáticos (currentColor), embutir direto no <g> os torna
+  // recoloríveis pelo tema e serializáveis para exportação.
   const renderIcon = () => {
+    // Escala o símbolo sobre o centro do nó pra ocupar mais o quadro (pedido do
+    // dono: "tudo um pouco maior"). Feito aqui (1 lugar) em vez de nos 14 ícones.
+    // Junction point não escala (é um ponto pequeno por definição).
+    const cx = size.width / 2;
+    const cy = size.height / 2;
+    const ICON_SCALE = 1.25;
+    const transform = isJunctionPoint
+      ? undefined
+      : `translate(${cx} ${cy}) scale(${ICON_SCALE}) translate(${-cx} ${-cy})`;
     return (
-      <foreignObject width={size.width} height={size.height} pointerEvents="none">
+      <g
+        pointerEvents="none"
+        transform={transform}
+        filter={isJunctionPoint ? undefined : 'url(#unifilar-node-shadow)'}
+      >
         <EquipmentIconWrapper
           categoria={equipment.categoria} // Usar categoria primeiro (ex: "CHAVE", "INVERSOR_PV")
           tipo={equipment.tipo} // Fallback para tipo se categoria não existir
           width={size.width}
           height={size.height}
-          color={themeColors.iconColor}
+          color={ehDisjuntor && corEstadoDisjuntor ? corEstadoDisjuntor : themeColors.iconColor}
         />
-      </foreignObject>
-    );
-  };
-
-  // ==========================================================================
-  // STATUS DO DISJUNTOR (aberto/fechado)
-  // ==========================================================================
-  // O ícone do disjuntor é um <img> estático (não aceita recolorir), então o
-  // status vai num ANEL em volta do nó + um rótulo escrito — que é o que dá pra
-  // ler de longe num sinóptico.
-  const renderStatusDisjuntor = () => {
-    if (!ehDisjuntor || estadoDisjuntor === 'sem_fonte') return null;
-
-    const cor =
-      estadoDisjuntor === 'fechado'
-        ? '#ef4444' // vermelho = fechado (energizado / passando corrente)
-        : estadoDisjuntor === 'aberto'
-          ? '#22c55e' // verde = aberto (seccionado)
-          : '#9ca3af'; // cinza = indeterminado (sinais iguais / sem leitura ainda)
-    const texto =
-      estadoDisjuntor === 'fechado'
-        ? 'FECHADO'
-        : estadoDisjuntor === 'aberto'
-          ? 'ABERTO'
-          : '—';
-    const larguraBadge = 62;
-
-    return (
-      <g pointerEvents="none" className="disjuntor-status">
-        {/* Anel em volta do equipamento */}
-        <rect
-          x={-4}
-          y={-4}
-          width={size.width + 8}
-          height={size.height + 8}
-          rx={5}
-          fill="none"
-          stroke={cor}
-          strokeWidth={3}
-        />
-        {/* Rótulo escrito, logo abaixo do nó */}
-        <rect
-          x={size.width / 2 - larguraBadge / 2}
-          y={size.height + 6}
-          width={larguraBadge}
-          height={16}
-          rx={3}
-          fill={cor}
-        />
-        <text
-          x={size.width / 2}
-          y={size.height + 18}
-          textAnchor="middle"
-          fontSize={10}
-          fontWeight={700}
-          fill="#ffffff"
-          style={{ userSelect: 'none' }}
-        >
-          {texto}
-        </text>
       </g>
     );
   };
 
   // ==========================================================================
+  // ESTADO DO DISJUNTOR → cor do próprio símbolo (ver corEstadoDisjuntor +
+  // renderIcon). Antes era um anel/faixa em volta + rótulo; agora é só a cor.
+  // ==========================================================================
+
+  // ==========================================================================
   // SELEÇÃO
   // ==========================================================================
+
+  // Anel de saúde: equipamento com alarme ativo muda de cor (trip pisca vermelho).
+  const renderHealthRing = () => {
+    if (!alarmeCor) return null;
+    return (
+      <rect
+        x={-7}
+        y={-7}
+        width={size.width + 14}
+        height={size.height + 14}
+        rx={7}
+        fill="none"
+        stroke={alarmeCor}
+        strokeWidth={3}
+        pointerEvents="none"
+        className="health-ring"
+      >
+        {alarmeSeveridade === 'CRITICA' && (
+          <animate attributeName="opacity" values="1;0.35;1" dur="1.05s" repeatCount="indefinite" />
+        )}
+      </rect>
+    );
+  };
 
   const renderSelectionBox = () => {
     if (!isSelected) return null;
@@ -446,8 +460,8 @@ const EquipmentNodeImpl: React.FC<EquipmentNodeProps> = ({ equipment, onClick, o
       {/* Ícone (ocultar junction points no modo view) */}
       {!(isJunctionPoint && editor.mode === 'view') && renderIcon()}
 
-      {/* Status aberto/fechado do disjuntor */}
-      {renderStatusDisjuntor()}
+      {/* Anel de saúde (alarme/trip ativo) — equipamento muda de cor */}
+      {renderHealthRing()}
 
       {/* Label (ocultar para junction points no modo view) */}
       {!(isJunctionPoint && editor.mode === 'view') && renderLabel()}

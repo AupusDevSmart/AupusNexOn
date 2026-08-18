@@ -551,3 +551,10 @@
   }
 
 }
+
+/* Trip: linha pisca em vermelho (anima só o fundo — sem esmaecer o conteúdo nem expandir a linha) */
+@keyframes tripBlink {
+  0%, 100% { background-color: rgba(239, 68, 68, 0.32); }
+  50%      { background-color: rgba(239, 68, 68, 0.04); }
+}
+.trip-blink { animation: tripBlink 1.1s ease-in-out infinite; }

@@ -1,12 +1,7 @@
 /**
- * TON ICON
- *
- * Identifica visualmente um TON (controlador IoT Aupus) no diagrama unifilar.
- * Distintivo dos equipamentos eletricos: caixa retangular com pontos representando
- * I/Os (rele/transistores), em vez de simbolos eletricos tradicionais.
- *
- * SVG inline — sem dependencia de asset externo, respeita currentColor para
- * dark mode e estados (normal/alarme/falha).
+ * TON ICON (controlador IoT Aupus) — estilo Traço.
+ * Caixa arredondada rotulada "TON" com indicador de status + stub.
+ * Inline SVG monocromático (currentColor) → recolorível e serializável.
  */
 
 import React from 'react';
@@ -23,55 +18,42 @@ export const TONIcon: React.FC<TONIconProps> = ({
   width = 80,
   height = 80,
   color = 'currentColor',
-  strokeWidth = 1.6,
+  strokeWidth = 2.4,
   className = '',
 }) => {
   return (
     <svg
       width={width}
       height={height}
-      viewBox="0 0 24 24"
+      viewBox="0 0 80 80"
       fill="none"
-      stroke={color}
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      style={{ color, display: 'block' }}
+      stroke="currentColor"
       strokeWidth={strokeWidth}
       strokeLinecap="round"
       strokeLinejoin="round"
-      className={className}
-      aria-label="TON (controlador IoT)"
     >
-      {/* Corpo do controlador */}
-      <rect x="3" y="5" width="18" height="14" rx="1.5" />
-
-      {/* Linha separando area de info / area de I/Os */}
-      <line x1="3" y1="9" x2="21" y2="9" />
-
-      {/* LED de status (canto superior esquerdo) */}
-      <circle cx="5.5" cy="7" r="0.7" fill={color} />
-
-      {/* Label TON (canto superior direito) — texto inline */}
+      {/* sinal (antena) */}
+      <path d="M30 20 a12 12 0 0 1 20 0" fill="none" strokeWidth={strokeWidth * 0.7} />
+      <path d="M34 23 a7 7 0 0 1 12 0" fill="none" strokeWidth={strokeWidth * 0.7} />
+      <circle cx="40" cy="26" r="1.8" fill="currentColor" stroke="none" />
+      {/* corpo */}
+      <rect x="15" y="30" width="50" height="30" rx="7" />
       <text
-        x="19"
-        y="8"
-        textAnchor="end"
-        fontSize="3"
-        fontWeight="600"
-        fill={color}
+        x="40"
+        y="50"
+        textAnchor="middle"
+        fontSize="15"
+        fontWeight="700"
+        fontFamily="Inter, system-ui, sans-serif"
+        fill="currentColor"
         stroke="none"
       >
         TON
       </text>
-
-      {/* 6 I/Os (reles) — fileira inferior */}
-      <circle cx="6" cy="13.5" r="0.9" />
-      <circle cx="9" cy="13.5" r="0.9" />
-      <circle cx="12" cy="13.5" r="0.9" />
-      <circle cx="15" cy="13.5" r="0.9" />
-      <circle cx="18" cy="13.5" r="0.9" />
-      <circle cx="6" cy="16.5" r="0.9" />
-      <circle cx="9" cy="16.5" r="0.9" />
-      <circle cx="12" cy="16.5" r="0.9" />
-      <circle cx="15" cy="16.5" r="0.9" />
-      <circle cx="18" cy="16.5" r="0.9" />
+      <line x1="40" y1="60" x2="40" y2="72" />
     </svg>
   );
 };

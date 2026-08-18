@@ -25,12 +25,15 @@ export function RegraLogModal({ isOpen, mode, regra, onClose, onSuccess }: Regra
 
   const handleSubmit = async (data: any) => {
     try {
+      // Tipo "sem_comunicacao" (offline): usa sentinela no campo_json + operador,
+      // e o "valor" guarda os minutos sem dado. O checker periódico avalia essas.
+      const isOffline = data.tipo === 'sem_comunicacao';
       const payload = {
         equipamento_id: data.equipamento_id?.trim(),
         nome: data.nome,
-        campo_json: data.campo_json,
-        operador: data.operador || '<',
-        valor: Number(data.valor) || 0,
+        campo_json: isOffline ? '__sem_comunicacao__' : data.campo_json,
+        operador: isOffline ? 'sem_comunicacao' : (data.operador || '<'),
+        valor: isOffline ? (Number(data.minutos) || 10) : (Number(data.valor) || 0),
         mensagem: data.mensagem,
         severidade: data.severidade || 'MEDIA',
         cooldown_minutos: Number(data.cooldown_minutos) || 5,
@@ -58,7 +61,13 @@ export function RegraLogModal({ isOpen, mode, regra, onClose, onSuccess }: Regra
     <BaseModal
       isOpen={isOpen}
       mode={mode}
-      entity={regra as any}
+      entity={(regra
+        ? {
+            ...regra,
+            tipo: regra.operador === 'sem_comunicacao' ? 'sem_comunicacao' : 'valor',
+            minutos: regra.operador === 'sem_comunicacao' ? regra.valor : undefined,
+          }
+        : regra) as any}
       title={getModalTitle()}
       icon={<ScrollText className="h-5 w-5" />}
       formFields={regrasLogsFormFields}
