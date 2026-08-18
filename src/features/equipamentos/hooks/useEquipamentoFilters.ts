@@ -68,7 +68,10 @@ export function useEquipamentoFilters(): UseEquipamentoFiltersReturn {
         { value: 'all', label: 'Todos os Proprietários' },
         ...proprietariosData.map(prop => ({
           value: prop.id,
-          label: prop.label || `${prop.nome} - ${prop.totalPlantas} planta${prop.totalPlantas !== 1 ? 's' : ''}`
+          // So o nome. O `label` pronto do selection-data vem com o CPF/CNPJ
+          // entre parenteses, o que aqui e ruido: o filtro serve para escolher
+          // de quem sao os equipamentos, nao para conferir documento.
+          label: prop.nome
         }))
       ];
       
