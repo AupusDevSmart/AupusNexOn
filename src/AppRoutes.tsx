@@ -338,7 +338,9 @@ export const appRoutes = createBrowserRouter([
         path: "cadastros/plantas",
         element: (
           <FeatureWrapper feature="Plantas">
-            <PlantasPage />
+            {/* Subgrupo, demandas e checkboxes de perfil sao detalhe de
+                faturamento: o supervisorio precisa deles, o Service nao. */}
+            <PlantasPage mostrarTarifacao />
           </FeatureWrapper>
         ),
       },
