@@ -3,9 +3,9 @@
 // ===== ENUMS =====
 
 export enum TipoUnidade {
-  UFV = 'UFV',
-  PCH = 'PCH',
-  OUTRO = 'OUTRO',
+  CARGA = 'Carga',
+  GERACAO = 'Geração',
+  MISTO = 'Misto',
 }
 
 export enum StatusUnidade {
@@ -377,7 +377,7 @@ export const unidadeToFormData = (unidade: Unidade): UnidadeFormData => {
 export const defaultUnidadeFormValues: UnidadeFormData = {
   plantaId: '',
   nome: '',
-  tipo: TipoUnidade.UFV,
+  tipo: TipoUnidade.CARGA,
   estado: '',
   cidade: '',
   latitude: '',
