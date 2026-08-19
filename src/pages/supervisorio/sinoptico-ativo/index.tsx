@@ -51,6 +51,7 @@ import { PivoModal, type DadosPivo } from "@/features/supervisorio/components/pi
 import { LandisGyrModal } from "@/features/supervisorio/components/landisgyr-modal";
 import { M300Modal } from "@/features/supervisorio/components/m300-modal";
 import { PowerMeterModal } from "@/features/supervisorio/components/power-meter/PowerMeterModal";
+import { BombaModal } from "@/features/bomba-combustivel/BombaModal";
 import { isPowerMeter } from "@/features/supervisorio/components/power-meter/helpers";
 import { iotApiService } from "@/services/iot.services";
 import { SinopticoDiagrama } from "@/features/supervisorio/components/sinoptico-diagrama";
@@ -2735,6 +2736,13 @@ export function SinopticoAtivoPage() {
         return;
       }
 
+      // Bomba de Combustível — abre o modal da bomba (estado/RFID/config)
+      if (String(componente.tipo || '').toLowerCase().includes('bomba') &&
+          componente.dados?.equipamento_id) {
+        setModalAberto('BOMBA_COMBUSTIVEL');
+        return;
+      }
+
       // ❌ DESABILITADO: Pivo modal não funciona completamente ainda
       // if (componente.tipo === 'PIVO' && componente.dados?.equipamento_id) {
       // Log removido;
@@ -3863,6 +3871,19 @@ if (import.meta.env.PROD) {
                     // Abrir modal de pivô
                     setSelectedPivoId(comp.id);
                     setPivoModalOpen(true);
+                  } else if (tipo.toUpperCase().includes('BOMBA') || nome.toUpperCase().includes('BOMBA')) {
+                    // Bomba de Combustível — abre o BombaModal (estado/RFID/config)
+                    const componenteV1: ComponenteDU = {
+                      id: comp.id,
+                      tipo: comp.tipo,
+                      nome: comp.nome,
+                      tag: comp.tag,
+                      posicao: { x: comp.posicaoX, y: comp.posicaoY },
+                      status: comp.status?.toUpperCase() as any || 'NORMAL',
+                      dados: { ...(comp.dados || {}), equipamento_id: comp.dados?.equipamento_id || comp.id },
+                    };
+                    setComponenteSelecionado(componenteV1);
+                    setModalAberto('BOMBA_COMBUSTIVEL');
                   } else if (
                     (comp.dados?.tipoEquipamento?.categoria?.nome ||
                       comp.dados?.tipo_equipamento_rel?.categoria?.nome) === 'Gateway'
@@ -4855,6 +4876,16 @@ if (import.meta.env.PROD) {
           nomeComponente={componenteSelecionado?.nome || "Power Meter"}
           onConfigurarPontos={
             isAdmin() && pontosAlvo ? () => setConfigPontos(pontosAlvo) : undefined
+          }
+        />
+
+        <BombaModal
+          open={modalAberto === "BOMBA_COMBUSTIVEL"}
+          onOpenChange={(v) => { if (!v) fecharModal(); }}
+          bomba={
+            componenteSelecionado?.dados?.equipamento_id
+              ? { id: componenteSelecionado.dados.equipamento_id, nome: componenteSelecionado.nome || "Bomba" }
+              : null
           }
         />
 

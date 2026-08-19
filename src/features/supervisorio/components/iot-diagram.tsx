@@ -613,6 +613,7 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
     power_meter: '01JAQTE1MEDIDOR00000001',
     medidor_comum: '01JAQTE1MEDIDOR00000001',
     rele_protecao: '01JAQTE1RELE0000000000016', // Relé de Proteção (cat. Relê Proteção)
+    bomba: '41f4145b41662798dca73a9d19', // Bomba de Combustível
   };
 
   const familiaCasa = (tipoComp: string, codigo: string, nome: string): boolean => {
@@ -621,6 +622,7 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
     if (tipoComp === 'power_meter' || tipoComp === 'medidor_comum')
       return /METER|MEDIDOR|LANDIS|M160|M300|PD666|A966/i.test(hay);
     if (tipoComp === 'rele_protecao') return /RELE/i.test(hay);
+    if (tipoComp === 'bomba') return /BOMBA|COMBUST/i.test(hay);
     return true;
   };
 
@@ -669,7 +671,7 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
     const isTon = tipo.startsWith('ton');
     const linkavel =
       isTon ||
-      ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao'].includes(tipo);
+      ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao', 'bomba'].includes(tipo);
     if (!linkavel) return;
     const lista = await listarAtivosParaVinculo(comp);
     // TON sem nenhum equipamento livre → NÃO pergunta: o backend (ensureTonEquipamentos)
@@ -1063,6 +1065,67 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
     simulate?: boolean;
   } | null>(null);
 
+  // Monta o mapa BO/BI da(s) bomba(s) a partir do mapeamento PADRÃO da TON
+  // (Configurar BOs/BIs → ton_bo/ton_bi). Resolve por PAPEL pelo nome do ponto da
+  // bomba (Ligar/Desligar/Solenoide = comando; Cartão/Emergência = status) e
+  // devolve { [equipamentoIdDaBomba]: { bo:{liga,desliga,solenoide}, bi:{cartao,estop} } }.
+  // Chaveado pelo equipamento do PONTO (ponto.equipamento_id) — assim uma TON que
+  // controle mais de um equipamento não mistura os papéis.
+  const buildBombaIoMap = async (): Promise<Record<string, { bo: Record<string, number>; bi: Record<string, number> }>> => {
+    const map: Record<string, { bo: Record<string, number>; bi: Record<string, number> }> = {};
+    const comps = editorRef.current?.components || [];
+    const tonEqIds = Array.from(new Set(
+      comps
+        .filter((c: any) => typeof c.type === 'string' && c.type.startsWith('ton') && (c.props?.equipamento_id || '').trim())
+        .map((c: any) => String(c.props.equipamento_id).trim()),
+    )) as string[];
+    if (tonEqIds.length === 0) return map;
+    const norm = (s: string) => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    const boRole = (nome: string): string | null => {
+      const n = norm(nome);
+      if (/deslig/.test(n)) return 'desliga';        // "desliga" antes de "liga"
+      if (/\blig|acion|partid/.test(n)) return 'liga';
+      if (/solenoid|valvul|bloque/.test(n)) return 'solenoide';
+      return null;
+    };
+    const biRole = (nome: string): string | null => {
+      const n = norm(nome);
+      if (/cart|rfid|leitor|tag/.test(n)) return 'cartao';
+      if (/emerg|estop|parad|seg/.test(n)) return 'estop';
+      return null;
+    };
+    try {
+      const [{ tonBoApi }, { tonBiApi }] = await Promise.all([
+        import('@/services/ton-bo.services'),
+        import('@/services/ton-bi.services'),
+      ]);
+      await Promise.all(tonEqIds.map(async (tonId) => {
+        try {
+          const [bos, bis] = await Promise.all([tonBoApi.list(tonId), tonBiApi.list(tonId)]);
+          for (const bo of bos) {
+            if (!bo?.ativo || !bo?.ponto?.equipamento_id) continue;
+            const role = boRole(bo.ponto.nome);
+            if (!role) continue;
+            const eq = String(bo.ponto.equipamento_id).trim();
+            (map[eq] ||= { bo: {}, bi: {} }).bo[role] = bo.bo_numero;
+          }
+          for (const bi of bis) {
+            if (!bi?.ativo || !bi?.ponto?.equipamento_id) continue;
+            const role = biRole(bi.ponto.nome);
+            if (!role) continue;
+            const eq = String(bi.ponto.equipamento_id).trim();
+            (map[eq] ||= { bo: {}, bi: {} }).bi[role] = bi.bi_numero;
+          }
+        } catch (err) {
+          console.warn('[iot-diagram] Falha ao ler ton_bo/ton_bi da TON', tonId, err);
+        }
+      }));
+    } catch (err) {
+      console.warn('[iot-diagram] Falha ao carregar serviços ton_bo/ton_bi:', err);
+    }
+    return map;
+  };
+
   const handleGenerateFirmware = async (simulate: boolean = simulating) => {
     if (!editorRef.current) return;
     if (!window.FirmwareGenerator) {
@@ -1074,12 +1137,21 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
     // (sem periférico real) e o tópico ganha prefixo "TESTE/". Reseta logo após
     // gerar pra não vazar. (Pode forçar via argumento, mas o padrão é o estado.)
     (window as any).IOT_SIMULATE = simulate;
+    // Bomba de combustível: o firmware precisa dos números FÍSICOS de BO/BI, mas a
+    // bomba não os guarda — a fonte da verdade é o mapeamento PADRÃO da TON
+    // (Configurar BOs/BIs → ton_bo/ton_bi). Lê aqui (async, antes de gerar), resolve
+    // por PAPEL (pelo nome do ponto: Ligar/Desligar/Solenoide, Cartão/Emergência) e
+    // injeta em _bombaIoByEquip pra o gerador (que é síncrono) consumir. Chave = id
+    // do equipamento da bomba (vem no ponto do ton_bo/ton_bi).
+    const bombaIoByEquip = await buildBombaIoMap();
     // Dispatch V1 + V2: cada gerador só enxerga os próprios tipos (V1 filtra
     // ton1..ton4; V2 filtra ton1v2..ton4v2) — diagrama misto gera N+M projetos.
     const gen = new window.FirmwareGenerator(editorRef.current);
+    (gen as any)._bombaIoByEquip = bombaIoByEquip;
     const projects = gen.generateAll();
     if (window.FirmwareGeneratorTonV2) {
       const genV2 = new window.FirmwareGeneratorTonV2(editorRef.current);
+      (genV2 as any)._bombaIoByEquip = bombaIoByEquip;
       projects.push(...genV2.generateAll());
     }
     (window as any).IOT_SIMULATE = false;
@@ -1596,7 +1668,7 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
       </Dialog>
 
       <Dialog open={propsModalOpen} onOpenChange={setPropsModalOpen}>
-        <DialogContent className="sm:max-w-lg max-h-[80dvh] overflow-y-auto">
+        <DialogContent className="sm:max-w-2xl w-[92vw] max-h-[85dvh] overflow-y-auto overflow-x-hidden">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {propsComp && <div className="w-3 h-3 rounded-full" style={{ background: propsComp._def?.color }} />}
@@ -1636,6 +1708,14 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
                     <p className="text-[10px] text-muted-foreground">
                       Vincula o ativo real desta unidade ao nó do IoT (TON, inversor ou medidor).
                     </p>
+                    {String(propsComp?.type || '').toLowerCase().startsWith('ton')
+                      && !String(propsValues['mqtt_topic_base'] || '').trim()
+                      && !String(propsValues['equipamento_id'] || '').trim() && (
+                        <p className="text-[10px] text-amber-600">
+                          ⚠ Preencha o <b>Tópico Base</b> acima e <b>salve</b> — sem ele o equipamento
+                          TON não é criado/associado automaticamente (o comando e a OTA dependem do tópico).
+                        </p>
+                      )}
                   </>
                 )}
                 {f.key !== 'equipamento_id' && (f.type === 'text' || f.type === 'number') && (

@@ -447,6 +447,40 @@ var COMPONENT_TYPES = {
             { key: 'tempo_pressao_s', label: 'Tempo p/ pressão (s)', type: 'number', placeholder: '120' },
         ]
     },
+    // ============================================================
+    // BOMBA DE COMBUSTIVEL — abastecimento por RFID (a TON e o cerebro:
+    // le cartao/estop pelas BI, nivel pela AI, aciona contator pelas BO).
+    // As BO/BI sao configuradas NA TON (modal da TON -> Configurar BOs/BIs),
+    // mapeando cada rele/entrada aos PONTOS da bomba (Ligar/Desligar/Solenoide,
+    // Cartao/Emergencia) — igual a qualquer equipamento. A bomba NAO guarda
+    // numeros de BO/BI: no gerar-firmware o front le ton_bo/ton_bi e injeta.
+    // O nivel (AI) fica aqui pq nao existe ton_ai (so ton_bo/ton_bi na TON).
+    // Precisa de uma TON com BO (reles): TON3/TON4.
+    // ============================================================
+    bomba: {
+        label: 'Bomba de Combustível', category: 'irrigacao', color: '#F59E0B',
+        icon: 'M9 3v18M15 3v18M4 7h5m-5 5h5m6-5h4a1 1 0 011 1v4m-5 4v-8',
+        ports: ['top', 'bottom', 'left', 'right'],
+        generates_firmware: false,
+        defaults: {
+            name: 'Bomba de Combustível',
+            equipamento_id: '',
+            ai_nivel: 1, ai_nivel_100_mv: 3000,
+            nivel_cheio_pct: 95, nivel_min_pct: 5, timeout_s: 600,
+            vazao_lps: 0.5, uid_teste: 'AABBCCDD',
+        },
+        fields: [
+            { key: 'name', label: 'Nome', type: 'text' },
+            { key: 'equipamento_id', label: 'Equipamento NexON (RFID/config/relatório)', type: 'text' },
+            { key: 'ai_nivel', label: 'AI Nível do tanque (1-2)', type: 'number', placeholder: '1' },
+            { key: 'ai_nivel_100_mv', label: 'AI: mV que = 100% de nível', type: 'number', placeholder: '3000' },
+            { key: 'nivel_cheio_pct', label: 'Tanque cheio ≥ (%)', type: 'number', placeholder: '95' },
+            { key: 'nivel_min_pct', label: 'Nível mínimo p/ operar (%)', type: 'number', placeholder: '5' },
+            { key: 'timeout_s', label: 'Timeout de segurança (s)', type: 'number', placeholder: '600' },
+            { key: 'vazao_lps', label: 'Vazão simulada (L/s)', type: 'number', placeholder: '0.5' },
+            { key: 'uid_teste', label: 'UID do cartão de teste (Comando)', type: 'text', placeholder: 'AABBCCDD' },
+        ]
+    },
 };
 
 // ============================================================
@@ -515,7 +549,7 @@ var CATEGORIES = [
     { id: 'controller', label: 'Controladores TON', types: ['ton1', 'ton2', 'ton3', 'ton4', 'ton1v2', 'ton2v2', 'ton3v2', 'ton4v2'] },
     { id: 'infra', label: 'Infraestrutura', types: ['wifi_router', 'mqtt_broker', 'meter_gateway', 'inverter_datalogger', 'conversor'] },
     { id: 'device', label: 'Dispositivos', types: ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao'] },
-    { id: 'irrigacao', label: 'Irrigação', types: ['pivo'] },
+    { id: 'irrigacao', label: 'Irrigação / Bomba', types: ['pivo', 'bomba'] },
 ];
 
 var CONNECTION_STYLES = {

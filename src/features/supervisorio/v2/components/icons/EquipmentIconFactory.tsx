@@ -22,6 +22,7 @@ import { MotorEletricoIcon } from './MotorEletricoIcon';
 import { PivoIcon } from './PivoIcon';
 import { CarregadorEletricoIcon } from './CarregadorEletricoIcon';
 import { TONIcon } from './TONIcon';
+import { BombaCombustivelIcon } from './BombaCombustivelIcon';
 
 // ============================================================================
 // TIPOS
@@ -300,6 +301,7 @@ export const getEquipmentIcon = (categoria: string | undefined | null): IconComp
  */
 const matchIconByKeyword = (norm: string): IconComponent | null => {
   const k = norm.normalize('NFD').replace(/[̀-ͯ]/g, ''); // tira acentos
+  if (k.includes('BOMBA')) return BombaCombustivelIcon;
   if (k.includes('PIVO')) return PivoIcon;
   if (k.includes('INVERSOR')) return InversorIcon;
   if (k.includes('TRANSFORMADOR') || k.includes('TRAFO')) return TransformadorIcon;

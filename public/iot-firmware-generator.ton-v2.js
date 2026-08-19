@@ -192,7 +192,8 @@ var FirmwareGeneratorTonV2 = class FirmwareGeneratorTonV2 {
         if (!spec) return false;
         return (spec.rs485_devices && spec.rs485_devices.length > 0) ||
                (spec.tcp_devices && spec.tcp_devices.length > 0) ||
-               !!spec.pivo;
+               !!spec.pivo ||
+               !!spec.bomba;
     }
 
     _analyzeTon(ton, components, connections) {
@@ -235,6 +236,10 @@ var FirmwareGeneratorTonV2 = class FirmwareGeneratorTonV2 {
                 // BO (relés) lendo o painel via BI (entradas). Roteia pra cá ANTES
                 // do _processRS485 (que o ignoraria de qualquer forma).
                 this._processPivo(ton, other, result);
+            } else if (other.type === 'bomba') {
+                // Bomba de combustivel: a TON e o cerebro (le cartao/estop pelas BI,
+                // nivel pela AI, aciona contator pelas BO). Roteia pra ca antes do RS485.
+                this._processBomba(ton, other, result);
             } else if (conn.style === 'rs485') {
                 this._processRS485(ton, other, result, components, connections);
             } else if (conn.style === 'tcp') {
@@ -589,6 +594,47 @@ var FirmwareGeneratorTonV2 = class FirmwareGeneratorTonV2 {
             result.warnings.push('Pivô conectado a uma TON sem relés (BO) — controle do pivô não será gerado. Use TON3/TON4.');
         } else if (!result.pivo.bo_movimento) {
             result.warnings.push('Pivô sem BO Movimento configurado — máquina de estados não terá como acionar o pivô.');
+        }
+    }
+
+    // Bomba de combustivel: mesmo espirito do pivo (a TON e o cerebro). Emitida em
+    // _genBomba() so quando result.bomba existe e a TON tem reles.
+    _processBomba(ton, other, result) {
+        if (result.bomba) return;  // so uma bomba por TON
+        const p = other.props || {};
+        const num = (v, max) => { const n = parseInt(v, 10); return Number.isFinite(n) && n >= 1 && n <= (max || 8) ? n : 0; };
+        const flt = (v, d) => { const n = parseFloat(v); return Number.isFinite(n) ? n : d; };
+        const pint = (v, d) => { const n = parseInt(v, 10); return Number.isFinite(n) && n > 0 ? n : d; };
+        const eqId = (p.equipamento_id || '').trim();
+        // BO/BI vem do mapeamento PADRAO da TON (modal da TON -> Configurar BOs/BIs
+        // -> ton_bo/ton_bi), resolvido por PAPEL no frontend (pelo nome do ponto da
+        // bomba) e injetado em _bombaIoByEquip[equipamento_id]. A bomba NAO guarda
+        // BO/BI nas props: a fonte da verdade e' ton_bo/ton_bi, igual a qualquer
+        // equipamento. Fallback pras props existe so pro harness/override manual.
+        // O AI (nivel) fica nas props: nao ha ton_ai (so ton_bo/ton_bi na TON).
+        const io  = (this._bombaIoByEquip && eqId && this._bombaIoByEquip[eqId]) || {};
+        const iob = io.bo || {}, ioi = io.bi || {};
+        result.bomba = {
+            componentId: other.id,
+            name: p.name || COMPONENT_TYPES[other.type].label,
+            equipamento_id: eqId,
+            bi_cartao:      ioi.cartao || num(p.bi_cartao),
+            bi_estop:       ioi.estop  || num(p.bi_estop),
+            ai_nivel:       (() => { const n = parseInt(p.ai_nivel, 10); return (n === 1 || n === 2) ? n : 1; })(),
+            ai_nivel_100_mv: pint(p.ai_nivel_100_mv, 3000),
+            bo_liga:        iob.liga      || num(p.bo_liga, 6),
+            bo_desliga:     iob.desliga   || num(p.bo_desliga, 6),
+            bo_solenoide:   iob.solenoide || num(p.bo_solenoide, 6),
+            nivel_cheio_pct: flt(p.nivel_cheio_pct, 95),
+            nivel_min_pct:  flt(p.nivel_min_pct, 5),
+            timeout_s:      pint(p.timeout_s, 600),
+            vazao_lps:      flt(p.vazao_lps, 0.5),
+            uid_teste:      (p.uid_teste || 'AABBCCDD').trim().toUpperCase(),
+        };
+        if (!result.has_relays) {
+            result.warnings.push('Bomba conectada a uma TON sem relés (BO) — o contator não pode ser acionado. Use TON3/TON4 (ton2 não tem BO).');
+        } else if (!result.bomba.bo_liga) {
+            result.warnings.push('Bomba sem BO "Ligar" mapeado — configure na TON: modal da TON → Configurar BOs (Ligar / Desligar / Solenoide) e Configurar BIs (Cartão / Emergência).');
         }
     }
 
@@ -2419,7 +2465,12 @@ ${spec.lora_role === 'gateway' ? `
     }
 ` : ''}
     Serial.printf("[MQTT] Recebido: %s -> %s\\n", topic, buf);
-    if (_cmdCallback) _cmdCallback(buf);
+${spec.bomba ? `    if (strstr(topic, "/cmd/rfid_sync") != nullptr) {
+        extern void bomba_set_whitelist(const char*);
+        bomba_set_whitelist(buf);
+        return;
+    }
+` : ''}    if (_cmdCallback) _cmdCallback(buf);
 }
 
 void mqtt_init(mqtt_cmd_callback_t callback) {
@@ -2595,7 +2646,8 @@ void mqtt_loop() {
         Serial.println("[MQTT] Conectado!");
         _wasConnected = true;
         _mqtt.subscribe(MQTT_TOPIC_CMD);
-        String otaCmdTopic = String(MQTT_TOPIC_BASE) + "/ota/cmd";
+${spec.bomba ? `        { String rfidTopic = String(MQTT_TOPIC_BASE) + "/cmd/rfid_sync"; _mqtt.subscribe(rfidTopic.c_str()); Serial.printf("[MQTT] Inscrito em: %s\\n", rfidTopic.c_str()); }
+` : ''}        String otaCmdTopic = String(MQTT_TOPIC_BASE) + "/ota/cmd";
         _mqtt.subscribe(otaCmdTopic.c_str());
         Serial.printf("[MQTT] Inscrito em: %s\\n[MQTT] Inscrito em: %s\\n",
                       MQTT_TOPIC_CMD, otaCmdTopic.c_str());
@@ -5507,6 +5559,148 @@ void pivot_loop() {
         return cpp;
     }
 
+    // Bomba de combustivel: modulo C++ (a TON e o cerebro). Espelha _genPivot.
+    // Emitida so quando spec.bomba && spec.has_relays. ArduinoJson ja incluido no main.cpp.
+    _genBomba(spec) {
+        const b = spec.bomba;
+        const biRead = (n) => n ? `((inputs_get_state() >> ${n - 1}) & 1)` : 'false';
+        const aiCh = b.ai_nivel - 1;  // adc_read_mv e' 0-based (AI1->0)
+
+        let cpp = `// ===== BOMBA DE COMBUSTIVEL: maquina de estados (a TON e o cerebro) =====
+// Le cartao (BI botao / Serial / Comando) + estop (BI) + nivel (AI); casa a whitelist
+// recebida retida em <BASE>/cmd/rfid_sync; aciona o contator (BO, pulso) e publica
+// transacao (<BASE>/abastecimento) e telemetria (<BASE>/bomba).
+// Config: BI cartao=${b.bi_cartao || '—'}, BI estop=${b.bi_estop || '—'}, AI nivel=${b.ai_nivel},
+//   BO liga=${b.bo_liga || '—'}, BO desliga=${b.bo_desliga || '—'}, BO solenoide=${b.bo_solenoide || '—'};
+//   cheio>=${b.nivel_cheio_pct}%, min=${b.nivel_min_pct}%, timeout=${b.timeout_s}s, vazao=${b.vazao_lps}L/s (SIM).
+`;
+        if (!spec.wifi && spec.lora_role === 'satellite') {
+            cpp += `static void lora_publish_data(const char* subtopic, const char* payload_json);  // def. no router LoRa abaixo\n`;
+        }
+        const pubBody = spec.wifi ? '    mqtt_publish_sub(sub, payload);'
+            : (spec.lora_role === 'satellite' ? '    lora_publish_data(sub, payload);'
+            : '    Serial.printf("[BOMBA] %s: %s\\n", sub, payload);');
+        cpp += `
+enum BombaState { BOMBA_OCIOSA = 0, BOMBA_BOMBEANDO };
+static BombaState    _bomba_state    = BOMBA_OCIOSA;
+static unsigned long _bomba_t_ini    = 0;
+static float         _bomba_nivel_ini = 0;
+static char          _bomba_uid[24]  = {0};
+#define BOMBA_TIMEOUT_MS  ${b.timeout_s}000UL
+#define BOMBA_VAZAO_LPS   ${Number(b.vazao_lps).toFixed(3)}f
+#define BOMBA_CHEIO_PCT   ${Number(b.nivel_cheio_pct).toFixed(2)}f
+#define BOMBA_MIN_PCT     ${Number(b.nivel_min_pct).toFixed(2)}f
+#define BOMBA_AI_100_MV   ${Number(b.ai_nivel_100_mv).toFixed(1)}f
+
+static void _bomba_pub(const char* sub, const char* payload) {
+${pubBody}
+}
+
+// Whitelist RFID (recebida retida em <BASE>/cmd/rfid_sync). NAO-static: mqtt _onMessage a chama.
+static String _bomba_wl[64];
+static int    _bomba_wln = 0;
+void bomba_set_whitelist(const char* json) {
+    StaticJsonDocument<2048> d;
+    if (deserializeJson(d, json)) { Serial.println("[BOMBA] whitelist invalida"); return; }
+    _bomba_wln = 0;
+    for (JsonVariant v : d["uids"].as<JsonArray>()) {
+        if (_bomba_wln >= 64) break;
+        _bomba_wl[_bomba_wln++] = String(v.as<const char*>());
+    }
+    Serial.printf("[BOMBA] whitelist: %d UIDs\\n", _bomba_wln);
+}
+static bool _bomba_uid_ok(const char* uid) {
+    for (int i = 0; i < _bomba_wln; i++) if (_bomba_wl[i].equalsIgnoreCase(uid)) return true;
+    return false;
+}
+static float _bomba_nivel_pct() {
+    float pct = adc_read_mv(${aiCh}) / BOMBA_AI_100_MV * 100.0f;
+    if (pct < 0) pct = 0;
+    if (pct > 100) pct = 100;
+    return pct;
+}
+static bool _bomba_estop() { return ${biRead(b.bi_estop)}; }
+static bool _bomba_cheio() { return _bomba_nivel_pct() >= BOMBA_CHEIO_PCT; }
+
+static void _bomba_pub_estado() {
+    char payload[96];
+    snprintf(payload, sizeof(payload), "{\\"estado\\":\\"%s\\",\\"nivel_pct\\":%.0f}",
+        _bomba_state == BOMBA_BOMBEANDO ? "bombeando" : "idle", _bomba_nivel_pct());
+    _bomba_pub("bomba", payload);
+}
+static void _bomba_pulso_liga() {
+`;
+        if (b.bo_liga) cpp += `    relay_set(${b.bo_liga}, true); delay(500); relay_set(${b.bo_liga}, false);\n`;
+        cpp += `}
+static void _bomba_pulso_desliga() {
+`;
+        if (b.bo_desliga) cpp += `    relay_set(${b.bo_desliga}, true); delay(500); relay_set(${b.bo_desliga}, false);\n`;
+        else if (b.bo_liga) cpp += `    relay_set(${b.bo_liga}, false);  // sem BO desliga: solta o BO liga\n`;
+        cpp += `}
+
+static void _bomba_encerrar(const char* status) {
+    _bomba_pulso_desliga();
+`;
+        if (b.bo_solenoide) cpp += `    relay_set(${b.bo_solenoide}, false);\n`;
+        cpp += `    float litros = (millis() - _bomba_t_ini) / 1000.0f * BOMBA_VAZAO_LPS;  // SIM: vazao simulada
+    float ndep = _bomba_nivel_pct();
+    char payload[200];
+    snprintf(payload, sizeof(payload),
+        "{\\"uid\\":\\"%s\\",\\"litros\\":%.2f,\\"nivel_antes\\":%.0f,\\"nivel_depois\\":%.0f,\\"status\\":\\"%s\\"}",
+        _bomba_uid, litros, _bomba_nivel_ini, ndep, status);
+    _bomba_pub("abastecimento", payload);
+    Serial.printf("[BOMBA] FIM (%s) litros=%.2f\\n", status, litros);
+    _bomba_state = BOMBA_OCIOSA;
+    _bomba_uid[0] = 0;
+    _bomba_pub_estado();
+}
+
+// Apresentacao de cartao (botao BI / Serial / comando MQTT). NAO-static (comando a chama).
+void bomba_cartao(const char* uid) {
+    if (_bomba_state != BOMBA_OCIOSA) return;
+    if (!_bomba_uid_ok(uid)) {
+        Serial.printf("[BOMBA] REJEITADO %s\\n", uid);
+        char payload[64];
+        snprintf(payload, sizeof(payload), "{\\"uid\\":\\"%s\\",\\"status\\":\\"rejeitado\\"}", uid);
+        _bomba_pub("abastecimento", payload);
+        return;
+    }
+    if (_bomba_estop()) { Serial.println("[BOMBA] BLOQUEADO: estop"); return; }
+    if (_bomba_cheio()) { Serial.println("[BOMBA] BLOQUEADO: tanque cheio"); return; }
+    if (_bomba_nivel_pct() < BOMBA_MIN_PCT) { Serial.println("[BOMBA] BLOQUEADO: nivel baixo"); return; }
+    strncpy(_bomba_uid, uid, sizeof(_bomba_uid) - 1);
+    _bomba_uid[sizeof(_bomba_uid) - 1] = 0;
+    _bomba_t_ini = millis();
+    _bomba_nivel_ini = _bomba_nivel_pct();
+`;
+        if (b.bo_solenoide) cpp += `    relay_set(${b.bo_solenoide}, true);\n`;
+        cpp += `    _bomba_pulso_liga();
+    _bomba_state = BOMBA_BOMBEANDO;
+    Serial.printf("[BOMBA] BOMBEANDO uid=%s nivel=%.0f%%\\n", _bomba_uid, _bomba_nivel_ini);
+    _bomba_pub_estado();
+}
+
+void bomba_loop() {
+    static bool prevCartao = false;
+    static unsigned long lastTel = 0;
+`;
+        if (b.bi_cartao) cpp += `    bool cartao = ${biRead(b.bi_cartao)};
+    if (cartao && !prevCartao) { prevCartao = true; bomba_cartao("${b.uid_teste}"); }
+    if (!cartao) prevCartao = false;
+`;
+        cpp += `    if (_bomba_state == BOMBA_BOMBEANDO) {
+        if (_bomba_estop())                             { _bomba_encerrar("abortado_estop"); return; }
+        if (_bomba_cheio())                             { _bomba_encerrar("tanque_cheio");   return; }
+        if (_bomba_nivel_pct() < BOMBA_MIN_PCT)         { _bomba_encerrar("nivel_baixo");    return; }
+        if (millis() - _bomba_t_ini > BOMBA_TIMEOUT_MS) { _bomba_encerrar("timeout");        return; }
+    }
+    if (millis() - lastTel > 30000) { lastTel = millis(); _bomba_pub_estado(); }
+}
+
+`;
+        return cpp;
+    }
+
     // ---- main.cpp ----
     _genMainCpp(spec) {
         let cpp = `// ==============================================================================
@@ -5605,6 +5799,9 @@ static void _publish_cmd_ack(const char* cmd_id, const char* status, const char*
         if (spec.pivo && spec.has_relays) {
             cpp += this._genPivot(spec);
         }
+        if (spec.bomba && spec.has_relays) {
+            cpp += this._genBomba(spec);
+        }
 
         cpp += `// Executa o comando bruto (sem envelope). Preenche result_msg com descricao curta.
 // Retorna true em sucesso, false em erro.
@@ -5687,6 +5884,14 @@ static bool _process_command_inner(const char* raw, char* result_msg, size_t msg
         return true;
     }
 `;
+        // ===== Comando da bomba: "card <UID>" apresenta um cartao (teste / Comando 🧪) =====
+        if (spec.bomba && spec.has_relays) {
+            cpp += `    if (cmd.startsWith("card ")) {
+        String u = cmd.substring(5); u.trim(); u.toUpperCase();
+        if (u.length()) { bomba_cartao(u.c_str()); snprintf(result_msg, msg_sz, "card_%s", u.c_str()); return true; }
+    }
+`;
+        }
         // ===== Comandos do pivô (só quando ha um pivô conectado a esta TON) =====
         // pivot on/start  -> liga (entra em ESPERANDO_PRESSAO)
         // pivot off/stop  -> para (abre os BO)
@@ -6033,6 +6238,12 @@ void loop() {
             cpp += `
     // Pivô: máquina de estados (lê BI das entradas, aciona BO via relés).
     pivot_loop();
+`;
+        }
+        if (spec.bomba && spec.has_relays) {
+            cpp += `
+    // Bomba: máquina de estados (lê cartão/estop nas BI + nível na AI, aciona contator BO).
+    bomba_loop();
 `;
         }
 

@@ -3,6 +3,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { BoletimSemanalFvPage } from '@/features/monitoramento-fv/BoletimSemanalFvPage';
 import { ConsumoReportPreview } from './consumo/ConsumoReportPreview';
 import { ConsumoEnvioConfig } from './consumo/ConsumoEnvioConfig';
+import { AbastecimentoReport } from './AbastecimentoReport';
 
 /**
  * Área de Relatórios (top-level): Geração (usinas) e Consumo (unidades medidas).
@@ -20,6 +21,7 @@ export function RelatoriosPage() {
               <TabsList>
                 <TabsTrigger value="geracao">Geração</TabsTrigger>
                 <TabsTrigger value="consumo">Consumo</TabsTrigger>
+                <TabsTrigger value="abastecimento">Abastecimento</TabsTrigger>
               </TabsList>
             </div>
             <TabsContent value="geracao"><BoletimSemanalFvPage /></TabsContent>
@@ -29,6 +31,7 @@ export function RelatoriosPage() {
                 <ConsumoEnvioConfig />
               </div>
             </TabsContent>
+            <TabsContent value="abastecimento"><AbastecimentoReport /></TabsContent>
           </Tabs>
         </CardContent>
       </Card>

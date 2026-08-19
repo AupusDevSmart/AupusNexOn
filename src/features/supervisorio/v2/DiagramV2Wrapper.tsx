@@ -383,10 +383,20 @@ export const DiagramV2Wrapper: React.FC<DiagramV2WrapperProps> = ({
             availableEquipments={equipamentosDisponiveis}
             onBackgroundClick={onBackgroundClick}
             onEquipmentClick={(equipment) => {
+              // Bomba de Combustível: TEM automação (BOs), mas o acionamento é
+              // AUTÔNOMO (máquina de estados por RFID no firmware) — então o clique
+              // abre o MODAL PRÓPRIO da bomba (via callback legado), NÃO o modal
+              // genérico de comando/acionamento de pontos. É a única parte especial;
+              // o resto (BO, MQTT, automação) é equipamento padrão.
+              const _isBomba = !modoEdicao && (
+                String(equipment.categoria || '').toUpperCase().includes('BOMBA') ||
+                String(equipment.tipo || '').toUpperCase().includes('BOMBA'));
+
               // Categorias com comandos registrados (ex: TON) abrem o modal
               // de comando MQTT em vez do callback legado. Isso evita
               // sobreposicao com o modal de detalhes/CRUD do equipamento.
               if (
+                !_isBomba &&
                 !modoEdicao &&
                 getCommandsForCategoria(equipment.categoria, equipment.tipo) !== null
               ) {
@@ -396,7 +406,8 @@ export const DiagramV2Wrapper: React.FC<DiagramV2WrapperProps> = ({
 
               // Equipamentos com automacao=true (nao-TON) abrem modal de acionamento
               // de pontos. Resolve mapeamento ton_bo no backend pra executar pulso.
-              if (!modoEdicao && equipment.automacao === true) {
+              // A bomba é exceção: modal próprio (acima), mesmo com automação ON.
+              if (!_isBomba && !modoEdicao && equipment.automacao === true) {
                 setAcionarModalEquipment(equipment);
                 return;
               }

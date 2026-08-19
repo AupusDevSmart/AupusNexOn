@@ -241,12 +241,18 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
   const handleEquipamentoCriado = (equipamento: EquipamentoApiResponse) => {
     if (!diagrama) return;
 
-    // Converter equipamento do backend para formato do diagrama
+    // Converter equipamento do backend para formato do diagrama.
+    // O criar-rápido NÃO grava a string tipo_equipamento (só o _id), e o layout certo
+    // (ícone+tamanho) vem da CATEGORIA/modelo — então puxamos daqui e não do reload.
+    const te: any = (equipamento as any).tipoEquipamento || (equipamento as any).tipo_equipamento_rel;
     const newEquipment: Equipment = {
       id: equipamento.id,
       nome: equipamento.nome,
       tag: equipamento.numero_serie || equipamento.nome, // Usar numero_serie como tag
-      tipo: equipamento.tipo_equipamento || 'EQUIPAMENTO',
+      tipo: equipamento.tipo_equipamento || te?.codigo || 'EQUIPAMENTO',
+      categoria: te?.categoria?.nome || te?.categoria?.codigo || undefined,
+      largura: te?.largura_padrao ?? undefined,
+      altura: te?.altura_padrao ?? undefined,
       unidadeId: diagrama.unidadeId,
       diagramaId: diagrama.id,
       posicaoX: 0, // Centro do viewBox (0,0)
@@ -257,7 +263,7 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
       createdAt: new Date(equipamento.created_at || new Date()),
       updatedAt: new Date(equipamento.updated_at || new Date()),
       deletedAt: null,
-    };
+    } as Equipment;
 
     addEquipamento(newEquipment);
     toast({
@@ -338,13 +344,18 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
 
     // Extrair tipo do equipamento
     const tipoEquipamento = equipamento.tipo_equipamento || equipamento.tipoEquipamento?.codigo || 'EQUIPAMENTO';
+    const te: any = (equipamento as any).tipoEquipamento || (equipamento as any).tipo_equipamento_rel;
 
-    // Converter equipamento para formato Equipment
+    // Converter equipamento para formato Equipment (com categoria+tamanho do modelo,
+    // pra render com o layout certo já na hora — sem precisar salvar+recarregar).
     const newEquipment: Equipment = {
       id: equipamento.id.trim(),
       nome: equipamento.nome,
       tag: equipamento.tag || '',
       tipo: tipoEquipamento,
+      categoria: te?.categoria?.nome || te?.categoria?.codigo || undefined,
+      largura: te?.largura_padrao ?? undefined,
+      altura: te?.altura_padrao ?? undefined,
       unidadeId: diagrama.unidadeId,
       diagramaId: diagrama.id,
       posicaoX: 0, // Centro do viewBox (0,0)
@@ -355,7 +366,7 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
       createdAt: new Date(),
       updatedAt: new Date(),
       deletedAt: null,
-    };
+    } as Equipment;
 
     addEquipamento(newEquipment);
     toast({
