@@ -54,3 +54,9 @@ scripts/regressao-catalog.snapshot.js
 # contem token de sessao em texto plano — nunca commitar
 .agent-browser-auth.json
 .agent-browser/
+
+# Backup manual feito antes de refactor arriscado, direto no servidor.
+# Nao e codigo e nao entra no historico — mas, sem estar ignorado, o `??` de
+# um tarball aqui reprova o guard de arvore limpa do deploy.sh e trava TODO
+# deploy futuro do projeto, ate alguem reparar no arquivo.
+_snapshots/
