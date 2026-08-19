@@ -49,3 +49,8 @@ scripts/regressao-catalog.snapshot.js
 # Cache incremental do tsc. E artefato de build: cada `pnpm build` o reescreve,
 # entao rastreado ele suja a arvore no servidor e trava o deploy.sh.
 *.tsbuildinfo
+
+# agent-browser: estado de autenticacao para verificacao visual
+# contem token de sessao em texto plano — nunca commitar
+.agent-browser-auth.json
+.agent-browser/
