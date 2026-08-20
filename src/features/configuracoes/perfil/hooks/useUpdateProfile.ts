@@ -10,7 +10,7 @@ export function useUpdateProfile() {
   const [isUpdating, setIsUpdating] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
-  const { user, setUser } = useUserStore();
+  const { user, setUser, updateUser } = useUserStore();
 
   /**
    * Atualiza os dados do perfil
@@ -25,8 +25,10 @@ export function useUpdateProfile() {
     try {
       const updatedUser = await profileService.updateProfile(user.id, data);
 
-      // Atualizar o store com os novos dados
-      setUser(updatedUser);
+      // `updateUser` e nao `setUser`: a resposta do PATCH e o cadastro do
+      // usuario, nao a sessao. Substituindo o objeto inteiro perdiam-se
+      // role_details e plantas_vinculadas, que so vem no login e no /auth/me.
+      updateUser(updatedUser);
 
       toast.success('Perfil atualizado com sucesso!');
       return { success: true, data: updatedUser };
@@ -92,13 +94,8 @@ export function useUpdateProfile() {
       console.log('🖼️ Nova URL do avatar:', newAvatarUrl);
 
       if (newAvatarUrl) {
-        // Atualiza o usuário no store com a nova URL do avatar
-        const updatedUser = {
-          ...user,
-          avatar_url: newAvatarUrl
-        };
-
-        setUser(updatedUser);
+        // Só a foto muda aqui; o resto da sessão fica como está.
+        updateUser({ avatar_url: newAvatarUrl });
 
         // Opcionalmente, tenta buscar os dados atualizados do servidor
         try {

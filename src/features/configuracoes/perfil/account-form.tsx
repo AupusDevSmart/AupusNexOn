@@ -80,15 +80,15 @@ const profileFormSchema = z.object({
 }, {
   message: "Senha atual é obrigatória para alterar a senha",
   path: ["password"],
-}).refine((data) => {
-  // Se forneceu senha atual, nova senha é obrigatória
-  if (data.password && data.password.trim() && !data.newPassword) {
-    return false;
-  }
-  return true;
-}, {
-  message: "Nova senha é obrigatória quando você informa a senha atual",
-  path: ["newPassword"],
+// NAO existe a regra inversa — informar a senha atual sozinha nao bloqueia o
+// salvamento. Ela existia aqui e o efeito real era outro que o pretendido: o
+// navegador autopreenche "senha atual" com a senha salva, e a tela passava a
+// exigir uma senha nova de quem so queria trocar a foto. O `autoComplete` dos
+// campos reduz o autopreenchimento, mas nao elimina em todo navegador, e
+// travar o perfil inteiro e caro demais para o que a regra protegia.
+//
+// Sem ela nada quebra: o submit so chama changePassword com os DOIS campos
+// preenchidos, entao uma senha atual solta e simplesmente ignorada.
 }).refine((data) => {
   // Nova senha deve ter pelo menos 8 caracteres quando fornecida
   if (data.newPassword && data.newPassword.trim() && data.newPassword.length < 8) {
@@ -409,6 +409,7 @@ export function AccountForm() {
                         <div className="relative">
                           <Input
                             type={showPassword ? "text" : "password"}
+                            autoComplete="new-password"
                             placeholder='••••••••'
                             {...field}
                           />
@@ -439,6 +440,7 @@ export function AccountForm() {
                         <div className="relative">
                           <Input
                             type={showNewPassword ? "text" : "password"}
+                            autoComplete="new-password"
                             placeholder='••••••••'
                             {...field}
                           />
@@ -469,6 +471,7 @@ export function AccountForm() {
                         <div className="relative">
                           <Input
                             type={showConfirmPassword ? "text" : "password"}
+                            autoComplete="new-password"
                             placeholder='••••••••'
                             {...field}
                           />
