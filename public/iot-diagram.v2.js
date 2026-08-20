@@ -465,19 +465,25 @@ var COMPONENT_TYPES = {
         defaults: {
             name: 'Bomba de Combustível',
             equipamento_id: '',
+            modo_leitor: 'rs485', k_fator: 450,
             ai_nivel: 1, ai_nivel_100_mv: 3000,
             nivel_cheio_pct: 95, nivel_min_pct: 5, timeout_s: 600,
             vazao_lps: 0.5, uid_teste: 'AABBCCDD',
         },
+        // A config da bomba mora AQUI (IoT) — o unifilar só mostra Visão/RFID. No save
+        // o backend espelha isto em bomba_combustivel_config (listarBombas/telemetria).
         fields: [
-            { key: 'name', label: 'Nome', type: 'text' },
-            { key: 'equipamento_id', label: 'Equipamento NexON (RFID/config/relatório)', type: 'text' },
-            { key: 'ai_nivel', label: 'AI Nível do tanque (1-2)', type: 'number', placeholder: '1' },
-            { key: 'ai_nivel_100_mv', label: 'AI: mV que = 100% de nível', type: 'number', placeholder: '3000' },
-            { key: 'nivel_cheio_pct', label: 'Tanque cheio ≥ (%)', type: 'number', placeholder: '95' },
+            { key: 'name', label: 'Nome', type: 'text', wide: true, section: 'Identificação' },
+            { key: 'equipamento_id', label: 'Equipamento NexON (RFID / relatório)', type: 'text', wide: true },
+            { key: 'modo_leitor', label: 'Modo do leitor', type: 'select', section: 'Leitor & fluxômetro',
+              options: [['rs485', 'RS485 (Modbus)'], ['hibrido', 'Híbrido (BI + Modbus)'], ['wiegand', 'Wiegand']] },
+            { key: 'k_fator', label: 'K-fator do fluxômetro (pulsos/L)', type: 'number', placeholder: '450' },
+            { key: 'ai_nivel', label: 'AI do nível do tanque (1-2)', type: 'number', placeholder: '1', section: 'Nível (entrada analógica)' },
+            { key: 'ai_nivel_100_mv', label: 'mV que equivale a 100%', type: 'number', placeholder: '3000' },
+            { key: 'nivel_cheio_pct', label: 'Tanque cheio ≥ (%)', type: 'number', placeholder: '95', section: 'Operação' },
             { key: 'nivel_min_pct', label: 'Nível mínimo p/ operar (%)', type: 'number', placeholder: '5' },
             { key: 'timeout_s', label: 'Timeout de segurança (s)', type: 'number', placeholder: '600' },
-            { key: 'vazao_lps', label: 'Vazão simulada (L/s)', type: 'number', placeholder: '0.5' },
+            { key: 'vazao_lps', label: 'Vazão simulada (L/s)', type: 'number', placeholder: '0.5', section: 'Simulação / bancada' },
             { key: 'uid_teste', label: 'UID do cartão de teste (Comando)', type: 'text', placeholder: 'AABBCCDD' },
         ]
     },
@@ -1700,9 +1706,9 @@ var DiagramEditor = class {
         // Rule 5: TON connects to: Router WiFi, devices (RS485), Datalogger (TCP), or another TON2 (LoRa)
         if (types.some(t => tonTypes.includes(t))) {
             const otherType = tonTypes.includes(from.type) ? to.type : from.type;
-            const allowedTargets = ['wifi_router', 'inverter_datalogger', 'conversor', ...deviceTypes, ...tonTypes.filter(t => isLoraNode(t)), 'pivo'];
+            const allowedTargets = ['wifi_router', 'inverter_datalogger', 'conversor', ...deviceTypes, ...tonTypes.filter(t => isLoraNode(t)), 'pivo', 'bomba'];
             if (!allowedTargets.includes(otherType)) {
-                return { allowed: false, reason: 'TON se conecta a: Router WiFi, Datalogger, Conversor ou dispositivos' };
+                return { allowed: false, reason: 'TON se conecta a: Router WiFi, Datalogger, Conversor, dispositivos, Pivô ou Bomba' };
             }
         }
 
@@ -1738,6 +1744,16 @@ var DiagramEditor = class {
             const other = from.type === 'pivo' ? to.type : from.type;
             if (!tonTypes.includes(other)) {
                 return { allowed: false, reason: 'Pivô só se conecta a uma TON (que o controla via relés/entradas)' };
+            }
+        }
+
+        // Rule 8b: Bomba de combustível conecta só a uma TON (que a controla via BO/BI
+        // e lê o nível pela AI; a comunicação Modbus dos sensores externos também sai
+        // pela mesma TON). Mesmo espírito do pivô.
+        if (types.includes('bomba')) {
+            const other = from.type === 'bomba' ? to.type : from.type;
+            if (!tonTypes.includes(other)) {
+                return { allowed: false, reason: 'Bomba só se conecta a uma TON (que a controla via BO/BI/AI e Modbus)' };
             }
         }
 

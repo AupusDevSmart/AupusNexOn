@@ -114,8 +114,25 @@ export const TonBiConfigModal: React.FC<TonBiConfigModalProps> = ({
       }
       setRawInputs(raw);
 
+      // EXCLUI a própria TON e outras TONs: um BI da TON lê um equipamento EXTERNO
+      // (bomba, relé…), nunca uma TON.
+      const ehTon = (e: any) => {
+        const cat = String(
+          e.tipo_equipamento_rel?.categoria?.nome ??
+            e.tipoEquipamento?.categoria?.nome ??
+            '',
+        ).trim().toUpperCase();
+        const tipo = String(
+          e.tipo_equipamento ?? e.tipo_equipamento_rel?.codigo ?? '',
+        ).trim().toUpperCase();
+        return cat === 'TON' || tipo.startsWith('TON');
+      };
       const lista = (equipsResp.data ?? []).filter(
-        (e: any) => e.automacao === true && !e.deleted_at,
+        (e: any) =>
+          e.automacao === true &&
+          !e.deleted_at &&
+          String(e.id || '').trim() !== String(tonId || '').trim() &&
+          !ehTon(e),
       );
       setEquipamentos(lista.map((e: any) => ({ id: (e.id || '').trim(), nome: e.nome })));
 

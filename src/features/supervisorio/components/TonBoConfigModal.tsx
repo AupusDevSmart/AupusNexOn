@@ -52,6 +52,8 @@ interface TonBoConfigModalProps {
 interface EquipamentoOption {
   id: string;
   nome: string;
+  /** true = equipamento AUTÔNOMO (bomba): o BO é fiação do firmware, não botão manual. */
+  autonomo?: boolean;
 }
 
 const SENTINEL_UNMAPPED = '__unmapped__';
@@ -98,15 +100,47 @@ export const TonBoConfigModal: React.FC<TonBoConfigModalProps> = ({
       }
       setEquipSelecionadoPorBo(inicial);
 
-      // Filtra so equipamentos com automacao=true (filtro client-side por simplicidade)
+      // Filtra so equipamentos com automacao=true (filtro client-side por simplicidade).
+      // EXCLUI a própria TON e qualquer outra TON: um BO da TON aciona um equipamento
+      // EXTERNO (bomba, relé…), nunca uma TON — "BO da TON liga a TON" não faz sentido.
+      const ehTon = (e: any) => {
+        const cat = String(
+          e.tipo_equipamento_rel?.categoria?.nome ??
+            e.tipoEquipamento?.categoria?.nome ??
+            '',
+        ).trim().toUpperCase();
+        const tipo = String(
+          e.tipo_equipamento ?? e.tipo_equipamento_rel?.codigo ?? '',
+        ).trim().toUpperCase();
+        return cat === 'TON' || tipo.startsWith('TON');
+      };
       const lista = (equipsResp.data ?? []).filter(
-        (e: any) => e.automacao === true && !e.deleted_at,
+        (e: any) =>
+          e.automacao === true &&
+          !e.deleted_at &&
+          String(e.id || '').trim() !== String(tonId || '').trim() &&
+          !ehTon(e),
       );
       setEquipamentos(
-        lista.map((e: any) => ({
-          id: (e.id || '').trim(),
-          nome: e.nome,
-        })),
+        lista.map((e: any) => {
+          const cat = String(
+            e.tipo_equipamento_rel?.categoria?.nome ??
+              e.tipoEquipamento?.categoria?.nome ??
+              '',
+          );
+          const cod = String(
+            e.tipo_equipamento_rel?.codigo ??
+              e.tipoEquipamento?.codigo ??
+              e.tipo_equipamento ??
+              '',
+          );
+          return {
+            id: (e.id || '').trim(),
+            nome: e.nome,
+            // Bomba = autônoma: o BO é fiação do firmware, não botão manual.
+            autonomo: /BOMBA|COMBUST/i.test(`${cat} ${cod} ${e.nome ?? ''}`),
+          };
+        }),
       );
 
       // Pre-carrega pontos de cada equipamento ja mapeado
@@ -331,6 +365,9 @@ const BoCard: React.FC<BoCardProps> = ({
   }, [bo.pulso_ms]);
 
   const isMapped = !!bo.ponto;
+  // Equipamento autônomo (bomba): o mapeamento é FIAÇÃO pro firmware (relé X = papel),
+  // não um botão manual — o acionamento é da lógica (RFID/regras).
+  const autonomo = !!equipamentos.find((e) => e.id === equipAtual)?.autonomo;
 
   return (
     <div className="rounded border border-border bg-card p-3">
@@ -446,14 +483,21 @@ const BoCard: React.FC<BoCardProps> = ({
         </div>
       </div>
 
-      {/* Hint quando ha mapeamento */}
+      {/* Hint quando ha mapeamento. Bomba (autônomo) mostra que é FIAÇÃO, não pulso manual. */}
       {isMapped && bo.ponto && (
-        <div className="mt-2 flex items-center gap-2 text-[10px] text-muted-foreground pl-0 sm:pl-[8.333%]">
-          <span>
-            Acao: <span className="font-mono">r{bo.bo_numero} on</span>
-            {' → '}wait {bo.pulso_ms}ms{' → '}
-            <span className="font-mono">r{bo.bo_numero} off</span>
-          </span>
+        <div className={`mt-2 flex items-center gap-2 text-[10px] pl-0 sm:pl-[8.333%] ${autonomo ? 'text-sky-600' : 'text-muted-foreground'}`}>
+          {autonomo ? (
+            <span>
+              ⚙ Fiação da bomba: <span className="font-mono">r{bo.bo_numero}</span> = “{bo.ponto.nome}”.
+              Acionado pela lógica (RFID/regras), <b>não</b> por clique.
+            </span>
+          ) : (
+            <span>
+              Acao: <span className="font-mono">r{bo.bo_numero} on</span>
+              {' → '}wait {bo.pulso_ms}ms{' → '}
+              <span className="font-mono">r{bo.bo_numero} off</span>
+            </span>
+          )}
           {bo.id && (
             <button
               type="button"

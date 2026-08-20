@@ -613,15 +613,17 @@ var FirmwareGeneratorTonV2 = class FirmwareGeneratorTonV2 {
         // equipamento. Fallback pras props existe so pro harness/override manual.
         // O AI (nivel) fica nas props: nao ha ton_ai (so ton_bo/ton_bi na TON).
         const io  = (this._bombaIoByEquip && eqId && this._bombaIoByEquip[eqId]) || {};
-        const iob = io.bo || {}, ioi = io.bi || {};
+        const iob = io.bo || {}, ioi = io.bi || {}, ioa = io.ai || {};
+        const ain = ioa.nivel || null;  // {ch, mv0, mv100} vindo do ton_ai (Configurar AIs)
         result.bomba = {
             componentId: other.id,
             name: p.name || COMPONENT_TYPES[other.type].label,
             equipamento_id: eqId,
             bi_cartao:      ioi.cartao || num(p.bi_cartao),
             bi_estop:       ioi.estop  || num(p.bi_estop),
-            ai_nivel:       (() => { const n = parseInt(p.ai_nivel, 10); return (n === 1 || n === 2) ? n : 1; })(),
-            ai_nivel_100_mv: pint(p.ai_nivel_100_mv, 3000),
+            ai_nivel:       (() => { const n = parseInt(ain ? ain.ch : p.ai_nivel, 10); return (n === 1 || n === 2) ? n : 1; })(),
+            ai_nivel_0_mv:   ain ? (parseInt(ain.mv0, 10) || 0) : 0,
+            ai_nivel_100_mv: ain ? pint(ain.mv100, 3000) : pint(p.ai_nivel_100_mv, 3000),
             bo_liga:        iob.liga      || num(p.bo_liga, 6),
             bo_desliga:     iob.desliga   || num(p.bo_desliga, 6),
             bo_solenoide:   iob.solenoide || num(p.bo_solenoide, 6),
@@ -5590,6 +5592,7 @@ static char          _bomba_uid[24]  = {0};
 #define BOMBA_VAZAO_LPS   ${Number(b.vazao_lps).toFixed(3)}f
 #define BOMBA_CHEIO_PCT   ${Number(b.nivel_cheio_pct).toFixed(2)}f
 #define BOMBA_MIN_PCT     ${Number(b.nivel_min_pct).toFixed(2)}f
+#define BOMBA_AI_0_MV     ${Number(b.ai_nivel_0_mv || 0).toFixed(1)}f
 #define BOMBA_AI_100_MV   ${Number(b.ai_nivel_100_mv).toFixed(1)}f
 
 static void _bomba_pub(const char* sub, const char* payload) {
@@ -5614,7 +5617,8 @@ static bool _bomba_uid_ok(const char* uid) {
     return false;
 }
 static float _bomba_nivel_pct() {
-    float pct = adc_read_mv(${aiCh}) / BOMBA_AI_100_MV * 100.0f;
+    float span = (BOMBA_AI_100_MV - BOMBA_AI_0_MV); if (span < 1.0f) span = 1.0f;
+    float pct = (adc_read_mv(${aiCh}) - BOMBA_AI_0_MV) / span * 100.0f;
     if (pct < 0) pct = 0;
     if (pct > 100) pct = 100;
     return pct;

@@ -44,6 +44,10 @@ const PREFIXOS_IOT: readonly string[] = ['TON'];
 const PADROES_AMBOS: readonly string[] = [
   'INVERSOR',
   'SUN2000',
+  // Bomba de Combustível: equipamento controlado pela TON (BO/BI/AI + Modbus) que
+  // TAMBÉM aparece no unifilar (símbolo + BombaModal). Sem isto cairia no default
+  // 'potencia' e era excluída do picker "Equipamento NexON" da bomba no IoT.
+  'COMBUSTIVEL',
 ];
 
 /**

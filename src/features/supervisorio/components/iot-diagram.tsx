@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback, useState, Fragment } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,6 +11,7 @@ import { BASE_URL } from '@/config/constants';
 import { iotApiService, type IoTProjeto, type IoTDiagrama } from '@/services/iot.services';
 import { TonBoConfigModal } from './TonBoConfigModal';
 import { TonBiConfigModal } from './TonBiConfigModal';
+import { TonAiConfigModal } from './TonAiConfigModal';
 import { EquipamentoCommandModal } from '../v2/components/EquipamentoCommandModal';
 import { DeviceIoConfigModal, tipoTemIo, type DeviceIoConfig } from './DeviceIoConfigModal';
 import { dominioDoTipo } from '../v2/utils/dominioEquipamento';
@@ -291,6 +292,10 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
   const [biConfigOpen, setBiConfigOpen] = useState(false);
   const [biConfigTonId, setBiConfigTonId] = useState<string | null>(null);
   const [biConfigTonNome, setBiConfigTonNome] = useState<string | undefined>(undefined);
+  // Modal de configuracao de AIs (Analog Inputs) — canais AN1/AN2 (nivel de tanque etc.).
+  const [aiConfigOpen, setAiConfigOpen] = useState(false);
+  const [aiConfigTonId, setAiConfigTonId] = useState<string | null>(null);
+  const [aiConfigTonNome, setAiConfigTonNome] = useState<string | undefined>(undefined);
 
   // Modal de COMANDOS reais (relés/transistores/status) do TON — reusa o do unifilar.
   const [cmdRealModal, setCmdRealModal] = useState<{ id: string; nome: string; topico_mqtt?: string; tipo?: string } | null>(null);
@@ -486,7 +491,23 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
     setSaving(true);
     try {
       const diagrama: IoTDiagrama = editorRef.current.toJSON();
-      await iotApiService.update(projId, { diagrama });
+      const updated = await iotApiService.update(projId, { diagrama });
+      // O backend AUTO-CRIA/associa equipamentos (TON, devices Modbus, bomba) e
+      // carimba `equipamento_id` no JSON que salva. Reflete isso no editor em
+      // memória — senão a associação só aparece após recarregar (o dropdown
+      // "Equipamento NexON" fica vazio mesmo tendo criado). Aplica só o
+      // equipamento_id, casando por id de componente (não mexe no resto).
+      const compsSalvos = (updated as unknown as { diagrama?: { components?: any[] } })?.diagrama?.components;
+      if (Array.isArray(compsSalvos) && editorRef.current) {
+        for (const cs of compsSalvos) {
+          const eqId = String(cs?.props?.equipamento_id ?? '').trim();
+          if (!eqId || !cs?.id) continue;
+          const local = (editorRef.current.components || []).find((c: any) => c.id === cs.id);
+          if (local && String(local.props?.equipamento_id ?? '').trim() !== eqId) {
+            editorRef.current.updateComponentProps(cs.id, { ...local.props, equipamento_id: eqId });
+          }
+        }
+      }
       setDirty(false);
     } catch (e) {
       console.error('[IoT] Save failed:', e);
@@ -1071,8 +1092,8 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
   // devolve { [equipamentoIdDaBomba]: { bo:{liga,desliga,solenoide}, bi:{cartao,estop} } }.
   // Chaveado pelo equipamento do PONTO (ponto.equipamento_id) — assim uma TON que
   // controle mais de um equipamento não mistura os papéis.
-  const buildBombaIoMap = async (): Promise<Record<string, { bo: Record<string, number>; bi: Record<string, number> }>> => {
-    const map: Record<string, { bo: Record<string, number>; bi: Record<string, number> }> = {};
+  const buildBombaIoMap = async (): Promise<Record<string, { bo: Record<string, number>; bi: Record<string, number>; ai: Record<string, { ch: number; mv0: number; mv100: number }> }>> => {
+    const map: Record<string, { bo: Record<string, number>; bi: Record<string, number>; ai: Record<string, { ch: number; mv0: number; mv100: number }> }> = {};
     const comps = editorRef.current?.components || [];
     const tonEqIds = Array.from(new Set(
       comps
@@ -1094,30 +1115,43 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
       if (/emerg|estop|parad|seg/.test(n)) return 'estop';
       return null;
     };
+    const aiRole = (nome: string): string | null => {
+      const n = norm(nome);
+      if (/nivel|tanque|level|volume/.test(n)) return 'nivel';
+      return null;
+    };
     try {
-      const [{ tonBoApi }, { tonBiApi }] = await Promise.all([
+      const [{ tonBoApi }, { tonBiApi }, { tonAiApi }] = await Promise.all([
         import('@/services/ton-bo.services'),
         import('@/services/ton-bi.services'),
+        import('@/services/ton-ai.services'),
       ]);
       await Promise.all(tonEqIds.map(async (tonId) => {
         try {
-          const [bos, bis] = await Promise.all([tonBoApi.list(tonId), tonBiApi.list(tonId)]);
+          const [bos, bis, aisList] = await Promise.all([tonBoApi.list(tonId), tonBiApi.list(tonId), tonAiApi.list(tonId)]);
           for (const bo of bos) {
             if (!bo?.ativo || !bo?.ponto?.equipamento_id) continue;
             const role = boRole(bo.ponto.nome);
             if (!role) continue;
             const eq = String(bo.ponto.equipamento_id).trim();
-            (map[eq] ||= { bo: {}, bi: {} }).bo[role] = bo.bo_numero;
+            (map[eq] ||= { bo: {}, bi: {}, ai: {} }).bo[role] = bo.bo_numero;
           }
           for (const bi of bis) {
             if (!bi?.ativo || !bi?.ponto?.equipamento_id) continue;
             const role = biRole(bi.ponto.nome);
             if (!role) continue;
             const eq = String(bi.ponto.equipamento_id).trim();
-            (map[eq] ||= { bo: {}, bi: {} }).bi[role] = bi.bi_numero;
+            (map[eq] ||= { bo: {}, bi: {}, ai: {} }).bi[role] = bi.bi_numero;
+          }
+          for (const ai of aisList) {
+            if (!ai?.ativo || !ai?.ponto?.equipamento_id) continue;
+            const role = aiRole(ai.ponto.nome);
+            if (!role) continue;
+            const eq = String(ai.ponto.equipamento_id).trim();
+            (map[eq] ||= { bo: {}, bi: {}, ai: {} }).ai[role] = { ch: ai.ai_numero, mv0: ai.mv_0, mv100: ai.mv_100 };
           }
         } catch (err) {
-          console.warn('[iot-diagram] Falha ao ler ton_bo/ton_bi da TON', tonId, err);
+          console.warn('[iot-diagram] Falha ao ler ton_bo/bi/ai da TON', tonId, err);
         }
       }));
     } catch (err) {
@@ -1675,9 +1709,15 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
               {propsComp?.props?.name || propsComp?._def?.label || 'Propriedades'}
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 py-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3 py-2">
             {propsComp?._def?.fields?.map((f: any) => (
-              <div key={f.key} className="space-y-1">
+              <Fragment key={f.key}>
+                {f.section && (
+                  <div className="sm:col-span-2 mt-1 border-b border-border pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    {f.section}
+                  </div>
+                )}
+              <div className={`space-y-1 ${(f.wide || f.key === 'equipamento_id') ? 'sm:col-span-2' : ''}`}>
                 <Label className="text-xs">{f.label}</Label>
                 {/* Caso especial: campo equipamento_id (TON) — vira picker em vez de
                     input texto livre. Lista TONs da unidade categorizados como 'TON'. */}
@@ -1709,11 +1749,20 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
                       Vincula o ativo real desta unidade ao nó do IoT (TON, inversor ou medidor).
                     </p>
                     {String(propsComp?.type || '').toLowerCase().startsWith('ton')
-                      && !String(propsValues['mqtt_topic_base'] || '').trim()
                       && !String(propsValues['equipamento_id'] || '').trim() && (
+                        <p className="text-[10px] text-sky-600">
+                          ℹ Ao <b>salvar</b>, a TON é <b>criada e associada</b> automaticamente
+                          (igual aos outros ativos). Preencha o <b>Tópico Base</b> (formato
+                          PROPRIETARIO/ESTADO/PLANTA/INSTALACAO) para habilitar comando, OTA e telemetria —
+                          pode ser depois.
+                        </p>
+                      )}
+                    {String(propsComp?.type || '').toLowerCase().startsWith('ton')
+                      && !!String(propsValues['equipamento_id'] || '').trim()
+                      && !String(propsValues['mqtt_topic_base'] || '').trim() && (
                         <p className="text-[10px] text-amber-600">
-                          ⚠ Preencha o <b>Tópico Base</b> acima e <b>salve</b> — sem ele o equipamento
-                          TON não é criado/associado automaticamente (o comando e a OTA dependem do tópico).
+                          ⚠ TON associada, mas <b>sem Tópico Base</b> — comando, OTA e telemetria ficam
+                          inativos até você preencher o tópico e salvar.
                         </p>
                       )}
                   </>
@@ -1779,11 +1828,12 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
                   </select>
                 )}
               </div>
+              </Fragment>
             ))}
 
             {/* Power Meter: disjuntor associado (o PM é só-IoT; exibido via disjuntor). */}
             {isPmComp(propsComp?.type) && (
-              <div className="space-y-1 pt-2 border-t">
+              <div className="space-y-1 pt-2 border-t sm:col-span-2">
                 <Label className="text-xs">Disjuntor associado (unifilar)</Label>
                 <select
                   value={propsValues['disjuntor_equipamento_id'] ?? ''}
@@ -1885,6 +1935,30 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
                 Configurar BIs
               </Button>
             )}
+            {/* Botao "Configurar AIs" — entradas analogicas (AN1/AN2): nivel do tanque etc. */}
+            {String(propsComp?.type ?? '').toLowerCase().startsWith('ton') && (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!String(propsValues.equipamento_id ?? '').trim()}
+                title={
+                  String(propsValues.equipamento_id ?? '').trim()
+                    ? 'Configurar entradas analogicas (nivel do tanque etc.) + escala mV'
+                    : 'Defina o Equipamento NexOn primeiro'
+                }
+                onClick={() => {
+                  const eid = String(propsValues.equipamento_id ?? '').trim();
+                  if (!eid) return;
+                  setAiConfigTonId(eid);
+                  setAiConfigTonNome(
+                    String(propsValues.name ?? propsComp?._def?.label ?? 'TON'),
+                  );
+                  setAiConfigOpen(true);
+                }}
+              >
+                Configurar AIs
+              </Button>
+            )}
             {/* Botao "Comandos" — TONs: envia reles(TON3/4)/transistores/status ao TON real. */}
             {String(propsComp?.type ?? '').toLowerCase().startsWith('ton') && (
               <Button
@@ -1939,6 +2013,14 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
         tonId={biConfigTonId}
         unidadeId={unidadeId}
         tonNome={biConfigTonNome}
+      />
+
+      <TonAiConfigModal
+        open={aiConfigOpen}
+        onClose={() => setAiConfigOpen(false)}
+        tonId={aiConfigTonId}
+        unidadeId={unidadeId}
+        tonNome={aiConfigTonNome}
       />
 
       {/* Comandos reais do TON (relés/transistores/status) — reusa o modal do unifilar. */}

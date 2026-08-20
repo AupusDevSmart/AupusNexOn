@@ -8,7 +8,6 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const unwrap = (r: any) => r?.data?.data ?? r?.data;
 
@@ -23,7 +22,6 @@ function badgeEstado(estado?: string) {
 export function BombaModal({ bomba, open, onOpenChange }: { bomba: Bomba | null; open: boolean; onOpenChange: (v: boolean) => void }) {
   const [estado, setEstado] = useState<any>(null);
   const [rfids, setRfids] = useState<any[]>([]);
-  const [cfg, setCfg] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState('');
   const [novo, setNovo] = useState({ uid: '', maquina_nome: '', operador: '' });
@@ -34,12 +32,11 @@ export function BombaModal({ bomba, open, onOpenChange }: { bomba: Bomba | null;
     if (!id) return;
     setLoading(true);
     try {
-      const [e, r, c] = await Promise.all([
+      const [e, r] = await Promise.all([
         api.get(`/bomba-combustivel/${id}/estado`),
         api.get(`/bomba-combustivel/rfid?bombaId=${encodeURIComponent(id)}`),
-        api.get(`/bomba-combustivel/${id}/config`),
       ]);
-      setEstado(unwrap(e)); setRfids(unwrap(r) ?? []); setCfg(unwrap(c) ?? {});
+      setEstado(unwrap(e)); setRfids(unwrap(r) ?? []);
     } catch { /* */ } finally { setLoading(false); }
   }, [id]);
 
@@ -63,12 +60,6 @@ export function BombaModal({ bomba, open, onOpenChange }: { bomba: Bomba | null;
     try { const r = await api.post(`/bomba-combustivel/${id}/whitelist/publicar`); const d = unwrap(r); setMsg(d?.enviado ? `Whitelist enviada (${d.total} UIDs).` : 'Bomba sem tópico MQTT — não enviada.'); }
     catch (e: any) { setMsg(e?.response?.data?.message || 'Falha ao publicar'); }
   };
-  const salvarCfg = async () => {
-    setMsg('');
-    try { await api.put(`/bomba-combustivel/${id}/config`, cfg); setMsg('Config salva.'); }
-    catch (e: any) { setMsg(e?.response?.data?.message || 'Falha ao salvar'); }
-  };
-
   const nivel = estado?.nivel_pct;
 
   return (
@@ -90,7 +81,6 @@ export function BombaModal({ bomba, open, onOpenChange }: { bomba: Bomba | null;
           <TabsList>
             <TabsTrigger value="visao">Visão</TabsTrigger>
             <TabsTrigger value="rfid">RFID ({rfids.length})</TabsTrigger>
-            <TabsTrigger value="config">Config</TabsTrigger>
           </TabsList>
 
           <TabsContent value="visao" className="space-y-4">
@@ -152,24 +142,6 @@ export function BombaModal({ bomba, open, onOpenChange }: { bomba: Bomba | null;
             </Table>
           </TabsContent>
 
-          <TabsContent value="config" className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <label className="text-sm">Nível mínimo (%)<Input type="number" value={cfg?.nivel_min_pct ?? 5} onChange={(e) => setCfg((p: any) => ({ ...p, nivel_min_pct: e.target.value }))} /></label>
-              <label className="text-sm">Timeout (s)<Input type="number" value={cfg?.timeout_s ?? 600} onChange={(e) => setCfg((p: any) => ({ ...p, timeout_s: e.target.value }))} /></label>
-              <label className="text-sm">K-fator (pulsos/L)<Input type="number" value={cfg?.k_fator ?? 450} onChange={(e) => setCfg((p: any) => ({ ...p, k_fator: e.target.value }))} /></label>
-              <label className="text-sm">Modo do leitor
-                <Select value={cfg?.rfid_mode ?? 'rs485'} onValueChange={(v) => setCfg((p: any) => ({ ...p, rfid_mode: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="rs485">RS485 (Modbus)</SelectItem>
-                    <SelectItem value="hibrido">Híbrido (DIN + Modbus)</SelectItem>
-                    <SelectItem value="wiegand">Wiegand</SelectItem>
-                  </SelectContent>
-                </Select>
-              </label>
-            </div>
-            <Button size="sm" onClick={salvarCfg}>Salvar config</Button>
-          </TabsContent>
         </Tabs>
       </DialogContent>
     </Dialog>
