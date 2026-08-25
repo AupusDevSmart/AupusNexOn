@@ -186,10 +186,14 @@ export const transformApiToFrontend = (apiEquipamento: EquipamentoApiResponse): 
     tipoEquipamentoObj: (apiEquipamento as any).tipo_equipamento_rel ? {
       id: (apiEquipamento as any).tipo_equipamento_rel.id?.trim(),
       codigo: (apiEquipamento as any).tipo_equipamento_rel.codigo?.trim(),
+      // A categoria do tipo, para o sheet reabrir ja com ela selecionada sem
+      // precisar consultar o servidor de novo.
+      categoriaId: (apiEquipamento as any).tipo_equipamento_rel.categoria_id?.trim(),
       nome: (apiEquipamento as any).tipo_equipamento_rel.nome?.trim(),
       // ✅ CORRIGIDO: categoria é objeto, não string
       categoria: (apiEquipamento as any).tipo_equipamento_rel.categoria?.nome ||
                  (apiEquipamento as any).tipo_equipamento_rel.categoria || '',
+      fabricante: (apiEquipamento as any).tipo_equipamento_rel.fabricante,
       larguraPadrao: (apiEquipamento as any).tipo_equipamento_rel.largura_padrao,
       alturaPadrao: (apiEquipamento as any).tipo_equipamento_rel.altura_padrao,
       iconeSvg: (apiEquipamento as any).tipo_equipamento_rel.icone_svg
