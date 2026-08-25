@@ -51,10 +51,14 @@ export const DisjuntorIcon: React.FC<DisjuntorIconProps> = ({
         // contato ligado (fechado)
         <line x1="40" y1="20" x2="40" y2="60" />
       ) : (
-        // neutro: "×" de disjuntor
+        // neutro (estado desconhecido): contato de manobra do disjuntor — pivô na
+        // base + haste do contato + contato fixo no topo. Lê como dispositivo de
+        // manobra (IEC), não como "×" de erro. A cor (verde/vermelho) diferencia
+        // aberto/fechado quando há telemetria.
         <>
-          <line x1="27" y1="27" x2="53" y2="53" />
-          <line x1="53" y1="27" x2="27" y2="53" />
+          <circle cx="40" cy="54" r="2.9" fill="currentColor" stroke="none" />
+          <line x1="40" y1="54" x2="47" y2="27" />
+          <circle cx="40" cy="25.5" r="2.9" fill="currentColor" stroke="none" />
         </>
       )}
     </svg>

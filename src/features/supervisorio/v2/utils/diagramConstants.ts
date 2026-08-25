@@ -14,7 +14,7 @@ export const CANVAS = {
   WIDTH: 1920, // Largura fixa (não responsivo)
   HEIGHT: 1080, // Altura fixa
   BACKGROUND_LIGHT: '#FFFFFF',
-  BACKGROUND_DARK: '#1A1A1A',
+  BACKGROUND_DARK: '#171D28',
 } as const;
 
 export const VIEWPORT = {
@@ -32,7 +32,7 @@ export const VIEWPORT = {
 export const GRID = {
   SIZE: 40, // Tamanho da célula do grid (pixels)
   COLOR_LIGHT: 'rgba(0, 0, 0, 0.12)', // Cor do grid (tema claro) - mais visível
-  COLOR_DARK: 'rgba(255, 255, 255, 0.15)', // Cor do grid (tema escuro) - mais visível
+  COLOR_DARK: 'rgba(148, 163, 184, 0.18)', // Cor do grid (tema escuro) - slate, mais legível
   SNAP_ENABLED: true, // Snap to grid habilitado por padrão
 } as const;
 
@@ -131,7 +131,7 @@ export const CONNECTION = {
 
   // Cores (tema-aware)
   COLOR_LIGHT: '#374151', // Cinza escuro para tema claro
-  COLOR_DARK: '#FFFFFF', // Branco para tema escuro
+  COLOR_DARK: '#C4CDDA', // Light-slate suave (branco puro cansava a vista)
   COLOR_SELECTED: '#3B82F6', // Azul quando selecionada
   COLOR_HOVER: '#60A5FA', // Azul claro no hover
 
@@ -155,7 +155,7 @@ export const LABEL = {
 
   // Cores (tema-aware)
   COLOR_LIGHT: '#1F2937', // Texto escuro para tema claro
-  COLOR_DARK: '#F3F4F6', // Texto claro para tema escuro
+  COLOR_DARK: '#D2D8E1', // Off-white suave para tema escuro
 } as const;
 
 // ============================================================================
@@ -212,7 +212,7 @@ export const THEMES: Record<Theme, ThemeColors> = {
     background: CANVAS.BACKGROUND_DARK,
     gridLine: GRID.COLOR_DARK,
     connectionLine: CONNECTION.COLOR_DARK,
-    iconColor: '#E5E7EB', // Ícones claros (um pouco menos brilhante)
+    iconColor: '#CCD4DF', // Ícones light-slate suave (branco puro cansa no escuro)
     labelColor: LABEL.COLOR_DARK,
     selectionColor: SELECTION.COLOR,
     barramentoColor: CONNECTION.COLOR_DARK,
