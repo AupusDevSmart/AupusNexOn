@@ -390,7 +390,9 @@ export const DiagramV2Wrapper: React.FC<DiagramV2WrapperProps> = ({
               // o resto (BO, MQTT, automação) é equipamento padrão.
               const _isBomba = !modoEdicao && (
                 String(equipment.categoria || '').toUpperCase().includes('BOMBA') ||
-                String(equipment.tipo || '').toUpperCase().includes('BOMBA'));
+                String(equipment.tipo || '').toUpperCase().includes('BOMBA') ||
+                String(equipment.categoria || '').toUpperCase().includes('CARREGADOR') ||
+                String(equipment.tipo || '').toUpperCase().includes('CARREGADOR'));
 
               // Categorias com comandos registrados (ex: TON) abrem o modal
               // de comando MQTT em vez do callback legado. Isso evita

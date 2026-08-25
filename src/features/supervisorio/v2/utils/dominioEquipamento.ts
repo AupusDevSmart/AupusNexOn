@@ -48,6 +48,8 @@ const PADROES_AMBOS: readonly string[] = [
   // TAMBÉM aparece no unifilar (símbolo + BombaModal). Sem isto cairia no default
   // 'potencia' e era excluída do picker "Equipamento NexON" da bomba no IoT.
   'COMBUSTIVEL',
+  // Carregador Elétrico (EV): idem — controlado pela TON, aparece nos dois mundos.
+  'CARREGADOR',
 ];
 
 /**

@@ -487,6 +487,42 @@ var COMPONENT_TYPES = {
             { key: 'uid_teste', label: 'UID do cartão de teste (Comando)', type: 'text', placeholder: 'AABBCCDD' },
         ]
     },
+    // ============================================================
+    // CARREGADOR ELÉTRICO (EV) — recarga por morador em condomínio.
+    // A TON habilita a recarga (BO), lê "conectado" (BI); o kWh vem de um medidor
+    // Modbus (fonte 'ton') OU do próprio carregador publicando no broker (fonte
+    // 'carregador'). Ao desconectar, corta e encerra a sessão. Sessões, liberação
+    // pelo porteiro, ociosidade e export vivem no NexON (modal + backend). BO/BI
+    // são configurados NA TON (Configurar BOs/BIs). Precisa TON3/TON4.
+    // ============================================================
+    carregador: {
+        label: 'Carregador Elétrico', category: 'carregador', color: '#10B981',
+        icon: 'M7 3h6l1 4h2a1 1 0 011 1v9a2 2 0 01-2 2H8a2 2 0 01-2-2V4a1 1 0 011-1zm4 6l-2 4h3l-2 4',
+        ports: ['top', 'bottom', 'left', 'right'],
+        generates_firmware: false,
+        defaults: {
+            name: 'Carregador Elétrico',
+            equipamento_id: '',
+            fonte_kwh: 'ton', topico_energia: '',
+            tarifa_kwh: 0.85, potencia_kw: 7.4,
+            modo_leitor: 'desativado', uid_teste: 'AABBCCDD',
+        },
+        // Config (fonte kWh, tarifa, potência, tópico) vive nas props do IoT e é
+        // espelhada em carregador_config no save. O modal do unifilar é operacional
+        // (liberar / sessões / pedir vaga / export), sem aba de config.
+        fields: [
+            { key: 'name', label: 'Nome', type: 'text', wide: true, section: 'Identificação' },
+            { key: 'equipamento_id', label: 'Equipamento NexON (sessões / relatório)', type: 'text', wide: true },
+            { key: 'fonte_kwh', label: 'Fonte do kWh', type: 'select', section: 'Energia',
+              options: [['ton', 'Medidor Modbus (lido pela TON)'], ['carregador', 'Carregador publica no broker']] },
+            { key: 'topico_energia', label: 'Tópico do kWh acumulado (medidor ou carregador)', type: 'text', wide: true, placeholder: 'PROP/EST/PLANTA/INST/Medidor_1/data' },
+            { key: 'tarifa_kwh', label: 'Tarifa (R$/kWh) — rateio', type: 'number', placeholder: '0.85' },
+            { key: 'potencia_kw', label: 'Potência da vaga (kW)', type: 'number', placeholder: '7.4' },
+            { key: 'modo_leitor', label: 'Leitor de tag (modo automático)', type: 'select', section: 'Leitor (tag) / bancada',
+              options: [['desativado', 'Desativado (só porteiro)'], ['rs485', 'RS485 (Modbus)'], ['wiegand', 'Wiegand']] },
+            { key: 'uid_teste', label: 'UID da tag de teste (Comando)', type: 'text', placeholder: 'AABBCCDD' },
+        ]
+    },
 };
 
 // ============================================================
@@ -556,6 +592,7 @@ var CATEGORIES = [
     { id: 'infra', label: 'Infraestrutura', types: ['wifi_router', 'mqtt_broker', 'meter_gateway', 'inverter_datalogger', 'conversor'] },
     { id: 'device', label: 'Dispositivos', types: ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao'] },
     { id: 'irrigacao', label: 'Irrigação / Bomba', types: ['pivo', 'bomba'] },
+    { id: 'carregador', label: 'Carregador Elétrico', types: ['carregador'] },
 ];
 
 var CONNECTION_STYLES = {
@@ -1706,7 +1743,7 @@ var DiagramEditor = class {
         // Rule 5: TON connects to: Router WiFi, devices (RS485), Datalogger (TCP), or another TON2 (LoRa)
         if (types.some(t => tonTypes.includes(t))) {
             const otherType = tonTypes.includes(from.type) ? to.type : from.type;
-            const allowedTargets = ['wifi_router', 'inverter_datalogger', 'conversor', ...deviceTypes, ...tonTypes.filter(t => isLoraNode(t)), 'pivo', 'bomba'];
+            const allowedTargets = ['wifi_router', 'inverter_datalogger', 'conversor', ...deviceTypes, ...tonTypes.filter(t => isLoraNode(t)), 'pivo', 'bomba', 'carregador'];
             if (!allowedTargets.includes(otherType)) {
                 return { allowed: false, reason: 'TON se conecta a: Router WiFi, Datalogger, Conversor, dispositivos, Pivô ou Bomba' };
             }
@@ -1754,6 +1791,15 @@ var DiagramEditor = class {
             const other = from.type === 'bomba' ? to.type : from.type;
             if (!tonTypes.includes(other)) {
                 return { allowed: false, reason: 'Bomba só se conecta a uma TON (que a controla via BO/BI/AI e Modbus)' };
+            }
+        }
+
+        // Rule 8c: Carregador elétrico conecta só a uma TON (habilita/lê via BO/BI +
+        // kWh por Modbus ou pelo próprio carregador no broker).
+        if (types.includes('carregador')) {
+            const other = from.type === 'carregador' ? to.type : from.type;
+            if (!tonTypes.includes(other)) {
+                return { allowed: false, reason: 'Carregador só se conecta a uma TON (que o habilita e mede kWh)' };
             }
         }
 

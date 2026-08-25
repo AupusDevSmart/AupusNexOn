@@ -635,6 +635,7 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
     medidor_comum: '01JAQTE1MEDIDOR00000001',
     rele_protecao: '01JAQTE1RELE0000000000016', // Relé de Proteção (cat. Relê Proteção)
     bomba: '41f4145b41662798dca73a9d19', // Bomba de Combustível
+    carregador: 'bb0thcmhchstqmauu7re83hx', // Carregador Elétrico Genérico
   };
 
   const familiaCasa = (tipoComp: string, codigo: string, nome: string): boolean => {
@@ -644,6 +645,7 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
       return /METER|MEDIDOR|LANDIS|M160|M300|PD666|A966/i.test(hay);
     if (tipoComp === 'rele_protecao') return /RELE/i.test(hay);
     if (tipoComp === 'bomba') return /BOMBA|COMBUST/i.test(hay);
+    if (tipoComp === 'carregador') return /CARREGADOR|CHARGER|\bEV\b/i.test(hay);
     return true;
   };
 
@@ -692,7 +694,7 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
     const isTon = tipo.startsWith('ton');
     const linkavel =
       isTon ||
-      ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao', 'bomba'].includes(tipo);
+      ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao', 'bomba', 'carregador'].includes(tipo);
     if (!linkavel) return;
     const lista = await listarAtivosParaVinculo(comp);
     // TON sem nenhum equipamento livre → NÃO pergunta: o backend (ensureTonEquipamentos)

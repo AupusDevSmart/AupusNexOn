@@ -52,6 +52,7 @@ import { LandisGyrModal } from "@/features/supervisorio/components/landisgyr-mod
 import { M300Modal } from "@/features/supervisorio/components/m300-modal";
 import { PowerMeterModal } from "@/features/supervisorio/components/power-meter/PowerMeterModal";
 import { BombaModal } from "@/features/bomba-combustivel/BombaModal";
+import { CarregadorModal } from "@/features/carregador-eletrico/CarregadorModal";
 import { isPowerMeter } from "@/features/supervisorio/components/power-meter/helpers";
 import { iotApiService } from "@/services/iot.services";
 import { SinopticoDiagrama } from "@/features/supervisorio/components/sinoptico-diagrama";
@@ -2743,6 +2744,13 @@ export function SinopticoAtivoPage() {
         return;
       }
 
+      // Carregador Elétrico — abre o CarregadorModal
+      if (String(componente.tipo || '').toLowerCase().includes('carregador') &&
+          componente.dados?.equipamento_id) {
+        setModalAberto('CARREGADOR_ELETRICO');
+        return;
+      }
+
       // ❌ DESABILITADO: Pivo modal não funciona completamente ainda
       // if (componente.tipo === 'PIVO' && componente.dados?.equipamento_id) {
       // Log removido;
@@ -3884,6 +3892,19 @@ if (import.meta.env.PROD) {
                     };
                     setComponenteSelecionado(componenteV1);
                     setModalAberto('BOMBA_COMBUSTIVEL');
+                  } else if (tipo.toUpperCase().includes('CARREGADOR') || nome.toUpperCase().includes('CARREGADOR')) {
+                    // Carregador Elétrico — abre o CarregadorModal (recarga/sessões/moradores/export)
+                    const componenteV1: ComponenteDU = {
+                      id: comp.id,
+                      tipo: comp.tipo,
+                      nome: comp.nome,
+                      tag: comp.tag,
+                      posicao: { x: comp.posicaoX, y: comp.posicaoY },
+                      status: comp.status?.toUpperCase() as any || 'NORMAL',
+                      dados: { ...(comp.dados || {}), equipamento_id: comp.dados?.equipamento_id || comp.id },
+                    };
+                    setComponenteSelecionado(componenteV1);
+                    setModalAberto('CARREGADOR_ELETRICO');
                   } else if (
                     (comp.dados?.tipoEquipamento?.categoria?.nome ||
                       comp.dados?.tipo_equipamento_rel?.categoria?.nome) === 'Gateway'
@@ -4885,6 +4906,16 @@ if (import.meta.env.PROD) {
           bomba={
             componenteSelecionado?.dados?.equipamento_id
               ? { id: componenteSelecionado.dados.equipamento_id, nome: componenteSelecionado.nome || "Bomba" }
+              : null
+          }
+        />
+
+        <CarregadorModal
+          open={modalAberto === "CARREGADOR_ELETRICO"}
+          onOpenChange={(v) => { if (!v) fecharModal(); }}
+          carregador={
+            componenteSelecionado?.dados?.equipamento_id
+              ? { id: componenteSelecionado.dados.equipamento_id, nome: componenteSelecionado.nome || "Carregador" }
               : null
           }
         />
