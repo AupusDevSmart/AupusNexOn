@@ -1,0 +1,544 @@
+/**
+ * DESIGN MINIMALISTA - COMPONENTES
+ *
+ * Classes utilitárias que você aplica ONDE QUISER
+ * NÃO afeta o resto do sistema
+ */
+
+/* ========================================
+   INPUTS MINIMALISTAS
+   ======================================== */
+.input-minimal {
+  @apply w-full h-9 rounded border border-input bg-background px-3 py-2 text-sm;
+  @apply ring-offset-background placeholder:text-muted-foreground;
+  @apply focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring;
+  @apply disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+/* Background preto no dark mode */
+.dark .input-minimal {
+  background-color: hsl(0, 0%, 0%);
+}
+
+/* Caixa de valor que não se edita, com a MESMA geometria do input: altura,
+   borda, raio e recuo iguais. Sem ela, campos que só exibem valor ficavam mais
+   baixos que os editáveis ao lado e a linha do formulário perdia o alinhamento.
+
+   Só geometria: tamanho e cor do texto ficam por conta de quem usa. Este
+   arquivo é carregado DEPOIS das utilitárias do Tailwind no consumidor, então
+   qualquer coisa declarada aqui venceria o text-xs/text-muted-foreground vindo
+   da className — e o campo ficaria surdo ao que o código pede.
+
+   bg-muted sem opacidade: os tokens de cor são `var(--muted)` puro, sem o
+   placeholder de alpha, então `bg-muted/40` nem chega a existir. */
+/* Linha do rótulo de um campo, com altura fixa. Vale para o rótulo sozinho e
+   para o rótulo acompanhado de botões: sem ela, os dois casos têm alturas
+   diferentes e os campos de uma mesma linha do formulário não começam na mesma
+   altura. Só geometria, pelo mesmo motivo de .campo-estatico. */
+.linha-rotulo {
+  @apply flex h-5 items-center justify-between gap-2;
+}
+
+.campo-estatico {
+  @apply w-full h-9 rounded border border-input bg-muted px-3;
+  @apply flex items-center gap-2 overflow-hidden;
+}
+
+/* Campo numérico curto, entre os botões de menos e mais de um passo a passo.
+   Só o número, sem moldura própria: quem delimita o conjunto são os botões.
+
+   Classe própria, e não `input-minimal` com uma largura por cima: aquela declara
+   `w-full`, e uma utilitária não a vence — este arquivo é carregado DEPOIS das
+   utilitárias do Tailwind no consumidor, então quem estiver aqui ganha. Por isso
+   o campo continuava esticando por mais que se pedisse w-11.
+
+   As setinhas do navegador também saem: fazem o mesmo que os botões ao lado e
+   cobram uns 20px de largura por isso. */
+.campo-passo-a-passo {
+  @apply h-9 w-10 border-0 bg-transparent px-0 text-center text-sm font-medium text-foreground;
+  @apply focus:outline-none focus-visible:outline-none;
+  -moz-appearance: textfield;
+}
+
+.campo-passo-a-passo::-webkit-outer-spin-button,
+.campo-passo-a-passo::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.select-minimal {
+  @apply w-full h-9 rounded border border-input bg-background px-3 py-2 text-sm;
+  @apply ring-offset-background;
+  @apply focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring;
+  @apply disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+/* Background preto no dark mode */
+.dark .select-minimal {
+  background-color: hsl(0, 0%, 0%);
+}
+
+/* Options do select - background cinza claro no light mode */
+.select-minimal option {
+  @apply bg-muted;
+}
+
+.dark .select-minimal option {
+  @apply bg-muted;
+}
+
+.textarea-minimal {
+  @apply min-h-[80px] rounded border border-input bg-background px-3 py-2 text-sm;
+  @apply ring-offset-background placeholder:text-muted-foreground;
+  @apply focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring;
+  @apply disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+/* Background preto no dark mode */
+.dark .textarea-minimal {
+  background-color: hsl(0, 0%, 0%);
+}
+
+/* ========================================
+   BUTTONS MINIMALISTAS
+   ======================================== */
+/*
+ * ARMADILHA: o padding daqui VENCE o `p-0` aplicado no mesmo elemento.
+ *
+ * Os consumidores importam o globals.css deles e SO DEPOIS o style.css deste
+ * pacote — entao estas regras chegam por ultimo e ganham das utilitarias, ao
+ * contrario do que se espera ao escrever `className="btn-minimal-ghost p-0"`.
+ *
+ * Num botao de icone isso e fatal. Com `w-8 p-0`, a largura de 2rem vale mas o
+ * padding de 1rem+1rem tambem: a caixa de conteudo fica com ZERO. O SVG, que
+ * tem largura explicita e `flex-shrink: 1`, encolhe a zero e some — presente no
+ * DOM, com a cor certa, e invisivel.
+ *
+ * Texto escapa porque tem `min-width: auto` e transborda em vez de encolher.
+ * Por isso a paginacao continuou legivel enquanto os icones sumiam.
+ *
+ * Ao criar botao SO DE ICONE, prefira o componente `Button` (variant ghost,
+ * size icon), que traz o proprio tamanho e nao depende desta folha. Se precisar
+ * mesmo de `btn-minimal-*`, ponha `shrink-0` no icone.
+ */
+.btn-minimal {
+  @apply h-9 rounded px-4 text-sm font-medium;
+  @apply inline-flex items-center justify-center;
+  @apply ring-offset-background transition-colors;
+  @apply focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring;
+  @apply disabled:pointer-events-none disabled:opacity-50;
+}
+
+.btn-minimal-primary {
+  @apply btn-minimal bg-primary text-primary-foreground hover:opacity-90;
+}
+
+.btn-minimal-outline {
+  @apply btn-minimal border border-input bg-background hover:bg-accent hover:text-accent-foreground;
+}
+
+/* Background preto no dark mode */
+.dark .btn-minimal-outline {
+  background-color: hsl(0, 0%, 0%);
+}
+
+.btn-minimal-ghost {
+  @apply btn-minimal hover:bg-accent hover:text-accent-foreground;
+}
+
+.btn-minimal-destructive {
+  @apply btn-minimal bg-destructive text-destructive-foreground hover:opacity-90;
+}
+
+/* ========================================
+   CARDS MINIMALISTAS
+   ======================================== */
+.card-minimal {
+  @apply rounded border border-border bg-card text-card-foreground;
+  @apply shadow-sm transition-shadow;
+  @apply hover:shadow-md;
+}
+
+.card-minimal-flat {
+  @apply rounded border border-border bg-card text-card-foreground;
+}
+
+/* ========================================
+   TABLES MINIMALISTAS
+   ======================================== */
+.table-minimal {
+  @apply w-full;
+}
+
+/* Background preto no dark mode */
+.dark .table-minimal {
+  background-color: hsl(0, 0%, 0%);
+}
+
+/* Remover bordas */
+.table-minimal thead {
+  border: none;
+}
+
+.table-minimal thead tr {
+  @apply bg-muted bg-opacity-50;
+}
+
+/* Thead preto no dark mode */
+.dark .table-minimal thead tr {
+  background-color: hsl(0, 0%, 0%);
+}
+
+.table-minimal thead th {
+  @apply h-10 px-4 text-left align-middle text-sm font-normal text-muted-foreground;
+  @apply whitespace-nowrap;
+  border: none;
+}
+
+.table-minimal tbody tr {
+  @apply transition-colors;
+  border: none;
+}
+
+.table-minimal tbody tr:hover {
+  @apply bg-muted bg-opacity-30;
+}
+
+.table-minimal tbody td {
+  @apply h-12 px-4 align-middle text-sm font-normal;
+  border: none;
+}
+
+/* ========================================
+   BADGES MINIMALISTAS
+   ======================================== */
+.badge-minimal {
+  @apply inline-flex items-center rounded px-2 py-0.5 text-xs font-medium;
+  @apply border border-current;
+  @apply transition-colors;
+}
+
+/* ========================================
+   ALERTS MINIMALISTAS
+   ======================================== */
+.alert-minimal {
+  @apply relative w-full rounded border px-4 py-3 text-sm;
+  @apply flex items-center gap-3;
+}
+
+/* Remover o translate-y do shadcn que desalinha o texto */
+.alert-minimal > div,
+.alert-minimal [role="alert"] > div {
+  transform: none !important;
+}
+
+.alert-info {
+  @apply text-info;
+  border-color: hsl(var(--info) / 0.2);
+  background-color: hsl(var(--info) / 0.05);
+}
+
+.alert-success {
+  @apply text-success;
+  border-color: hsl(var(--success) / 0.2);
+  background-color: hsl(var(--success) / 0.05);
+}
+
+.alert-warning {
+  @apply text-warning;
+  border-color: hsl(var(--warning) / 0.2);
+  background-color: hsl(var(--warning) / 0.05);
+}
+
+.alert-destructive {
+  @apply text-destructive;
+  border-color: hsl(var(--destructive) / 0.2);
+  background-color: hsl(var(--destructive) / 0.05);
+}
+
+/* ========================================
+   FORMS MINIMALISTAS
+   ======================================== */
+.form-minimal {
+  @apply space-y-4;
+}
+
+.form-minimal .form-group {
+  @apply space-y-2;
+}
+
+.form-minimal label {
+  @apply text-sm font-medium leading-none;
+  @apply peer-disabled:cursor-not-allowed peer-disabled:opacity-70;
+}
+
+.form-minimal .form-error {
+  @apply text-xs text-destructive;
+}
+
+.form-minimal .form-description {
+  @apply text-xs text-muted-foreground;
+}
+
+/* ========================================
+   SCROLLBAR MINIMALISTA
+   ======================================== */
+.scrollbar-minimal::-webkit-scrollbar {
+  @apply w-2 h-2;
+}
+
+.scrollbar-minimal::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+.scrollbar-minimal::-webkit-scrollbar-thumb {
+  @apply bg-border rounded;
+}
+
+.scrollbar-minimal::-webkit-scrollbar-thumb:hover {
+  @apply bg-border opacity-80;
+}
+
+/* ========================================
+   CONTAINERS MINIMALISTAS
+   ======================================== */
+.page-minimal {
+  @apply min-h-screen bg-background text-foreground;
+}
+
+.page-header-minimal {
+  @apply border-b border-border bg-card backdrop-blur-sm;
+  @apply sticky top-0 z-10;
+  background-color: hsl(var(--card) / 0.5);
+}
+
+.page-content-minimal {
+  @apply container mx-auto px-6 py-8;
+}
+
+.section-minimal {
+  @apply space-y-4;
+}
+
+/* ========================================
+   SEPARATORS MINIMALISTAS
+   ======================================== */
+.separator-minimal {
+  @apply h-px bg-border;
+}
+
+.separator-minimal-vertical {
+  @apply w-px bg-border;
+}
+
+/* ========================================
+   LOADING STATES
+   ======================================== */
+.skeleton-minimal {
+  @apply animate-pulse rounded bg-muted;
+}
+
+/* ========================================
+   RESPONSIVE UTILITIES
+   ======================================== */
+.grid-minimal-2 {
+  @apply grid grid-cols-1 gap-4;
+  @apply md:grid-cols-2;
+}
+
+.grid-minimal-3 {
+  @apply grid grid-cols-1 gap-4;
+  @apply md:grid-cols-2 lg:grid-cols-3;
+}
+
+.grid-minimal-4 {
+  @apply grid grid-cols-1 gap-4;
+  @apply sm:grid-cols-2 lg:grid-cols-4;
+}
+
+/* ========================================
+   GRID COM COLUNAS IGUAIS
+   ======================================== */
+/* Forçar colunas de largura igual (não usar minmax) */
+.grid-equal-cols-2 {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+}
+
+/* Duas colunas só a partir do sm. Abaixo disso o sheet ocupa a tela inteira e
+   cada coluna ficaria com uns 165px — rótulo quebrado em duas linhas e campo
+   ilegível. */
+@media (min-width: 640px) {
+  .grid-equal-cols-2 {
+    grid-template-columns: 1fr 1fr !important;
+  }
+}
+
+/* Três colunas, para linhas em que os campos são curtos e se leem juntos —
+   proprietário/planta/nome, perfil/tensão/grupo. Mesma regra do de duas colunas:
+   empilha no celular, onde três dariam uns 110px cada. */
+.grid-equal-cols-3 {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+}
+
+@media (min-width: 640px) {
+  .grid-equal-cols-3 {
+    grid-template-columns: 1fr 1fr 1fr !important;
+  }
+}
+
+/* ========================================
+   FOCUS VISIBLE
+   ======================================== */
+.focus-minimal {
+  @apply focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring;
+  @apply focus-visible:ring-offset-2 focus-visible:ring-offset-background;
+}
+
+/* ========================================
+   COMBOBOX (Command Component)
+   ======================================== */
+/* Corrigir backgrounds coloridos do Command para cinza neutro */
+[cmdk-root] {
+  @apply bg-popover text-popover-foreground;
+}
+
+[cmdk-group] {
+  @apply bg-transparent;
+}
+
+[cmdk-item] {
+  @apply bg-transparent;
+}
+
+[cmdk-item][data-selected="true"] {
+  @apply bg-muted text-foreground;
+}
+
+[cmdk-item]:hover {
+  @apply bg-muted text-foreground;
+}
+
+/* Input do Command */
+[cmdk-input] {
+  @apply bg-transparent;
+}
+
+/* ========================================
+   DARK MODE - INPUTS E SELECTS PRETOS
+   ======================================== */
+/* Garantir que todos os inputs shadcn também fiquem pretos no dark mode */
+.dark input[type="text"],
+.dark input[type="email"],
+.dark input[type="password"],
+.dark input[type="number"],
+.dark input[type="search"],
+.dark textarea,
+.dark select {
+  background-color: hsl(0, 0%, 0%) !important;
+  border-color: hsl(0, 0%, 20%) !important;
+}
+
+/* Combobox (Button com role combobox) também preto no dark mode */
+.dark button[role="combobox"] {
+  background-color: hsl(0, 0%, 0%) !important;
+  border-color: hsl(0, 0%, 20%) !important;
+}
+
+/* SelectTrigger do shadcn também preto no dark mode */
+.dark [role="combobox"],
+.dark button[data-state] {
+  background-color: hsl(0, 0%, 0%) !important;
+  border-color: hsl(0, 0%, 20%) !important;
+}
+
+/* ========================================
+   CHECKBOX MINIMALISTA COM CONTRASTE
+   ======================================== */
+/* Forçar estilos do checkbox para garantir visibilidade */
+button[role="checkbox"] {
+  /* Light mode: fundo branco com borda escura */
+  border: 2px solid hsl(0, 0%, 40%) !important;
+  background-color: white !important;
+  width: 20px !important;
+  height: 20px !important;
+}
+
+.dark button[role="checkbox"] {
+  /* Dark mode: fundo cinza claro com borda clara */
+  border: 2px solid hsl(0, 0%, 60%) !important;
+  background-color: hsl(0, 0%, 44%) !important;
+}
+
+/* Checked state */
+button[role="checkbox"][data-state="checked"] {
+  /* Light mode: fundo preto com check branco */
+  background-color: black !important;
+  border-color: black !important;
+}
+
+.dark button[role="checkbox"][data-state="checked"] {
+  /* Dark mode: fundo branco com check preto */
+  background-color: white !important;
+  border-color: white !important;
+}
+
+/* Check icon */
+button[role="checkbox"] svg {
+  color: white;
+  stroke-width: 3px;
+}
+
+.dark button[role="checkbox"][data-state="checked"] svg {
+  color: black !important;
+}
+
+/* ============================================================================
+   Tabelas que respondem ao espaco que TEM, nao ao tamanho da janela
+   ============================================================================
+
+   `hideOnMobile` e `hideOnTablet` do BaseTable geravam `hidden lg:table-cell` e
+   `hidden xl:table-cell`. Breakpoint do Tailwind mede a VIEWPORT, e a viewport
+   nao muda quando a sidebar abre — muda o espaco disponivel para a tabela.
+   Resultado: as colunas marcadas para sumir primeiro nunca sumiam, a tabela
+   continuava do tamanho de sempre e o excedente ficava fora da area visivel.
+
+   Container query mede o proprio contentor. A mesma marcacao que ja existe nas
+   configs de coluna passa a valer para o caso que interessa: sidebar aberta,
+   janela dividida, tela menor — todos reduzem o contentor.
+
+   Os limiares NAO sao os do Tailwind. Herdar 1024/1280 mantinha o defeito de pe:
+   a tabela de OS precisa de ~1450px e, com a sidebar aberta numa tela de 1600,
+   sobram ~1360 — larguras em que nenhum dos dois limiares dispara. As colunas
+   marcadas continuavam todas visiveis e a tabela transbordava do mesmo jeito.
+
+   1400 e 1100 sao a largura em que essas tabelas de fato deixam de caber. So
+   reagem as tabelas que declararam prioridade (as lotadas); as demais nunca
+   entram nas regras e seguem mostrando tudo.
+
+   A ordem preserva o que as paginas ja diziam: `hideOnTablet` some antes de
+   `hideOnMobile`, como no par xl/lg original. */
+
+.tabela-adaptavel {
+  container-type: inline-size;
+  container-name: tabela;
+}
+
+@container tabela (max-width: 1100px) {
+  th.coluna-recolhe-1,
+  td.coluna-recolhe-1 {
+    display: none;
+  }
+}
+
+@container tabela (max-width: 1400px) {
+  th.coluna-recolhe-2,
+  td.coluna-recolhe-2 {
+    display: none;
+  }
+}
+
+/* Sem contentor declarado (tabela fora do BaseTable, por exemplo), o navegador
+   ignora as regras acima e nada e escondido — degrada para "mostra tudo", que e
+   o comportamento seguro. */
