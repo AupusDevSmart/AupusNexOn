@@ -558,3 +558,7 @@
   50%      { background-color: rgba(239, 68, 68, 0.04); }
 }
 .trip-blink { animation: tripBlink 1.1s ease-in-out infinite; }
+
+/* Basemap OSM em dark tunado pro COA (keyless): escuro, cores suavizadas — sem manchas
+   verdes berrantes (invert cru) nem cinza chapado. Ajustar saturate/brightness ao gosto. */
+.coa-tiles-dark { filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9) saturate(0.5); }

@@ -255,11 +255,19 @@ var COMPONENT_TYPES = {
         icon: 'M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.858 15.355-5.858 21.213 0',
         ports: ['top', 'bottom', 'left', 'right'],
         generates_firmware: false,
-        defaults: { name: 'Router', ssid: '', password: '' },
+        // Ate 4 redes: a TON tenta a 1a e cai pras seguintes (fallback). As extras
+        // sao opcionais e viram lista no firmware (semeia o NVS; /cmd/wifi troca depois).
+        defaults: { name: 'Router', ssid: '', password: '', ssid2: '', password2: '', ssid3: '', password3: '', ssid4: '', password4: '' },
         fields: [
             { key: 'name', label: 'Nome', type: 'text' },
             { key: 'ssid', label: 'SSID', type: 'text' },
             { key: 'password', label: 'Senha WiFi', type: 'text' },
+            { key: 'ssid2', label: 'SSID 2 (fallback, opcional)', type: 'text' },
+            { key: 'password2', label: 'Senha WiFi 2', type: 'text' },
+            { key: 'ssid3', label: 'SSID 3 (opcional)', type: 'text' },
+            { key: 'password3', label: 'Senha WiFi 3', type: 'text' },
+            { key: 'ssid4', label: 'SSID 4 (opcional)', type: 'text' },
+            { key: 'password4', label: 'Senha WiFi 4', type: 'text' },
         ]
     },
     meter_gateway: {

@@ -197,7 +197,7 @@ function ensureIoTScripts(): Promise<void> {
     //
     // O catalogo de dispositivos foi movido pro backend (GET /iot-catalog/device-catalog.js)
     // — ele revalida sozinho via ETag. Os demais ainda sao estaticos.
-    const IOT_SCRIPTS_VERSION = '20260721-tonv2-teste14b';
+    const IOT_SCRIPTS_VERSION = '20260901-multiwifi';
     const scripts = [
       `${BASE_URL}/iot-catalog/device-catalog.js`,
       `/iot-firmware-base.v2.js?v=${IOT_SCRIPTS_VERSION}`,
@@ -1109,12 +1109,15 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
       if (/deslig/.test(n)) return 'desliga';        // "desliga" antes de "liga"
       if (/\blig|acion|partid/.test(n)) return 'liga';
       if (/solenoid|valvul|bloque/.test(n)) return 'solenoide';
+      if (/desabilit/.test(n)) return 'desabilitar';   // carregador (antes de habilitar)
+      if (/habilit|energiz|carga/.test(n)) return 'habilitar';
       return null;
     };
     const biRole = (nome: string): string | null => {
       const n = norm(nome);
       if (/cart|rfid|leitor|tag/.test(n)) return 'cartao';
       if (/emerg|estop|parad|seg/.test(n)) return 'estop';
+      if (/conect|plug|pilot|acoplad/.test(n)) return 'conectado';   // carregador
       return null;
     };
     const aiRole = (nome: string): string | null => {
@@ -1184,10 +1187,12 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
     // ton1..ton4; V2 filtra ton1v2..ton4v2) — diagrama misto gera N+M projetos.
     const gen = new window.FirmwareGenerator(editorRef.current);
     (gen as any)._bombaIoByEquip = bombaIoByEquip;
+    (gen as any)._carregadorIoByEquip = bombaIoByEquip;
     const projects = gen.generateAll();
     if (window.FirmwareGeneratorTonV2) {
       const genV2 = new window.FirmwareGeneratorTonV2(editorRef.current);
       (genV2 as any)._bombaIoByEquip = bombaIoByEquip;
+      (genV2 as any)._carregadorIoByEquip = bombaIoByEquip;
       projects.push(...genV2.generateAll());
     }
     (window as any).IOT_SIMULATE = false;

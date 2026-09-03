@@ -365,9 +365,11 @@ export const appRoutes = createBrowserRouter([
       {
         path: "cadastros/regras-logs",
         element: (
-          <Suspense fallback={<div>Carregando...</div>}>
-            <CadastroRegrasLogsPage />
-          </Suspense>
+          <RequirePermission permission="supervisorio.iot_view">
+            <Suspense fallback={<div>Carregando...</div>}>
+              <CadastroRegrasLogsPage />
+            </Suspense>
+          </RequirePermission>
         ),
       },
       {
@@ -383,9 +385,11 @@ export const appRoutes = createBrowserRouter([
       {
         path: "supervisorio/eventos-protecao",
         element: (
-          <Suspense fallback={<div>Carregando...</div>}>
-            <ReleEventosPage />
-          </Suspense>
+          <RequirePermission permission="supervisorio.iot_view">
+            <Suspense fallback={<div>Carregando...</div>}>
+              <ReleEventosPage />
+            </Suspense>
+          </RequirePermission>
         ),
       },
       {
@@ -411,9 +415,11 @@ export const appRoutes = createBrowserRouter([
       {
         path: "logs/logs-mqtt",
         element: (
-          <Suspense fallback={<div>Carregando...</div>}>
-            <LogsMqttPage />
-          </Suspense>
+          <RequirePermission permission="supervisorio.iot_view">
+            <Suspense fallback={<div>Carregando...</div>}>
+              <LogsMqttPage />
+            </Suspense>
+          </RequirePermission>
         ),
       },
       // ✅ Design System Test Page (Para visualizar componentes minimalistas)

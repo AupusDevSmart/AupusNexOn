@@ -88,6 +88,7 @@ export const navigationLinks: Array<NavigationLink> = [
       },
       {
         key: "supervisorio-logs-mqtt",
+        featureKey: "supervisorio.iot_view",
         path: "/logs/logs-mqtt",
         icon: FileText,
         label: "Logs MQTT",
@@ -95,6 +96,7 @@ export const navigationLinks: Array<NavigationLink> = [
       },
       {
         key: "supervisorio-eventos-protecao",
+        featureKey: "supervisorio.iot_view",
         path: "/supervisorio/eventos-protecao",
         icon: Zap,
         label: "Eventos de Proteção",
@@ -205,7 +207,7 @@ export const navigationLinks: Array<NavigationLink> = [
       },
       {
         key: "cadastros-regras-logs",
-        featureKey: "equipamentos.manage",
+        featureKey: "supervisorio.iot_view",
         path: "/cadastros/regras-logs",
         icon: ScrollText,
         label: "Regras de Logs",

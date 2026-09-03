@@ -3,6 +3,9 @@ import { Input } from "@/components/ui/input";
 import { useCustosEnergia } from "@/hooks/useCustosEnergia";
 import type { TipoHorario } from "@/types/dtos/custos-energia-dto";
 import { useMemo, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Download } from "lucide-react";
+import { equipamentosDadosService } from "@/services/equipamentos-dados.service";
 
 interface RelatorioTabProps {
   equipamentoId: string | null;
@@ -49,6 +52,62 @@ function labelHorario(t: TipoHorario): string {
 export function RelatorioTab({ equipamentoId }: RelatorioTabProps) {
   const [inicio, setInicio] = useState<string>(firstDayMonthBRT);
   const [fim, setFim] = useState<string>(todayBRT);
+  const [exportando, setExportando] = useState(false);
+
+  // Exporta pra Excel TODAS as leituras cruas que chegaram no período (não o
+  // agregado): pagina o histórico, achata cada leitura (data/hora + campos do JSON)
+  // e baixa um .xlsx.
+  const exportarExcel = async () => {
+    if (!equipamentoId || !inicio || !fim) return;
+    setExportando(true);
+    try {
+      // O endpoint /historico NÃO pagina (hasNextPage sempre false) — usa `take: limite`
+      // (ordem desc, mais recentes primeiro) e não tem cap no servidor. Então pede TUDO
+      // de uma vez com um limite alto (cobre ~meses a 1 leitura/min).
+      const LIMITE_MAX = 300000;
+      const resp = await equipamentosDadosService.getHistory(equipamentoId, {
+        startDate: `${inicio}T00:00:00`,
+        endDate: `${fim}T23:59:59`,
+        limit: LIMITE_MAX,
+      });
+      const todas: any[] = resp?.data ?? [];
+      if (todas.length >= LIMITE_MAX) {
+        alert(
+          `Período muito grande — o export pegou as ${LIMITE_MAX.toLocaleString("pt-BR")} leituras mais recentes. Reduza o período pra baixar tudo.`,
+        );
+      }
+      if (todas.length === 0) {
+        alert("Nenhuma leitura encontrada no período selecionado.");
+        return;
+      }
+      const rows = todas.map((r: any) => {
+        const flat: Record<string, unknown> = {
+          "Data/Hora": new Date(r.timestamp_dados).toLocaleString("pt-BR", { timeZone: TZ }),
+          "Timestamp ISO": r.timestamp_dados,
+          Fonte: r.fonte,
+          Qualidade: r.qualidade,
+        };
+        const d = (r.dados ?? {}) as Record<string, unknown>;
+        for (const [k, v] of Object.entries(d)) {
+          flat[k] = v !== null && typeof v === "object" ? JSON.stringify(v) : (v as any);
+        }
+        return flat;
+      });
+      rows.sort((a, b) =>
+        String(a["Timestamp ISO"]).localeCompare(String(b["Timestamp ISO"])),
+      );
+      const XLSX = await import("xlsx");
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Leituras");
+      XLSX.writeFile(wb, `medidor_${inicio}_a_${fim}.xlsx`);
+    } catch (e) {
+      console.error("[RelatorioTab] export falhou:", e);
+      alert("Falha ao exportar. Tente novamente.");
+    } finally {
+      setExportando(false);
+    }
+  };
 
   const params = useMemo(() => {
     if (!inicio || !fim) return null;
@@ -133,6 +192,18 @@ export function RelatorioTab({ equipamentoId }: RelatorioTabProps) {
             />
           </div>
         </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={exportarExcel}
+          disabled={exportando || !equipamentoId}
+          className="h-9"
+          title="Baixar em Excel todas as leituras recebidas no período"
+        >
+          <Download className="h-4 w-4 mr-1" />
+          {exportando ? "Exportando…" : "Exportar Excel"}
+        </Button>
       </div>
 
       {error && (

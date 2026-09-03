@@ -1,5 +1,6 @@
 import { Layout } from "@/components/common/Layout";
 import { IoTDiagram } from "@/features/supervisorio/components/iot-diagram";
+import { ComissionamentoTab } from "@/features/supervisorio/components/ComissionamentoTab";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -1807,7 +1808,7 @@ export function SinopticoAtivoPage() {
   const [modalSelecionarUnidade, setModalSelecionarUnidade] = useState(!ativoId);
 
   // Tab ativa: 'unifilar' ou 'iot'
-  const [sinopticoTab, setSinopticoTab] = useState<'unifilar' | 'iot'>('unifilar');
+  const [sinopticoTab, setSinopticoTab] = useState<'unifilar' | 'iot' | 'comissionamento'>('unifilar');
 
   // Slot no header do shell (linha dos breadcrumbs) onde o toggle + nome da unidade
   // sao renderizados via portal, liberando o header da pagina pro diagrama.
@@ -1833,7 +1834,7 @@ export function SinopticoAtivoPage() {
   // Defensivo: se por qualquer motivo a aba IoT ficar ativa sem permissao,
   // volta para o diagrama unifilar.
   useEffect(() => {
-    if (sinopticoTab === 'iot' && !podeVerIot) {
+    if ((sinopticoTab === 'iot' || sinopticoTab === 'comissionamento') && !podeVerIot) {
       setSinopticoTab('unifilar');
     }
   }, [sinopticoTab, podeVerIot]);
@@ -3812,6 +3813,18 @@ if (import.meta.env.PROD) {
                   IoT
                 </button>
               )}
+              {podeVerIot && (
+                <button
+                  onClick={() => setSinopticoTab('comissionamento')}
+                  className={`px-3 py-1 text-sm font-medium rounded-[2px] transition-colors ${
+                    sinopticoTab === 'comissionamento'
+                      ? 'bg-muted text-foreground'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                  }`}
+                >
+                  Comissionamento
+                </button>
+              )}
             </div>,
             headerSlot
           )}
@@ -3971,6 +3984,13 @@ if (import.meta.env.PROD) {
           {unidadeId && sinopticoTab === 'iot' && podeVerIot && (
             <div className="flex-1 min-h-0 border-x border-b border-border rounded-b-lg overflow-hidden flex flex-col">
               <IoTDiagram unidadeId={unidadeId} unidadeNome={unidadeAtual?.nome} />
+            </div>
+          )}
+
+          {/* Comissionamento: checks de coerência de dado por ponto + aceite (admin) */}
+          {unidadeId && sinopticoTab === 'comissionamento' && podeVerIot && (
+            <div className="flex-1 min-h-0 border-x border-b border-border rounded-b-lg overflow-hidden flex flex-col">
+              <ComissionamentoTab unidadeId={unidadeId} unidadeNome={unidadeAtual?.nome} isAdmin={isAdmin()} />
             </div>
           )}
 

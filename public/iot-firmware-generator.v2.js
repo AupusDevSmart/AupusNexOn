@@ -196,7 +196,8 @@ var FirmwareGenerator = class FirmwareGenerator {
         return (spec.rs485_devices && spec.rs485_devices.length > 0) ||
                (spec.tcp_devices && spec.tcp_devices.length > 0) ||
                !!spec.pivo ||
-               !!spec.bomba;
+               !!spec.bomba ||
+               !!spec.carregador;
     }
 
     _analyzeTon(ton, components, connections) {
@@ -243,6 +244,9 @@ var FirmwareGenerator = class FirmwareGenerator {
                 // Bomba de combustivel: a TON e o cerebro (le cartao/estop pelas BI,
                 // nivel pela AI, aciona contator pelas BO). Roteia pra ca antes do RS485.
                 this._processBomba(ton, other, result);
+            } else if (other.type === 'carregador') {
+                // Carregador eletrico: a TON habilita a recarga (BO) e le "conectado" (BI).
+                this._processCarregador(ton, other, result);
             } else if (conn.style === 'rs485') {
                 this._processRS485(ton, other, result, components, connections);
             } else if (conn.style === 'tcp') {
@@ -285,9 +289,17 @@ var FirmwareGenerator = class FirmwareGenerator {
 
     _processNetwork(ton, other, result, components, connections) {
         if (other.type === 'wifi_router') {
+            // Multi-WiFi (até 4): rede 1 = ssid/password; extras = ssid2..4/password2..4.
+            // Fallback automático + lista persistida em NVS (comando /cmd/wifi troca sem reflash).
+            const nets = [];
+            for (const suf of ['', '2', '3', '4']) {
+                const s = (other.props['ssid' + suf] || '').trim();
+                if (s) nets.push({ ssid: s, password: other.props['password' + suf] || '' });
+            }
             result.wifi = {
-                ssid: other.props.ssid || '',
-                password: other.props.password || '',
+                ssid: nets[0] ? nets[0].ssid : (other.props.ssid || ''),        // compat (1ª rede)
+                password: nets[0] ? nets[0].password : (other.props.password || ''),
+                networks: nets,                                                  // lista completa (até 4)
             };
             // Check if router connects to broker
             const brokerConns = connections.filter(c =>
@@ -644,6 +656,33 @@ var FirmwareGenerator = class FirmwareGenerator {
             result.warnings.push('Bomba sem BO "Ligar" mapeado — configure na TON: modal da TON → Configurar BOs (Ligar / Desligar / Solenoide) e Configurar BIs (Cartão / Emergência).');
         }
     }
+
+    // Carregador eletrico: a TON habilita a recarga (BO mantido) e detecta desconexao
+    // (BI Conectado) -> corta + encerra. Espelha _processBomba (BO/BI vem do ton_bo/bi).
+    _processCarregador(ton, other, result) {
+        if (result.carregador) return;
+        const p = other.props || {};
+        const num = (v, max) => { const n = parseInt(v, 10); return Number.isFinite(n) && n >= 1 && n <= (max || 8) ? n : 0; };
+        const eqId = (p.equipamento_id || '').trim();
+        const io  = (this._carregadorIoByEquip && eqId && this._carregadorIoByEquip[eqId]) || {};
+        const iob = io.bo || {}, ioi = io.bi || {};
+        result.carregador = {
+            componentId: other.id,
+            name: p.name || COMPONENT_TYPES[other.type].label,
+            equipamento_id: eqId,
+            bo_habilitar:   iob.habilitar   || num(p.bo_habilitar, 8),
+            bo_desabilitar: iob.desabilitar || num(p.bo_desabilitar, 8),
+            bi_conectado:   ioi.conectado   || num(p.bi_conectado),
+            modo_leitor:    (p.modo_leitor || 'desativado'),
+            uid_teste:      (p.uid_teste || 'AABBCCDD').trim().toUpperCase(),
+        };
+        if (!result.has_relays) {
+            result.warnings.push('Carregador conectado a uma TON sem relés (BO) — não pode habilitar a recarga. Use TON3/TON4.');
+        } else if (!result.carregador.bo_habilitar) {
+            result.warnings.push('Carregador sem BO "Habilitar" mapeado — configure na TON: Configurar BOs (Habilitar / Desabilitar) e Configurar BIs (Conectado).');
+        }
+    }
+
 
     // Determina o papel da TON na topologia LoRa puramente pelo LAYOUT, nao
     // pelo tipo (ton2/ton4) nem por config manual de modo. Toda TON com LoRa
@@ -1880,13 +1919,28 @@ static void _publish_tcp_inv_${idx}(tcp_publish_fn publish) {
 `;
         }
 
-        // WiFi
+        // WiFi (multi-rede até 4: lista em NVS semeada por esta; /cmd/wifi troca sem reflash)
         if (spec.wifi) {
+            const _nets = (spec.wifi.networks && spec.wifi.networks.length)
+                ? spec.wifi.networks.slice(0, 4)
+                : (spec.wifi.ssid ? [{ ssid: spec.wifi.ssid, password: spec.wifi.password || '' }] : []);
+            const _escc = (x) => String(x || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+            const _ssidArr = _nets.map(n => `"${_escc(n.ssid)}"`).join(', ') || '""';
+            const _passArr = _nets.map(n => `"${_escc(n.password)}"`).join(', ') || '""';
+            let _hash = 0x811c9dc5;
+            const _hstr = _nets.map(n => `${n.ssid}\u0000${n.password || ''}`).join('\u0001');
+            for (let i = 0; i < _hstr.length; i++) { _hash ^= _hstr.charCodeAt(i); _hash = (_hash * 0x01000193) >>> 0; }
             h += `
-// WiFi
-#define WIFI_SSID           "${spec.wifi.ssid}"
-#define WIFI_PASSWORD       "${spec.wifi.password}"
+// WiFi (multi-rede: ate 4)
+#define WIFI_SSID           "${_escc(_nets[0] ? _nets[0].ssid : '')}"
+#define WIFI_PASSWORD       "${_escc(_nets[0] ? _nets[0].password : '')}"
 #define WIFI_TIMEOUT_MS     10000
+#define WIFI_MAX_NETS       4
+#define WIFI_TRY_MS         20000UL
+#define WIFI_CONFIG_HASH    ${_hash}u
+static const char* WIFI_DEF_SSID[] = { ${_ssidArr} };
+static const char* WIFI_DEF_PASS[] = { ${_passArr} };
+static const int   WIFI_DEF_COUNT  = ${_nets.length};
 `;
         }
 
@@ -2236,13 +2290,116 @@ static const char* _ifName(NetIf i) {
 
 // Liga o radio WiFi e dispara conexao em background.
 // Idempotente: chamadas extras nao reiniciam conexao em andamento.
+// ---- Gerenciador multi-WiFi (ate WIFI_MAX_NETS) — lista em NVS, semeada da config ----
+#include <Preferences.h>
+static char _wifiSsid[WIFI_MAX_NETS][33];
+static char _wifiPass[WIFI_MAX_NETS][65];
+static int  _wifiCount = 0;
+static int  _wifiIdx = 0;
+static bool _wifiLoaded = false;
+static unsigned long _wifiTryStart = 0;
+
+static void _wifi_save_nvs() {
+    Preferences pr; pr.begin("wifi", false);
+    pr.putInt("count", _wifiCount);
+    pr.putUInt("cfghash", WIFI_CONFIG_HASH);
+    for (int i = 0; i < WIFI_MAX_NETS; i++) {
+        char ks[6], kp[6]; snprintf(ks, sizeof(ks), "s%d", i); snprintf(kp, sizeof(kp), "p%d", i);
+        if (i < _wifiCount) { pr.putString(ks, _wifiSsid[i]); pr.putString(kp, _wifiPass[i]); }
+        else { pr.remove(ks); pr.remove(kp); }
+    }
+    pr.end();
+}
+static void _wifi_seed_from_config() {
+    _wifiCount = WIFI_DEF_COUNT < WIFI_MAX_NETS ? WIFI_DEF_COUNT : WIFI_MAX_NETS;
+    for (int i = 0; i < _wifiCount; i++) {
+        strncpy(_wifiSsid[i], WIFI_DEF_SSID[i], 32); _wifiSsid[i][32] = 0;
+        strncpy(_wifiPass[i], WIFI_DEF_PASS[i], 64); _wifiPass[i][64] = 0;
+    }
+    _wifi_save_nvs();
+    Serial.printf("[WIFI] NVS semeado com %d rede(s) da config\n", _wifiCount);
+}
+static void _wifi_ensure_loaded() {
+    if (_wifiLoaded) return;
+    _wifiLoaded = true;
+    Preferences pr; pr.begin("wifi", true);
+    int cnt = pr.getInt("count", -1);
+    unsigned int hh = pr.getUInt("cfghash", 0);
+    pr.end();
+    if (cnt < 0 || hh != WIFI_CONFIG_HASH) { _wifi_seed_from_config(); return; }
+    pr.begin("wifi", true);
+    _wifiCount = cnt < WIFI_MAX_NETS ? cnt : WIFI_MAX_NETS;
+    for (int i = 0; i < _wifiCount; i++) {
+        char ks[6], kp[6]; snprintf(ks, sizeof(ks), "s%d", i); snprintf(kp, sizeof(kp), "p%d", i);
+        String ss = pr.getString(ks, ""); String pp = pr.getString(kp, "");
+        strncpy(_wifiSsid[i], ss.c_str(), 32); _wifiSsid[i][32] = 0;
+        strncpy(_wifiPass[i], pp.c_str(), 64); _wifiPass[i][64] = 0;
+    }
+    pr.end();
+    Serial.printf("[WIFI] %d rede(s) carregada(s) do NVS\n", _wifiCount);
+}
+static bool _wifi_add(const char* ssid, const char* pass) {
+    _wifi_ensure_loaded();
+    if (!ssid || !*ssid) return false;
+    for (int i = 0; i < _wifiCount; i++) if (strncmp(_wifiSsid[i], ssid, 32) == 0) {
+        strncpy(_wifiPass[i], pass ? pass : "", 64); _wifiPass[i][64] = 0;
+        _wifi_save_nvs(); Serial.printf("[WIFI] senha atualizada: %s\n", ssid); return true;
+    }
+    if (_wifiCount >= WIFI_MAX_NETS) { Serial.println("[WIFI] lista cheia (max 4)"); return false; }
+    strncpy(_wifiSsid[_wifiCount], ssid, 32); _wifiSsid[_wifiCount][32] = 0;
+    strncpy(_wifiPass[_wifiCount], pass ? pass : "", 64); _wifiPass[_wifiCount][64] = 0;
+    _wifiCount++; _wifi_save_nvs();
+    Serial.printf("[WIFI] rede adicionada: %s (%d/%d)\n", ssid, _wifiCount, WIFI_MAX_NETS); return true;
+}
+static bool _wifi_remove(const char* ssid) {
+    _wifi_ensure_loaded();
+    if (!ssid) return false;
+    for (int i = 0; i < _wifiCount; i++) if (strncmp(_wifiSsid[i], ssid, 32) == 0) {
+        for (int j = i; j < _wifiCount - 1; j++) { strncpy(_wifiSsid[j], _wifiSsid[j+1], 33); strncpy(_wifiPass[j], _wifiPass[j+1], 65); }
+        _wifiCount--; _wifi_save_nvs();
+        Serial.printf("[WIFI] rede removida: %s (%d)\n", ssid, _wifiCount); return true;
+    }
+    return false;
+}
+// Comando /cmd/wifi: {"action":"add|remove|list","ssid":"..","pass":".."}
+static void _wifi_handle_cmd(const char* json) {
+    StaticJsonDocument<256> d;
+    if (deserializeJson(d, json) != DeserializationError::Ok) { Serial.println("[WIFI] cmd JSON invalido"); return; }
+    const char* action = d["action"] | "";
+    const char* ssid = d["ssid"] | "";
+    const char* pass = d["pass"] | (d["password"] | "");
+    if (strcmp(action, "add") == 0) _wifi_add(ssid, pass);
+    else if (strcmp(action, "remove") == 0) _wifi_remove(ssid);
+    else if (strcmp(action, "list") == 0) {
+        _wifi_ensure_loaded();
+        Serial.printf("[WIFI] lista (%d):\n", _wifiCount);
+        for (int i = 0; i < _wifiCount; i++) Serial.printf("  %d: %s\n", i + 1, _wifiSsid[i]);
+    }
+}
+// Cycling nao-bloqueante: WiFi ligado e sem conectar em WIFI_TRY_MS -> proxima rede.
+static void _wifi_cycle_tick() {
+    if (!_wifiStarted || _wifiCount <= 1) return;
+    if (WiFi.status() == WL_CONNECTED) return;
+    if (millis() - _wifiTryStart < WIFI_TRY_MS) return;
+    _wifiIdx = (_wifiIdx + 1) % _wifiCount;
+    Serial.printf("[WIFI] fallback -> '%s' (%d/%d)\n", _wifiSsid[_wifiIdx], _wifiIdx + 1, _wifiCount);
+    WiFi.disconnect();
+    WiFi.begin(_wifiSsid[_wifiIdx], _wifiPass[_wifiIdx]);
+    _wifiTryStart = millis();
+}
+
 static void _start_wifi() {
     if (_wifiStarted) return;
+    _wifi_ensure_loaded();
+    if (_wifiCount == 0) { Serial.println("[WIFI] sem redes configuradas"); return; }
     Serial.println("[WIFI] Ligando radio (fallback / Eth indisponivel)");
     WiFi.mode(WIFI_STA);
     WiFi.setAutoReconnect(true);
-    WiFi.persistent(true);
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    WiFi.persistent(false);
+    _wifiIdx = 0;
+    WiFi.begin(_wifiSsid[0], _wifiPass[0]);
+    Serial.printf("[WIFI] tentando '%s' (1/%d)\n", _wifiSsid[0], _wifiCount);
+    _wifiTryStart = millis();
     _wifiStarted = true;
 }
 
@@ -2309,6 +2466,7 @@ static void _evalNetwork() {
     } else if (ethReady && _wifiStarted) {
         _stop_wifi();
     }
+    _wifi_cycle_tick();   // fallback multi-WiFi: cicla pelas redes se a atual nao conectar
 
     // Loga transicoes de IP/conexao
     if (ethReady != _prevHasIp) {
@@ -2480,7 +2638,11 @@ ${spec.bomba ? `    if (strstr(topic, "/cmd/rfid_sync") != nullptr) {
         bomba_set_whitelist(buf);
         return;
     }
-` : ''}    if (_cmdCallback) _cmdCallback(buf);
+` : ''}    if (strstr(topic, "/cmd/wifi") != nullptr) {   // config multi-WiFi em runtime (add/remove/list)
+        _wifi_handle_cmd(buf);
+        return;
+    }
+    if (_cmdCallback) _cmdCallback(buf);
 }
 
 void mqtt_init(mqtt_cmd_callback_t callback) {
@@ -2656,6 +2818,7 @@ void mqtt_loop() {
         Serial.println("[MQTT] Conectado!");
         _wasConnected = true;
         _mqtt.subscribe(MQTT_TOPIC_CMD);
+        { String wt = String(MQTT_TOPIC_BASE) + "/cmd/wifi"; _mqtt.subscribe(wt.c_str()); Serial.printf("[MQTT] Inscrito em: %s\\n", wt.c_str()); }
 ${spec.bomba ? `        { String rfidTopic = String(MQTT_TOPIC_BASE) + "/cmd/rfid_sync"; _mqtt.subscribe(rfidTopic.c_str()); Serial.printf("[MQTT] Inscrito em: %s\\n", rfidTopic.c_str()); }
 ` : ''}        String otaCmdTopic = String(MQTT_TOPIC_BASE) + "/ota/cmd";
         _mqtt.subscribe(otaCmdTopic.c_str());
@@ -5755,6 +5918,75 @@ void bomba_loop() {
         return cpp;
     }
 
+    // Emitida so quando spec.carregador && spec.has_relays.
+    _genCarregador(spec) {
+        const c = spec.carregador;
+        const biReadConn = c.bi_conectado ? `((inputs_get_state() >> ${c.bi_conectado - 1}) & 1)` : 'true';
+        let cpp = `// ===== CARREGADOR ELETRICO: controle da vaga (a TON habilita/corta + detecta desconexao) =====
+// Comando <BASE>/cmd {carregador:habilitar|desabilitar}; BI Conectado=${c.bi_conectado || '—'} detecta o carro.
+// Ao DESCONECTAR corta o rele (BO habilitar=${c.bo_habilitar || '—'}) e publica <BASE>/carregador {evento:desconectado}.
+// kWh vem de medidor Modbus (fonte 'ton') OU do carregador no broker — nao daqui.
+`;
+        if (!spec.wifi && spec.lora_role === 'satellite') {
+            cpp += `static void lora_publish_data(const char* subtopic, const char* payload_json);\n`;
+        }
+        const pubBody = spec.wifi ? '    mqtt_publish_sub(sub, payload);'
+            : (spec.lora_role === 'satellite' ? '    lora_publish_data(sub, payload);'
+            : '    Serial.printf("[CARGA] %s: %s\\n", sub, payload);');
+        cpp += `
+enum CargaState { CARGA_LIVRE = 0, CARGA_CARREGANDO };
+static CargaState _carga_state = CARGA_LIVRE;
+
+static void _carga_pub(const char* sub, const char* payload) {
+${pubBody}
+}
+static bool _carga_conectado() { return ${biReadConn}; }
+static void _carga_rele(bool on) {
+`;
+        if (c.bo_habilitar) cpp += `    relay_set(${c.bo_habilitar}, on);\n`;
+        if (c.bo_desabilitar) cpp += `    if (!on) { relay_set(${c.bo_desabilitar}, true); delay(300); relay_set(${c.bo_desabilitar}, false); }\n`;
+        cpp += `}
+static void _carga_pub_estado() {
+    char payload[96];
+    snprintf(payload, sizeof(payload), "{\\"estado\\":\\"%s\\",\\"conectado\\":%s}",
+        _carga_state == CARGA_CARREGANDO ? "carregando" : "livre", _carga_conectado() ? "true" : "false");
+    _carga_pub("carregador", payload);
+}
+void carregador_habilitar() {
+    _carga_rele(true);
+    _carga_state = CARGA_CARREGANDO;
+    Serial.println("[CARGA] habilitado");
+    _carga_pub_estado();
+}
+void carregador_desabilitar() {
+    _carga_rele(false);
+    _carga_state = CARGA_LIVRE;
+    Serial.println("[CARGA] desabilitado");
+    _carga_pub_estado();
+}
+static void _carga_encerrar(const char* motivo) {
+    _carga_rele(false);
+    char payload[96];
+    snprintf(payload, sizeof(payload), "{\\"evento\\":\\"desconectado\\",\\"conectado\\":false,\\"motivo\\":\\"%s\\"}", motivo);
+    _carga_pub("carregador", payload);
+    Serial.printf("[CARGA] FIM (%s)\\n", motivo);
+    _carga_state = CARGA_LIVRE;
+    _carga_pub_estado();
+}
+void carregador_loop() {
+    static bool prevConn = true;
+    static unsigned long lastTel = 0;
+    bool conn = _carga_conectado();
+    if (_carga_state == CARGA_CARREGANDO && prevConn && !conn) { _carga_encerrar("desconectado"); }
+    prevConn = conn;
+    if (millis() - lastTel > 30000) { lastTel = millis(); _carga_pub_estado(); }
+}
+
+`;
+        return cpp;
+    }
+
+
     // ---- main.cpp ----
     _genMainCpp(spec) {
         let cpp = `// ==============================================================================
@@ -5855,6 +6087,9 @@ static void _publish_cmd_ack(const char* cmd_id, const char* status, const char*
         if (spec.bomba && spec.has_relays) {
             cpp += this._genBomba(spec);
         }
+        if (spec.carregador && spec.has_relays) {
+            cpp += this._genCarregador(spec);
+        }
 
         cpp += `// Executa o comando bruto (sem envelope). Preenche result_msg com descricao curta.
 // Retorna true em sucesso, false em erro.
@@ -5928,6 +6163,12 @@ static bool _process_command_inner(const char* raw, char* result_msg, size_t msg
         String u = cmd.substring(5); u.trim(); u.toUpperCase();
         if (u.length()) { bomba_cartao(u.c_str()); snprintf(result_msg, msg_sz, "card_%s", u.c_str()); return true; }
     }
+`;
+        }
+        // ===== Comando do carregador: {carregador:habilitar|desabilitar} (backend/porteiro) =====
+        if (spec.carregador && spec.has_relays) {
+            cpp += `    if (cmd.indexOf("desabilitar") >= 0) { carregador_desabilitar(); snprintf(result_msg, msg_sz, "carga_off"); return true; }
+    if (cmd.indexOf("habilitar") >= 0)   { carregador_habilitar();   snprintf(result_msg, msg_sz, "carga_on");  return true; }
 `;
         }
         // ===== Comandos do pivô (só quando ha um pivô conectado a esta TON) =====
@@ -6277,6 +6518,12 @@ void loop() {
             cpp += `
     // Bomba: máquina de estados (lê cartão/estop nas BI + nível na AI, aciona contator BO).
     bomba_loop();
+`;
+        }
+        if (spec.carregador && spec.has_relays) {
+            cpp += `
+    // Carregador: habilita/corta + detecta desconexao (BI Conectado).
+    carregador_loop();
 `;
         }
 

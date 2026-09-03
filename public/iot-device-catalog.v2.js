@@ -204,6 +204,10 @@ var DEVICE_POINTS = {
             { id: 'pt', label: 'Potência Ativa Total',    unit: 'W',   json: 'Pt' },
             { id: 'qt', label: 'Potência Reativa Total',  unit: 'var', json: 'Qt' },
             { id: 'st', label: 'Potência Aparente Total', unit: 'VA',  json: 'St' },
+            // Frequência da rede (M160 reg 62 ÷100 ; PD666 0x2044 ÷100). Ambos suportam.
+            { id: 'freq', label: 'Frequência',           unit: 'Hz', json: 'Freq' },
+            // FP total do próprio medidor (M160 reg 57 ; PD666 0x202A PFt). Ambos suportam.
+            { id: 'fp_t', label: 'Fator Potência Total',  unit: '',   json: 'FPt' },
         ],
         bi: [],
         bo: [],
@@ -1526,6 +1530,8 @@ var DEVICE_MODELS = {
             { start: 0x1028, count: 2, func: 0x03, label: 'PHR - Energia Ativa Reverse (kWh)'  },
             { start: 0x1032, count: 2, func: 0x03, label: 'Q1Eq (reativa Q1, indutiva) (kvarh)' },
             { start: 0x103C, count: 2, func: 0x03, label: 'Q2Eq (reativa Q2, capacitiva) (kvarh)' },
+            // Frequência (0x2044) — fora do bloco 0 (0x2006..0x2031), precisa de leitura própria.
+            { start: 0x2044, count: 2, func: 0x03, label: 'Freq — Frequência (Hz)' },
         ],
         ai_map: {
             // --- Bloco 0 (V/I/P/Q/S/FP) ---
@@ -1552,6 +1558,10 @@ var DEVICE_MODELS = {
             'consumo_phr':  { block: 2, offset: 0, scale: 1, dataType: 'FLOAT', mode: 'delta', apply_factor: 'tp_tc', clamp_negative: true },
             'consumo_qhf':  { block: 3, offset: 0, scale: 1, dataType: 'FLOAT', mode: 'delta', apply_factor: 'tp_tc', clamp_negative: true },
             'consumo_qhr':  { block: 4, offset: 0, scale: 1, dataType: 'FLOAT', mode: 'delta', apply_factor: 'tp_tc', clamp_negative: true },
+            // Frequência (0x2044 — float, F=R/100, SEM TP/TC). Bloco 5 (dedicado).
+            'freq': { block: 5, offset: 0, scale: 100, dataType: 'FLOAT' },
+            // FP Total (0x202A PFt — float, /1000, sem fator). Dentro do bloco 0, offset 36.
+            'fp_t': { block: 0, offset: 36, scale: 1000, dataType: 'FLOAT' },
         },
         bi_map: {},
         bo_map: {},
@@ -1628,6 +1638,64 @@ var DEVICE_MODELS = {
             'pt': { block: 0, offset: 12, scale: 1, dataType: 'S16', apply_factor: 'tp_tc', decimal_src: 'dpq' },
             'qt': { block: 0, offset: 16, scale: 1, dataType: 'S16', apply_factor: 'tp_tc', decimal_src: 'dpq' },
             'st': { block: 0, offset: 24, scale: 1, dataType: 'U16', apply_factor: 'tp_tc', decimal_src: 'dpq' },
+            // Frequência (reg 62 — int16, F=R/100, SEM TP/TC/decimal). Manual Tabela 2. Já dentro do bloco lido.
+            'freq': { block: 0, offset: 25, scale: 100, dataType: 'U16' },
+            // FP Total (reg 57 — int16, /1000, sem fator). Manual Tabela 2.
+            'fp_t': { block: 0, offset: 20, scale: 1000, dataType: 'S16' },
+        },
+        bi_map: {},
+        bo_map: {},
+    },
+
+    // Schneider EasyLogic PM1200 (PowerLogic PM1000 series). RS485 Modbus RTU.
+    // Manual: manuais_dispositivos/SCHNEIDER_PM1200/...NHA1696401-02_OFICIAL.pdf (Tabela 6-8).
+    // PARTICULARIDADES (estudo do manual):
+    //  1. Float 32-bit, 2 regs/grandeza. Byte order CONFIGURÁVEL no medidor (F.Seq no menu
+    //     PROG): 4321=Big-Endian (DEFAULT) | 2143=Swapped. 4321 casa com o decode padrão
+    //     do gerador (high_first). Reg 0306 reporta a ordem. → setar F.Seq=4321 no medidor.
+    //  2. Valores JÁ PRIMÁRIOS — o medidor aplica CT/PT internamente (A.pri/A.sec, V.pri/V.sec).
+    //     NÃO multiplicar por TP/TC → SEM cat.tp_tc, SEM apply_factor. (≠ M160/PD666.)
+    //  3. Sinal NATIVO no float: W<0 = reverso/exportação; VAR<0 e PF<0 = capacitivo (lead).
+    //     Sem registrador SIGN (≠ M160). FWD=importação, REV=exportação.
+    //  4. St (VA total, 3901) é medição 3D → inclui distorção (√(W²+VAR²+D²)), NÃO √(P²+Q²).
+    //  5. Energia (integrador) RESETA no overflow (9999k/M/G) → consumo_* com clamp_negative.
+    //  ⚠️ BANCADA: confirmar (a) off-by-one do endereço (3901 vs 3900) e (b) unidade da
+    //     energia (Wh vs kWh) na 1ª leitura. Só o PM1200 tem Modbus (PM1000 não).
+    'schneider-pm1200': {
+        fabricante: 'SCHNEIDER',
+        modelo: 'PM1200',
+        tipo: 'medidor_energia',
+        protocolo: 'rtu',
+        connection_note: 'RS485 Modbus RTU (D1/D0), 9600 8-E-1 default (fn 0x03). Float 32-bit — setar F.Seq=4321 (Big-Endian) no menu PROG. Valores JÁ PRIMÁRIOS (CT/PT no medidor) — NÃO aplicar TP/TC. Tambem via Modbus TCP por conversor USR. ⚠️ conferir off-by-one 3901/3900 e unidade da energia na bancada.',
+        // SEM tp_tc de proposito: PM1200 entrega primario; nenhum campo usa apply_factor.
+        ai_blocks: [
+            // Bloco 0: individuais contiguos 3901..3957 (float, 2 regs). Tabela 6-8.
+            { start: 3901, count: 58, func: 0x03, label: 'VA/W/VAR/PF/F + V/I/PF por fase (3901..3957)' },
+            // Bloco 1: energias 3959..3973 (float). FWD=import, REV=export.
+            { start: 3959, count: 16, func: 0x03, label: 'Energias Fwd/Rev VAh/Wh/VARh (3959..3973)' },
+        ],
+        ai_map: {
+            // --- Bloco 0 (instantaneos, float, PRIMARIO, sem fator) — offset = addr-3901 ---
+            'st':   { block: 0, offset: 0,  scale: 1, dataType: 'FLOAT' }, // 3901 VA total (3D)
+            'pt':   { block: 0, offset: 2,  scale: 1, dataType: 'FLOAT' }, // 3903 W total (sinal nativo)
+            'qt':   { block: 0, offset: 4,  scale: 1, dataType: 'FLOAT' }, // 3905 VAR total
+            'fp_t': { block: 0, offset: 6,  scale: 1, dataType: 'FLOAT' }, // 3907 PF medio
+            'freq': { block: 0, offset: 14, scale: 1, dataType: 'FLOAT' }, // 3915 F
+            'fp_a': { block: 0, offset: 22, scale: 1, dataType: 'FLOAT' }, // 3923 PF1
+            'va':   { block: 0, offset: 26, scale: 1, dataType: 'FLOAT' }, // 3927 V1 (fase-neutro)
+            'ia':   { block: 0, offset: 28, scale: 1, dataType: 'FLOAT' }, // 3929 A1
+            'fp_b': { block: 0, offset: 36, scale: 1, dataType: 'FLOAT' }, // 3937 PF2
+            'vb':   { block: 0, offset: 40, scale: 1, dataType: 'FLOAT' }, // 3941 V2
+            'ib':   { block: 0, offset: 42, scale: 1, dataType: 'FLOAT' }, // 3943 A2
+            'fp_c': { block: 0, offset: 50, scale: 1, dataType: 'FLOAT' }, // 3951 PF3
+            'vc':   { block: 0, offset: 54, scale: 1, dataType: 'FLOAT' }, // 3955 V3
+            'ic':   { block: 0, offset: 56, scale: 1, dataType: 'FLOAT' }, // 3957 A3
+            // --- Bloco 1 (energias, float) — offset = addr-3959. FwdWh=import, RevWh=export ---
+            'phf':          { block: 1, offset: 2,  scale: 1, dataType: 'FLOAT', mode: 'last'  }, // 3961 FwdWh
+            'consumo_phf':  { block: 1, offset: 2,  scale: 1, dataType: 'FLOAT', mode: 'delta', clamp_negative: true }, // 3961 FwdWh
+            'consumo_phr':  { block: 1, offset: 10, scale: 1, dataType: 'FLOAT', mode: 'delta', clamp_negative: true }, // 3969 RevWh
+            'consumo_qhf':  { block: 1, offset: 4,  scale: 1, dataType: 'FLOAT', mode: 'delta', clamp_negative: true }, // 3963 FwdVARh
+            'consumo_qhr':  { block: 1, offset: 12, scale: 1, dataType: 'FLOAT', mode: 'delta', clamp_negative: true }, // 3971 RevVARh
         },
         bi_map: {},
         bo_map: {},
