@@ -4,6 +4,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Layout } from '@/core/components/common/Layout';
 import { TitleCard } from '@/core/components/common/title-card';
 import { BaseTable } from '@/core/components/common/base-table/BaseTable';
+import { Share2, Unlink } from 'lucide-react';
+import { useSincronizacao, OUTRO_PRODUTO } from '@/core/features/sincronizacao';
 import { BaseFilters } from '@/core/components/common/base-filters/BaseFilters';
 import { PlantaModal } from './planta-modal';
 import { InstalacoesExpandedRow } from './InstalacoesExpandedRow';
@@ -45,6 +47,9 @@ export function PlantasPage({ mostrarTarifacao = false }: PlantasPageProps = {})
 
   // Estados locais
   const [plantas, setPlantas] = useState<any[]>([]);
+
+  // Estado de compartilhamento das plantas DESTA pagina, numa consulta so.
+  const sincronizacao = useSincronizacao('plantas', plantas.map(p => p?.id).filter(Boolean));
   const [totalPlantas, setTotalPlantas] = useState(0);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState<PlantasFilters>(initialFilters);
@@ -395,6 +400,30 @@ export function PlantasPage({ mostrarTarifacao = false }: PlantasPageProps = {})
                         label: 'Nova instalação',
                         icon: <Plus className="h-4 w-4" />,
                         handler: handleNovaInstalacao,
+                      },
+                      {
+                        // Duas acoes com `condition` em vez de um botao com
+                        // rotulo dinamico: `TableAction.label` e string, e
+                        // `icon` como funcao seria confundido com componente
+                        // React pelo renderizador.
+                        key: 'compartilhar',
+                        label: `Compartilhar com o ${OUTRO_PRODUTO}`,
+                        icon: <Share2 className="h-4 w-4" />,
+                        condition: (planta: any) =>
+                          !sincronizacao.estados[planta?.id?.trim()]?.compartilhado,
+                        handler: (planta: any) => {
+                          void sincronizacao.compartilhar(planta?.id);
+                        },
+                      },
+                      {
+                        key: 'parar_compartilhar',
+                        label: 'Parar de compartilhar',
+                        icon: <Unlink className="h-4 w-4" />,
+                        condition: (planta: any) =>
+                          !!sincronizacao.estados[planta?.id?.trim()]?.compartilhado,
+                        handler: (planta: any) => {
+                          void sincronizacao.pararDeCompartilhar(planta?.id);
+                        },
                       },
                     ]
                   : []
