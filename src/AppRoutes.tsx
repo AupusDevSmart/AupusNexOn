@@ -8,13 +8,13 @@ import { EsqueciSenhaPage } from "@/pages/esqueci-senha/EsqueciSenhaPage";
 import { RedefinirSenhaPage } from "@/pages/redefinir-senha/RedefinirSenhaPage";
 import { useUserStore } from "@/store/useUserStore";
 
-// Shared pages (from @aupus/shared-pages)
+// Paginas do nucleo (src/core, antes o pacote @aupus/shared-pages)
 import {
   EquipamentosPage,
   UsuariosPage,
   PlantasPage,
   ConcessionariasPage,
-} from "@aupus/shared-pages";
+} from "@/core";
 
 // Lazy load para evitar problemas de import
 import { lazy, Suspense } from "react";
@@ -112,7 +112,7 @@ const ReleEventosPage = lazy(() =>
 const RelatoriosPage = lazy(() => import("@/features/relatorios/RelatoriosPage"));
 
 
-// Shared pages are now imported directly from @aupus/shared-pages (see top of file)
+// Paginas do nucleo, importadas no topo do arquivo
 
 const CadastroRegrasLogsPage = lazy(() =>
   import("@/pages/cadastros/regras-logs")
