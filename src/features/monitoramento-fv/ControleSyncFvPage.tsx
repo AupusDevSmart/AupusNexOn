@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { InversorNuvemConfig } from './InversorNuvemConfig';
 
 interface Config {
   unidade_id: string; nome: string; provedor: string; provedor_planta_id: string;
@@ -215,6 +216,12 @@ export function ControleSyncFvPage() {
           </TableBody>
         </Table>
       </CardContent></Card>
+
+      <InversorNuvemConfig
+        fusionUnidades={configs
+          .filter((c) => c.provedor === 'fusion_solar')
+          .map((c) => ({ unidade_id: c.unidade_id, nome: c.nome }))}
+      />
     </div>
   );
 }
