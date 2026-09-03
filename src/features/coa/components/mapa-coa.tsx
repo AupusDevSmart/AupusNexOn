@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { UnidadeResumo } from "../api/coa-api";
 import { useTheme } from "@/components/theme-provider";
+import { useUserStore } from "@/store/useUserStore";
 
 interface MapaCoaProps {
   unidades: UnidadeResumo[];
@@ -33,12 +34,16 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
   const markersRef = useRef<any[]>([]);
   const clusterGroupRef = useRef<any>(null);
   const tileLayerRef = useRef<any>(null);
+  const refLayerRef = useRef<any>(null); // camada de labels (ESRI reference)
 
   const [unidadeSelecionada, setUnidadeSelecionada] = useState<UnidadeResumo | null>(null);
   const [modalAberto, setModalAberto] = useState(false);
-  const [filtro, setFiltro] = useState<'trip' | 'semInfo' | 'alerta' | 'online' | 'nuvem' | null>(null);
+  const [filtro, setFiltro] = useState<'trip' | 'semInfo' | 'semDado' | 'alerta' | 'online' | 'nuvem' | 'naoComiss' | null>(null);
 
   const { theme: appTheme } = useTheme();
+  // Comissionamento é info interna (técnica) — só quem tem supervisorio.iot_view vê no COA.
+  const { acessivel } = useUserStore();
+  const podeVerComiss = Array.isArray(acessivel) && acessivel.includes("supervisorio.iot_view");
   const isDark =
     appTheme === 'dark' ||
     (appTheme === 'system' &&
@@ -51,28 +56,37 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
   // Resumo de estado (contagem) pra clareza imediata "o que funciona ou não".
   // trip tem prioridade (uma usina tripada não conta como online/offline).
   const resumoStatus = useMemo(() => {
-    let online = 0, semInfo = 0, alerta = 0, trip = 0, nuvem = 0;
+    let online = 0, semInfo = 0, semDado = 0, alerta = 0, trip = 0, nuvem = 0, naoComiss = 0;
     for (const u of unidadesComCoordenadas) {
       if (u.trip) trip++;
       else if (u.status === "ONLINE") online++;
       else if (u.status === "ALERTA") alerta++;
       else if (u.nuvem) nuvem++;
-      else semInfo++;
+      else if (u.tonViva) semDado++;   // OFFLINE mas TON viva no broker = device/Modbus (não internet)
+      else semInfo++;                  // OFFLINE e TON muda = sem sinal (internet/energia)
+      if (u.naoComissionados && u.naoComissionados.length) naoComiss++; // ortogonal ao status
     }
-    return { online, semInfo, alerta, trip, nuvem };
+    return { online, semInfo, semDado, alerta, trip, nuvem, naoComiss };
   }, [unidadesComCoordenadas]);
 
   // Estado de uma unidade (mesma prioridade da legenda) — usado pelo filtro.
-  const estadoDaUnidade = (u: UnidadeResumo): 'trip' | 'semInfo' | 'alerta' | 'online' | 'nuvem' =>
+  const estadoDaUnidade = (u: UnidadeResumo): 'trip' | 'semInfo' | 'semDado' | 'alerta' | 'online' | 'nuvem' =>
     u.trip ? 'trip'
       : u.status === 'ONLINE' ? 'online'
         : u.status === 'ALERTA' ? 'alerta'
           : u.nuvem ? 'nuvem'
-            : 'semInfo';
+            : u.tonViva ? 'semDado'
+              : 'semInfo';
 
   // Filtro rápido: clicar num chip do resumo mostra só as usinas daquele estado.
+  // 'naoComiss' é ortogonal ao status (filtra por pontos sem comissionamento).
   const unidadesExibidas = useMemo(
-    () => (filtro ? unidadesComCoordenadas.filter(u => estadoDaUnidade(u) === filtro) : unidadesComCoordenadas),
+    () =>
+      !filtro
+        ? unidadesComCoordenadas
+        : filtro === 'naoComiss'
+          ? unidadesComCoordenadas.filter(u => u.naoComissionados && u.naoComissionados.length)
+          : unidadesComCoordenadas.filter(u => estadoDaUnidade(u) === filtro),
     [unidadesComCoordenadas, filtro],
   );
 
@@ -159,17 +173,18 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
     const map = mapInstanceRef.current;
     const L = (window as any).L;
     if (!map || !L) return;
-    if (tileLayerRef.current) {
-      map.removeLayer(tileLayerRef.current);
-      tileLayerRef.current = null;
-    }
-    const url = isDark
-      ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-      : "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png";
-    tileLayerRef.current = L.tileLayer(url, {
-      attribution: "© OpenStreetMap contributors, © CartoDB",
-      maxZoom: 18,
+    // Basemap KEYLESS (CARTO passou a exigir key). OSM com filtro dark tunado
+    // (classe coa-tiles-dark em assets/globals.css): dark com cores SUAVIZADAS —
+    // sem as manchas verdes berrantes do invert cru e sem o cinza chapado do ESRI.
+    [tileLayerRef, refLayerRef].forEach((ref) => {
+      if (ref.current) { map.removeLayer(ref.current); ref.current = null; }
+    });
+    tileLayerRef.current = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: "© OpenStreetMap contributors",
+      subdomains: "abc",
+      maxZoom: 19,
       minZoom: 4,
+      className: isDark ? "coa-tiles-dark" : "",
     }).addTo(map);
   }, [isDark]);
 
@@ -214,14 +229,16 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
           const statuses = children.map((m: any) => m.options.__status);
           const temTrip = children.some((m: any) => m.options.__trip);
           const temNuvem = children.some((m: any) => m.options.__nuvem);
-          const temSemInfo = children.some((m: any) => m.options.__status === "OFFLINE" && !m.options.__nuvem);
+          const temSemDado = children.some((m: any) => m.options.__semDado);
+          const temSemInfo = children.some((m: any) => m.options.__status === "OFFLINE" && !m.options.__nuvem && !m.options.__semDado);
           const temOnline = statuses.some((s: string) => s === "ONLINE");
           const temAlerta = statuses.some((s: string) => s === "ALERTA");
-          // Cor VERÍDICA do cluster (pior estado): trip > sem info > alerta > online > nuvem.
+          // Cor VERÍDICA do cluster (pior estado): trip > sem info > sem dado > alerta > online > nuvem.
           let cor = "#10B981"; // verde = tem usina online (TON ao vivo)
-          if (temNuvem && !temOnline && !temAlerta && !temSemInfo) cor = "#3B82F6"; // só nuvem
+          if (temNuvem && !temOnline && !temAlerta && !temSemInfo && !temSemDado) cor = "#3B82F6"; // só nuvem
           if (temAlerta) cor = "#F59E0B";
-          if (temSemInfo) cor = "#6B7280";
+          if (temSemDado) cor = "#EA580C"; // TON viva, sem dado (device/Modbus)
+          if (temSemInfo) cor = "#6B7280"; // sem sinal (internet/energia)
           if (temTrip) cor = "#EF4444";
           return L.divIcon({
             html: `
@@ -265,8 +282,10 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
         const isSelected = unidadeSelecionada?.id === unidade.id;
         const isTrip = !!unidade.trip;
         const isNuvem = !isTrip && !!unidade.nuvem && unidade.status === 'OFFLINE';
-        // TRIP=vermelho; NUVEM=azul; senão a cor do status (OFFLINE real = cinza "sem info").
-        const cor = isTrip ? '#EF4444' : isNuvem ? '#3B82F6' : getStatusColor(unidade.status);
+        // TON viva no broker mas sem dado do equipamento = device/Modbus (não internet).
+        const isSemDado = !isTrip && !isNuvem && unidade.status === 'OFFLINE' && !!unidade.tonViva;
+        // TRIP=vermelho; NUVEM=azul; SEM DADO=laranja (TON on); senão status (OFFLINE real = cinza).
+        const cor = isTrip ? '#EF4444' : isNuvem ? '#3B82F6' : isSemDado ? '#EA580C' : getStatusColor(unidade.status);
         // Pisca no trip e no offline REAL (sem info). Nuvem é estado estável → não pisca.
         const pulsar = isTrip || (unidade.status === 'OFFLINE' && !isNuvem) || isSelected;
 
@@ -316,7 +335,7 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
         // Criar marcador (vai dentro do cluster group, não direto no map)
         const marker = L.marker(
           [unidade.coordenadas!.latitude, unidade.coordenadas!.longitude],
-          { icon, __status: unidade.status, __trip: isTrip, __nuvem: isNuvem } as any
+          { icon, __status: unidade.status, __trip: isTrip, __nuvem: isNuvem, __semDado: isSemDado } as any
         );
         cluster.addLayer(marker);
 
@@ -342,7 +361,13 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
               <strong>Energia Hoje:</strong> ${formatEnergy(unidade.metricas.energiaHoje)}
             </p>
             ${unidade.trip ? `<p style="margin: 6px 0 0; font-size: 12px; color: #dc2626; font-weight: 600;">⚠ TRIP ativo</p>` : ''}
+            ${unidade.status === 'OFFLINE' && !unidade.nuvem
+              ? (unidade.tonViva
+                  ? `<p style="margin: 6px 0 0; font-size: 12px; color: #c2410c;"><strong>🟠 TON on-line, sem dado</strong> — verificar equipamento/Modbus (não é internet)</p>`
+                  : `<p style="margin: 6px 0 0; font-size: 12px; color: #4b5563;"><strong>⚫ Sem sinal da TON</strong> — verificar internet/energia no local</p>`)
+              : ''}
             ${unidade.equipamentosOffline && unidade.equipamentosOffline.length ? `<p style="margin: 6px 0 0; font-size: 12px; color: #b45309;"><strong>Sem comunicação:</strong> ${unidade.equipamentosOffline.join(', ')}</p>` : ''}
+            ${podeVerComiss && unidade.naoComissionados && unidade.naoComissionados.length ? `<p style="margin: 6px 0 0; font-size: 12px; color: #7c3aed;"><strong>⚑ Não comissionado:</strong> ${unidade.naoComissionados.join(', ')}</p>` : ''}
           </div>
         `;
 
@@ -511,6 +536,16 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
                   {resumoStatus.semInfo} sem info
                 </button>
               )}
+              {resumoStatus.semDado > 0 && (
+                <button
+                  onClick={() => setFiltro(f => (f === "semDado" ? null : "semDado"))}
+                  className={`flex items-center gap-1 ${filtro && filtro !== "semDado" ? "opacity-40 hover:opacity-100" : ""}`}
+                  title="TON on-line no broker, mas sem dado do equipamento (device/Modbus, não internet)"
+                >
+                  <i className="inline-block w-2 h-2 rounded-full" style={{ background: "#EA580C" }} />
+                  {resumoStatus.semDado} sem dado
+                </button>
+              )}
               {resumoStatus.alerta > 0 && (
                 <button
                   onClick={() => setFiltro(f => (f === "alerta" ? null : "alerta"))}
@@ -536,6 +571,16 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
                 <i className="inline-block w-2 h-2 rounded-full" style={{ background: "#10B981" }} />
                 {resumoStatus.online} ok
               </button>
+              {podeVerComiss && resumoStatus.naoComiss > 0 && (
+                <button
+                  onClick={() => setFiltro(f => (f === "naoComiss" ? null : "naoComiss"))}
+                  className={`flex items-center gap-1 ${filtro && filtro !== "naoComiss" ? "opacity-40 hover:opacity-100" : ""}`}
+                  title="Unidades com pontos ainda sem comissionamento (dado não validado)"
+                >
+                  <i className="inline-block w-2 h-2 rounded-full" style={{ background: "#7c3aed" }} />
+                  {resumoStatus.naoComiss} n/ comiss.
+                </button>
+              )}
             </div>
           </div>
 
@@ -594,11 +639,15 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
                 <span>Nuvem</span>
               </div>
               <div className="flex items-center gap-1">
+                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: "#EA580C" }} />
+                <span title="TON on-line, sem dado do equipamento (device/Modbus)">Sem dado</span>
+              </div>
+              <div className="flex items-center gap-1">
                 <div
                   className="w-2 h-2 rounded-full"
                   style={{ backgroundColor: getStatusColor("OFFLINE") }}
                 />
-                <span>Sem info</span>
+                <span title="TON sem sinal no broker (internet/energia)">Sem info</span>
               </div>
             </div>
           </div>

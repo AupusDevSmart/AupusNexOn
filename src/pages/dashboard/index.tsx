@@ -25,6 +25,23 @@ import { useNavigate } from "react-router-dom";
 
 
 /**
+ * Classificação de unidade pelo `tipo` do cadastro (Geração/Carga/Misto), robusta a
+ * ACENTO e CAIXA. O banco grava 'Geração'/'Carga'/'Misto'; o código antigo procurava
+ * 'UFV' e includes('geracao') (sem acento) — nada casava → "0 geradores / nenhuma UFV".
+ * Misto (carga + solar, ex.: UFV com secador) conta como geração no painel de usinas.
+ */
+const _normTipo = (t?: string | null): string =>
+  (t ?? "").toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+const ehUnidadeGeracao = (tipo?: string | null): boolean => {
+  const t = _normTipo(tipo);
+  return t === "geracao" || t === "misto" || t === "ufv" || t.includes("solar");
+};
+const ehUnidadeCarga = (tipo?: string | null): boolean => {
+  const t = _normTipo(tipo);
+  return t === "carga" || t === "outro";
+};
+
+/**
  * Página COA (Centro de Operações Avançadas) com Dados Reais
  *
  * AGORA USANDO 100% DADOS DO BACKEND - SEM MOCK!
@@ -53,6 +70,8 @@ export function DashboardPage() {
         potenciaCargaInstantanea: 0,
         energiaConsumidaHoje: 0,
         custoEnergiaHoje: 0,
+        reativoTotal: 0,
+        aparenteTotal: 0,
         totalEventos: 0,
         instalacoesMonitoradas: 0,
         unidadesGeradoras: 0,
@@ -71,23 +90,14 @@ export function DashboardPage() {
 
     data.plantas.forEach(planta => {
       planta.unidades.forEach(unidade => {
-        // Classificar tipo de unidade baseado no tipo
-        if (unidade.tipo === 'UFV' ||
-            unidade.tipo?.toLowerCase().includes('solar') ||
-            unidade.tipo?.toLowerCase().includes('geracao')) {
-          // GERAÇÃO
+        // Classificar pelo tipo do cadastro (Geração/Carga/Misto) — robusto a acento/caixa.
+        if (ehUnidadeGeracao(unidade.tipo)) {
+          // GERAÇÃO (inclui 'Misto' = UFV híbrida, ex.: UFV com secador)
           potenciaGeracaoInstantanea += unidade.metricas.potenciaAtual;
           energiaGeradaHoje += unidade.metricas.energiaHoje;
           unidadesGeradoras++;
-
-          // DEBUG: Log energia de cada unidade geradora
-          console.log(`[Dashboard] Unidade Geradora: ${unidade.nome}`, {
-            tipo: unidade.tipo,
-            energiaHoje: unidade.metricas.energiaHoje,
-            potenciaAtual: unidade.metricas.potenciaAtual
-          });
-        } else if (unidade.tipo === 'Carga' || unidade.tipo === 'OUTRO') {
-          // CARGA (inclui tipo 'Carga' e 'OUTRO' - híbridas, pivôs, etc)
+        } else if (ehUnidadeCarga(unidade.tipo)) {
+          // CARGA (inclui tipo 'Carga' e 'OUTRO' - pivôs, etc)
           potenciaCargaInstantanea += unidade.metricas.potenciaAtual;
           energiaConsumidaHoje += unidade.metricas.energiaHoje;
           unidadesConsumidoras++;
@@ -110,11 +120,15 @@ export function DashboardPage() {
       : energiaConsumidaHoje * 0.50; // Fallback: tarifa média R$ 0,50/kWh
 
     return {
-      potenciaGeracaoInstantanea,
+      // Potência (equipment-based, vinda do backend): geração = Σ inversores;
+      // carga = geração + líquido dos medidores (3 situações). Energia segue por perfil.
+      potenciaGeracaoInstantanea: data.resumoGeral.totalGeracao ?? potenciaGeracaoInstantanea,
       energiaGeradaHoje,
-      potenciaCargaInstantanea,
+      potenciaCargaInstantanea: data.resumoGeral.cargaTotal ?? potenciaCargaInstantanea,
       energiaConsumidaHoje,
       custoEnergiaHoje,
+      reativoTotal: data.resumoGeral.totalReativo ?? 0,
+      aparenteTotal: data.resumoGeral.totalAparente ?? 0,
       totalEventos: data.alertas.length,
       instalacoesMonitoradas: data.resumoGeral.totalUnidades,
       unidadesGeradoras,
@@ -288,8 +302,8 @@ export function DashboardPage() {
                 {/* 1. Potência de Geração */}
                 <MetricCard
                   title="Potência de Geração"
-                  value={metricas.potenciaGeracaoInstantanea}
-                  unit="kW"
+                  value={metricas.potenciaGeracaoInstantanea >= 10000 ? metricas.potenciaGeracaoInstantanea / 1000 : metricas.potenciaGeracaoInstantanea}
+                  unit={metricas.potenciaGeracaoInstantanea >= 10000 ? 'MW' : 'kW'}
                   subtitle={`${metricas.unidadesGeradoras} geradores ativos`}
                   icon={Zap}
                   color="text-blue-500"
@@ -307,8 +321,8 @@ export function DashboardPage() {
                 {/* 3. Potência de Carga */}
                 <MetricCard
                   title="Potência de Carga"
-                  value={metricas.potenciaCargaInstantanea}
-                  unit="kW"
+                  value={metricas.potenciaCargaInstantanea >= 10000 ? metricas.potenciaCargaInstantanea / 1000 : metricas.potenciaCargaInstantanea}
+                  unit={metricas.potenciaCargaInstantanea >= 10000 ? 'MW' : 'kW'}
                   subtitle={`${metricas.unidadesConsumidoras} cargas ativas`}
                   icon={Battery}
                   color="text-orange-500"
@@ -323,12 +337,13 @@ export function DashboardPage() {
                   color="text-red-500"
                 />
 
-                {/* 5. Custo da Energia */}
+                {/* 5. Reativo (Q) + Aparente (S) — no lugar do Custo de Energia */}
                 <MetricCard
-                  title="Custo da Energia"
-                  value={metricas.custoEnergiaHoje.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                  subtitle={data?.resumoGeral.custoTotalHoje !== undefined ? 'Tarifas reais' : 'Estimativa'}
-                  icon={TrendingUp}
+                  title="Reativo"
+                  value={metricas.reativoTotal}
+                  unit="kVAr"
+                  subtitle={`S = ${metricas.aparenteTotal.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} kVA`}
+                  icon={Activity}
                   color="text-yellow-500"
                 />
 
@@ -484,9 +499,8 @@ export function DashboardPage() {
                           <tbody>
                             {(() => {
                               const todasUnidades = data.plantas.flatMap(planta => planta.unidades);
-                              // Filtrar UFVs: tipo === 'UFV'
-                              const ufvs = todasUnidades.filter(unidade => unidade.tipo === 'UFV');
-                              console.log('[Dashboard] UFVs filtradas:', ufvs.length, ufvs.map(u => ({ nome: u.nome, tipo: u.tipo })));
+                              // Filtrar geração: tipo 'Geração'/'Misto' (robusto a acento/caixa)
+                              const ufvs = todasUnidades.filter(unidade => ehUnidadeGeracao(unidade.tipo));
 
                               if (ufvs.length === 0) {
                                 return (
@@ -578,9 +592,8 @@ export function DashboardPage() {
                           <tbody>
                             {(() => {
                               const todasUnidades = data.plantas.flatMap(planta => planta.unidades);
-                              // Filtrar CARGAS: tipo === 'Carga' OU tipo === 'OUTRO' (híbridas, pivôs, etc)
-                              const cargas = todasUnidades.filter(unidade => unidade.tipo === 'Carga' || unidade.tipo === 'OUTRO');
-                              console.log('[Dashboard] Cargas filtradas:', cargas.length, cargas.map(u => ({ nome: u.nome, tipo: u.tipo })));
+                              // Filtrar cargas: tipo 'Carga'/'OUTRO' (robusto a acento/caixa)
+                              const cargas = todasUnidades.filter(unidade => ehUnidadeCarga(unidade.tipo));
 
                               if (cargas.length === 0) {
                                 return (
