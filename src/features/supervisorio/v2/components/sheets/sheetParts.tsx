@@ -100,7 +100,7 @@ export function SheetShell({
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent
-        className="max-w-2xl w-[94vw] p-0 gap-0 overflow-hidden flex flex-col"
+        className="max-w-2xl w-[94vw] p-0 gap-0 overflow-hidden flex flex-col rounded-l-2xl shadow-2xl"
       >
         <div className="px-5 pt-4 pb-3 border-b shrink-0">
           <div className="flex items-center gap-2">
@@ -123,7 +123,17 @@ export function SheetShell({
             </div>
           )}
         </div>
-        <div className="flex-1 min-h-0 overflow-auto px-5 pb-6">{children}</div>
+        {/* Corpo rolável: scrollbar visível + fade no rodapé (dica de "tem mais abaixo")
+            + tabIndex p/ rolar com as setas do teclado (sem anel de foco). */}
+        <div className="relative flex-1 min-h-0">
+          <div
+            tabIndex={0}
+            className="h-full overflow-y-auto overflow-x-hidden px-5 pb-10 pt-2 outline-none [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/25 hover:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/40"
+          >
+            {children}
+          </div>
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 rounded-bl-2xl bg-gradient-to-t from-background via-background/85 to-transparent" />
+        </div>
       </DialogContent>
     </Dialog>
   );
