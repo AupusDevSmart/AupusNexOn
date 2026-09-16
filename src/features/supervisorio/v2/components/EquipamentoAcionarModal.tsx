@@ -198,7 +198,7 @@ export const EquipamentoAcionarModal: React.FC<EquipamentoAcionarModalProps> = (
         open={!!pontoPendingConfirm}
         onOpenChange={(v) => !v && setPontoPendingConfirm(null)}
       >
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md max-h-[90dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Confirmar acionamento</DialogTitle>
             <DialogDescription>

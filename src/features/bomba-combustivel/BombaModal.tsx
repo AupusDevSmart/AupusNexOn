@@ -64,7 +64,7 @@ export function BombaModal({ bomba, open, onOpenChange }: { bomba: Bomba | null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="w-[95vw] max-w-3xl max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Fuel className="h-5 w-5" /> {bomba?.nome ?? 'Bomba'}
