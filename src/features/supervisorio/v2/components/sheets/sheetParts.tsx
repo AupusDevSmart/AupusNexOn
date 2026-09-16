@@ -100,7 +100,7 @@ export function SheetShell({
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent
-        className="max-w-2xl w-[94vw] p-0 gap-0 overflow-hidden flex flex-col rounded-l-2xl shadow-2xl"
+        className="max-w-2xl w-[94vw] p-0 gap-0 overflow-hidden flex flex-col"
       >
         <div className="px-5 pt-4 pb-3 border-b shrink-0">
           <div className="flex items-center gap-2">
@@ -123,17 +123,7 @@ export function SheetShell({
             </div>
           )}
         </div>
-        {/* Corpo rolável: scrollbar visível + fade no rodapé (dica de "tem mais abaixo")
-            + tabIndex p/ rolar com as setas do teclado (sem anel de foco). */}
-        <div className="relative flex-1 min-h-0">
-          <div
-            tabIndex={0}
-            className="h-full overflow-y-auto overflow-x-hidden px-5 pb-10 pt-2 outline-none [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/25 hover:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/40"
-          >
-            {children}
-          </div>
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 rounded-bl-2xl bg-gradient-to-t from-background via-background/85 to-transparent" />
-        </div>
+        <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-6">{children}</div>
       </DialogContent>
     </Dialog>
   );
@@ -142,7 +132,7 @@ export function SheetShell({
 /** Título de bloco (uppercase, mudo) — igual aos <h4> do mockup. */
 export function GrupoTitulo({ children, right }: { children: ReactNode; right?: ReactNode }) {
   return (
-    <div className="flex items-center gap-2 pt-5 pb-2">
+    <div className="flex items-center gap-2 pt-3 pb-1.5">
       <h4 className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold flex-1">{children}</h4>
       {right}
     </div>
@@ -157,7 +147,7 @@ export function EstadoHero({
   const fill = tone === 'bad' ? 'bg-red-500' : tone === 'warn' ? 'bg-amber-500' : 'bg-primary';
   const b = bars ?? (pct != null ? 3 : 0);
   return (
-    <div className="rounded-lg border p-3.5 flex items-center gap-3">
+    <div className="rounded-lg border p-3 flex items-center gap-3">
       <span className={`w-3 h-3 rounded-full shrink-0 ${dot}`} />
       <div className="flex-1 min-w-0">
         <b className="text-base">{label}</b>
@@ -185,9 +175,9 @@ export function KpiGrid({ items, cols = 2 }: { items: Kpi[]; cols?: number }) {
   return (
     <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0,1fr))` }}>
       {items.map((k, i) => (
-        <div key={i} className="rounded-lg border p-3">
+        <div key={i} className="rounded-lg border p-2.5">
           <div className="text-[11px] text-muted-foreground">{k.label}</div>
-          <div className="text-xl font-bold mt-0.5">{k.value} {k.unit && <em className="not-italic text-xs font-medium text-muted-foreground">{k.unit}</em>}</div>
+          <div className="text-lg font-bold mt-0.5">{k.value} {k.unit && <em className="not-italic text-xs font-medium text-muted-foreground">{k.unit}</em>}</div>
           {k.hint && <div className="text-[11px] text-muted-foreground mt-0.5">{k.hint}</div>}
         </div>
       ))}
@@ -201,7 +191,7 @@ export function Section({ rows }: { rows: Row[] }) {
   return (
     <div className="rounded-lg border divide-y text-sm">
       {rows.map((r, i) => (
-        <div key={i} className="flex items-start px-3.5 py-2 gap-3">
+        <div key={i} className="flex items-start px-3.5 py-1.5 gap-3">
           <div className="flex-1 text-muted-foreground">
             {r.k}{r.sub && <div className="text-[11px] text-muted-foreground/70 mt-0.5">{r.sub}</div>}
           </div>
@@ -218,11 +208,11 @@ export function FasesTable({
 }: { head: [string, ReactNode, ReactNode]; rows: Array<[string, ReactNode, ReactNode]> }) {
   return (
     <div className="rounded-lg border overflow-hidden text-sm">
-      <div className="flex bg-muted/40 text-[11px] uppercase tracking-wide text-muted-foreground px-3.5 py-2">
+      <div className="flex bg-muted/40 text-[11px] uppercase tracking-wide text-muted-foreground px-3.5 py-1.5">
         <div className="flex-1">{head[0]}</div><div className="flex-1 text-right">{head[1]}</div><div className="flex-1 text-right">{head[2]}</div>
       </div>
       {rows.map((r, i) => (
-        <div key={i} className="flex px-3.5 py-2 border-t">
+        <div key={i} className="flex px-3.5 py-1.5 border-t">
           <div className="flex-1 text-muted-foreground">{r[0]}</div>
           <div className="flex-1 text-right font-medium">{r[1]}</div>
           <div className="flex-1 text-right font-medium">{r[2]}</div>
@@ -257,7 +247,7 @@ export function MiniChart({ serie, unit }: { serie: number[]; unit?: string }) {
     const area = `${line} L${pts[pts.length - 1][0].toFixed(1)} ${h} L${pts[0][0].toFixed(1)} ${h} Z`;
     return { line, area, w, h };
   }, [serie]);
-  if (!path) return <div className="h-24 grid place-items-center text-xs text-muted-foreground rounded-lg border">Sem dados de curva {unit ? `(${unit})` : ''}</div>;
+  if (!path) return <div className="h-16 grid place-items-center text-xs text-muted-foreground rounded-lg border">Sem dados de curva {unit ? `(${unit})` : ''}</div>;
   return (
     <div className="rounded-lg border p-3">
       <svg width="100%" viewBox={`0 0 ${path.w} ${path.h}`} preserveAspectRatio="none" style={{ display: 'block' }}>
