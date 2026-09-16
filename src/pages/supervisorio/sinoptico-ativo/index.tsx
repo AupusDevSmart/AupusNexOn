@@ -87,6 +87,7 @@ import { DiagramV2Wrapper } from '@/features/supervisorio/v2/DiagramV2Wrapper';
 
 // Overview do sinoptico (KPIs, grandezas, demanda, alarmes, grafico) ao redor do diagrama
 import { AlarmesAtivosPanel } from '@/features/supervisorio/sinoptico/components/AlarmesAtivosPanel';
+import { SinopticoOverview } from '@/features/supervisorio/sinoptico/components/SinopticoOverview';
 import { ConfigPontosModal } from '@/features/supervisorio/sinoptico/components/ConfigPontosModal';
 
 // Tipos - CORRIGIDOS com interfaces locais caso os imports falhem
@@ -3872,10 +3873,16 @@ if (import.meta.env.PROD) {
             </div>
           )}
 
-          {/* V2: Diagrama Unifilar — só o diagrama. O entorno (KPIs, grandezas, demanda,
-              gráfico) foi pra Visão Geral; os alarmes viraram a aba "Alarmes". */}
+          {/* V2: Diagrama Unifilar + Overview (KPIs, grandezas, demanda, alarmes, gráfico).
+              TEMPORÁRIO p/ a reunião: restaurado o entorno completo em volta do diagrama —
+              duplica o que a Visão Geral já mostra (aceito por ora). */}
           {unidadeId && sinopticoTab === 'unifilar' && (
-            <div className="flex-1 min-h-0 overflow-hidden flex rounded-sm border border-border">
+            <div className="flex-1 min-h-0 overflow-hidden">
+              <SinopticoOverview
+                unidadeId={unidadeId}
+                unidadeNome={unidadeAtual?.nome}
+                plantaNome={plantaAtual?.nome}
+              >
               <DiagramV2Wrapper
                 unidadeIdFromUrl={unidadeId}
                 unidadeNome={unidadeAtual?.nome}
@@ -4015,6 +4022,7 @@ if (import.meta.env.PROD) {
                   }
                 }}
               />
+              </SinopticoOverview>
             </div>
           )}
 
