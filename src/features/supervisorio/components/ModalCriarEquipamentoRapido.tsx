@@ -110,7 +110,7 @@ export function ModalCriarEquipamentoRapido({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="w-[95vw] sm:max-w-[500px] max-h-[90dvh] overflow-y-auto">
+      <DialogContent className="w-[95vw] sm:max-w-[500px] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-lg font-semibold">
             <Zap className="h-5 w-5 text-yellow-500" />

@@ -1513,7 +1513,7 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
           </div>
         </div>
         <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
-          <DialogContent className="sm:max-w-md max-h-[90dvh] overflow-y-auto">
+          <DialogContent className="sm:max-w-md overflow-y-auto">
             <DialogHeader><DialogTitle className="flex items-center gap-2"><FolderPlus className="h-5 w-5" />Novo Projeto IoT</DialogTitle></DialogHeader>
             <div className="space-y-4 py-2"><div className="space-y-2"><Label htmlFor="pn">Nome do Projeto</Label><Input id="pn" placeholder="Ex: Monitoramento Usina" value={newProjectName} onChange={e => setNewProjectName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') createProject(); }} autoFocus /></div></div>
             <DialogFooter><Button variant="outline" onClick={() => setShowCreateModal(false)}>Cancelar</Button><Button onClick={createProject} disabled={!newProjectName.trim()}>Criar Projeto</Button></DialogFooter>
@@ -1736,7 +1736,7 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
       {/* Component Properties Modal */}
       {/* Associação na CRIAÇÃO: "qual ativo do unifilar é este?" */}
       <Dialog open={!!associarComp} onOpenChange={(o) => { if (!o) setAssociarComp(null); }}>
-        <DialogContent className="sm:max-w-md max-h-[90dvh] overflow-y-auto">
+        <DialogContent className="sm:max-w-md overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               Qual {String(associarComp?.type || '').toLowerCase().startsWith('ton')
@@ -2009,7 +2009,7 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
                 Configurar I/O
               </Button>
             )}
-            <Button variant="outline" onClick={() => setPropsModalOpen(false)}>Fechar</Button>
+            {/* "Fechar" removido: "Salvar" já fecha (saveComponentProps). O X do sheet cancela sem salvar. */}
             <Button onClick={saveComponentProps}>Salvar</Button>
           </div>
         </SheetContent>
@@ -2141,7 +2141,7 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
 
       {/* Create Project Modal */}
       <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
-        <DialogContent className="sm:max-w-md max-h-[90dvh] overflow-y-auto">
+        <DialogContent className="sm:max-w-md overflow-y-auto">
           <DialogHeader><DialogTitle className="flex items-center gap-2"><FolderPlus className="h-5 w-5" />Novo Projeto IoT</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2"><div className="space-y-2"><Label htmlFor="project-name">Nome do Projeto</Label><Input id="project-name" placeholder="Ex: Monitoramento Usina" value={newProjectName} onChange={e => setNewProjectName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') createProject(); }} autoFocus /></div></div>
           <DialogFooter><Button variant="outline" onClick={() => setShowCreateModal(false)}>Cancelar</Button><Button onClick={createProject} disabled={!newProjectName.trim()}>Criar Projeto</Button></DialogFooter>
@@ -2282,7 +2282,7 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
       {/* Painel de Comando de Teste (modo Simular) — data-driven pelos pontos cadastrados, em TESTE/ */}
       {cmdSimModal && (
         <Dialog open={true} onOpenChange={() => setCmdSimModal(null)}>
-          <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogContent className="max-w-lg overflow-y-auto">
             <DialogHeader>
               <DialogTitle>🧪 Comando de Teste (Simulação)</DialogTitle>
             </DialogHeader>
@@ -2425,7 +2425,7 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
       {/* Bench Test Modal */}
       {benchTestModal && window.BENCH_TESTS && (
         <Dialog open={true} onOpenChange={() => setBenchTestModal(null)}>
-          <DialogContent className="sm:max-w-3xl max-h-[90dvh] overflow-y-auto">
+          <DialogContent className="sm:max-w-3xl overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Zap className="h-5 w-5" />
@@ -2612,7 +2612,7 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
       {/* Firmware Build & Flash Modal */}
       {firmwareModal && (
         <Dialog open={true} onOpenChange={() => setFirmwareModal(null)}>
-          <DialogContent className="w-[95vw] sm:max-w-2xl max-h-[90dvh] overflow-y-auto">
+          <DialogContent className="w-[95vw] sm:max-w-2xl overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Zap className="h-5 w-5" />

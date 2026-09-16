@@ -101,7 +101,6 @@ export function SheetShell({
     <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent
         className="max-w-2xl w-[94vw] p-0 gap-0 overflow-hidden flex flex-col"
-        style={{ height: '88vh', maxHeight: '88vh' }}
       >
         <div className="px-5 pt-4 pb-3 border-b shrink-0">
           <div className="flex items-center gap-2">

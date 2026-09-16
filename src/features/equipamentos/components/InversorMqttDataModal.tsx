@@ -92,7 +92,7 @@ export function InversorMqttDataModal({ equipamentoId, open, onOpenChange, onCon
     // Mostrar modal com gráficos mesmo sem dados MQTT
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-6xl max-h-[90dvh] overflow-y-auto">
+        <DialogContent className="max-w-6xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Zap className="h-5 w-5" />
@@ -198,7 +198,7 @@ export function InversorMqttDataModal({ equipamentoId, open, onOpenChange, onCon
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-7xl max-h-[95dvh] overflow-y-auto">
+      <DialogContent className="max-w-7xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center justify-between">
             <div>

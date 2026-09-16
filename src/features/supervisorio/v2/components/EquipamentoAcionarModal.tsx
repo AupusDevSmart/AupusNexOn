@@ -126,7 +126,7 @@ export const EquipamentoAcionarModal: React.FC<EquipamentoAcionarModalProps> = (
   return (
     <>
       <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-        <DialogContent className="sm:max-w-lg max-h-[80dvh] overflow-y-auto">
+        <DialogContent className="sm:max-w-lg overflow-y-auto">
           <DialogHeader>
             <div className="flex items-center justify-between gap-2 pr-7">
               <DialogTitle>{equipamento.nome}</DialogTitle>
@@ -198,7 +198,7 @@ export const EquipamentoAcionarModal: React.FC<EquipamentoAcionarModalProps> = (
         open={!!pontoPendingConfirm}
         onOpenChange={(v) => !v && setPontoPendingConfirm(null)}
       >
-        <DialogContent className="sm:max-w-md max-h-[90dvh] overflow-y-auto">
+        <DialogContent className="sm:max-w-md overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Confirmar acionamento</DialogTitle>
             <DialogDescription>

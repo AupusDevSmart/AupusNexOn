@@ -227,7 +227,7 @@ export const TonAiConfigModal: React.FC<TonAiConfigModalProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="sm:max-w-3xl max-h-[85dvh] overflow-y-auto">
+      <DialogContent className="sm:max-w-3xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{tonNome ?? 'TON'} · Configuracao de AIs</DialogTitle>
           <DialogDescription className="text-xs">

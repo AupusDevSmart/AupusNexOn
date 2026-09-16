@@ -123,7 +123,7 @@ export const EquipamentoCommandModal: React.FC<EquipamentoCommandModalProps> = (
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="sm:max-w-2xl max-h-[85dvh] overflow-y-auto">
+      <DialogContent className="sm:max-w-2xl overflow-y-auto">
         <DialogHeader>
           <div className="flex items-center justify-between gap-2 pr-7">
             <DialogTitle>{equipamento.nome}</DialogTitle>

@@ -61,7 +61,7 @@ export function ConfigGrandezasModal({ open, onOpenChange, unidadeId }: ConfigGr
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[95vw] max-w-md max-h-[90dvh] overflow-y-auto">
+      <DialogContent className="w-[95vw] max-w-md overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Medidores das grandezas</DialogTitle>
           <DialogDescription>

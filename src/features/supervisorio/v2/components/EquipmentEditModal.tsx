@@ -65,7 +65,7 @@ export const EquipmentEditModal: React.FC<EquipmentEditModalProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="w-[95vw] sm:max-w-[500px] max-h-[90dvh] overflow-y-auto">
+      <DialogContent className="w-[95vw] sm:max-w-[500px] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Editar Equipamento</DialogTitle>
           <DialogDescription>

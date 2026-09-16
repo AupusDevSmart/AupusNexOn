@@ -179,7 +179,7 @@ export function EquipamentoCadastroModal({ open, onClose, unidadeId, mode, equip
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="w-[95vw] sm:max-w-[480px] max-h-[90dvh] overflow-y-auto">
+      <DialogContent className="w-[95vw] sm:max-w-[480px] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{mode === 'create' ? 'Novo equipamento' : 'Editar equipamento'}</DialogTitle>
           <DialogDescription className="text-xs">

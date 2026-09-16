@@ -148,7 +148,7 @@ export const DeviceIoConfigModal: React.FC<DeviceIoConfigModalProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="sm:max-w-3xl max-h-[85dvh] overflow-y-auto">
+      <DialogContent className="sm:max-w-3xl overflow-y-auto">
         <DialogHeader><DialogTitle>Configuração de I/O — {compNome}</DialogTitle></DialogHeader>
 
         <div className="space-y-4 py-1">
@@ -291,7 +291,7 @@ export const DeviceIoConfigModal: React.FC<DeviceIoConfigModalProps> = ({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Fechar</Button>
+          {/* "Fechar" removido: "Salvar" já fecha; o X do modal cancela sem salvar. */}
           <Button onClick={() => { onSave(buildConfig()); onClose(); }}>Salvar</Button>
         </DialogFooter>
       </DialogContent>

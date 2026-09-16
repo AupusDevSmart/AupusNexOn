@@ -1252,7 +1252,7 @@ export function SinopticoGraficosV2({
 
       {/* Modal Expandido - Gráfico de Demanda */}
       <Dialog open={modalExpandidoOpen} onOpenChange={setModalExpandidoOpen}>
-        <DialogContent className="flex flex-col gap-2 p-3 w-screen h-[100dvh] max-w-none rounded-none sm:rounded-none md:w-full md:h-auto md:max-h-[90dvh] md:max-w-[90vw] md:gap-4 md:p-6 md:rounded-lg">
+        <DialogContent className="flex flex-col gap-2 p-3 w-screen h-[100dvh] max-w-none rounded-none sm:rounded-none md:w-full md:h-auto md:max-w-[90vw] md:gap-4 md:p-6 md:rounded-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Zap className="h-5 w-5 text-yellow-500" />
@@ -1352,7 +1352,7 @@ export function SinopticoGraficosV2({
 
       {/* Modal Expandido - Gráfico de Tensão */}
       <Dialog open={modalTensaoOpen} onOpenChange={setModalTensaoOpen}>
-        <DialogContent className="flex flex-col gap-2 p-3 w-screen h-[100dvh] max-w-none rounded-none sm:rounded-none md:w-full md:h-auto md:max-h-[90dvh] md:max-w-[90vw] md:gap-4 md:p-6 md:rounded-lg">
+        <DialogContent className="flex flex-col gap-2 p-3 w-screen h-[100dvh] max-w-none rounded-none sm:rounded-none md:w-full md:h-auto md:max-w-[90vw] md:gap-4 md:p-6 md:rounded-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Activity className="h-5 w-5 text-blue-500" />
@@ -1509,7 +1509,7 @@ export function SinopticoGraficosV2({
 
       {/* Modal Expandido - Gráfico de Fator de Potência */}
       <Dialog open={modalFPOpen} onOpenChange={setModalFPOpen}>
-        <DialogContent className="flex flex-col gap-2 p-3 w-screen h-[100dvh] max-w-none rounded-none sm:rounded-none md:w-full md:h-auto md:max-h-[90dvh] md:max-w-[90vw] md:gap-4 md:p-6 md:rounded-lg">
+        <DialogContent className="flex flex-col gap-2 p-3 w-screen h-[100dvh] max-w-none rounded-none sm:rounded-none md:w-full md:h-auto md:max-w-[90vw] md:gap-4 md:p-6 md:rounded-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <TrendingUp className="h-5 w-5 text-purple-500" />

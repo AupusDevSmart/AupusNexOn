@@ -74,19 +74,21 @@ export function DisjuntorSheet({ equipamentoId, onClose }: { equipamentoId: stri
   // bundle chega e revela que está desabilitado). A configuração é na edição do unifilar.
   const scsOff = !!bundle && !bundle.scs.habilitado;
   useEffect(() => { if (scsOff) onClose(); }, [scsOff, onClose]);
-  if (scsOff) return null;
+  // Não renderiza o Dialog enquanto carrega o bundle NEM se o SCS está desabilitado:
+  // evita o "abre e fecha rápido" (flash) num DJ que não é pra ser clicável.
+  if (loading || scsOff) return null;
 
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="max-w-lg p-0 gap-0 overflow-hidden">
-        <div className="px-5 py-4 border-b flex items-center gap-2">
+      <DialogContent className="max-w-lg p-0 gap-0 overflow-hidden flex flex-col">
+        <div className="px-5 py-4 border-b flex items-center gap-2 shrink-0">
           <h2 className="text-lg font-bold flex-1 truncate">{nome}</h2>
           {bundle && !bundle.scs.habilitado && (
             <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">SCS desabilitado</span>
           )}
         </div>
 
-        <div className="max-h-[75vh] overflow-auto px-5 pb-6">
+        <div className="flex-1 min-h-0 overflow-auto px-5 pb-6">
           {loading && <div className="py-8 text-center text-sm text-muted-foreground">Carregando…</div>}
           {!loading && !bundle && <div className="py-8 text-center text-sm text-muted-foreground">Sem dados do disjuntor.</div>}
 
