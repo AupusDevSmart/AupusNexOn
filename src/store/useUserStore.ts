@@ -11,6 +11,7 @@ type UserStoreState = {
   getUserRole: () => string;
   isSuperAdmin: () => boolean;
   isAdmin: () => boolean;
+  isCliente: () => boolean;
   hasPermission: (permission: string) => boolean;
 };
 
@@ -80,6 +81,10 @@ export const useUserStore = create(
         const role = get().getUserRole();
         return role === 'admin' || role === 'super_admin';
       },
+
+      // Cliente = proprietário da usina. Por enquanto vê só monitoramento (COA +
+      // Sinóptico › Visão Geral); nada de Cadastros. Ajuste part-by-part.
+      isCliente: () => get().getUserRole() === 'proprietario',
 
       // Checa se o usuario possui uma permission Spatie (mesma fonte usada pela
       // navegacao: `acessivel` carrega os nomes de all_permissions vindos do backend).

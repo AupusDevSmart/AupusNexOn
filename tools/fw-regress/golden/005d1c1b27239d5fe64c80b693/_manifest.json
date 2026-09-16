@@ -1,0 +1,40 @@
+{
+  "projeto_id": "005d1c1b27239d5fe64c80b693",
+  "nome": "SÍRIUS NORTE",
+  "firmwares": [
+    {
+      "label": "00__TON3",
+      "name": "TON3",
+      "tonType": "ton3",
+      "equipamentoId": "cmr3l82aw2n38jqjc99hiwqn8",
+      "topicBase": "",
+      "nFiles": 20,
+      "warnings": [
+        "Sem WiFi nem LoRa — não conseguirá enviar dados",
+        "Sem dispositivos de medição conectados"
+      ],
+      "files": [
+        "include/adc.h",
+        "include/config.h",
+        "include/diag.h",
+        "include/eth.h",
+        "include/hal.h",
+        "include/inputs.h",
+        "include/outputs.h",
+        "include/relays.h",
+        "include/sd_buffer.h",
+        "platformio.ini",
+        "src/adc.cpp",
+        "src/diag.cpp",
+        "src/eth.cpp",
+        "src/inputs.cpp",
+        "src/main.cpp",
+        "src/mqtt.cpp",
+        "src/mqtt.h",
+        "src/outputs.cpp",
+        "src/relays.cpp",
+        "src/sd_buffer.cpp"
+      ]
+    }
+  ]
+}

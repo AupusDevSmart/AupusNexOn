@@ -1,0 +1,41 @@
+{
+  "projeto_id": "1ea50c270816bd7cb0f50fce92",
+  "nome": "IOT",
+  "firmwares": [
+    {
+      "label": "00__TON1",
+      "name": "TON1",
+      "tonType": "ton1",
+      "equipamentoId": "cmpn1ei9x0i4rjq5jwc5lziul",
+      "topicBase": "JOAO/GO/CF/UFV",
+      "nFiles": 24,
+      "warnings": [],
+      "files": [
+        "include/adc.h",
+        "include/config.h",
+        "include/diag.h",
+        "include/eth.h",
+        "include/hal.h",
+        "include/inputs.h",
+        "include/modbus_meter.h",
+        "include/ota.h",
+        "include/outputs.h",
+        "include/relays.h",
+        "include/sd_buffer.h",
+        "platformio.ini",
+        "src/adc.cpp",
+        "src/diag.cpp",
+        "src/eth.cpp",
+        "src/inputs.cpp",
+        "src/main.cpp",
+        "src/modbus_meter.cpp",
+        "src/mqtt.cpp",
+        "src/mqtt.h",
+        "src/ota.cpp",
+        "src/outputs.cpp",
+        "src/relays.cpp",
+        "src/sd_buffer.cpp"
+      ]
+    }
+  ]
+}

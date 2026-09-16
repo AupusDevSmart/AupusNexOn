@@ -350,7 +350,7 @@ export function DashboardPage() {
                 {/* 6. Instalações Monitoradas */}
                 <MetricCard
                   title="Instalações Monitoradas"
-                  value={data?.resumoGeral.unidadesOnline || 0}
+                  value={data?.resumoGeral.unidadesMonitoradas ?? data?.resumoGeral.unidadesOnline ?? 0}
                   subtitle={`de ${data?.resumoGeral.totalUnidades || 0} total`}
                   icon={Activity}
                   color="text-indigo-500"

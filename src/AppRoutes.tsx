@@ -57,6 +57,18 @@ function RequirePermission({
   return <>{children}</>;
 }
 
+/**
+ * Barra rotas de gestão para o CLIENTE (proprietário), que por ora só monitora.
+ * Esconder o menu não basta — a URL precisa redirecionar. Ajuste part-by-part.
+ */
+function RequireNotCliente({ children }: { children: React.ReactNode }) {
+  const isCliente = useUserStore((state) => state.isCliente());
+  if (isCliente) {
+    return <Navigate to="/dashboard" replace />;
+  }
+  return <>{children}</>;
+}
+
 const CadastroUnidadesPage = lazy(() =>
   import("@/pages/supervisorio/cadastro-unidades").then((module) => ({
     default: module.CadastroUnidadesPage,
@@ -331,35 +343,43 @@ export const appRoutes = createBrowserRouter([
       {
         path: "cadastros/usuarios",
         element: (
-          <FeatureWrapper feature="Usuarios">
+          <RequireNotCliente>
+            <FeatureWrapper feature="Usuarios">
             <UsuariosPage />
           </FeatureWrapper>
+          </RequireNotCliente>
         ),
       },
       {
         path: "cadastros/plantas",
         element: (
-          <FeatureWrapper feature="Plantas">
+          <RequireNotCliente>
+            <FeatureWrapper feature="Plantas">
             {/* Subgrupo, demandas e checkboxes de perfil sao detalhe de
                 faturamento: o supervisorio precisa deles, o Service nao. */}
             <PlantasPage mostrarTarifacao />
           </FeatureWrapper>
+          </RequireNotCliente>
         ),
       },
       {
         path: "cadastros/equipamentos",
         element: (
-          <FeatureWrapper feature="Equipamentos">
+          <RequireNotCliente>
+            <FeatureWrapper feature="Equipamentos">
             <EquipamentosPage mostrarSupervisorio />
           </FeatureWrapper>
+          </RequireNotCliente>
         ),
       },
       {
         path: "cadastros/concessionarias",
         element: (
-          <FeatureWrapper feature="Concessionarias">
+          <RequireNotCliente>
+            <FeatureWrapper feature="Concessionarias">
             <ConcessionariasPage />
           </FeatureWrapper>
+          </RequireNotCliente>
         ),
       },
       {

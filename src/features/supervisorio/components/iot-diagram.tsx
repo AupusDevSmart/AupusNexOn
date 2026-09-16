@@ -1,18 +1,19 @@
-import { useEffect, useRef, useCallback, useState, Fragment } from 'react';
+import { useEffect, useRef, useCallback, useState, useMemo, Fragment } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Plus, Play, Download, Edit3, Maximize2, Minimize2, ZoomIn, Trash2, FolderPlus, Move, MousePointer2, Save, X, Network, Zap, Terminal, Power } from 'lucide-react';
-import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { ESPLoader, Transport } from 'esptool-js';
 import { api } from '@/config/api';
 import { BASE_URL } from '@/config/constants';
-import { iotApiService, type IoTProjeto, type IoTDiagrama } from '@/services/iot.services';
+import { iotApiService, type IoTProjeto, type IoTDiagrama, type VinculosBoPorEquip } from '@/services/iot.services';
 import { TonBoConfigModal } from './TonBoConfigModal';
 import { TonBiConfigModal } from './TonBiConfigModal';
 import { TonAiConfigModal } from './TonAiConfigModal';
-import { EquipamentoCommandModal } from '../v2/components/EquipamentoCommandModal';
+import { ConfigScsTonModal } from './ConfigScsTonModal';
+import { VinculosTonSheet } from './VinculosTonSheet';
 import { DeviceIoConfigModal, tipoTemIo, type DeviceIoConfig } from './DeviceIoConfigModal';
 import { dominioDoTipo } from '../v2/utils/dominioEquipamento';
 
@@ -84,6 +85,14 @@ async function flashESP32(firmwareBase64: string, logFn: FlashLog): Promise<bool
   const portInfo = port.getInfo?.() || {};
   const chipName = VENDOR_NAMES[portInfo.usbVendorId] || 'Dispositivo serial';
   logFn(`Dispositivo: ${chipName} (VID:0x${(portInfo.usbVendorId || 0).toString(16).toUpperCase()})`);
+
+  // Se a porta ficou ABERTA de uma tentativa anterior (o esptool não fechou, ou um
+  // monitor serial na mesma aba a segura), fecha antes — senão o open() falha com
+  // "The port is already open". readable/writable != null indica porta aberta.
+  if (port.readable || port.writable) {
+    logFn('Porta estava aberta — fechando antes de gravar...');
+    try { await port.close(); } catch { /* ignora */ }
+  }
 
   const transport = new Transport(port);
 
@@ -197,7 +206,7 @@ function ensureIoTScripts(): Promise<void> {
     //
     // O catalogo de dispositivos foi movido pro backend (GET /iot-catalog/device-catalog.js)
     // — ele revalida sozinho via ETag. Os demais ainda sao estaticos.
-    const IOT_SCRIPTS_VERSION = '20260901-multiwifi';
+    const IOT_SCRIPTS_VERSION = '20260916-crc-lastfail';
     const scripts = [
       `${BASE_URL}/iot-catalog/device-catalog.js`,
       `/iot-firmware-base.v2.js?v=${IOT_SCRIPTS_VERSION}`,
@@ -246,7 +255,14 @@ function ensureIoTScripts(): Promise<void> {
       };
       document.body.appendChild(el);
     };
-    loadNext();
+    // Fase 2: busca a paleta do DB ANTES de carregar o iot-diagram.v2.js.
+    // Se falhar, __IOT_PALETTE__ fica undefined -> o editor usa a paleta EMBUTIDA
+    // (fallback; nunca abre quebrado).
+    fetch(`${BASE_URL}/iot-catalog/palette`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { (window as any).__IOT_PALETTE__ = (j && (j.data || j)) || undefined; })
+      .catch(() => { /* mantem paleta embutida */ })
+      .finally(() => loadNext());
   });
   return (window as any).__iotScriptsPromise;
 }
@@ -260,6 +276,28 @@ function groupBosByDevice(bos: any[]): Record<string, any[]> {
     (g[dev] = g[dev] || []).push(b);
   }
   return g;
+}
+
+/**
+ * FASE 6 — devolve um editor ESPELHO com props.io_config.bo de cada relé hidratado a
+ * partir da projeção dos vínculos (iot_vinculos/modbus_bo). NÃO muta o editor real:
+ * clona só os componentes que mudam; o gerador lê components/connections e o resto do
+ * editor (connections/loraAutonomous/simulate) é preservado por spread. Merge por
+ * comando — o vínculo sobrescreve, o props preenche lacuna (fallback reversível).
+ * Componentes sem vínculo ficam intactos. Byte-idêntico validado no harness fw-regress.
+ */
+function hydrateIoConfigBo(editor: any, vinculosBo: VinculosBoPorEquip): any {
+  if (!editor || !Array.isArray(editor.components)) return editor;
+  const components = editor.components.map((c: any) => {
+    const eq = (c?.props?.equipamento_id || '').trim();
+    const vin = eq ? vinculosBo[eq] : undefined;
+    if (!vin || Object.keys(vin).length === 0) return c; // sem vínculo: props intacto
+    const propsBo =
+      c.props?.io_config?.bo && typeof c.props.io_config.bo === 'object' ? c.props.io_config.bo : {};
+    const bo = { ...propsBo, ...vin };
+    return { ...c, props: { ...c.props, io_config: { ...(c.props?.io_config || {}), bo } } };
+  });
+  return { ...editor, components };
 }
 
 export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramProps) {
@@ -297,12 +335,40 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
   const [aiConfigTonId, setAiConfigTonId] = useState<string | null>(null);
   const [aiConfigTonNome, setAiConfigTonNome] = useState<string | undefined>(undefined);
 
-  // Modal de COMANDOS reais (relés/transistores/status) do TON — reusa o do unifilar.
-  const [cmdRealModal, setCmdRealModal] = useState<{ id: string; nome: string; topico_mqtt?: string; tipo?: string } | null>(null);
+  // Modal "Configurações SCS" da TON — associa cada device conectado (ex.: PM) a um
+  // elemento do unifilar com SCS habilitado (Fase 6, reestruturação IoT).
+  const [scsConfigTon, setScsConfigTon] = useState<{ id: string; nome?: string } | null>(null);
+
+  // Sheet de vínculos da TON (Comando/Status/Medições) — Fase 7.
+  const [vinculosTon, setVinculosTon] = useState<{ id: string; nome: string; aba: 'comando' | 'status' | 'medicao' } | null>(null);
+
+  /**
+   * Campos do sheet de propriedades (Fase 7): o "Nome" vira **TAG**, e o vínculo
+   * com o equipamento do NexON some da tela nas TONs — ele é criado e associado
+   * automaticamente no save (ensureTonEquipamentos), então não há o que digitar.
+   */
+  const camposProps = useMemo(() => {
+    const isTon = String(propsComp?.type ?? '').toLowerCase().startsWith('ton');
+    return ((propsComp?._def?.fields ?? []) as any[])
+      .filter((f: any) => !(isTon && f.key === 'equipamento_id'))
+      .map((f: any) => (f.key === 'name' ? { ...f, label: 'TAG' } : f));
+  }, [propsComp]);
 
   // Modal de I/O genérico (catálogo-driven) — relé e devices com BI/BO no catálogo.
   const [ioModalOpen, setIoModalOpen] = useState(false);
+  // FASE 6: bo lido do VÍNCULO (fonte da verdade) ao abrir "Configurar I/O".
+  // null = ainda não buscado / falhou → o modal cai no props.io_config.bo (fallback).
+  const [ioModalVinculoBo, setIoModalVinculoBo] = useState<Record<string, any> | null>(null);
   const [propsValues, setPropsValues] = useState<Record<string, any>>({});
+  // io_config passado ao DeviceIoConfigModal: bi vem do props; bo vem do vínculo
+  // (merge com props como fallback, pra nunca sumir config na tela). Memoizado pra
+  // não re-inicializar o modal a cada render.
+  const ioModalConfig = useMemo(() => {
+    const io = (propsValues.io_config ?? {}) as Record<string, any>;
+    const propsBo = (io.bo ?? {}) as Record<string, any>;
+    const bo = ioModalVinculoBo == null ? propsBo : { ...propsBo, ...ioModalVinculoBo };
+    return { ...io, bo };
+  }, [propsValues.io_config, ioModalVinculoBo]);
   // Disjuntores da unidade (unifilar) — pra associar um Power Meter ao disjuntor que ele
   // mede. O PM é só-IoT; sua exibição acontece via o disjuntor associado (Fase C).
   const [disjuntoresUnidade, setDisjuntoresUnidade] = useState<Array<{ id: string; nome: string }>>([]);
@@ -691,19 +757,13 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
   const abrirAssociar = async (comp: any) => {
     if (!comp || !unidadeId) return;
     const tipo = String(comp.type || '').toLowerCase();
-    const isTon = tipo.startsWith('ton');
+    // TON e' iot-only e autossuficiente na tabela — NAO associa a unifilar (nao ha
+    // TON no unifilar). O backend cria+associa o equipamento da TON no save
+    // (ensureTonEquipamentos). Idem infra (roteador/broker/conversor/datalogger).
     const linkavel =
-      isTon ||
       ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao', 'bomba', 'carregador'].includes(tipo);
     if (!linkavel) return;
     const lista = await listarAtivosParaVinculo(comp);
-    // TON sem nenhum equipamento livre → NÃO pergunta: o backend (ensureTonEquipamentos)
-    // cria o equipamento correto (topico/automação) e associa ao salvar. Se houver TON(s)
-    // livre(s), aí sim abre o picker (associar a um existente OU criar novo).
-    if (isTon && lista.length === 0) {
-      import('sonner').then(({ toast }) => toast.info('Nenhum TON livre — um novo será criado e associado ao salvar.'));
-      return;
-    }
     setAssociarLista(lista);
     setAssociarComp(comp);
   };
@@ -1183,14 +1243,26 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
     // injeta em _bombaIoByEquip pra o gerador (que é síncrono) consumir. Chave = id
     // do equipamento da bomba (vem no ponto do ton_bo/ton_bi).
     const bombaIoByEquip = await buildBombaIoMap();
+    // FASE 6: comando de relé (io_config.bo) passa a vir da tabela unificada iot_vinculos.
+    // Hidrata props.io_config.bo de cada relé com a projeção do backend ANTES de gerar —
+    // merge por comando (vínculo sobrescreve, props preenche lacuna = fallback reversível).
+    // O gerador fica INTOCADO; byte-idêntico ao props validado no harness tools/fw-regress.
+    let vinculosBo: VinculosBoPorEquip = {};
+    try {
+      const projId = selectedProjectIdRef.current;
+      if (projId) vinculosBo = await iotApiService.projetarVinculosBo(projId);
+    } catch (err) {
+      console.warn('[iot-diagram] Falha ao projetar vínculos modbus_bo (usando props.io_config):', err);
+    }
+    const editorForGen = hydrateIoConfigBo(editorRef.current, vinculosBo);
     // Dispatch V1 + V2: cada gerador só enxerga os próprios tipos (V1 filtra
     // ton1..ton4; V2 filtra ton1v2..ton4v2) — diagrama misto gera N+M projetos.
-    const gen = new window.FirmwareGenerator(editorRef.current);
+    const gen = new window.FirmwareGenerator(editorForGen);
     (gen as any)._bombaIoByEquip = bombaIoByEquip;
     (gen as any)._carregadorIoByEquip = bombaIoByEquip;
     const projects = gen.generateAll();
     if (window.FirmwareGeneratorTonV2) {
-      const genV2 = new window.FirmwareGeneratorTonV2(editorRef.current);
+      const genV2 = new window.FirmwareGeneratorTonV2(editorForGen);
       (genV2 as any)._bombaIoByEquip = bombaIoByEquip;
       (genV2 as any)._carregadorIoByEquip = bombaIoByEquip;
       projects.push(...genV2.generateAll());
@@ -1708,16 +1780,17 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
         </DialogContent>
       </Dialog>
 
-      <Dialog open={propsModalOpen} onOpenChange={setPropsModalOpen}>
-        <DialogContent className="sm:max-w-2xl w-[92vw] max-h-[85dvh] overflow-y-auto overflow-x-hidden">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
+      <Sheet open={propsModalOpen} onOpenChange={setPropsModalOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-xl p-0 flex flex-col gap-0">
+          <SheetHeader className="px-5 py-4 border-b shrink-0 space-y-0">
+            <SheetTitle className="flex items-center gap-2">
               {propsComp && <div className="w-3 h-3 rounded-full" style={{ background: propsComp._def?.color }} />}
               {propsComp?.props?.name || propsComp?._def?.label || 'Propriedades'}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3 py-2">
-            {propsComp?._def?.fields?.map((f: any) => (
+            </SheetTitle>
+          </SheetHeader>
+          <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3 py-3">
+            {camposProps.map((f: any) => (
               <Fragment key={f.key}>
                 {f.section && (
                   <div className="sm:col-span-2 mt-1 border-b border-border pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -1890,121 +1963,75 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
               );
             })()}
           </div>
-          <DialogFooter className="gap-2 sm:gap-2">
-            {/* Botao "Configurar BOs" — so para TONs com reles (TON3/TON4).
-                Exige equipamento_id ja vinculado a um equipamento real do NexOn. */}
-            {propsComp?._def?.has_relays === true && (
-              <Button
-                type="button"
-                variant="outline"
-                disabled={!String(propsValues.equipamento_id ?? '').trim()}
-                title={
-                  String(propsValues.equipamento_id ?? '').trim()
-                    ? 'Configurar mapeamento de cada rele para equipamentos da unidade'
-                    : 'Defina o Equipamento NexOn primeiro'
-                }
-                onClick={() => {
-                  const eid = String(propsValues.equipamento_id ?? '').trim();
-                  if (!eid) return;
-                  setBoConfigTonId(eid);
-                  setBoConfigTonNome(
-                    String(propsValues.name ?? propsComp?._def?.label ?? 'TON'),
-                  );
-                  setBoConfigOpen(true);
-                }}
-                className="mr-auto"
-              >
-                Configurar BOs
-              </Button>
-            )}
-            {/* Botao "Configurar BIs" — toda TON tem 6 entradas opto integradas.
-                Exige equipamento_id ja vinculado a um equipamento real do NexOn. */}
-            {(propsComp?._def?.integrated?.opto_inputs?.count ?? 0) > 0 && (
-              <Button
-                type="button"
-                variant="outline"
-                disabled={!String(propsValues.equipamento_id ?? '').trim()}
-                title={
-                  String(propsValues.equipamento_id ?? '').trim()
-                    ? 'Configurar entradas digitais e ver estado ao vivo'
-                    : 'Defina o Equipamento NexOn primeiro'
-                }
-                onClick={() => {
-                  const eid = String(propsValues.equipamento_id ?? '').trim();
-                  if (!eid) return;
-                  setBiConfigTonId(eid);
-                  setBiConfigTonNome(
-                    String(propsValues.name ?? propsComp?._def?.label ?? 'TON'),
-                  );
-                  setBiConfigOpen(true);
-                }}
-              >
-                Configurar BIs
-              </Button>
-            )}
-            {/* Botao "Configurar AIs" — entradas analogicas (AN1/AN2): nivel do tanque etc. */}
-            {String(propsComp?.type ?? '').toLowerCase().startsWith('ton') && (
-              <Button
-                type="button"
-                variant="outline"
-                disabled={!String(propsValues.equipamento_id ?? '').trim()}
-                title={
-                  String(propsValues.equipamento_id ?? '').trim()
-                    ? 'Configurar entradas analogicas (nivel do tanque etc.) + escala mV'
-                    : 'Defina o Equipamento NexOn primeiro'
-                }
-                onClick={() => {
-                  const eid = String(propsValues.equipamento_id ?? '').trim();
-                  if (!eid) return;
-                  setAiConfigTonId(eid);
-                  setAiConfigTonNome(
-                    String(propsValues.name ?? propsComp?._def?.label ?? 'TON'),
-                  );
-                  setAiConfigOpen(true);
-                }}
-              >
-                Configurar AIs
-              </Button>
-            )}
-            {/* Botao "Comandos" — TONs: envia reles(TON3/4)/transistores/status ao TON real. */}
-            {String(propsComp?.type ?? '').toLowerCase().startsWith('ton') && (
-              <Button
-                type="button"
-                variant="outline"
-                disabled={!String(propsValues.equipamento_id ?? '').trim()}
-                title={
-                  String(propsValues.equipamento_id ?? '').trim()
-                    ? 'Enviar comandos (relés/transistores/status) ao TON'
-                    : 'Defina o Equipamento NexON primeiro'
-                }
-                onClick={() => {
-                  const eid = String(propsValues.equipamento_id ?? '').trim();
-                  if (!eid) return;
-                  setCmdRealModal({
-                    id: eid,
-                    nome: String(propsValues.name ?? propsComp?._def?.label ?? 'TON'),
-                    topico_mqtt: String(propsValues.mqtt_topic_base ?? '') || undefined,
-                    // Modelo vem do DIAGRAMA (ex.: 'ton4v2'), nao de tipos_equipamentos —
-                    // la' todas as TON apontam pra linha generica 'TON' e o painel da v2
-                    // (r7/r8 + PWM) nunca seria encontrado.
-                    tipo: String(propsComp?.type ?? '') || undefined,
-                  });
-                }}
-              >
-                Comandos
-              </Button>
-            )}
+          </div>
+          <div className="px-5 py-3 border-t shrink-0 flex flex-wrap justify-end gap-2">
+            {/* Vínculos por CAPACIDADE (Fase 7). O cadastro do unifilar DECLARA
+                comando/status/medição; aqui se escolhe DE ONDE vem cada dado.
+                Substitui "Configurar BOs/BIs/AIs" e "Configurações SCS". */}
+            {String(propsComp?.type ?? '').toLowerCase().startsWith('ton') && (() => {
+              const eid = String(propsValues.equipamento_id ?? '').trim();
+              const nome = String(propsValues.name ?? propsComp?._def?.label ?? 'TON');
+              const abas: Array<['comando' | 'status' | 'medicao', string]> = [
+                ['comando', 'Comando'], ['status', 'Status'], ['medicao', 'Medições'],
+              ];
+              return abas.map(([k, rotulo]) => (
+                <Button
+                  key={k}
+                  type="button"
+                  variant="outline"
+                  disabled={!eid}
+                  title={eid ? `Vincular ${rotulo.toLowerCase()} dos elementos do unifilar` : 'Salve o diagrama primeiro (a TON é associada automaticamente)'}
+                  onClick={() => { if (eid) setVinculosTon({ id: eid, nome, aba: k }); }}
+                >
+                  {rotulo}
+                </Button>
+              ));
+            })()}
             {/* Botao "Configurar I/O" — devices com BI/BO no catalogo (relé, etc.). */}
             {tipoTemIo(propsComp?.type) && (
-              <Button type="button" variant="outline" onClick={() => setIoModalOpen(true)}>
+              <Button type="button" variant="outline" onClick={async () => {
+                // FASE 6: lê o bo do VÍNCULO (fonte da verdade) antes de abrir; se falhar,
+                // ioModalVinculoBo=null e o modal usa o props.io_config.bo (fallback).
+                const relayEquipId = String((propsValues as any).equipamento_id ?? '').trim();
+                const projId = selectedProjectIdRef.current;
+                let boFromVinculo: Record<string, any> | null = null;
+                if (relayEquipId && projId) {
+                  try {
+                    const proj = await iotApiService.projetarVinculosBo(projId);
+                    boFromVinculo = (proj[relayEquipId] ?? {}) as Record<string, any>;
+                  } catch (err) {
+                    console.warn('[iot-diagram] Falha ao ler vínculos modbus_bo (fallback props):', err);
+                  }
+                }
+                setIoModalVinculoBo(boFromVinculo);
+                setIoModalOpen(true);
+              }}>
                 Configurar I/O
               </Button>
             )}
             <Button variant="outline" onClick={() => setPropsModalOpen(false)}>Fechar</Button>
             <Button onClick={saveComponentProps}>Salvar</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {vinculosTon && (
+        <VinculosTonSheet
+          open
+          onClose={() => setVinculosTon(null)}
+          tonEquipId={vinculosTon.id}
+          tonNome={vinculosTon.nome}
+          abaInicial={vinculosTon.aba}
+        />
+      )}
+
+      {scsConfigTon && (
+        <ConfigScsTonModal
+          tonEquipId={scsConfigTon.id}
+          tonNome={scsConfigTon.nome}
+          onClose={() => setScsConfigTon(null)}
+        />
+      )}
 
       <TonBoConfigModal
         open={boConfigOpen}
@@ -2030,19 +2057,6 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
         tonNome={aiConfigTonNome}
       />
 
-      {/* Comandos reais do TON (relés/transistores/status) — reusa o modal do unifilar. */}
-      <EquipamentoCommandModal
-        open={!!cmdRealModal}
-        onClose={() => setCmdRealModal(null)}
-        equipamento={{
-          id: cmdRealModal?.id ?? '',
-          nome: cmdRealModal?.nome ?? '',
-          categoria: 'TON',
-          tipo: cmdRealModal?.tipo ?? null,
-          topico_mqtt: cmdRealModal?.topico_mqtt ?? null,
-        }}
-      />
-
       {/* Config de I/O genérica (catálogo-driven): relé e devices com BI/BO. */}
       <DeviceIoConfigModal
         open={ioModalOpen}
@@ -2051,14 +2065,36 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
         compNome={String(propsValues.name ?? propsComp?._def?.label ?? '')}
         catalogId={String(propsValues.catalog_id ?? '')}
         unidadeId={unidadeId}
-        ioConfig={(propsValues.io_config ?? {}) as DeviceIoConfig}
-        onSave={(ioCfg) => {
-          const merged = { ...propsValues, io_config: ioCfg };
-          setPropsValues(merged);
-          if (propsComp && editorRef.current) {
-            editorRef.current.updateComponentProps(propsComp.id, merged);
-            void saveCurrentDiagram();
+        ioConfig={ioModalConfig as DeviceIoConfig}
+        onSave={async (ioCfg) => {
+          if (!propsComp || !editorRef.current) return;
+          // FASE 6: o COMANDO de relé (bo) é gravado DIRETO no vínculo (fonte da verdade).
+          // Só depois que o vínculo confirma é que PARAMOS de persistir o bo no props —
+          // aí o io_config.bo some do diagrama. Se a gravação falhar, mantemos o bo no
+          // props como reserva (nada é perdido) e avisamos.
+          const relayEquipId = String((propsValues as any).equipamento_id ?? '').trim();
+          let vinculoOk = false;
+          if (relayEquipId) {
+            try {
+              const escritos = await iotApiService.escreverVinculosBo(relayEquipId, (ioCfg.bo ?? {}) as any);
+              // Só considera OK (e só remove o bo do props) se ALGO foi gravado — senão
+              // mantém o io_config.bo no props como reserva (evita perder comando).
+              vinculoOk = escritos > 0;
+              if (!vinculoOk) {
+                console.warn('[iot-diagram] Nenhum comando gravado no vínculo — mantendo io_config.bo no props (reserva).');
+              }
+            } catch (err) {
+              console.warn('[iot-diagram] Falha ao gravar vínculos modbus_bo:', err);
+              const { toast } = await import('sonner');
+              toast.error('Não consegui salvar o comando do relé no servidor — mantido no diagrama como reserva.');
+            }
           }
+          // bi continua no props (status ainda é props-source). bo só some se o vínculo ok.
+          const io_config: DeviceIoConfig = vinculoOk ? { bi: ioCfg.bi } : ioCfg;
+          const merged = { ...propsValues, io_config };
+          setPropsValues(merged);
+          editorRef.current.updateComponentProps(propsComp.id, merged);
+          void saveCurrentDiagram();
         }}
         onEnviarComando={async (cmdId, cmdLabel) => {
           if (!propsComp || !editorRef.current) return;

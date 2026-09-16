@@ -2,9 +2,10 @@
  * DOMÍNIO DE EQUIPAMENTO (IoT × Unifilar) — Fase 0 (fundação).
  *
  * Classifica cada TIPO de equipamento em um domínio, derivado do `codigo` do tipo
- * (com `nome` como fallback). Sem coluna no schema — mesma abordagem em código do
- * `commandRegistry`/`TON_CAPS`, porque `equipamentos`/`tipos_equipamentos` vivem no
- * pacote compartilhado `@aupus/api-shared` (não alterar schema unilateralmente).
+ * (com `nome` como fallback). Classificação EM CÓDIGO — herança de quando o schema
+ * era compartilhado. Com o NexON dono do banco (`aupus`, separado do Service), isto
+ * deve virar a coluna `origem` (unifilar | iot) na reestruturação. Ver
+ * docs/IOT-REESTRUTURA-01-LIMPEZA.md.
  *
  * Domínios:
  *  - 'potencia' : ativo elétrico do unifilar (transformador, disjuntor, …). Só unifilar.

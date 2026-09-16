@@ -383,7 +383,16 @@ export class EquipamentosApiService {
     unidadeId: string,
     tipoEquipamentoId: string,
     nome?: string,
-    tag?: string
+    tag?: string,
+    extra?: {
+      localizacao_especifica?: string;
+      possui_medicao?: boolean;
+      possui_scs?: boolean;
+      scs_comando?: boolean;
+      scs_status?: boolean;
+      pontos_comando?: string[];
+      pontos_status?: string[];
+    },
   ): Promise<{ success: boolean; message: string; data: EquipamentoApiResponse }> {
     const response = await api.post<{ success: boolean; message: string; data: EquipamentoApiResponse }>(
       `${this.baseEndpoint}/rapido`,
@@ -392,10 +401,44 @@ export class EquipamentosApiService {
         tipo_equipamento_id: tipoEquipamentoId?.trim(),
         nome: nome?.trim() || undefined,
         tag: tag?.trim() || undefined,
-        classificacao: 'UC'
+        classificacao: 'UC',
+        ...(extra ?? {}),
       }
     );
     return response.data;
+  }
+
+  /** Tipos disponíveis no cadastro do unifilar (disp_unifilar), com sigla e pontos nativos. */
+  async tiposUnifilar(): Promise<Array<{ id: string; codigo: string; nome: string; sigla: string | null; pontos_nativos?: { comando: string[]; status: string[] } }>> {
+    const r = await api.get<any>(`${this.baseEndpoint}/tipos-unifilar`);
+    return (r?.data?.data ?? r?.data ?? []) as any;
+  }
+
+  /** Prévia da próxima TAG pra um tipo+unidade (sigla + tag). */
+  async proximaTag(tipoEquipamentoId: string, unidadeId: string): Promise<{ sigla: string | null; tag: string }> {
+    const r = await api.get<any>(`${this.baseEndpoint}/proxima-tag`, {
+      params: { tipo_equipamento_id: tipoEquipamentoId?.trim(), unidade_id: unidadeId?.trim() },
+    });
+    return (r?.data?.data ?? r?.data) as any;
+  }
+
+  /** Valores atuais do cadastro simplificado (pra edição). */
+  async getCadastroUnifilar(id: string): Promise<any> {
+    const r = await api.get<any>(`${this.baseEndpoint}/${id.trim()}/cadastro-unifilar`);
+    return (r?.data?.data ?? r?.data) as any;
+  }
+
+  /** Salva o cadastro simplificado do unifilar (tag, localização, checks SCS). */
+  async editarCadastroUnifilar(
+    id: string,
+    dto: {
+      tag?: string; localizacao_especifica?: string;
+      possui_medicao?: boolean; possui_scs?: boolean; scs_comando?: boolean; scs_status?: boolean;
+      pontos_comando?: string[]; pontos_status?: string[];
+    },
+  ): Promise<any> {
+    const r = await api.patch<any>(`${this.baseEndpoint}/${id.trim()}/cadastro-unifilar`, dto);
+    return (r?.data?.data ?? r?.data) as any;
   }
 
   async findAll(params?: EquipamentosQueryParams): Promise<EquipamentosListApiResponse> {

@@ -1,0 +1,41 @@
+{
+  "projeto_id": "6faca023823f2c78104bd8bb94",
+  "nome": "Pivos 4 a 6",
+  "firmwares": [
+    {
+      "label": "00__TON1",
+      "name": "TON1",
+      "tonType": "ton1",
+      "equipamentoId": "cmq6rx2l12opjjqcf2od7b2xq",
+      "topicBase": "OLI/GO/NSA/BOMBAS",
+      "nFiles": 24,
+      "warnings": [],
+      "files": [
+        "include/adc.h",
+        "include/config.h",
+        "include/diag.h",
+        "include/eth.h",
+        "include/hal.h",
+        "include/inputs.h",
+        "include/modbus_meter.h",
+        "include/ota.h",
+        "include/outputs.h",
+        "include/relays.h",
+        "include/sd_buffer.h",
+        "platformio.ini",
+        "src/adc.cpp",
+        "src/diag.cpp",
+        "src/eth.cpp",
+        "src/inputs.cpp",
+        "src/main.cpp",
+        "src/modbus_meter.cpp",
+        "src/mqtt.cpp",
+        "src/mqtt.h",
+        "src/ota.cpp",
+        "src/outputs.cpp",
+        "src/relays.cpp",
+        "src/sd_buffer.cpp"
+      ]
+    }
+  ]
+}

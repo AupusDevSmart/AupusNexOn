@@ -1219,6 +1219,7 @@ static bool _modbus_rtu_tcp_read(const char* ip, uint16_t port, uint32_t timeout
     uint16_t calcCRC = _modbus_crc16(full, 3 + byteCount);
     if (rxCRC != calcCRC) {
         Serial.printf("[TCP-INV] CRC invalido(rtu) slave=%d — frame descartado\\n", slave);
+        _tcp_last_fail_reason = "crc";   // frame chegou completo mas corrompido (ruido/baud/paridade) — distinguivel remoto
         return false;
     }
 
@@ -2246,6 +2247,7 @@ bool mqtt_connected() { return false; }
 #include "config.h"
 #include <WiFi.h>
 #include <PubSubClient.h>
+#include <ArduinoJson.h>
 #include <EthernetUdp.h>
 #include <esp_task_wdt.h>
 #include <string.h>
@@ -2317,7 +2319,7 @@ static void _wifi_seed_from_config() {
         strncpy(_wifiPass[i], WIFI_DEF_PASS[i], 64); _wifiPass[i][64] = 0;
     }
     _wifi_save_nvs();
-    Serial.printf("[WIFI] NVS semeado com %d rede(s) da config\n", _wifiCount);
+    Serial.printf("[WIFI] NVS semeado com %d rede(s) da config\\n", _wifiCount);
 }
 static void _wifi_ensure_loaded() {
     if (_wifiLoaded) return;
@@ -2336,20 +2338,20 @@ static void _wifi_ensure_loaded() {
         strncpy(_wifiPass[i], pp.c_str(), 64); _wifiPass[i][64] = 0;
     }
     pr.end();
-    Serial.printf("[WIFI] %d rede(s) carregada(s) do NVS\n", _wifiCount);
+    Serial.printf("[WIFI] %d rede(s) carregada(s) do NVS\\n", _wifiCount);
 }
 static bool _wifi_add(const char* ssid, const char* pass) {
     _wifi_ensure_loaded();
     if (!ssid || !*ssid) return false;
     for (int i = 0; i < _wifiCount; i++) if (strncmp(_wifiSsid[i], ssid, 32) == 0) {
         strncpy(_wifiPass[i], pass ? pass : "", 64); _wifiPass[i][64] = 0;
-        _wifi_save_nvs(); Serial.printf("[WIFI] senha atualizada: %s\n", ssid); return true;
+        _wifi_save_nvs(); Serial.printf("[WIFI] senha atualizada: %s\\n", ssid); return true;
     }
     if (_wifiCount >= WIFI_MAX_NETS) { Serial.println("[WIFI] lista cheia (max 4)"); return false; }
     strncpy(_wifiSsid[_wifiCount], ssid, 32); _wifiSsid[_wifiCount][32] = 0;
     strncpy(_wifiPass[_wifiCount], pass ? pass : "", 64); _wifiPass[_wifiCount][64] = 0;
     _wifiCount++; _wifi_save_nvs();
-    Serial.printf("[WIFI] rede adicionada: %s (%d/%d)\n", ssid, _wifiCount, WIFI_MAX_NETS); return true;
+    Serial.printf("[WIFI] rede adicionada: %s (%d/%d)\\n", ssid, _wifiCount, WIFI_MAX_NETS); return true;
 }
 static bool _wifi_remove(const char* ssid) {
     _wifi_ensure_loaded();
@@ -2357,7 +2359,7 @@ static bool _wifi_remove(const char* ssid) {
     for (int i = 0; i < _wifiCount; i++) if (strncmp(_wifiSsid[i], ssid, 32) == 0) {
         for (int j = i; j < _wifiCount - 1; j++) { strncpy(_wifiSsid[j], _wifiSsid[j+1], 33); strncpy(_wifiPass[j], _wifiPass[j+1], 65); }
         _wifiCount--; _wifi_save_nvs();
-        Serial.printf("[WIFI] rede removida: %s (%d)\n", ssid, _wifiCount); return true;
+        Serial.printf("[WIFI] rede removida: %s (%d)\\n", ssid, _wifiCount); return true;
     }
     return false;
 }
@@ -2372,8 +2374,8 @@ static void _wifi_handle_cmd(const char* json) {
     else if (strcmp(action, "remove") == 0) _wifi_remove(ssid);
     else if (strcmp(action, "list") == 0) {
         _wifi_ensure_loaded();
-        Serial.printf("[WIFI] lista (%d):\n", _wifiCount);
-        for (int i = 0; i < _wifiCount; i++) Serial.printf("  %d: %s\n", i + 1, _wifiSsid[i]);
+        Serial.printf("[WIFI] lista (%d):\\n", _wifiCount);
+        for (int i = 0; i < _wifiCount; i++) Serial.printf("  %d: %s\\n", i + 1, _wifiSsid[i]);
     }
 }
 // Cycling nao-bloqueante: WiFi ligado e sem conectar em WIFI_TRY_MS -> proxima rede.
@@ -2382,7 +2384,7 @@ static void _wifi_cycle_tick() {
     if (WiFi.status() == WL_CONNECTED) return;
     if (millis() - _wifiTryStart < WIFI_TRY_MS) return;
     _wifiIdx = (_wifiIdx + 1) % _wifiCount;
-    Serial.printf("[WIFI] fallback -> '%s' (%d/%d)\n", _wifiSsid[_wifiIdx], _wifiIdx + 1, _wifiCount);
+    Serial.printf("[WIFI] fallback -> '%s' (%d/%d)\\n", _wifiSsid[_wifiIdx], _wifiIdx + 1, _wifiCount);
     WiFi.disconnect();
     WiFi.begin(_wifiSsid[_wifiIdx], _wifiPass[_wifiIdx]);
     _wifiTryStart = millis();
@@ -2398,7 +2400,7 @@ static void _start_wifi() {
     WiFi.persistent(false);
     _wifiIdx = 0;
     WiFi.begin(_wifiSsid[0], _wifiPass[0]);
-    Serial.printf("[WIFI] tentando '%s' (1/%d)\n", _wifiSsid[0], _wifiCount);
+    Serial.printf("[WIFI] tentando '%s' (1/%d)\\n", _wifiSsid[0], _wifiCount);
     _wifiTryStart = millis();
     _wifiStarted = true;
 }
@@ -5840,9 +5842,11 @@ static bool _bomba_estop() { return ${biRead(b.bi_estop)}; }
 static bool _bomba_cheio() { return _bomba_nivel_pct() >= BOMBA_CHEIO_PCT; }
 
 static void _bomba_pub_estado() {
-    char payload[96];
-    snprintf(payload, sizeof(payload), "{\\"estado\\":\\"%s\\",\\"nivel_pct\\":%.0f}",
-        _bomba_state == BOMBA_BOMBEANDO ? "bombeando" : "idle", _bomba_nivel_pct());
+    char payload[160];
+    // nivel_mv = tensão (mV) que entra na conta (já com o divisor); pct = (nivel_mv - ai0)/(ai100 - ai0)*100.
+    snprintf(payload, sizeof(payload), "{\\"estado\\":\\"%s\\",\\"nivel_pct\\":%.0f,\\"nivel_mv\\":%.0f,\\"ai0_mv\\":%.0f,\\"ai100_mv\\":%.0f}",
+        _bomba_state == BOMBA_BOMBEANDO ? "bombeando" : "idle", _bomba_nivel_pct(),
+        adc_read_mv(${aiCh}), BOMBA_AI_0_MV, BOMBA_AI_100_MV);
     _bomba_pub("bomba", payload);
 }
 static void _bomba_pulso_liga() {

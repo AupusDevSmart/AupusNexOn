@@ -42,8 +42,10 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
 
   const { theme: appTheme } = useTheme();
   // Comissionamento é info interna (técnica) — só quem tem supervisorio.iot_view vê no COA.
-  const { acessivel } = useUserStore();
+  const { acessivel, isAdmin } = useUserStore();
   const podeVerComiss = Array.isArray(acessivel) && acessivel.includes("supervisorio.iot_view");
+  // Diagnóstico técnico (TON, broker, Modbus, fallback de nuvem) é interno — o cliente vê texto neutro.
+  const ehAdmin = isAdmin();
   const isDark =
     appTheme === 'dark' ||
     (appTheme === 'system' &&
@@ -362,7 +364,9 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
             </p>
             ${unidade.trip ? `<p style="margin: 6px 0 0; font-size: 12px; color: #dc2626; font-weight: 600;">⚠ TRIP ativo</p>` : ''}
             ${unidade.status === 'OFFLINE' && !unidade.nuvem
-              ? (unidade.tonViva
+              ? (!ehAdmin
+                  ? `<p style="margin: 6px 0 0; font-size: 12px; color: #4b5563;"><strong>Sem comunicação no momento</strong></p>`
+                  : unidade.tonViva
                   ? `<p style="margin: 6px 0 0; font-size: 12px; color: #c2410c;"><strong>🟠 TON on-line, sem dado</strong> — verificar equipamento/Modbus (não é internet)</p>`
                   : `<p style="margin: 6px 0 0; font-size: 12px; color: #4b5563;"><strong>⚫ Sem sinal da TON</strong> — verificar internet/energia no local</p>`)
               : ''}
@@ -540,7 +544,7 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
                 <button
                   onClick={() => setFiltro(f => (f === "semDado" ? null : "semDado"))}
                   className={`flex items-center gap-1 ${filtro && filtro !== "semDado" ? "opacity-40 hover:opacity-100" : ""}`}
-                  title="TON on-line no broker, mas sem dado do equipamento (device/Modbus, não internet)"
+                  title={ehAdmin ? "TON on-line no broker, mas sem dado do equipamento (device/Modbus, não internet)" : "Equipamento sem dado no momento"}
                 >
                   <i className="inline-block w-2 h-2 rounded-full" style={{ background: "#EA580C" }} />
                   {resumoStatus.semDado} sem dado
@@ -640,14 +644,14 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
               </div>
               <div className="flex items-center gap-1">
                 <div className="w-2 h-2 rounded-full" style={{ backgroundColor: "#EA580C" }} />
-                <span title="TON on-line, sem dado do equipamento (device/Modbus)">Sem dado</span>
+                <span title={ehAdmin ? "TON on-line, sem dado do equipamento (device/Modbus)" : "Equipamento sem dado no momento"}>Sem dado</span>
               </div>
               <div className="flex items-center gap-1">
                 <div
                   className="w-2 h-2 rounded-full"
                   style={{ backgroundColor: getStatusColor("OFFLINE") }}
                 />
-                <span title="TON sem sinal no broker (internet/energia)">Sem info</span>
+                <span title={ehAdmin ? "TON sem sinal no broker (internet/energia)" : "Sem comunicação no momento"}>Sem info</span>
               </div>
             </div>
           </div>
@@ -689,14 +693,16 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
                   <Badge
                     variant={unidadeSelecionada.status === "ONLINE" ? "default" : unidadeSelecionada.status === "ALERTA" ? "destructive" : "secondary"}
                     className={`mt-1 ${
-                      unidadeSelecionada.status === "ONLINE"
+                      unidadeSelecionada.fonteDados === "nuvem"
+                        ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400"
+                        : unidadeSelecionada.status === "ONLINE"
                         ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
                         : unidadeSelecionada.status === "ALERTA"
                         ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400"
                         : ""
                     }`}
                   >
-                    {unidadeSelecionada.status}
+                    {unidadeSelecionada.fonteDados === "nuvem" ? "NUVEM" : unidadeSelecionada.status}
                   </Badge>
                 </div>
                 <div>
@@ -730,6 +736,9 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
                   <p className="text-lg font-semibold text-green-600">
                     {unidadeSelecionada.metricas.potenciaAtual.toFixed(1)} kW
                   </p>
+                  {unidadeSelecionada.fonteDados === "nuvem" && (
+                    <p className="text-[11px] text-muted-foreground">média da última hora</p>
+                  )}
                 </div>
                 <div>
                   <span className="text-xs font-medium text-muted-foreground uppercase">
@@ -740,6 +749,16 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
                   </p>
                 </div>
               </div>
+
+              {unidadeSelecionada.fonteDados === "nuvem" && (
+                <div className="rounded-md bg-blue-50 dark:bg-blue-900/20 px-3 py-2 text-xs text-blue-800 dark:text-blue-300">
+                  {ehAdmin
+                    ? `Dados da integração de nuvem do fabricante (sem TON ao vivo)${unidadeSelecionada.nuvemAtualizadoEm ? ` · atualizado às ${unidadeSelecionada.nuvemAtualizadoEm.slice(11, 16)}` : ""}.`
+                    : unidadeSelecionada.nuvemAtualizadoEm
+                    ? `Dados atualizados às ${unidadeSelecionada.nuvemAtualizadoEm.slice(11, 16)}.`
+                    : "Dados atualizados periodicamente."}
+                </div>
+              )}
 
               {unidadeSelecionada.metricas.fatorPotencia > 0 && (
                 <div>

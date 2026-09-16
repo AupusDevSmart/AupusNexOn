@@ -603,6 +603,19 @@ var CATEGORIES = [
     { id: 'carregador', label: 'Carregador Elétrico', types: ['carregador'] },
 ];
 
+// Fase 2 (unificacao de catalogo): se o backend serviu a paleta em
+// window.__IOT_PALETTE__ (GET /iot-catalog/palette, injetado pelo iot-diagram.tsx),
+// ela vira a FONTE; os objetos embutidos acima ficam so' de fallback (busca falhou).
+if (typeof window !== 'undefined' && window.__IOT_PALETTE__) {
+    try {
+        var _P = window.__IOT_PALETTE__;
+        if (_P.component_types && Object.keys(_P.component_types).length) COMPONENT_TYPES = _P.component_types;
+        if (_P.ton_caps && Object.keys(_P.ton_caps).length) TON_CAPS = _P.ton_caps;
+        if (_P.categories && _P.categories.length) CATEGORIES = _P.categories;
+        console.log('[IoT] Paleta do DB aplicada (' + Object.keys(COMPONENT_TYPES).length + ' tipos)');
+    } catch (e) { console.warn('[IoT] Falha ao aplicar paleta do DB; usando embutida.', e); }
+}
+
 var CONNECTION_STYLES = {
     rs485: { stroke: '', dasharray: '', width: 4, label: 'RS485' },
     tcp:   { stroke: '', dasharray: '', width: 4, label: 'TCP' },
@@ -1209,7 +1222,51 @@ var DiagramEditor = class {
     /**
      * Returns which connection styles are valid for a pair of components.
      */
+    // Fase 3 (SHADOW): estilo do link (rs485/tcp/lora/wifi/eth) data-driven por
+    // PAPEL (conn.role); roda em paralelo e loga divergencia, legacy ainda MANDA.
     _getAllowedStyles(fromId, toId) {
+        const legacy = this._getAllowedStylesLegacy(fromId, toId);
+        try {
+            const from = this.components.find(c => c.id === fromId);
+            const to = this.components.find(c => c.id === toId);
+            const data = (from && to) ? this._getAllowedStylesData(from, to) : null;
+            if (data && data.slice().sort().join(',') !== legacy.slice().sort().join(',')) {
+                console.warn('[IoT][style-shadow] divergencia', from.type, '<->', to.type,
+                    '| data=', data.join('/'), 'legacy=', legacy.join('/'));
+            }
+        } catch (e) { /* sombra nunca afeta */ }
+        return legacy;
+    }
+
+    // Resolve o estilo por PAPEL dos dois nos (conn.role). Mesma precedencia do
+    // legacy: LoRa > Router > Broker > Datalogger/Conversor > TON<->device > Gateway
+    // > default(rs485). null se faltar role.
+    _getAllowedStylesData(from, to) {
+        const A = COMPONENT_TYPES[from.type], B = COMPONENT_TYPES[to.type];
+        const ra = A && A.conn && A.conn.role, rb = B && B.conn && B.conn.role;
+        if (!ra || !rb) return null;
+        if (isLoraNode(from.type) && isLoraNode(to.type)) return ['lora_radio'];
+        if (ra === 'router' || rb === 'router') return ['wifi', 'ethernet'];
+        if (ra === 'broker' || rb === 'broker') return ['wifi', 'ethernet'];
+        const other = (self) => (ra === self ? rb : ra);
+        if (ra === 'datalogger' || rb === 'datalogger') {
+            const o = other('datalogger');
+            if (o === 'device') return ['rs485'];
+            if (o === 'ton') return ['tcp'];
+            if (o === 'router') return ['wifi', 'ethernet'];
+            return ['tcp'];
+        }
+        if (ra === 'conversor' || rb === 'conversor') {
+            const o = other('conversor');
+            if (o === 'device') return ['rs485'];
+            return ['tcp'];
+        }
+        if ((ra === 'ton' && rb === 'device') || (ra === 'device' && rb === 'ton')) return ['rs485', 'tcp'];
+        if (ra === 'gateway' || rb === 'gateway') return ['rs485'];
+        return ['rs485'];
+    }
+
+    _getAllowedStylesLegacy(fromId, toId) {
         const from = this.components.find(c => c.id === fromId);
         const to = this.components.find(c => c.id === toId);
         if (!from || !to) return ['rs485'];
@@ -1701,7 +1758,42 @@ var DiagramEditor = class {
      * Validate if a connection between two components is allowed.
      * Returns { allowed: true } or { allowed: false, reason: 'message' }
      */
+    // Fase 3 (SHADOW): motor data-driven de regras roda em paralelo e LOGA
+    // divergências; o resultado imperativo (legacy) ainda MANDA ate validarmos.
+    // Zero '[conn-shadow] divergencia' no uso real => trocar o return por `data`
+    // e remover o legacy.
     _validateConnection(fromId, toId) {
+        const legacy = this._validateConnectionLegacy(fromId, toId);
+        try {
+            const from = this.components.find(c => c.id === fromId);
+            const to = this.components.find(c => c.id === toId);
+            const data = (from && to) ? this._validateConnectionData(from, to) : null;
+            if (data && data.allowed !== legacy.allowed) {
+                console.warn('[IoT][conn-shadow] divergencia', from.type, '<->', to.type,
+                    '| data=', data.allowed, 'legacy=', legacy.allowed);
+            }
+        } catch (e) { /* sombra nunca afeta o resultado */ }
+        return legacy;
+    }
+
+    // Regras como DADO: permitido sse B in A.conn.targets E A in B.conn.targets
+    // (modelo mutuo). Token 'ton' casa qualquer TON. TON<->TON exige LoRa nos dois.
+    // null se faltar metadado (sem sombra a comparar).
+    _validateConnectionData(from, to) {
+        const A = COMPONENT_TYPES[from.type], B = COMPONENT_TYPES[to.type];
+        const aT = A && A.conn && A.conn.targets, bT = B && B.conn && B.conn.targets;
+        if (!aT || !bT) return null;
+        const tonTypes = Object.keys(TON_CAPS);
+        const match = (targets, type) => targets.includes(type) || (targets.includes('ton') && tonTypes.includes(type));
+        if (!match(aT, to.type)) return { allowed: false, reason: A.conn.hint || 'Conexao nao permitida' };
+        if (!match(bT, from.type)) return { allowed: false, reason: B.conn.hint || 'Conexao nao permitida' };
+        if (tonTypes.includes(from.type) && tonTypes.includes(to.type) && (!isLoraNode(from.type) || !isLoraNode(to.type))) {
+            return { allowed: false, reason: 'Conexao entre TONs so e permitida entre nos com capacidade LoRa' };
+        }
+        return { allowed: true };
+    }
+
+    _validateConnectionLegacy(fromId, toId) {
         const from = this.components.find(c => c.id === fromId);
         const to = this.components.find(c => c.id === toId);
         if (!from || !to) return { allowed: false, reason: 'Componente não encontrado' };
@@ -1718,10 +1810,7 @@ var DiagramEditor = class {
             if (!isLoraNode(from.type) || !isLoraNode(to.type)) {
                 return { allowed: false, reason: 'Conexão entre TONs só é permitida entre nós com capacidade LoRa' };
             }
-            // TON4↔TON4 (sat↔sat) É PERMITIDO: usado p/ malha LoRa com repasse
-            // (um TON4 relaia a mensagem do gateway pra outro TON4 mais distante).
-            // O caminho pro broker é multi-hop via o TON2 gateway. O firmware do
-            // satélite precisa ter a lógica de forwarding (TTL+dedup) p/ funcionar.
+            // TON4↔TON4 (sat↔sat) É PERMITIDO: malha LoRa com repasse (forwarding TTL+dedup).
         }
 
         // Rule 2: MQTT Broker only connects to Router WiFi

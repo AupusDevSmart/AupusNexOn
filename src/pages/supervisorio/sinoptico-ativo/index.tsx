@@ -1,6 +1,7 @@
 import { Layout } from "@/components/common/Layout";
 import { IoTDiagram } from "@/features/supervisorio/components/iot-diagram";
 import { ComissionamentoTab } from "@/features/supervisorio/components/ComissionamentoTab";
+import { VisaoGeralUsina } from "@/features/supervisorio/components/visao-geral/VisaoGeralUsina";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -85,7 +86,7 @@ import { useUserStore } from '@/store/useUserStore';
 import { DiagramV2Wrapper } from '@/features/supervisorio/v2/DiagramV2Wrapper';
 
 // Overview do sinoptico (KPIs, grandezas, demanda, alarmes, grafico) ao redor do diagrama
-import { SinopticoOverview } from '@/features/supervisorio/sinoptico/components/SinopticoOverview';
+import { AlarmesAtivosPanel } from '@/features/supervisorio/sinoptico/components/AlarmesAtivosPanel';
 import { ConfigPontosModal } from '@/features/supervisorio/sinoptico/components/ConfigPontosModal';
 
 // Tipos - CORRIGIDOS com interfaces locais caso os imports falhem
@@ -1808,7 +1809,11 @@ export function SinopticoAtivoPage() {
   const [modalSelecionarUnidade, setModalSelecionarUnidade] = useState(!ativoId);
 
   // Tab ativa: 'unifilar' ou 'iot'
-  const [sinopticoTab, setSinopticoTab] = useState<'unifilar' | 'iot' | 'comissionamento'>('unifilar');
+  // Cliente (não-admin) não vê o unifilar por enquanto — abre na Visão Geral da usina,
+  // que funciona com ou sem TON (cai para a integração de nuvem do fabricante).
+  const [sinopticoTab, setSinopticoTab] = useState<'visao' | 'unifilar' | 'alarmes' | 'iot' | 'comissionamento'>(
+    () => (isAdmin() ? 'unifilar' : 'visao'),
+  );
 
   // Slot no header do shell (linha dos breadcrumbs) onde o toggle + nome da unidade
   // sao renderizados via portal, liberando o header da pagina pro diagrama.
@@ -1825,6 +1830,10 @@ export function SinopticoAtivoPage() {
       if (detail === 'iot' && !useUserStore.getState().hasPermission('supervisorio.iot_view')) {
         return;
       }
+      // Cliente não acessa o unifilar (por enquanto) — fica na Visão Geral.
+      if (detail === 'unifilar' && !useUserStore.getState().isAdmin()) {
+        return;
+      }
       setSinopticoTab(detail);
     };
     window.addEventListener('sinoptico-tab-change', handler);
@@ -1834,10 +1843,13 @@ export function SinopticoAtivoPage() {
   // Defensivo: se por qualquer motivo a aba IoT ficar ativa sem permissao,
   // volta para o diagrama unifilar.
   useEffect(() => {
+    const abaPadrao = isAdmin() ? 'unifilar' : 'visao';
     if ((sinopticoTab === 'iot' || sinopticoTab === 'comissionamento') && !podeVerIot) {
-      setSinopticoTab('unifilar');
+      setSinopticoTab(abaPadrao);
+    } else if ((sinopticoTab === 'unifilar' || sinopticoTab === 'alarmes') && !isAdmin()) {
+      setSinopticoTab('visao');
     }
-  }, [sinopticoTab, podeVerIot]);
+  }, [sinopticoTab, podeVerIot, isAdmin]);
 
   // ✅ IMPORTANTE: Atualizar título IMEDIATAMENTE quando recebe dados via state
   useEffect(() => {
@@ -3792,15 +3804,39 @@ if (import.meta.env.PROD) {
           {headerSlot && unidadeId && createPortal(
             <div className="flex shrink-0 gap-1" style={{ zIndex: 10 }}>
               <button
-                onClick={() => setSinopticoTab('unifilar')}
+                onClick={() => setSinopticoTab('visao')}
                 className={`px-3 py-1 text-sm font-medium rounded-[2px] transition-colors ${
-                  sinopticoTab === 'unifilar'
+                  sinopticoTab === 'visao'
                     ? 'bg-muted text-foreground'
                     : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                 }`}
               >
-                Unifilar
+                Visão Geral
               </button>
+              {isAdmin() && (
+                <button
+                  onClick={() => setSinopticoTab('unifilar')}
+                  className={`px-3 py-1 text-sm font-medium rounded-[2px] transition-colors ${
+                    sinopticoTab === 'unifilar'
+                      ? 'bg-muted text-foreground'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                  }`}
+                >
+                  Unifilar
+                </button>
+              )}
+              {isAdmin() && (
+                <button
+                  onClick={() => setSinopticoTab('alarmes')}
+                  className={`px-3 py-1 text-sm font-medium rounded-[2px] transition-colors ${
+                    sinopticoTab === 'alarmes'
+                      ? 'bg-muted text-foreground'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                  }`}
+                >
+                  Alarmes
+                </button>
+              )}
               {podeVerIot && (
                 <button
                   onClick={() => setSinopticoTab('iot')}
@@ -3829,14 +3865,17 @@ if (import.meta.env.PROD) {
             headerSlot
           )}
 
-          {/* V2: Diagrama Unifilar + Overview (KPIs, grandezas, demanda, alarmes, grafico) */}
-          {unidadeId && sinopticoTab === 'unifilar' && (
+          {/* Visão Geral da usina: números gerais + histórico de geração (com ou sem TON). */}
+          {unidadeId && sinopticoTab === 'visao' && (
             <div className="flex-1 min-h-0 overflow-hidden">
-              <SinopticoOverview
-                unidadeId={unidadeId}
-                unidadeNome={unidadeAtual?.nome}
-                plantaNome={plantaAtual?.nome}
-              >
+              <VisaoGeralUsina unidadeId={unidadeId} unidadeNome={unidadeAtual?.nome} />
+            </div>
+          )}
+
+          {/* V2: Diagrama Unifilar — só o diagrama. O entorno (KPIs, grandezas, demanda,
+              gráfico) foi pra Visão Geral; os alarmes viraram a aba "Alarmes". */}
+          {unidadeId && sinopticoTab === 'unifilar' && (
+            <div className="flex-1 min-h-0 overflow-hidden flex rounded-sm border border-border">
               <DiagramV2Wrapper
                 unidadeIdFromUrl={unidadeId}
                 unidadeNome={unidadeAtual?.nome}
@@ -3976,7 +4015,16 @@ if (import.meta.env.PROD) {
                   }
                 }}
               />
-              </SinopticoOverview>
+            </div>
+          )}
+
+          {/* Alarmes: ocorrências ativas da unidade (antes era um card no entorno do
+              unifilar; agora aba própria). Mesmo gate do unifilar (admin). */}
+          {unidadeId && sinopticoTab === 'alarmes' && isAdmin() && (
+            <div className="flex-1 min-h-0 overflow-auto p-3">
+              <div className="mx-auto max-w-2xl">
+                <AlarmesAtivosPanel unidadeId={unidadeId} unidadeNome={unidadeAtual?.nome} />
+              </div>
             </div>
           )}
 

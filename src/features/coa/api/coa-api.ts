@@ -8,6 +8,7 @@ export interface DashboardData {
     balancoRede: number;
     totalUnidades: number;
     unidadesOnline: number;
+    unidadesMonitoradas?: number; // ONLINE + monitoradas pela nuvem (card "Instalações Monitoradas")
     alertasAtivos: number;
     totalGeradores?: number;
     totalCargas?: number;
@@ -41,6 +42,8 @@ export interface UnidadeResumo {
   trip?: boolean; // TRIP real (SOE não reconhecido) — vermelho no COA (distinto de OFFLINE/sem info)
   nuvem?: boolean; // sem TON ao vivo, mas com geração de nuvem recente — cor própria (não é offline)
   tonViva?: boolean; // TON dá sinal de vida no broker (liveness). OFFLINE+tonViva = device/Modbus (laranja), não internet (cinza)
+  fonteDados?: 'ton' | 'nuvem'; // origem de potência/energia (nuvem = fallback do portal do fabricante, sem TON ao vivo)
+  nuvemAtualizadoEm?: string | null; // horário local (SP) do snapshot de nuvem usado no fallback
   naoComissionados?: string[]; // pontos monitorados desta unidade ainda sem comissionamento (dado não validado)
   equipamentosOffline?: string[]; // nomes de equipamentos sem comunicação (pior-caso do status)
   ultimaLeitura: Date | null;
@@ -70,7 +73,27 @@ export interface Alerta {
   timestamp: Date;
 }
 
+export type PeriodoGeracao = 'dia' | 'mes' | 'ano' | 'total';
+export interface PontoGeracao {
+  rotulo: string;
+  kwh: number | null;
+  acumulado?: number | null;
+}
+export interface SerieGeracao {
+  periodo: PeriodoGeracao;
+  referencia: string | null;
+  total_kwh: number;
+  pontos: PontoGeracao[];
+}
+
 export const coaApi = {
+  /** Série de geração (dia/mês/ano/total) para o gráfico de histórico da usina. */
+  getGeracao: async (unidadeId: string, periodo: PeriodoGeracao, data?: string): Promise<SerieGeracao> => {
+    const response = await api.get(`/coa/unidades/${unidadeId.trim()}/geracao`, {
+      params: { periodo, ...(data ? { data } : {}) },
+    });
+    return response.data as SerieGeracao;
+  },
   /**
    * Busca dados do dashboard COA
    */

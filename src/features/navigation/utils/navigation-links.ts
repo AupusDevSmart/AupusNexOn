@@ -28,6 +28,8 @@ export type NavigationLink = {
   path: string;
   featureKey?: string;
   featureFlag?: keyof FeatureFlags;
+  /** Oculto para o CLIENTE (proprietário) — que por ora vê só monitoramento. */
+  hideForClient?: boolean;
   icon: LucideIcon | React.FC<React.SVGProps<SVGSVGElement>>;
   label: string;
   hint?: string;
@@ -168,6 +170,7 @@ export const navigationLinks: Array<NavigationLink> = [
   {
     key: "cadastros",
     featureFlag: "enableCadastros",
+    hideForClient: true, // cliente não vê Cadastros por enquanto (só monitoramento)
     path: "/cadastros",
     icon: Database,
     label: "Cadastros",

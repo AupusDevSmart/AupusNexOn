@@ -1,0 +1,43 @@
+{
+  "projeto_id": "9ef55b08099e4cba11875f137c",
+  "nome": "Bancada",
+  "firmwares": [
+    {
+      "label": "00__TON1",
+      "name": "TON1",
+      "tonType": "ton1",
+      "equipamentoId": "280a4bad4c452ab3876489c674",
+      "topicBase": "TESTE",
+      "nFiles": 26,
+      "warnings": [],
+      "files": [
+        "include/adc.h",
+        "include/config.h",
+        "include/diag.h",
+        "include/eth.h",
+        "include/hal.h",
+        "include/inputs.h",
+        "include/inverter_tcp.h",
+        "include/modbus_meter.h",
+        "include/ota.h",
+        "include/outputs.h",
+        "include/relays.h",
+        "include/sd_buffer.h",
+        "platformio.ini",
+        "src/adc.cpp",
+        "src/diag.cpp",
+        "src/eth.cpp",
+        "src/inputs.cpp",
+        "src/inverter_tcp.cpp",
+        "src/main.cpp",
+        "src/modbus_meter.cpp",
+        "src/mqtt.cpp",
+        "src/mqtt.h",
+        "src/ota.cpp",
+        "src/outputs.cpp",
+        "src/relays.cpp",
+        "src/sd_buffer.cpp"
+      ]
+    }
+  ]
+}

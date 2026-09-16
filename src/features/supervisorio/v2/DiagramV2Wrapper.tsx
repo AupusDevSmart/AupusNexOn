@@ -34,6 +34,12 @@ import type { Equipment } from './types/diagram.types';
 import { equipamentoApareceNoUnifilar } from './utils/dominioEquipamento';
 import { EquipamentoCommandModal } from './components/EquipamentoCommandModal';
 import { EquipamentoAcionarModal } from './components/EquipamentoAcionarModal';
+import { DisjuntorSheet } from './components/DisjuntorSheet';
+import { InversorSheet } from './components/sheets/InversorSheet';
+import { MedidorSheet } from './components/sheets/MedidorSheet';
+import { MotorSheet } from './components/sheets/MotorSheet';
+import { PivoSheet } from './components/sheets/PivoSheet';
+import { sheetKindFor } from './components/sheets/sheetKind';
 import { getCommandsForCategoria } from './utils/commandRegistry';
 
 // ============================================================================
@@ -160,6 +166,9 @@ export const DiagramV2Wrapper: React.FC<DiagramV2WrapperProps> = ({
   // Modal de acionamento de pontos (Fase C-3): aberto ao clicar em equipamento com automacao=true
   // que NAO eh uma TON (TONs caem no fluxo de comandos diretos via commandRegistry).
   const [acionarModalEquipment, setAcionarModalEquipment] = useState<Equipment | null>(null);
+  const [djSheetId, setDjSheetId] = useState<string | null>(null);
+  // Sheets dos demais equipamentos do unifilar (inversor/medidor/motor/pivô) — Fase 6.
+  const [eqpSheet, setEqpSheet] = useState<{ kind: string; id: string; nome?: string } | null>(null);
 
   const setEquipamentos = (equipamentos: Equipment[]) => {
     const store = useDiagramStore.getState();
@@ -383,6 +392,13 @@ export const DiagramV2Wrapper: React.FC<DiagramV2WrapperProps> = ({
             availableEquipments={equipamentosDisponiveis}
             onBackgroundClick={onBackgroundClick}
             onEquipmentClick={(equipment) => {
+              // DJ: abre o SHEET do disjuntor (Fase 6), fora do modo edicao.
+              if (!modoEdicao) {
+                const _tp = (String((equipment as any).tipo || '') + ' ' + String((equipment as any).categoria || '')).toLowerCase();
+                if (_tp.includes('disjuntor')) { setDjSheetId(equipment.id.trim()); return; }
+                const _kind = sheetKindFor((equipment as any).tipo, (equipment as any).categoria);
+                if (_kind) { setEqpSheet({ kind: _kind, id: equipment.id.trim(), nome: equipment.nome }); return; }
+              }
               // Bomba de Combustível: TEM automação (BOs), mas o acionamento é
               // AUTÔNOMO (máquina de estados por RFID no firmware) — então o clique
               // abre o MODAL PRÓPRIO da bomba (via callback legado), NÃO o modal
@@ -455,6 +471,23 @@ export const DiagramV2Wrapper: React.FC<DiagramV2WrapperProps> = ({
               : undefined
           }
         />
+      )}
+
+      {djSheetId && (
+        <DisjuntorSheet equipamentoId={djSheetId} onClose={() => setDjSheetId(null)} />
+      )}
+
+      {eqpSheet?.kind === 'inversor' && (
+        <InversorSheet equipamentoId={eqpSheet.id} nome={eqpSheet.nome} onClose={() => setEqpSheet(null)} />
+      )}
+      {eqpSheet?.kind === 'medidor' && (
+        <MedidorSheet equipamentoId={eqpSheet.id} nome={eqpSheet.nome} onClose={() => setEqpSheet(null)} />
+      )}
+      {eqpSheet?.kind === 'motor' && (
+        <MotorSheet equipamentoId={eqpSheet.id} nome={eqpSheet.nome} onClose={() => setEqpSheet(null)} />
+      )}
+      {eqpSheet?.kind === 'pivo' && (
+        <PivoSheet equipamentoId={eqpSheet.id} nome={eqpSheet.nome} onClose={() => setEqpSheet(null)} />
       )}
 
       {acionarModalEquipment && (

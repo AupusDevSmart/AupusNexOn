@@ -1,0 +1,41 @@
+{
+  "projeto_id": "95e5e6cc089f5f8dd1a229b101",
+  "nome": "IOT",
+  "firmwares": [
+    {
+      "label": "00__TON3",
+      "name": "TON3",
+      "tonType": "ton3",
+      "equipamentoId": "cmorj5p5c0019jq5pjth65aea",
+      "topicBase": "TESTE/AUPUS",
+      "nFiles": 24,
+      "warnings": [],
+      "files": [
+        "include/adc.h",
+        "include/config.h",
+        "include/diag.h",
+        "include/eth.h",
+        "include/hal.h",
+        "include/inputs.h",
+        "include/modbus_meter.h",
+        "include/ota.h",
+        "include/outputs.h",
+        "include/relays.h",
+        "include/sd_buffer.h",
+        "platformio.ini",
+        "src/adc.cpp",
+        "src/diag.cpp",
+        "src/eth.cpp",
+        "src/inputs.cpp",
+        "src/main.cpp",
+        "src/modbus_meter.cpp",
+        "src/mqtt.cpp",
+        "src/mqtt.h",
+        "src/ota.cpp",
+        "src/outputs.cpp",
+        "src/relays.cpp",
+        "src/sd_buffer.cpp"
+      ]
+    }
+  ]
+}

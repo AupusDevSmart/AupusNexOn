@@ -1,0 +1,5 @@
+# Saída transitória do "check" — regenerada a cada rodada, nunca versionar.
+current/
+
+# O baseline "ouro" (golden/) e o catalog-snapshot.js SÃO versionados de propósito:
+# são o ponto-de-retorno da regressão byte-idêntica da Fase 6.

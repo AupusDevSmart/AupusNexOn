@@ -18,8 +18,7 @@ import { DiagramConnections } from './components/DiagramViewer/DiagramConnection
 import { EquipmentNode } from './components/Equipment/EquipmentNode';
 import { exportDiagram, type ExportFormat } from './utils/exportDiagram';
 import { EditorSidebar } from './components/EditorSidebar';
-import { EquipmentEditModal } from './components/EquipmentEditModal';
-import { ModalCriarEquipamentoRapido } from '../components/ModalCriarEquipamentoRapido';
+import { EquipamentoCadastroModal } from './components/EquipamentoCadastroModal';
 import type { EquipamentoApiResponse } from '@/services/equipamentos.services';
 import {
   Dialog,
@@ -275,48 +274,6 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
   const handleEditEquipment = (equipment: Equipment) => {
     setEditingEquipment(equipment);
     setShowEditModal(true);
-  };
-
-  const handleSaveEquipmentEdit = async (updates: Partial<Equipment>) => {
-    if (!editingEquipment) return;
-
-    try {
-      // Salvar no backend primeiro
-      const { equipamentosApi } = await import('@/services/equipamentos.services');
-
-      const trimmedTopico = updates.topicoMqtt?.trim();
-      await equipamentosApi.update(editingEquipment.id, {
-        nome: updates.nome,
-        tag: updates.tag,
-        mqtt_habilitado: updates.mqttHabilitado ?? false,
-        ...(trimmedTopico ? { topico_mqtt: trimmedTopico } : {}),
-      });
-
-      // Atualizar equipamento no store
-      const updatedEquipment = { ...editingEquipment, ...updates };
-      const equipamentosAtualizados = equipamentos.map(eq =>
-        eq.id === editingEquipment.id ? updatedEquipment : eq
-      );
-
-      // Usar método updateEquipamento do store se existir, senão fazer manualmente
-      useDiagramStore.setState({ equipamentos: equipamentosAtualizados, isDirty: true });
-      useDiagramStore.getState().recalcularRotas();
-
-      toast({
-        title: 'Equipamento atualizado',
-        description: 'As alterações foram salvas com sucesso',
-      });
-
-      setEditingEquipment(null);
-      setShowEditModal(false);
-    } catch (error) {
-      console.error('Erro ao salvar equipamento:', error);
-      toast({
-        title: 'Erro ao salvar',
-        description: 'Não foi possível salvar as alterações do equipamento',
-        variant: 'destructive',
-      });
-    }
   };
 
   const handleDeleteEquipment = (equipmentId: string) => {
@@ -815,26 +772,38 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
         )}
       </div>
 
-      {/* Modal de criar equipamento rápido */}
-      {diagrama?.unidadeId && (
-        <ModalCriarEquipamentoRapido
+      {/* Cadastro simplificado do unifilar (Fase 7): criar */}
+      {diagrama?.unidadeId && showCreateEquipmentModal && (
+        <EquipamentoCadastroModal
           open={showCreateEquipmentModal}
           onClose={() => setShowCreateEquipmentModal(false)}
-          onEquipamentoCriado={handleEquipamentoCriado}
           unidadeId={diagrama.unidadeId}
+          mode="create"
+          onCreated={(equip) => { handleEquipamentoCriado(equip); setShowCreateEquipmentModal(false); }}
         />
       )}
 
-      {/* Modal de edição de equipamento */}
-      <EquipmentEditModal
-        equipment={editingEquipment}
-        open={showEditModal}
-        onClose={() => {
-          setShowEditModal(false);
-          setEditingEquipment(null);
-        }}
-        onSave={handleSaveEquipmentEdit}
-      />
+      {/* Cadastro simplificado do unifilar (Fase 7): editar */}
+      {diagrama?.unidadeId && showEditModal && editingEquipment && (
+        <EquipamentoCadastroModal
+          open={showEditModal}
+          onClose={() => { setShowEditModal(false); setEditingEquipment(null); }}
+          unidadeId={diagrama.unidadeId}
+          mode="edit"
+          equipmentId={editingEquipment.id}
+          equipmentTipoLabel={editingEquipment.tipo}
+          onSaved={({ tag }) => {
+            const atualizados = equipamentos.map(eq =>
+              eq.id === editingEquipment.id ? { ...eq, tag, nome: tag } : eq
+            );
+            useDiagramStore.setState({ equipamentos: atualizados, isDirty: true });
+            useDiagramStore.getState().recalcularRotas();
+            toast({ title: 'Equipamento atualizado', description: 'As alterações foram salvas' });
+            setShowEditModal(false);
+            setEditingEquipment(null);
+          }}
+        />
+      )}
     </div>
   );
 };

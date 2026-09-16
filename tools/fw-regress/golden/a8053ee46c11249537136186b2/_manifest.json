@@ -1,0 +1,41 @@
+{
+  "projeto_id": "a8053ee46c11249537136186b2",
+  "nome": "IOT",
+  "firmwares": [
+    {
+      "label": "00__TON1",
+      "name": "TON1",
+      "tonType": "ton1",
+      "equipamentoId": "cmpmyygul0h6vjq5jik52k464",
+      "topicBase": "NEWTON/GO/GEM/UFV",
+      "nFiles": 24,
+      "warnings": [],
+      "files": [
+        "include/adc.h",
+        "include/config.h",
+        "include/diag.h",
+        "include/eth.h",
+        "include/hal.h",
+        "include/inputs.h",
+        "include/modbus_meter.h",
+        "include/ota.h",
+        "include/outputs.h",
+        "include/relays.h",
+        "include/sd_buffer.h",
+        "platformio.ini",
+        "src/adc.cpp",
+        "src/diag.cpp",
+        "src/eth.cpp",
+        "src/inputs.cpp",
+        "src/main.cpp",
+        "src/modbus_meter.cpp",
+        "src/mqtt.cpp",
+        "src/mqtt.h",
+        "src/ota.cpp",
+        "src/outputs.cpp",
+        "src/relays.cpp",
+        "src/sd_buffer.cpp"
+      ]
+    }
+  ]
+}

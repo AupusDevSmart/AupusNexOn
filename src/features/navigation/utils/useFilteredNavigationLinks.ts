@@ -16,9 +16,12 @@ import { useUserStore } from '@/store/useUserStore';
  * nao tem `featureKey` e ficam abertos sujeitos so a feature flag.
  */
 export function useFilteredNavigationLinks() {
-  const { acessivel } = useUserStore();
+  const { acessivel, isCliente } = useUserStore();
+  const cliente = isCliente();
 
   const isAllowed = (link: NavigationLink): boolean => {
+    // Cliente (proprietário) por ora só monitoramento — Cadastros e afins somem.
+    if (cliente && link.hideForClient) return false;
     if (link.featureFlag) {
       const isFlagEnabled = featureFlags[link.featureFlag];
       if (!isFlagEnabled) return false;
@@ -29,6 +32,7 @@ export function useFilteredNavigationLinks() {
 
   const filterLinks = (links: NavigationLink[]): NavigationLink[] => {
     return links
+      .filter((link) => !(cliente && link.hideForClient)) // some o grupo inteiro
       .map((link) => {
         const children = link.links ? filterLinks(link.links) : undefined;
         return { ...link, links: children };
