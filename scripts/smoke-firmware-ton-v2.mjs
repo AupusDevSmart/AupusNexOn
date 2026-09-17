@@ -195,5 +195,5 @@ if (DO_COMPILE) {
       process.exit(1);
     }
   }
-  console.log('\nCOMPILAÇÃO: 4/4 SUCCESS');
+  console.log(`\nCOMPILAÇÃO: ${alvos.length}/${alvos.length} SUCCESS`);
 }
