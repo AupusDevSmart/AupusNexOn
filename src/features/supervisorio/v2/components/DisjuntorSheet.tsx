@@ -1,15 +1,19 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { api } from '@/config/api';
+import { acionarPontoApi } from '@/services/acionar-ponto.services';
 
 /**
  * Sheet do DJ (Fase 6 — reestruturação IoT). Data-driven pelo mockup
  * arquivos/nexon-web-dj.html: a tela se monta pelo que foi DECLARADO no cadastro
- * (colunas scs_*) e VINCULADO no arqIoT (PM/relé/ton_bo). Primeira versão —
- * o usuário vai lapidando. Lê:
+ * (colunas scs_*) e VINCULADO no arqIoT (PM/relé/ton_bo). Lê:
  *   - GET /iot/disjuntor/:id/scs-bundle  (declaração + PM + fonte de status + comandos)
- *   - GET /equipamentos/:pmId/dados/atual  (telemetria do PM associado)
- *   - GET /equipamentos/:releId/dados/atual (status aberto/fechado, via relé)
+ *   - GET /equipamentos/:pmId/dados/atual  (telemetria do PM associado — medição 'pm')
+ *   - GET /equipamentos/:releId/dados/atual (status aberto/fechado via relé; medição 'ied')
+ * Comando: POST /equipamentos/:id/pontos/:pontoId/acionar (mesmo caminho do
+ * EquipamentoAcionarModal) — o ponto Abrir/Fechar vem de `comandos` (ton_bo).
  */
 interface Bundle {
   equipamento: { id: string; nome: string | null };
@@ -19,11 +23,16 @@ interface Bundle {
   comandos: Array<{ ponto: string; ponto_id: string; bo_numero: number; pulso_ms: number; ton_id: string }>;
 }
 
+type Acao = 'Abrir' | 'Fechar';
+
 const fmt = (n: unknown, d = 1) =>
   n == null || Number.isNaN(Number(n)) ? '—' : Number(n).toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d });
 
 function useDados(equipamentoId?: string | null) {
   const [dados, setDados] = useState<Record<string, any> | null>(null);
+  const [tick, setTick] = useState(0);
+  // `reload` força uma leitura fora do polling de 15 s (usado logo após um comando).
+  const reload = useCallback(() => setTick((t) => t + 1), []);
   useEffect(() => {
     if (!equipamentoId) { setDados(null); return; }
     let vivo = true;
@@ -34,8 +43,8 @@ function useDados(equipamentoId?: string | null) {
     load();
     const t = setInterval(load, 15000);
     return () => { vivo = false; clearInterval(t); };
-  }, [equipamentoId]);
-  return dados;
+  }, [equipamentoId, tick]);
+  return { dados, reload };
 }
 
 export function DisjuntorSheet({ equipamentoId, onClose }: { equipamentoId: string; onClose: () => void }) {
@@ -52,8 +61,13 @@ export function DisjuntorSheet({ equipamentoId, onClose }: { equipamentoId: stri
     return () => { vivo = false; };
   }, [equipamentoId]);
 
-  const pmDados = useDados(bundle?.scs.medicao === 'pm' ? bundle?.pm?.equipamento_id : null);
-  const releDados = useDados(bundle?.scs.status ? bundle?.status_fonte?.rele_equipamento_id : null);
+  const temPm = bundle?.scs.medicao === 'pm';
+  const temIed = bundle?.scs.medicao === 'ied';
+  const { dados: pmDados } = useDados(temPm ? bundle?.pm?.equipamento_id : null);
+  // Relé: fonte do status (aberto/fechado) e, na medição 'ied', das grandezas.
+  const { dados: releDados, reload: reloadRele } = useDados(
+    (bundle?.scs.status || temIed) ? bundle?.status_fonte?.rele_equipamento_id : null,
+  );
 
   const posicao = useMemo(() => {
     const f = bundle?.status_fonte;
@@ -68,7 +82,50 @@ export function DisjuntorSheet({ equipamentoId, onClose }: { equipamentoId: stri
   const nome = bundle?.equipamento.nome ?? 'Disjuntor';
   const temStatus = !!bundle?.scs.status;
   const temComando = !!bundle?.scs.comando;
-  const temPm = bundle?.scs.medicao === 'pm';
+
+  // ---- Comando: ponto Abrir/Fechar resolvido pelo nome do ponto vinculado (ton_bo) ----
+  const cmdAbrir = useMemo(() => bundle?.comandos.find((c) => /abrir|open/i.test(c.ponto)) ?? null, [bundle]);
+  const cmdFechar = useMemo(() => bundle?.comandos.find((c) => /fechar|close/i.test(c.ponto)) ?? null, [bundle]);
+  const [confirmando, setConfirmando] = useState<Acao | null>(null);
+  const [enviando, setEnviando] = useState<Acao | null>(null);
+  const [ultimo, setUltimo] = useState<{ ok: boolean; texto: string } | null>(null);
+  // Confirmação em dois cliques (sem sub-modal): o segundo clique em até 6 s dispara.
+  useEffect(() => {
+    if (!confirmando) return undefined;
+    const t = setTimeout(() => setConfirmando(null), 6000);
+    return () => clearTimeout(t);
+  }, [confirmando]);
+
+  const executar = async (acao: Acao) => {
+    const cmd = acao === 'Abrir' ? cmdAbrir : cmdFechar;
+    if (!cmd || enviando) return;
+    setConfirmando(null);
+    setEnviando(acao);
+    setUltimo(null);
+    try {
+      const r = await acionarPontoApi.acionar(equipamentoId, cmd.ponto_id);
+      setUltimo({ ok: true, texto: `${acao} confirmado pela TON · ack ${r.latency_ms} ms · ${r.comando_tecnico}` });
+      toast.success(`${nome}: ${acao.toUpperCase()} executado`, {
+        description: `${r.comando_semantico} · pulso ${r.pulso_ms} ms · ack ${r.latency_ms} ms`,
+      });
+      // O relé publica a posição nova logo após a manobra — relê fora do polling.
+      [1200, 3000, 6000].forEach((ms) => setTimeout(reloadRele, ms));
+    } catch (err: any) {
+      const status = err?.response?.status;
+      const apiMsg = err?.response?.data?.error?.message ?? err?.response?.data?.message;
+      let titulo = `Falha ao ${acao.toLowerCase()}`;
+      let desc: string = apiMsg ?? err?.message ?? 'Erro desconhecido';
+      if (status === 504) { titulo = 'TON não respondeu'; desc = 'Timeout — TON offline ou sem rede.'; }
+      else if (status === 502) titulo = 'TON recusou o comando';
+      else if (status === 503) titulo = 'Broker MQTT desconectado';
+      else if (status === 400) titulo = 'Configuração incompleta';
+      else if (status === 403) titulo = 'Sem permissão para comandar';
+      setUltimo({ ok: false, texto: `${titulo}: ${desc}` });
+      toast.error(titulo, { description: desc });
+    } finally {
+      setEnviando(null);
+    }
+  };
 
   // DJ sem SCS não tem o que ver/comandar — não abre o modal (fecha assim que o
   // bundle chega e revela que está desabilitado). A configuração é na edição do unifilar.
@@ -77,6 +134,16 @@ export function DisjuntorSheet({ equipamentoId, onClose }: { equipamentoId: stri
   // Não renderiza o Dialog enquanto carrega o bundle NEM se o SCS está desabilitado:
   // evita o "abre e fecha rápido" (flash) num DJ que não é pra ser clicável.
   if (loading || scsOff) return null;
+
+  // Medição: PM associado (medição 'pm') ou o próprio relé/IED (medição 'ied').
+  const medDados = temPm ? pmDados : temIed ? releDados : null;
+  const medFonte = temPm
+    ? (bundle?.pm ? `PM: ${bundle.pm.nome ?? bundle.pm.equipamento_id}` : null)
+    : temIed
+      ? (bundle?.status_fonte ? `IED: ${bundle.status_fonte.rele_nome ?? bundle.status_fonte.rele_equipamento_id}` : null)
+      : null;
+
+  const btnBase = 'flex-1 py-2.5 rounded-lg font-semibold text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-colors';
 
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
@@ -94,8 +161,6 @@ export function DisjuntorSheet({ equipamentoId, onClose }: { equipamentoId: stri
 
           {bundle && (
             <>
-              {/* Aviso quando SCS desabilitado — a configuração é feita na edição do
-                  equipamento no unifilar (não mais aqui; este sheet é só ver/comandar). */}
               {!bundle.scs.habilitado && (
                 <div className="mt-5 rounded-lg border border-dashed p-4 text-center">
                   <p className="text-sm text-muted-foreground">SCS desabilitado neste disjuntor.</p>
@@ -110,6 +175,9 @@ export function DisjuntorSheet({ equipamentoId, onClose }: { equipamentoId: stri
                     <span className={`w-3 h-3 rounded-full ${posicao === 'Fechado' ? 'bg-emerald-500' : posicao === 'Aberto' ? 'bg-gray-400' : 'bg-amber-400'}`} />
                     <div className="flex-1">
                       <b className="text-base">{posicao ?? 'Aguardando'}</b>
+                      {bundle.status_fonte?.rele_nome && (
+                        <div className="text-[11px] text-muted-foreground">via {bundle.status_fonte.rele_nome}</div>
+                      )}
                     </div>
                   </div>
                 ) : (
@@ -125,9 +193,32 @@ export function DisjuntorSheet({ equipamentoId, onClose }: { equipamentoId: stri
                 <div className="pt-5">
                   <h4 className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold mb-2">Controles</h4>
                   <div className="flex gap-2">
-                    <button className="flex-1 py-2.5 rounded-lg border font-semibold text-sm">Abrir</button>
-                    <button className="flex-1 py-2.5 rounded-lg font-semibold text-sm text-white" style={{ background: '#177A3C' }}>Fechar</button>
+                    <button
+                      type="button"
+                      disabled={!cmdAbrir || !!enviando}
+                      onClick={() => (confirmando === 'Abrir' ? executar('Abrir') : setConfirmando('Abrir'))}
+                      className={`${btnBase} border ${confirmando === 'Abrir' ? 'border-amber-500 text-amber-700 bg-amber-50 dark:text-amber-300 dark:bg-amber-950/40' : ''}`}
+                    >
+                      {enviando === 'Abrir' ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                      {enviando === 'Abrir' ? 'Abrindo…' : confirmando === 'Abrir' ? 'Confirmar abrir' : 'Abrir'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!cmdFechar || !!enviando}
+                      onClick={() => (confirmando === 'Fechar' ? executar('Fechar') : setConfirmando('Fechar'))}
+                      className={`${btnBase} text-white ${confirmando === 'Fechar' ? 'ring-2 ring-amber-500' : ''}`}
+                      style={{ background: '#177A3C' }}
+                    >
+                      {enviando === 'Fechar' ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                      {enviando === 'Fechar' ? 'Fechando…' : confirmando === 'Fechar' ? 'Confirmar fechar' : 'Fechar'}
+                    </button>
                   </div>
+                  {confirmando && !enviando && (
+                    <p className="text-xs text-amber-600 mt-2">Clique de novo para confirmar <b>{confirmando.toLowerCase()}</b> · cancela sozinho em 6 s.</p>
+                  )}
+                  {ultimo && (
+                    <p className={`text-xs mt-2 ${ultimo.ok ? 'text-emerald-600' : 'text-red-600'}`}>{ultimo.texto}</p>
+                  )}
                   {bundle.comandos.length === 0 && (
                     <p className="text-xs text-amber-600 mt-2">Comando declarado, mas sem vínculo a canal (BO) da TON — configure em "Configurações SCS".</p>
                   )}
@@ -149,24 +240,28 @@ export function DisjuntorSheet({ equipamentoId, onClose }: { equipamentoId: stri
                 </div>
               )}
 
-              {/* MEDIÇÃO (PM) */}
-              {temPm && (
+              {/* MEDIÇÃO (PM associado ou o próprio IED/relé) */}
+              {(temPm || temIed) && (
                 <div className="pt-5">
-                  <h4 className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold mb-2">Medição</h4>
-                  {!bundle.pm ? (
+                  <h4 className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold mb-2">
+                    Medição {temIed ? '· IED (relé)' : '· PM'}
+                  </h4>
+                  {temPm && !bundle.pm ? (
                     <p className="text-xs text-muted-foreground">Medição declarada como PM, mas nenhum Power Meter associado — associe em "Configurações SCS" da TON.</p>
+                  ) : temIed && !bundle.status_fonte ? (
+                    <p className="text-xs text-muted-foreground">Medição declarada como IED, mas nenhum relé vinculado a este disjuntor no IoT.</p>
                   ) : (
                     <>
                       <div className="grid grid-cols-2 gap-2">
                         <div className="rounded-lg border p-3">
                           <div className="text-[11px] text-muted-foreground">Potência total</div>
-                          <div className="text-xl font-bold">{fmt(pmDados?.Pt != null ? Number(pmDados.Pt) / 1000 : null)} <em className="not-italic text-xs font-medium text-muted-foreground">kW</em></div>
-                          <div className="text-[11px] text-muted-foreground">{fmt(pmDados?.Qt != null ? Number(pmDados.Qt) / 1000 : null)} kvar · {fmt(pmDados?.St != null ? Number(pmDados.St) / 1000 : null)} kVA</div>
+                          <div className="text-xl font-bold">{fmt(medDados?.Pt != null ? Number(medDados.Pt) / 1000 : null)} <em className="not-italic text-xs font-medium text-muted-foreground">kW</em></div>
+                          <div className="text-[11px] text-muted-foreground">{fmt(medDados?.Qt != null ? Number(medDados.Qt) / 1000 : null)} kvar · {fmt(medDados?.St != null ? Number(medDados.St) / 1000 : null)} kVA</div>
                         </div>
                         <div className="rounded-lg border p-3">
                           <div className="text-[11px] text-muted-foreground">Fator de potência</div>
-                          <div className="text-xl font-bold">{fmt(pmDados?.FPt, 2)}</div>
-                          <div className="text-[11px] text-muted-foreground">Freq {fmt(pmDados?.Freq, 2)} Hz</div>
+                          <div className="text-xl font-bold">{fmt(medDados?.FPt, 2)}</div>
+                          <div className="text-[11px] text-muted-foreground">Freq {fmt(medDados?.Freq, 2)} Hz</div>
                         </div>
                       </div>
                       <div className="rounded-lg border mt-2 text-sm overflow-hidden">
@@ -176,12 +271,12 @@ export function DisjuntorSheet({ equipamentoId, onClose }: { equipamentoId: stri
                         {[['A', 'Va', 'Ia'], ['B', 'Vb', 'Ib'], ['C', 'Vc', 'Ic']].map(([f, vk, ik]) => (
                           <div key={f} className="flex px-3.5 py-2 border-t">
                             <div className="flex-1 text-muted-foreground">{f}</div>
-                            <div className="flex-1 text-right font-medium">{fmt(pmDados?.[vk], 0)} V</div>
-                            <div className="flex-1 text-right font-medium">{fmt(pmDados?.[ik], 0)} A</div>
+                            <div className="flex-1 text-right font-medium">{fmt(medDados?.[vk], 0)} V</div>
+                            <div className="flex-1 text-right font-medium">{fmt(medDados?.[ik], 0)} A</div>
                           </div>
                         ))}
                       </div>
-                      <p className="text-[11px] text-muted-foreground mt-2">PM: {bundle.pm.nome ?? bundle.pm.equipamento_id}</p>
+                      {medFonte && <p className="text-[11px] text-muted-foreground mt-2">{medFonte}</p>}
                     </>
                   )}
                 </div>

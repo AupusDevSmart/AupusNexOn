@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
-import { Activity, Settings, TrendingUp, Zap, AlertTriangle, Loader2, Expand } from "lucide-react";
+import { Activity, Settings, TrendingUp, Zap, AlertTriangle, Loader2, Expand, ChevronLeft, ChevronRight } from "lucide-react";
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
   Bar,
@@ -26,6 +26,63 @@ import { ConfiguracaoDemandaModal, ConfiguracaoDemanda, EquipamentoConfig } from
 import type { ReactNode } from "react";
 import { CATEGORIA_FLUXO, resolverFluxoEquipamento } from "../utils/categoria-fluxo";
 import { useDemandaAgregada, PeriodoFiltro } from "@/hooks/useDemandaAgregada";
+
+// ---- Navegação ‹ › do período (dia/mês/ano) — referência em periodo.data/mes/ano ----
+const pad2 = (n: number) => String(n).padStart(2, '0');
+/** Hoje em YYYY-MM-DD no fuso do navegador (o mesmo que o backend usa pra montar o dia). */
+const hojeLocalISO = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+};
+/** 'YYYY-MM-DD' → Date local à meia-noite (sem o deslocamento de UTC do `new Date(iso)`). */
+const parseDiaLocal = (iso?: string): Date | null => {
+  if (!iso) return null;
+  const [y, m, d] = iso.split('-').map(Number);
+  if (!y || !m || !d) return null;
+  return new Date(y, m - 1, d, 0, 0, 0, 0);
+};
+const ehDiaAtual = (p: PeriodoFiltro) => p.tipo !== 'dia' || !p.data || p.data === hojeLocalISO();
+const deslocarPeriodo = (p: PeriodoFiltro, passo: number): PeriodoFiltro => {
+  const hoje = new Date();
+  if (p.tipo === 'dia') {
+    const base = parseDiaLocal(p.data) ?? new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+    base.setDate(base.getDate() + passo);
+    return { tipo: 'dia', data: `${base.getFullYear()}-${pad2(base.getMonth() + 1)}-${pad2(base.getDate())}` };
+  }
+  if (p.tipo === 'mes') {
+    const [y, m] = (p.mes ?? `${hoje.getFullYear()}-${pad2(hoje.getMonth() + 1)}`).split('-').map(Number);
+    const base = new Date(y, m - 1 + passo, 1);
+    return { tipo: 'mes', mes: `${base.getFullYear()}-${pad2(base.getMonth() + 1)}` };
+  }
+  if (p.tipo === 'ano') {
+    const y = Number(p.ano ?? hoje.getFullYear());
+    return { tipo: 'ano', ano: String(y + passo) };
+  }
+  return p;
+};
+const podeAvancarPeriodo = (p: PeriodoFiltro): boolean => {
+  const prox = deslocarPeriodo(p, 1);
+  const hoje = hojeLocalISO();
+  if (prox.tipo === 'dia') return (prox.data ?? '') <= hoje;
+  if (prox.tipo === 'mes') return (prox.mes ?? '') <= hoje.slice(0, 7);
+  if (prox.tipo === 'ano') return (prox.ano ?? '') <= hoje.slice(0, 4);
+  return false;
+};
+const rotuloPeriodo = (p: PeriodoFiltro): string => {
+  const hoje = new Date();
+  if (p.tipo === 'dia') {
+    if (!p.data || p.data === hojeLocalISO()) return 'Hoje';
+    const [y, m, d] = p.data.split('-');
+    return `${d}/${m}/${y}`;
+  }
+  if (p.tipo === 'mes') {
+    const [y, m] = (p.mes ?? `${hoje.getFullYear()}-${pad2(hoje.getMonth() + 1)}`).split('-').map(Number);
+    const s = new Date(y, m - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  }
+  if (p.tipo === 'ano') return String(p.ano ?? hoje.getFullYear());
+  return '';
+};
 import { useDadosM160 } from "@/hooks/useDadosM160";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useQuery } from "@tanstack/react-query";
@@ -393,20 +450,25 @@ export function SinopticoGraficosV2({
     if (!dados || dados.length === 0) return [];
 
     if (periodo.tipo === 'dia') {
-      const hoje = new Date();
+      // Dia de referência: periodo.data (navegação ‹ ›) ou hoje. Num dia passado o
+      // template de slots vai até 23:55; hoje, só até agora.
+      const hoje = parseDiaLocal(periodo.data) ?? new Date();
       hoje.setHours(0, 0, 0, 0);
       const inicioDeHoje = hoje.getTime();
+      const fimDoDia = inicioDeHoje + 86_400_000;
+      const ehHoje = ehDiaAtual(periodo);
       const valorAdicional = valorContratado * (1 + percentualAdicional / 100);
 
       const dadosDeHoje = dados.filter(item => {
         if (!item.timestamp) return false;
-        return new Date(item.timestamp).getTime() >= inicioDeHoje;
+        const t = new Date(item.timestamp).getTime();
+        return t >= inicioDeHoje && t < fimDoDia;
       });
 
       const agora = new Date();
       const todosOsHorarios: any[] = [];
-      const horaFinal = agora.getHours();
-      const minutoFinal = agora.getMinutes();
+      const horaFinal = ehHoje ? agora.getHours() : 23;
+      const minutoFinal = ehHoje ? agora.getMinutes() : 59;
 
       for (let h = 0; h <= horaFinal; h++) {
         const maxMinutos = h === horaFinal ? minutoFinal : 59;
@@ -458,7 +520,7 @@ export function SinopticoGraficosV2({
       label: item.mes_nome ? item.mes_nome.slice(0, 3) : MESES_PT_CURTOS[(item.mes_numero ?? 1) - 1],
       energia: item.energia_kwh,
     }));
-  }, [dados, periodo.tipo, valorContratado, percentualAdicional]);
+  }, [dados, periodo.tipo, periodo.data, valorContratado, percentualAdicional]);
 
   // Formatar dados de tensão e FP do M160 - com período completo de 00:00 até agora
   const dadosFormatadosTensao = useMemo(() => {
@@ -580,8 +642,10 @@ export function SinopticoGraficosV2({
 
   // Qualidade só faz sentido para 'dia' (live). Mês/ano/custom são consultas históricas.
   const qualidadeDados = useMemo(
-    () => (periodo.tipo === 'dia' ? analisarQualidadeDados(dados) : { status: 'OK' as const, mensagem: '' }),
-    [dados, periodo.tipo],
+    // Só faz sentido avaliar "desatualizado" no dia CORRENTE — num dia passado o
+    // último ponto é sempre antigo.
+    () => (periodo.tipo === 'dia' && ehDiaAtual(periodo) ? analisarQualidadeDados(dados) : { status: 'OK' as const, mensagem: '' }),
+    [dados, periodo],
   );
 
   const ehSeriesPotencia = periodo.tipo === 'dia' || periodo.tipo === 'custom';
@@ -763,6 +827,41 @@ export function SinopticoGraficosV2({
                   </div>
                 </PopoverContent>
               </Popover>
+
+              {/* ‹ › navega o período (dia/mês/ano); o rótulo volta pro atual */}
+              {periodo.tipo !== 'custom' && (
+                <div className="flex items-center gap-0.5 ml-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    title="Período anterior"
+                    aria-label="Período anterior"
+                    onClick={() => setPeriodo(deslocarPeriodo(periodo, -1))}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <button
+                    type="button"
+                    className="min-w-[88px] text-center text-xs font-medium tabular-nums hover:underline"
+                    title="Voltar para o período atual"
+                    onClick={() => handlePeriodoTipoChange(periodo.tipo)}
+                  >
+                    {rotuloPeriodo(periodo)}
+                  </button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    title="Próximo período"
+                    aria-label="Próximo período"
+                    disabled={!podeAvancarPeriodo(periodo)}
+                    onClick={() => setPeriodo(deslocarPeriodo(periodo, 1))}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
             </div>
 
             {energiaPeriodo > 0 && (
