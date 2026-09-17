@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { SheetShell, EstadoHero, KpiGrid, GrupoTitulo, Section, FasesTable, MiniChart, useDados, getPath, fmt, tsInfo, BadgeFrescor } from './sheetParts';
+import { SheetShell, EstadoHero, KpiGrid, GrupoTitulo, Section, FasesTable, MiniChart, useDados, useCurvaDia, getPath, fmt, tsInfo, BadgeFrescor } from './sheetParts';
 
 /**
  * Linha de parâmetro de regulação/proteção (grid-code) no estilo do mockup: rótulo +
@@ -31,6 +31,8 @@ function ParamRow({ label, faixa, valor, anterior }: { label: string; faixa: str
  */
 export function InversorSheet({ equipamentoId, nome, onClose }: { equipamentoId: string; nome?: string; onClose: () => void }) {
   const { dados, ts } = useDados(equipamentoId);
+  // Curva do dia (kW, buckets de 15 min) — antes era uma série vazia fixa.
+  const curva = useCurvaDia(equipamentoId, 15);
   const [aba, setAba] = useState('op');
   const [ff, setFf] = useState(true);
 
@@ -132,7 +134,7 @@ export function InversorSheet({ equipamentoId, nome, onClose }: { equipamentoId:
 
           {/* CURVA */}
           <GrupoTitulo>Curva</GrupoTitulo>
-          <MiniChart serie={[]} unit="kW" />
+          <MiniChart serie={curva} unit="kW" />
 
           {/* ENERGIA E PRODUÇÃO */}
           <GrupoTitulo>Energia e produção</GrupoTitulo>

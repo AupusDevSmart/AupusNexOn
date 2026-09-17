@@ -21,6 +21,33 @@ export function getPath(obj: any, path: string): any {
   return path.split('.').reduce((o: any, k: string) => (o == null ? undefined : o[k]), obj);
 }
 
+/**
+ * Curva de potência (kW) do dia corrente de um equipamento — buckets de
+ * GET /equipamentos-dados/:id/grafico-dia (intervalo em min: 1|5|15|30).
+ * Devolve só os valores, na ordem do dia (é o que o MiniChart consome).
+ * Reconsulta a cada 5 min; vazio quando não há leitura hoje.
+ */
+export function useCurvaDia(equipamentoId?: string | null, intervalo: 1 | 5 | 15 | 30 = 15) {
+  const [serie, setSerie] = useState<number[]>([]);
+  useEffect(() => {
+    if (!equipamentoId) { setSerie([]); return; }
+    let vivo = true;
+    const load = () =>
+      api.get(`/equipamentos-dados/${equipamentoId.trim()}/grafico-dia`, { params: { intervalo } })
+        .then((r) => {
+          if (!vivo) return;
+          const body = r?.data?.data ?? r?.data;
+          const pontos: any[] = Array.isArray(body?.dados) ? body.dados : [];
+          setSerie(pontos.map((p) => Number(p?.potencia_kw)).filter((v) => Number.isFinite(v)));
+        })
+        .catch(() => { if (vivo) setSerie([]); });
+    load();
+    const t = setInterval(load, 5 * 60 * 1000);
+    return () => { vivo = false; clearInterval(t); };
+  }, [equipamentoId, intervalo]);
+  return serie;
+}
+
 /** Assina a telemetria ao vivo de um equipamento (refresh periódico). */
 export function useDados(equipamentoId?: string | null, intervalMs = 15000) {
   const [dados, setDados] = useState<Record<string, any> | null>(null);

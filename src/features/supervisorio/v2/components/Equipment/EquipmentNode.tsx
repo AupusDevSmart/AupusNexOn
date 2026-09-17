@@ -80,12 +80,15 @@ const EquipmentNodeImpl: React.FC<EquipmentNodeProps> = ({ equipment, onClick, o
   }, [alarmesUnidade, equipment.id]);
   const alarmeCor = alarmeSeveridade === 'CRITICA' ? '#ef4444' : alarmeSeveridade === 'ALTA' ? '#f97316' : null;
 
-  // Estado do disjuntor vira COR DO PRÓPRIO SÍMBOLO (em vez de uma faixa/anel em
-  // volta): fechado=vermelho, aberto=verde, indeterminado=cinza. sem_fonte → neutro.
+  // Estado do disjuntor vira COR DO PRÓPRIO SÍMBOLO (caixa sólida, estilo SCADA):
+  // fechado=vermelho, aberto=verde, indeterminado=cinza. SEM status (nenhum relé
+  // vinculado / sem telemetria) também fica CINZA — pedido do dono: "quando não
+  // tiver status, preencher de cinza" (só o que tem posição conhecida ganha cor).
   const corEstadoDisjuntor =
     estadoDisjuntor === 'fechado' ? '#ef4444'
     : estadoDisjuntor === 'aberto' ? '#22c55e'
     : estadoDisjuntor === 'indeterminado' ? '#9ca3af'
+    : estadoDisjuntor === 'sem_fonte' ? '#9ca3af'
     : null;
 
   // Para junction points, centralizar no vértice
