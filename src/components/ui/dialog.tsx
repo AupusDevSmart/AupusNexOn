@@ -50,7 +50,7 @@ const DialogContent = React.forwardRef<
           // LATERAL SHEET: modais ancorados à direita, ALTURA TOTAL (inset-y-0) para
           // evitar scroll — mais espaço vertical + o modal expande pro lado (max-w-*).
           // overflow-y-auto é só rede de segurança p/ conteúdo extremo.
-          "fixed inset-y-0 right-0 z-[9999] grid w-full max-w-lg gap-4 overflow-y-auto border-l bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right",
+          "fixed inset-y-0 right-0 z-[9999] flex flex-col w-full max-w-lg gap-4 overflow-y-auto border-l bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right",
           className
         )}
         {...props}
@@ -86,7 +86,7 @@ const DialogFooter = ({
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      "flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2",
+      "mt-auto flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2",
       className
     )}
     {...props}
