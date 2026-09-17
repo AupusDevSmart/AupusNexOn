@@ -219,7 +219,7 @@ export const ElectricalSymbol = ({
             viewBox="0 0 40 20"
             className="drop-shadow-sm"
           >
-            {/* Apenas bordas, sem preenchimento */}
+            {/* Caixa FECHADA (estilo SCADA/Elipse): sólida na cor do status */}
             <rect
               x="2"
               y="2"
@@ -228,7 +228,7 @@ export const ElectricalSymbol = ({
               className={statusClasses.stroke}
               strokeWidth="2"
               rx="2"
-              fill="none"
+              fill="currentColor"
             />
           </svg>
         );
@@ -240,16 +240,15 @@ export const ElectricalSymbol = ({
       viewBox="0 0 40 20"
       className="drop-shadow-sm"
     >
-      {/* Apenas bordas vermelhas, sem preenchimento - FECHADO/ENERGIZADO */}
+      {/* Caixa FECHADA sólida VERMELHA - FECHADO/ENERGIZADO (convenção Elipse) */}
       <rect
         x="2"
         y="2"
         width="36"
         height="16"
-        className="stroke-red-600 dark:stroke-red-500"
+        className="fill-red-600 stroke-red-600 dark:fill-red-500 dark:stroke-red-500"
         strokeWidth="2"
         rx="2"
-        fill="none"
       />
     </svg>
   );
@@ -262,16 +261,15 @@ case "DISJUNTOR_ABERTO":
       viewBox="0 0 40 20"
       className="drop-shadow-sm"
     >
-      {/* Apenas bordas verdes, sem preenchimento - ABERTO/DESENERGIZADO */}
+      {/* Caixa FECHADA sólida VERDE - ABERTO/DESENERGIZADO (convenção Elipse) */}
       <rect
         x="2"
         y="2"
         width="36"
         height="16"
-        className="stroke-green-600 dark:stroke-green-500"
+        className="fill-green-600 stroke-green-600 dark:fill-green-500 dark:stroke-green-500"
         strokeWidth="2"
         rx="2"
-        fill="none"
       />
     </svg>
   );
