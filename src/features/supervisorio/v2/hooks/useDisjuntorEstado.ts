@@ -55,8 +55,18 @@ export function useDisjuntorEstado(disjuntorEquipamentoId?: string | null) {
   }, [disjuntorEquipamentoId]);
 
   // Só abre socket se houver relé resolvido.
-  const { data } = useEquipamentoMqttData(fonte?.rele_equipamento_id ?? null);
+  const { data, refetch } = useEquipamentoMqttData(fonte?.rele_equipamento_id ?? null);
   const dados = (data as any)?.dado?.dados ?? null;
+
+  // O socket só entrega quando o backend INGERE uma mensagem do relé. Se a última
+  // leitura mudou por outro caminho (backend reiniciando, socket caído, relé lido
+  // em lote), o símbolo ficaria congelado — então também re-lê a última leitura
+  // periodicamente. Só para DJ com relé resolvido (os sem fonte não pollam nada).
+  useEffect(() => {
+    if (!fonte?.rele_equipamento_id) return undefined;
+    const t = setInterval(() => { void refetch(); }, 15000);
+    return () => clearInterval(t);
+  }, [fonte?.rele_equipamento_id, refetch]);
 
   let estado: DisjuntorEstado = semFonte ? 'sem_fonte' : 'indeterminado';
   if (fonte && dados) {
