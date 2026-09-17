@@ -206,7 +206,7 @@ function ensureIoTScripts(): Promise<void> {
     //
     // O catalogo de dispositivos foi movido pro backend (GET /iot-catalog/device-catalog.js)
     // — ele revalida sozinho via ETag. Os demais ainda sao estaticos.
-    const IOT_SCRIPTS_VERSION = '20260916-crc-lastfail';
+    const IOT_SCRIPTS_VERSION = '20260917-ssu-nbr14522';
     const scripts = [
       `${BASE_URL}/iot-catalog/device-catalog.js`,
       `/iot-firmware-base.v2.js?v=${IOT_SCRIPTS_VERSION}`,
@@ -638,7 +638,7 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
 
   // true se o componente IoT é um Power Meter (medidor) — tipos do diagrama IoT.
   const isPmComp = (type: any): boolean =>
-    ['power_meter', 'medidor_comum'].includes(String(type || '').toLowerCase());
+    ['power_meter', 'medidor_comum', 'medidor_ssu'].includes(String(type || '').toLowerCase());
 
   // Lista os DISJUNTORES da unidade (unifilar) pra associar a um Power Meter.
   const carregarDisjuntoresUnidade = async () => {
@@ -699,6 +699,9 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
     inversor: '01JAQTE1INVERSOR000000005',
     power_meter: '01JAQTE1MEDIDOR00000001',
     medidor_comum: '01JAQTE1MEDIDOR00000001',
+    // Medidor lido pela SSU na TON v2: cai no tipo A966 (categoria Gateway) — mesma
+    // ingestão/dashboard do gateway A-966, que ele substitui.
+    medidor_ssu: 'tipo-ims-a966-001',
     rele_protecao: '01JAQTE1RELE0000000000016', // Relé de Proteção (cat. Relê Proteção)
     bomba: '41f4145b41662798dca73a9d19', // Bomba de Combustível
     carregador: 'bb0thcmhchstqmauu7re83hx', // Carregador Elétrico Genérico
@@ -707,6 +710,8 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
   const familiaCasa = (tipoComp: string, codigo: string, nome: string): boolean => {
     const hay = `${codigo || ''} ${nome || ''}`;
     if (tipoComp === 'inversor') return /INVERSOR|SUN2000/i.test(hay);
+    if (tipoComp === 'medidor_ssu')
+      return /A966|A-966|SSU|GATEWAY|LANDIS|E750|MEDIDOR/i.test(hay);
     if (tipoComp === 'power_meter' || tipoComp === 'medidor_comum')
       return /METER|MEDIDOR|LANDIS|M160|M300|PD666|A966/i.test(hay);
     if (tipoComp === 'rele_protecao') return /RELE/i.test(hay);
@@ -761,7 +766,7 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
     // TON no unifilar). O backend cria+associa o equipamento da TON no save
     // (ensureTonEquipamentos). Idem infra (roteador/broker/conversor/datalogger).
     const linkavel =
-      ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao', 'bomba', 'carregador'].includes(tipo);
+      ['inversor', 'power_meter', 'medidor_comum', 'medidor_ssu', 'rele_protecao', 'bomba', 'carregador'].includes(tipo);
     if (!linkavel) return;
     const lista = await listarAtivosParaVinculo(comp);
     setAssociarLista(lista);

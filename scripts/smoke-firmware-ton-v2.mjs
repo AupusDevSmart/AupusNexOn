@@ -70,6 +70,27 @@ const casoC = {
   connections: [conn('c1', 'c2', 'wifi'), conn('c1', 'c3', 'lora_radio'), conn('c3', 'c4', 'rs485')],
 };
 
+// Caso D: ton1v2 + Medidor SSU (NBR 14522) na entrada SU+ + router (publica via MQTT)
+const casoD = {
+  components: [
+    { id: 'd1', type: 'ton1v2', x: 0, y: 0, props: { name: 'TON1v2', mqtt_topic_base: 'TESTE/SMK/D/T1' } },
+    { id: 'd2', type: 'medidor_ssu', x: 1, y: 0, props: { name: 'E750', catalog_id: '', modbus_address: 1, ke: '0.048', formato_esperado: 'estendido', tem_geracao: true, intervalo_reativo_min: 60 } },
+    { id: 'd3', type: 'wifi_router', x: 2, y: 0, props: { name: 'R', ssid: 's', password: 'p' } },
+  ],
+  connections: [conn('d1', 'd2', 'ssu'), conn('d1', 'd3', 'wifi')],
+};
+
+// Caso E: ton2v2 gateway + ton4v2 satellite SO' com Medidor SSU (sem RS485) — publica via LoRa
+const casoE = {
+  components: [
+    { id: 'e1', type: 'ton2v2', x: 0, y: 0, props: { name: 'GW2v2', mqtt_topic_base: 'TESTE/SMK/E/GW' } },
+    { id: 'e2', type: 'wifi_router', x: 1, y: 0, props: { name: 'R', ssid: 's', password: 'p' } },
+    { id: 'e3', type: 'ton4v2', x: 0, y: 1, props: { name: 'SAT4v2', mqtt_topic_base: '' } },
+    { id: 'e4', type: 'medidor_ssu', x: 1, y: 1, props: { name: 'E750', modbus_address: 1 } },
+  ],
+  connections: [conn('e1', 'e2', 'wifi'), conn('e1', 'e3', 'lora_radio'), conn('e3', 'e4', 'ssu')],
+};
+
 const GenV1 = vm.runInContext('FirmwareGenerator', sandbox);
 const GenV2 = vm.runInContext('FirmwareGeneratorTonV2', sandbox);
 const editor = (d) => ({ components: d.components, connections: d.connections, simulate: false, loraAutonomous: false });
@@ -118,6 +139,32 @@ const fSat = pC.find(p => p.spec.tonType === 'ton4v2').files;
 check('caso C: satellite sem ota.cpp (sem wifi)', !fSat['src/ota.cpp']);
 check('caso C: satellite tem lora.cpp', !!fSat['src/lora.cpp']);
 
+// ---- Medidor SSU (NBR 14522) ----
+check('caso A: sem SSU no diagrama => sem ssu.cpp nem HAS_SSU (byte-identico ao antes)',
+  !fA['src/ssu.cpp'] && !fA['src/ssu_nbr14522.cpp'] && !has(fA, 'include/config.h', 'HAS_SSU') && !has(fA, 'src/main.cpp', 'ssu_'));
+const pD = new GenV2(editor(casoD)).generateAll();
+check('caso D: 1 projeto (ton1v2)', pD.length === 1 && pD[0].spec.tonType === 'ton1v2');
+const fD = pD[0].files;
+check('caso D: spec.ssu resolvido (subtopic E750_1/data, ke, formato estendido)',
+  pD[0].spec.ssu && pD[0].spec.ssu.subtopic === 'E750_1/data' && pD[0].spec.ssu.ke === 0.048 && pD[0].spec.ssu.formato_esperado === 2);
+check('caso D: lib + glue presentes', !!fD['include/ssu_nbr14522.h'] && !!fD['src/ssu_nbr14522.cpp'] && !!fD['include/ssu.h'] && !!fD['src/ssu.cpp']);
+const libDir = join(HERE, '..', 'firmware-libs', 'ssu_nbr14522');
+check('caso D: lib embutida == fonte canonica (ssu_nbr14522.h)', fD['include/ssu_nbr14522.h'] === readFileSync(join(libDir, 'ssu_nbr14522.h'), 'utf8'));
+check('caso D: lib embutida == fonte canonica (ssu_nbr14522.cpp)', fD['src/ssu_nbr14522.cpp'] === readFileSync(join(libDir, 'ssu_nbr14522.cpp'), 'utf8'));
+check('caso D: config.h HAS_SSU / UART0 / IO48 / 110 baud / subtopic', has(fD, 'include/config.h', '#define HAS_SSU') && has(fD, 'include/config.h', 'SSU_UART_NUM                0') && has(fD, 'include/config.h', 'SSU_RX_PIN                  48') && has(fD, 'include/config.h', 'SSU_BAUD                    110') && has(fD, 'include/config.h', '"E750_1/data"'));
+check('caso D: main.cpp ssu_init no setup e ssu_tick(mqtt_publish_sub) no loop', has(fD, 'src/main.cpp', 'ssu_init();') && has(fD, 'src/main.cpp', 'ssu_tick(mqtt_publish_sub);') && has(fD, 'src/main.cpp', '#include "ssu.h"'));
+check('caso D: /inputs sem s1 (IO48 virou UART)', !has(fD, 'src/main.cpp', '\\"s1\\"') && !has(fD, 'src/main.cpp', 'su_changed()') && !has(fD, 'src/main.cpp', 'su_get_state()'));
+check('caso A: /inputs COM s1 (sem SSU nada muda)', has(fA, 'src/main.cpp', '\\"s1\\"') && has(fA, 'src/main.cpp', 'su_changed()'));
+check('caso D: diagnostics com ssu_ok/ssu_err/ssu_fmt', has(fD, 'src/diag.cpp', 'doc["ssu_ok"]') && has(fD, 'src/diag.cpp', 'doc["ssu_fmt"]'));
+check('caso D: sem warning "Sem dispositivos de medição"', !pD[0].warnings.some(w => /Sem dispositivos/.test(w)));
+const pE = new GenV2(editor(casoE)).generateAll();
+const fSatE = (pE.find(p => p.spec.tonType === 'ton4v2') || {}).files || {};
+check('caso E: satellite com SSU publica via LoRa', has(fSatE, 'src/main.cpp', 'ssu_tick([](const char* sub, const char* payload){ lora_publish_data(sub, payload); });'));
+check('caso E: gateway ton2v2 sem SSU (nao herda)', !((pE.find(p => p.spec.tonType === 'ton2v2') || {}).files || {})['src/ssu.cpp']);
+// V1 nao pode enxergar o medidor SSU (tipo novo so' no V2)
+const casoDv1 = { components: [...casoD.components, { id: 'm2', type: 'ton1', x: 5, y: 5, props: { name: 'TON1', mqtt_topic_base: 'TESTE/SMK/M/T1' } }], connections: [...casoD.connections, conn('m2', 'd2', 'ssu')] };
+check('V1 ignora medidor_ssu ligado a ton1 (sem crash, sem ssu.cpp)', !new GenV1(editor(casoDv1)).generateAll().some(p => p.files['src/ssu.cpp']));
+
 if (fails) { console.error(`\n${fails} verificações falharam`); process.exit(1); }
 console.log('\nSMOKE DE GERAÇÃO: tudo OK');
 
@@ -128,6 +175,8 @@ if (DO_COMPILE) {
     ['ton3v2-rele-tcp', pB[0]],
     ['ton2v2-gateway', pC.find(p => p.spec.tonType === 'ton2v2')],
     ['ton4v2-satellite', pC.find(p => p.spec.tonType === 'ton4v2')],
+    ['ton1v2-ssu-mqtt', pD[0]],
+    ['ton4v2-ssu-satellite', pE.find(p => p.spec.tonType === 'ton4v2')],
   ];
   for (const [label, proj] of alvos) {
     process.stdout.write(`compilando ${label}... `);

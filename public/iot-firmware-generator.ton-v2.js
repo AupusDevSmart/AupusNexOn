@@ -216,6 +216,7 @@ var FirmwareGeneratorTonV2 = class FirmwareGeneratorTonV2 {
             rs485_devices: [],
             tcp_devices: [],
             lora: null,
+            ssu: null,          // medidor da concessionaria na entrada SU+ (NBR 14522) — so' v2
             warnings: [],
         };
 
@@ -244,6 +245,9 @@ var FirmwareGeneratorTonV2 = class FirmwareGeneratorTonV2 {
             } else if (other.type === 'carregador') {
                 // Carregador eletrico: a TON habilita a recarga (BO) e le "conectado" (BI).
                 this._processCarregador(ton, other, result);
+            } else if (conn.style === 'ssu' || other.type === 'medidor_ssu') {
+                // Medidor da concessionaria pela Saida Serial de Usuario (entrada SU+/IO48).
+                this._processSsu(ton, other, result);
             } else if (conn.style === 'rs485') {
                 this._processRS485(ton, other, result, components, connections);
             } else if (conn.style === 'tcp') {
@@ -274,7 +278,7 @@ var FirmwareGeneratorTonV2 = class FirmwareGeneratorTonV2 {
         if (!result.wifi && !result.lora) {
             result.warnings.push('Sem WiFi nem LoRa — não conseguirá enviar dados');
         }
-        if (result.rs485_devices.length === 0 && result.tcp_devices.length === 0) {
+        if (result.rs485_devices.length === 0 && result.tcp_devices.length === 0 && !result.ssu) {
             result.warnings.push('Sem dispositivos de medição conectados');
         }
         if (result.lora_role === 'satellite' && !result.wifi && (result.lora_peers || []).length === 0) {
@@ -550,6 +554,38 @@ var FirmwareGeneratorTonV2 = class FirmwareGeneratorTonV2 {
         });
     }
 
+    // Medidor SSU (ABNT NBR 14522) na entrada SU+ (IO48) — so' TON v2. A TON le a
+    // Saida Serial de Usuario do medidor da concessionaria (110 baud) e publica o
+    // MESMO JSON do gateway A-966 (phf/phr/qh* em pulsos, por bucket = intervalo de
+    // demanda do medidor). Um por TON: so' ha' uma entrada SU+.
+    _processSsu(ton, other, result) {
+        const cap = TON_CAPS[ton.type];
+        const p = other.props || {};
+        const name = String(p.name || 'Medidor SSU').trim();
+        if (!cap || cap.versao !== 2) {
+            result.warnings.push(`Medidor SSU "${name}" so' e' suportado em TON v2 (entrada SU+) — ignorado`);
+            return;
+        }
+        if (result.ssu) {
+            result.warnings.push(`TON ${result.name}: mais de um Medidor SSU — so' "${result.ssu.name}" sera' lido (uma entrada SU+)`);
+            return;
+        }
+        const fmt = String(p.formato_esperado || 'auto').toLowerCase();
+        const ke = parseFloat(p.ke);
+        const addr = parseInt(p.modbus_address, 10) || 1;
+        result.ssu = {
+            name,
+            catalog_id: p.catalog_id || '',
+            // mesma derivacao de topico dos devices: backend cria/casa <base>/<nome>_<addr>/data
+            subtopic: `${name}_${addr}/data`,
+            ke: Number.isFinite(ke) && ke > 0 ? ke : 0,
+            formato_esperado: fmt === 'normal' ? 1 : fmt === 'estendido' ? 2 : 0,
+            tem_geracao: p.tem_geracao === undefined || p.tem_geracao === '' ? true : !!p.tem_geracao,
+            intervalo_reativo_min: parseInt(p.intervalo_reativo_min, 10) || 60,
+            equipamento_id: String(p.equipamento_id || '').trim(),
+        };
+    }
+
     _processLoRa(ton, other, result) {
         if (!tonCaps(other.type).lora) return;   // só nós com capacidade LoRa entram na malha
         // Acumula peers — TON2 pode ter varios TON4s satelites.
@@ -731,6 +767,14 @@ var FirmwareGeneratorTonV2 = class FirmwareGeneratorTonV2 {
         if (spec.has_lora) {
             files['src/lora.cpp'] = this._genLoraCpp(spec);
             files['include/lora.h'] = this._genLoraH();
+        }
+
+        // Medidor SSU (NBR 14522) na entrada SU+: lib do parser + glue (so' com medidor no diagrama)
+        if (spec.ssu) {
+            files['include/ssu_nbr14522.h'] = this._genSsuLibH();
+            files['src/ssu_nbr14522.cpp'] = this._genSsuLibCpp();
+            files['include/ssu.h'] = this._genSsuH();
+            files['src/ssu.cpp'] = this._genSsuCpp(spec);
         }
 
         // OTA depende de WiFi + MQTT_TOPIC_BASE. Sem WiFi, remove do projeto.
@@ -2026,10 +2070,563 @@ extern char MQTT_CLIENT_ID[20];
 `;
         }
 
+        if (spec.ssu) {
+            h += `
+// Medidor SSU (ABNT NBR 14522) na entrada SU+ (IO48): UART0 remapeada (console e' USB-CDC;
+// RS485=UART1, LoRa=UART2). Enquadramento por RX-timeout do UART. Pulsos crus no payload;
+// Ke e' do cadastro (backend aplica) — aqui so' vai como metadado.
+#define HAS_SSU                     1
+#define SSU_UART_NUM                0
+#define SSU_RX_PIN                  48
+#define SSU_BAUD                    110
+#define SSU_SUBTOPIC                "${this._escStr(spec.ssu.subtopic)}"
+#define SSU_KE                      ${spec.ssu.ke || 0}
+#define SSU_FMT_ESPERADO            ${spec.ssu.formato_esperado}     // 0 auto, 1 normal, 2 estendido (so' validacao)
+#define SSU_TEM_GERACAO             ${spec.ssu.tem_geracao ? 1 : 0}
+#define SSU_INTERVALO_REATIVO_MIN   ${spec.ssu.intervalo_reativo_min}
+#define SSU_NVS_SAVE_MS             60000UL
+`;
+        }
+
         h += `
 #endif
 `;
         return h;
+    }
+
+    // ============================================================================
+    // Medidor SSU (ABNT NBR 14522) — lib do parser + glue.
+    // A lib (ssu_nbr14522.h/.cpp) e' COPIA BYTE-IDENTICA de
+    // AupusNexOn/firmware-libs/ssu_nbr14522/ (fonte canonica, com testes no host).
+    // O smoke test (scripts/smoke-firmware-ton-v2.mjs) confere a igualdade.
+    // ============================================================================
+    _genSsuLibH() {
+        return `// ============================================================================
+// ssu_nbr14522 — leitura da Saida Serial de Usuario (SSU) de medidores da
+// concessionaria, ABNT NBR 14522:2008 (secoes 3.4.1 bloco normal / 3.4.2
+// bloco estendido). Alvo: Landis+Gyr E750 A2E3 na TON-V2 (SU+ = IO48).
+//
+// Escopo (spec interna "Firmware de leitura da SSU", §1): traduzir octetos em
+// uma struct de resultado. NAO publica MQTT, NAO grava SD, NAO conhece RTC,
+// RTP ou Ke. Quem consome decide o que fazer com a traducao.
+//
+// C++ puro (sem Arduino) — compila no host para os testes (test_ssu.cpp) e no
+// ESP32 dentro do firmware gerado. Fonte canonica: AupusNexOn/firmware-libs/
+// ssu_nbr14522/. O gerador V2 embute uma COPIA identica (ver ssu-lib-sync).
+// ============================================================================
+#ifndef SSU_NBR14522_H
+#define SSU_NBR14522_H
+
+#include <stdint.h>
+#include <stddef.h>
+
+namespace ssu {
+
+enum Formato : uint8_t { FMT_DESCONHECIDO = 0, FMT_NORMAL = 1, FMT_ESTENDIDO = 2 };
+
+// Resultado de UM bloco valido (spec §1). Deltas em PULSO CRU (sem Ke).
+struct Resultado {
+    bool     valido;               // checksum ok e formato coerente
+    uint8_t  formato;              // FMT_NORMAL | FMT_ESTENDIDO
+    uint16_t segundos;             // contagem REGRESSIVA ate o fim do intervalo de demanda
+    uint8_t  quadrante;            // 1..4 (0 no bloco normal)
+    uint8_t  postoHorario;         // estendido: 1 ponta, 2 fora de ponta, 3 quarto posto
+    uint8_t  postoReativo;         // 0 nenhum, 1 capacitivo, 2 indutivo, 3 ambos
+    bool     tarifaReativos;       // estendido: bit 7 do octeto 3
+    bool     fimIntervaloDemanda;  // 1o bloco de um intervalo NOVO (contador reiniciou)
+    bool     fimIntervaloReativo;  // transicao do bit 5 do octeto 2 (alterna a cada fim)
+    bool     reposicaoFatura;      // transicao do bit 4 do octeto 2 (alterna a cada fatura)
+    uint8_t  regAtiva;             // 1 ou 2 — registrador que a ativa alimenta neste bloco
+    uint8_t  regReativa;           // 3..6  — registrador que a reativa alimenta
+    uint16_t deltaAtiva;           // pulsos desde a leitura anterior DO MESMO registrador
+    uint16_t deltaReativa;
+    uint16_t pulsosAtiva;          // contadores crus do bloco (auditoria)
+    uint16_t pulsosReativa;
+    uint8_t  segmentoHorario;      // bloco normal: bits 0-3 do octeto 3
+    uint8_t  tipoTarifa;           // bloco normal: 0 azul, 1 verde, 2 irrigantes, 3 outras
+    bool     repetido;             // bloco de fechamento repetido (3x) — NAO acumular
+    bool     baseline;             // 1a leitura do registrador: so' define ponto de partida
+    uint8_t  raw[9];               // bloco bruto
+    uint8_t  rawLen;               // 8 ou 9
+};
+
+struct Estatisticas {
+    uint32_t blocosValidos;
+    uint32_t blocosInvalidos;      // checksum errado / tamanho errado / lixo
+    uint32_t errosConsecutivos;
+    uint32_t redeteccoes;          // vezes que voltou a DETECTANDO por enlace degradado
+    uint32_t blocosDeteccao;       // consumidos na autodeteccao (nao alimentam acumulador)
+    uint32_t fechamentosRepetidos;
+    uint32_t intervalos;           // intervalos de demanda fechados (contador reiniciou)
+    bool     enlaceDegradado;      // 30 erros consecutivos
+    uint8_t  formato;              // formato travado (FMT_*)
+};
+
+// Checksums (spec §6)
+uint8_t  lrc(const uint8_t* d, size_t n);      // complemento do XOR
+uint16_t crc16(const uint8_t* d, size_t n);    // X16+X15+X2+1, refletido 0xA001, init 0
+
+// Decodificacao pura de um bloco (valida checksum; nao mexe em estado).
+bool decodificarNormal(const uint8_t* d, Resultado& r);      // 8 octetos
+bool decodificarEstendido(const uint8_t* d, Resultado& r);   // 9 octetos
+
+// Tabela de quadrante (bits 4-5 do octeto 3) — NAO sequencial (spec §7).
+extern const uint8_t QUADRANTE[4];   // {1, 4, 2, 3}
+
+/**
+ * Leitor com estado: enquadramento (por gap, caminho A) ou bloco pronto
+ * (RX-timeout do UART, caminho B), autodeteccao/trava de formato, validacao,
+ * rastreio por REGISTRADOR (6 regs) com wrap uint16, reinicio do contador a
+ * cada intervalo de demanda, idempotencia do bloco de fechamento e deteccao
+ * das transicoes dos bits 4/5.
+ */
+class Leitor {
+public:
+    static const uint32_t GAP_MS            = 150;  // > 1 byte (~91 ms) e < silencio (182 ms)
+    static const uint8_t  BLOCOS_PARA_TRAVAR = 10;  // blocos coerentes p/ travar o formato
+    static const uint8_t  ERROS_PARA_DEGRADAR = 30; // erros consecutivos -> degradado + redeteccao
+    static const uint8_t  MAX_BLOCO         = 16;
+
+    Leitor();
+    void reset();
+
+    // Caminho A: byte a byte com carimbo de tempo. Retorna true quando um bloco
+    // valido (e ja travado) foi decodificado em \`out\`.
+    bool alimentarByte(uint8_t b, uint32_t agora_ms, Resultado& out);
+    // Caminho B: bloco completo (n = 8 ou 9). Mesmo retorno.
+    bool alimentarBloco(const uint8_t* d, size_t n, Resultado& out);
+    // Forca o gap (ex.: timeout de silencio sem byte novo) — fecha bloco pendente.
+    bool fecharBloco(Resultado& out);
+
+    const Estatisticas& stats() const { return _st; }
+    Formato formato() const { return (Formato)_st.formato; }
+    bool travado() const { return _st.formato != FMT_DESCONHECIDO; }
+
+    // Formato esperado pelo cadastro: SO' validacao (spec §5 "coerencia") —
+    // nunca substitui a deteccao. Divergente => alarme de quem consome.
+    void definirFormatoEsperado(Formato f) { _fmtEsperado = f; }
+    bool formatoDivergente() const { return _fmtEsperado != FMT_DESCONHECIDO && travado() && _st.formato != _fmtEsperado; }
+
+    // Bancada/testes: trava direto (pula a autodeteccao).
+    void travarFormato(Formato f);
+
+private:
+    bool _processar(const uint8_t* d, size_t n, Resultado& out);
+    bool _decodificar(const uint8_t* d, size_t n, Resultado& r, uint8_t& fmt);
+    void _registrar(Resultado& r);
+    void _erro();
+
+    // enquadramento
+    uint8_t  _buf[MAX_BLOCO];
+    uint8_t  _len;
+    uint32_t _ultimoByteMs;
+    bool     _temByte;
+    // deteccao
+    uint8_t  _fmtEsperado;
+    uint8_t  _votoFmt;
+    uint8_t  _votos;
+    // registradores (indice 1..6)
+    uint16_t _ultimo[7];
+    bool     _visto[7];
+    // idempotencia / intervalo / toggles
+    bool     _temAnterior;
+    uint16_t _antSegundos, _antPA, _antPR;
+    bool     _temBits;
+    uint8_t  _antBit4, _antBit5;
+
+    Estatisticas _st;
+};
+
+} // namespace ssu
+
+#endif // SSU_NBR14522_H
+`;
+    }
+
+    _genSsuLibCpp() {
+        return `// ssu_nbr14522.cpp — ver ssu_nbr14522.h. Implementa a spec interna "Firmware de
+// leitura da SSU" (ABNT NBR 14522:2008, 3.4.1 / 3.4.2). C++ puro.
+#include "ssu_nbr14522.h"
+#include <string.h>
+
+namespace ssu {
+
+const uint8_t QUADRANTE[4] = { 1, 4, 2, 3 };   // 0b00->Q1, 0b01->Q4, 0b10->Q2, 0b11->Q3
+
+// ---------------------------------------------------------------- checksums
+uint8_t lrc(const uint8_t* d, size_t n) {
+    uint8_t v = 0;
+    for (size_t i = 0; i < n; i++) v ^= d[i];
+    return (uint8_t)(~v);
+}
+
+uint16_t crc16(const uint8_t* d, size_t n) {
+    uint16_t crc = 0;
+    for (size_t i = 0; i < n; i++) {
+        crc ^= d[i];
+        for (uint8_t b = 0; b < 8; b++)
+            crc = (crc & 1) ? (uint16_t)((crc >> 1) ^ 0xA001) : (uint16_t)(crc >> 1);
+    }
+    return crc;
+}
+
+// ------------------------------------------------------------ decodificacao
+static void _limpar(Resultado& r) { memset(&r, 0, sizeof(r)); }
+
+bool decodificarNormal(const uint8_t* d, Resultado& r) {
+    _limpar(r);
+    memcpy(r.raw, d, 8); r.rawLen = 8;
+    if (lrc(d, 7) != d[7]) return false;
+    r.valido   = true;
+    r.formato  = FMT_NORMAL;
+    r.segundos = (uint16_t)(d[0] | ((d[1] & 0x0F) << 8));
+    // octeto 2 bits 6-7: pulsos capacitivos/indutivos computados p/ UFER/DMCR
+    r.postoReativo    = (uint8_t)((d[1] >> 6) & 0x03);
+    // octeto 3 (layout INCOMPATIVEL com o estendido): 4 bits de segmento + tipo de tarifa
+    r.segmentoHorario = (uint8_t)(d[2] & 0x0F);
+    r.tipoTarifa      = (uint8_t)((d[2] >> 4) & 0x03);
+    r.quadrante       = 0;                        // NAO existe quadrante no bloco normal
+    // contadores de 15 bits (bit 7 do MSB nao usado)
+    r.pulsosAtiva   = (uint16_t)(d[3] | ((d[4] & 0x7F) << 8));
+    r.pulsosReativa = (uint16_t)(d[5] | ((d[6] & 0x7F) << 8));
+    r.regAtiva   = 1;                             // sem sentido de fluxo: ativa -> REG1
+    r.regReativa = 3;                             // reativa -> REG3
+    return true;
+}
+
+bool decodificarEstendido(const uint8_t* d, Resultado& r) {
+    _limpar(r);
+    memcpy(r.raw, d, 9); r.rawLen = 9;
+    uint16_t crcRx = (uint16_t)(d[7] | (d[8] << 8));   // LSB primeiro
+    if (crc16(d, 7) != crcRx) return false;
+    r.valido   = true;
+    r.formato  = FMT_ESTENDIDO;
+    r.segundos = (uint16_t)(d[0] | ((d[1] & 0x0F) << 8));
+    // octeto 2, nibble alto: bit4 reposicao (alterna), bit5 fim reativo (alterna), bits6-7 posto reativo
+    r.postoReativo   = (uint8_t)((d[1] >> 6) & 0x03);
+    // octeto 3: bits 0-1 posto horario, 2-3 reservados (mascarados), 4-5 quadrante (tabela), 7 tarifacao reativo
+    r.postoHorario   = (uint8_t)(d[2] & 0x03);
+    r.quadrante      = QUADRANTE[(d[2] >> 4) & 0x03];
+    r.tarifaReativos = (d[2] & 0x80) != 0;
+    r.pulsosAtiva    = (uint16_t)(d[3] | (d[4] << 8));
+    r.pulsosReativa  = (uint16_t)(d[5] | (d[6] << 8));
+    // Q1 -> REG1+REG3 ; Q2 -> REG2+REG4 ; Q3 -> REG2+REG5 ; Q4 -> REG1+REG6
+    static const uint8_t REG_R[5] = { 0, 3, 4, 5, 6 };
+    r.regAtiva   = (r.quadrante == 1 || r.quadrante == 4) ? 1 : 2;
+    r.regReativa = REG_R[r.quadrante];
+    return true;
+}
+
+// ---------------------------------------------------------------- Leitor
+Leitor::Leitor() { reset(); }
+
+void Leitor::reset() {
+    memset(_buf, 0, sizeof(_buf)); _len = 0; _ultimoByteMs = 0; _temByte = false;
+    _fmtEsperado = FMT_DESCONHECIDO; _votoFmt = FMT_DESCONHECIDO; _votos = 0;
+    memset(_ultimo, 0, sizeof(_ultimo)); memset(_visto, 0, sizeof(_visto));
+    _temAnterior = false; _antSegundos = _antPA = _antPR = 0;
+    _temBits = false; _antBit4 = _antBit5 = 0;
+    memset(&_st, 0, sizeof(_st));
+}
+
+void Leitor::travarFormato(Formato f) { _st.formato = (uint8_t)f; _votoFmt = FMT_DESCONHECIDO; _votos = 0; }
+
+bool Leitor::alimentarByte(uint8_t b, uint32_t agora_ms, Resultado& out) {
+    bool fechou = false;
+    // gap > GAP_MS => o byte que chegou e' o octeto 1 de um bloco novo: fecha o anterior
+    if (_temByte && (uint32_t)(agora_ms - _ultimoByteMs) > GAP_MS && _len > 0) {
+        fechou = _processar(_buf, _len, out);
+        _len = 0;
+    }
+    _ultimoByteMs = agora_ms; _temByte = true;
+    if (_len < MAX_BLOCO) _buf[_len++] = b;
+    else { _erro(); _len = 0; }   // lixo continuo sem gap: descarta
+    return fechou;
+}
+
+bool Leitor::fecharBloco(Resultado& out) {
+    if (_len == 0) return false;
+    bool ok = _processar(_buf, _len, out);
+    _len = 0;
+    return ok;
+}
+
+bool Leitor::alimentarBloco(const uint8_t* d, size_t n, Resultado& out) {
+    return _processar(d, n, out);
+}
+
+void Leitor::_erro() {
+    _st.blocosInvalidos++;
+    _st.errosConsecutivos++;
+    if (travado() && _st.errosConsecutivos >= ERROS_PARA_DEGRADAR) {
+        // enlace degradado: volta a DETECTANDO (o medidor nao muda de modo em
+        // operacao, mas um enlace ruim pode ter travado no formato errado)
+        _st.enlaceDegradado = true;
+        _st.redeteccoes++;
+        _st.formato = FMT_DESCONHECIDO;
+        _votoFmt = FMT_DESCONHECIDO; _votos = 0;
+    }
+}
+
+// Testa a(s) hipotese(s) compativel(is) com o tamanho. Um bloco normal com um
+// byte de ruido tem 9 bytes: com 9 bytes testa CRC (estendido) E LRC nos 8
+// primeiros (normal+lixo). Retorna o formato aceito em \`fmt\`.
+bool Leitor::_decodificar(const uint8_t* d, size_t n, Resultado& r, uint8_t& fmt) {
+    if (n == 9 && decodificarEstendido(d, r)) { fmt = FMT_ESTENDIDO; return true; }
+    if (n == 8 && decodificarNormal(d, r))    { fmt = FMT_NORMAL;    return true; }
+    if (n == 9 && decodificarNormal(d, r))    { fmt = FMT_NORMAL;    return true; }   // normal + 1 byte de ruido
+    return false;
+}
+
+bool Leitor::_processar(const uint8_t* d, size_t n, Resultado& out) {
+    _limpar(out);
+    if (n < 8 || n > 9) { _erro(); return false; }
+
+    Resultado r; uint8_t fmt = FMT_DESCONHECIDO;
+    if (!travado()) {
+        // ESTADO DETECTANDO: exige checksum valido + repeticao consistente.
+        if (!_decodificar(d, n, r, fmt)) { _st.blocosInvalidos++; _votoFmt = FMT_DESCONHECIDO; _votos = 0; return false; }
+        _st.blocosDeteccao++;
+        if (fmt == _votoFmt) _votos++; else { _votoFmt = fmt; _votos = 1; }
+        if (_votos >= BLOCOS_PARA_TRAVAR) {
+            _st.formato = fmt; _st.enlaceDegradado = false; _st.errosConsecutivos = 0;
+            // os blocos consumidos na deteccao NAO alimentam acumuladores; o
+            // rastreio de registradores comeca do zero a partir do proximo bloco
+            memset(_visto, 0, sizeof(_visto)); _temAnterior = false; _temBits = false;
+        }
+        return false;
+    }
+
+    // ESTADO TRAVADO: tamanho divergente = erro de frame, nunca troca de formato
+    size_t esperado = (_st.formato == FMT_ESTENDIDO) ? 9 : 8;
+    if (n != esperado) { _erro(); return false; }
+    bool ok = (_st.formato == FMT_ESTENDIDO) ? decodificarEstendido(d, r) : decodificarNormal(d, r);
+    if (!ok) { _erro(); return false; }
+
+    _st.blocosValidos++;
+    _st.errosConsecutivos = 0;
+    if (_st.enlaceDegradado) _st.enlaceDegradado = false;
+    _registrar(r);
+    out = r;
+    return true;
+}
+
+// Registradores, intervalo, idempotencia e toggles (spec §7 e §9).
+void Leitor::_registrar(Resultado& r) {
+    // Bloco de fechamento repetido (3x, dados identicos): idempotente — nada acumula.
+    if (_temAnterior && r.segundos == _antSegundos && r.pulsosAtiva == _antPA && r.pulsosReativa == _antPR) {
+        r.repetido = true;
+        _st.fechamentosRepetidos++;
+        return;
+    }
+
+    // Contador regressivo REINICIOU (ex.: 0/1 -> 899): intervalo de demanda novo.
+    // Os contadores de pulso recomecam do zero no intervalo novo, entao a base
+    // de comparacao de TODOS os registradores passa a ser 0 (nao e' wrap).
+    if (_temAnterior && r.segundos > _antSegundos + 5) {
+        r.fimIntervaloDemanda = true;
+        _st.intervalos++;
+        for (int i = 1; i <= 6; i++) _ultimo[i] = 0;
+    }
+
+    // Bits que ALTERNAM (octeto 2, bits 4 e 5) — detectar por MUDANCA, nunca ler como nivel.
+    if (r.formato == FMT_ESTENDIDO) {
+        uint8_t b4 = (uint8_t)((r.raw[1] >> 4) & 1), b5 = (uint8_t)((r.raw[1] >> 5) & 1);
+        if (_temBits) {
+            if (b4 != _antBit4) r.reposicaoFatura     = true;
+            if (b5 != _antBit5) r.fimIntervaloReativo = true;
+        }
+        _antBit4 = b4; _antBit5 = b5; _temBits = true;
+    }
+
+    // Rastrear por REGISTRADOR: o quadrante so' diz qual registrador cada contador
+    // representa; a comparacao e' sempre com o ultimo valor DAQUELE registrador.
+    // delta16 modular absorve UMA volta do contador (65500 -> 40 = 76).
+    uint8_t ra = r.regAtiva, rr = r.regReativa;
+    if (_visto[ra]) r.deltaAtiva = (uint16_t)(r.pulsosAtiva - _ultimo[ra]);
+    else { r.deltaAtiva = 0; r.baseline = true; }
+    _ultimo[ra] = r.pulsosAtiva; _visto[ra] = true;
+
+    if (_visto[rr]) r.deltaReativa = (uint16_t)(r.pulsosReativa - _ultimo[rr]);
+    else { r.deltaReativa = 0; r.baseline = true; }
+    _ultimo[rr] = r.pulsosReativa; _visto[rr] = true;
+
+    _antSegundos = r.segundos; _antPA = r.pulsosAtiva; _antPR = r.pulsosReativa; _temAnterior = true;
+}
+
+} // namespace ssu
+`;
+    }
+
+    _genSsuH() {
+        return `#ifndef SSU_H
+#define SSU_H
+#include <stdint.h>
+
+// Medidor da concessionaria via Saida Serial de Usuario (ABNT NBR 14522) na entrada
+// SU+ (IO48) da TON-V2. Parser: ssu_nbr14522 (lib pura). Publica o MESMO JSON do
+// gateway A-966 (phf/phr/qh* em pulsos crus) no fechamento do intervalo de demanda.
+
+// Callback de publicacao: subtopic relativo a MQTT_TOPIC_BASE, payload JSON
+// (mesmo contrato dos readers Modbus).
+typedef void (*ssu_publish_fn)(const char* subtopic, const char* payload);
+
+void ssu_init();                        // UART0@IO48 a 110 baud + fila de blocos (setup)
+void ssu_tick(ssu_publish_fn publish);  // drena blocos, acumula, publica no fim do intervalo (loop)
+
+// Saude do enlace (diagnostics)
+uint32_t ssu_blocos_validos();
+uint32_t ssu_blocos_invalidos();
+uint8_t  ssu_formato();                 // 0 detectando, 1 normal, 2 estendido
+bool     ssu_degradado();
+uint32_t ssu_intervalos();
+
+#endif
+`;
+    }
+
+    _genSsuCpp(spec) {
+        const _ = spec; // config vem toda de config.h (SSU_*)
+        return `// ssu.cpp — glue gerado: medidor da concessionaria via SSU (NBR 14522) na entrada SU+.
+// Parser: ssu_nbr14522 (lib pura, testada no host). Aqui: UART0@IO48 a 110 baud com
+// enquadramento em HARDWARE (RX-timeout -> onReceive entrega o bloco inteiro; nada
+// depende do loop principal, que bloqueia em SD/Modbus/LoRa), acumuladores por
+// registrador, bucket fechado no fim do intervalo de demanda do MEDIDOR, JSON igual
+// ao do gateway A-966, persistencia em NVS e alarmes de enlace/formato/sanidade.
+#include "ssu.h"
+#include "config.h"
+#include "ssu_nbr14522.h"
+#include <Arduino.h>
+#include <Preferences.h>
+#include <time.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
+
+static HardwareSerial _ssu(SSU_UART_NUM);
+static ssu::Leitor _leitor;
+
+struct SsuBloco { uint8_t len; uint8_t d[16]; };
+static QueueHandle_t _fila = nullptr;
+
+// acumuladores do bucket em PULSOS CRUS — indice = registrador (1..6):
+// REG1 phf, REG2 phr, REG3 qhfi(Q1), REG4 qhri(Q2), REG5 qhrc(Q3), REG6 qhfc(Q4)
+static uint32_t _acum[7] = {0};
+static uint32_t _nsu = 0;
+static uint16_t _maxSeg = 0;          // maior contagem regressiva vista no intervalo
+static uint32_t _intervaloSeg = 0;    // duracao observada do intervalo (s)
+static unsigned long _ultimoSaveMs = 0;
+static bool _alarmeDegradado = false, _alarmeFormato = false, _alarmeSanidade = false;
+static uint32_t _viradasSemBit5 = 0;  // sanidade §7: viradas do intervalo desde a ultima transicao do bit 5
+
+// Roda na task de eventos da UART (nao e' ISR): copia o bloco pra fila.
+static void _onRx() {
+    SsuBloco b; b.len = 0;
+    while (_ssu.available() && b.len < sizeof(b.d)) b.d[b.len++] = (uint8_t)_ssu.read();
+    while (_ssu.available()) _ssu.read();          // lixo alem de 16 bytes: descarta
+    if (b.len && _fila) xQueueSend(_fila, &b, 0);
+}
+
+static void _salvarNvs() {
+    Preferences pr;
+    if (pr.begin("ssu", false)) {
+        pr.putBytes("acum", _acum, sizeof(_acum));
+        pr.putUInt("nsu", _nsu);
+        pr.end();
+    }
+    _ultimoSaveMs = millis();
+}
+
+static void _carregarNvs() {
+    Preferences pr;
+    if (pr.begin("ssu", true)) {
+        if (pr.getBytesLength("acum") == sizeof(_acum)) pr.getBytes("acum", _acum, sizeof(_acum));
+        _nsu = pr.getUInt("nsu", 0);
+        pr.end();
+    }
+}
+
+void ssu_init() {
+    _fila = xQueueCreate(8, sizeof(SsuBloco));
+    _carregarNvs();
+    _leitor.reset();
+    _leitor.definirFormatoEsperado((ssu::Formato)SSU_FMT_ESPERADO);
+    // 110 baud: fonte de clock APB (default no S3); este firmware nao usa DFS/light-sleep.
+    _ssu.setRxBufferSize(256);
+    _ssu.begin(SSU_BAUD, SERIAL_8N1, SSU_RX_PIN, -1, false);   // RX=IO48, sem TX, sem inversao
+    _ssu.setRxTimeout(4);            // ~4 simbolos (~36 ms) de silencio fecham o bloco (gap real >= 182 ms)
+    _ssu.onReceive(_onRx, true);     // so' no timeout => 1 bloco por chamada
+}
+
+static void _publicar(ssu_publish_fn publish, const ssu::Resultado& ult) {
+    char frame[32]; int p = 0;
+    for (uint8_t i = 0; i < ult.rawLen && p < (int)sizeof(frame) - 3; i++)
+        p += snprintf(frame + p, sizeof(frame) - p, "%s%02x", i ? " " : "", ult.raw[i]);
+    const ssu::Estatisticas& st = _leitor.stats();
+    int sts = (st.enlaceDegradado || _alarmeFormato) ? 0 : 1;
+    unsigned long cdo = _intervaloSeg ? (_intervaloSeg + 30) / 60 : 15;
+    char payload[448];
+    // JSON identico ao do gateway A-966 (ingestao do backend por categoria Gateway) + metadados
+    snprintf(payload, sizeof(payload),
+        "{\\"NSU\\":%lu,\\"ver\\":\\"%s\\",\\"data\\":{\\"cdo\\":\\"%lu\\",\\"phf\\":%lu,\\"phr\\":%lu,\\"sts\\":%d,"
+        "\\"qhfi\\":%lu,\\"qhfc\\":%lu,\\"qhri\\":%lu,\\"qhrc\\":%lu,\\"frame\\":\\"%s\\"},\\"time\\":\\"%ld\\","
+        "\\"ke\\":%.4f,\\"fmt\\":%u,\\"q\\":%u,\\"seg\\":%u,\\"posto\\":%u,\\"ssu_err\\":%lu}",
+        (unsigned long)_nsu, FIRMWARE_VERSION, cdo,
+        (unsigned long)_acum[1], (unsigned long)_acum[2], sts,
+        (unsigned long)_acum[3], (unsigned long)_acum[6], (unsigned long)_acum[4], (unsigned long)_acum[5],
+        frame, (long)time(nullptr), (double)SSU_KE, (unsigned)st.formato, (unsigned)ult.quadrante,
+        (unsigned)ult.segundos, (unsigned)ult.postoHorario, (unsigned long)st.blocosInvalidos);
+    publish(SSU_SUBTOPIC, payload);
+    Serial.printf("[SSU] bucket publicado: phf=%lu phr=%lu (fmt=%u, %lu min)\\n",
+                  (unsigned long)_acum[1], (unsigned long)_acum[2], (unsigned)st.formato, cdo);
+    _nsu++;
+    for (int i = 1; i <= 6; i++) _acum[i] = 0;
+    _salvarNvs();
+}
+
+void ssu_tick(ssu_publish_fn publish) {
+    if (!_fila) return;
+    SsuBloco b;
+    while (xQueueReceive(_fila, &b, 0) == pdTRUE) {
+        ssu::Resultado r;
+        if (!_leitor.alimentarBloco(b.d, b.len, r)) continue;   // invalido ou em deteccao
+        if (r.segundos > _maxSeg) _maxSeg = r.segundos;
+        if (r.fimIntervaloDemanda) {
+            _intervaloSeg = (uint32_t)_maxSeg + 1; _maxSeg = 0;
+            _viradasSemBit5++;
+            _publicar(publish, r);                // bucket do intervalo que FECHOU
+        }
+        if (r.fimIntervaloReativo) _viradasSemBit5 = 0;
+        if (r.repetido || r.baseline) continue;   // fechamento repetido / ponto de partida
+        _acum[r.regAtiva]   += r.deltaAtiva;
+        _acum[r.regReativa] += r.deltaReativa;
+    }
+
+    const ssu::Estatisticas& st = _leitor.stats();
+    if (st.enlaceDegradado != _alarmeDegradado) {
+        _alarmeDegradado = st.enlaceDegradado;
+        Serial.printf("[SSU] enlace %s (%lu blocos invalidos)\\n", _alarmeDegradado ? "DEGRADADO" : "recuperado", (unsigned long)st.blocosInvalidos);
+    }
+    bool fmtRuim = _leitor.formatoDivergente() || (SSU_TEM_GERACAO && _leitor.travado() && _leitor.formato() == ssu::FMT_NORMAL);
+    if (fmtRuim != _alarmeFormato) {
+        _alarmeFormato = fmtRuim;
+        if (fmtRuim) Serial.println("[SSU] ALARME: formato do bloco incoerente com o cadastro (instalacao com geracao exige saida ESTENDIDA — solicitar a concessionaria)");
+    }
+    // sanidade: intervalo reativo de N min = 1 transicao do bit 5 a cada N/intervalo viradas
+    uint32_t esperado = _intervaloSeg ? (uint32_t)(SSU_INTERVALO_REATIVO_MIN * 60UL) / _intervaloSeg : 4;
+    bool san = _viradasSemBit5 > esperado * 2 + 1;
+    if (san != _alarmeSanidade) {
+        _alarmeSanidade = san;
+        if (san) Serial.printf("[SSU] sanidade: bit 5 nao alternou em %lu viradas (esperado ~%lu)\\n", (unsigned long)_viradasSemBit5, (unsigned long)esperado);
+    }
+    if (millis() - _ultimoSaveMs > SSU_NVS_SAVE_MS) _salvarNvs();
+}
+
+uint32_t ssu_blocos_validos()   { return _leitor.stats().blocosValidos; }
+uint32_t ssu_blocos_invalidos() { return _leitor.stats().blocosInvalidos; }
+uint8_t  ssu_formato()          { return _leitor.stats().formato; }
+bool     ssu_degradado()        { return _leitor.stats().enlaceDegradado; }
+uint32_t ssu_intervalos()       { return _leitor.stats().intervalos; }
+`;
     }
 
     // ---- mqtt.h ----
@@ -2191,6 +2788,16 @@ void diag_publish_periodic() {
     doc["sd_write_errors"]   = diag_sd_write_errors;
     doc["min_free_heap"]     = diag_min_free_heap;
     doc["reset_reason"]      = diag_reset_reason();
+${spec.ssu ? `    {   // Medidor SSU (NBR 14522): saude do enlace (definidos em ssu.cpp)
+        extern uint32_t ssu_blocos_validos(); extern uint32_t ssu_blocos_invalidos();
+        extern uint8_t ssu_formato(); extern bool ssu_degradado(); extern uint32_t ssu_intervalos();
+        doc["ssu_ok"]         = ssu_blocos_validos();
+        doc["ssu_err"]        = ssu_blocos_invalidos();
+        doc["ssu_fmt"]        = ssu_formato();          // 0 detectando, 1 normal, 2 estendido
+        doc["ssu_degradado"]  = ssu_degradado();
+        doc["ssu_intervalos"] = ssu_intervalos();
+    }
+` : ''}
     if (diag_last_successful_read_ms > 0) {
         doc["silence_sec"] = (uint32_t)((millis() - diag_last_successful_read_ms) / 1000);
     } else {
@@ -5971,6 +6578,7 @@ void carregador_loop() {
         if (spec.wifi) cpp += `#include "ota.h"\n`;
         if (spec.has_lora) cpp += `#include "lora.h"\n`;
         if (spec.rs485_devices.length > 0) cpp += `#include "modbus_meter.h"\n`;
+        if (spec.ssu) cpp += `#include "ssu.h"\n`;
         if (spec.tcp_devices.length > 0) cpp += `#include "inverter_tcp.h"\n`;
 
         cpp += `
@@ -6293,6 +6901,15 @@ void setup() {
     else Serial.println("[FAIL] Entradas");
 `;
 
+        if (spec.ssu) {
+            cpp += `
+    // Medidor SSU (NBR 14522): IO48 deixa de ser contato seco (s1) e vira RX da UART0 a 110 baud.
+    ssu_init();
+    Serial.printf("[OK] SSU \\"%s\\" em SU+/IO48 (UART%d @ %d baud) -> %s\\n",
+                  "${this._escStr(spec.ssu.name)}", SSU_UART_NUM, SSU_BAUD, SSU_SUBTOPIC);
+`;
+        }
+
         if (spec.has_relays) {
             cpp += `
     if (relays_init()) Serial.println("[OK] Reles (8x ULN2803)");
@@ -6430,7 +7047,18 @@ void loop() {
         bool _mqtt_up = mqtt_connected();
         if (_mqtt_up && !_mqtt_was_up) _io_force = true;
         _mqtt_was_up = _mqtt_up;
-
+`;
+        if (spec.ssu) cpp += `
+        // Entradas digitais (on-change via debounce de inputs_changed)
+        // V2: d1..d8 (8 optos GP0-GP7). SU+/IO48 e' a UART do medidor SSU — sem s1.
+        bool _in_changed = inputs_changed();   // sempre chama pra consumir o flag
+        if (_io_force || _in_changed) {
+            uint8_t s = inputs_get_state();
+            char buf[144];
+            snprintf(buf, sizeof(buf), "{\\"d1\\":%d,\\"d2\\":%d,\\"d3\\":%d,\\"d4\\":%d,\\"d5\\":%d,\\"d6\\":%d,\\"d7\\":%d,\\"d8\\":%d}",
+                s&1, (s>>1)&1, (s>>2)&1, (s>>3)&1, (s>>4)&1, (s>>5)&1, (s>>6)&1, (s>>7)&1);
+`;
+        else cpp += `
         // Entradas digitais (on-change via debounce de inputs_changed)
         // V2: d1..d8 (8 optos GP0-GP7) + s1 (SU+ IO48)
         bool _in_changed = inputs_changed();   // sempre chama pra consumir o flag
@@ -6497,6 +7125,20 @@ void loop() {
             cpp += `
     // Carregador: habilita/corta + detecta desconexao (BI Conectado).
     carregador_loop();
+`;
+        }
+
+        if (spec.ssu) {
+            const ssuPub = spec.wifi
+                ? 'mqtt_publish_sub'
+                : (spec.lora_role === 'satellite'
+                    ? '[](const char* sub, const char* payload){ lora_publish_data(sub, payload); }'
+                    : '[](const char* sub, const char* payload){ Serial.printf("[SSU] %s %s\\n", sub, payload); }');
+            cpp += `
+    // Medidor SSU (NBR 14522): drena os blocos entregues pelo RX-timeout da UART e
+    // publica o bucket (pulsos crus, JSON do A-966) no fechamento de cada intervalo
+    // de demanda do medidor. Nao bloqueia: o enquadramento e' em hardware.
+    ssu_tick(${ssuPub});
 `;
         }
 

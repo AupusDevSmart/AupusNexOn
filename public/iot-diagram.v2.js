@@ -408,6 +408,30 @@ var COMPONENT_TYPES = {
             { key: 'tp_ratio', label: 'Relacao TP (vazio = 1, sem PT)', type: 'number', placeholder: 'ex: 1' },
         ]
     },
+    // Medidor da concessionaria lido DIRETO pela TON v2 pela Saida Serial de Usuario
+    // (ABNT NBR 14522, 110 baud) na entrada SU+ (IO48). Substitui o gateway A-966:
+    // a TON publica o MESMO JSON do A-966 (phf/phr/qh* em pulsos por bucket de 15 min),
+    // entao backend/dashboard/COA nao mudam. Um por TON (so' ha' uma entrada SU+).
+    medidor_ssu: {
+        label: 'Medidor Concessionária (SSU)', category: 'device', color: '#0D9488',
+        icon: 'M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z',
+        ports: ['top', 'bottom', 'left', 'right'],
+        generates_firmware: false,
+        conn: { role: 'ssu', targets: ['ton'], hint: 'Medidor SSU só se conecta a uma TON v2 (entrada SU+)' },
+        defaults: { name: 'Medidor SSU', catalog_id: '', modbus_address: 1, ke: '', formato_esperado: 'auto', tem_geracao: true, intervalo_reativo_min: 60, equipamento_id: '', disjuntor_equipamento_id: '' },
+        fields: [
+            { key: 'name', label: 'Nome', type: 'text' },
+            { key: 'catalog_id', label: 'Modelo', type: 'device_select', device_type: 'gateway_medidor' },
+            { key: 'ke', label: 'Ke — kWh por pulso (vazio = do modelo/backend)', type: 'number', placeholder: 'ex: 0.048' },
+            { key: 'formato_esperado', label: 'Formato da SSU (só validação; a TON autodetecta)', type: 'select', options: [
+                ['auto', 'Autodetectar'],
+                ['estendido', 'Estendido (9 octetos, 4 quadrantes)'],
+                ['normal', 'Normal (8 octetos, sem quadrante)'],
+            ] },
+            { key: 'tem_geracao', label: 'Instalação com geração (exige bloco estendido)', type: 'toggle' },
+            { key: 'intervalo_reativo_min', label: 'Intervalo reativo do medidor (min)', type: 'number', placeholder: '60' },
+        ]
+    },
     rele_protecao: {
         label: 'Rele Protecao', category: 'device', color: '#EF4444',
         icon: 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z',
@@ -598,7 +622,7 @@ var COMPONENT_TYPES = {
 var CATEGORIES = [
     { id: 'controller', label: 'Controladores TON', types: ['ton1', 'ton2', 'ton3', 'ton4', 'ton1v2', 'ton2v2', 'ton3v2', 'ton4v2'] },
     { id: 'infra', label: 'Infraestrutura', types: ['wifi_router', 'mqtt_broker', 'meter_gateway', 'inverter_datalogger', 'conversor'] },
-    { id: 'device', label: 'Dispositivos', types: ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao'] },
+    { id: 'device', label: 'Dispositivos', types: ['inversor', 'power_meter', 'medidor_comum', 'medidor_ssu', 'rele_protecao'] },
     { id: 'irrigacao', label: 'Irrigação / Bomba', types: ['pivo', 'bomba'] },
     { id: 'carregador', label: 'Carregador Elétrico', types: ['carregador'] },
 ];
@@ -622,6 +646,8 @@ var CONNECTION_STYLES = {
     lora_radio: { stroke: '', dasharray: '8,4', width: 4, label: 'LoRa' },
     wifi:  { stroke: '', dasharray: '4,6', width: 3, label: 'WiFi' },
     ethernet: { stroke: '', dasharray: '', width: 4, label: 'RJ45' },
+    // Saida Serial de Usuario do medidor da concessionaria (ABNT NBR 14522) -> entrada SU+ da TON v2
+    ssu:   { stroke: '', dasharray: '2,5', width: 3, label: 'SSU' },
 };
 
 // ============================================================
@@ -1248,6 +1274,7 @@ var DiagramEditor = class {
         if (isLoraNode(from.type) && isLoraNode(to.type)) return ['lora_radio'];
         if (ra === 'router' || rb === 'router') return ['wifi', 'ethernet'];
         if (ra === 'broker' || rb === 'broker') return ['wifi', 'ethernet'];
+        if (ra === 'ssu' || rb === 'ssu') return ['ssu'];
         const other = (self) => (ra === self ? rb : ra);
         if (ra === 'datalogger' || rb === 'datalogger') {
             const o = other('datalogger');
@@ -1303,6 +1330,9 @@ var DiagramEditor = class {
             if (tonTypes.includes(other)) return ['tcp'];
             return ['tcp'];
         }
+
+        // Medidor SSU (NBR 14522) ↔ TON v2 = SSU (Saida Serial de Usuario na entrada SU+/IO48)
+        if (types.includes('medidor_ssu')) return ['ssu'];
 
         // TON ↔ device = rs485 or tcp
         const deviceTypes = ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao'];
@@ -1837,12 +1867,34 @@ var DiagramEditor = class {
             }
         }
 
+        // Rule 4b: Medidor SSU (NBR 14522) só se conecta a UMA TON v2 (entrada SU+/IO48), 1 por TON.
+        if (types.includes('medidor_ssu')) {
+            const ssu = from.type === 'medidor_ssu' ? from : to;
+            const other = from.type === 'medidor_ssu' ? to : from;
+            const cap = TON_CAPS[other.type];
+            if (!cap || cap.versao !== 2) {
+                return { allowed: false, reason: 'Medidor SSU só se conecta a uma TON v2 (entrada SU+ / IO48)' };
+            }
+            const conns = this.connections || [];
+            const outroSsuNaTon = conns.some(c => {
+                const a = this.components.find(x => x.id === c.from.componentId);
+                const b = this.components.find(x => x.id === c.to.componentId);
+                if (!a || !b) return false;
+                const envolveTon = a.id === other.id || b.id === other.id;
+                const outroSsu = (a.type === 'medidor_ssu' && a.id !== ssu.id) || (b.type === 'medidor_ssu' && b.id !== ssu.id);
+                return envolveTon && outroSsu;
+            });
+            if (outroSsuNaTon) return { allowed: false, reason: 'Esta TON já tem um Medidor SSU (só há uma entrada SU+)' };
+            const ssuJaLigado = conns.some(c => c.from.componentId === ssu.id || c.to.componentId === ssu.id);
+            if (ssuJaLigado) return { allowed: false, reason: 'Este Medidor SSU já está ligado a uma TON' };
+        }
+
         // Rule 5: TON connects to: Router WiFi, devices (RS485), Datalogger (TCP), or another TON2 (LoRa)
         if (types.some(t => tonTypes.includes(t))) {
             const otherType = tonTypes.includes(from.type) ? to.type : from.type;
-            const allowedTargets = ['wifi_router', 'inverter_datalogger', 'conversor', ...deviceTypes, ...tonTypes.filter(t => isLoraNode(t)), 'pivo', 'bomba', 'carregador'];
+            const allowedTargets = ['wifi_router', 'inverter_datalogger', 'conversor', ...deviceTypes, ...tonTypes.filter(t => isLoraNode(t)), 'pivo', 'bomba', 'carregador', 'medidor_ssu'];
             if (!allowedTargets.includes(otherType)) {
-                return { allowed: false, reason: 'TON se conecta a: Router WiFi, Datalogger, Conversor, dispositivos, Pivô ou Bomba' };
+                return { allowed: false, reason: 'TON se conecta a: Router WiFi, Datalogger, Conversor, dispositivos, Medidor SSU, Pivô ou Bomba' };
             }
         }
 
@@ -1914,6 +1966,8 @@ var DiagramEditor = class {
         if (types.some(t => isLoraNode(t)) && types.every(t => tonTypes.includes(t))) return 'lora_radio';
         // Pivô ↔ TON = controle (fio de relés/entradas; visualmente como RS485)
         if (types.includes('pivo')) return 'rs485';
+        // Medidor SSU ↔ TON v2 = Saida Serial de Usuario (entrada SU+)
+        if (types.includes('medidor_ssu')) return 'ssu';
         // Router to Broker MQTT = WiFi
         if (types.includes('mqtt_broker') && types.includes('wifi_router')) return 'wifi';
         // Datalogger ↔ Inversor = RS485
