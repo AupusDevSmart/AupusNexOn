@@ -126,7 +126,9 @@ export function VisaoGeralUsina({ unidadeId, unidadeNome }: { unidadeId: string;
             <GrandezasEletricasPanel unidadeId={unidadeId} />
             <DemandaFluxoPanel unidadeId={unidadeId} />
           </div>
-          <div className="flex min-h-[280px] flex-col">
+          {/* Altura DEFINIDA no xl: o gráfico usa xl:flex-1 (altura vem do pai). Só min-h
+              deixava a cadeia flex-1 colapsar pra 0 no desktop → gráfico em branco. */}
+          <div className="flex min-h-[240px] flex-col xl:h-[440px] xl:min-h-0">
             <GraficoConfiguravelPanel unidadeId={unidadeId} />
           </div>
         </>
