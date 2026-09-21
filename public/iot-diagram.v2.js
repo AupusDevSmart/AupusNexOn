@@ -126,7 +126,7 @@ var COMPONENT_TYPES = {
             { key: 'mqtt_topic_base', label: 'Tópico Base', type: 'text', placeholder: 'PROPRIETARIO/ESTADO/PLANTA/INSTALACAO' },
             { key: '_topic_preview', label: 'Tópicos Dispositivos', type: 'topic_preview' },
             { key: 'equipamento_id', label: 'Equipamento NexOn (ID)', type: 'text', placeholder: 'CUID 26 chars — necessário para Implantar OTA' },
-            { key: 'din_gp0', label: 'Entradas DIN1-6 = GP0-GP5 (mapa corrigido da placa v1a — só TONs novas)', type: 'select', options: [['', 'Não (padrão histórico: GP1-GP6)'], ['true', 'Sim — DIN1-6 físicas (posto/bancada)']] },
+            { key: 'din_gp0', label: 'Mapa das entradas BI (placa V1)', type: 'select', options: [['true', 'X12-1..6 = d1..d6 (como a serigrafia — use em instalações novas)'], ['', 'Compatibilidade: d1..d6 = X12-2..6 + M0 (TONs já instaladas no mapa antigo)']] },
         ]
     },
     ton2: {
@@ -164,7 +164,7 @@ var COMPONENT_TYPES = {
             { key: 'mqtt_topic_base', label: 'Tópico Base', type: 'text', placeholder: 'PROPRIETARIO/ESTADO/PLANTA/INSTALACAO' },
             { key: '_topic_preview', label: 'Tópicos Dispositivos', type: 'topic_preview' },
             { key: 'equipamento_id', label: 'Equipamento NexOn (ID)', type: 'text', placeholder: 'CUID 26 chars — necessário para Implantar OTA' },
-            { key: 'din_gp0', label: 'Entradas DIN1-6 = GP0-GP5 (mapa corrigido da placa v1a — só TONs novas)', type: 'select', options: [['', 'Não (padrão histórico: GP1-GP6)'], ['true', 'Sim — DIN1-6 físicas (posto/bancada)']] },
+            { key: 'din_gp0', label: 'Mapa das entradas BI (placa V1)', type: 'select', options: [['true', 'X12-1..6 = d1..d6 (como a serigrafia — use em instalações novas)'], ['', 'Compatibilidade: d1..d6 = X12-2..6 + M0 (TONs já instaladas no mapa antigo)']] },
             // LoRa modo TX/RX removido: half-duplex bidirecional sempre. Role
             // (gateway/satellite) e' resolvido automaticamente pelo layout
             // (tem internet + peer LoRa = gateway; sem internet + peer = satellite).
@@ -205,7 +205,7 @@ var COMPONENT_TYPES = {
             { key: 'mqtt_topic_base', label: 'Tópico Base', type: 'text', placeholder: 'PROPRIETARIO/ESTADO/PLANTA/INSTALACAO' },
             { key: '_topic_preview', label: 'Tópicos Dispositivos', type: 'topic_preview' },
             { key: 'equipamento_id', label: 'Equipamento NexOn (ID)', type: 'text', placeholder: 'CUID 26 chars — necessário para Implantar OTA' },
-            { key: 'din_gp0', label: 'Entradas DIN1-6 = GP0-GP5 (mapa corrigido da placa v1a — só TONs novas)', type: 'select', options: [['', 'Não (padrão histórico: GP1-GP6)'], ['true', 'Sim — DIN1-6 físicas (posto/bancada)']] },
+            { key: 'din_gp0', label: 'Mapa das entradas BI (placa V1)', type: 'select', options: [['true', 'X12-1..6 = d1..d6 (como a serigrafia — use em instalações novas)'], ['', 'Compatibilidade: d1..d6 = X12-2..6 + M0 (TONs já instaladas no mapa antigo)']] },
         ]
     },
     ton4: {
@@ -245,7 +245,7 @@ var COMPONENT_TYPES = {
             { key: 'mqtt_topic_base', label: 'Tópico Base', type: 'text', placeholder: 'PROPRIETARIO/ESTADO/PLANTA/INSTALACAO' },
             { key: '_topic_preview', label: 'Tópicos Dispositivos', type: 'topic_preview' },
             { key: 'equipamento_id', label: 'Equipamento NexOn (ID)', type: 'text', placeholder: 'CUID 26 chars — necessário para Implantar OTA' },
-            { key: 'din_gp0', label: 'Entradas DIN1-6 = GP0-GP5 (mapa corrigido da placa v1a — só TONs novas)', type: 'select', options: [['', 'Não (padrão histórico: GP1-GP6)'], ['true', 'Sim — DIN1-6 físicas (posto/bancada)']] },
+            { key: 'din_gp0', label: 'Mapa das entradas BI (placa V1)', type: 'select', options: [['true', 'X12-1..6 = d1..d6 (como a serigrafia — use em instalações novas)'], ['', 'Compatibilidade: d1..d6 = X12-2..6 + M0 (TONs já instaladas no mapa antigo)']] },
             // LoRa modo TX/RX removido — half-duplex bidirecional sempre.
             // Vide nota acima em ton2.
         ]
