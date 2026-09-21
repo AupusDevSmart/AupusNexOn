@@ -131,6 +131,10 @@ int main() {
         b.in.nivel_baixo_boia = false; b.col.eventos.clear();
         b.in.nivel_pct = 5; b.m.cartao("PC-07", b.t); b.avancar(20); b.m.matricula("1234", b.t); b.avancar(20);
         CHECK(b.m.estado() == OCIOSA && b.col.temEvento("negado", "nivel_baixo"), "T2.8 AI1 abaixo do minimo (5% < 10%) -> negado (nivel_baixo)");
+        b.in.nivel_pct = 50; b.col.eventos.clear();
+        b.in.bico_no_suporte = false; b.m.cartao("PC-07", b.t); b.avancar(20); b.m.matricula("1234", b.t); b.avancar(20);
+        CHECK(b.m.estado() == OCIOSA && b.col.temEvento("negado", "bico_fora") && b.bo(false, false, false), "T2.9 bico fora do suporte -> negado (bico_fora), nada liga");
+        b.in.bico_no_suporte = true;
         CHECK(b.col.trans.empty(), "Etapa 2: nenhuma transacao gerada");
     }
 
@@ -246,6 +250,15 @@ int main() {
         CHECK(l.validar("PC-07", "", false, m, &lim), "posto sem IHM (exigir_matricula=false): so' a tag basta");
         Lista vazia;
         CHECK(!vazia.validar("PC-07", "1234", true, m, &lim) && std::string(m) == "tag", "lista totalmente vazia nega pela tag");
+    }
+
+    // ---------------- T8.3: req_id com nonce aleatorio (resposta forjada precisa acertar o id) ----------------
+    {
+        Config c; c.rng = []() -> uint32_t { return 0xBEEF; }; Bancada b(c); b.lista_padrao(); b.avancar(1500); b.m.setOnline(true);
+        b.m.cartao("PC-07", b.t); b.avancar(20); b.m.matricula("1234", b.t); b.avancar(20);
+        CHECK(b.col.ultimoReq.find("-beef") != std::string::npos, "req_id leva nonce (r<seq>-<nonce>)");
+        b.m.respostaAuth("r1", true, "", 0, b.t); b.avancar(20);
+        CHECK(b.m.estado() == VALIDANDO, "resposta com id previsivel 'r1' e' ignorada");
     }
 
     // ---------------- fail-closed na maquina: lista com tag mas SEM matriculas -> negado (matricula) ----------------

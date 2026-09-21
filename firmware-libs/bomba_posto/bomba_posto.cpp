@@ -128,6 +128,9 @@ void Maquina::_ir(Estado novo, uint32_t now) {
 bool Maquina::_precondicoes(char* motivo) const {
     if (_in.emergencia) { _cp(motivo, MOTIVO_LEN, "emergencia"); return false; }
     if (!_in.automatico) { _cp(motivo, MOTIVO_LEN, "manual"); return false; }
+    // bico fora do suporte na hora de liberar = nao parte (alguem pode estar com o gatilho aberto).
+    // BI do bico nao mapeada => o glue passa sempre true (sem intertravamento).
+    if (!_in.bico_no_suporte) { _cp(motivo, MOTIVO_LEN, "bico_fora"); return false; }
     if (_in.nivel_baixo_boia) { _cp(motivo, MOTIVO_LEN, "nivel_baixo"); return false; }
     if (_in.nivel_pct >= 0 && _cfg.nivel_min_pct >= 0 && _in.nivel_pct < _cfg.nivel_min_pct) { _cp(motivo, MOTIVO_LEN, "nivel_baixo"); return false; }
     return true;
@@ -159,7 +162,10 @@ void Maquina::matricula(const char* mat, uint32_t now) {
 void Maquina::_validar(uint32_t now) {
     _ir(VALIDANDO, now);
     if (_online) {
-        snprintf(_req, REQ_LEN, "r%lu", (unsigned long)(++_req_seq));
+        // req_id = sequencia + nonce aleatorio (quando ha rng): uma resposta forjada precisa
+        // acertar o id exato; quem consegue LER o broker ainda responde — isso e' ACL/HMAC (backend)
+        if (_cfg.rng) snprintf(_req, REQ_LEN, "r%lu-%04lx", (unsigned long)(++_req_seq), (unsigned long)(_cfg.rng() & 0xFFFF));
+        else          snprintf(_req, REQ_LEN, "r%lu", (unsigned long)(++_req_seq));
         if (_ouv) _ouv->aoPedirAutorizacao(_req, _uid, _mat);
         return;   // aguarda respostaAuth() ou o timeout no tick()
     }

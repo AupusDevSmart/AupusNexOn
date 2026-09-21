@@ -202,6 +202,12 @@ check('caso F: main.cpp bomba_init no setup + bomba_loop(mqtt_publish_sub) no lo
 check('caso F: mqtt.cpp assina rfid_sync + auth/resp e guarda OTA', has(fF, 'src/mqtt.cpp', '/auth/resp') && has(fF, 'src/mqtt.cpp', 'bomba_set_lista(buf)') && has(fF, 'src/mqtt.cpp', 'bomba_ota_permitida()'));
 check('caso F: sem warning de BO/BI faltando', !pF[0].warnings.some(w => /Bomba/.test(w)));
 check('caso A: sem bomba => sem bomba.cpp (byte-identico ao antes)', !fA['src/bomba.cpp'] && !has(fA, 'src/main.cpp', 'bomba_'));
+check('caso F: bancada (TESTE/) => BOMBA_SIM_CMDS 1, req_id com esp_random, flag de origem no Serial', has(fF, 'src/bomba.cpp', 'BOMBA_SIM_CMDS         1') && has(fF, 'src/bomba.cpp', 'c.rng = esp_random;') && has(fF, 'src/main.cpp', 'g_cmd_from_serial = true;'));
+const casoG = { ...casoF, components: casoF.components.map(c => c.id === 'f1' ? { ...c, props: { ...c.props, mqtt_topic_base: 'AUPUS/GO/FAZENDA/POSTO' } } : c) };
+const genG = new GenV2(editor(casoG)); genG._bombaIoByEquip = genF._bombaIoByEquip;
+const fG = (genG.generateAll()[0] || {}).files || {};
+check('caso G: campo (sem TESTE/) => BOMBA_SIM_CMDS 0 (card/mat/fluxo/net so pelo Serial)', has(fG, 'src/bomba.cpp', 'BOMBA_SIM_CMDS         0') && has(fG, 'src/bomba.cpp', 'sim_cmd_recusado_build_campo'));
+check('caso A: sem bomba => sem g_cmd_from_serial (byte-identico)', !has(fA, 'src/main.cpp', 'g_cmd_from_serial'));
 
 if (fails) { console.error(`\n${fails} verificações falharam`); process.exit(1); }
 console.log('\nSMOKE DE GERAÇÃO: tudo OK');

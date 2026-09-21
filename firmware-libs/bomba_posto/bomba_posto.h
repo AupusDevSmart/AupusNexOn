@@ -46,7 +46,7 @@ static const int TAG_MAX_MATS   = 8;
 static const int UID_LEN        = 24;
 static const int MAT_LEN        = 16;
 static const int MOTIVO_LEN     = 24;
-static const int REQ_LEN        = 16;
+static const int REQ_LEN        = 24;
 
 struct Config {
     uint32_t pulso_bo1_ms       = 500;     // toque de "liga" no K1
@@ -61,6 +61,8 @@ struct Config {
     bool     matricula_livre    = false;   // true = matricula digitada NAO e' conferida (so' registrada). Default: conferir
                                            //   na lista (operadores/pares); lista vazia => NEGA (fail-closed)
     bool     tem_contator_aux   = true;    // false = sem BI1 ligada (nao espera confirmacao)
+    uint32_t (*rng)()           = nullptr; // fonte de aleatoriedade p/ o req_id do auth/req (esp_random no ESP32);
+                                           //   nullptr = so' sequencial (previsivel — evitar em campo)
 };
 
 struct Entradas {

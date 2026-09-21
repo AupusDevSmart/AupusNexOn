@@ -5836,7 +5836,9 @@ void pivot_loop() {
 
     // main.cpp: so' o include (as definicoes vivem em src/bomba.cpp)
     _genBomba(spec) {
-        return `#include "bomba.h"   // posto de combustivel: maquina de estados em src/bomba.cpp (lib bomba_posto)\n`;
+        return `#include "bomba.h"   // posto de combustivel: maquina de estados em src/bomba.cpp (lib bomba_posto)
+bool g_cmd_from_serial = false;   // origem do comando em curso (Serial USB = acesso fisico); MQTT = false
+`;
     }
 
     _genBombaH(spec) {
@@ -5863,6 +5865,10 @@ bool bomba_cmd(const String& cmd, char* msg, size_t msg_sz);
 
     _genBombaCpp(spec) {
         const b = spec.bomba;
+        // Comandos de SIMULACAO (card/mat/fluxo/net) via MQTT so' em build de bancada: topico base
+        // comecando por TESTE/ ou modo Simular. Em build de CAMPO ficam so' no Serial (acesso fisico).
+        const topicBase = String(spec.topicBase || (spec.mqtt && spec.mqtt.topic_base) || '');
+        const bench = this._simMode() || /^TESTE\//i.test(topicBase);
         const biRead = (n) => n ? `((st >> ${n - 1}) & 1)` : null;
         const aiCh = b.ai_nivel ? b.ai_nivel - 1 : -1;
         return `// bomba.cpp — glue gerado: POSTO DE COMBUSTIVEL na TON. A logica (estados, validacao,
@@ -5882,6 +5888,9 @@ bool bomba_cmd(const String& cmd, char* msg, size_t msg_sz);
 #include <ArduinoJson.h>
 #include <Preferences.h>
 #include <time.h>
+#include <esp_system.h>
+
+extern bool g_cmd_from_serial;   // main.cpp
 
 #define BOMBA_PULSO_MS         ${b.pulso_ms}UL
 #define BOMBA_ESPERA_BI1_MS    ${b.espera_bi1_ms}UL
@@ -5892,6 +5901,7 @@ bool bomba_cmd(const String& cmd, char* msg, size_t msg_sz);
 #define BOMBA_NIVEL_MIN_PCT    ${Number(b.nivel_min_pct).toFixed(2)}f
 #define BOMBA_EXIGIR_MAT       ${b.exigir_matricula ? 1 : 0}
 #define BOMBA_MAT_LIVRE        ${b.matricula_livre ? 1 : 0}   // 1 = matricula digitada nao e' conferida (opcao explicita)
+#define BOMBA_SIM_CMDS         ${bench ? 1 : 0}   // 1 = bancada (TESTE/ ou Simular): card/mat/fluxo/net aceitos por MQTT; 0 = campo: so' pelo Serial
 #define BOMBA_TELEMETRIA_MS    ${b.telemetria_s}000UL
 #define BOMBA_AI_0_MV          ${Number(b.ai_nivel_0_mv || 0).toFixed(1)}f
 #define BOMBA_AI_100_MV        ${Number(b.ai_nivel_100_mv).toFixed(1)}f
@@ -6039,6 +6049,7 @@ void bomba_init() {
     c.auth_timeout_ms = BOMBA_AUTH_TIMEOUT_MS; c.fluxo_parado_ms = BOMBA_FLUXO_PARADO_MS; c.tempo_max_ms = BOMBA_TEMPO_MAX_MS;
     c.nivel_min_pct = BOMBA_NIVEL_MIN_PCT; c.exigir_matricula = BOMBA_EXIGIR_MAT != 0; c.matricula_livre = BOMBA_MAT_LIVRE != 0;
     c.tem_contator_aux = ${b.bi_contator ? 'true' : 'false'};
+    c.rng = esp_random;   // req_id do auth/req com nonce (T8.3)
     static bomba::Maquina m(c, &_ouv);
     _m = &m;
     // reles: garantidamente desligados no boot (relays_init ja fez; reforca)
@@ -6097,6 +6108,13 @@ bool bomba_cmd(const String& cmdIn, char* msg, size_t msg_sz) {
     if (!_m) return false;
     String cmd = cmdIn; cmd.trim();
     String low = cmd; low.toLowerCase();
+#if !BOMBA_SIM_CMDS
+    // Build de CAMPO: simulacao (card/mat/fluxo/net) so' com acesso fisico (Serial USB). Por MQTT: recusa.
+    if (!g_cmd_from_serial && (low.startsWith("card") || low.startsWith("mat") || low.startsWith("fluxo") || low.startsWith("net "))) {
+        Serial.printf("[BOMBA] comando de simulacao recusado por MQTT em build de campo: %s\\n", cmd.c_str());
+        snprintf(msg, msg_sz, "sim_cmd_recusado_build_campo"); return true;
+    }
+#endif
     if (low.startsWith("card ")) {
         String u = cmd.substring(5); u.trim(); u.toUpperCase();
         if (!u.length()) u = BOMBA_UID_TESTE;
@@ -6185,7 +6203,7 @@ static const int TAG_MAX_MATS   = 8;
 static const int UID_LEN        = 24;
 static const int MAT_LEN        = 16;
 static const int MOTIVO_LEN     = 24;
-static const int REQ_LEN        = 16;
+static const int REQ_LEN        = 24;
 
 struct Config {
     uint32_t pulso_bo1_ms       = 500;     // toque de "liga" no K1
@@ -6200,6 +6218,8 @@ struct Config {
     bool     matricula_livre    = false;   // true = matricula digitada NAO e' conferida (so' registrada). Default: conferir
                                            //   na lista (operadores/pares); lista vazia => NEGA (fail-closed)
     bool     tem_contator_aux   = true;    // false = sem BI1 ligada (nao espera confirmacao)
+    uint32_t (*rng)()           = nullptr; // fonte de aleatoriedade p/ o req_id do auth/req (esp_random no ESP32);
+                                           //   nullptr = so' sequencial (previsivel — evitar em campo)
 };
 
 struct Entradas {
@@ -6481,6 +6501,9 @@ void Maquina::_ir(Estado novo, uint32_t now) {
 bool Maquina::_precondicoes(char* motivo) const {
     if (_in.emergencia) { _cp(motivo, MOTIVO_LEN, "emergencia"); return false; }
     if (!_in.automatico) { _cp(motivo, MOTIVO_LEN, "manual"); return false; }
+    // bico fora do suporte na hora de liberar = nao parte (alguem pode estar com o gatilho aberto).
+    // BI do bico nao mapeada => o glue passa sempre true (sem intertravamento).
+    if (!_in.bico_no_suporte) { _cp(motivo, MOTIVO_LEN, "bico_fora"); return false; }
     if (_in.nivel_baixo_boia) { _cp(motivo, MOTIVO_LEN, "nivel_baixo"); return false; }
     if (_in.nivel_pct >= 0 && _cfg.nivel_min_pct >= 0 && _in.nivel_pct < _cfg.nivel_min_pct) { _cp(motivo, MOTIVO_LEN, "nivel_baixo"); return false; }
     return true;
@@ -6512,7 +6535,10 @@ void Maquina::matricula(const char* mat, uint32_t now) {
 void Maquina::_validar(uint32_t now) {
     _ir(VALIDANDO, now);
     if (_online) {
-        snprintf(_req, REQ_LEN, "r%lu", (unsigned long)(++_req_seq));
+        // req_id = sequencia + nonce aleatorio (quando ha rng): uma resposta forjada precisa
+        // acertar o id exato; quem consegue LER o broker ainda responde — isso e' ACL/HMAC (backend)
+        if (_cfg.rng) snprintf(_req, REQ_LEN, "r%lu-%04lx", (unsigned long)(++_req_seq), (unsigned long)(_cfg.rng() & 0xFFFF));
+        else          snprintf(_req, REQ_LEN, "r%lu", (unsigned long)(++_req_seq));
         if (_ouv) _ouv->aoPedirAutorizacao(_req, _uid, _mat);
         return;   // aguarda respostaAuth() ou o timeout no tick()
     }
@@ -7422,8 +7448,8 @@ void loop() {
     // Serial commands
     if (Serial.available()) {
         String cmd = Serial.readStringUntil('\\n');
-        process_command(cmd.c_str());
-    }
+${spec.bomba && spec.has_relays ? '        g_cmd_from_serial = true;\n' : ''}        process_command(cmd.c_str());
+${spec.bomba && spec.has_relays ? '        g_cmd_from_serial = false;\n' : ''}    }
 `;
 
         if (spec.has_lora) {
