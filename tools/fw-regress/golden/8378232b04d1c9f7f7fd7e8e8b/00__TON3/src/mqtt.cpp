@@ -369,14 +369,26 @@ static void _onMessage(char* topic, byte* payload, unsigned int len) {
 
     if (strstr(topic, "/ota/cmd") != nullptr) {
         Serial.printf("[MQTT] OTA cmd recebido (%u bytes)\n", len);
+        { extern bool bomba_ota_permitida();
+          if (!bomba_ota_permitida()) {   // posto: OTA so' com a bomba ociosa/bloqueada
+              Serial.println("[OTA] RECUSADA: bomba fora de ociosa");
+              String st = String(MQTT_TOPIC_BASE) + "/ota/status";
+              mqtt_publish_raw(st.c_str(), "{\"state\":\"refused\",\"msg\":\"bomba_ocupada\"}");
+              return;
+          } }
         ota_handle_command(buf);
         return;
     }
 
     Serial.printf("[MQTT] Recebido: %s -> %s\n", topic, buf);
-    if (strstr(topic, "/cmd/rfid_sync") != nullptr) {
-        extern void bomba_set_whitelist(const char*);
-        bomba_set_whitelist(buf);
+    if (strstr(topic, "/cmd/rfid_sync") != nullptr) {   // posto: lista de autorizados (retida)
+        extern void bomba_set_lista(const char*);
+        bomba_set_lista(buf);
+        return;
+    }
+    if (strstr(topic, "/auth/resp") != nullptr) {       // posto: resposta do NexON a auth/req
+        extern void bomba_auth_resp(const char*);
+        bomba_auth_resp(buf);
         return;
     }
     if (strstr(topic, "/cmd/wifi") != nullptr) {   // config multi-WiFi em runtime (add/remove/list)
@@ -561,6 +573,7 @@ void mqtt_loop() {
         _mqtt.subscribe(MQTT_TOPIC_CMD);
         { String wt = String(MQTT_TOPIC_BASE) + "/cmd/wifi"; _mqtt.subscribe(wt.c_str()); Serial.printf("[MQTT] Inscrito em: %s\n", wt.c_str()); }
         { String rfidTopic = String(MQTT_TOPIC_BASE) + "/cmd/rfid_sync"; _mqtt.subscribe(rfidTopic.c_str()); Serial.printf("[MQTT] Inscrito em: %s\n", rfidTopic.c_str()); }
+        { String authTopic = String(MQTT_TOPIC_BASE) + "/auth/resp"; _mqtt.subscribe(authTopic.c_str()); Serial.printf("[MQTT] Inscrito em: %s\n", authTopic.c_str()); }
         String otaCmdTopic = String(MQTT_TOPIC_BASE) + "/ota/cmd";
         _mqtt.subscribe(otaCmdTopic.c_str());
         Serial.printf("[MQTT] Inscrito em: %s\n[MQTT] Inscrito em: %s\n",

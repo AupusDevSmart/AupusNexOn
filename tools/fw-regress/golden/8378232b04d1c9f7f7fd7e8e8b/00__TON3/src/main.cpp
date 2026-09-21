@@ -70,127 +70,7 @@ static void _publish_cmd_ack(const char* cmd_id, const char* status, const char*
     mqtt_publish(topic, payload);
 }
 
-// ===== BOMBA DE COMBUSTIVEL: maquina de estados (a TON e o cerebro) =====
-// Le cartao (BI botao / Serial / Comando) + estop (BI) + nivel (AI); casa a whitelist
-// recebida retida em <BASE>/cmd/rfid_sync; aciona o contator (BO, pulso) e publica
-// transacao (<BASE>/abastecimento) e telemetria (<BASE>/bomba).
-// Config: BI cartao=2, BI estop=1, AI nivel=1,
-//   BO liga=1, BO desliga=2, BO solenoide=3;
-//   cheio>=95%, min=5%, timeout=600s, vazao=0.5L/s (SIM).
-
-enum BombaState { BOMBA_OCIOSA = 0, BOMBA_BOMBEANDO };
-static BombaState    _bomba_state    = BOMBA_OCIOSA;
-static unsigned long _bomba_t_ini    = 0;
-static float         _bomba_nivel_ini = 0;
-static char          _bomba_uid[24]  = {0};
-#define BOMBA_TIMEOUT_MS  600000UL
-#define BOMBA_VAZAO_LPS   0.500f
-#define BOMBA_CHEIO_PCT   95.00f
-#define BOMBA_MIN_PCT     5.00f
-#define BOMBA_AI_0_MV     0.0f
-#define BOMBA_AI_100_MV   3000.0f
-
-static void _bomba_pub(const char* sub, const char* payload) {
-    mqtt_publish_sub(sub, payload);
-}
-
-// Whitelist RFID (recebida retida em <BASE>/cmd/rfid_sync). NAO-static: mqtt _onMessage a chama.
-static String _bomba_wl[64];
-static int    _bomba_wln = 0;
-void bomba_set_whitelist(const char* json) {
-    StaticJsonDocument<2048> d;
-    if (deserializeJson(d, json)) { Serial.println("[BOMBA] whitelist invalida"); return; }
-    _bomba_wln = 0;
-    for (JsonVariant v : d["uids"].as<JsonArray>()) {
-        if (_bomba_wln >= 64) break;
-        _bomba_wl[_bomba_wln++] = String(v.as<const char*>());
-    }
-    Serial.printf("[BOMBA] whitelist: %d UIDs\n", _bomba_wln);
-}
-static bool _bomba_uid_ok(const char* uid) {
-    for (int i = 0; i < _bomba_wln; i++) if (_bomba_wl[i].equalsIgnoreCase(uid)) return true;
-    return false;
-}
-static float _bomba_nivel_pct() {
-    float span = (BOMBA_AI_100_MV - BOMBA_AI_0_MV); if (span < 1.0f) span = 1.0f;
-    float pct = (adc_read_mv(0) - BOMBA_AI_0_MV) / span * 100.0f;
-    if (pct < 0) pct = 0;
-    if (pct > 100) pct = 100;
-    return pct;
-}
-static bool _bomba_estop() { return ((inputs_get_state() >> 0) & 1); }
-static bool _bomba_cheio() { return _bomba_nivel_pct() >= BOMBA_CHEIO_PCT; }
-
-static void _bomba_pub_estado() {
-    char payload[160];
-    // nivel_mv = tensão (mV) que entra na conta (já com o divisor); pct = (nivel_mv - ai0)/(ai100 - ai0)*100.
-    snprintf(payload, sizeof(payload), "{\"estado\":\"%s\",\"nivel_pct\":%.0f,\"nivel_mv\":%.0f,\"ai0_mv\":%.0f,\"ai100_mv\":%.0f}",
-        _bomba_state == BOMBA_BOMBEANDO ? "bombeando" : "idle", _bomba_nivel_pct(),
-        adc_read_mv(0), BOMBA_AI_0_MV, BOMBA_AI_100_MV);
-    _bomba_pub("bomba", payload);
-}
-static void _bomba_pulso_liga() {
-    relay_set(1, true); delay(500); relay_set(1, false);
-}
-static void _bomba_pulso_desliga() {
-    relay_set(2, true); delay(500); relay_set(2, false);
-}
-
-static void _bomba_encerrar(const char* status) {
-    _bomba_pulso_desliga();
-    relay_set(3, false);
-    float litros = (millis() - _bomba_t_ini) / 1000.0f * BOMBA_VAZAO_LPS;  // SIM: vazao simulada
-    float ndep = _bomba_nivel_pct();
-    char payload[200];
-    snprintf(payload, sizeof(payload),
-        "{\"uid\":\"%s\",\"litros\":%.2f,\"nivel_antes\":%.0f,\"nivel_depois\":%.0f,\"status\":\"%s\"}",
-        _bomba_uid, litros, _bomba_nivel_ini, ndep, status);
-    _bomba_pub("abastecimento", payload);
-    Serial.printf("[BOMBA] FIM (%s) litros=%.2f\n", status, litros);
-    _bomba_state = BOMBA_OCIOSA;
-    _bomba_uid[0] = 0;
-    _bomba_pub_estado();
-}
-
-// Apresentacao de cartao (botao BI / Serial / comando MQTT). NAO-static (comando a chama).
-void bomba_cartao(const char* uid) {
-    if (_bomba_state != BOMBA_OCIOSA) return;
-    if (!_bomba_uid_ok(uid)) {
-        Serial.printf("[BOMBA] REJEITADO %s\n", uid);
-        char payload[64];
-        snprintf(payload, sizeof(payload), "{\"uid\":\"%s\",\"status\":\"rejeitado\"}", uid);
-        _bomba_pub("abastecimento", payload);
-        return;
-    }
-    if (_bomba_estop()) { Serial.println("[BOMBA] BLOQUEADO: estop"); return; }
-    if (_bomba_cheio()) { Serial.println("[BOMBA] BLOQUEADO: tanque cheio"); return; }
-    if (_bomba_nivel_pct() < BOMBA_MIN_PCT) { Serial.println("[BOMBA] BLOQUEADO: nivel baixo"); return; }
-    strncpy(_bomba_uid, uid, sizeof(_bomba_uid) - 1);
-    _bomba_uid[sizeof(_bomba_uid) - 1] = 0;
-    _bomba_t_ini = millis();
-    _bomba_nivel_ini = _bomba_nivel_pct();
-    relay_set(3, true);
-    _bomba_pulso_liga();
-    _bomba_state = BOMBA_BOMBEANDO;
-    Serial.printf("[BOMBA] BOMBEANDO uid=%s nivel=%.0f%%\n", _bomba_uid, _bomba_nivel_ini);
-    _bomba_pub_estado();
-}
-
-void bomba_loop() {
-    static bool prevCartao = false;
-    static unsigned long lastTel = 0;
-    bool cartao = ((inputs_get_state() >> 1) & 1);
-    if (cartao && !prevCartao) { prevCartao = true; bomba_cartao("AABBCCDD"); }
-    if (!cartao) prevCartao = false;
-    if (_bomba_state == BOMBA_BOMBEANDO) {
-        if (_bomba_estop())                             { _bomba_encerrar("abortado_estop"); return; }
-        if (_bomba_cheio())                             { _bomba_encerrar("tanque_cheio");   return; }
-        if (_bomba_nivel_pct() < BOMBA_MIN_PCT)         { _bomba_encerrar("nivel_baixo");    return; }
-        if (millis() - _bomba_t_ini > BOMBA_TIMEOUT_MS) { _bomba_encerrar("timeout");        return; }
-    }
-    if (millis() - lastTel > 30000) { lastTel = millis(); _bomba_pub_estado(); }
-}
-
+#include "bomba.h"   // posto de combustivel: maquina de estados em src/bomba.cpp (lib bomba_posto)
 // Executa o comando bruto (sem envelope). Preenche result_msg com descricao curta.
 // Retorna true em sucesso, false em erro.
 static bool _process_command_inner(const char* raw, char* result_msg, size_t msg_sz) {
@@ -225,10 +105,7 @@ static bool _process_command_inner(const char* raw, char* result_msg, size_t msg
         snprintf(result_msg, msg_sz, "tr%c_%s", cmd[2], on ? "on" : "off");
         return true;
     }
-    if (cmd.startsWith("card ")) {
-        String u = cmd.substring(5); u.trim(); u.toUpperCase();
-        if (u.length()) { bomba_cartao(u.c_str()); snprintf(result_msg, msg_sz, "card_%s", u.c_str()); return true; }
-    }
+    if (bomba_cmd(cmd, result_msg, msg_sz)) return true;   // posto: card <UID> | mat <n> | fluxo <L/min> | status | rearme | net off|on | lista
     if (cmd == "status") {
         Serial.printf("Entradas: %02X  Saidas: %02X\n", inputs_get_state(), outputs_get_state());
         snprintf(result_msg, msg_sz, "status_printed");
@@ -352,6 +229,7 @@ void setup() {
     Serial.println("[OK] Transistores (TR1-TR4)");
 
     adc_init();
+    bomba_init();   // posto de combustivel: reles desligados, lista/sessao do NVS
     Serial.println("[OK] ADC (AN1/AN2)");
 
     // SD Card - buffer offline para MQTT
@@ -432,8 +310,8 @@ void loop() {
         _io_force = false;
     }
 
-    // Bomba: máquina de estados (lê cartão/estop nas BI + nível na AI, aciona contator BO).
-    bomba_loop();
+    // Posto de combustivel: le BI/AI, roda a maquina de estados (lib bomba_posto), aplica BO, publica.
+    bomba_loop(mqtt_publish_sub);
 
     // Serial commands
     if (Serial.available()) {

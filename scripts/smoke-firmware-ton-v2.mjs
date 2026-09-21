@@ -179,6 +179,29 @@ check('caso C: gateway/satelite sem SSU tambem levam o field-set (tabela fixa co
 const casoDv1 = { components: [...casoD.components, { id: 'm2', type: 'ton1', x: 5, y: 5, props: { name: 'TON1', mqtt_topic_base: 'TESTE/SMK/M/T1' } }], connections: [...casoD.connections, conn('m2', 'd2', 'ssu')] };
 check('V1 ignora medidor_ssu ligado a ton1 (sem crash, sem ssu.cpp)', !new GenV1(editor(casoDv1)).generateAll().some(p => p.files['src/ssu.cpp']));
 
+// ---- Posto de combustivel (bomba) — ton3v2 + bomba, IO por papel injetado como o front faz ----
+const casoF = { components: [
+  { id: 'f1', type: 'ton3v2', x: 0, y: 0, props: { name: 'TON3V2', mqtt_topic_base: 'TESTE/SMK/POSTO', equipamento_id: 'eqton00000000000000000001' } },
+  { id: 'f2', type: 'bomba', x: 1, y: 0, props: { name: 'Bomba', equipamento_id: 'eqbomba000000000000000001', fluxo_parado_s: 10, timeout_s: 30, uid_teste: 'PC-07', mat_teste: '1234' } },
+  { id: 'f3', type: 'wifi_router', x: 2, y: 0, props: { name: 'R', ssid: 'x', password: 'y' } },
+  { id: 'f4', type: 'mqtt_broker', x: 3, y: 0, props: { name: 'B', ip: '1.2.3.4', port: 1883 } },
+], connections: [conn('f1', 'f2', 'rs485'), conn('f3', 'f1', 'wifi'), conn('f4', 'f3', 'wifi')] };
+const genF = new GenV2(editor(casoF));
+genF._bombaIoByEquip = { eqbomba000000000000000001: { bo: { liga: 1, permissao: 2, solenoide: 3, sinaleiro: 4 }, bi: { contator: 1, automatico: 2, estop: 3, bico: 4, boia_min: 5, boia_alta: 6 }, ai: { nivel: { ch: 1, mv0: 0, mv100: 3000 } } } };
+const pF = genF.generateAll();
+const fF = (pF[0] || {}).files || {};
+check('caso F: bomba resolvida por papel (BO 1-4, BI 1-6, AI1)', pF[0] && pF[0].spec.bomba && pF[0].spec.bomba.bo_permissao === 2 && pF[0].spec.bomba.bi_contator === 1 && pF[0].spec.bomba.bi_boia_alta === 6 && pF[0].spec.bomba.ai_nivel === 1);
+check('caso F: lib + glue presentes', !!fF['include/bomba_posto.h'] && !!fF['src/bomba_posto.cpp'] && !!fF['include/bomba.h'] && !!fF['src/bomba.cpp']);
+const bombaLib = join(HERE, '..', 'firmware-libs', 'bomba_posto');
+check('caso F: lib embutida == fonte canonica (bomba_posto.h)', fF['include/bomba_posto.h'] === readFileSync(join(bombaLib, 'bomba_posto.h'), 'utf8'));
+check('caso F: lib embutida == fonte canonica (bomba_posto.cpp)', fF['src/bomba_posto.cpp'] === readFileSync(join(bombaLib, 'bomba_posto.cpp'), 'utf8'));
+check('caso F: glue le BI por papel com polaridade NF', has(fF, 'src/bomba.cpp', 'in.emergencia       = !((st >> 2) & 1);') && has(fF, 'src/bomba.cpp', 'in.contator         = ((st >> 0) & 1);'));
+check('caso F: parametros de bancada no config (fluxo parado 10 s, timeout 30 s)', has(fF, 'src/bomba.cpp', 'BOMBA_FLUXO_PARADO_MS  10000UL') && has(fF, 'src/bomba.cpp', 'BOMBA_TEMPO_MAX_MS     30000UL'));
+check('caso F: main.cpp bomba_init no setup + bomba_loop(mqtt_publish_sub) no loop + comandos', has(fF, 'src/main.cpp', 'bomba_init();') && has(fF, 'src/main.cpp', 'bomba_loop(mqtt_publish_sub);') && has(fF, 'src/main.cpp', 'bomba_cmd(cmd, result_msg, msg_sz)'));
+check('caso F: mqtt.cpp assina rfid_sync + auth/resp e guarda OTA', has(fF, 'src/mqtt.cpp', '/auth/resp') && has(fF, 'src/mqtt.cpp', 'bomba_set_lista(buf)') && has(fF, 'src/mqtt.cpp', 'bomba_ota_permitida()'));
+check('caso F: sem warning de BO/BI faltando', !pF[0].warnings.some(w => /Bomba/.test(w)));
+check('caso A: sem bomba => sem bomba.cpp (byte-identico ao antes)', !fA['src/bomba.cpp'] && !has(fA, 'src/main.cpp', 'bomba_'));
+
 if (fails) { console.error(`\n${fails} verificações falharam`); process.exit(1); }
 console.log('\nSMOKE DE GERAÇÃO: tudo OK');
 
@@ -191,6 +214,7 @@ if (DO_COMPILE) {
     ['ton4v2-satellite', pC.find(p => p.spec.tonType === 'ton4v2')],
     ['ton1v2-ssu-mqtt', pD[0]],
     ['ton4v2-ssu-satellite', pE.find(p => p.spec.tonType === 'ton4v2')],
+    ['ton3v2-posto-bomba', pF[0]],
   ];
   for (const [label, proj] of alvos) {
     process.stdout.write(`compilando ${label}... `);

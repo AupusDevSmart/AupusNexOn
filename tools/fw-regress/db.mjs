@@ -63,17 +63,24 @@ export function getDiagrama(projectId) {
 const norm = (s) => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 function boRole(nome) {
   const n = norm(nome);
-  if (/deslig/.test(n)) return 'desliga';
-  if (/\blig|acion|partid/.test(n)) return 'liga';
+  if (/permiss|manten/.test(n)) return 'permissao';
   if (/solenoid|valvul|bloque/.test(n)) return 'solenoide';
+  if (/sinaleir|buzzer|sirene|lampad|luz/.test(n)) return 'sinaleiro';
   if (/desabilit/.test(n)) return 'desabilitar';
   if (/habilit|energiz|carga/.test(n)) return 'habilitar';
+  if (/deslig/.test(n)) return 'desliga';
+  if (/\blig|acion|partid|pulso/.test(n)) return 'liga';
   return null;
 }
 function biRole(nome) {
   const n = norm(nome);
-  if (/cart|rfid|leitor|tag/.test(n)) return 'cartao';
+  if (/contator|k1|auxiliar|confirm/.test(n)) return 'contator';
+  if (/auto|manual|chave|seletor/.test(n)) return 'automatico';
   if (/emerg|estop|parad|seg/.test(n)) return 'estop';
+  if (/bico|suporte|gatilho/.test(n)) return 'bico';
+  if (/(boia|nivel|level).*(min|baix)|minim/.test(n)) return 'boia_min';
+  if (/(boia|nivel|level).*(alt|max)|maxim/.test(n)) return 'boia_alta';
+  if (/cart|rfid|leitor|tag/.test(n)) return 'cartao';
   if (/conect|plug|pilot|acoplad/.test(n)) return 'conectado';
   return null;
 }

@@ -31,10 +31,10 @@
 #define WIFI_TIMEOUT_MS     10000
 #define WIFI_MAX_NETS       4
 #define WIFI_TRY_MS         20000UL
-#define WIFI_CONFIG_HASH    840217598u
-static const char* WIFI_DEF_SSID[] = { "ADM_FZNSA" };
-static const char* WIFI_DEF_PASS[] = { "oli@1947" };
-static const int   WIFI_DEF_COUNT  = 1;
+#define WIFI_CONFIG_HASH    3717065090u
+static const char* WIFI_DEF_SSID[] = { "ADM_FZNSA", "ALMOX", "GrupoFiorese_NSA" };
+static const char* WIFI_DEF_PASS[] = { "oli@1947", "fznsa@102030", "hen@1947nsagf" };
+static const int   WIFI_DEF_COUNT  = 3;
 
 // MQTT
 #define MQTT_SERVER         "72.60.158.163"

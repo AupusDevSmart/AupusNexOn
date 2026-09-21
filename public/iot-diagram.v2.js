@@ -126,6 +126,7 @@ var COMPONENT_TYPES = {
             { key: 'mqtt_topic_base', label: 'Tópico Base', type: 'text', placeholder: 'PROPRIETARIO/ESTADO/PLANTA/INSTALACAO' },
             { key: '_topic_preview', label: 'Tópicos Dispositivos', type: 'topic_preview' },
             { key: 'equipamento_id', label: 'Equipamento NexOn (ID)', type: 'text', placeholder: 'CUID 26 chars — necessário para Implantar OTA' },
+            { key: 'din_gp0', label: 'Entradas DIN1-6 = GP0-GP5 (mapa corrigido da placa v1a — só TONs novas)', type: 'select', options: [['', 'Não (padrão histórico: GP1-GP6)'], ['true', 'Sim — DIN1-6 físicas (posto/bancada)']] },
         ]
     },
     ton2: {
@@ -163,6 +164,7 @@ var COMPONENT_TYPES = {
             { key: 'mqtt_topic_base', label: 'Tópico Base', type: 'text', placeholder: 'PROPRIETARIO/ESTADO/PLANTA/INSTALACAO' },
             { key: '_topic_preview', label: 'Tópicos Dispositivos', type: 'topic_preview' },
             { key: 'equipamento_id', label: 'Equipamento NexOn (ID)', type: 'text', placeholder: 'CUID 26 chars — necessário para Implantar OTA' },
+            { key: 'din_gp0', label: 'Entradas DIN1-6 = GP0-GP5 (mapa corrigido da placa v1a — só TONs novas)', type: 'select', options: [['', 'Não (padrão histórico: GP1-GP6)'], ['true', 'Sim — DIN1-6 físicas (posto/bancada)']] },
             // LoRa modo TX/RX removido: half-duplex bidirecional sempre. Role
             // (gateway/satellite) e' resolvido automaticamente pelo layout
             // (tem internet + peer LoRa = gateway; sem internet + peer = satellite).
@@ -203,6 +205,7 @@ var COMPONENT_TYPES = {
             { key: 'mqtt_topic_base', label: 'Tópico Base', type: 'text', placeholder: 'PROPRIETARIO/ESTADO/PLANTA/INSTALACAO' },
             { key: '_topic_preview', label: 'Tópicos Dispositivos', type: 'topic_preview' },
             { key: 'equipamento_id', label: 'Equipamento NexOn (ID)', type: 'text', placeholder: 'CUID 26 chars — necessário para Implantar OTA' },
+            { key: 'din_gp0', label: 'Entradas DIN1-6 = GP0-GP5 (mapa corrigido da placa v1a — só TONs novas)', type: 'select', options: [['', 'Não (padrão histórico: GP1-GP6)'], ['true', 'Sim — DIN1-6 físicas (posto/bancada)']] },
         ]
     },
     ton4: {
@@ -242,6 +245,7 @@ var COMPONENT_TYPES = {
             { key: 'mqtt_topic_base', label: 'Tópico Base', type: 'text', placeholder: 'PROPRIETARIO/ESTADO/PLANTA/INSTALACAO' },
             { key: '_topic_preview', label: 'Tópicos Dispositivos', type: 'topic_preview' },
             { key: 'equipamento_id', label: 'Equipamento NexOn (ID)', type: 'text', placeholder: 'CUID 26 chars — necessário para Implantar OTA' },
+            { key: 'din_gp0', label: 'Entradas DIN1-6 = GP0-GP5 (mapa corrigido da placa v1a — só TONs novas)', type: 'select', options: [['', 'Não (padrão histórico: GP1-GP6)'], ['true', 'Sim — DIN1-6 físicas (posto/bancada)']] },
             // LoRa modo TX/RX removido — half-duplex bidirecional sempre.
             // Vide nota acima em ton2.
         ]
@@ -490,6 +494,11 @@ var COMPONENT_TYPES = {
     // Precisa de uma TON com BO (reles): TON3/TON4.
     // ============================================================
     bomba: {
+        // POSTO DE COMBUSTIVEL — a TON e' o cerebro (lib bomba_posto). BO/BI/AI sao mapeados
+        // NA TON (sheet da TON -> Comando/Status/Medicoes -> ton_bo/ton_bi/ton_ai), por PAPEL
+        // pelo nome do ponto: BO Liga/Permissao/Solenoide/Sinaleiro; BI Contator/Auto-Manual/
+        // Emergencia/Bico/Boia minimo/Boia alta; AI Nivel. Aqui ficam so' os parametros.
+        // Requer TON3/TON4 (ou v2) — precisa de reles. Doc: "Como funciona" + "Teste em bancada".
         label: 'Bomba de Combustível', category: 'irrigacao', color: '#F59E0B',
         icon: 'M9 3v18M15 3v18M4 7h5m-5 5h5m6-5h4a1 1 0 011 1v4m-5 4v-8',
         ports: ['top', 'bottom', 'left', 'right'],
@@ -497,26 +506,27 @@ var COMPONENT_TYPES = {
         defaults: {
             name: 'Bomba de Combustível',
             equipamento_id: '',
-            modo_leitor: 'rs485', k_fator: 450,
-            ai_nivel: 1, ai_nivel_100_mv: 3000,
-            nivel_cheio_pct: 95, nivel_min_pct: 5, timeout_s: 600,
-            vazao_lps: 0.5, uid_teste: 'AABBCCDD',
+            exigir_matricula: true, k_fator: 450,
+            pulso_ms: 500, espera_bi1_ms: 1000, janela_mat_s: 60, auth_timeout_s: 3,
+            fluxo_parado_s: 30, timeout_s: 600, nivel_min_pct: 10, telemetria_s: 30,
+            uid_teste: 'PC-07', mat_teste: '1234',
         },
-        // A config da bomba mora AQUI (IoT) — o unifilar só mostra Visão/RFID. No save
-        // o backend espelha isto em bomba_combustivel_config (listarBombas/telemetria).
         fields: [
             { key: 'name', label: 'Nome', type: 'text', wide: true, section: 'Identificação' },
             { key: 'equipamento_id', label: 'Equipamento NexON (RFID / relatório)', type: 'text', wide: true },
-            { key: 'modo_leitor', label: 'Modo do leitor', type: 'select', section: 'Leitor & fluxômetro',
-              options: [['rs485', 'RS485 (Modbus)'], ['hibrido', 'Híbrido (BI + Modbus)'], ['wiegand', 'Wiegand']] },
-            { key: 'k_fator', label: 'K-fator do fluxômetro (pulsos/L)', type: 'number', placeholder: '450' },
-            { key: 'ai_nivel', label: 'AI do nível do tanque (1-2)', type: 'number', placeholder: '1', section: 'Nível (entrada analógica)' },
-            { key: 'ai_nivel_100_mv', label: 'mV que equivale a 100%', type: 'number', placeholder: '3000' },
-            { key: 'nivel_cheio_pct', label: 'Tanque cheio ≥ (%)', type: 'number', placeholder: '95', section: 'Operação' },
-            { key: 'nivel_min_pct', label: 'Nível mínimo p/ operar (%)', type: 'number', placeholder: '5' },
-            { key: 'timeout_s', label: 'Timeout de segurança (s)', type: 'number', placeholder: '600' },
-            { key: 'vazao_lps', label: 'Vazão simulada (L/s)', type: 'number', placeholder: '0.5', section: 'Simulação / bancada' },
-            { key: 'uid_teste', label: 'UID do cartão de teste (Comando)', type: 'text', placeholder: 'AABBCCDD' },
+            { key: 'exigir_matricula', label: 'Exigir matrícula do operador (tag + matrícula)', type: 'select', section: 'Identificação',
+              options: [['true', 'Sim — tag da máquina + matrícula (IHM)'], ['false', 'Não — só a tag']] },
+            { key: 'k_fator', label: 'K-fator do fluxômetro (pulsos/L)', type: 'number', placeholder: '450', section: 'Leitor & fluxômetro' },
+            { key: 'pulso_ms', label: 'Pulso do BO1 "liga" (ms)', type: 'number', placeholder: '500', section: 'Contator' },
+            { key: 'espera_bi1_ms', label: 'Espera pelo contato auxiliar (BI1) na partida/desligamento (ms)', type: 'number', placeholder: '1000' },
+            { key: 'janela_mat_s', label: 'Janela entre tag e matrícula (s)', type: 'number', placeholder: '60', section: 'Operação' },
+            { key: 'auth_timeout_s', label: 'Espera pela resposta do NexON antes de validar offline (s)', type: 'number', placeholder: '3' },
+            { key: 'fluxo_parado_s', label: 'Fluxo parado para encerrar (s) — bancada 10 / campo 30', type: 'number', placeholder: '30' },
+            { key: 'timeout_s', label: 'Tempo máximo de abastecimento (s) — bancada 30 / campo 600', type: 'number', placeholder: '600' },
+            { key: 'nivel_min_pct', label: 'Nível mínimo no AI para liberar (%)', type: 'number', placeholder: '10' },
+            { key: 'telemetria_s', label: 'Telemetria <base>/bomba a cada (s)', type: 'number', placeholder: '30' },
+            { key: 'uid_teste', label: 'UID de teste (comando "card" sem argumento)', type: 'text', placeholder: 'PC-07', section: 'Bancada' },
+            { key: 'mat_teste', label: 'Matrícula de teste (comando "mat" sem argumento)', type: 'text', placeholder: '1234' },
         ]
     },
     // ============================================================

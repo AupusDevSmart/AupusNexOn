@@ -1,5 +1,5 @@
 // ==============================================================================
-// TON3 (TON3) - Gerado pelo NexOn IoT
+// TON-1 (TON1) - Gerado pelo NexOn IoT
 // ==============================================================================
 
 #include <Arduino.h>
@@ -16,8 +16,10 @@
 #include "sd_buffer.h"
 #include "diag.h"
 #include "eth.h"
-#include "relays.h"
 #include "mqtt.h"
+#include "ota.h"
+#include "modbus_meter.h"
+#include "inverter_tcp.h"
 
 // Estado / timers
 static unsigned long last_input_scan = 0;
@@ -27,6 +29,13 @@ static unsigned long last_publish    = 0;  // publicacao MQTT RS485 (medias/delt
 static unsigned long last_sample_tcp = 0;  // leitura Modbus TCP (round-robin via datalogger)
 static unsigned long last_publish_tcp = 0; // publicacao MQTT TCP (medias/deltas)
 static unsigned long last_evt_tcp    = 0;  // SOE: drenagem de eventos de rele TCP direto
+
+// Publica em TOPIC_BASE/<sub>. Helper para modulos que nao conhecem o prefixo.
+static void mqtt_publish_sub(const char* sub, const char* payload) {
+    char topic[160];
+    snprintf(topic, sizeof(topic), "%s/%s", MQTT_TOPIC_BASE, sub);
+    mqtt_publish(topic, payload);
+}
 
 // ===== ACK aplicacao-level para comandos =====
 // Protocolo:
@@ -75,8 +84,10 @@ static bool _process_command_inner(const char* raw, char* result_msg, size_t msg
             const char* dev = j["device"] | "";
             const char* cid = j["cmd"] | "";
             if (dev[0] && cid[0]) {
-                snprintf(result_msg, msg_sz, "no_modbus_in_firmware");
-                return false;
+                bool ok = modbus_exec_command(dev, cid);
+                if (!ok) ok = inverter_tcp_exec_command(dev, cid);
+                snprintf(result_msg, msg_sz, "%s/%s:%s", dev, cid, ok ? "OK" : "FAIL");
+                return ok;
             }
         }
     }
@@ -85,10 +96,8 @@ static bool _process_command_inner(const char* raw, char* result_msg, size_t msg
     if (cmd.length() == 0) { snprintf(result_msg, msg_sz, "empty"); return false; }
 
     if (cmd.length() >= 4 && cmd[0] == 'r' && cmd[1] >= '1' && cmd[1] <= '6') {
-        bool on = cmd.indexOf("on") >= 0;
-        relay_set(cmd[1] - '0', on);
-        snprintf(result_msg, msg_sz, "rele_%c_%s", cmd[1], on ? "on" : "off");
-        return true;
+        snprintf(result_msg, msg_sz, "no_relays_in_model");
+        return false;
     }
     if (cmd.startsWith("tr") && cmd[2] >= '1' && cmd[2] <= '4') {
         bool on = cmd.indexOf("on") >= 0;
@@ -212,9 +221,6 @@ void setup() {
     if (inputs_init()) Serial.println("[OK] Entradas (6x optoacopladas)");
     else Serial.println("[FAIL] Entradas");
 
-    if (relays_init()) Serial.println("[OK] Reles (6x ULN2803)");
-    else Serial.println("[FAIL] Reles");
-
     outputs_init();
     Serial.println("[OK] Transistores (TR1-TR4)");
 
@@ -228,6 +234,19 @@ void setup() {
         Serial.println("[WARN] SD nao disponivel - mensagens offline serao perdidas");
     }
 
+    // RS485 + Modbus (dispositivos vem do catalogo, sem scan no boot)
+    modbus_init();
+
+    // Modbus TCP (via Datalogger/Gateway)
+    inverter_tcp_init();
+
+    // WiFi + MQTT + OTA
+    mqtt_init(process_command);
+    ota_init();
+    // Detecta boot pos-OTA: se em PENDING_VERIFY, arma contador de validacao.
+    // Se travarmos antes de N publicacoes OK, bootloader reverte para anterior.
+    ota_check_pending_verify();
+
     esp_task_wdt_reset();
     Serial.println("\nPronto!");
 }
@@ -236,6 +255,11 @@ void loop() {
     esp_task_wdt_reset();
     diag_tick();  // atualiza min_free_heap a cada loop
     unsigned long now = millis();
+    mqtt_loop();
+    diag_publish_periodic();  // publica MQTT_TOPIC_BASE/diagnostics a cada DIAG_INTERVAL_MS
+
+    // Durante OTA nao fazer mais nada (flash em andamento)
+    if (ota_in_progress()) { delay(1); return; }
 
     // I/O edge-triggered: publica entradas/saidas SOMENTE quando mudam.
     // Estado inicial publicado no boot e republicado apos cada reconexao MQTT
@@ -248,7 +272,6 @@ void loop() {
         static bool _io_force = true;        // forca publicacao inicial (boot)
         static bool _mqtt_was_up = false;
         static uint8_t _prev_out = 0;
-        static uint8_t _prev_rl = 0;
 
         // Detecta reconexao MQTT (false->true) pra republicar estado atual
         bool _mqtt_up = mqtt_connected();
@@ -262,6 +285,7 @@ void loop() {
             char buf[80];
             snprintf(buf, sizeof(buf), "{\"d1\":%d,\"d2\":%d,\"d3\":%d,\"d4\":%d,\"d5\":%d,\"d6\":%d}",
                 s&1, (s>>1)&1, (s>>2)&1, (s>>3)&1, (s>>4)&1, (s>>5)&1);
+            mqtt_publish_raw(MQTT_TOPIC_INPUTS, buf);
         }
 
         // Saidas transistor (TR1-4) on-change. Em satellite vai via LoRa.
@@ -271,18 +295,41 @@ void loop() {
             char obuf[60];
             snprintf(obuf, sizeof(obuf), "{\"tr1\":%d,\"tr2\":%d,\"tr3\":%d,\"tr4\":%d}",
                 os&1, (os>>1)&1, (os>>2)&1, (os>>3)&1);
-        }
-
-        // Reles (R1-6) on-change.
-        uint8_t rl = relays_get_state();
-        if (_io_force || rl != _prev_rl) {
-            _prev_rl = rl;
-            char rbuf[80];
-            snprintf(rbuf, sizeof(rbuf), "{\"r1\":%d,\"r2\":%d,\"r3\":%d,\"r4\":%d,\"r5\":%d,\"r6\":%d}",
-                (rl>>1)&1, (rl>>2)&1, (rl>>3)&1, (rl>>4)&1, (rl>>5)&1, (rl>>6)&1);
+            mqtt_publish_raw(MQTT_TOPIC_OUTPUTS, obuf);
         }
         _io_force = false;
     }
+
+    // Modbus: sample 1 device por ciclo (round-robin) a cada METER_CYCLE_MS
+    if (now - last_sample >= METER_CYCLE_MS) {
+        last_sample = now;
+        modbus_sample_one();
+    }
+
+    // SOE: drena a fila de eventos do rele a cada 2000ms. O evento ja vem carimbado
+    // pelo rele (ms na fonte) — poll rapido de estado NAO substitui isso.
+    if (now - last_evt >= 2000) {
+        last_evt = now;
+        modbus_events_poll(mqtt_publish_sub);
+    }
+
+    // Publicacao periodica: medias + deltas + last a cada PUBLISH_INTERVAL_MS
+    if (now - last_publish >= PUBLISH_INTERVAL_MS) {
+        last_publish = now;
+        modbus_publish_all(mqtt_publish_sub);
+    }
+
+    // Modbus TCP (Datalogger): sample round-robin 1 inversor por ciclo a cada METER_CYCLE_MS,
+    // publica medias/last/delta a cada PUBLISH_INTERVAL_MS (igual padrao RS485).
+    if (now - last_sample_tcp >= METER_CYCLE_MS) {
+        last_sample_tcp = now;
+        inverter_tcp_sample_one();
+    }
+    if (now - last_publish_tcp >= PUBLISH_INTERVAL_MS) {
+        last_publish_tcp = now;
+        inverter_tcp_publish_all(mqtt_publish_sub);
+    }
+    (void)last_evt_tcp;
 
     // Serial commands
     if (Serial.available()) {

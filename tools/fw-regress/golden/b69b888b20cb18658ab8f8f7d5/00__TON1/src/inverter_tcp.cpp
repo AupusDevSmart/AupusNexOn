@@ -403,6 +403,7 @@ static bool _modbus_rtu_tcp_read(const char* ip, uint16_t port, uint32_t timeout
     uint16_t calcCRC = _modbus_crc16(full, 3 + byteCount);
     if (rxCRC != calcCRC) {
         Serial.printf("[TCP-INV] CRC invalido(rtu) slave=%d — frame descartado\n", slave);
+        _tcp_last_fail_reason = "crc";   // frame chegou completo mas corrompido (ruido/baud/paridade) — distinguivel remoto
         return false;
     }
 

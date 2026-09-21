@@ -206,7 +206,7 @@ function ensureIoTScripts(): Promise<void> {
     //
     // O catalogo de dispositivos foi movido pro backend (GET /iot-catalog/device-catalog.js)
     // — ele revalida sozinho via ETag. Os demais ainda sao estaticos.
-    const IOT_SCRIPTS_VERSION = '20260921-ssu-rev';
+    const IOT_SCRIPTS_VERSION = '20260921-posto-bomba';
     const scripts = [
       `${BASE_URL}/iot-catalog/device-catalog.js`,
       `/iot-firmware-base.v2.js?v=${IOT_SCRIPTS_VERSION}`,
@@ -1171,17 +1171,25 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
     const norm = (s: string) => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
     const boRole = (nome: string): string | null => {
       const n = norm(nome);
-      if (/deslig/.test(n)) return 'desliga';        // "desliga" antes de "liga"
-      if (/\blig|acion|partid/.test(n)) return 'liga';
+      // posto de combustivel (lib bomba_posto): liga (pulso) / permissao (mantida) / solenoide / sinaleiro
+      if (/permiss|manten/.test(n)) return 'permissao';
       if (/solenoid|valvul|bloque/.test(n)) return 'solenoide';
+      if (/sinaleir|buzzer|sirene|lampad|luz/.test(n)) return 'sinaleiro';
       if (/desabilit/.test(n)) return 'desabilitar';   // carregador (antes de habilitar)
       if (/habilit|energiz|carga/.test(n)) return 'habilitar';
+      if (/deslig/.test(n)) return 'desliga';          // legado (firmware antigo da bomba)
+      if (/\blig|acion|partid|pulso/.test(n)) return 'liga';
       return null;
     };
     const biRole = (nome: string): string | null => {
       const n = norm(nome);
-      if (/cart|rfid|leitor|tag/.test(n)) return 'cartao';
+      if (/contator|k1|auxiliar|confirm/.test(n)) return 'contator';
+      if (/auto|manual|chave|seletor/.test(n)) return 'automatico';
       if (/emerg|estop|parad|seg/.test(n)) return 'estop';
+      if (/bico|suporte|gatilho/.test(n)) return 'bico';
+      if (/(boia|nivel|level).*(min|baix)|minim/.test(n)) return 'boia_min';
+      if (/(boia|nivel|level).*(alt|max)|maxim/.test(n)) return 'boia_alta';
+      if (/cart|rfid|leitor|tag/.test(n)) return 'cartao';          // legado
       if (/conect|plug|pilot|acoplad/.test(n)) return 'conectado';   // carregador
       return null;
     };

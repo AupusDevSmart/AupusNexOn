@@ -8,12 +8,18 @@
       "tonType": "ton3",
       "equipamentoId": "0a4ab4f15937dd8483715a71a2",
       "topicBase": "",
-      "nFiles": 22,
+      "nFiles": 26,
       "warnings": [
+        "Bomba: mapeie na TON os BO \"Liga\" (pulso) e \"Permissão\" (mantida) — sheet da TON → Comando.",
+        "Bomba: BI \"Contator\" (contato auxiliar do K1) não mapeado — partida/colado não serão confirmados (modo sem confirmação).",
+        "Bomba: BI \"Auto/Manual\" não mapeado — a TON assume chave em Automático.",
+        "Bomba: BI \"Bico\" não mapeado — o fim por bico devolvido não existirá.",
         "Sem dispositivos de medição conectados"
       ],
       "files": [
         "include/adc.h",
+        "include/bomba.h",
+        "include/bomba_posto.h",
         "include/config.h",
         "include/diag.h",
         "include/eth.h",
@@ -25,6 +31,8 @@
         "include/sd_buffer.h",
         "platformio.ini",
         "src/adc.cpp",
+        "src/bomba.cpp",
+        "src/bomba_posto.cpp",
         "src/diag.cpp",
         "src/eth.cpp",
         "src/inputs.cpp",

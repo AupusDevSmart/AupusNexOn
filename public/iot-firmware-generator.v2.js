@@ -212,6 +212,8 @@ var FirmwareGenerator = class FirmwareGenerator {
             // "Implantar OTA" no modal Firmware. Sem este ID o frontend
             // mostra mensagem orientativa em vez de chamar o backend.
             equipamentoId: (ton.props.equipamento_id || '').trim(),
+            // Mapa de entradas corrigido (DIN1-6 = GP0-GP5) — opcional, so' TONs novas (ver generateProject)
+            din_gp0: !!(ton.props.din_gp0 === true || ton.props.din_gp0 === 'true' || ton.props.din_gp0 === 1 || ton.props.din_gp0 === '1'),
             has_lora: def.has_lora || false,
             has_relays: def.has_relays || false,
             wifi: null,
@@ -614,48 +616,6 @@ var FirmwareGenerator = class FirmwareGenerator {
         }
     }
 
-    // Bomba de combustivel: mesmo espirito do pivo (a TON e o cerebro). Emitida em
-    // _genBomba() so quando result.bomba existe e a TON tem reles.
-    _processBomba(ton, other, result) {
-        if (result.bomba) return;  // so uma bomba por TON
-        const p = other.props || {};
-        const num = (v, max) => { const n = parseInt(v, 10); return Number.isFinite(n) && n >= 1 && n <= (max || 8) ? n : 0; };
-        const flt = (v, d) => { const n = parseFloat(v); return Number.isFinite(n) ? n : d; };
-        const pint = (v, d) => { const n = parseInt(v, 10); return Number.isFinite(n) && n > 0 ? n : d; };
-        const eqId = (p.equipamento_id || '').trim();
-        // BO/BI vem do mapeamento PADRAO da TON (modal da TON -> Configurar BOs/BIs
-        // -> ton_bo/ton_bi), resolvido por PAPEL no frontend (pelo nome do ponto da
-        // bomba) e injetado em _bombaIoByEquip[equipamento_id]. A bomba NAO guarda
-        // BO/BI nas props: a fonte da verdade e' ton_bo/ton_bi, igual a qualquer
-        // equipamento. Fallback pras props existe so pro harness/override manual.
-        // O AI (nivel) fica nas props: nao ha ton_ai (so ton_bo/ton_bi na TON).
-        const io  = (this._bombaIoByEquip && eqId && this._bombaIoByEquip[eqId]) || {};
-        const iob = io.bo || {}, ioi = io.bi || {}, ioa = io.ai || {};
-        const ain = ioa.nivel || null;  // {ch, mv0, mv100} vindo do ton_ai (Configurar AIs)
-        result.bomba = {
-            componentId: other.id,
-            name: p.name || COMPONENT_TYPES[other.type].label,
-            equipamento_id: eqId,
-            bi_cartao:      ioi.cartao || num(p.bi_cartao),
-            bi_estop:       ioi.estop  || num(p.bi_estop),
-            ai_nivel:       (() => { const n = parseInt(ain ? ain.ch : p.ai_nivel, 10); return (n === 1 || n === 2) ? n : 1; })(),
-            ai_nivel_0_mv:   ain ? (parseInt(ain.mv0, 10) || 0) : 0,
-            ai_nivel_100_mv: ain ? pint(ain.mv100, 3000) : pint(p.ai_nivel_100_mv, 3000),
-            bo_liga:        iob.liga      || num(p.bo_liga, 6),
-            bo_desliga:     iob.desliga   || num(p.bo_desliga, 6),
-            bo_solenoide:   iob.solenoide || num(p.bo_solenoide, 6),
-            nivel_cheio_pct: flt(p.nivel_cheio_pct, 95),
-            nivel_min_pct:  flt(p.nivel_min_pct, 5),
-            timeout_s:      pint(p.timeout_s, 600),
-            vazao_lps:      flt(p.vazao_lps, 0.5),
-            uid_teste:      (p.uid_teste || 'AABBCCDD').trim().toUpperCase(),
-        };
-        if (!result.has_relays) {
-            result.warnings.push('Bomba conectada a uma TON sem relés (BO) — o contator não pode ser acionado. Use TON3/TON4 (ton2 não tem BO).');
-        } else if (!result.bomba.bo_liga) {
-            result.warnings.push('Bomba sem BO "Ligar" mapeado — configure na TON: modal da TON → Configurar BOs (Ligar / Desligar / Solenoide) e Configurar BIs (Cartão / Emergência).');
-        }
-    }
 
     // Carregador eletrico: a TON habilita a recarga (BO mantido) e detecta desconexao
     // (BI Conectado) -> corta + encerra. Espelha _processBomba (BO/BI vem do ton_bo/bi).
@@ -738,6 +698,21 @@ var FirmwareGenerator = class FirmwareGenerator {
         if (spec.has_lora) {
             files['src/lora.cpp'] = this._genLoraCpp(spec);
             files['include/lora.h'] = this._genLoraH();
+        }
+
+        // Posto de combustivel: lib pura + glue (so' com bomba no diagrama e TON com reles)
+        if (spec.bomba && spec.has_relays) {
+            files['include/bomba_posto.h'] = this._genBombaLibH();
+            files['src/bomba_posto.cpp'] = this._genBombaLibCpp();
+            files['include/bomba.h'] = this._genBombaH(spec);
+            files['src/bomba.cpp'] = this._genBombaCpp(spec);
+        }
+
+        // Placa v1a com o mapa de entradas CORRIGIDO (DIN1-6 = GP0-GP5 do MCP 0x26).
+        // O base V1 le GP1-GP6 (off-by-one historico) e assim fica pros TONs ja' em campo;
+        // TONs novas (ex.: posto) ligam `din_gp0` na TON e passam a ler as 6 entradas fisicas.
+        if (spec.din_gp0) {
+            files['src/inputs.cpp'] = files['src/inputs.cpp'].replace('bool val = !_mcp.digitalRead(i + 1);', 'bool val = !_mcp.digitalRead(i);   // din_gp0: DIN1-6 = GP0-GP5 (mapa da placa v1a)');
         }
 
         // OTA depende de WiFi + MQTT_TOPIC_BASE. Sem WiFi, remove do projeto.
@@ -2610,7 +2585,14 @@ static void _onMessage(char* topic, byte* payload, unsigned int len) {
 
     if (strstr(topic, "/ota/cmd") != nullptr) {
         Serial.printf("[MQTT] OTA cmd recebido (%u bytes)\\n", len);
-        ota_handle_command(buf);
+${spec.bomba ? `        { extern bool bomba_ota_permitida();
+          if (!bomba_ota_permitida()) {   // posto: OTA so' com a bomba ociosa/bloqueada
+              Serial.println("[OTA] RECUSADA: bomba fora de ociosa");
+              String st = String(MQTT_TOPIC_BASE) + "/ota/status";
+              mqtt_publish_raw(st.c_str(), "{\\"state\\":\\"refused\\",\\"msg\\":\\"bomba_ocupada\\"}");
+              return;
+          } }
+` : ''}        ota_handle_command(buf);
         return;
     }
 ${spec.lora_role === 'gateway' ? `
@@ -2635,9 +2617,14 @@ ${spec.lora_role === 'gateway' ? `
     }
 ` : ''}
     Serial.printf("[MQTT] Recebido: %s -> %s\\n", topic, buf);
-${spec.bomba ? `    if (strstr(topic, "/cmd/rfid_sync") != nullptr) {
-        extern void bomba_set_whitelist(const char*);
-        bomba_set_whitelist(buf);
+${spec.bomba ? `    if (strstr(topic, "/cmd/rfid_sync") != nullptr) {   // posto: lista de autorizados (retida)
+        extern void bomba_set_lista(const char*);
+        bomba_set_lista(buf);
+        return;
+    }
+    if (strstr(topic, "/auth/resp") != nullptr) {       // posto: resposta do NexON a auth/req
+        extern void bomba_auth_resp(const char*);
+        bomba_auth_resp(buf);
         return;
     }
 ` : ''}    if (strstr(topic, "/cmd/wifi") != nullptr) {   // config multi-WiFi em runtime (add/remove/list)
@@ -2822,6 +2809,7 @@ void mqtt_loop() {
         _mqtt.subscribe(MQTT_TOPIC_CMD);
         { String wt = String(MQTT_TOPIC_BASE) + "/cmd/wifi"; _mqtt.subscribe(wt.c_str()); Serial.printf("[MQTT] Inscrito em: %s\\n", wt.c_str()); }
 ${spec.bomba ? `        { String rfidTopic = String(MQTT_TOPIC_BASE) + "/cmd/rfid_sync"; _mqtt.subscribe(rfidTopic.c_str()); Serial.printf("[MQTT] Inscrito em: %s\\n", rfidTopic.c_str()); }
+        { String authTopic = String(MQTT_TOPIC_BASE) + "/auth/resp"; _mqtt.subscribe(authTopic.c_str()); Serial.printf("[MQTT] Inscrito em: %s\\n", authTopic.c_str()); }
 ` : ''}        String otaCmdTopic = String(MQTT_TOPIC_BASE) + "/ota/cmd";
         _mqtt.subscribe(otaCmdTopic.c_str());
         Serial.printf("[MQTT] Inscrito em: %s\\n[MQTT] Inscrito em: %s\\n",
@@ -5775,151 +5763,918 @@ void pivot_loop() {
         return cpp;
     }
 
-    // Bomba de combustivel: modulo C++ (a TON e o cerebro). Espelha _genPivot.
-    // Emitida so quando spec.bomba && spec.has_relays. ArduinoJson ja incluido no main.cpp.
-    _genBomba(spec) {
-        const b = spec.bomba;
-        const biRead = (n) => n ? `((inputs_get_state() >> ${n - 1}) & 1)` : 'false';
-        const aiCh = b.ai_nivel - 1;  // adc_read_mv e' 0-based (AI1->0)
-
-        let cpp = `// ===== BOMBA DE COMBUSTIVEL: maquina de estados (a TON e o cerebro) =====
-// Le cartao (BI botao / Serial / Comando) + estop (BI) + nivel (AI); casa a whitelist
-// recebida retida em <BASE>/cmd/rfid_sync; aciona o contator (BO, pulso) e publica
-// transacao (<BASE>/abastecimento) e telemetria (<BASE>/bomba).
-// Config: BI cartao=${b.bi_cartao || '—'}, BI estop=${b.bi_estop || '—'}, AI nivel=${b.ai_nivel},
-//   BO liga=${b.bo_liga || '—'}, BO desliga=${b.bo_desliga || '—'}, BO solenoide=${b.bo_solenoide || '—'};
-//   cheio>=${b.nivel_cheio_pct}%, min=${b.nivel_min_pct}%, timeout=${b.timeout_s}s, vazao=${b.vazao_lps}L/s (SIM).
-`;
-        if (!spec.wifi && spec.lora_role === 'satellite') {
-            cpp += `static void lora_publish_data(const char* subtopic, const char* payload_json);  // def. no router LoRa abaixo\n`;
+    // ======================================================================
+    // POSTO DE COMBUSTIVEL — bomba controlada pela TON (V1 ton3/ton4, V2 ton3v2/ton4v2).
+    // Logica = lib pura `bomba_posto` (firmware-libs/bomba_posto, testada no host);
+    // aqui so' o glue: BI/BO/AI por PAPEL (ton_bi/ton_bo/ton_ai resolvidos no front e
+    // injetados em _bombaIoByEquip), MQTT (auth/req|resp, abastecimento, evento,
+    // bomba, cmd/rfid_sync), NVS (lista com versao + sessao em andamento), comandos
+    // de bancada (card/mat/fluxo/status/rearme/net/lista) e guarda de OTA.
+    // Doc: "Posto de Combustivel na Fazenda — Como funciona" + "Teste em bancada".
+    // ======================================================================
+    _processBomba(ton, other, result) {
+        if (result.bomba) return;  // so uma bomba por TON
+        const p = other.props || {};
+        const num = (v, max) => { const n = parseInt(v, 10); return Number.isFinite(n) && n >= 1 && n <= (max || 8) ? n : 0; };
+        const flt = (v, d) => { const n = parseFloat(v); return Number.isFinite(n) ? n : d; };
+        const pint = (v, d) => { const n = parseInt(v, 10); return Number.isFinite(n) && n > 0 ? n : d; };
+        const bool = (v, d) => (v === undefined || v === null || v === '') ? d : !(v === false || v === 'false' || v === 0 || v === '0' || v === 'nao' || v === 'não');
+        const eqId = (p.equipamento_id || '').trim();
+        // BO/BI/AI vem do mapeamento PADRAO da TON (sheet da TON -> Comando/Status/Medicoes
+        // -> ton_bo/ton_bi/ton_ai), resolvido por PAPEL no frontend (nome do ponto da bomba)
+        // e injetado em _bombaIoByEquip[equipamento_id]. Fallback pras props = harness/override.
+        const io  = (this._bombaIoByEquip && eqId && this._bombaIoByEquip[eqId]) || {};
+        const iob = io.bo || {}, ioi = io.bi || {}, ioa = io.ai || {};
+        const ain = ioa.nivel || null;  // {ch, mv0, mv100} do ton_ai
+        result.bomba = {
+            componentId: other.id,
+            name: p.name || COMPONENT_TYPES[other.type].label,
+            equipamento_id: eqId,
+            // saidas (papel -> BO)
+            bo_liga:       iob.liga      || num(p.bo_liga),
+            bo_permissao:  iob.permissao || num(p.bo_permissao),
+            bo_solenoide:  iob.solenoide || num(p.bo_solenoide),
+            bo_sinaleiro:  iob.sinaleiro || num(p.bo_sinaleiro),
+            // entradas (papel -> BI); NF = contato fechado e' o estado normal
+            bi_contator:   ioi.contator  || num(p.bi_contator),
+            bi_auto:       ioi.automatico|| num(p.bi_auto),
+            bi_emerg:      ioi.estop     || num(p.bi_emerg),
+            bi_bico:       ioi.bico      || num(p.bi_bico),
+            bi_boia_min:   ioi.boia_min  || num(p.bi_boia_min),
+            bi_boia_alta:  ioi.boia_alta || num(p.bi_boia_alta),
+            // nivel (AI)
+            ai_nivel:       (() => { const n = parseInt(ain ? ain.ch : p.ai_nivel, 10); return (n === 1 || n === 2) ? n : 0; })(),
+            ai_nivel_0_mv:   ain ? (parseInt(ain.mv0, 10) || 0) : pint(p.ai_nivel_0_mv, 0) || 0,
+            ai_nivel_100_mv: ain ? pint(ain.mv100, 3000) : pint(p.ai_nivel_100_mv, 3000),
+            // parametros (bancada: fluxo_parado 10 s / timeout 30 s; campo: 30 s / 600 s)
+            pulso_ms:        pint(p.pulso_ms, 500),
+            espera_bi1_ms:   pint(p.espera_bi1_ms, 1000),
+            janela_mat_s:    pint(p.janela_mat_s, 60),
+            auth_timeout_s:  pint(p.auth_timeout_s, 3),
+            fluxo_parado_s:  pint(p.fluxo_parado_s, 30),
+            timeout_s:       pint(p.timeout_s, 600),
+            nivel_min_pct:   flt(p.nivel_min_pct, 10),
+            exigir_matricula: bool(p.exigir_matricula, true),
+            telemetria_s:    pint(p.telemetria_s, 30),
+            k_fator:         flt(p.k_fator, 450),
+            uid_teste:       (p.uid_teste || 'PC-07').trim().toUpperCase(),
+            mat_teste:       (p.mat_teste || '1234').trim(),
+        };
+        const b = result.bomba;
+        if (!result.has_relays) {
+            result.warnings.push('Bomba conectada a uma TON sem relés (BO) — o contator não pode ser acionado. Use TON3/TON4 (ton2 não tem BO).');
+        } else {
+            if (!b.bo_liga || !b.bo_permissao) result.warnings.push('Bomba: mapeie na TON os BO "Liga" (pulso) e "Permissão" (mantida) — sheet da TON → Comando.');
+            if (!b.bo_solenoide) result.warnings.push('Bomba: BO "Solenoide" não mapeado (a válvula não será comandada).');
+            if (!b.bi_contator) result.warnings.push('Bomba: BI "Contator" (contato auxiliar do K1) não mapeado — partida/colado não serão confirmados (modo sem confirmação).');
+            if (!b.bi_auto) result.warnings.push('Bomba: BI "Auto/Manual" não mapeado — a TON assume chave em Automático.');
+            if (!b.bi_emerg) result.warnings.push('Bomba: BI "Emergência" não mapeado.');
+            if (!b.bi_bico) result.warnings.push('Bomba: BI "Bico" não mapeado — o fim por bico devolvido não existirá.');
         }
-        // Helper de publish (espelha o do pivo): MQTT (wifi) / LoRa (satellite) / Serial.
-        const pubBody = spec.wifi ? '    mqtt_publish_sub(sub, payload);'
-            : (spec.lora_role === 'satellite' ? '    lora_publish_data(sub, payload);'
-            : '    Serial.printf("[BOMBA] %s: %s\\n", sub, payload);');
-        cpp += `
-enum BombaState { BOMBA_OCIOSA = 0, BOMBA_BOMBEANDO };
-static BombaState    _bomba_state    = BOMBA_OCIOSA;
-static unsigned long _bomba_t_ini    = 0;
-static float         _bomba_nivel_ini = 0;
-static char          _bomba_uid[24]  = {0};
-#define BOMBA_TIMEOUT_MS  ${b.timeout_s}000UL
-#define BOMBA_VAZAO_LPS   ${Number(b.vazao_lps).toFixed(3)}f
-#define BOMBA_CHEIO_PCT   ${Number(b.nivel_cheio_pct).toFixed(2)}f
-#define BOMBA_MIN_PCT     ${Number(b.nivel_min_pct).toFixed(2)}f
-#define BOMBA_AI_0_MV     ${Number(b.ai_nivel_0_mv || 0).toFixed(1)}f
-#define BOMBA_AI_100_MV   ${Number(b.ai_nivel_100_mv).toFixed(1)}f
-
-static void _bomba_pub(const char* sub, const char* payload) {
-${pubBody}
-}
-
-// Whitelist RFID (recebida retida em <BASE>/cmd/rfid_sync). NAO-static: mqtt _onMessage a chama.
-static String _bomba_wl[64];
-static int    _bomba_wln = 0;
-void bomba_set_whitelist(const char* json) {
-    StaticJsonDocument<2048> d;
-    if (deserializeJson(d, json)) { Serial.println("[BOMBA] whitelist invalida"); return; }
-    _bomba_wln = 0;
-    for (JsonVariant v : d["uids"].as<JsonArray>()) {
-        if (_bomba_wln >= 64) break;
-        _bomba_wl[_bomba_wln++] = String(v.as<const char*>());
     }
-    Serial.printf("[BOMBA] whitelist: %d UIDs\\n", _bomba_wln);
+
+    // main.cpp: so' o include (as definicoes vivem em src/bomba.cpp)
+    _genBomba(spec) {
+        return `#include "bomba.h"   // posto de combustivel: maquina de estados em src/bomba.cpp (lib bomba_posto)\n`;
+    }
+
+    _genBombaH(spec) {
+        return `// bomba.h — posto de combustivel na TON (glue gerado; logica na lib bomba_posto)
+#ifndef BOMBA_H
+#define BOMBA_H
+#include <Arduino.h>
+
+typedef void (*bomba_publish_fn)(const char* subtopic, const char* payload);
+
+void bomba_init();                          // NVS (lista + sessao), config; reles ficam desligados
+void bomba_loop(bomba_publish_fn publish);  // le BI/AI, roda a maquina, aplica BO, publica
+bool bomba_ota_permitida();                 // so' em ociosa/bloqueada
+
+// MQTT (chamadas pelo _onMessage do mqtt.cpp)
+void bomba_set_lista(const char* json);     // <BASE>/cmd/rfid_sync (retido): lista de autorizados
+void bomba_auth_resp(const char* json);     // <BASE>/auth/resp: resposta do NexON
+
+// Comandos (Serial / <BASE>/cmd): retornam true e preenchem msg
+bool bomba_cmd(const String& cmd, char* msg, size_t msg_sz);
+#endif
+`;
+    }
+
+    _genBombaCpp(spec) {
+        const b = spec.bomba;
+        const biRead = (n) => n ? `((st >> ${n - 1}) & 1)` : null;
+        const aiCh = b.ai_nivel ? b.ai_nivel - 1 : -1;
+        return `// bomba.cpp — glue gerado: POSTO DE COMBUSTIVEL na TON. A logica (estados, validacao,
+// fins, contator colado, manual) esta em bomba_posto.cpp (lib pura, testada no host).
+// Mapa: BO liga=${b.bo_liga || '—'} permissao=${b.bo_permissao || '—'} solenoide=${b.bo_solenoide || '—'} sinaleiro=${b.bo_sinaleiro || '—'};
+//       BI contator=${b.bi_contator || '—'} auto=${b.bi_auto || '—'} emerg=${b.bi_emerg || '—'} bico=${b.bi_bico || '—'} boia_min=${b.bi_boia_min || '—'} boia_alta=${b.bi_boia_alta || '—'};
+//       AI nivel=${b.ai_nivel || '—'} (${b.ai_nivel_0_mv}..${b.ai_nivel_100_mv} mV = 0..100 %).
+// Convencao BI: contato fechado ao GND = 1 (inputs_get_state). Emergencia/boias sao NF (aberto = atuado).
+#include "bomba.h"
+#include "config.h"
+#include "bomba_posto.h"
+#include "inputs.h"
+#include "relays.h"
+#include "adc.h"
+#include "mqtt.h"
+#include <WiFi.h>
+#include <ArduinoJson.h>
+#include <Preferences.h>
+#include <time.h>
+
+#define BOMBA_PULSO_MS         ${b.pulso_ms}UL
+#define BOMBA_ESPERA_BI1_MS    ${b.espera_bi1_ms}UL
+#define BOMBA_JANELA_MAT_MS    ${b.janela_mat_s}000UL
+#define BOMBA_AUTH_TIMEOUT_MS  ${b.auth_timeout_s}000UL
+#define BOMBA_FLUXO_PARADO_MS  ${b.fluxo_parado_s}000UL
+#define BOMBA_TEMPO_MAX_MS     ${b.timeout_s}000UL
+#define BOMBA_NIVEL_MIN_PCT    ${Number(b.nivel_min_pct).toFixed(2)}f
+#define BOMBA_EXIGIR_MAT       ${b.exigir_matricula ? 1 : 0}
+#define BOMBA_TELEMETRIA_MS    ${b.telemetria_s}000UL
+#define BOMBA_AI_0_MV          ${Number(b.ai_nivel_0_mv || 0).toFixed(1)}f
+#define BOMBA_AI_100_MV        ${Number(b.ai_nivel_100_mv).toFixed(1)}f
+#define BOMBA_K_FATOR          ${Number(b.k_fator).toFixed(2)}f
+#define BOMBA_UID_TESTE        "${b.uid_teste}"
+#define BOMBA_MAT_TESTE        "${b.mat_teste}"
+
+static bomba::Maquina*  _m = nullptr;
+static bomba_publish_fn _pub = nullptr;
+static char   _pubPend[3][256]; static uint8_t _pubPendN = 0;   // eventos gerados antes do publish existir
+static float  _fluxo_lpm = 0;         // bancada: comando "fluxo"; campo: fluxometro (bomba_set_fluxo)
+static bool   _net_forcado_off = false;
+static unsigned long _lastTel = 0, _lastSessaoSave = 0;
+static bool   _relayLast[5] = {false,false,false,false,false};
+static uint32_t _seqEvento = 0;
+static bool   _sessaoAberta = false;
+
+static void _emitir(const char* sub, const char* payload) {
+    if (_pub) { _pub(sub, payload); return; }
+    if (_pubPendN < 3) { strncpy(_pubPend[_pubPendN], payload, 255); _pubPend[_pubPendN][255] = 0; _pubPendN++; }
 }
-static bool _bomba_uid_ok(const char* uid) {
-    for (int i = 0; i < _bomba_wln; i++) if (_bomba_wl[i].equalsIgnoreCase(uid)) return true;
+static long _epochDe(uint32_t ms) {
+    time_t now = time(nullptr);
+    if (now < 1700000000) return 0;   // sem NTP: 0 (o backend usa a hora de chegada)
+    long delta = (long)((millis() - ms) / 1000UL);
+    return (long)now - delta;
+}
+static float _nivelPct() {
+${aiCh >= 0 ? `    float span = (BOMBA_AI_100_MV - BOMBA_AI_0_MV); if (span < 1.0f) span = 1.0f;
+    float pct = (adc_read_mv(${aiCh}) - BOMBA_AI_0_MV) / span * 100.0f;
+    if (pct < 0) pct = 0; if (pct > 100) pct = 100;
+    return pct;` : `    return -1.0f;   // sem transmissor de nivel mapeado`}
+}
+
+// ---- persistencia (NVS ns "posto"): lista (JSON retido) + sessao em andamento ----
+static void _salvarSessao(bool aberta) {
+    Preferences pr; if (!pr.begin("posto", false)) return;
+    if (!aberta) { pr.remove("sessao"); pr.end(); _sessaoAberta = false; return; }
+    char j[200];
+    snprintf(j, sizeof(j), "{\\"uid\\":\\"%s\\",\\"matricula\\":\\"%s\\",\\"inicio\\":%ld,\\"nivel_antes\\":%.0f,\\"litros\\":%.2f,\\"validacao\\":\\"%s\\"}",
+             _m->uidAtual(), _m->matAtual(), _epochDe(millis()), _m->entradas().nivel_pct, _m->litros(), bomba::validacaoNome(_m->validacaoAtual()));
+    pr.putString("sessao", j); pr.end(); _sessaoAberta = true;
+}
+static void _publicarSessaoInterrompida() {
+    Preferences pr; if (!pr.begin("posto", true)) return;
+    String s = pr.getString("sessao", ""); pr.end();
+    if (!s.length()) return;
+    StaticJsonDocument<256> d; if (deserializeJson(d, s)) { _salvarSessao(false); return; }
+    char p[300];
+    snprintf(p, sizeof(p), "{\\"uid\\":\\"%s\\",\\"matricula\\":\\"%s\\",\\"litros\\":%.2f,\\"inicio\\":%ld,\\"fim\\":0,\\"nivel_antes\\":%.0f,\\"nivel_depois\\":%.0f,\\"fim_motivo\\":\\"queda_energia\\",\\"validacao\\":\\"%s\\",\\"status\\":\\"queda_energia\\"}",
+             d["uid"] | "", d["matricula"] | "", (float)(d["litros"] | 0.0f), (long)(d["inicio"] | 0L), (float)(d["nivel_antes"] | -1.0f), _nivelPct(), d["validacao"] | "offline");
+    _emitir("abastecimento", p);
+    Serial.println("[BOMBA] sessao interrompida por queda de energia/reset: transacao publicada");
+    _salvarSessao(false);
+}
+static void _carregarLista(bomba::Lista& L, const char* json, bool persistir) {
+    // v2: {"versao":N,"tags":[{"uid":"PC-07","mats":["1234"],"limite":0}],"mats":["1234"]}
+    // legado: {"uids":["AABBCCDD"]}
+    DynamicJsonDocument d(6144);
+    if (deserializeJson(d, json)) { Serial.println("[BOMBA] lista invalida (JSON)"); return; }
+    L.limpar();
+    L.versao = d["versao"] | 0;
+    for (JsonVariant v : d["uids"].as<JsonArray>()) L.adicionarTag(v.as<const char*>(), 0);
+    for (JsonObject t : d["tags"].as<JsonArray>()) {
+        const char* uid = t["uid"] | ""; if (!*uid) continue;
+        L.adicionarTag(uid, t["limite"] | 0.0f);
+        for (JsonVariant m : t["mats"].as<JsonArray>()) L.adicionarMatDaTag(uid, m.as<const char*>());
+    }
+    for (JsonVariant m : d["mats"].as<JsonArray>()) L.adicionarMat(m.as<const char*>());
+    Serial.printf("[BOMBA] lista v%lu: %d tags, %d matriculas\\n", (unsigned long)L.versao, L.ntags(), L.nmats());
+    if (persistir) {
+        size_t n = strlen(json);
+        Preferences pr; if (pr.begin("posto", false)) { if (n < 3900) pr.putString("lista", json); else Serial.println("[BOMBA] lista > 3,9 kB: nao persistida"); pr.end(); }
+    }
+}
+
+// ---- ouvinte: maquina -> MQTT ----
+struct _Ouv : public bomba::Ouvinte {
+    void aoPedirAutorizacao(const char* req_id, const char* uid, const char* mat) override {
+        char p[160];
+        snprintf(p, sizeof(p), "{\\"req_id\\":\\"%s\\",\\"uid\\":\\"%s\\",\\"matricula\\":\\"%s\\",\\"mac\\":\\"%s\\"}", req_id, uid, mat, WiFi.macAddress().c_str());
+        _emitir("auth/req", p);
+        Serial.printf("[BOMBA] auth/req %s uid=%s mat=%s\\n", req_id, uid, mat);
+    }
+    void aoEvento(const char* tipo, const char* motivo, const char* uid, const char* mat) override {
+        char p[220];
+        snprintf(p, sizeof(p), "{\\"tipo\\":\\"%s\\",\\"motivo\\":\\"%s\\",\\"uid\\":\\"%s\\",\\"matricula\\":\\"%s\\",\\"seq\\":%lu,\\"ts\\":%ld}",
+                 tipo, motivo, uid ? uid : "", mat ? mat : "", (unsigned long)(++_seqEvento), _epochDe(millis()));
+        _emitir("evento", p);
+        Serial.printf("[BOMBA] evento %s (%s) uid=%s mat=%s\\n", tipo, motivo, uid ? uid : "", mat ? mat : "");
+    }
+    void aoTransacao(const bomba::Transacao& t) override {
+        char p[360];
+        snprintf(p, sizeof(p),
+            "{\\"uid\\":\\"%s\\",\\"matricula\\":\\"%s\\",\\"litros\\":%.2f,\\"inicio\\":%ld,\\"fim\\":%ld,\\"nivel_antes\\":%.0f,\\"nivel_depois\\":%.0f,"
+            "\\"fim_motivo\\":\\"%s\\",\\"validacao\\":\\"%s\\",\\"status\\":\\"%s\\"}",
+            t.uid, t.matricula, t.litros, _epochDe(t.inicio_ms), _epochDe(t.fim_ms), t.nivel_antes, t.nivel_depois,
+            t.fim_motivo, bomba::validacaoNome(t.validacao), t.fim_motivo);
+        _emitir("abastecimento", p);
+        _salvarSessao(false);
+        Serial.printf("[BOMBA] TRANSACAO %s uid=%s mat=%s litros=%.2f (%s)\\n", t.fim_motivo, t.uid, t.matricula, t.litros, bomba::validacaoNome(t.validacao));
+    }
+    void aoMudarEstado(bomba::Estado de, bomba::Estado para) override {
+        Serial.printf("[BOMBA] %s -> %s\\n", bomba::estadoNome(de), bomba::estadoNome(para));
+        if (para == bomba::ABASTECENDO) _salvarSessao(true);
+        _lastTel = 0;   // forca telemetria na proxima volta
+    }
+};
+static _Ouv _ouv;
+
+static void _telemetria() {
+    const bomba::Entradas& e = _m->entradas();
+    char p[420];
+    snprintf(p, sizeof(p),
+        "{\\"estado\\":\\"%s\\",\\"nivel_pct\\":%.0f,\\"litros\\":%.2f,\\"uid\\":\\"%s\\",\\"matricula\\":\\"%s\\",\\"lista_versao\\":%lu,\\"lista_tags\\":%d,"
+        "\\"contator\\":%d,\\"automatico\\":%d,\\"emergencia\\":%d,\\"bico_no_suporte\\":%d,\\"boia_min\\":%d,\\"boia_alta\\":%d,\\"fluxo_lpm\\":%.1f,"
+        "\\"online\\":%d,\\"validacao\\":\\"%s\\",\\"motivo_bloqueio\\":\\"%s\\",\\"ver\\":\\"%s\\"}",
+        bomba::estadoNome(_m->estado()), e.nivel_pct, _m->litros(), _m->uidAtual(), _m->matAtual(),
+        (unsigned long)_m->lista().versao, _m->lista().ntags(),
+        e.contator ? 1 : 0, e.automatico ? 1 : 0, e.emergencia ? 1 : 0, e.bico_no_suporte ? 1 : 0, e.nivel_baixo_boia ? 1 : 0, e.boia_alta ? 1 : 0,
+        _fluxo_lpm, _m->online() ? 1 : 0, bomba::validacaoNome(_m->validacaoAtual()), _m->motivoBloqueio(), FIRMWARE_VERSION);
+    _emitir("bomba", p);
+}
+
+static void _aplicarRele(int idx, int bo, bool on) {
+    if (!bo) return;
+    if (_relayLast[idx] == on) return;
+    _relayLast[idx] = on;
+    relay_set(bo, on);
+}
+
+// ---- API ----
+void bomba_init() {
+    bomba::Config c;
+    c.pulso_bo1_ms = BOMBA_PULSO_MS; c.espera_bi1_ms = BOMBA_ESPERA_BI1_MS; c.janela_mat_ms = BOMBA_JANELA_MAT_MS;
+    c.auth_timeout_ms = BOMBA_AUTH_TIMEOUT_MS; c.fluxo_parado_ms = BOMBA_FLUXO_PARADO_MS; c.tempo_max_ms = BOMBA_TEMPO_MAX_MS;
+    c.nivel_min_pct = BOMBA_NIVEL_MIN_PCT; c.exigir_matricula = BOMBA_EXIGIR_MAT != 0;
+    c.tem_contator_aux = ${b.bi_contator ? 'true' : 'false'};
+    static bomba::Maquina m(c, &_ouv);
+    _m = &m;
+    // reles: garantidamente desligados no boot (relays_init ja fez; reforca)
+${[b.bo_liga, b.bo_permissao, b.bo_solenoide, b.bo_sinaleiro].filter(Boolean).map(n => `    relay_set(${n}, false);`).join('\n')}
+    Preferences pr;
+    if (pr.begin("posto", true)) {
+        String lista = pr.getString("lista", ""); pr.end();
+        if (lista.length()) _carregarLista(_m->lista(), lista.c_str(), false);
+    }
+    Serial.printf("[OK] Posto de combustivel: maquina de estados (lista v%lu, %d tags) — comandos: card/mat/fluxo/status/rearme/net/lista\\n",
+                  (unsigned long)_m->lista().versao, _m->lista().ntags());
+}
+
+bool bomba_ota_permitida() { return !_m || _m->otaPermitida(); }
+
+void bomba_set_lista(const char* json) { if (_m) _carregarLista(_m->lista(), json, true); }
+
+void bomba_auth_resp(const char* json) {
+    if (!_m) return;
+    StaticJsonDocument<256> d;
+    if (deserializeJson(d, json)) { Serial.println("[BOMBA] auth/resp invalida"); return; }
+    _m->respostaAuth(d["req_id"] | "", d["ok"] | false, d["motivo"] | "", d["limite_litros"] | 0.0f, millis());
+}
+
+void bomba_loop(bomba_publish_fn publish) {
+    if (!_m) return;
+    if (publish && _pub != publish) {
+        _pub = publish;
+        _publicarSessaoInterrompida();
+        for (uint8_t i = 0; i < _pubPendN; i++) _pub("evento", _pubPend[i]);
+        _pubPendN = 0;
+    }
+    uint8_t st = inputs_get_state();
+    bomba::Entradas in;
+    in.contator         = ${biRead(b.bi_contator) || 'false'};
+    in.automatico       = ${b.bi_auto ? biRead(b.bi_auto) : 'true'};
+    in.emergencia       = ${b.bi_emerg ? `!${biRead(b.bi_emerg)}` : 'false'};          // NF: aberto = atuado
+    in.bico_no_suporte  = ${b.bi_bico ? biRead(b.bi_bico) : 'true'};
+    in.nivel_baixo_boia = ${b.bi_boia_min ? `!${biRead(b.bi_boia_min)}` : 'false'};     // NF
+    in.boia_alta        = ${b.bi_boia_alta ? `!${biRead(b.bi_boia_alta)}` : 'false'};   // NF
+    in.nivel_pct        = _nivelPct();
+    in.fluxo_lpm        = _fluxo_lpm;
+    (void)st;
+    _m->setOnline(!_net_forcado_off && mqtt_connected());
+    _m->tick(millis(), in);
+    const bomba::Saidas& o = _m->saidas();
+    _aplicarRele(0, ${b.bo_liga || 0}, o.liga);
+    _aplicarRele(1, ${b.bo_permissao || 0}, o.permissao);
+    _aplicarRele(2, ${b.bo_solenoide || 0}, o.solenoide);
+    _aplicarRele(3, ${b.bo_sinaleiro || 0}, o.sinaleiro);
+    if (_m->estado() == bomba::ABASTECENDO && millis() - _lastSessaoSave > 5000) { _lastSessaoSave = millis(); _salvarSessao(true); }
+    if (millis() - _lastTel > BOMBA_TELEMETRIA_MS) { _lastTel = millis(); _telemetria(); }
+}
+
+bool bomba_cmd(const String& cmdIn, char* msg, size_t msg_sz) {
+    if (!_m) return false;
+    String cmd = cmdIn; cmd.trim();
+    String low = cmd; low.toLowerCase();
+    if (low.startsWith("card ")) {
+        String u = cmd.substring(5); u.trim(); u.toUpperCase();
+        if (!u.length()) u = BOMBA_UID_TESTE;
+        _m->cartao(u.c_str(), millis()); snprintf(msg, msg_sz, "card_%s_%s", u.c_str(), bomba::estadoNome(_m->estado())); return true;
+    }
+    if (low == "card") { _m->cartao(BOMBA_UID_TESTE, millis()); snprintf(msg, msg_sz, "card_%s", BOMBA_UID_TESTE); return true; }
+    if (low.startsWith("mat ")) {
+        String m = cmd.substring(4); m.trim();
+        if (!m.length()) m = BOMBA_MAT_TESTE;
+        _m->matricula(m.c_str(), millis()); snprintf(msg, msg_sz, "mat_%s_%s", m.c_str(), bomba::estadoNome(_m->estado())); return true;
+    }
+    if (low == "mat") { _m->matricula(BOMBA_MAT_TESTE, millis()); snprintf(msg, msg_sz, "mat_%s", BOMBA_MAT_TESTE); return true; }
+    if (low.startsWith("fluxo")) {
+        String v = cmd.substring(5); v.trim();
+        _fluxo_lpm = v.length() ? v.toFloat() : 0.0f; if (_fluxo_lpm < 0) _fluxo_lpm = 0;
+        snprintf(msg, msg_sz, "fluxo_%.1f_lpm", _fluxo_lpm); return true;
+    }
+    if (low == "rearme") { _m->rearme(millis()); snprintf(msg, msg_sz, "rearme_%s", bomba::estadoNome(_m->estado())); return true; }
+    if (low == "net off") { _net_forcado_off = true;  snprintf(msg, msg_sz, "net_off_forcado"); return true; }
+    if (low == "net on")  { _net_forcado_off = false; snprintf(msg, msg_sz, "net_on"); return true; }
+    if (low == "lista") {
+        const bomba::Lista& L = _m->lista();
+        Serial.printf("[BOMBA] lista v%lu: %d tags, %d matriculas\\n", (unsigned long)L.versao, L.ntags(), L.nmats());
+        snprintf(msg, msg_sz, "lista_v%lu_%dtags", (unsigned long)L.versao, L.ntags()); return true;
+    }
+    if (low == "status") {
+        const bomba::Entradas& e = _m->entradas();
+        Serial.printf("[BOMBA] estado=%s uid=%s mat=%s litros=%.2f nivel=%.0f%% fluxo=%.1f L/min | contator=%d auto=%d emerg=%d bico=%d boia_min=%d boia_alta=%d | online=%d lista=v%lu(%d) ver=%s\\n",
+            bomba::estadoNome(_m->estado()), _m->uidAtual(), _m->matAtual(), _m->litros(), e.nivel_pct, _fluxo_lpm,
+            e.contator, e.automatico, e.emergencia, e.bico_no_suporte, e.nivel_baixo_boia, e.boia_alta,
+            _m->online() ? 1 : 0, (unsigned long)_m->lista().versao, _m->lista().ntags(), FIRMWARE_VERSION);
+        _telemetria();
+        snprintf(msg, msg_sz, "status_%s", bomba::estadoNome(_m->estado())); return true;
+    }
     return false;
 }
-static float _bomba_nivel_pct() {
-    float span = (BOMBA_AI_100_MV - BOMBA_AI_0_MV); if (span < 1.0f) span = 1.0f;
-    float pct = (adc_read_mv(${aiCh}) - BOMBA_AI_0_MV) / span * 100.0f;
-    if (pct < 0) pct = 0;
-    if (pct > 100) pct = 100;
-    return pct;
-}
-static bool _bomba_estop() { return ${biRead(b.bi_estop)}; }
-static bool _bomba_cheio() { return _bomba_nivel_pct() >= BOMBA_CHEIO_PCT; }
-
-static void _bomba_pub_estado() {
-    char payload[160];
-    // nivel_mv = tensão (mV) que entra na conta (já com o divisor); pct = (nivel_mv - ai0)/(ai100 - ai0)*100.
-    snprintf(payload, sizeof(payload), "{\\"estado\\":\\"%s\\",\\"nivel_pct\\":%.0f,\\"nivel_mv\\":%.0f,\\"ai0_mv\\":%.0f,\\"ai100_mv\\":%.0f}",
-        _bomba_state == BOMBA_BOMBEANDO ? "bombeando" : "idle", _bomba_nivel_pct(),
-        adc_read_mv(${aiCh}), BOMBA_AI_0_MV, BOMBA_AI_100_MV);
-    _bomba_pub("bomba", payload);
-}
-static void _bomba_pulso_liga() {
 `;
-        if (b.bo_liga) cpp += `    relay_set(${b.bo_liga}, true); delay(500); relay_set(${b.bo_liga}, false);\n`;
-        cpp += `}
-static void _bomba_pulso_desliga() {
-`;
-        if (b.bo_desliga) cpp += `    relay_set(${b.bo_desliga}, true); delay(500); relay_set(${b.bo_desliga}, false);\n`;
-        else if (b.bo_liga) cpp += `    relay_set(${b.bo_liga}, false);  // sem BO desliga: solta o BO liga\n`;
-        cpp += `}
+    }
 
-static void _bomba_encerrar(const char* status) {
-    _bomba_pulso_desliga();
+    _genBombaLibH() {
+        return `// ============================================================================
+// bomba_posto — maquina de estados do POSTO DE COMBUSTIVEL na TON (V1 ton3/ton4 e
+// V2 ton3v2/ton4v2). Implementa "Posto de Combustivel na Fazenda — Como funciona"
+// + "Teste em bancada" (2026-09-21): identificacao dupla (tag + matricula),
+// validacao online (NexON) com fallback na lista local, permissao MANTIDA (BO2),
+// partida por pulso (BO1) confirmada pelo contato auxiliar do contator (BI1),
+// solenoide (BO3), condicoes de fim, contator colado, modo manual, bloqueio.
+//
+// C++ PURO (sem Arduino): compila no host (test_bomba.cpp) e no ESP32 dentro do
+// firmware gerado. Quem le as entradas fisicas, aciona reles, publica MQTT e
+// persiste NVS e' o glue gerado (bomba.cpp) — esta lib so' decide.
+// Fonte canonica: AupusNexOn/firmware-libs/bomba_posto/. O gerador (V1 e V2)
+// embute uma COPIA identica (smoke confere byte a byte).
+//
+// Convencao das ENTRADAS (semanticas, ja com a polaridade resolvida pelo glue):
+//   contator        = contato auxiliar do K1 fechado (bomba ligada)
+//   automatico      = chave do painel em Automatico (BI fechada)
+//   emergencia      = botao de emergencia ATUADO (contato NF: BI aberta = atuado)
+//   bico_no_suporte = bico devolvido/no suporte (BI fechada)
+//   nivel_baixo_boia= boia de nivel minimo ATUADA (contato NF: BI aberta = tanque no fundo)
+//   boia_alta       = boia de nivel alto ATUADA (alarme na descarga; nao intertrava)
+//   nivel_pct       = transmissor de nivel (AI), <0 quando nao ha transmissor
+//   fluxo_lpm       = vazao instantanea (fluxometro real ou comando "fluxo" na bancada)
+// ============================================================================
+#ifndef BOMBA_POSTO_H
+#define BOMBA_POSTO_H
+
+#include <stdint.h>
+#include <stddef.h>
+
+namespace bomba {
+
+enum Estado : uint8_t {
+    OCIOSA = 0, AGUARDANDO_MATRICULA, VALIDANDO, PARTINDO, ABASTECENDO,
+    ENCERRANDO, BLOQUEADA, MANUAL
+};
+const char* estadoNome(Estado e);
+
+enum Validacao : uint8_t { VAL_NENHUMA = 0, VAL_ONLINE, VAL_OFFLINE, VAL_MANUAL };
+const char* validacaoNome(Validacao v);
+
+// Limites (RAM do ESP32 e' generosa; a lista vai em NVS via glue)
+static const int LISTA_MAX_TAGS = 64;
+static const int LISTA_MAX_MATS = 64;
+static const int TAG_MAX_MATS   = 8;
+static const int UID_LEN        = 24;
+static const int MAT_LEN        = 16;
+static const int MOTIVO_LEN     = 24;
+static const int REQ_LEN        = 16;
+
+struct Config {
+    uint32_t pulso_bo1_ms       = 500;     // toque de "liga" no K1
+    uint32_t espera_bi1_ms      = 1000;    // espera pelo contato auxiliar na partida e no desligamento
+    uint32_t janela_mat_ms      = 60000;   // entre a tag e a matricula
+    uint32_t auth_timeout_ms    = 3000;    // resposta do NexON antes de validar offline
+    uint32_t fluxo_parado_ms    = 10000;   // bancada 10 s / campo 30 s
+    uint32_t tempo_max_ms       = 30000;   // bancada 30 s / campo 10 min
+    float    nivel_min_pct      = 10.0f;   // AI1 abaixo disso nao libera (<0 desliga a regra)
+    uint32_t estabilizacao_ms   = 1000;    // apos o boot: nada de pulso ate as entradas estabilizarem
+    bool     exigir_matricula   = true;    // false = posto sem IHM: autoriza so' pela tag
+    bool     tem_contator_aux   = true;    // false = sem BI1 ligada (nao espera confirmacao)
+};
+
+struct Entradas {
+    bool  contator         = false;
+    bool  automatico       = true;
+    bool  emergencia       = false;
+    bool  bico_no_suporte  = true;
+    bool  nivel_baixo_boia = false;
+    bool  boia_alta        = false;
+    float nivel_pct        = -1.0f;
+    float fluxo_lpm        = 0.0f;
+};
+
+struct Saidas {
+    bool liga      = false;   // BO1 (pulso)
+    bool permissao = false;   // BO2 (mantida)
+    bool solenoide = false;   // BO3 (mantida)
+    bool sinaleiro = false;   // BO4 (opcional: aceso enquanto autorizado/abastecendo)
+};
+
+struct Tag {
+    char  uid[UID_LEN];
+    char  mats[TAG_MAX_MATS][MAT_LEN];   // matriculas permitidas p/ esta maquina (vazio = qualquer cadastrada)
+    uint8_t nmats;
+    float limite_litros;                 // 0 = sem limite
+};
+
+// Lista local de autorizados (copia do NexON, sincronizada por MQTT retido).
+class Lista {
+public:
+    Lista() { limpar(); }
+    void limpar();
+    bool adicionarTag(const char* uid, float limite);
+    bool adicionarMatDaTag(const char* uid, const char* mat);
+    bool adicionarMat(const char* mat);
+    const Tag* tag(const char* uid) const;
+    bool matCadastrada(const char* mat) const;
+    // Decide offline. motivo: "tag" | "matricula" | "par" | "" ; limite_out = limite da tag.
+    bool validar(const char* uid, const char* mat, bool exigirMat, char* motivo, float* limite_out) const;
+    uint32_t versao = 0;
+    int ntags() const { return _ntags; }
+    int nmats() const { return _nmats; }
+private:
+    Tag  _tags[LISTA_MAX_TAGS]; int _ntags;
+    char _mats[LISTA_MAX_MATS][MAT_LEN]; int _nmats;
+};
+
+struct Transacao {
+    char      uid[UID_LEN];
+    char      matricula[MAT_LEN];
+    float     litros;
+    uint32_t  inicio_ms, fim_ms;      // millis (o glue converte p/ epoch)
+    float     nivel_antes, nivel_depois;
+    char      fim_motivo[MOTIVO_LEN]; // concluido|fluxo_parado|emergencia|timeout|limite|nivel_baixo|manual|contator_colado|contator_caiu
+    Validacao validacao;
+};
+
+// Quem consome os eventos (glue: MQTT/Serial; teste: coletor).
+struct Ouvinte {
+    virtual ~Ouvinte() {}
+    virtual void aoPedirAutorizacao(const char* req_id, const char* uid, const char* mat) = 0;
+    virtual void aoEvento(const char* tipo, const char* motivo, const char* uid, const char* mat) = 0;
+    virtual void aoTransacao(const Transacao& t) = 0;
+    virtual void aoMudarEstado(Estado de, Estado para) = 0;
+};
+
+class Maquina {
+public:
+    Maquina(const Config& cfg, Ouvinte* ouv);
+
+    // Chamar a cada volta do loop com as entradas ja' lidas. Depois aplicar saidas().
+    void tick(uint32_t now_ms, const Entradas& in);
+    const Saidas& saidas() const { return _out; }
+    Estado estado() const { return _st; }
+
+    // Estimulos externos
+    void cartao(const char* uid, uint32_t now_ms);
+    void matricula(const char* mat, uint32_t now_ms);
+    void respostaAuth(const char* req_id, bool ok, const char* motivo, float limite_litros, uint32_t now_ms);
+    void rearme(uint32_t now_ms);
+    void setOnline(bool online) { _online = online; }
+    bool online() const { return _online; }
+    bool otaPermitida() const { return _st == OCIOSA || _st == BLOQUEADA; }
+
+    Lista& lista() { return _lista; }
+    const Lista& lista() const { return _lista; }
+
+    // Observabilidade (status/telemetria)
+    float    litros() const { return _litros; }
+    const char* uidAtual() const { return _uid; }
+    const char* matAtual() const { return _mat; }
+    const char* motivoBloqueio() const { return _motivo_bloq; }
+    Validacao validacaoAtual() const { return _val; }
+    const Entradas& entradas() const { return _in; }
+
+private:
+    void _ir(Estado novo, uint32_t now);
+    void _negar(const char* motivo, uint32_t now);
+    void _validar(uint32_t now);
+    void _decidir(bool ok, const char* motivo, float limite, Validacao val, uint32_t now);
+    bool _precondicoes(char* motivo) const;
+    void _partir(uint32_t now);
+    void _encerrar(const char* motivo, uint32_t now);
+    void _fecharTransacao(uint32_t now);
+    void _iniciarManual(uint32_t now);
+    void _fecharManual(uint32_t now);
+
+    Config   _cfg;
+    Ouvinte* _ouv;
+    Lista    _lista;
+    Estado   _st;
+    Saidas   _out;
+    Entradas _in;
+    bool     _online;
+    uint32_t _t_estado;        // millis da entrada no estado atual
+    uint32_t _t_boot;
+    bool     _primeiroTick;
+    uint32_t _last_tick;
+    // sessao
+    char     _uid[UID_LEN];
+    char     _mat[MAT_LEN];
+    char     _req[REQ_LEN];
+    uint32_t _req_seq;
+    float    _limite;
+    Validacao _val;
+    float    _litros;
+    uint32_t _t_ini;
+    float    _nivel_ini;
+    bool     _bico_saiu;       // o bico saiu do suporte durante o abastecimento
+    uint32_t _t_fluxo_zero;    // desde quando o fluxo esta zerado (0 = fluindo)
+    bool     _fluxo_zero;
+    char     _fim_motivo[MOTIVO_LEN];
+    char     _motivo_bloq[MOTIVO_LEN];
+    bool     _contator_ant;
+    // manual
+    bool     _man_ligado;
+    uint32_t _man_t_ini;
+    float    _man_litros;
+    float    _man_nivel_ini;
+};
+
+} // namespace bomba
+
+#endif // BOMBA_POSTO_H
 `;
-        if (b.bo_solenoide) cpp += `    relay_set(${b.bo_solenoide}, false);\n`;
-        cpp += `    float litros = (millis() - _bomba_t_ini) / 1000.0f * BOMBA_VAZAO_LPS;  // SIM: vazao simulada
-    float ndep = _bomba_nivel_pct();
-    char payload[200];
-    snprintf(payload, sizeof(payload),
-        "{\\"uid\\":\\"%s\\",\\"litros\\":%.2f,\\"nivel_antes\\":%.0f,\\"nivel_depois\\":%.0f,\\"status\\":\\"%s\\"}",
-        _bomba_uid, litros, _bomba_nivel_ini, ndep, status);
-    _bomba_pub("abastecimento", payload);
-    Serial.printf("[BOMBA] FIM (%s) litros=%.2f\\n", status, litros);
-    _bomba_state = BOMBA_OCIOSA;
-    _bomba_uid[0] = 0;
-    _bomba_pub_estado();
+    }
+
+    _genBombaLibCpp() {
+        return `// bomba_posto.cpp — ver bomba_posto.h. C++ puro.
+#include "bomba_posto.h"
+#include <string.h>
+#include <stdio.h>
+
+namespace bomba {
+
+static void _cp(char* dst, size_t n, const char* src) {
+    if (!dst || n == 0) return;
+    size_t i = 0;
+    if (src) for (; i + 1 < n && src[i]; i++) dst[i] = src[i];
+    dst[i] = 0;
+}
+static bool _eq(const char* a, const char* b) {
+    if (!a || !b) return false;
+    while (*a && *b) {
+        char ca = (*a >= 'a' && *a <= 'z') ? (char)(*a - 32) : *a;
+        char cb = (*b >= 'a' && *b <= 'z') ? (char)(*b - 32) : *b;
+        if (ca != cb) return false;
+        a++; b++;
+    }
+    return *a == 0 && *b == 0;
 }
 
-// Apresentacao de cartao (botao BI / Serial / comando MQTT). NAO-static (comando a chama).
-void bomba_cartao(const char* uid) {
-    if (_bomba_state != BOMBA_OCIOSA) return;
-    if (!_bomba_uid_ok(uid)) {
-        Serial.printf("[BOMBA] REJEITADO %s\\n", uid);
-        char payload[64];
-        snprintf(payload, sizeof(payload), "{\\"uid\\":\\"%s\\",\\"status\\":\\"rejeitado\\"}", uid);
-        _bomba_pub("abastecimento", payload);
+const char* estadoNome(Estado e) {
+    switch (e) {
+        case OCIOSA: return "ociosa";
+        case AGUARDANDO_MATRICULA: return "aguardando_matricula";
+        case VALIDANDO: return "validando";
+        case PARTINDO: return "partindo";
+        case ABASTECENDO: return "abastecendo";
+        case ENCERRANDO: return "encerrando";
+        case BLOQUEADA: return "bloqueada";
+        case MANUAL: return "manual";
+    }
+    return "?";
+}
+const char* validacaoNome(Validacao v) {
+    switch (v) {
+        case VAL_ONLINE: return "online";
+        case VAL_OFFLINE: return "offline";
+        case VAL_MANUAL: return "manual";
+        default: return "nenhuma";
+    }
+}
+
+// ---------------------------------------------------------------- Lista
+void Lista::limpar() { _ntags = 0; _nmats = 0; versao = 0; memset(_tags, 0, sizeof(_tags)); memset(_mats, 0, sizeof(_mats)); }
+
+bool Lista::adicionarTag(const char* uid, float limite) {
+    if (!uid || !*uid) return false;
+    for (int i = 0; i < _ntags; i++) if (_eq(_tags[i].uid, uid)) { _tags[i].limite_litros = limite; return true; }
+    if (_ntags >= LISTA_MAX_TAGS) return false;
+    Tag& t = _tags[_ntags++];
+    memset(&t, 0, sizeof(t));
+    _cp(t.uid, UID_LEN, uid);
+    t.limite_litros = limite;
+    return true;
+}
+bool Lista::adicionarMatDaTag(const char* uid, const char* mat) {
+    if (!mat || !*mat) return false;
+    for (int i = 0; i < _ntags; i++) {
+        if (!_eq(_tags[i].uid, uid)) continue;
+        Tag& t = _tags[i];
+        for (int j = 0; j < t.nmats; j++) if (_eq(t.mats[j], mat)) return true;
+        if (t.nmats >= TAG_MAX_MATS) return false;
+        _cp(t.mats[t.nmats++], MAT_LEN, mat);
+        return true;
+    }
+    return false;
+}
+bool Lista::adicionarMat(const char* mat) {
+    if (!mat || !*mat) return false;
+    for (int i = 0; i < _nmats; i++) if (_eq(_mats[i], mat)) return true;
+    if (_nmats >= LISTA_MAX_MATS) return false;
+    _cp(_mats[_nmats++], MAT_LEN, mat);
+    return true;
+}
+const Tag* Lista::tag(const char* uid) const {
+    for (int i = 0; i < _ntags; i++) if (_eq(_tags[i].uid, uid)) return &_tags[i];
+    return nullptr;
+}
+bool Lista::matCadastrada(const char* mat) const {
+    for (int i = 0; i < _nmats; i++) if (_eq(_mats[i], mat)) return true;
+    return false;
+}
+bool Lista::validar(const char* uid, const char* mat, bool exigirMat, char* motivo, float* limite_out) const {
+    if (motivo) motivo[0] = 0;
+    if (limite_out) *limite_out = 0;
+    const Tag* t = tag(uid);
+    if (!t) { _cp(motivo, MOTIVO_LEN, "tag"); return false; }
+    if (exigirMat) {
+        if (!mat || !*mat) { _cp(motivo, MOTIVO_LEN, "matricula"); return false; }
+        // matricula precisa existir: na lista global OU na lista da tag
+        bool conhecida = matCadastrada(mat);
+        for (int j = 0; j < t->nmats && !conhecida; j++) if (_eq(t->mats[j], mat)) conhecida = true;
+        if (!conhecida && (_nmats > 0 || t->nmats > 0)) { _cp(motivo, MOTIVO_LEN, "matricula"); return false; }
+        // par: se a tag restringe matriculas, a matricula tem que estar nela
+        if (t->nmats > 0) {
+            bool par = false;
+            for (int j = 0; j < t->nmats; j++) if (_eq(t->mats[j], mat)) { par = true; break; }
+            if (!par) { _cp(motivo, MOTIVO_LEN, "par"); return false; }
+        }
+    }
+    if (limite_out) *limite_out = t->limite_litros;
+    return true;
+}
+
+// ---------------------------------------------------------------- Maquina
+Maquina::Maquina(const Config& cfg, Ouvinte* ouv)
+    : _cfg(cfg), _ouv(ouv), _st(OCIOSA), _online(false), _t_estado(0), _t_boot(0), _primeiroTick(true),
+      _last_tick(0), _req_seq(0), _limite(0), _val(VAL_NENHUMA), _litros(0), _t_ini(0), _nivel_ini(-1),
+      _bico_saiu(false), _t_fluxo_zero(0), _fluxo_zero(false), _contator_ant(false),
+      _man_ligado(false), _man_t_ini(0), _man_litros(0), _man_nivel_ini(-1) {
+    _uid[0] = _mat[0] = _req[0] = _fim_motivo[0] = _motivo_bloq[0] = 0;
+}
+
+void Maquina::_ir(Estado novo, uint32_t now) {
+    if (novo == _st) return;
+    Estado de = _st;
+    _st = novo; _t_estado = now;
+    if (_ouv) _ouv->aoMudarEstado(de, novo);
+}
+
+bool Maquina::_precondicoes(char* motivo) const {
+    if (_in.emergencia) { _cp(motivo, MOTIVO_LEN, "emergencia"); return false; }
+    if (!_in.automatico) { _cp(motivo, MOTIVO_LEN, "manual"); return false; }
+    if (_in.nivel_baixo_boia) { _cp(motivo, MOTIVO_LEN, "nivel_baixo"); return false; }
+    if (_in.nivel_pct >= 0 && _cfg.nivel_min_pct >= 0 && _in.nivel_pct < _cfg.nivel_min_pct) { _cp(motivo, MOTIVO_LEN, "nivel_baixo"); return false; }
+    return true;
+}
+
+void Maquina::_negar(const char* motivo, uint32_t now) {
+    if (_ouv) _ouv->aoEvento("negado", motivo, _uid, _mat);
+    _uid[0] = _mat[0] = _req[0] = 0;
+    if (_st == AGUARDANDO_MATRICULA || _st == VALIDANDO) _ir(OCIOSA, now);
+}
+
+void Maquina::cartao(const char* uid, uint32_t now) {
+    if (!uid || !*uid) return;
+    if (_st == BLOQUEADA) { _cp(_uid, UID_LEN, uid); _negar("bloqueada", now); return; }
+    if (_st == MANUAL)    { _cp(_uid, UID_LEN, uid); _negar("manual", now); return; }
+    if (_st != OCIOSA)    { char u[UID_LEN]; _cp(u, UID_LEN, uid); if (_ouv) _ouv->aoEvento("negado", "ocupado", u, ""); return; }
+    if (_primeiroTick || (uint32_t)(now - _t_boot) < _cfg.estabilizacao_ms) { _cp(_uid, UID_LEN, uid); _negar("inicializando", now); return; }
+    _cp(_uid, UID_LEN, uid); _mat[0] = 0;
+    if (_cfg.exigir_matricula) _ir(AGUARDANDO_MATRICULA, now);
+    else _validar(now);
+}
+
+void Maquina::matricula(const char* mat, uint32_t now) {
+    if (_st != AGUARDANDO_MATRICULA || !mat || !*mat) return;
+    _cp(_mat, MAT_LEN, mat);
+    _validar(now);
+}
+
+void Maquina::_validar(uint32_t now) {
+    _ir(VALIDANDO, now);
+    if (_online) {
+        snprintf(_req, REQ_LEN, "r%lu", (unsigned long)(++_req_seq));
+        if (_ouv) _ouv->aoPedirAutorizacao(_req, _uid, _mat);
+        return;   // aguarda respostaAuth() ou o timeout no tick()
+    }
+    char motivo[MOTIVO_LEN]; float lim = 0;
+    bool ok = _lista.validar(_uid, _mat, _cfg.exigir_matricula, motivo, &lim);
+    _decidir(ok, motivo, lim, VAL_OFFLINE, now);
+}
+
+void Maquina::respostaAuth(const char* req_id, bool ok, const char* motivo, float limite, uint32_t now) {
+    if (_st != VALIDANDO || !req_id || !_eq(req_id, _req)) return;
+    _decidir(ok, motivo ? motivo : "", limite, VAL_ONLINE, now);
+}
+
+void Maquina::_decidir(bool ok, const char* motivo, float limite, Validacao val, uint32_t now) {
+    _req[0] = 0;
+    if (!ok) { _negar((motivo && *motivo) ? motivo : "negado", now); return; }
+    char pre[MOTIVO_LEN];
+    if (!_precondicoes(pre)) { _negar(pre, now); return; }
+    _limite = limite; _val = val;
+    _partir(now);
+}
+
+void Maquina::_partir(uint32_t now) {
+    _litros = 0; _bico_saiu = false; _fluxo_zero = false; _t_fluxo_zero = 0;
+    _nivel_ini = _in.nivel_pct;
+    _ir(PARTINDO, now);
+}
+
+void Maquina::_encerrar(const char* motivo, uint32_t now) {
+    _cp(_fim_motivo, MOTIVO_LEN, motivo);
+    _ir(ENCERRANDO, now);
+}
+
+void Maquina::_fecharTransacao(uint32_t now) {
+    Transacao t; memset(&t, 0, sizeof(t));
+    _cp(t.uid, UID_LEN, _uid); _cp(t.matricula, MAT_LEN, _mat);
+    t.litros = _litros; t.inicio_ms = _t_ini; t.fim_ms = now;
+    t.nivel_antes = _nivel_ini; t.nivel_depois = _in.nivel_pct;
+    _cp(t.fim_motivo, MOTIVO_LEN, _fim_motivo); t.validacao = _val;
+    if (_ouv) _ouv->aoTransacao(t);
+    _uid[0] = _mat[0] = 0; _litros = 0; _limite = 0; _val = VAL_NENHUMA;
+}
+
+void Maquina::_iniciarManual(uint32_t now) {
+    _man_ligado = true; _man_t_ini = now; _man_litros = 0; _man_nivel_ini = _in.nivel_pct;
+}
+void Maquina::_fecharManual(uint32_t now) {
+    if (!_man_ligado) return;
+    _man_ligado = false;
+    Transacao t; memset(&t, 0, sizeof(t));
+    t.litros = _man_litros; t.inicio_ms = _man_t_ini; t.fim_ms = now;
+    t.nivel_antes = _man_nivel_ini; t.nivel_depois = _in.nivel_pct;
+    _cp(t.fim_motivo, MOTIVO_LEN, "manual"); t.validacao = VAL_MANUAL;
+    if (_ouv) _ouv->aoTransacao(t);
+}
+
+void Maquina::rearme(uint32_t now) {
+    if (_st != BLOQUEADA) return;
+    if (_cfg.tem_contator_aux && _in.contator) {
+        if (_ouv) _ouv->aoEvento("rearme_negado", "contator_colado", "", "");
         return;
     }
-    if (_bomba_estop()) { Serial.println("[BOMBA] BLOQUEADO: estop"); return; }
-    if (_bomba_cheio()) { Serial.println("[BOMBA] BLOQUEADO: tanque cheio"); return; }
-    if (_bomba_nivel_pct() < BOMBA_MIN_PCT) { Serial.println("[BOMBA] BLOQUEADO: nivel baixo"); return; }
-    strncpy(_bomba_uid, uid, sizeof(_bomba_uid) - 1);
-    _bomba_uid[sizeof(_bomba_uid) - 1] = 0;
-    _bomba_t_ini = millis();
-    _bomba_nivel_ini = _bomba_nivel_pct();
-`;
-        if (b.bo_solenoide) cpp += `    relay_set(${b.bo_solenoide}, true);\n`;
-        cpp += `    _bomba_pulso_liga();
-    _bomba_state = BOMBA_BOMBEANDO;
-    Serial.printf("[BOMBA] BOMBEANDO uid=%s nivel=%.0f%%\\n", _bomba_uid, _bomba_nivel_ini);
-    _bomba_pub_estado();
+    if (_ouv) _ouv->aoEvento("rearme", _motivo_bloq, "", "");
+    _motivo_bloq[0] = 0;
+    _ir(OCIOSA, now);
 }
 
-void bomba_loop() {
-    static bool prevCartao = false;
-    static unsigned long lastTel = 0;
-`;
-        if (b.bi_cartao) cpp += `    bool cartao = ${biRead(b.bi_cartao)};
-    if (cartao && !prevCartao) { prevCartao = true; bomba_cartao("${b.uid_teste}"); }
-    if (!cartao) prevCartao = false;
-`;
-        cpp += `    if (_bomba_state == BOMBA_BOMBEANDO) {
-        if (_bomba_estop())                             { _bomba_encerrar("abortado_estop"); return; }
-        if (_bomba_cheio())                             { _bomba_encerrar("tanque_cheio");   return; }
-        if (_bomba_nivel_pct() < BOMBA_MIN_PCT)         { _bomba_encerrar("nivel_baixo");    return; }
-        if (millis() - _bomba_t_ini > BOMBA_TIMEOUT_MS) { _bomba_encerrar("timeout");        return; }
+void Maquina::tick(uint32_t now, const Entradas& in) {
+    if (_primeiroTick) { _primeiroTick = false; _t_boot = now; _last_tick = now; _t_estado = now; _contator_ant = in.contator; }
+    uint32_t dt = now - _last_tick; _last_tick = now;
+    _in = in;
+    const bool contEdgeUp = in.contator && !_contator_ant;
+    _contator_ant = in.contator;
+
+    // fluxo parado: cronometro desde que a vazao zerou
+    if (in.fluxo_lpm <= 0.0005f) { if (!_fluxo_zero) { _fluxo_zero = true; _t_fluxo_zero = now; } }
+    else _fluxo_zero = false;
+
+    Saidas o;   // tudo desligado por padrao — so' PARTINDO/ABASTECENDO ligam algo
+    switch (_st) {
+    case OCIOSA:
+        if (!in.automatico) {
+            if (_ouv) _ouv->aoEvento("manual", "chave", "", "");
+            _ir(MANUAL, now);
+            break;
+        }
+        if (_cfg.tem_contator_aux && contEdgeUp) {
+            if (_ouv) _ouv->aoEvento("nao_autorizado", "contator_fechou_sem_comando", "", "");
+        }
+        break;
+
+    case AGUARDANDO_MATRICULA:
+        if (!in.automatico) { _negar("manual", now); break; }
+        if ((uint32_t)(now - _t_estado) > _cfg.janela_mat_ms) _negar("timeout_matricula", now);
+        break;
+
+    case VALIDANDO:
+        if (!in.automatico) { _negar("manual", now); break; }
+        if (_req[0] && (uint32_t)(now - _t_estado) > _cfg.auth_timeout_ms) {
+            // NexON nao respondeu: decide pela lista local
+            char motivo[MOTIVO_LEN]; float lim = 0;
+            bool ok = _lista.validar(_uid, _mat, _cfg.exigir_matricula, motivo, &lim);
+            _decidir(ok, motivo, lim, VAL_OFFLINE, now);
+        }
+        break;
+
+    case PARTINDO: {
+        uint32_t el = now - _t_estado;
+        o.permissao = true; o.solenoide = true; o.sinaleiro = true;
+        o.liga = el < _cfg.pulso_bo1_ms;
+        if (in.emergencia) { _encerrar("emergencia", now); o = Saidas(); break; }
+        bool ligou = _cfg.tem_contator_aux ? in.contator : (el >= _cfg.pulso_bo1_ms);
+        if (ligou) {
+            _t_ini = now; _litros = 0; _bico_saiu = false; _fluxo_zero = false; _t_fluxo_zero = 0;
+            _ir(ABASTECENDO, now);
+            o.liga = false;
+            break;
+        }
+        if (el >= _cfg.espera_bi1_ms && el >= _cfg.pulso_bo1_ms) {
+            // K1 nao confirmou: desliga tudo e bloqueia ate reconhecimento
+            o = Saidas();
+            if (_ouv) _ouv->aoEvento("falha_partida", "sem_confirmacao_bi1", _uid, _mat);
+            _cp(_motivo_bloq, MOTIVO_LEN, "falha_partida");
+            _uid[0] = _mat[0] = 0; _val = VAL_NENHUMA;
+            _ir(BLOQUEADA, now);
+        }
+        break;
     }
-    if (millis() - lastTel > 30000) { lastTel = millis(); _bomba_pub_estado(); }
+
+    case ABASTECENDO: {
+        o.permissao = true; o.solenoide = true; o.sinaleiro = true;
+        _litros += in.fluxo_lpm * (float)dt / 60000.0f;
+        if (!in.bico_no_suporte) _bico_saiu = true;
+        const char* fim = nullptr;
+        if (in.emergencia)                                              fim = "emergencia";
+        else if (!in.automatico)                                        fim = "manual";
+        else if (_cfg.tem_contator_aux && !in.contator)                 fim = "contator_caiu";
+        else if (in.nivel_baixo_boia)                                   fim = "nivel_baixo";
+        else if (in.nivel_pct >= 0 && _cfg.nivel_min_pct >= 0 && in.nivel_pct < _cfg.nivel_min_pct) fim = "nivel_baixo";
+        else if (_limite > 0 && _litros >= _limite)                     fim = "limite";
+        else if ((uint32_t)(now - _t_ini) >= _cfg.tempo_max_ms)         fim = "timeout";
+        else if (_bico_saiu && in.bico_no_suporte)                      fim = "concluido";
+        else if (_fluxo_zero && (uint32_t)(now - _t_fluxo_zero) >= _cfg.fluxo_parado_ms) fim = "fluxo_parado";
+        if (fim) { _encerrar(fim, now); o = Saidas(); }
+        break;
+    }
+
+    case ENCERRANDO: {
+        // permissao e solenoide ja' cairam (saidas zeradas): espera o K1 abrir
+        bool abriu = !_cfg.tem_contator_aux || !in.contator;
+        if (abriu) { _fecharTransacao(now); _ir(OCIOSA, now); break; }
+        if ((uint32_t)(now - _t_estado) >= _cfg.espera_bi1_ms) {
+            if (_ouv) _ouv->aoEvento("contator_colado", _fim_motivo, _uid, _mat);
+            _fecharTransacao(now);
+            _cp(_motivo_bloq, MOTIVO_LEN, "contator_colado");
+            _ir(BLOQUEADA, now);
+        }
+        break;
+    }
+
+    case BLOQUEADA:
+        break;   // so' sai por rearme()
+
+    case MANUAL:
+        if (_man_ligado) _man_litros += in.fluxo_lpm * (float)dt / 60000.0f;
+        if (in.automatico) {
+            if (_man_ligado) _fecharManual(now);
+            _ir(OCIOSA, now);
+            break;
+        }
+        if (_cfg.tem_contator_aux) {
+            if (in.contator && !_man_ligado) _iniciarManual(now);
+            else if (!in.contator && _man_ligado) _fecharManual(now);
+        }
+        break;
+    }
+    _out = o;
 }
 
+} // namespace bomba
 `;
-        return cpp;
     }
 
     // Emitida so quando spec.carregador && spec.has_relays.
@@ -6161,12 +6916,9 @@ static bool _process_command_inner(const char* raw, char* result_msg, size_t msg
         return true;
     }
 `;
-        // ===== Comando da bomba: "card <UID>" apresenta um cartao (teste / Comando 🧪) =====
+        // ===== Comandos do posto de combustivel (bancada/Serial/MQTT): card, mat, fluxo, status, rearme, net, lista =====
         if (spec.bomba && spec.has_relays) {
-            cpp += `    if (cmd.startsWith("card ")) {
-        String u = cmd.substring(5); u.trim(); u.toUpperCase();
-        if (u.length()) { bomba_cartao(u.c_str()); snprintf(result_msg, msg_sz, "card_%s", u.c_str()); return true; }
-    }
+            cpp += `    if (bomba_cmd(cmd, result_msg, msg_sz)) return true;   // posto: card <UID> | mat <n> | fluxo <L/min> | status | rearme | net off|on | lista
 `;
         }
         // ===== Comando do carregador: {carregador:habilitar|desabilitar} (backend/porteiro) =====
@@ -6341,7 +7093,7 @@ void setup() {
     Serial.println("[OK] Transistores (TR1-TR4)");
 
     adc_init();
-    Serial.println("[OK] ADC (AN1/AN2)");
+${spec.bomba && spec.has_relays ? '    bomba_init();   // posto de combustivel: reles desligados, lista/sessao do NVS\n' : ''}    Serial.println("[OK] ADC (AN1/AN2)");
 
     // SD Card - buffer offline para MQTT
     if (sd_buffer_init()) {
@@ -6519,9 +7271,12 @@ void loop() {
 `;
         }
         if (spec.bomba && spec.has_relays) {
+            const bombaPub = spec.wifi ? 'mqtt_publish_sub'
+                : (spec.lora_role === 'satellite' ? '[](const char* sub, const char* payload){ lora_publish_data(sub, payload); }'
+                : '[](const char* sub, const char* payload){ Serial.printf("[BOMBA] %s: %s\\n", sub, payload); }');
             cpp += `
-    // Bomba: máquina de estados (lê cartão/estop nas BI + nível na AI, aciona contator BO).
-    bomba_loop();
+    // Posto de combustivel: le BI/AI, roda a maquina de estados (lib bomba_posto), aplica BO, publica.
+    bomba_loop(${bombaPub});
 `;
         }
         if (spec.carregador && spec.has_relays) {
