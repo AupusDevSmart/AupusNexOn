@@ -21,6 +21,14 @@ static uint8_t oct3(uint8_t posto, uint8_t quad, bool tarifa) {
     return (uint8_t)((posto & 3) | BITS[quad] | (tarifa ? 0x80 : 0));
 }
 
+// Monta bloco NORMAL (8 octetos, LRC) — contadores de 15 bits (bit 7 do octeto alto = 0).
+static void nrm(uint8_t* out, uint16_t seg, uint8_t oct2hi, uint8_t segmento, uint8_t tarifa, uint16_t pa, uint16_t pr) {
+    out[0] = seg & 0xFF; out[1] = (uint8_t)(((seg >> 8) & 0x0F) | (oct2hi & 0xF0));
+    out[2] = (uint8_t)((segmento & 0x0F) | ((tarifa & 3) << 4));
+    out[3] = pa & 0xFF; out[4] = (uint8_t)((pa >> 8) & 0x7F); out[5] = pr & 0xFF; out[6] = (uint8_t)((pr >> 8) & 0x7F);
+    out[7] = lrc(out, 7);
+}
+
 // Alimenta N blocos iguais pra travar o formato (BLOCOS_PARA_TRAVAR).
 static void travar(Leitor& L, const uint8_t* b, size_t n) {
     Resultado r;
@@ -92,6 +100,23 @@ int main() {
         CHECK(L.alimentarBloco(q3, 9, r) && r.deltaAtiva == 3 && r.deltaReativa == 1, "caso 2: Q3 seguinte: delta vs REG2/REG5 (3 / 1)");
     }
 
+    // ---------------- caso 2b: Q1 -> Q3 DEPOIS de um reinicio de intervalo visto ----------------
+    // Com o reinicio observado, TODOS os contadores sabidamente partiram de 0: o REG2 que so'
+    // aparece no meio do intervalo (41) conta desde 0 (delta 41), nao vira baseline.
+    {
+        uint8_t b[9]; Resultado r; Leitor L;
+        ext(b, 5, 0x80, oct3(2, 1, false), 900, 90); travar(L, b, 9);
+        ext(b, 3, 0x80, oct3(2, 1, false), 901, 90); L.alimentarBloco(b, 9, r);      // baseline (boot no meio)
+        ext(b, 899, 0x80, oct3(2, 1, false), 2, 1);                                    // reinicio: base 0 p/ todos
+        CHECK(L.alimentarBloco(b, 9, r) && r.fimIntervaloDemanda && r.deltaAtiva == 2 && r.deltaReativa == 1, "caso 2b: reinicio visto -> delta desde 0 (2 / 1)");
+        ext(b, 898, 0x80, oct3(2, 1, false), 7, 3); L.alimentarBloco(b, 9, r);
+        CHECK(r.deltaAtiva == 5 && r.deltaReativa == 2, "caso 2b: Q1 seguinte (5 / 2)");
+        ext(b, 897, 0x40, oct3(2, 3, false), 41, 12);                                  // Q1 -> Q3: REG2/REG5 pela 1a vez neste intervalo
+        CHECK(L.alimentarBloco(b, 9, r) && !r.baseline && r.deltaAtiva == 41 && r.deltaReativa == 12, "caso 2b: Q1 -> Q3 com intervalo visto: delta REG2 = 41 / REG5 = 12 (nao baseline)");
+        ext(b, 896, 0x40, oct3(2, 3, false), 44, 13);
+        CHECK(L.alimentarBloco(b, 9, r) && r.deltaAtiva == 3 && r.deltaReativa == 1, "caso 2b: Q3 seguinte (3 / 1)");
+    }
+
     // ---------------- caso 3: Q1 -> Q4 mantem REG1 (ativa segue), so' a reativa troca ----------------
     {
         uint8_t b[9]; Resultado r; Leitor L;
@@ -152,6 +177,17 @@ int main() {
         ext(b, 699, 0x80, oct3(2, 1, false), 65500, 100); L.alimentarBloco(b, 9, r);   // baseline 65500
         ext(b, 698, 0x80, oct3(2, 1, false), 40, 100);
         CHECK(L.alimentarBloco(b, 9, r) && r.deltaAtiva == 76, "caso 7: wrap 65500 -> 40 no mesmo registrador = delta 76, sem pico");
+    }
+
+    // ---------------- caso 8: wrap de 15 bits no bloco NORMAL (32700 -> 40 = 108) ----------------
+    {
+        uint8_t b[8]; Resultado r; Leitor L;
+        nrm(b, 500, 0x00, 2, 1, 32000, 100); travar(L, b, 8);
+        CHECK(L.travado() && L.formato() == FMT_NORMAL, "caso 8: travado em normal");
+        nrm(b, 499, 0x00, 2, 1, 32700, 100); L.alimentarBloco(b, 8, r);   // baseline 32700
+        nrm(b, 498, 0x00, 2, 1, 40, 105);
+        CHECK(L.alimentarBloco(b, 8, r) && r.formato == FMT_NORMAL && r.regAtiva == 1 && r.regReativa == 3, "caso 8: normal -> REG1 + REG3 (sem quadrante)");
+        CHECK(r.deltaAtiva == 108 && r.deltaReativa == 5, "caso 8: wrap 15 bits 32700 -> 40 = delta 108 (nao 32836); reativa 5");
     }
 
     // ---------------- autodeteccao + enlace degradado + enquadramento por gap ----------------

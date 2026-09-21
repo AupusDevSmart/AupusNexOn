@@ -42,7 +42,7 @@ struct Resultado {
     uint8_t  segmentoHorario;      // bloco normal: bits 0-3 do octeto 3
     uint8_t  tipoTarifa;           // bloco normal: 0 azul, 1 verde, 2 irrigantes, 3 outras
     bool     repetido;             // bloco de fechamento repetido (3x) — NAO acumular
-    bool     baseline;             // 1a leitura do registrador: so' define ponto de partida
+    bool     baseline;             // 1a leitura de um registrador nunca visto antes de um reinicio de intervalo: so' ponto de partida
     uint8_t  raw[9];               // bloco bruto
     uint8_t  rawLen;               // 8 ou 9
 };
@@ -73,9 +73,10 @@ extern const uint8_t QUADRANTE[4];   // {1, 4, 2, 3}
 /**
  * Leitor com estado: enquadramento (por gap, caminho A) ou bloco pronto
  * (RX-timeout do UART, caminho B), autodeteccao/trava de formato, validacao,
- * rastreio por REGISTRADOR (6 regs) com wrap uint16, reinicio do contador a
- * cada intervalo de demanda, idempotencia do bloco de fechamento e deteccao
- * das transicoes dos bits 4/5.
+ * rastreio por REGISTRADOR (6 regs) com wrap modular (16 bits no estendido,
+ * 15 bits no normal), reinicio do contador a cada intervalo de demanda (base 0
+ * e todos os registradores 'vistos'), idempotencia do bloco de fechamento e
+ * deteccao das transicoes dos bits 4/5.
  */
 class Leitor {
 public:

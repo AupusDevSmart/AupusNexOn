@@ -176,11 +176,16 @@ void Leitor::_registrar(Resultado& r) {
 
     // Contador regressivo REINICIOU (ex.: 0/1 -> 899): intervalo de demanda novo.
     // Os contadores de pulso recomecam do zero no intervalo novo, entao a base
-    // de comparacao de TODOS os registradores passa a ser 0 (nao e' wrap).
+    // de comparacao de TODOS os registradores passa a ser 0 (nao e' wrap) — e
+    // todos passam a valer como VISTOS: um registrador que so' aparecer mais
+    // tarde neste intervalo (ex.: troca Q1->Q3 no meio) conta desde 0, nao vira
+    // baseline (senao os pulsos ate a 1a leitura dele seriam perdidos). Baseline
+    // so' existe pra registrador nunca visto ANTES de qualquer reinicio (boot no
+    // meio de um intervalo: o valor inicial e' desconhecido).
     if (_temAnterior && r.segundos > _antSegundos + 5) {
         r.fimIntervaloDemanda = true;
         _st.intervalos++;
-        for (int i = 1; i <= 6; i++) _ultimo[i] = 0;
+        for (int i = 1; i <= 6; i++) { _ultimo[i] = 0; _visto[i] = true; }
     }
 
     // Bits que ALTERNAM (octeto 2, bits 4 e 5) — detectar por MUDANCA, nunca ler como nivel.
@@ -195,13 +200,16 @@ void Leitor::_registrar(Resultado& r) {
 
     // Rastrear por REGISTRADOR: o quadrante so' diz qual registrador cada contador
     // representa; a comparacao e' sempre com o ultimo valor DAQUELE registrador.
-    // delta16 modular absorve UMA volta do contador (65500 -> 40 = 76).
+    // Delta modular absorve UMA volta do contador: 16 bits no estendido
+    // (65500 -> 40 = 76) e 15 bits no normal (contadores de 15 bits, bit 7 do
+    // octeto alto mascarado: 32700 -> 40 = 108, nao 32836).
+    const uint16_t mask = (r.formato == FMT_NORMAL) ? 0x7FFF : 0xFFFF;
     uint8_t ra = r.regAtiva, rr = r.regReativa;
-    if (_visto[ra]) r.deltaAtiva = (uint16_t)(r.pulsosAtiva - _ultimo[ra]);
+    if (_visto[ra]) r.deltaAtiva = (uint16_t)((r.pulsosAtiva - _ultimo[ra]) & mask);
     else { r.deltaAtiva = 0; r.baseline = true; }
     _ultimo[ra] = r.pulsosAtiva; _visto[ra] = true;
 
-    if (_visto[rr]) r.deltaReativa = (uint16_t)(r.pulsosReativa - _ultimo[rr]);
+    if (_visto[rr]) r.deltaReativa = (uint16_t)((r.pulsosReativa - _ultimo[rr]) & mask);
     else { r.deltaReativa = 0; r.baseline = true; }
     _ultimo[rr] = r.pulsosReativa; _visto[rr] = true;
 

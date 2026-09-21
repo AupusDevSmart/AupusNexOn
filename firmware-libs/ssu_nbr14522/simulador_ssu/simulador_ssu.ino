@@ -7,10 +7,12 @@
 // "amanhecer/entardecer", bits 4/5 alternando, wrap do contador, e (opcional)
 // blocos corrompidos pra testar a rejeicao.
 //
-// Ligacao ao TON-V2: TX deste ESP -> resistor serie 1k -> X14-2 (SU+); GND comum.
-// (O IO48 da TON tem pull-up 680R p/ 3V3; a saida real do medidor e' coletor
-//  aberto — se quiser fidelidade total, use um transistor NPN em coletor aberto
-//  com o TX invertido. Com o resistor serie, o nivel de repouso 1 e' o mesmo.)
+// Ligacao ao TON-V2: TX deste ESP DIRETO em X14-2 (SU+) e GND comum em X14-1.
+// NAO usar resistor em serie: o IO48 da TON tem pull-up de 680R p/ 3V3, entao
+// qualquer serie forma divisor no nivel baixo (1k -> 3,3*1000/1680 = 1,96 V, acima
+// do VIL de 0,8 V — a TON nunca veria o 0). O TX push-pull a 3V3 drena os 4,9 mA
+// do pull-up sem problema (max ~100R se quiser algum limitador). Fidelidade total
+// (coletor aberto como o medidor): NPN com o TX invertido, coletor no SU+.
 //
 // Comandos pelo monitor serial (115200): n=normal  e=estendido  q1..q4=quadrante
 // w=forca wrap (contador em 65500)  c=proximo bloco corrompido  x=trava 15 min

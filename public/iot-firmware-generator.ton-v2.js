@@ -2085,6 +2085,8 @@ extern char MQTT_CLIENT_ID[20];
 #define SSU_TEM_GERACAO             ${spec.ssu.tem_geracao ? 1 : 0}
 #define SSU_INTERVALO_REATIVO_MIN   ${spec.ssu.intervalo_reativo_min}
 #define SSU_NVS_SAVE_MS             60000UL
+// Satelite LoRa (sem internet): bucket em JSON plano -> frame binario LORA_TYPE_SSU (cabe no MTU 200)
+#define SSU_LORA_BIN                ${spec.lora_role === 'satellite' && !spec.wifi ? 1 : 0}
 `;
         }
 
@@ -2145,7 +2147,7 @@ struct Resultado {
     uint8_t  segmentoHorario;      // bloco normal: bits 0-3 do octeto 3
     uint8_t  tipoTarifa;           // bloco normal: 0 azul, 1 verde, 2 irrigantes, 3 outras
     bool     repetido;             // bloco de fechamento repetido (3x) — NAO acumular
-    bool     baseline;             // 1a leitura do registrador: so' define ponto de partida
+    bool     baseline;             // 1a leitura de um registrador nunca visto antes de um reinicio de intervalo: so' ponto de partida
     uint8_t  raw[9];               // bloco bruto
     uint8_t  rawLen;               // 8 ou 9
 };
@@ -2176,9 +2178,10 @@ extern const uint8_t QUADRANTE[4];   // {1, 4, 2, 3}
 /**
  * Leitor com estado: enquadramento (por gap, caminho A) ou bloco pronto
  * (RX-timeout do UART, caminho B), autodeteccao/trava de formato, validacao,
- * rastreio por REGISTRADOR (6 regs) com wrap uint16, reinicio do contador a
- * cada intervalo de demanda, idempotencia do bloco de fechamento e deteccao
- * das transicoes dos bits 4/5.
+ * rastreio por REGISTRADOR (6 regs) com wrap modular (16 bits no estendido,
+ * 15 bits no normal), reinicio do contador a cada intervalo de demanda (base 0
+ * e todos os registradores 'vistos'), idempotencia do bloco de fechamento e
+ * deteccao das transicoes dos bits 4/5.
  */
 class Leitor {
 public:
@@ -2422,11 +2425,16 @@ void Leitor::_registrar(Resultado& r) {
 
     // Contador regressivo REINICIOU (ex.: 0/1 -> 899): intervalo de demanda novo.
     // Os contadores de pulso recomecam do zero no intervalo novo, entao a base
-    // de comparacao de TODOS os registradores passa a ser 0 (nao e' wrap).
+    // de comparacao de TODOS os registradores passa a ser 0 (nao e' wrap) — e
+    // todos passam a valer como VISTOS: um registrador que so' aparecer mais
+    // tarde neste intervalo (ex.: troca Q1->Q3 no meio) conta desde 0, nao vira
+    // baseline (senao os pulsos ate a 1a leitura dele seriam perdidos). Baseline
+    // so' existe pra registrador nunca visto ANTES de qualquer reinicio (boot no
+    // meio de um intervalo: o valor inicial e' desconhecido).
     if (_temAnterior && r.segundos > _antSegundos + 5) {
         r.fimIntervaloDemanda = true;
         _st.intervalos++;
-        for (int i = 1; i <= 6; i++) _ultimo[i] = 0;
+        for (int i = 1; i <= 6; i++) { _ultimo[i] = 0; _visto[i] = true; }
     }
 
     // Bits que ALTERNAM (octeto 2, bits 4 e 5) — detectar por MUDANCA, nunca ler como nivel.
@@ -2441,13 +2449,16 @@ void Leitor::_registrar(Resultado& r) {
 
     // Rastrear por REGISTRADOR: o quadrante so' diz qual registrador cada contador
     // representa; a comparacao e' sempre com o ultimo valor DAQUELE registrador.
-    // delta16 modular absorve UMA volta do contador (65500 -> 40 = 76).
+    // Delta modular absorve UMA volta do contador: 16 bits no estendido
+    // (65500 -> 40 = 76) e 15 bits no normal (contadores de 15 bits, bit 7 do
+    // octeto alto mascarado: 32700 -> 40 = 108, nao 32836).
+    const uint16_t mask = (r.formato == FMT_NORMAL) ? 0x7FFF : 0xFFFF;
     uint8_t ra = r.regAtiva, rr = r.regReativa;
-    if (_visto[ra]) r.deltaAtiva = (uint16_t)(r.pulsosAtiva - _ultimo[ra]);
+    if (_visto[ra]) r.deltaAtiva = (uint16_t)((r.pulsosAtiva - _ultimo[ra]) & mask);
     else { r.deltaAtiva = 0; r.baseline = true; }
     _ultimo[ra] = r.pulsosAtiva; _visto[ra] = true;
 
-    if (_visto[rr]) r.deltaReativa = (uint16_t)(r.pulsosReativa - _ultimo[rr]);
+    if (_visto[rr]) r.deltaReativa = (uint16_t)((r.pulsosReativa - _ultimo[rr]) & mask);
     else { r.deltaReativa = 0; r.baseline = true; }
     _ultimo[rr] = r.pulsosReativa; _visto[rr] = true;
 
@@ -2502,14 +2513,22 @@ uint32_t ssu_intervalos();
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 
-static HardwareSerial _ssu(SSU_UART_NUM);
+// UART0 e' a mesma do objeto global Serial0 do core (ARDUINO_USB_CDC_ON_BOOT=1 => console
+// e' USB-CDC e Serial0 fica livre). Usa-se ESSA instancia, nunca uma 2a HardwareSerial(0).
+#if ARDUINO_USB_CDC_ON_BOOT
+static HardwareSerial& _ssu = Serial0;
+#else
+#error "SSU exige console em USB-CDC (ARDUINO_USB_CDC_ON_BOOT=1): a UART0 e' a entrada SU+"
+#endif
 static ssu::Leitor _leitor;
 
 struct SsuBloco { uint8_t len; uint8_t d[16]; };
 static QueueHandle_t _fila = nullptr;
 
-// acumuladores do bucket em PULSOS CRUS — indice = registrador (1..6):
-// REG1 phf, REG2 phr, REG3 qhfi(Q1), REG4 qhri(Q2), REG5 qhrc(Q3), REG6 qhfc(Q4)
+// acumuladores do bucket em PULSOS CRUS — indice = registrador (1..6). Nomes JSON na
+// convencao do gateway A-966 (verificada em 400 buckets reais, UFV 17/09/2026):
+// REG1 phf, REG2 phr, REG3 qhfi(Q1), REG4 qhfc(Q2), REG5 qhri(Q3), REG6 qhrc(Q4)
+// (i/c = Q1&Q3 indutivo, Q2&Q4 capacitivo, relativo ao fluxo ativo; f/r = sinal de Q)
 static uint32_t _acum[7] = {0};
 static uint32_t _nsu = 0;
 static uint16_t _maxSeg = 0;          // maior contagem regressiva vista no intervalo
@@ -2553,18 +2572,38 @@ void ssu_init() {
     // 110 baud: fonte de clock APB (default no S3); este firmware nao usa DFS/light-sleep.
     _ssu.setRxBufferSize(256);
     _ssu.begin(SSU_BAUD, SERIAL_8N1, SSU_RX_PIN, -1, false);   // RX=IO48, sem TX, sem inversao
-    _ssu.setRxTimeout(4);            // ~4 simbolos (~36 ms) de silencio fecham o bloco (gap real >= 182 ms)
+    // RX-timeout do ESP32 e' em SIMBOLOS (1 simbolo = 10 bits = ~91 ms a 110 baud), nao em
+    // bits. O silencio entre blocos e' de 182-200 ms: com 1 simbolo o timeout dispara no
+    // gap (~91 ms) e fecha o bloco; com 4 (~364 ms) o proximo bloco ja' teria comecado e
+    // o bloco NUNCA fecharia (onReceive so' no timeout).
+    _ssu.setRxTimeout(1);
     _ssu.onReceive(_onRx, true);     // so' no timeout => 1 bloco por chamada
 }
 
 static void _publicar(ssu_publish_fn publish, const ssu::Resultado& ult) {
-    char frame[32]; int p = 0;
-    for (uint8_t i = 0; i < ult.rawLen && p < (int)sizeof(frame) - 3; i++)
-        p += snprintf(frame + p, sizeof(frame) - p, "%s%02x", i ? " " : "", ult.raw[i]);
     const ssu::Estatisticas& st = _leitor.stats();
     int sts = (st.enlaceDegradado || _alarmeFormato) ? 0 : 1;
     unsigned long cdo = _intervaloSeg ? (_intervaloSeg + 30) / 60 : 15;
+    // Ordem dos campos reativos: qhfi=REG3(Q1) qhfc=REG4(Q2) qhri=REG5(Q3) qhrc=REG6(Q4).
+    // O backend soma qhfi+qhri como indutivo e qhfc+qhrc como capacitivo — igual ao A-966.
     char payload[448];
+#if SSU_LORA_BIN
+    // Satelite LoRa: JSON PLANO e curto (sem frame/ver/time) — vira o frame binario
+    // LORA_TYPE_SSU (~90 B no ar, cabe no MTU 200 do E220). O gateway carimba o
+    // timestamp e republica plano; o backend le phf/phr/qh* em data.{} OU no topo.
+    snprintf(payload, sizeof(payload),
+        "{\\"NSU\\":%lu,\\"cdo\\":%lu,\\"phf\\":%lu,\\"phr\\":%lu,\\"sts\\":%d,"
+        "\\"qhfi\\":%lu,\\"qhfc\\":%lu,\\"qhri\\":%lu,\\"qhrc\\":%lu,"
+        "\\"ke\\":%.5f,\\"fmt\\":%u,\\"q\\":%u,\\"seg\\":%u,\\"posto\\":%u,\\"ssu_err\\":%lu}",
+        (unsigned long)_nsu, cdo,
+        (unsigned long)_acum[1], (unsigned long)_acum[2], sts,
+        (unsigned long)_acum[3], (unsigned long)_acum[4], (unsigned long)_acum[5], (unsigned long)_acum[6],
+        (double)SSU_KE, (unsigned)st.formato, (unsigned)ult.quadrante,
+        (unsigned)ult.segundos, (unsigned)ult.postoHorario, (unsigned long)st.blocosInvalidos);
+#else
+    char frame[32]; int p = 0;
+    for (uint8_t i = 0; i < ult.rawLen && p < (int)sizeof(frame) - 3; i++)
+        p += snprintf(frame + p, sizeof(frame) - p, "%s%02x", i ? " " : "", ult.raw[i]);
     // JSON identico ao do gateway A-966 (ingestao do backend por categoria Gateway) + metadados
     snprintf(payload, sizeof(payload),
         "{\\"NSU\\":%lu,\\"ver\\":\\"%s\\",\\"data\\":{\\"cdo\\":\\"%lu\\",\\"phf\\":%lu,\\"phr\\":%lu,\\"sts\\":%d,"
@@ -2572,9 +2611,10 @@ static void _publicar(ssu_publish_fn publish, const ssu::Resultado& ult) {
         "\\"ke\\":%.4f,\\"fmt\\":%u,\\"q\\":%u,\\"seg\\":%u,\\"posto\\":%u,\\"ssu_err\\":%lu}",
         (unsigned long)_nsu, FIRMWARE_VERSION, cdo,
         (unsigned long)_acum[1], (unsigned long)_acum[2], sts,
-        (unsigned long)_acum[3], (unsigned long)_acum[6], (unsigned long)_acum[4], (unsigned long)_acum[5],
+        (unsigned long)_acum[3], (unsigned long)_acum[4], (unsigned long)_acum[5], (unsigned long)_acum[6],
         frame, (long)time(nullptr), (double)SSU_KE, (unsigned)st.formato, (unsigned)ult.quadrante,
         (unsigned)ult.segundos, (unsigned)ult.postoHorario, (unsigned long)st.blocosInvalidos);
+#endif
     publish(SSU_SUBTOPIC, payload);
     Serial.printf("[SSU] bucket publicado: phf=%lu phr=%lu (fmt=%u, %lu min)\\n",
                   (unsigned long)_acum[1], (unsigned long)_acum[2], (unsigned)st.formato, cdo);
@@ -3740,10 +3780,14 @@ bool lora_ready() { return digitalRead(LORA_AUX) == HIGH; }
                 || d.type === 'power_meter';
         };
         const m160Devices = (spec.rs485_devices || []).filter(isM160);
-        const m160SubtopicCases = m160Devices.map((d) => {
-            const sub = `${d.name || 'dev'}_${d.modbus_address || 1}/data`;
-            return `    if (strcmp(subtopic, "${cEsc(sub)}") == 0) return LORA_TYPE_M160;`;
-        }).join('\n') || '    (void)subtopic;';
+        const m160SubtopicCases = [
+            ...m160Devices.map((d) => {
+                const sub = `${d.name || 'dev'}_${d.modbus_address || 1}/data`;
+                return `    if (strcmp(subtopic, "${cEsc(sub)}") == 0) return LORA_TYPE_M160;`;
+            }),
+            // Medidor SSU no satelite: o bucket sai em JSON plano (SSU_LORA_BIN) e vira LORA_TYPE_SSU
+            ...(spec.ssu ? [`    if (strcmp(subtopic, "${cEsc(spec.ssu.subtopic)}") == 0) return LORA_TYPE_SSU;`] : []),
+        ].join('\n') || '    (void)subtopic;';
 
         // ----- Helpers comuns: parser de MAC e normalização -----
         let cpp = `
@@ -3932,10 +3976,35 @@ static const LoraField LORA_FIELDS_M160_V1[] = {
 
 #define LORA_TYPE_M160 0x10
 
+// ---- SSU (medidor da concessionaria, NBR 14522 na entrada SU+ da TON-V2) — bucket do
+//      intervalo de demanda em JSON PLANO (SSU_LORA_BIN=1 no satelite). Mesmos nomes que o
+//      A-966 usa dentro de "data"; o backend le no topo ou em data.{} (COALESCE). ----
+static const LoraField LORA_FIELDS_SSU_V1[] = {
+    {"NSU",     LFT_U32, 1.0f},
+    {"cdo",     LFT_U8,  1.0f},         // minutos do intervalo (15)
+    {"phf",     LFT_U32, 1.0f},         // pulsos crus por registrador
+    {"phr",     LFT_U32, 1.0f},
+    {"sts",     LFT_U8,  1.0f},
+    {"qhfi",    LFT_U32, 1.0f},
+    {"qhfc",    LFT_U32, 1.0f},
+    {"qhri",    LFT_U32, 1.0f},
+    {"qhrc",    LFT_U32, 1.0f},
+    {"ke",      LFT_U32, 100000.0f},    // kWh/pulso, 5 casas (0.048 -> 4800)
+    {"fmt",     LFT_U8,  1.0f},
+    {"q",       LFT_U8,  1.0f},
+    {"seg",     LFT_U16, 1.0f},
+    {"posto",   LFT_U8,  1.0f},
+    {"ssu_err", LFT_U32, 1.0f},
+    {NULL, 0, 0}  // terminator
+};
+
+#define LORA_TYPE_SSU 0x11
+
 // Tabela de field-sets FIXA e compartilhada (gateway e satellite tem a mesma).
 // Indexada por type_code — define apenas o LAYOUT, nao o subtopic.
 static const LoraFieldSet LORA_FIELD_SETS[] = {
     {LORA_TYPE_M160, 1, LORA_FIELDS_M160_V1},
+    {LORA_TYPE_SSU,  1, LORA_FIELDS_SSU_V1},
     {0, 0, NULL}  // terminator
 };
 

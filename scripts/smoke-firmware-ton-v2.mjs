@@ -157,10 +157,24 @@ check('caso D: /inputs sem s1 (IO48 virou UART)', !has(fD, 'src/main.cpp', '\\"s
 check('caso A: /inputs COM s1 (sem SSU nada muda)', has(fA, 'src/main.cpp', '\\"s1\\"') && has(fA, 'src/main.cpp', 'su_changed()'));
 check('caso D: diagnostics com ssu_ok/ssu_err/ssu_fmt', has(fD, 'src/diag.cpp', 'doc["ssu_ok"]') && has(fD, 'src/diag.cpp', 'doc["ssu_fmt"]'));
 check('caso D: sem warning "Sem dispositivos de medição"', !pD[0].warnings.some(w => /Sem dispositivos/.test(w)));
+// revisao 2026-09-21: rx-timeout em SIMBOLOS (1 = ~91 ms; 4 nunca fecharia o bloco), UART0 = Serial0 (uma instancia),
+// nomes reativos na convencao do A-966 (qhfi=REG3, qhfc=REG4, qhri=REG5, qhrc=REG6)
+check('caso D: setRxTimeout(1) e nao 4', has(fD, 'src/ssu.cpp', '_ssu.setRxTimeout(1);') && !has(fD, 'src/ssu.cpp', 'setRxTimeout(4)'));
+check('caso D: UART0 via Serial0 (sem HardwareSerial(0) extra)', has(fD, 'src/ssu.cpp', 'static HardwareSerial& _ssu = Serial0;') && !has(fD, 'src/ssu.cpp', 'HardwareSerial _ssu('));
+check('caso D: reativos na ordem do A-966 (qhfi,qhfc,qhri,qhrc <- REG3..REG6)',
+  has(fD, 'src/ssu.cpp', '\\"qhfi\\":%lu,\\"qhfc\\":%lu,\\"qhri\\":%lu,\\"qhrc\\":%lu') &&
+  has(fD, 'src/ssu.cpp', '(unsigned long)_acum[3], (unsigned long)_acum[4], (unsigned long)_acum[5], (unsigned long)_acum[6]'));
+check('caso D: WiFi => SSU_LORA_BIN 0 (JSON aninhado do A-966)', has(fD, 'include/config.h', 'SSU_LORA_BIN                0'));
 const pE = new GenV2(editor(casoE)).generateAll();
 const fSatE = (pE.find(p => p.spec.tonType === 'ton4v2') || {}).files || {};
 check('caso E: satellite com SSU publica via LoRa', has(fSatE, 'src/main.cpp', 'ssu_tick([](const char* sub, const char* payload){ lora_publish_data(sub, payload); });'));
 check('caso E: gateway ton2v2 sem SSU (nao herda)', !((pE.find(p => p.spec.tonType === 'ton2v2') || {}).files || {})['src/ssu.cpp']);
+// LoRa: bucket aninhado tem ~236 B > MTU 200 -> no satelite sai JSON plano + field-set binario LORA_TYPE_SSU
+const fGwE = (pE.find(p => p.spec.tonType === 'ton2v2') || {}).files || {};
+check('caso E: satelite SSU_LORA_BIN 1', has(fSatE, 'include/config.h', 'SSU_LORA_BIN                1'));
+check('caso E: satelite mapeia subtopic do SSU -> LORA_TYPE_SSU', has(fSatE, 'src/main.cpp', '"E750_1/data") == 0) return LORA_TYPE_SSU;'));
+check('caso E: field-set SSU na tabela do satelite E do gateway', has(fSatE, 'src/main.cpp', '{LORA_TYPE_SSU,  1, LORA_FIELDS_SSU_V1}') && has(fGwE, 'src/main.cpp', '{LORA_TYPE_SSU,  1, LORA_FIELDS_SSU_V1}'));
+check('caso C: gateway/satelite sem SSU tambem levam o field-set (tabela fixa compartilhada)', has(fSat, 'src/main.cpp', 'LORA_FIELDS_SSU_V1'));
 // V1 nao pode enxergar o medidor SSU (tipo novo so' no V2)
 const casoDv1 = { components: [...casoD.components, { id: 'm2', type: 'ton1', x: 5, y: 5, props: { name: 'TON1', mqtt_topic_base: 'TESTE/SMK/M/T1' } }], connections: [...casoD.connections, conn('m2', 'd2', 'ssu')] };
 check('V1 ignora medidor_ssu ligado a ton1 (sem crash, sem ssu.cpp)', !new GenV1(editor(casoDv1)).generateAll().some(p => p.files['src/ssu.cpp']));
