@@ -222,7 +222,7 @@ export function BombaModal({ bomba, open, onOpenChange }: { bomba: Bomba | null;
           </TabsContent>
 
           <TabsContent value="ops" className="space-y-3">
-            <div className="text-xs text-muted-foreground">A matrícula é digitada na IHM do posto (ou pelo comando <code>mat</code> na bancada). Sem operadores cadastrados, a TON aceita qualquer matrícula (compatibilidade).</div>
+            <div className="text-xs text-muted-foreground">A matrícula é digitada na IHM do posto (ou pelo comando <code>mat</code> na bancada). Com "exigir matrícula" ligado, só matrícula cadastrada abastece — cadastro vazio <b>nega todo mundo</b> (fail-closed). Para aceitar qualquer matrícula digitada, ligue "Matrícula livre" na bomba (diagrama IoT).</div>
             <div className="flex flex-wrap items-end gap-2">
               <Input placeholder="Matrícula (ex.: 1234)" value={novoOp.matricula} onChange={(e) => setNovoOp((p) => ({ ...p, matricula: e.target.value }))} className="w-[150px]" />
               <Input placeholder="Nome do operador" value={novoOp.nome} onChange={(e) => setNovoOp((p) => ({ ...p, nome: e.target.value }))} className="w-[220px]" />

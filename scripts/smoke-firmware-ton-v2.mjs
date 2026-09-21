@@ -196,6 +196,7 @@ const bombaLib = join(HERE, '..', 'firmware-libs', 'bomba_posto');
 check('caso F: lib embutida == fonte canonica (bomba_posto.h)', fF['include/bomba_posto.h'] === readFileSync(join(bombaLib, 'bomba_posto.h'), 'utf8'));
 check('caso F: lib embutida == fonte canonica (bomba_posto.cpp)', fF['src/bomba_posto.cpp'] === readFileSync(join(bombaLib, 'bomba_posto.cpp'), 'utf8'));
 check('caso F: glue le BI por papel com polaridade NF', has(fF, 'src/bomba.cpp', 'in.emergencia       = !((st >> 2) & 1);') && has(fF, 'src/bomba.cpp', 'in.contator         = ((st >> 0) & 1);'));
+check('caso F: fail-closed: BOMBA_MAT_LIVRE 0 por padrao + aviso de lista sem matriculas', has(fF, 'src/bomba.cpp', 'BOMBA_MAT_LIVRE        0') && has(fF, 'src/bomba.cpp', 'fail-closed'));
 check('caso F: parametros de bancada no config (fluxo parado 10 s, timeout 30 s)', has(fF, 'src/bomba.cpp', 'BOMBA_FLUXO_PARADO_MS  10000UL') && has(fF, 'src/bomba.cpp', 'BOMBA_TEMPO_MAX_MS     30000UL'));
 check('caso F: main.cpp bomba_init no setup + bomba_loop(mqtt_publish_sub) no loop + comandos', has(fF, 'src/main.cpp', 'bomba_init();') && has(fF, 'src/main.cpp', 'bomba_loop(mqtt_publish_sub);') && has(fF, 'src/main.cpp', 'bomba_cmd(cmd, result_msg, msg_sz)'));
 check('caso F: mqtt.cpp assina rfid_sync + auth/resp e guarda OTA', has(fF, 'src/mqtt.cpp', '/auth/resp') && has(fF, 'src/mqtt.cpp', 'bomba_set_lista(buf)') && has(fF, 'src/mqtt.cpp', 'bomba_ota_permitida()'));

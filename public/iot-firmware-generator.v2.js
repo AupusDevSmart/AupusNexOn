@@ -5815,6 +5815,7 @@ void pivot_loop() {
             timeout_s:       pint(p.timeout_s, 600),
             nivel_min_pct:   flt(p.nivel_min_pct, 10),
             exigir_matricula: bool(p.exigir_matricula, true),
+            matricula_livre:  bool(p.matricula_livre, false),   // fail-closed por padrao: lista sem matriculas NEGA
             telemetria_s:    pint(p.telemetria_s, 30),
             k_fator:         flt(p.k_fator, 450),
             uid_teste:       (p.uid_teste || 'PC-07').trim().toUpperCase(),
@@ -5890,6 +5891,7 @@ bool bomba_cmd(const String& cmd, char* msg, size_t msg_sz);
 #define BOMBA_TEMPO_MAX_MS     ${b.timeout_s}000UL
 #define BOMBA_NIVEL_MIN_PCT    ${Number(b.nivel_min_pct).toFixed(2)}f
 #define BOMBA_EXIGIR_MAT       ${b.exigir_matricula ? 1 : 0}
+#define BOMBA_MAT_LIVRE        ${b.matricula_livre ? 1 : 0}   // 1 = matricula digitada nao e' conferida (opcao explicita)
 #define BOMBA_TELEMETRIA_MS    ${b.telemetria_s}000UL
 #define BOMBA_AI_0_MV          ${Number(b.ai_nivel_0_mv || 0).toFixed(1)}f
 #define BOMBA_AI_100_MV        ${Number(b.ai_nivel_100_mv).toFixed(1)}f
@@ -5960,6 +5962,15 @@ static void _carregarLista(bomba::Lista& L, const char* json, bool persistir) {
     }
     for (JsonVariant m : d["mats"].as<JsonArray>()) L.adicionarMat(m.as<const char*>());
     Serial.printf("[BOMBA] lista v%lu: %d tags, %d matriculas\\n", (unsigned long)L.versao, L.ntags(), L.nmats());
+    if (L.ntags() == 0) Serial.println("[BOMBA] AVISO: lista SEM tags — ninguem autorizado offline (fail-closed)");
+#if BOMBA_EXIGIR_MAT && !BOMBA_MAT_LIVRE
+    if (L.nmats() > 0) { /* ok */ } else {
+        bool algumaTagComMat = false;
+        for (int i = 0; i < L.ntags(); i++) { /* Lista nao expoe tags; o glue so' avisa pelo total */ (void)i; }
+        (void)algumaTagComMat;
+        Serial.println("[BOMBA] AVISO: lista sem matriculas — com 'exigir matricula' toda matricula sera NEGADA offline (ligue 'matricula livre' se for intencional)");
+    }
+#endif
     if (persistir) {
         size_t n = strlen(json);
         Preferences pr; if (pr.begin("posto", false)) { if (n < 3900) pr.putString("lista", json); else Serial.println("[BOMBA] lista > 3,9 kB: nao persistida"); pr.end(); }
@@ -6026,7 +6037,7 @@ void bomba_init() {
     bomba::Config c;
     c.pulso_bo1_ms = BOMBA_PULSO_MS; c.espera_bi1_ms = BOMBA_ESPERA_BI1_MS; c.janela_mat_ms = BOMBA_JANELA_MAT_MS;
     c.auth_timeout_ms = BOMBA_AUTH_TIMEOUT_MS; c.fluxo_parado_ms = BOMBA_FLUXO_PARADO_MS; c.tempo_max_ms = BOMBA_TEMPO_MAX_MS;
-    c.nivel_min_pct = BOMBA_NIVEL_MIN_PCT; c.exigir_matricula = BOMBA_EXIGIR_MAT != 0;
+    c.nivel_min_pct = BOMBA_NIVEL_MIN_PCT; c.exigir_matricula = BOMBA_EXIGIR_MAT != 0; c.matricula_livre = BOMBA_MAT_LIVRE != 0;
     c.tem_contator_aux = ${b.bi_contator ? 'true' : 'false'};
     static bomba::Maquina m(c, &_ouv);
     _m = &m;
@@ -6186,6 +6197,8 @@ struct Config {
     float    nivel_min_pct      = 10.0f;   // AI1 abaixo disso nao libera (<0 desliga a regra)
     uint32_t estabilizacao_ms   = 1000;    // apos o boot: nada de pulso ate as entradas estabilizarem
     bool     exigir_matricula   = true;    // false = posto sem IHM: autoriza so' pela tag
+    bool     matricula_livre    = false;   // true = matricula digitada NAO e' conferida (so' registrada). Default: conferir
+                                           //   na lista (operadores/pares); lista vazia => NEGA (fail-closed)
     bool     tem_contator_aux   = true;    // false = sem BI1 ligada (nao espera confirmacao)
 };
 
@@ -6225,7 +6238,10 @@ public:
     const Tag* tag(const char* uid) const;
     bool matCadastrada(const char* mat) const;
     // Decide offline. motivo: "tag" | "matricula" | "par" | "" ; limite_out = limite da tag.
-    bool validar(const char* uid, const char* mat, bool exigirMat, char* motivo, float* limite_out) const;
+    // exigirMat: a matricula precisa existir na lista (global ou da tag) — lista sem matriculas NEGA
+    // (fail-closed: um sync vazio ou cadastro apagado nunca "abre" o posto). matLivre: com exigirMat,
+    // aceita qualquer matricula nao-vazia sem conferir (opcao explicita do cadastro).
+    bool validar(const char* uid, const char* mat, bool exigirMat, char* motivo, float* limite_out, bool matLivre = false) const;
     uint32_t versao = 0;
     int ntags() const { return _ntags; }
     int nmats() const { return _nmats; }
@@ -6421,18 +6437,21 @@ bool Lista::matCadastrada(const char* mat) const {
     for (int i = 0; i < _nmats; i++) if (_eq(_mats[i], mat)) return true;
     return false;
 }
-bool Lista::validar(const char* uid, const char* mat, bool exigirMat, char* motivo, float* limite_out) const {
+bool Lista::validar(const char* uid, const char* mat, bool exigirMat, char* motivo, float* limite_out, bool matLivre) const {
     if (motivo) motivo[0] = 0;
     if (limite_out) *limite_out = 0;
     const Tag* t = tag(uid);
     if (!t) { _cp(motivo, MOTIVO_LEN, "tag"); return false; }
     if (exigirMat) {
         if (!mat || !*mat) { _cp(motivo, MOTIVO_LEN, "matricula"); return false; }
-        // matricula precisa existir: na lista global OU na lista da tag
-        bool conhecida = matCadastrada(mat);
-        for (int j = 0; j < t->nmats && !conhecida; j++) if (_eq(t->mats[j], mat)) conhecida = true;
-        if (!conhecida && (_nmats > 0 || t->nmats > 0)) { _cp(motivo, MOTIVO_LEN, "matricula"); return false; }
-        // par: se a tag restringe matriculas, a matricula tem que estar nela
+        if (!matLivre) {
+            // matricula precisa existir: na lista global OU na lista da tag. Sem NENHUMA
+            // matricula cadastrada => nega (fail-closed), nunca "liberado para todos".
+            bool conhecida = matCadastrada(mat);
+            for (int j = 0; j < t->nmats && !conhecida; j++) if (_eq(t->mats[j], mat)) conhecida = true;
+            if (!conhecida) { _cp(motivo, MOTIVO_LEN, "matricula"); return false; }
+        }
+        // par: se a tag restringe matriculas, a matricula tem que estar nela (vale mesmo com matricula livre)
         if (t->nmats > 0) {
             bool par = false;
             for (int j = 0; j < t->nmats; j++) if (_eq(t->mats[j], mat)) { par = true; break; }
@@ -6498,7 +6517,7 @@ void Maquina::_validar(uint32_t now) {
         return;   // aguarda respostaAuth() ou o timeout no tick()
     }
     char motivo[MOTIVO_LEN]; float lim = 0;
-    bool ok = _lista.validar(_uid, _mat, _cfg.exigir_matricula, motivo, &lim);
+    bool ok = _lista.validar(_uid, _mat, _cfg.exigir_matricula, motivo, &lim, _cfg.matricula_livre);
     _decidir(ok, motivo, lim, VAL_OFFLINE, now);
 }
 
@@ -6595,7 +6614,7 @@ void Maquina::tick(uint32_t now, const Entradas& in) {
         if (_req[0] && (uint32_t)(now - _t_estado) > _cfg.auth_timeout_ms) {
             // NexON nao respondeu: decide pela lista local
             char motivo[MOTIVO_LEN]; float lim = 0;
-            bool ok = _lista.validar(_uid, _mat, _cfg.exigir_matricula, motivo, &lim);
+            bool ok = _lista.validar(_uid, _mat, _cfg.exigir_matricula, motivo, &lim, _cfg.matricula_livre);
             _decidir(ok, motivo, lim, VAL_OFFLINE, now);
         }
         break;

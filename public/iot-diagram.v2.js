@@ -506,7 +506,7 @@ var COMPONENT_TYPES = {
         defaults: {
             name: 'Bomba de Combustível',
             equipamento_id: '',
-            exigir_matricula: true, k_fator: 450,
+            exigir_matricula: true, matricula_livre: false, k_fator: 450,
             pulso_ms: 500, espera_bi1_ms: 1000, janela_mat_s: 60, auth_timeout_s: 3,
             fluxo_parado_s: 30, timeout_s: 600, nivel_min_pct: 10, telemetria_s: 30,
             uid_teste: 'PC-07', mat_teste: '1234',
@@ -516,6 +516,8 @@ var COMPONENT_TYPES = {
             { key: 'equipamento_id', label: 'Equipamento NexON (RFID / relatório)', type: 'text', wide: true },
             { key: 'exigir_matricula', label: 'Exigir matrícula do operador (tag + matrícula)', type: 'select', section: 'Identificação',
               options: [['true', 'Sim — tag da máquina + matrícula (IHM)'], ['false', 'Não — só a tag']] },
+            { key: 'matricula_livre', label: 'Matrícula livre (NÃO conferir na lista — só registrar)', type: 'select',
+              options: [['false', 'Não — conferir na lista; lista vazia NEGA (padrão, fail-closed)'], ['true', 'Sim — qualquer matrícula digitada é aceita']] },
             { key: 'k_fator', label: 'K-fator do fluxômetro (pulsos/L)', type: 'number', placeholder: '450', section: 'Leitor & fluxômetro' },
             { key: 'pulso_ms', label: 'Pulso do BO1 "liga" (ms)', type: 'number', placeholder: '500', section: 'Contator' },
             { key: 'espera_bi1_ms', label: 'Espera pelo contato auxiliar (BI1) na partida/desligamento (ms)', type: 'number', placeholder: '1000' },

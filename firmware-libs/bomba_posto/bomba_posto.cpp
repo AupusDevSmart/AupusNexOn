@@ -84,18 +84,21 @@ bool Lista::matCadastrada(const char* mat) const {
     for (int i = 0; i < _nmats; i++) if (_eq(_mats[i], mat)) return true;
     return false;
 }
-bool Lista::validar(const char* uid, const char* mat, bool exigirMat, char* motivo, float* limite_out) const {
+bool Lista::validar(const char* uid, const char* mat, bool exigirMat, char* motivo, float* limite_out, bool matLivre) const {
     if (motivo) motivo[0] = 0;
     if (limite_out) *limite_out = 0;
     const Tag* t = tag(uid);
     if (!t) { _cp(motivo, MOTIVO_LEN, "tag"); return false; }
     if (exigirMat) {
         if (!mat || !*mat) { _cp(motivo, MOTIVO_LEN, "matricula"); return false; }
-        // matricula precisa existir: na lista global OU na lista da tag
-        bool conhecida = matCadastrada(mat);
-        for (int j = 0; j < t->nmats && !conhecida; j++) if (_eq(t->mats[j], mat)) conhecida = true;
-        if (!conhecida && (_nmats > 0 || t->nmats > 0)) { _cp(motivo, MOTIVO_LEN, "matricula"); return false; }
-        // par: se a tag restringe matriculas, a matricula tem que estar nela
+        if (!matLivre) {
+            // matricula precisa existir: na lista global OU na lista da tag. Sem NENHUMA
+            // matricula cadastrada => nega (fail-closed), nunca "liberado para todos".
+            bool conhecida = matCadastrada(mat);
+            for (int j = 0; j < t->nmats && !conhecida; j++) if (_eq(t->mats[j], mat)) conhecida = true;
+            if (!conhecida) { _cp(motivo, MOTIVO_LEN, "matricula"); return false; }
+        }
+        // par: se a tag restringe matriculas, a matricula tem que estar nela (vale mesmo com matricula livre)
         if (t->nmats > 0) {
             bool par = false;
             for (int j = 0; j < t->nmats; j++) if (_eq(t->mats[j], mat)) { par = true; break; }
@@ -161,7 +164,7 @@ void Maquina::_validar(uint32_t now) {
         return;   // aguarda respostaAuth() ou o timeout no tick()
     }
     char motivo[MOTIVO_LEN]; float lim = 0;
-    bool ok = _lista.validar(_uid, _mat, _cfg.exigir_matricula, motivo, &lim);
+    bool ok = _lista.validar(_uid, _mat, _cfg.exigir_matricula, motivo, &lim, _cfg.matricula_livre);
     _decidir(ok, motivo, lim, VAL_OFFLINE, now);
 }
 
@@ -258,7 +261,7 @@ void Maquina::tick(uint32_t now, const Entradas& in) {
         if (_req[0] && (uint32_t)(now - _t_estado) > _cfg.auth_timeout_ms) {
             // NexON nao respondeu: decide pela lista local
             char motivo[MOTIVO_LEN]; float lim = 0;
-            bool ok = _lista.validar(_uid, _mat, _cfg.exigir_matricula, motivo, &lim);
+            bool ok = _lista.validar(_uid, _mat, _cfg.exigir_matricula, motivo, &lim, _cfg.matricula_livre);
             _decidir(ok, motivo, lim, VAL_OFFLINE, now);
         }
         break;

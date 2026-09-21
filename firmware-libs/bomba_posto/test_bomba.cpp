@@ -235,11 +235,27 @@ int main() {
         // T6.1: sem rede -> lista local e validacao offline (ja coberto na etapa 1); T6.3: lista sobrevive ao reboot = NVS (glue)
         Lista l; l.adicionarTag("PC-07", 0); l.versao = 3;
         char m[MOTIVO_LEN]; float lim;
-        CHECK(l.validar("PC-07", "qualquer", true, m, &lim), "lista legada (sem matriculas): aceita qualquer matricula");
+        CHECK(!l.validar("PC-07", "qualquer", true, m, &lim) && std::string(m) == "matricula", "FAIL-CLOSED: lista sem matriculas (sync vazio / cadastro apagado) NEGA com exigir_matricula");
+        CHECK(l.validar("PC-07", "qualquer", true, m, &lim, true), "matricula LIVRE (opcao explicita): aceita qualquer matricula digitada");
+        CHECK(!l.validar("PC-07", "", true, m, &lim, true) && std::string(m) == "matricula", "matricula livre ainda exige digitar algo");
         l.adicionarMat("1234");
         CHECK(!l.validar("PC-07", "9999", true, m, &lim) && std::string(m) == "matricula", "lista com matriculas: matricula desconhecida -> 'matricula'");
         CHECK(l.validar("PC-07", "1234", true, m, &lim), "lista com matriculas: matricula cadastrada -> ok");
+        l.adicionarMatDaTag("PC-07", "1234");
+        CHECK(!l.validar("PC-07", "9999", true, m, &lim, true) && std::string(m) == "par", "matricula livre respeita o par tag<->matricula quando a tag restringe");
         CHECK(l.validar("PC-07", "", false, m, &lim), "posto sem IHM (exigir_matricula=false): so' a tag basta");
+        Lista vazia;
+        CHECK(!vazia.validar("PC-07", "1234", true, m, &lim) && std::string(m) == "tag", "lista totalmente vazia nega pela tag");
+    }
+
+    // ---------------- fail-closed na maquina: lista com tag mas SEM matriculas -> negado (matricula) ----------------
+    {
+        Bancada b; b.m.lista().adicionarTag("PC-07", 0); b.avancar(1500);
+        b.m.cartao("PC-07", b.t); b.avancar(20); b.m.matricula("1234", b.t); b.avancar(20);
+        CHECK(b.m.estado() == OCIOSA && b.col.temEvento("negado", "matricula") && b.bo(false, false, false), "lista sem matriculas + exigir_matricula: NEGA (nada liga)");
+        Config c; c.matricula_livre = true; Bancada bl(c); bl.m.lista().adicionarTag("PC-07", 0); bl.avancar(1500);
+        bl.m.cartao("PC-07", bl.t); bl.avancar(20); bl.m.matricula("777", bl.t); bl.avancar(700);
+        CHECK(bl.m.estado() == ABASTECENDO && std::string(bl.m.matAtual()) == "777", "matricula livre: parte e registra a matricula digitada");
     }
 
     // ---------------- sem contato auxiliar (tem_contator_aux=false): parte pelo tempo do pulso ----------------

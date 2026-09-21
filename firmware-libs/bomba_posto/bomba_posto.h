@@ -58,6 +58,8 @@ struct Config {
     float    nivel_min_pct      = 10.0f;   // AI1 abaixo disso nao libera (<0 desliga a regra)
     uint32_t estabilizacao_ms   = 1000;    // apos o boot: nada de pulso ate as entradas estabilizarem
     bool     exigir_matricula   = true;    // false = posto sem IHM: autoriza so' pela tag
+    bool     matricula_livre    = false;   // true = matricula digitada NAO e' conferida (so' registrada). Default: conferir
+                                           //   na lista (operadores/pares); lista vazia => NEGA (fail-closed)
     bool     tem_contator_aux   = true;    // false = sem BI1 ligada (nao espera confirmacao)
 };
 
@@ -97,7 +99,10 @@ public:
     const Tag* tag(const char* uid) const;
     bool matCadastrada(const char* mat) const;
     // Decide offline. motivo: "tag" | "matricula" | "par" | "" ; limite_out = limite da tag.
-    bool validar(const char* uid, const char* mat, bool exigirMat, char* motivo, float* limite_out) const;
+    // exigirMat: a matricula precisa existir na lista (global ou da tag) — lista sem matriculas NEGA
+    // (fail-closed: um sync vazio ou cadastro apagado nunca "abre" o posto). matLivre: com exigirMat,
+    // aceita qualquer matricula nao-vazia sem conferir (opcao explicita do cadastro).
+    bool validar(const char* uid, const char* mat, bool exigirMat, char* motivo, float* limite_out, bool matLivre = false) const;
     uint32_t versao = 0;
     int ntags() const { return _ntags; }
     int nmats() const { return _nmats; }
