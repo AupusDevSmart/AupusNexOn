@@ -56,6 +56,8 @@ struct Config {
     uint32_t fluxo_parado_ms    = 10000;   // bancada 10 s / campo 30 s
     uint32_t tempo_max_ms       = 30000;   // bancada 30 s / campo 10 min
     float    nivel_min_pct      = 10.0f;   // AI1 abaixo disso nao libera (<0 desliga a regra)
+    uint32_t nivel_baixo_ms     = 3000;    // durante o abastecimento, AI abaixo do minimo precisa PERSISTIR isto p/ encerrar
+                                           //   (uma amostra ruim — contato, ruido, glitch do ADC — nao corta o combustivel)
     uint32_t estabilizacao_ms   = 1000;    // apos o boot: nada de pulso ate as entradas estabilizarem
     bool     exigir_matricula   = true;    // false = posto sem IHM: autoriza so' pela tag
     bool     matricula_livre    = false;   // true = matricula digitada NAO e' conferida (so' registrada). Default: conferir
@@ -195,6 +197,8 @@ private:
     uint32_t _t_ini;
     float    _nivel_ini;
     bool     _bico_saiu;       // o bico saiu do suporte durante o abastecimento
+    bool     _ai_baixo;        // AI abaixo do minimo (persistencia nivel_baixo_ms)
+    uint32_t _t_ai_baixo;      // desde quando
     uint32_t _t_fluxo_zero;    // desde quando o fluxo esta zerado (0 = fluindo)
     bool     _fluxo_zero;
     char     _fim_motivo[MOTIVO_LEN];

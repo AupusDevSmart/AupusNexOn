@@ -6520,6 +6520,8 @@ extern bool g_cmd_from_serial;   // main.cpp
 #define BOMBA_MAT_LIVRE        ${b.matricula_livre ? 1 : 0}   // 1 = matricula digitada nao e' conferida (opcao explicita)
 #define BOMBA_SIM_CMDS         ${bench ? 1 : 0}   // 1 = bancada (TESTE/ ou Simular): card/mat/fluxo/net aceitos por MQTT; 0 = campo: so' pelo Serial
 #define BOMBA_TELEMETRIA_MS    ${b.telemetria_s}000UL
+#define BOMBA_NIVEL_BAIXO_MS   3000UL   // AI abaixo do minimo precisa persistir isto p/ encerrar (amostra ruim nao corta)
+#define BOMBA_BOOT_SETTLE_MS   500UL    // espera as entradas do MCP estabilizarem (3 scans de 50 ms) antes do 1o tick
 #define BOMBA_AI_0_MV          ${Number(b.ai_nivel_0_mv || 0).toFixed(1)}f
 #define BOMBA_AI_100_MV        ${Number(b.ai_nivel_100_mv).toFixed(1)}f
 #define BOMBA_K_FATOR          ${Number(b.k_fator).toFixed(2)}f
@@ -6546,9 +6548,17 @@ static long _epochDe(uint32_t ms) {
     long delta = (long)((millis() - ms) / 1000UL);
     return (long)now - delta;
 }
+// Nivel (AI): MEDIANA das ultimas 9 amostras (1 a cada 20 ms). Uma amostra ruim (contato, ruido,
+// glitch do ADC) nao vira "nivel baixo". Bancada 22/09: pilha com mau contato caia a 0 por 1 amostra.
 static float _nivelPct() {
-${aiCh >= 0 ? `    float span = (BOMBA_AI_100_MV - BOMBA_AI_0_MV); if (span < 1.0f) span = 1.0f;
-    float pct = (adc_read_mv(${aiCh}) - BOMBA_AI_0_MV) / span * 100.0f;
+${aiCh >= 0 ? `    static float am[9]; static uint8_t n = 0, idx = 0; static uint32_t t_am = 0;
+    uint32_t now = millis();
+    if (n == 0 || now - t_am >= 20) { t_am = now; am[idx] = adc_read_mv(${aiCh}); idx = (uint8_t)((idx + 1) % 9); if (n < 9) n++; }
+    float s[9]; for (uint8_t i = 0; i < n; i++) s[i] = am[i];
+    for (uint8_t i = 1; i < n; i++) { float v = s[i]; int j = i - 1; while (j >= 0 && s[j] > v) { s[j + 1] = s[j]; j--; } s[j + 1] = v; }
+    float mv = s[n / 2];
+    float span = (BOMBA_AI_100_MV - BOMBA_AI_0_MV); if (span < 1.0f) span = 1.0f;
+    float pct = (mv - BOMBA_AI_0_MV) / span * 100.0f;
     if (pct < 0) pct = 0; if (pct > 100) pct = 100;
     return pct;` : `    return -1.0f;   // sem transmissor de nivel mapeado`}
 }
@@ -6695,7 +6705,7 @@ void bomba_init() {
     bomba::Config c;
     c.pulso_bo1_ms = BOMBA_PULSO_MS; c.espera_bi1_ms = BOMBA_ESPERA_BI1_MS; c.janela_mat_ms = BOMBA_JANELA_MAT_MS;
     c.auth_timeout_ms = BOMBA_AUTH_TIMEOUT_MS; c.fluxo_parado_ms = BOMBA_FLUXO_PARADO_MS; c.tempo_max_ms = BOMBA_TEMPO_MAX_MS;
-    c.nivel_min_pct = BOMBA_NIVEL_MIN_PCT; c.exigir_matricula = BOMBA_EXIGIR_MAT != 0; c.matricula_livre = BOMBA_MAT_LIVRE != 0;
+    c.nivel_min_pct = BOMBA_NIVEL_MIN_PCT; c.nivel_baixo_ms = BOMBA_NIVEL_BAIXO_MS; c.exigir_matricula = BOMBA_EXIGIR_MAT != 0; c.matricula_livre = BOMBA_MAT_LIVRE != 0;
     c.tem_contator_aux = ${b.bi_contator ? 'true' : 'false'};
     c.rng = esp_random;   // req_id do auth/req com nonce (T8.3)
     static bomba::Maquina m(c, &_ouv);
@@ -6724,6 +6734,10 @@ void bomba_auth_resp(const char* json) {
 
 void bomba_loop(bomba_publish_fn publish) {
     if (!_m) return;
+    // Boot: o MCP so' tem estado valido apos 3 scans (150 ms); antes disso tudo le "aberto" e a maquina
+    // entraria em MANUAL (evento espurio a cada boot). O filtro das BI inicializa depois da espera.
+    static uint32_t t_boot = 0; if (!t_boot) t_boot = millis() ? millis() : 1;
+    if (millis() - t_boot < BOMBA_BOOT_SETTLE_MS) return;
     if (publish && _pub != publish) {
         _pub = publish;
         _publicarSessaoInterrompida();
@@ -6861,6 +6875,8 @@ struct Config {
     uint32_t fluxo_parado_ms    = 10000;   // bancada 10 s / campo 30 s
     uint32_t tempo_max_ms       = 30000;   // bancada 30 s / campo 10 min
     float    nivel_min_pct      = 10.0f;   // AI1 abaixo disso nao libera (<0 desliga a regra)
+    uint32_t nivel_baixo_ms     = 3000;    // durante o abastecimento, AI abaixo do minimo precisa PERSISTIR isto p/ encerrar
+                                           //   (uma amostra ruim — contato, ruido, glitch do ADC — nao corta o combustivel)
     uint32_t estabilizacao_ms   = 1000;    // apos o boot: nada de pulso ate as entradas estabilizarem
     bool     exigir_matricula   = true;    // false = posto sem IHM: autoriza so' pela tag
     bool     matricula_livre    = false;   // true = matricula digitada NAO e' conferida (so' registrada). Default: conferir
@@ -7000,6 +7016,8 @@ private:
     uint32_t _t_ini;
     float    _nivel_ini;
     bool     _bico_saiu;       // o bico saiu do suporte durante o abastecimento
+    bool     _ai_baixo;        // AI abaixo do minimo (persistencia nivel_baixo_ms)
+    uint32_t _t_ai_baixo;      // desde quando
     uint32_t _t_fluxo_zero;    // desde quando o fluxo esta zerado (0 = fluindo)
     bool     _fluxo_zero;
     char     _fim_motivo[MOTIVO_LEN];
@@ -7134,7 +7152,7 @@ bool Lista::validar(const char* uid, const char* mat, bool exigirMat, char* moti
 Maquina::Maquina(const Config& cfg, Ouvinte* ouv)
     : _cfg(cfg), _ouv(ouv), _st(OCIOSA), _online(false), _t_estado(0), _t_boot(0), _primeiroTick(true),
       _last_tick(0), _req_seq(0), _limite(0), _val(VAL_NENHUMA), _litros(0), _t_ini(0), _nivel_ini(-1),
-      _bico_saiu(false), _t_fluxo_zero(0), _fluxo_zero(false), _contator_ant(false),
+      _bico_saiu(false), _ai_baixo(false), _t_ai_baixo(0), _t_fluxo_zero(0), _fluxo_zero(false), _contator_ant(false),
       _man_ligado(false), _man_t_ini(0), _man_litros(0), _man_nivel_ini(-1) {
     _uid[0] = _mat[0] = _req[0] = _fim_motivo[0] = _motivo_bloq[0] = 0;
 }
@@ -7300,7 +7318,7 @@ void Maquina::tick(uint32_t now, const Entradas& in) {
         if (in.emergencia) { _encerrar("emergencia", now); o = Saidas(); break; }
         bool ligou = _cfg.tem_contator_aux ? in.contator : (el >= _cfg.pulso_bo1_ms);
         if (ligou) {
-            _t_ini = now; _litros = 0; _bico_saiu = false; _fluxo_zero = false; _t_fluxo_zero = 0;
+            _t_ini = now; _litros = 0; _bico_saiu = false; _ai_baixo = false; _fluxo_zero = false; _t_fluxo_zero = 0;
             _ir(ABASTECENDO, now);
             o.liga = false;
             break;
@@ -7320,12 +7338,17 @@ void Maquina::tick(uint32_t now, const Entradas& in) {
         o.permissao = true; o.solenoide = true; o.sinaleiro = true;
         _litros += in.fluxo_lpm * (float)dt / 60000.0f;
         if (!in.bico_no_suporte) _bico_saiu = true;
+        // AI abaixo do minimo so' encerra se PERSISTIR nivel_baixo_ms (uma amostra ruim nao corta o combustivel)
+        bool aiBaixo = in.nivel_pct >= 0 && _cfg.nivel_min_pct >= 0 && in.nivel_pct < _cfg.nivel_min_pct;
+        if (aiBaixo && !_ai_baixo) { _ai_baixo = true; _t_ai_baixo = now; }
+        else if (!aiBaixo) _ai_baixo = false;
+        bool aiBaixoPersistiu = _ai_baixo && (uint32_t)(now - _t_ai_baixo) >= _cfg.nivel_baixo_ms;
         const char* fim = nullptr;
         if (in.emergencia)                                              fim = "emergencia";
         else if (!in.automatico)                                        fim = "manual";
         else if (_cfg.tem_contator_aux && !in.contator)                 fim = "contator_caiu";
         else if (in.nivel_baixo_boia)                                   fim = "nivel_baixo";
-        else if (in.nivel_pct >= 0 && _cfg.nivel_min_pct >= 0 && in.nivel_pct < _cfg.nivel_min_pct) fim = "nivel_baixo";
+        else if (aiBaixoPersistiu)                                      fim = "nivel_baixo";
         else if (_limite > 0 && _litros >= _limite)                     fim = "limite";
         else if ((uint32_t)(now - _t_ini) >= _cfg.tempo_max_ms)         fim = "timeout";
         else if (_bico_saiu && in.bico_no_suporte)                      fim = "concluido";

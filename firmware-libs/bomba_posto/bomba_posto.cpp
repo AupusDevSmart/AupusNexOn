@@ -113,7 +113,7 @@ bool Lista::validar(const char* uid, const char* mat, bool exigirMat, char* moti
 Maquina::Maquina(const Config& cfg, Ouvinte* ouv)
     : _cfg(cfg), _ouv(ouv), _st(OCIOSA), _online(false), _t_estado(0), _t_boot(0), _primeiroTick(true),
       _last_tick(0), _req_seq(0), _limite(0), _val(VAL_NENHUMA), _litros(0), _t_ini(0), _nivel_ini(-1),
-      _bico_saiu(false), _t_fluxo_zero(0), _fluxo_zero(false), _contator_ant(false),
+      _bico_saiu(false), _ai_baixo(false), _t_ai_baixo(0), _t_fluxo_zero(0), _fluxo_zero(false), _contator_ant(false),
       _man_ligado(false), _man_t_ini(0), _man_litros(0), _man_nivel_ini(-1) {
     _uid[0] = _mat[0] = _req[0] = _fim_motivo[0] = _motivo_bloq[0] = 0;
 }
@@ -279,7 +279,7 @@ void Maquina::tick(uint32_t now, const Entradas& in) {
         if (in.emergencia) { _encerrar("emergencia", now); o = Saidas(); break; }
         bool ligou = _cfg.tem_contator_aux ? in.contator : (el >= _cfg.pulso_bo1_ms);
         if (ligou) {
-            _t_ini = now; _litros = 0; _bico_saiu = false; _fluxo_zero = false; _t_fluxo_zero = 0;
+            _t_ini = now; _litros = 0; _bico_saiu = false; _ai_baixo = false; _fluxo_zero = false; _t_fluxo_zero = 0;
             _ir(ABASTECENDO, now);
             o.liga = false;
             break;
@@ -299,12 +299,17 @@ void Maquina::tick(uint32_t now, const Entradas& in) {
         o.permissao = true; o.solenoide = true; o.sinaleiro = true;
         _litros += in.fluxo_lpm * (float)dt / 60000.0f;
         if (!in.bico_no_suporte) _bico_saiu = true;
+        // AI abaixo do minimo so' encerra se PERSISTIR nivel_baixo_ms (uma amostra ruim nao corta o combustivel)
+        bool aiBaixo = in.nivel_pct >= 0 && _cfg.nivel_min_pct >= 0 && in.nivel_pct < _cfg.nivel_min_pct;
+        if (aiBaixo && !_ai_baixo) { _ai_baixo = true; _t_ai_baixo = now; }
+        else if (!aiBaixo) _ai_baixo = false;
+        bool aiBaixoPersistiu = _ai_baixo && (uint32_t)(now - _t_ai_baixo) >= _cfg.nivel_baixo_ms;
         const char* fim = nullptr;
         if (in.emergencia)                                              fim = "emergencia";
         else if (!in.automatico)                                        fim = "manual";
         else if (_cfg.tem_contator_aux && !in.contator)                 fim = "contator_caiu";
         else if (in.nivel_baixo_boia)                                   fim = "nivel_baixo";
-        else if (in.nivel_pct >= 0 && _cfg.nivel_min_pct >= 0 && in.nivel_pct < _cfg.nivel_min_pct) fim = "nivel_baixo";
+        else if (aiBaixoPersistiu)                                      fim = "nivel_baixo";
         else if (_limite > 0 && _litros >= _limite)                     fim = "limite";
         else if ((uint32_t)(now - _t_ini) >= _cfg.tempo_max_ms)         fim = "timeout";
         else if (_bico_saiu && in.bico_no_suporte)                      fim = "concluido";

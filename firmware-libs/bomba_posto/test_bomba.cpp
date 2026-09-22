@@ -171,8 +171,14 @@ int main() {
         b.in.nivel_baixo_boia = true; b.avancar(300);
         CHECK(b.col.trans.size() == 1 && std::string(b.col.trans[0].fim_motivo) == "nivel_baixo", "T3.5a boia de minimo durante o abastecimento -> 'nivel_baixo'");
         b.in.nivel_baixo_boia = false; b.avancar(500);
-        b.abastecer_ate_abastecendo(); b.in.nivel_pct = 3; b.avancar(300);
-        CHECK(b.col.trans.size() == 2 && std::string(b.col.trans[1].fim_motivo) == "nivel_baixo", "T3.5b AI1 abaixo do minimo durante o abastecimento -> 'nivel_baixo'");
+        b.abastecer_ate_abastecendo(); b.in.nivel_pct = 3; b.avancar(1000);
+        CHECK(b.m.estado() == ABASTECENDO && b.col.trans.size() == 1, "T3.5b AI1 abaixo do minimo por 1 s NAO encerra (amostra ruim / contato)");
+        b.in.nivel_pct = 50; b.avancar(500);
+        CHECK(b.m.estado() == ABASTECENDO, "T3.5c AI1 voltou -> segue abastecendo (cronometro zera)");
+        b.in.nivel_pct = 3; b.avancar(2500);
+        CHECK(b.m.estado() == ABASTECENDO, "T3.5d 2,5 s abaixo do minimo: ainda nao encerra");
+        b.avancar(900);   // 3,4 s abaixo: encerra aos 3 s e o K1 do modelo abre em seguida
+        CHECK(b.col.trans.size() == 2 && std::string(b.col.trans[1].fim_motivo) == "nivel_baixo", "T3.5e AI1 abaixo do minimo por 3 s -> 'nivel_baixo'");
     }
 
     // ---------------- Etapa 4: falhas do contator ----------------
