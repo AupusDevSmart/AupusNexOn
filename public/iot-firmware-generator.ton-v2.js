@@ -6486,7 +6486,8 @@ bool bomba_cmd(const String& cmd, char* msg, size_t msg_sz);
         const topicBase = String(spec.topicBase || (spec.mqtt && spec.mqtt.topic_base) || '');
         const bench = this._simMode() || /^TESTE\//i.test(topicBase);
         const biRead = (n) => n ? `((st >> ${n - 1}) & 1)` : null;
-        const aiCh = b.ai_nivel ? b.ai_nivel - 1 : -1;
+        // adc_read_mv(channel) da base e' 1-BASED (1=AN1, 2=AN2; V2: 3/4=AN_C). Bug anterior: passava ai_nivel-1 => AI1 lia o AN2.
+        const aiCh = b.ai_nivel ? b.ai_nivel : -1;
         return `// bomba.cpp — glue gerado: POSTO DE COMBUSTIVEL na TON. A logica (estados, validacao,
 // fins, contator colado, manual) esta em bomba_posto.cpp (lib pura, testada no host).
 // Mapa: BO liga=${b.bo_liga || '—'} permissao=${b.bo_permissao || '—'} solenoide=${b.bo_solenoide || '—'} sinaleiro=${b.bo_sinaleiro || '—'};
@@ -6630,7 +6631,10 @@ struct _Ouv : public bomba::Ouvinte {
         Serial.printf("[BOMBA] TRANSACAO %s uid=%s mat=%s litros=%.2f (%s)\\n", t.fim_motivo, t.uid, t.matricula, t.litros, bomba::validacaoNome(t.validacao));
     }
     void aoMudarEstado(bomba::Estado de, bomba::Estado para) override {
-        Serial.printf("[BOMBA] %s -> %s\\n", bomba::estadoNome(de), bomba::estadoNome(para));
+        static unsigned long _tEstado = 0;
+        unsigned long agora = millis();
+        Serial.printf("[BOMBA] %s -> %s  (+%lu ms | t=%lu)\\n", bomba::estadoNome(de), bomba::estadoNome(para), _tEstado ? (agora - _tEstado) : 0UL, agora);
+        _tEstado = agora;
         if (para == bomba::ABASTECENDO) _salvarSessao(true);
         _lastTel = 0;   // forca telemetria na proxima volta
     }
@@ -6660,6 +6664,8 @@ static void _aplicarRele(int idx, int bo, bool on) {
 
 // ---- API ----
 void bomba_init() {
+    // Serial USB-CDC: se o host (monitor) parar de ler, escrever NAO pode bloquear o loop da bomba.
+    Serial.setTxTimeoutMs(0);
     bomba::Config c;
     c.pulso_bo1_ms = BOMBA_PULSO_MS; c.espera_bi1_ms = BOMBA_ESPERA_BI1_MS; c.janela_mat_ms = BOMBA_JANELA_MAT_MS;
     c.auth_timeout_ms = BOMBA_AUTH_TIMEOUT_MS; c.fluxo_parado_ms = BOMBA_FLUXO_PARADO_MS; c.tempo_max_ms = BOMBA_TEMPO_MAX_MS;
