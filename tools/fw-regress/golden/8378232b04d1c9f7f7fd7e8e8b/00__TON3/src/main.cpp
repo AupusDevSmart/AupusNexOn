@@ -71,6 +71,7 @@ static void _publish_cmd_ack(const char* cmd_id, const char* status, const char*
 }
 
 #include "bomba.h"   // posto de combustivel: maquina de estados em src/bomba.cpp (lib bomba_posto)
+bool g_cmd_from_serial = false;   // origem do comando em curso (Serial USB = acesso fisico); MQTT = false
 // Executa o comando bruto (sem envelope). Preenche result_msg com descricao curta.
 // Retorna true em sucesso, false em erro.
 static bool _process_command_inner(const char* raw, char* result_msg, size_t msg_sz) {
@@ -316,6 +317,8 @@ void loop() {
     // Serial commands
     if (Serial.available()) {
         String cmd = Serial.readStringUntil('\n');
+        g_cmd_from_serial = true;
         process_command(cmd.c_str());
+        g_cmd_from_serial = false;
     }
 }

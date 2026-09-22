@@ -1,7 +1,7 @@
 // bomba.cpp — glue gerado: POSTO DE COMBUSTIVEL na TON. A logica (estados, validacao,
 // fins, contator colado, manual) esta em bomba_posto.cpp (lib pura, testada no host).
-// Mapa: BO liga=1 permissao=— solenoide=3 sinaleiro=—;
-//       BI contator=— auto=— emerg=1 bico=— boia_min=— boia_alta=—;
+// Mapa: BO liga=1 permissao=2 solenoide=3 sinaleiro=4;
+//       BI contator=1 auto=2 emerg=3 bico=4 boia_min=5 boia_alta=6;
 //       AI nivel=1 (0..3000 mV = 0..100 %).
 // Convencao BI: contato fechado ao GND = 1 (inputs_get_state). Emergencia/boias sao NF (aberto = atuado).
 #include "bomba.h"
@@ -15,20 +15,25 @@
 #include <ArduinoJson.h>
 #include <Preferences.h>
 #include <time.h>
+#include <esp_system.h>
+
+extern bool g_cmd_from_serial;   // main.cpp
 
 #define BOMBA_PULSO_MS         500UL
 #define BOMBA_ESPERA_BI1_MS    1000UL
 #define BOMBA_JANELA_MAT_MS    60000UL
 #define BOMBA_AUTH_TIMEOUT_MS  3000UL
-#define BOMBA_FLUXO_PARADO_MS  30000UL
-#define BOMBA_TEMPO_MAX_MS     600000UL
-#define BOMBA_NIVEL_MIN_PCT    5.00f
+#define BOMBA_FLUXO_PARADO_MS  10000UL
+#define BOMBA_TEMPO_MAX_MS     30000UL
+#define BOMBA_NIVEL_MIN_PCT    10.00f
 #define BOMBA_EXIGIR_MAT       1
+#define BOMBA_MAT_LIVRE        0   // 1 = matricula digitada nao e' conferida (opcao explicita)
+#define BOMBA_SIM_CMDS         1   // 1 = bancada (TESTE/ ou Simular): card/mat/fluxo/net aceitos por MQTT; 0 = campo: so' pelo Serial
 #define BOMBA_TELEMETRIA_MS    30000UL
 #define BOMBA_AI_0_MV          0.0f
 #define BOMBA_AI_100_MV        3000.0f
 #define BOMBA_K_FATOR          450.00f
-#define BOMBA_UID_TESTE        "AABBCCDD"
+#define BOMBA_UID_TESTE        "PC-07"
 #define BOMBA_MAT_TESTE        "1234"
 
 static bomba::Maquina*  _m = nullptr;
@@ -53,7 +58,7 @@ static long _epochDe(uint32_t ms) {
 }
 static float _nivelPct() {
     float span = (BOMBA_AI_100_MV - BOMBA_AI_0_MV); if (span < 1.0f) span = 1.0f;
-    float pct = (adc_read_mv(0) - BOMBA_AI_0_MV) / span * 100.0f;
+    float pct = (adc_read_mv(1) - BOMBA_AI_0_MV) / span * 100.0f;
     if (pct < 0) pct = 0; if (pct > 100) pct = 100;
     return pct;
 }
@@ -94,6 +99,15 @@ static void _carregarLista(bomba::Lista& L, const char* json, bool persistir) {
     }
     for (JsonVariant m : d["mats"].as<JsonArray>()) L.adicionarMat(m.as<const char*>());
     Serial.printf("[BOMBA] lista v%lu: %d tags, %d matriculas\n", (unsigned long)L.versao, L.ntags(), L.nmats());
+    if (L.ntags() == 0) Serial.println("[BOMBA] AVISO: lista SEM tags — ninguem autorizado offline (fail-closed)");
+#if BOMBA_EXIGIR_MAT && !BOMBA_MAT_LIVRE
+    if (L.nmats() > 0) { /* ok */ } else {
+        bool algumaTagComMat = false;
+        for (int i = 0; i < L.ntags(); i++) { /* Lista nao expoe tags; o glue so' avisa pelo total */ (void)i; }
+        (void)algumaTagComMat;
+        Serial.println("[BOMBA] AVISO: lista sem matriculas — com 'exigir matricula' toda matricula sera NEGADA offline (ligue 'matricula livre' se for intencional)");
+    }
+#endif
     if (persistir) {
         size_t n = strlen(json);
         Preferences pr; if (pr.begin("posto", false)) { if (n < 3900) pr.putString("lista", json); else Serial.println("[BOMBA] lista > 3,9 kB: nao persistida"); pr.end(); }
@@ -127,7 +141,10 @@ struct _Ouv : public bomba::Ouvinte {
         Serial.printf("[BOMBA] TRANSACAO %s uid=%s mat=%s litros=%.2f (%s)\n", t.fim_motivo, t.uid, t.matricula, t.litros, bomba::validacaoNome(t.validacao));
     }
     void aoMudarEstado(bomba::Estado de, bomba::Estado para) override {
-        Serial.printf("[BOMBA] %s -> %s\n", bomba::estadoNome(de), bomba::estadoNome(para));
+        static unsigned long _tEstado = 0;
+        unsigned long agora = millis();
+        Serial.printf("[BOMBA] %s -> %s  (+%lu ms | t=%lu)\n", bomba::estadoNome(de), bomba::estadoNome(para), _tEstado ? (agora - _tEstado) : 0UL, agora);
+        _tEstado = agora;
         if (para == bomba::ABASTECENDO) _salvarSessao(true);
         _lastTel = 0;   // forca telemetria na proxima volta
     }
@@ -156,17 +173,48 @@ static void _aplicarRele(int idx, int bo, bool on) {
 }
 
 // ---- API ----
+// Entradas BI com anti-repique (debounce): chave seletora, botao de emergencia, gancho do bico e
+// contato auxiliar sao mecanicos. A maquina so' ve o novo valor depois de BOMBA_DEBOUNCE_MS estavel,
+// bit a bit (um contato oscilando nao segura os outros). Bancada 22/09: jumper da chave Auto mal
+// preso gerou 8 trocas ociosa<->manual em 90 s (evento + transacao a cada troca).
+#ifndef BOMBA_DEBOUNCE_MS
+#define BOMBA_DEBOUNCE_MS 100
+#endif
+static uint8_t _lerBiFiltrado() {
+    static uint8_t raw_ant = 0, estavel = 0; static uint32_t t_bit[8]; static bool init = false;
+    uint8_t raw = inputs_get_state(); uint32_t now = millis();
+    if (!init) { init = true; raw_ant = estavel = raw; for (int i = 0; i < 8; i++) t_bit[i] = now; return raw; }
+    for (int i = 0; i < 8; i++) {
+        uint8_t m = (uint8_t)(1u << i);
+        if ((raw & m) != (raw_ant & m)) { raw_ant = (uint8_t)((raw_ant & ~m) | (raw & m)); t_bit[i] = now; }
+        else if ((estavel & m) != (raw & m) && now - t_bit[i] >= BOMBA_DEBOUNCE_MS) {
+            estavel = (uint8_t)((estavel & ~m) | (raw & m));
+            Serial.printf("[BOMBA] BI%d -> %d (t=%lu)\n", i + 1, (raw & m) ? 1 : 0, (unsigned long)now);
+        }
+    }
+    return estavel;
+}
+
 void bomba_init() {
+    // Serial USB-CDC: se o host (monitor) parar de ler, escrever NAO pode bloquear o loop da bomba.
+    Serial.setTxTimeoutMs(0);
+    // WiFi: modem-sleep DESLIGADO neste firmware. Com o power-save padrao do ESP32 a entrega MQTT
+    // chegava em rajadas 3..50 s atrasadas (perda de pacote + retransmissao TCP) e o auth/req tem
+    // so' 3 s p/ ir e voltar. WIFI_PS_NONE custa ~60 mA a mais (TON e' alimentada por fonte 5 V/2 A).
+    WiFi.setSleep(false);
     bomba::Config c;
     c.pulso_bo1_ms = BOMBA_PULSO_MS; c.espera_bi1_ms = BOMBA_ESPERA_BI1_MS; c.janela_mat_ms = BOMBA_JANELA_MAT_MS;
     c.auth_timeout_ms = BOMBA_AUTH_TIMEOUT_MS; c.fluxo_parado_ms = BOMBA_FLUXO_PARADO_MS; c.tempo_max_ms = BOMBA_TEMPO_MAX_MS;
-    c.nivel_min_pct = BOMBA_NIVEL_MIN_PCT; c.exigir_matricula = BOMBA_EXIGIR_MAT != 0;
-    c.tem_contator_aux = false;
+    c.nivel_min_pct = BOMBA_NIVEL_MIN_PCT; c.exigir_matricula = BOMBA_EXIGIR_MAT != 0; c.matricula_livre = BOMBA_MAT_LIVRE != 0;
+    c.tem_contator_aux = true;
+    c.rng = esp_random;   // req_id do auth/req com nonce (T8.3)
     static bomba::Maquina m(c, &_ouv);
     _m = &m;
     // reles: garantidamente desligados no boot (relays_init ja fez; reforca)
     relay_set(1, false);
+    relay_set(2, false);
     relay_set(3, false);
+    relay_set(4, false);
     Preferences pr;
     if (pr.begin("posto", true)) {
         String lista = pr.getString("lista", ""); pr.end();
@@ -195,14 +243,14 @@ void bomba_loop(bomba_publish_fn publish) {
         for (uint8_t i = 0; i < _pubPendN; i++) _pub("evento", _pubPend[i]);
         _pubPendN = 0;
     }
-    uint8_t st = inputs_get_state();
+    uint8_t st = _lerBiFiltrado();   // BI com anti-repique (100 ms, bit a bit)
     bomba::Entradas in;
-    in.contator         = false;
-    in.automatico       = true;
-    in.emergencia       = !((st >> 0) & 1);          // NF: aberto = atuado
-    in.bico_no_suporte  = true;
-    in.nivel_baixo_boia = false;     // NF
-    in.boia_alta        = false;   // NF
+    in.contator         = ((st >> 0) & 1);
+    in.automatico       = ((st >> 1) & 1);
+    in.emergencia       = !((st >> 2) & 1);          // NF: aberto = atuado
+    in.bico_no_suporte  = ((st >> 3) & 1);
+    in.nivel_baixo_boia = !((st >> 4) & 1);     // NF
+    in.boia_alta        = !((st >> 5) & 1);   // NF
     in.nivel_pct        = _nivelPct();
     in.fluxo_lpm        = _fluxo_lpm;
     (void)st;
@@ -210,9 +258,9 @@ void bomba_loop(bomba_publish_fn publish) {
     _m->tick(millis(), in);
     const bomba::Saidas& o = _m->saidas();
     _aplicarRele(0, 1, o.liga);
-    _aplicarRele(1, 0, o.permissao);
+    _aplicarRele(1, 2, o.permissao);
     _aplicarRele(2, 3, o.solenoide);
-    _aplicarRele(3, 0, o.sinaleiro);
+    _aplicarRele(3, 4, o.sinaleiro);
     if (_m->estado() == bomba::ABASTECENDO && millis() - _lastSessaoSave > 5000) { _lastSessaoSave = millis(); _salvarSessao(true); }
     if (millis() - _lastTel > BOMBA_TELEMETRIA_MS) { _lastTel = millis(); _telemetria(); }
 }
@@ -221,6 +269,13 @@ bool bomba_cmd(const String& cmdIn, char* msg, size_t msg_sz) {
     if (!_m) return false;
     String cmd = cmdIn; cmd.trim();
     String low = cmd; low.toLowerCase();
+#if !BOMBA_SIM_CMDS
+    // Build de CAMPO: simulacao (card/mat/fluxo/net) so' com acesso fisico (Serial USB). Por MQTT: recusa.
+    if (!g_cmd_from_serial && (low.startsWith("card") || low.startsWith("mat") || low.startsWith("fluxo") || low.startsWith("net "))) {
+        Serial.printf("[BOMBA] comando de simulacao recusado por MQTT em build de campo: %s\n", cmd.c_str());
+        snprintf(msg, msg_sz, "sim_cmd_recusado_build_campo"); return true;
+    }
+#endif
     if (low.startsWith("card ")) {
         String u = cmd.substring(5); u.trim(); u.toUpperCase();
         if (!u.length()) u = BOMBA_UID_TESTE;

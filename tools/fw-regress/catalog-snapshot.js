@@ -1,6 +1,6 @@
 // AUTO-GENERATED from DB (iot_device_tipos + iot_device_modelos).
 // Do not edit. Substituicao do antigo /iot-device-catalog.v2.js estatico.
-// version="1788957338615-25"
+// version="1790013609017-26"
 
 var DEVICE_POINTS = {
   "bomba_combustivel": {
@@ -14,12 +14,28 @@ var DEVICE_POINTS = {
     ],
     "bi": [
       {
-        "id": "cartao",
-        "label": "Cartão"
+        "id": "contator",
+        "label": "Contator"
+      },
+      {
+        "id": "auto_manual",
+        "label": "Auto/Manual"
       },
       {
         "id": "emergencia",
         "label": "Emergência"
+      },
+      {
+        "id": "bico",
+        "label": "Bico"
+      },
+      {
+        "id": "boia_min",
+        "label": "Boia mínimo"
+      },
+      {
+        "id": "boia_alta",
+        "label": "Boia alta"
       }
     ],
     "bo": [
@@ -28,12 +44,16 @@ var DEVICE_POINTS = {
         "label": "Ligar"
       },
       {
-        "id": "desligar",
-        "label": "Desligar"
+        "id": "permissao",
+        "label": "Permissão"
       },
       {
         "id": "solenoide",
         "label": "Solenoide"
+      },
+      {
+        "id": "sinaleiro",
+        "label": "Sinaleiro"
       }
     ]
   },
@@ -2184,6 +2204,63 @@ var DEVICE_MODELS = {
       },
       "register": 35
     }
+  },
+  "lg-e750-ssu": {
+    "fabricante": "Landis+Gyr",
+    "modelo": "E750 A2E3 (SSU NBR 14522)",
+    "tipo": "gateway_medidor",
+    "protocolo": "ssu",
+    "connection_note": "Saida Serial de Usuario (ABNT NBR 14522) na entrada SU+ da TON-V2: X14-2 = SU+, X14-1 = SU- (GND). 110 baud, 8N1, bloco estendido (9 octetos) ou normal (8). Ke por medidor.",
+    "kd": {
+      "note": "kWh por pulso — confirmar Ke real (potencia conhecida x tempo); parametrizavel por no no diagrama (ke)",
+      "default": 0.048
+    },
+    "ssu": {
+      "baud": 110,
+      "formato": "auto",
+      "intervalo_demanda_min": 15,
+      "intervalo_reativo_min": 60
+    },
+    "ai_map": {
+      "phf": {
+        "unit": "kWh",
+        "label": "Energia ativa direta (REG1)",
+        "apply_factor": "kd"
+      },
+      "phr": {
+        "unit": "kWh",
+        "label": "Energia ativa reversa (REG2)",
+        "apply_factor": "kd"
+      },
+      "qhfc": {
+        "unit": "kVArh",
+        "label": "Reativa Q4 capacitiva (REG6)",
+        "apply_factor": "kd"
+      },
+      "qhfi": {
+        "unit": "kVArh",
+        "label": "Reativa Q1 indutiva (REG3)",
+        "apply_factor": "kd"
+      },
+      "qhrc": {
+        "unit": "kVArh",
+        "label": "Reativa Q3 capacitiva (REG5)",
+        "apply_factor": "kd"
+      },
+      "qhri": {
+        "unit": "kVArh",
+        "label": "Reativa Q2 indutiva (REG4)",
+        "apply_factor": "kd"
+      }
+    },
+    "bi_map": {
+      "sts": {
+        "unit": "enum",
+        "label": "Enlace SSU ok (1) / degradado (0)"
+      }
+    },
+    "bo_map": {},
+    "ai_blocks": []
   },
   "pextron-urp6000": {
     "fabricante": "Pextron",

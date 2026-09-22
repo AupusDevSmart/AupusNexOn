@@ -47,7 +47,7 @@ static const int   WIFI_DEF_COUNT  = 1;
 // (ex: 10 IPs reais em campo conectavam com "TON1-TON1" simultaneamente, derrubando
 // uns aos outros no broker - 26k+ desconexoes/dia). Veja docs/IOT-MQTT-CLIENTID-UNICO.md.
 extern char MQTT_CLIENT_ID[20];
-#define MQTT_TOPIC_BASE     "TON3"
+#define MQTT_TOPIC_BASE     "TESTE/POSTO/BANCADA"
 #define MQTT_TOPIC_CMD      MQTT_TOPIC_BASE "/cmd"
 #define MQTT_TOPIC_RELAYS   MQTT_TOPIC_BASE "/relays"
 #define MQTT_TOPIC_INPUTS   MQTT_TOPIC_BASE "/inputs"

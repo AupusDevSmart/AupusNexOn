@@ -6663,9 +6663,35 @@ static void _aplicarRele(int idx, int bo, bool on) {
 }
 
 // ---- API ----
+// Entradas BI com anti-repique (debounce): chave seletora, botao de emergencia, gancho do bico e
+// contato auxiliar sao mecanicos. A maquina so' ve o novo valor depois de BOMBA_DEBOUNCE_MS estavel,
+// bit a bit (um contato oscilando nao segura os outros). Bancada 22/09: jumper da chave Auto mal
+// preso gerou 8 trocas ociosa<->manual em 90 s (evento + transacao a cada troca).
+#ifndef BOMBA_DEBOUNCE_MS
+#define BOMBA_DEBOUNCE_MS 100
+#endif
+static uint8_t _lerBiFiltrado() {
+    static uint8_t raw_ant = 0, estavel = 0; static uint32_t t_bit[8]; static bool init = false;
+    uint8_t raw = inputs_get_state(); uint32_t now = millis();
+    if (!init) { init = true; raw_ant = estavel = raw; for (int i = 0; i < 8; i++) t_bit[i] = now; return raw; }
+    for (int i = 0; i < 8; i++) {
+        uint8_t m = (uint8_t)(1u << i);
+        if ((raw & m) != (raw_ant & m)) { raw_ant = (uint8_t)((raw_ant & ~m) | (raw & m)); t_bit[i] = now; }
+        else if ((estavel & m) != (raw & m) && now - t_bit[i] >= BOMBA_DEBOUNCE_MS) {
+            estavel = (uint8_t)((estavel & ~m) | (raw & m));
+            Serial.printf("[BOMBA] BI%d -> %d (t=%lu)\\n", i + 1, (raw & m) ? 1 : 0, (unsigned long)now);
+        }
+    }
+    return estavel;
+}
+
 void bomba_init() {
     // Serial USB-CDC: se o host (monitor) parar de ler, escrever NAO pode bloquear o loop da bomba.
     Serial.setTxTimeoutMs(0);
+    // WiFi: modem-sleep DESLIGADO neste firmware. Com o power-save padrao do ESP32 a entrega MQTT
+    // chegava em rajadas 3..50 s atrasadas (perda de pacote + retransmissao TCP) e o auth/req tem
+    // so' 3 s p/ ir e voltar. WIFI_PS_NONE custa ~60 mA a mais (TON e' alimentada por fonte 5 V/2 A).
+    WiFi.setSleep(false);
     bomba::Config c;
     c.pulso_bo1_ms = BOMBA_PULSO_MS; c.espera_bi1_ms = BOMBA_ESPERA_BI1_MS; c.janela_mat_ms = BOMBA_JANELA_MAT_MS;
     c.auth_timeout_ms = BOMBA_AUTH_TIMEOUT_MS; c.fluxo_parado_ms = BOMBA_FLUXO_PARADO_MS; c.tempo_max_ms = BOMBA_TEMPO_MAX_MS;
@@ -6704,7 +6730,7 @@ void bomba_loop(bomba_publish_fn publish) {
         for (uint8_t i = 0; i < _pubPendN; i++) _pub("evento", _pubPend[i]);
         _pubPendN = 0;
     }
-    uint8_t st = inputs_get_state();
+    uint8_t st = _lerBiFiltrado();   // BI com anti-repique (100 ms, bit a bit)
     bomba::Entradas in;
     in.contator         = ${biRead(b.bi_contator) || 'false'};
     in.automatico       = ${b.bi_auto ? biRead(b.bi_auto) : 'true'};
