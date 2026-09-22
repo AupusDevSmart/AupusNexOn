@@ -6174,8 +6174,8 @@ bool bomba_cmd(const String& cmdIn, char* msg, size_t msg_sz) {
     }
     if (low == "status") {
         const bomba::Entradas& e = _m->entradas();
-        Serial.printf("[BOMBA] estado=%s uid=%s mat=%s litros=%.2f nivel=%.0f%% fluxo=%.1f L/min | contator=%d auto=%d emerg=%d bico=%d boia_min=%d boia_alta=%d | online=%d lista=v%lu(%d) ver=%s\\n",
-            bomba::estadoNome(_m->estado()), _m->uidAtual(), _m->matAtual(), _m->litros(), e.nivel_pct, _fluxo_lpm,
+        Serial.printf("[BOMBA] estado=%s uid=%s mat=%s litros=%.2f nivel=%.0f%% (an1=%.0f an2=%.0f mV) fluxo=%.1f L/min | contator=%d auto=%d emerg=%d bico=%d boia_min=%d boia_alta=%d | online=%d lista=v%lu(%d) ver=%s\\n",
+            bomba::estadoNome(_m->estado()), _m->uidAtual(), _m->matAtual(), _m->litros(), e.nivel_pct, adc_read_mv(1), adc_read_mv(2), _fluxo_lpm,
             e.contator, e.automatico, e.emergencia, e.bico_no_suporte, e.nivel_baixo_boia, e.boia_alta,
             _m->online() ? 1 : 0, (unsigned long)_m->lista().versao, _m->lista().ntags(), FIRMWARE_VERSION);
         _telemetria();
