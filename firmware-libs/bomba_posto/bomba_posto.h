@@ -148,6 +148,9 @@ public:
     void matricula(const char* mat, uint32_t now_ms);
     void respostaAuth(const char* req_id, bool ok, const char* motivo, float limite_litros, uint32_t now_ms);
     void rearme(uint32_t now_ms);
+    // Restaura um bloqueio persistido (glue: NVS) apos reset/queda de energia: um contator colado ou
+    // falha de partida NAO pode ser "resolvido" desligando e ligando a TON — so' por rearme().
+    void bloquear(const char* motivo, uint32_t now);
     void setOnline(bool online) { _online = online; }
     bool online() const { return _online; }
     bool otaPermitida() const { return _st == OCIOSA || _st == BLOQUEADA; }

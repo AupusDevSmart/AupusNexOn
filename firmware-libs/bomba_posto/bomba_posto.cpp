@@ -233,6 +233,13 @@ void Maquina::rearme(uint32_t now) {
     _ir(OCIOSA, now);
 }
 
+void Maquina::bloquear(const char* motivo, uint32_t now) {
+    if (_st == BLOQUEADA) return;
+    _cp(_motivo_bloq, MOTIVO_LEN, (motivo && motivo[0]) ? motivo : "restaurado");
+    _uid[0] = _mat[0] = 0; _val = VAL_NENHUMA;
+    _ir(BLOQUEADA, now);
+}
+
 void Maquina::tick(uint32_t now, const Entradas& in) {
     if (_primeiroTick) { _primeiroTick = false; _t_boot = now; _last_tick = now; _t_estado = now; _contator_ant = in.contator; }
     uint32_t dt = now - _last_tick; _last_tick = now;

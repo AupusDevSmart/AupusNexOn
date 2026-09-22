@@ -181,6 +181,17 @@ int main() {
         CHECK(b.col.trans.size() == 2 && std::string(b.col.trans[1].fim_motivo) == "nivel_baixo", "T3.5e AI1 abaixo do minimo por 3 s -> 'nivel_baixo'");
     }
 
+    // ---------------- Bloqueio persistido (reset nao destrava) ----------------
+    {
+        Bancada b; b.lista_padrao(); b.avancar(1500);
+        b.m.bloquear("contator_colado", b.t); b.avancar(50);
+        CHECK(b.m.estado() == BLOQUEADA && std::string(b.m.motivoBloqueio()) == "contator_colado" && b.bo(false, false, false), "P1 bloqueio restaurado do NVS apos reset -> bloqueada, reles desligados");
+        b.m.cartao("PC-07", b.t); b.avancar(20);
+        CHECK(b.m.estado() == BLOQUEADA && b.col.temEvento("negado", "bloqueada"), "P2 card com bloqueio restaurado -> negado bloqueada");
+        b.m.rearme(b.t); b.avancar(20);
+        CHECK(b.m.estado() == OCIOSA && b.col.temEvento("rearme", "contator_colado"), "P3 rearme -> ociosa (evento rearme com o motivo original)");
+    }
+
     // ---------------- Etapa 4: falhas do contator ----------------
     {
         Bancada b; b.lista_padrao(); b.avancar(1500); b.k1_quebrado = true;   // jumper NA do BO2 -> BI1 removido

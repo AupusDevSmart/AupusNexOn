@@ -5948,6 +5948,13 @@ ${aiCh >= 0 ? `    static float am[9]; static uint8_t n = 0, idx = 0; static uin
 }
 
 // ---- persistencia (NVS ns "posto"): lista (JSON retido) + sessao em andamento ----
+// Bloqueio (falha_partida / contator_colado) PERSISTE no NVS: reset ou queda de energia nao destrava —
+// so' o comando/botao 'rearme' (bancada 22/09: o bloqueio sumia ao religar a TON).
+static void _salvarBloqueio(const char* motivo) {
+    Preferences pr; if (!pr.begin("posto", false)) return;
+    if (motivo && motivo[0]) pr.putString("bloq", motivo); else pr.remove("bloq");
+    pr.end();
+}
 static void _salvarSessao(bool aberta) {
     Preferences pr; if (!pr.begin("posto", false)) return;
     if (!aberta) { pr.remove("sessao"); pr.end(); _sessaoAberta = false; return; }
@@ -6030,6 +6037,8 @@ struct _Ouv : public bomba::Ouvinte {
         Serial.printf("[BOMBA] %s -> %s  (+%lu ms | t=%lu)\\n", bomba::estadoNome(de), bomba::estadoNome(para), _tEstado ? (agora - _tEstado) : 0UL, agora);
         _tEstado = agora;
         if (para == bomba::ABASTECENDO) _salvarSessao(true);
+        if (para == bomba::BLOQUEADA) _salvarBloqueio(_m ? _m->motivoBloqueio() : "restaurado");
+        if (de == bomba::BLOQUEADA) _salvarBloqueio(nullptr);
         _lastTel = 0;   // forca telemetria na proxima volta
     }
 };
@@ -6097,9 +6106,14 @@ void bomba_init() {
     // reles: garantidamente desligados no boot (relays_init ja fez; reforca)
 ${[b.bo_liga, b.bo_permissao, b.bo_solenoide, b.bo_sinaleiro].filter(Boolean).map(n => `    relay_set(${n}, false);`).join('\n')}
     Preferences pr;
+    String bloq;
     if (pr.begin("posto", true)) {
-        String lista = pr.getString("lista", ""); pr.end();
+        String lista = pr.getString("lista", ""); bloq = pr.getString("bloq", ""); pr.end();
         if (lista.length()) _carregarLista(_m->lista(), lista.c_str(), false);
+    }
+    if (bloq.length()) {
+        _m->bloquear(bloq.c_str(), millis());
+        Serial.printf("[BOMBA] BLOQUEIO restaurado do NVS (%s): reset nao destrava, use 'rearme'\\n", bloq.c_str());
     }
     Serial.printf("[OK] Posto de combustivel: maquina de estados (lista v%lu, %d tags) — comandos: card/mat/fluxo/status/rearme/net/lista\\n",
                   (unsigned long)_m->lista().versao, _m->lista().ntags());
@@ -6351,6 +6365,9 @@ public:
     void matricula(const char* mat, uint32_t now_ms);
     void respostaAuth(const char* req_id, bool ok, const char* motivo, float limite_litros, uint32_t now_ms);
     void rearme(uint32_t now_ms);
+    // Restaura um bloqueio persistido (glue: NVS) apos reset/queda de energia: um contator colado ou
+    // falha de partida NAO pode ser "resolvido" desligando e ligando a TON — so' por rearme().
+    void bloquear(const char* motivo, uint32_t now);
     void setOnline(bool online) { _online = online; }
     bool online() const { return _online; }
     bool otaPermitida() const { return _st == OCIOSA || _st == BLOQUEADA; }
@@ -6654,6 +6671,13 @@ void Maquina::rearme(uint32_t now) {
     if (_ouv) _ouv->aoEvento("rearme", _motivo_bloq, "", "");
     _motivo_bloq[0] = 0;
     _ir(OCIOSA, now);
+}
+
+void Maquina::bloquear(const char* motivo, uint32_t now) {
+    if (_st == BLOQUEADA) return;
+    _cp(_motivo_bloq, MOTIVO_LEN, (motivo && motivo[0]) ? motivo : "restaurado");
+    _uid[0] = _mat[0] = 0; _val = VAL_NENHUMA;
+    _ir(BLOQUEADA, now);
 }
 
 void Maquina::tick(uint32_t now, const Entradas& in) {
