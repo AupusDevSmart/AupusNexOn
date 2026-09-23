@@ -8,8 +8,9 @@
 //  - mensagens vao para segmentos /q/NNNNNNNN.txt de ate SDQ_SEG_MAX bytes (so' append);
 //  - um PONTEIRO de leitura (segmento, deslocamento) fica no NVS numa UNICA chave de 64 bits
 //    (escrita atomica: queda de energia mantem o valor anterior);
-//  - o ponteiro so' avanca DEPOIS do lote publicado -> entrega "pelo menos uma vez":
-//    queda no meio pode reenviar ate um lote, nunca perder;
+//  - o ponteiro so' avanca DEPOIS do lote publicado e e' gravado a cada SDQ_SAVE_EVERY lotes
+//    (ou no fim de um segmento, ou antes de reiniciar): poupa a flash; queda de energia pode
+//    reenviar ate SDQ_SAVE_EVERY lotes, nunca perder (entrega "pelo menos uma vez");
 //  - segmento lido ate o fim e' apagado so' depois do ponteiro avancar;
 //  - linha incompleta (queda no meio da gravacao) e' descartada, nunca emendada na proxima;
 //  - pendentes = contador em memoria; a contagem inicial roda em fatias (sd_buffer_tick);
@@ -26,6 +27,7 @@
 
 #ifdef SDQ_HOST
 #include "sdq_host_shim.h"
+#define SDQ_EVENT(m) ((void)0)
 #else
 #include "hal.h"
 #include "diag.h"
@@ -35,6 +37,8 @@
 #include <Preferences.h>
 #include <esp_task_wdt.h>
 #define SDQ_WDT() esp_task_wdt_reset()
+#include "blackbox.h"
+#define SDQ_EVENT(m) bb_log("%s", m)
 static SPIClass _spiSD(HSPI);
 static bool _sdMountHw() {
     _spiSD.begin(SPI1_SCLK_PIN, SPI1_MISO_PIN, SPI1_MOSI_PIN, SD_CS);
@@ -55,6 +59,7 @@ static void _sdUnmountHw() { SD.end(); }
 #define SDQ_FAILS_TO_OFF    3
 #define SDQ_LINE_MAX        1400
 #define SDQ_DIR            "/q"
+#define SDQ_SAVE_EVERY     3
 #define SDQ_NL             ((char)10)
 #define SDQ_TAB            ((char)9)
 
@@ -75,6 +80,7 @@ static uint8_t  _fails = 0;
 static unsigned long _lastMount = 0;
 static uint32_t _discarded = 0;
 static char     _line[SDQ_LINE_MAX + 1];
+static uint8_t  _unsaved = 0;             // lotes com avanco ainda nao gravado no NVS
 
 static void _path(uint32_t seg, char* out, size_t n) { snprintf(out, n, SDQ_DIR "/%08lu.txt", (unsigned long)seg); }
 
@@ -146,6 +152,7 @@ static void _markFail(const char* what) {
         _ready = false; _st = SDQ_FAIL; diag_sd_available = false;
         _lastMount = millis();
         _sdUnmountHw();
+        SDQ_EVENT("sd: cartao em falha, desativado");
     }
 }
 
@@ -266,6 +273,7 @@ static bool _dropOldest() {
     SD.remove(p);
     _total = (_total > sz) ? _total - sz : 0;
     _discarded += (uint32_t)lines;
+    SDQ_EVENT("sd: cheio, descartou segmento antigo");
     if (_rec) _startRecount(); else _pendAdd(-lines);
     Serial.printf("[SD-BUF] cartao cheio: segmento %lu descartado (%ld mensagens antigas)", (unsigned long)old, (long)lines);
     Serial.println();
@@ -310,7 +318,7 @@ void sd_buffer_tick() {
             _lastMount = now;
             Serial.println("[SD-BUF] tentando remontar o cartao...");
             _sdUnmountHw();
-            if (_open()) { Serial.println("[SD-BUF] cartao de volta"); }
+            if (_open()) { Serial.println("[SD-BUF] cartao de volta"); SDQ_EVENT("sd: cartao remontado"); }
             else { _st = SDQ_FAIL; diag_sd_available = false; _sdUnmountHw(); }
         }
         return;
@@ -390,7 +398,7 @@ int sd_buffer_drain(sd_buffer_publish_fn publish_fn, int max_send) {
         if (segFim && _rseg < _wseg) {
             uint32_t old = _rseg;
             _rseg = _nextSeg(_rseg); _roff = 0;
-            _savePtr(); moved = false;               // ponteiro antes de apagar
+            _savePtr(); _unsaved = 0; moved = false; // ponteiro antes de apagar
             char op[32]; _path(old, op, sizeof(op));
             SD.remove(op);
             _total = (_total > size) ? _total - size : 0;
@@ -398,12 +406,36 @@ int sd_buffer_drain(sd_buffer_publish_fn publish_fn, int max_send) {
             break;                                   // alcancou o fim da escrita
         }
     }
-    if (moved) _savePtr();
+    if (moved && ++_unsaved >= SDQ_SAVE_EVERY) { _savePtr(); _unsaved = 0; }
     if (sent > 0) {
         Serial.printf("[SD-BUF] %d reenviadas (pendentes: %d)", sent, sd_buffer_pending());
         Serial.println();
     }
     return sent;
+}
+
+void sd_buffer_flush() {
+    if (_unsaved && _ready) { _savePtr(); _unsaved = 0; }
+}
+
+bool sd_buffer_wipe() {
+    if (!_ready) { _sdUnmountHw(); if (!_sdMountHw()) return false; }
+    uint32_t mn, mx; uint64_t tot; bool any;
+    if (_scan(&mn, &mx, &tot, &any) && any) {
+        for (uint32_t s = mn; s <= mx; s++) {
+            char p[32]; _path(s, p, sizeof(p));
+            if (SD.exists(p)) SD.remove(p);
+            SDQ_WDT();
+        }
+    }
+    if (SD.exists("/mqtt_buf.txt")) SD.remove("/mqtt_buf.txt");
+    if (SD.exists("/mqtt_buf.tmp")) SD.remove("/mqtt_buf.tmp");
+    _rseg = 0; _roff = 0; _savePtr(); _unsaved = 0;
+    _sdUnmountHw();
+    bool ok = _open();
+    if (ok) { _pend = 0; _rec = false; }
+    SDQ_EVENT(ok ? "sd: fila apagada por comando" : "sd: limpar falhou (cartao nao monta)");
+    return ok;
 }
 
 #ifdef SDQ_HOST
@@ -412,6 +444,6 @@ void sdq_host_reboot() {
     _st = SDQ_NOCARD; _ready = false; _everMounted = false;
     _rseg = _roff = _wseg = _wsize = _minSeg = 0; _total = 0; _pend = 0;
     _rec = false; _recSeg = _recOff = _recEndSeg = _recEndOff = 0; _recCount = _recDelta = 0;
-    _fails = 0; _lastMount = 0; _discarded = 0;
+    _fails = 0; _lastMount = 0; _discarded = 0; _unsaved = 0;
 }
 #endif

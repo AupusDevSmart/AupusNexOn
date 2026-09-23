@@ -198,6 +198,11 @@ check('caso F: lib embutida == fonte canonica (bomba_posto.cpp)', fF['src/bomba_
 const sdqLib = join(HERE, '..', 'firmware-libs', 'sd_queue');
 check('fila SD: sd_buffer.cpp embutido == fonte canonica', fF['src/sd_buffer.cpp'] === readFileSync(join(sdqLib, 'sd_buffer.cpp'), 'utf8'));
 check('fila SD: sd_buffer.h embutido == fonte canonica', fF['include/sd_buffer.h'] === readFileSync(join(sdqLib, 'sd_buffer.h'), 'utf8'));
+const bbLib = join(HERE, '..', 'firmware-libs', 'blackbox');
+check('caixa-preta: blackbox.cpp embutido == fonte canonica', fF['src/blackbox.cpp'] === readFileSync(join(bbLib, 'blackbox.cpp'), 'utf8'));
+check('caixa-preta: blackbox.h embutido == fonte canonica', fF['include/blackbox.h'] === readFileSync(join(bbLib, 'blackbox.h'), 'utf8'));
+check('posto: reles NAO restauram em reinicio (fail-safe)', has(fF, 'include/config.h', '#define RELAYS_RESTORE_ON_SW_RESET 0'));
+check('caso B (sem posto): reles restauram em reinicio por software', has(fB, 'include/config.h', '#define RELAYS_RESTORE_ON_SW_RESET 1'));
 check('caso F: glue le BI por papel com polaridade NF', has(fF, 'src/bomba.cpp', 'in.emergencia       = !((st >> 2) & 1);') && has(fF, 'src/bomba.cpp', 'in.contator         = ((st >> 0) & 1);'));
 check('caso F: fail-closed: BOMBA_MAT_LIVRE 0 por padrao + aviso de lista sem matriculas', has(fF, 'src/bomba.cpp', 'BOMBA_MAT_LIVRE        0') && has(fF, 'src/bomba.cpp', 'fail-closed'));
 check('caso F: parametros de bancada no config (fluxo parado 10 s, timeout 30 s)', has(fF, 'src/bomba.cpp', 'BOMBA_FLUXO_PARADO_MS  10000UL') && has(fF, 'src/bomba.cpp', 'BOMBA_TEMPO_MAX_MS     30000UL'));

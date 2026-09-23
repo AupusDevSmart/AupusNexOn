@@ -2,6 +2,20 @@
 #include <Wire.h>
 #include <Adafruit_MCP23X08.h>
 #include "hal.h"
+// Estado dos reles preservado em reinicio por SOFTWARE (watchdog, panic, reinicio automatico
+// ou por comando): um reinicio da TON nao pode desligar um rele ligado por comando. Em
+// queda de energia (power-on/brownout) tudo comeca desligado, como sempre. Projetos com
+// posto/pivo/carregador NAO restauram (RELAYS_RESTORE_ON_SW_RESET 0): esses modulos
+// comecam desligados por seguranca.
+#include "config.h"
+#include "blackbox.h"
+#include <esp_system.h>
+#include <esp_attr.h>
+#ifndef RELAYS_RESTORE_ON_SW_RESET
+#define RELAYS_RESTORE_ON_SW_RESET 0
+#endif
+RTC_NOINIT_ATTR static uint32_t _rtcRelMagic;
+RTC_NOINIT_ATTR static uint8_t  _rtcRelState;
 
 #define MCP_OUT_ADDR 0x27
 #define RELAY_COUNT  6
@@ -58,6 +72,7 @@ static void _i2cBusClear() {
 extern bool inputs_init();
 static bool _recuperar() {
     diag_i2c_resets++;
+    bb_log("i2c: recuperando barramento/MCP");
     Serial.println("[I2C] escrita de rele nao conferiu - recuperando o barramento e os MCP");
     _i2cBusClear();
     inputs_init();                           // MCP de entradas (pull-ups) caso tenha resetado
@@ -71,6 +86,7 @@ static bool _recuperar() {
     if (ok != !_ioFault) {
         _ioFault = !ok;
         Serial.println(ok ? "[I2C] reles de volta ao estado desejado" : "[I2C] FALHA: reles sem controle (io_falha)");
+        bb_log(ok ? "i2c: reles recuperados" : "i2c: FALHA reles sem controle");
     }
     return ok;
 }
@@ -91,6 +107,18 @@ bool relays_init() {
         _mcp.digitalWrite(i, LOW);
     }
     _ok = true;
+#if RELAYS_RESTORE_ON_SW_RESET
+    {
+        esp_reset_reason_t r = esp_reset_reason();
+        if (_rtcRelMagic == 0x52454C53UL && r != ESP_RST_POWERON && r != ESP_RST_BROWNOUT && _rtcRelState) {
+            _state = _rtcRelState;
+            for (uint8_t n = 1; n <= RELAY_COUNT; n++)
+                if ((_state >> _bitOf(n)) & 1) _mcp.digitalWrite(_pinOf(n), HIGH);
+            bb_log("reles restaurados apos reinicio (%02X)", (unsigned)_state);
+        }
+    }
+#endif
+    _rtcRelMagic = 0x52454C53UL; _rtcRelState = _state;
     return true;
 }
 
@@ -99,6 +127,7 @@ void relay_set(uint8_t num, bool state) {
     // estado DESEJADO primeiro: a recuperacao reaplica o que se quer, nao o que se leu
     if (state) _state |= (1 << _bitOf(num)); else _state &= ~(1 << _bitOf(num));
     _mcp.digitalWrite(_pinOf(num), state ? HIGH : LOW);
+    _rtcRelState = _state;
     if (!_conferir()) _recuperar();
 }
 

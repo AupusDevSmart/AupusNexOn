@@ -60,6 +60,7 @@ extern char MQTT_CLIENT_ID[20];
 #define MQTT_TOPIC_OUTPUTS  MQTT_TOPIC_BASE "/outputs"
 #define MQTT_TOPIC_METER    MQTT_TOPIC_BASE "/meter"
 #define MQTT_BUFFER_SIZE    4096
+#define RELAYS_RESTORE_ON_SW_RESET 1   // reinicio por software mantem reles de comando
 #define DIAG_INTERVAL_MS    60000   // publica diagnostico a cada 60s
 #define MQTT_STATUS_MS      60000
 #define OTA_DOWNLOAD_TIMEOUT_MS 60000

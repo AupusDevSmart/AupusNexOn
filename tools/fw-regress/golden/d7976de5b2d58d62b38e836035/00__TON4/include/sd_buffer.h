@@ -32,4 +32,11 @@ void sd_buffer_tick();
 const char* sd_buffer_state();
 uint32_t sd_buffer_discarded();
 
+// Grava o ponteiro de leitura se houver avanco nao salvo (chamar antes de reiniciar).
+void sd_buffer_flush();
+
+// Comando remoto "sd limpar confirmo": apaga a fila (e arquivos da versao antiga), zera o
+// ponteiro e remonta o cartao. Resolve arquivo corrompido; NAO formata o cartao.
+bool sd_buffer_wipe();
+
 #endif

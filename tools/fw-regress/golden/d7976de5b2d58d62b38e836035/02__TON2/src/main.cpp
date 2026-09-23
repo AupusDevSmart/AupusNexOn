@@ -16,6 +16,7 @@
 #include "sd_buffer.h"
 #include "diag.h"
 #include "eth.h"
+#include "blackbox.h"
 #include "mqtt.h"
 #include "ota.h"
 #include "lora.h"
@@ -100,6 +101,19 @@ static bool _process_command_inner(const char* raw, char* result_msg, size_t msg
         if (mqtt_conn_age_ms() < 20000UL) { snprintf(result_msg, msg_sz, "reboot_ignorado_recem_conectado"); return false; }
         mqtt_request_restart("comando", 2000);
         snprintf(result_msg, msg_sz, "reiniciando_em_2s");
+        return true;
+    }
+    // Cartao SD: "sd limpar confirmo" apaga a fila e remonta (arquivo corrompido). Nao formata.
+    if (cmd == "sd limpar confirmo") {
+        bool ok = sd_buffer_wipe();
+        snprintf(result_msg, msg_sz, ok ? "sd_fila_apagada" : "sd_nao_monta");
+        return ok;
+    }
+    if (cmd == "sd limpar") { snprintf(result_msg, msg_sz, "confirme_com_sd_limpar_confirmo"); return false; }
+    // Caixa-preta: publica o anel inteiro em <base>/log
+    if (cmd == "log") {
+        int n = bb_publish(mqtt_publish_raw, MQTT_TOPIC_BASE, false);
+        snprintf(result_msg, msg_sz, "log_%d_eventos", n);
         return true;
     }
 
@@ -1025,6 +1039,7 @@ static inline void feedWatchdog() { esp_task_wdt_reset(); }
 void setup() {
     Serial.begin(115200);
     delay(2000);
+    bb_init();   // caixa-preta: eventos e etapa do laco persistem entre reinicios
     Serial.printf("\n  %s v%s - %s\n", DEVICE_ID, FIRMWARE_VERSION, DEVICE_MODEL);
     Serial.println("  [BOOT] RS485-fix v1.1: drain RX, flush preTx, retry 0xE0, delays 80/1000us");
     Serial.println("  [BOOT] MQTT-fix v1.2: setKeepAlive(60), setSocketTimeout(8), mqtt_loop entre blocos");
@@ -1090,6 +1105,7 @@ void loop() {
     esp_task_wdt_reset();
     diag_tick();  // atualiza min_free_heap a cada loop
     unsigned long now = millis();
+    bb_stage(BB_REDE);
     mqtt_loop();
     diag_publish_periodic();  // publica MQTT_TOPIC_BASE/diagnostics a cada DIAG_INTERVAL_MS
 
@@ -1102,6 +1118,7 @@ void loop() {
     // periodico de ${MQTT_STATUS_MS}ms que poluia o broker com publicacoes redundantes.
     if (now - last_input_scan >= INPUT_SCAN_MS) {
         last_input_scan = now;
+        bb_stage(BB_ENTRADAS);
         inputs_scan();
 
         static bool _io_force = true;        // forca publicacao inicial (boot)

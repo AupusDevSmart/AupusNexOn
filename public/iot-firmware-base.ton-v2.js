@@ -238,6 +238,20 @@ void relays_health_tick();
 #include <Wire.h>
 #include <Adafruit_MCP23X08.h>
 #include "hal.h"
+// Estado dos reles preservado em reinicio por SOFTWARE (watchdog, panic, reinicio automatico
+// ou por comando): um reinicio da TON nao pode desligar um rele ligado por comando. Em
+// queda de energia (power-on/brownout) tudo comeca desligado, como sempre. Projetos com
+// posto/pivo/carregador NAO restauram (RELAYS_RESTORE_ON_SW_RESET 0): esses modulos
+// comecam desligados por seguranca.
+#include "config.h"
+#include "blackbox.h"
+#include <esp_system.h>
+#include <esp_attr.h>
+#ifndef RELAYS_RESTORE_ON_SW_RESET
+#define RELAYS_RESTORE_ON_SW_RESET 0
+#endif
+RTC_NOINIT_ATTR static uint32_t _rtcRelMagic;
+RTC_NOINIT_ATTR static uint8_t  _rtcRelState;
 
 #define MCP_OUT_ADDR 0x27
 #define RELAY_COUNT  8
@@ -294,6 +308,7 @@ static void _i2cBusClear() {
 extern bool inputs_init();
 static bool _recuperar() {
     diag_i2c_resets++;
+    bb_log("i2c: recuperando barramento/MCP");
     Serial.println("[I2C] escrita de rele nao conferiu - recuperando o barramento e os MCP");
     _i2cBusClear();
     inputs_init();                           // MCP de entradas (pull-ups) caso tenha resetado
@@ -307,6 +322,7 @@ static bool _recuperar() {
     if (ok != !_ioFault) {
         _ioFault = !ok;
         Serial.println(ok ? "[I2C] reles de volta ao estado desejado" : "[I2C] FALHA: reles sem controle (io_falha)");
+        bb_log(ok ? "i2c: reles recuperados" : "i2c: FALHA reles sem controle");
     }
     return ok;
 }
@@ -328,6 +344,18 @@ bool relays_init() {
         _mcp.digitalWrite(i, LOW);
     }
     _ok = true;
+#if RELAYS_RESTORE_ON_SW_RESET
+    {
+        esp_reset_reason_t r = esp_reset_reason();
+        if (_rtcRelMagic == 0x52454C53UL && r != ESP_RST_POWERON && r != ESP_RST_BROWNOUT && _rtcRelState) {
+            _state = _rtcRelState;
+            for (uint8_t n = 1; n <= RELAY_COUNT; n++)
+                if ((_state >> _bitOf(n)) & 1) _mcp.digitalWrite(_pinOf(n), HIGH);
+            bb_log("reles restaurados apos reinicio (%02X)", (unsigned)_state);
+        }
+    }
+#endif
+    _rtcRelMagic = 0x52454C53UL; _rtcRelState = _state;
     return true;
 }
 
@@ -336,6 +364,7 @@ void relay_set(uint8_t num, bool state) {
     // estado DESEJADO primeiro: a recuperacao reaplica o que se quer, nao o que se leu
     if (state) _state |= (1 << _bitOf(num)); else _state &= ~(1 << _bitOf(num));
     _mcp.digitalWrite(_pinOf(num), state ? HIGH : LOW);
+    _rtcRelState = _state;
     if (!_conferir()) _recuperar();
 }
 
@@ -932,6 +961,13 @@ void sd_buffer_tick();
 const char* sd_buffer_state();
 uint32_t sd_buffer_discarded();
 
+// Grava o ponteiro de leitura se houver avanco nao salvo (chamar antes de reiniciar).
+void sd_buffer_flush();
+
+// Comando remoto "sd limpar confirmo": apaga a fila (e arquivos da versao antiga), zera o
+// ponteiro e remonta o cartao. Resolve arquivo corrompido; NAO formata o cartao.
+bool sd_buffer_wipe();
+
 #endif
 `,
 
@@ -949,8 +985,9 @@ uint32_t sd_buffer_discarded();
 //  - mensagens vao para segmentos /q/NNNNNNNN.txt de ate SDQ_SEG_MAX bytes (so' append);
 //  - um PONTEIRO de leitura (segmento, deslocamento) fica no NVS numa UNICA chave de 64 bits
 //    (escrita atomica: queda de energia mantem o valor anterior);
-//  - o ponteiro so' avanca DEPOIS do lote publicado -> entrega "pelo menos uma vez":
-//    queda no meio pode reenviar ate um lote, nunca perder;
+//  - o ponteiro so' avanca DEPOIS do lote publicado e e' gravado a cada SDQ_SAVE_EVERY lotes
+//    (ou no fim de um segmento, ou antes de reiniciar): poupa a flash; queda de energia pode
+//    reenviar ate SDQ_SAVE_EVERY lotes, nunca perder (entrega "pelo menos uma vez");
 //  - segmento lido ate o fim e' apagado so' depois do ponteiro avancar;
 //  - linha incompleta (queda no meio da gravacao) e' descartada, nunca emendada na proxima;
 //  - pendentes = contador em memoria; a contagem inicial roda em fatias (sd_buffer_tick);
@@ -967,6 +1004,7 @@ uint32_t sd_buffer_discarded();
 
 #ifdef SDQ_HOST
 #include "sdq_host_shim.h"
+#define SDQ_EVENT(m) ((void)0)
 #else
 #include "hal.h"
 #include "diag.h"
@@ -976,6 +1014,8 @@ uint32_t sd_buffer_discarded();
 #include <Preferences.h>
 #include <esp_task_wdt.h>
 #define SDQ_WDT() esp_task_wdt_reset()
+#include "blackbox.h"
+#define SDQ_EVENT(m) bb_log("%s", m)
 static SPIClass _spiSD(HSPI);
 static bool _sdMountHw() {
     _spiSD.begin(SPI1_SCLK_PIN, SPI1_MISO_PIN, SPI1_MOSI_PIN, SD_CS);
@@ -996,6 +1036,7 @@ static void _sdUnmountHw() { SD.end(); }
 #define SDQ_FAILS_TO_OFF    3
 #define SDQ_LINE_MAX        1400
 #define SDQ_DIR            "/q"
+#define SDQ_SAVE_EVERY     3
 #define SDQ_NL             ((char)10)
 #define SDQ_TAB            ((char)9)
 
@@ -1016,6 +1057,7 @@ static uint8_t  _fails = 0;
 static unsigned long _lastMount = 0;
 static uint32_t _discarded = 0;
 static char     _line[SDQ_LINE_MAX + 1];
+static uint8_t  _unsaved = 0;             // lotes com avanco ainda nao gravado no NVS
 
 static void _path(uint32_t seg, char* out, size_t n) { snprintf(out, n, SDQ_DIR "/%08lu.txt", (unsigned long)seg); }
 
@@ -1087,6 +1129,7 @@ static void _markFail(const char* what) {
         _ready = false; _st = SDQ_FAIL; diag_sd_available = false;
         _lastMount = millis();
         _sdUnmountHw();
+        SDQ_EVENT("sd: cartao em falha, desativado");
     }
 }
 
@@ -1207,6 +1250,7 @@ static bool _dropOldest() {
     SD.remove(p);
     _total = (_total > sz) ? _total - sz : 0;
     _discarded += (uint32_t)lines;
+    SDQ_EVENT("sd: cheio, descartou segmento antigo");
     if (_rec) _startRecount(); else _pendAdd(-lines);
     Serial.printf("[SD-BUF] cartao cheio: segmento %lu descartado (%ld mensagens antigas)", (unsigned long)old, (long)lines);
     Serial.println();
@@ -1251,7 +1295,7 @@ void sd_buffer_tick() {
             _lastMount = now;
             Serial.println("[SD-BUF] tentando remontar o cartao...");
             _sdUnmountHw();
-            if (_open()) { Serial.println("[SD-BUF] cartao de volta"); }
+            if (_open()) { Serial.println("[SD-BUF] cartao de volta"); SDQ_EVENT("sd: cartao remontado"); }
             else { _st = SDQ_FAIL; diag_sd_available = false; _sdUnmountHw(); }
         }
         return;
@@ -1331,7 +1375,7 @@ int sd_buffer_drain(sd_buffer_publish_fn publish_fn, int max_send) {
         if (segFim && _rseg < _wseg) {
             uint32_t old = _rseg;
             _rseg = _nextSeg(_rseg); _roff = 0;
-            _savePtr(); moved = false;               // ponteiro antes de apagar
+            _savePtr(); _unsaved = 0; moved = false; // ponteiro antes de apagar
             char op[32]; _path(old, op, sizeof(op));
             SD.remove(op);
             _total = (_total > size) ? _total - size : 0;
@@ -1339,12 +1383,36 @@ int sd_buffer_drain(sd_buffer_publish_fn publish_fn, int max_send) {
             break;                                   // alcancou o fim da escrita
         }
     }
-    if (moved) _savePtr();
+    if (moved && ++_unsaved >= SDQ_SAVE_EVERY) { _savePtr(); _unsaved = 0; }
     if (sent > 0) {
         Serial.printf("[SD-BUF] %d reenviadas (pendentes: %d)", sent, sd_buffer_pending());
         Serial.println();
     }
     return sent;
+}
+
+void sd_buffer_flush() {
+    if (_unsaved && _ready) { _savePtr(); _unsaved = 0; }
+}
+
+bool sd_buffer_wipe() {
+    if (!_ready) { _sdUnmountHw(); if (!_sdMountHw()) return false; }
+    uint32_t mn, mx; uint64_t tot; bool any;
+    if (_scan(&mn, &mx, &tot, &any) && any) {
+        for (uint32_t s = mn; s <= mx; s++) {
+            char p[32]; _path(s, p, sizeof(p));
+            if (SD.exists(p)) SD.remove(p);
+            SDQ_WDT();
+        }
+    }
+    if (SD.exists("/mqtt_buf.txt")) SD.remove("/mqtt_buf.txt");
+    if (SD.exists("/mqtt_buf.tmp")) SD.remove("/mqtt_buf.tmp");
+    _rseg = 0; _roff = 0; _savePtr(); _unsaved = 0;
+    _sdUnmountHw();
+    bool ok = _open();
+    if (ok) { _pend = 0; _rec = false; }
+    SDQ_EVENT(ok ? "sd: fila apagada por comando" : "sd: limpar falhou (cartao nao monta)");
+    return ok;
 }
 
 #ifdef SDQ_HOST
@@ -1353,9 +1421,206 @@ void sdq_host_reboot() {
     _st = SDQ_NOCARD; _ready = false; _everMounted = false;
     _rseg = _roff = _wseg = _wsize = _minSeg = 0; _total = 0; _pend = 0;
     _rec = false; _recSeg = _recOff = _recEndSeg = _recEndOff = 0; _recCount = _recDelta = 0;
-    _fails = 0; _lastMount = 0; _discarded = 0;
+    _fails = 0; _lastMount = 0; _discarded = 0; _unsaved = 0;
 }
 #endif
+`,
+
+// ================================================================
+// caixa-preta (firmware-libs/blackbox)
+// ================================================================
+'include/blackbox.h': `#ifndef BLACKBOX_H
+#define BLACKBOX_H
+#include <stdint.h>
+
+// CAIXA-PRETA da TON (plano anti-travamento, 2026-09-23). Fonte canonica:
+// AupusNexOn/firmware-libs/blackbox/ (as bases V1 e V2 embutem copia identica).
+//  - anel dos ultimos 40 eventos em memoria RTC (sobrevive a reinicio/watchdog/panic);
+//  - os ultimos 16 sao copiados no NVS no maximo a cada 15 min, no boot e antes de todo
+//    reinicio pedido pelo firmware (sobrevive a quem tira da tomada);
+//  - guarda a ETAPA do laco em execucao: depois de um watchdog, diz onde a TON travou;
+//  - publicado em <base>/log ao reconectar (so' o que ainda nao foi) e pelo comando "log".
+
+void bb_init();                                   // cedo no setup (depois do Serial)
+void bb_log(const char* fmt, ...);                // evento curto (ate 43 caracteres)
+void bb_stage(uint8_t etapa);                     // marca a etapa atual do laco
+void bb_flush();                                  // grava no NVS o que estiver pendente
+const char* bb_stage_name(uint8_t etapa);
+
+enum BbEtapa : uint8_t {
+    BB_INICIO = 0, BB_REDE = 1, BB_ENTRADAS = 2, BB_MODBUS_RTU = 3, BB_PUBLICACAO = 4,
+    BB_MODBUS_TCP = 5, BB_POSTO = 6, BB_SD = 7, BB_OTA = 8, BB_OUTROS = 9
+};
+
+typedef bool (*bb_publish_fn)(const char* topic, const char* payload);
+// so_novos: true = so' eventos ainda nao publicados; false = o anel inteiro. Retorna quantos.
+int bb_publish(bb_publish_fn pub, const char* topic_base, bool so_novos);
+
+#endif
+`,
+
+'src/blackbox.cpp': `// blackbox.cpp — ver blackbox.h. Sem barra invertida/crase/cifrao-chave: embutido
+// literalmente num template JS das bases do gerador.
+#include "blackbox.h"
+#include <Arduino.h>
+#include <ArduinoJson.h>
+#include <Preferences.h>
+#include <esp_system.h>
+#include <esp_attr.h>
+#include <time.h>
+#include <stdarg.h>
+#include <string.h>
+
+#define BB_N          40
+#define BB_MSG        44
+#define BB_NVS_N      16
+#define BB_MAGIC      0x42424F58UL
+#define BB_NVS_MIN_MS 900000UL
+#define BB_PAGE       10
+
+struct BbEntry { uint32_t seq; uint32_t epoch; uint32_t up; char msg[BB_MSG]; };
+struct BbRtc {
+    uint32_t magic, seq, sent, boots;
+    uint8_t  stage, pad[3];
+    BbEntry  e[BB_N];
+};
+RTC_NOINIT_ATTR static BbRtc _bb;
+static uint8_t  _stageAtReset = 0;
+static const char* _resetTxt = "?";
+static unsigned long _lastNvs = 0;
+static bool _dirty = false;
+static bool _ok = false;
+
+static const char* const _stages[] = {
+    "inicio", "rede_mqtt", "entradas", "modbus_rtu", "publicacao",
+    "modbus_tcp", "posto", "sd", "ota", "outros"
+};
+const char* bb_stage_name(uint8_t s) { return s < 10 ? _stages[s] : "?"; }
+
+static const char* _resetName(esp_reset_reason_t r) {
+    switch (r) {
+        case ESP_RST_POWERON:  return "Power-on";
+        case ESP_RST_SW:       return "Software";
+        case ESP_RST_PANIC:    return "Panic";
+        case ESP_RST_INT_WDT:
+        case ESP_RST_TASK_WDT:
+        case ESP_RST_WDT:      return "Watchdog";
+        case ESP_RST_BROWNOUT: return "Brownout";
+        case ESP_RST_DEEPSLEEP: return "DeepSleep";
+        default:               return "Unknown";
+    }
+}
+
+static void _nvsSave() {
+    Preferences p;
+    if (!p.begin("bb", false)) return;
+    BbEntry tmp[BB_NVS_N];
+    memset(tmp, 0, sizeof(tmp));
+    int k = 0;
+    uint32_t from = (_bb.seq > BB_NVS_N) ? _bb.seq - BB_NVS_N + 1 : 1;
+    for (uint32_t s = from; s <= _bb.seq && k < BB_NVS_N; s++) {
+        const BbEntry& e = _bb.e[s % BB_N];
+        if (e.seq == s) tmp[k++] = e;
+    }
+    p.putBytes("ev", tmp, sizeof(tmp));
+    p.putULong("seq", _bb.seq);
+    p.putULong("sent", _bb.sent);
+    p.putULong("boots", _bb.boots);
+    p.end();
+    _lastNvs = millis();
+    _dirty = false;
+}
+
+static void _nvsLoad() {
+    Preferences p;
+    if (!p.begin("bb", true)) return;
+    _bb.seq = p.getULong("seq", 0);
+    _bb.sent = p.getULong("sent", 0);
+    _bb.boots = p.getULong("boots", 0);
+    BbEntry tmp[BB_NVS_N];
+    memset(tmp, 0, sizeof(tmp));
+    if (p.getBytesLength("ev") == sizeof(tmp)) p.getBytes("ev", tmp, sizeof(tmp));
+    p.end();
+    for (int i = 0; i < BB_NVS_N; i++) {
+        if (tmp[i].seq == 0) continue;
+        tmp[i].msg[BB_MSG - 1] = 0;
+        _bb.e[tmp[i].seq % BB_N] = tmp[i];
+    }
+}
+
+void bb_init() {
+    esp_reset_reason_t r = esp_reset_reason();
+    _resetTxt = _resetName(r);
+    bool rtcOk = (_bb.magic == BB_MAGIC) && r != ESP_RST_POWERON && r != ESP_RST_BROWNOUT;
+    if (!rtcOk) {
+        memset(&_bb, 0, sizeof(_bb));
+        _bb.magic = BB_MAGIC;
+        _nvsLoad();                                  // tirou da tomada: recupera do NVS
+    }
+    _stageAtReset = _bb.stage;
+    _bb.boots++;
+    _bb.stage = BB_INICIO;
+    _ok = true;
+    bool travou = (r == ESP_RST_TASK_WDT || r == ESP_RST_INT_WDT || r == ESP_RST_WDT || r == ESP_RST_PANIC);
+    if (travou) bb_log("boot %lu %s etapa=%s", (unsigned long)_bb.boots, _resetTxt, bb_stage_name(_stageAtReset));
+    else        bb_log("boot %lu %s", (unsigned long)_bb.boots, _resetTxt);
+    _nvsSave();
+}
+
+void bb_log(const char* fmt, ...) {
+    if (!_ok) return;
+    _bb.seq++;
+    BbEntry& e = _bb.e[_bb.seq % BB_N];
+    e.seq = _bb.seq;
+    time_t now = time(nullptr);
+    e.epoch = (now > 1700000000) ? (uint32_t)now : 0;
+    e.up = (uint32_t)(millis() / 1000UL);
+    va_list a; va_start(a, fmt);
+    vsnprintf(e.msg, sizeof(e.msg), fmt, a);
+    va_end(a);
+    for (char* c = e.msg; *c; c++) if (*c == 34 || *c == 92 || *c < 32) *c = 39;   // aspas/barra/controle -> apostrofo
+    Serial.printf("[BB] %s", e.msg);
+    Serial.println();
+    _dirty = true;
+    if (millis() - _lastNvs > BB_NVS_MIN_MS) _nvsSave();
+}
+
+void bb_stage(uint8_t s) { _bb.stage = s; }
+
+void bb_flush() { if (_ok && _dirty) _nvsSave(); }
+
+int bb_publish(bb_publish_fn pub, const char* topic_base, bool so_novos) {
+    if (!_ok || !pub || !topic_base) return 0;
+    uint32_t primeiro = (_bb.seq >= BB_N) ? _bb.seq - BB_N + 1 : 1;
+    if (so_novos && _bb.sent + 1 > primeiro) primeiro = _bb.sent + 1;
+    if (primeiro > _bb.seq) return 0;
+    char topic[160];
+    snprintf(topic, sizeof(topic), "%s/log", topic_base);
+    int total = 0;
+    uint32_t s = primeiro;
+    while (s <= _bb.seq) {
+        StaticJsonDocument<2048> doc;
+        doc["boot"] = _bb.boots;
+        doc["reset"] = _resetTxt;
+        doc["etapa_no_reset"] = bb_stage_name(_stageAtReset);
+        JsonArray ev = doc.createNestedArray("ev");
+        int n = 0;
+        for (; s <= _bb.seq && n < BB_PAGE; s++) {
+            const BbEntry& e = _bb.e[s % BB_N];
+            if (e.seq != s) continue;
+            JsonArray x = ev.createNestedArray();
+            x.add(e.seq); x.add(e.epoch); x.add(e.up); x.add(e.msg);
+            n++;
+        }
+        if (n == 0) continue;
+        char buf[2048];
+        if (serializeJson(doc, buf, sizeof(buf)) == 0) break;
+        if (!pub(topic, buf)) return total;          // broker caiu: o resto vai na proxima
+        total += n;
+        if (so_novos) { _bb.sent = s - 1; _dirty = true; }
+    }
+    return total;
+}
 `,
 
 };

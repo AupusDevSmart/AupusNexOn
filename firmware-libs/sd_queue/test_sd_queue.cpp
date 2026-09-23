@@ -76,7 +76,7 @@ int main() {
     g_nvs = nvsAntes;                            // ...mas a energia caiu antes de salvar o ponteiro
     boot(); drain_all();
     bool ok3; int dup3 = check_atleastonce(100, &ok3);
-    CHECK(ok3 && dup3 <= 5, "3 queda durante drenagem: todas as 100 chegam, no maximo 5 repetidas");
+    CHECK(ok3 && dup3 <= 15, "3 queda durante drenagem: todas as 100 chegam, no maximo 3 lotes (15) repetidos");
 
     // 4) Queda de energia NO MEIO de uma gravacao: linha incompleta nao contamina a proxima
     reset_all(); boot();
@@ -138,6 +138,7 @@ int main() {
     reset_all(); boot();
     for (int i = 0; i < 700; i++) sd_buffer_store("t/a", msg(i).c_str());
     for (int k = 0; k < 20; k++) sd_buffer_drain(pubOk, 5);    // 100 sairam
+    sd_buffer_flush();                                          // reinicio ordenado (pedido pelo firmware)
     sdq_host_reboot(); sd_buffer_init();
     CHECK(sd_buffer_pending() >= 1, "9a logo apos o boot ja indica que ha fila");
     for (int i = 0; i < 5000; i++) { sd_buffer_tick(); g_millis += 25; }
@@ -147,15 +148,33 @@ int main() {
 
     // 10) Gravacao e drenagem intercaladas (TON online/offline alternando)
     reset_all(); boot();
-    int w = 0;
+    int w = 0, quedas = 0;
     for (int ciclo = 0; ciclo < 50; ciclo++) {
         for (int k = 0; k < 7; k++) { sd_buffer_store("t/a", msg(w).c_str()); w++; }
         sd_buffer_drain(pubOk, 5);
-        if (ciclo % 13 == 0) { boot(); }
+        if (ciclo % 13 == 0) { boot(); quedas++; }                 // queda BRUSCA (sem flush)
     }
     drain_all();
     bool ok10; int dup10 = check_atleastonce(w, &ok10);
-    CHECK(ok10 && dup10 == 0, "10 online/offline alternando com reinicios: tudo chega, em ordem, sem duplicata");
+    CHECK(ok10 && dup10 <= 15 * quedas, "10 online/offline com quedas bruscas: tudo chega, em ordem, repeticao <= 3 lotes por queda");
+
+    // 11) flush antes de reiniciar: nenhuma duplicata
+    reset_all(); boot();
+    for (int i = 0; i < 40; i++) sd_buffer_store("t/a", msg(i).c_str());
+    sd_buffer_drain(pubOk, 5); sd_buffer_drain(pubOk, 5);    // 2 lotes, ainda nao gravados
+    sd_buffer_flush(); boot(); drain_all();
+    CHECK(ordered_exact(40), "11 reinicio pedido pelo firmware (flush): nada repetido");
+
+    // 12) sd limpar
+    reset_all(); boot();
+    for (int i = 0; i < 100; i++) sd_buffer_store("t/a", msg(i).c_str());
+    g_card.files["/q/lixo.txt"] = "x";
+    bool wiped = sd_buffer_wipe();
+    CHECK(wiped && sd_buffer_pending() == 0 && sd_buffer_ready(), "12a sd limpar: fila zerada e cartao pronto");
+    sd_buffer_store("t/a", msg(0).c_str()); drain_all();
+    CHECK(ordered_exact(1), "12b depois de limpar grava e envia normalmente");
+    g_card.broken = true;
+    CHECK(!sd_buffer_wipe(), "12c cartao que nao monta: limpar informa falha");
 
     printf("%d/%d verificacoes ok\n", g_ok, g_ok + g_fail);
     return g_fail ? 1 : 0;

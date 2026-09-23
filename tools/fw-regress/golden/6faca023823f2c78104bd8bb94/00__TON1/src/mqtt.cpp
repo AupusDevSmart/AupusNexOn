@@ -1,6 +1,7 @@
 #include "mqtt.h"
 #include "ota.h"
 #include "sd_buffer.h"
+#include "blackbox.h"
 #include "diag.h"
 #include "eth.h"
 #include "config.h"
@@ -401,7 +402,6 @@ RTC_NOINIT_ATTR static uint32_t _rtcMagic;
 RTC_NOINIT_ATTR static uint32_t _rtcRestarts;
 RTC_NOINIT_ATTR static uint32_t _rtcEpoch;
 RTC_NOINIT_ATTR static char     _rtcCause[24];
-RTC_NOINIT_ATTR static uint32_t _rtcAutoTs[4];   // D0: epoch dos ultimos reinicios automaticos
 static char _bootCause[24] = "";
 static unsigned long _lastMqttOkMs = 0, _mqttConnSince = 0, _lastReassocMs = 0, _lastRestartTry = 0;
 static unsigned long _restartAt = 0;
@@ -426,19 +426,28 @@ static bool _doRestart(const char* reason) {
     // watchdog de broker, que ja' tem recuo de ate' 1/h, ficam fora do teto).
     bool automatico = strcmp(reason, "comando") != 0 && strcmp(reason, "sem_broker") != 0;
     if (automatico && nowE > 1700000000) {
+        // Historico no NVS (nao na RTC): sobrevive a queda de energia real / brownout.
+        uint32_t ts[4] = {0, 0, 0, 0};
+        Preferences pr;
+        if (pr.begin("sysrst", true)) { if (pr.getBytesLength("ts") == sizeof(ts)) pr.getBytes("ts", ts, sizeof(ts)); pr.end(); }
         int recentes = 0;
-        for (int i = 0; i < 4; i++) if (_rtcAutoTs[i] && (uint32_t)nowE - _rtcAutoTs[i] < 21600UL) recentes++;
+        for (int i = 0; i < 4; i++) if (ts[i] && (uint32_t)nowE - ts[i] < 21600UL) recentes++;
         if (recentes >= 4) {
             Serial.printf("[SYS] reinicio (%s) NEGADO: teto de 4 reinicios automaticos em 6 h\n", reason);
+            bb_log("reinicio %s negado: teto 4/6h", reason);
             return false;
         }
-        for (int i = 3; i > 0; i--) _rtcAutoTs[i] = _rtcAutoTs[i - 1];
-        _rtcAutoTs[0] = (uint32_t)nowE;
+        for (int i = 3; i > 0; i--) ts[i] = ts[i - 1];
+        ts[0] = (uint32_t)nowE;
+        if (pr.begin("sysrst", false)) { pr.putBytes("ts", ts, sizeof(ts)); pr.end(); }
     }
     strncpy(_rtcCause, reason, sizeof(_rtcCause) - 1); _rtcCause[sizeof(_rtcCause) - 1] = 0;
     _rtcEpoch = (nowE > 1700000000) ? (uint32_t)nowE : 0;
     _rtcMagic = NETWD_MAGIC;
     Serial.printf("[SYS] REINICIANDO a TON (motivo: %s, reinicios seguidos: %lu)\n", reason, (unsigned long)_rtcRestarts);
+    bb_log("reinicio: %s", reason);
+    bb_flush();
+    sd_buffer_flush();
     if (_mqtt.connected()) { _mqtt.disconnect(); }
     delay(200);
     ESP.restart();
@@ -454,7 +463,6 @@ void mqtt_request_restart(const char* reason, unsigned long delay_ms) {
 static void _netwdInit() {
     if (_rtcMagic != NETWD_MAGIC || esp_reset_reason() == ESP_RST_POWERON || esp_reset_reason() == ESP_RST_BROWNOUT) {
         _rtcMagic = NETWD_MAGIC; _rtcRestarts = 0; _rtcEpoch = 0; _rtcCause[0] = 0;
-        for (int i = 0; i < 4; i++) _rtcAutoTs[i] = 0;
     }
     _rtcCause[sizeof(_rtcCause) - 1] = 0;
     strncpy(_bootCause, _rtcCause, sizeof(_bootCause) - 1);
@@ -491,6 +499,7 @@ static void _netWatchdog() {
         && _wifiStarted && _activeIf != NET_ETH && WiFi.status() == WL_CONNECTED && _wifiCount > 0) {
         _lastReassocMs = now;
         if (_wifiCount > 1) _wifiIdx = (_wifiIdx + 1) % _wifiCount;
+        bb_log("sem broker %lus: reassocia wifi", (unsigned long)(off / 1000));
         Serial.printf("[SYS] sem broker ha %lus com WiFi associado -> reassociando em '%s'\n",
                       (unsigned long)(off / 1000), _wifiSsid[_wifiIdx]);
         WiFi.disconnect();
@@ -502,7 +511,20 @@ static void _netWatchdog() {
     if (_activeIf == NET_ETH && eth_link_up() && off > 300000UL && now - _lastEthReset > 300000UL) {
         _lastEthReset = now;
         if (_mqtt.connected()) _mqtt.disconnect();
+        bb_log("eth sem broker 5 min: reset W5500");
         eth_hw_reset();
+    }
+    // D2) Memoria livre abaixo de 40 kB por 60 s seguidos -> reinicio (sujeito ao teto global)
+    {
+        static unsigned long _lowHeapSince = 0;
+        if (ESP.getFreeHeap() < 40000UL) {
+            if (!_lowHeapSince) _lowHeapSince = now;
+            if (now - _lowHeapSince > 60000UL && now - _lastRestartTry > 60000UL) {
+                _lastRestartTry = now;
+                bb_log("memoria baixa %lu bytes", (unsigned long)ESP.getFreeHeap());
+                _doRestart("memoria_baixa");
+            }
+        } else _lowHeapSince = 0;
     }
     // 2) Reinicio com recuo (10 / 30 / 60 min)
     uint32_t k = _rtcRestarts < 2 ? _rtcRestarts : 2;
@@ -591,6 +613,7 @@ void mqtt_loop() {
     if (_wifiWasConn && !wifiNow) {
         diag_wifi_disconnects++;
         Serial.printf("[ALERTA] WiFi desconectou (#%lu)\n", (unsigned long)diag_wifi_disconnects);
+        bb_log("wifi caiu #%lu", (unsigned long)diag_wifi_disconnects);
     }
     _wifiWasConn = wifiNow;
 
@@ -610,6 +633,7 @@ void mqtt_loop() {
         }
         if (_wasConnected) {
             Serial.println("[MQTT] DESCONECTADO - mensagens irao para o SD (com timestamp)");
+            bb_log("mqtt caiu (sem rede)");
             _wasConnected = false;
             diag_mqtt_disconnects++;
         }
@@ -665,6 +689,7 @@ void mqtt_loop() {
     // MQTT desconectado (mas WiFi OK) — tentar reconectar
     if (_wasConnected) {
         Serial.println("[MQTT] DESCONECTADO - mensagens irao para o SD (com timestamp)");
+        bb_log("mqtt caiu (rede ok) rc=%d", _mqtt.state());
         _wasConnected = false;
         diag_mqtt_disconnects++;
     }
@@ -688,11 +713,13 @@ void mqtt_loop() {
     if (!ok) {
         _reconnDelay = (_reconnDelay >= 30000UL) ? 60000UL : _reconnDelay * 2;
         Serial.printf("[MQTT] falha (rc=%d) - nova tentativa em %lus\n", _mqtt.state(), (unsigned long)(_reconnDelay / 1000));
+        { static unsigned long _lastFailLog = 0; if (!_lastFailLog || millis() - _lastFailLog > 600000UL) { _lastFailLog = millis(); bb_log("mqtt nao conecta rc=%d", _mqtt.state()); } }
     }
     if (ok) {
         _reconnDelay = MQTT_RECONNECT_MS;
         Serial.println("[MQTT] Conectado!");
         _mqttConnSince = millis();
+        bb_log("mqtt ok via %s rssi=%d", _ifName(_activeIf), (int)WiFi.RSSI());
         _wasConnected = true;
         _mqtt.subscribe(MQTT_TOPIC_CMD);
         { String wt = String(MQTT_TOPIC_BASE) + "/cmd/wifi"; _mqtt.subscribe(wt.c_str()); Serial.printf("[MQTT] Inscrito em: %s\n", wt.c_str()); }
@@ -713,6 +740,7 @@ void mqtt_loop() {
                  _ifName(_activeIf),
                  diag_reset_reason(), _bootCause);
         _mqtt.publish(willTopic.c_str(), hello, true);
+        bb_publish(mqtt_publish_raw, MQTT_TOPIC_BASE, true);   // caixa-preta: eventos ainda nao enviados
 
         // Primeira leva ao reconectar — pequena, so pra confirmar fluxo.
         // O resto sera drenado pelo _lastDrain no mqtt_loop, aos poucos.

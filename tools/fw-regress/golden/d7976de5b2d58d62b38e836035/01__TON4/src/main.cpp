@@ -16,6 +16,7 @@
 #include "sd_buffer.h"
 #include "diag.h"
 #include "eth.h"
+#include "blackbox.h"
 #include "relays.h"
 #include "mqtt.h"
 #include "lora.h"
@@ -97,6 +98,13 @@ static bool _process_command_inner(const char* raw, char* result_msg, size_t msg
         snprintf(result_msg, msg_sz, "reiniciando_em_2s");
         return true;
     }
+    // Cartao SD: "sd limpar confirmo" apaga a fila e remonta (arquivo corrompido). Nao formata.
+    if (cmd == "sd limpar confirmo") {
+        bool ok = sd_buffer_wipe();
+        snprintf(result_msg, msg_sz, ok ? "sd_fila_apagada" : "sd_nao_monta");
+        return ok;
+    }
+    if (cmd == "sd limpar") { snprintf(result_msg, msg_sz, "confirme_com_sd_limpar_confirmo"); return false; }
 
     if (cmd.length() >= 4 && cmd[0] == 'r' && cmd[1] >= '1' && cmd[1] <= '6') {
         bool on = cmd.indexOf("on") >= 0;
@@ -770,6 +778,7 @@ static inline void feedWatchdog() { esp_task_wdt_reset(); }
 void setup() {
     Serial.begin(115200);
     delay(2000);
+    bb_init();   // caixa-preta: eventos e etapa do laco persistem entre reinicios
     Serial.printf("\n  %s v%s - %s\n", DEVICE_ID, FIRMWARE_VERSION, DEVICE_MODEL);
     Serial.println("  [BOOT] RS485-fix v1.1: drain RX, flush preTx, retry 0xE0, delays 80/1000us");
     Serial.println("  [BOOT] MQTT-fix v1.2: setKeepAlive(60), setSocketTimeout(8), mqtt_loop entre blocos");
@@ -852,6 +861,7 @@ void loop() {
     // periodico de ${MQTT_STATUS_MS}ms que poluia o broker com publicacoes redundantes.
     if (now - last_input_scan >= INPUT_SCAN_MS) {
         last_input_scan = now;
+        bb_stage(BB_ENTRADAS);
         inputs_scan();
         relays_health_tick();   // C3 anti-travamento: confere os reles no I2C a cada 2 s
 
@@ -900,6 +910,7 @@ void loop() {
     // Modbus: sample 1 device por ciclo (round-robin) a cada METER_CYCLE_MS
     if (now - last_sample >= METER_CYCLE_MS) {
         last_sample = now;
+        bb_stage(BB_MODBUS_RTU);
         modbus_sample_one();
     }
     // C1 anti-travamento: NENHUMA leitura RS485 boa ha 15 min -> reinicia a UART/driver
@@ -910,6 +921,7 @@ void loop() {
             && now - _lastUartReinit > 900000UL) {
             _lastUartReinit = now;
             Serial.println("[RS485] barramento mudo ha 15 min - reiniciando a UART");
+            bb_log("rs485 mudo 15 min: reinicia uart");
             modbus_init();
         }
     }

@@ -3,6 +3,7 @@
 #include "mqtt.h"
 #include "ota.h"
 #include "sd_buffer.h"
+#include "blackbox.h"
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <WiFi.h>

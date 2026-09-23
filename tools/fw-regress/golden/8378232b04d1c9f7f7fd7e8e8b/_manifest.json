@@ -8,12 +8,13 @@
       "tonType": "ton3",
       "equipamentoId": "0a4ab4f15937dd8483715a71a2",
       "topicBase": "TESTE/POSTO/BANCADA",
-      "nFiles": 26,
+      "nFiles": 28,
       "warnings": [
         "Sem dispositivos de medição conectados"
       ],
       "files": [
         "include/adc.h",
+        "include/blackbox.h",
         "include/bomba.h",
         "include/bomba_posto.h",
         "include/config.h",
@@ -27,6 +28,7 @@
         "include/sd_buffer.h",
         "platformio.ini",
         "src/adc.cpp",
+        "src/blackbox.cpp",
         "src/bomba.cpp",
         "src/bomba_posto.cpp",
         "src/diag.cpp",
