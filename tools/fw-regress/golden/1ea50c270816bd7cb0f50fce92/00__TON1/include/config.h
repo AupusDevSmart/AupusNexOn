@@ -60,7 +60,7 @@ extern char MQTT_CLIENT_ID[20];
 
 // Ethernet W5500
 #define ETH_MAC             { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0x01 }
-#define ETH_DHCP_TIMEOUT_MS 10000
+#define ETH_DHCP_TIMEOUT_MS 4000    // B3: era 10 s bloqueando o laco a cada 30 s
 #define ETH_STATIC_IP       "192.168.1.200"
 #define ETH_GATEWAY         "192.168.1.1"
 #define ETH_SUBNET          "255.255.255.0"

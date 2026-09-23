@@ -126,7 +126,7 @@ check('caso B: 1 projeto (ton3v2)', pB.length === 1 && pB[0].spec.tonType === 't
 const fB = pB[0].files;
 check('caso B: relés r1..r8 no publish', has(fB, 'src/main.cpp', 'r8'));
 check('caso B: cmd r1-r8', has(fB, 'src/main.cpp', "cmd[1] >= '1' && cmd[1] <= '8'"));
-check('caso B: relays GP0-based', has(fB, 'src/relays.cpp', 'digitalWrite(num - 1'));
+check('caso B: relays GP0-based', has(fB, 'src/relays.cpp', 'static uint8_t _pinOf(uint8_t num) { return (uint8_t)(num - 1); }'));
 check('caso B: TCP direto no rele (inverter_tcp)', !!fB['src/inverter_tcp.cpp']);
 check('caso B: M160 RS485 (modbus_meter)', !!fB['src/modbus_meter.cpp']);
 
@@ -195,6 +195,9 @@ check('caso F: lib + glue presentes', !!fF['include/bomba_posto.h'] && !!fF['src
 const bombaLib = join(HERE, '..', 'firmware-libs', 'bomba_posto');
 check('caso F: lib embutida == fonte canonica (bomba_posto.h)', fF['include/bomba_posto.h'] === readFileSync(join(bombaLib, 'bomba_posto.h'), 'utf8'));
 check('caso F: lib embutida == fonte canonica (bomba_posto.cpp)', fF['src/bomba_posto.cpp'] === readFileSync(join(bombaLib, 'bomba_posto.cpp'), 'utf8'));
+const sdqLib = join(HERE, '..', 'firmware-libs', 'sd_queue');
+check('fila SD: sd_buffer.cpp embutido == fonte canonica', fF['src/sd_buffer.cpp'] === readFileSync(join(sdqLib, 'sd_buffer.cpp'), 'utf8'));
+check('fila SD: sd_buffer.h embutido == fonte canonica', fF['include/sd_buffer.h'] === readFileSync(join(sdqLib, 'sd_buffer.h'), 'utf8'));
 check('caso F: glue le BI por papel com polaridade NF', has(fF, 'src/bomba.cpp', 'in.emergencia       = !((st >> 2) & 1);') && has(fF, 'src/bomba.cpp', 'in.contator         = ((st >> 0) & 1);'));
 check('caso F: fail-closed: BOMBA_MAT_LIVRE 0 por padrao + aviso de lista sem matriculas', has(fF, 'src/bomba.cpp', 'BOMBA_MAT_LIVRE        0') && has(fF, 'src/bomba.cpp', 'fail-closed'));
 check('caso F: parametros de bancada no config (fluxo parado 10 s, timeout 30 s)', has(fF, 'src/bomba.cpp', 'BOMBA_FLUXO_PARADO_MS  10000UL') && has(fF, 'src/bomba.cpp', 'BOMBA_TEMPO_MAX_MS     30000UL'));

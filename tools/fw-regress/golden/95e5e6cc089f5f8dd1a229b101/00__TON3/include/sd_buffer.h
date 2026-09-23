@@ -2,22 +2,34 @@
 #define SD_BUFFER_H
 #include <stdint.h>
 
-// Tenta inicializar SD. Retorna true se OK.
+// Fila offline de mensagens MQTT no cartao SD (fila SEGMENTADA, rev. 2026-09-23).
+// Fonte canonica: AupusNexOn/firmware-libs/sd_queue/ (testada no host: test_sd_queue.cpp).
+// As bases V1 e V2 embutem uma COPIA identica (smoke confere byte a byte).
+
+// Monta o cartao (2 tentativas) e prepara a fila. Retorna true se OK.
 bool sd_buffer_init();
 bool sd_buffer_ready();
 
-// Guarda { topic, payload } no arquivo de buffer. Chamado quando MQTT falha.
-// Inclui timestamp automaticamente.
+// Guarda { topic, payload } no fim da fila. Chamado quando o MQTT falha.
 bool sd_buffer_store(const char* topic, const char* payload);
 
-// Drena o buffer: envia tudo que foi salvo (chamado quando MQTT reconecta).
-// publish_fn: funcao que retorna true se publicou com sucesso.
-// max_send: maximo de msgs a enviar por chamada (evita bloquear demais)
-// Retorna numero de mensagens drenadas.
+// Drena a fila: publica no maximo max_send mensagens OU ~300 ms, o que vier primeiro.
+// publish_fn: retorna true se publicou. Para na primeira falha (resto fica na fila).
+// Retorna quantas mensagens sairam.
 typedef bool (*sd_buffer_publish_fn)(const char* topic, const char* payload);
 int sd_buffer_drain(sd_buffer_publish_fn publish_fn, int max_send);
 
-// Quantas mensagens pendentes no buffer (linhas no arquivo)
+// Mensagens pendentes. BARATO (contador em memoria; nunca varre o cartao no laco).
+// Enquanto a contagem inicial nao termina, devolve o que ja contou (>=1 se houver fila).
 int sd_buffer_pending();
+
+// Manutencao nao-bloqueante: contagem inicial em fatias de ~20 ms e remontagem do
+// cartao a cada 10 min quando ele falhou. Chamar a cada volta do laco.
+void sd_buffer_tick();
+
+// Estado para o diagnostico: "ok" | "sem_cartao" | "falha" ; mensagens descartadas por
+// cartao cheio (as mais antigas).
+const char* sd_buffer_state();
+uint32_t sd_buffer_discarded();
 
 #endif

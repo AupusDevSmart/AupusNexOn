@@ -282,6 +282,22 @@ void bomba_loop(bomba_publish_fn publish) {
     in.nivel_pct        = _nivelPct();
     in.fluxo_lpm        = _fluxo_lpm;
     (void)st;
+    // C4 anti-travamento: reles sem controle no I2C com a bomba fora de ociosa/bloqueada
+    // por mais de 5 s -> bloqueia (persistido no NVS) e reinicia a TON (reinicializa os MCP
+    // com tudo desligado). A emergencia FISICA em serie com a bobina do K1 e' a protecao final.
+    {
+        static unsigned long _tIoFalha = 0;
+        if (relays_io_fault() && _m->estado() != bomba::OCIOSA && _m->estado() != bomba::BLOQUEADA) {
+            if (!_tIoFalha) _tIoFalha = millis();
+            if (millis() - _tIoFalha > 5000UL) {
+                Serial.println("[BOMBA] reles sem controle (I2C) - BLOQUEANDO e reiniciando a TON");
+                _ouv.aoEvento("io_falha", "i2c", _m->uidAtual(), _m->matAtual());
+                _m->bloquear("io_falha", millis());
+                mqtt_request_restart("io_falha", 2000);
+                _tIoFalha = 0;
+            }
+        } else _tIoFalha = 0;
+    }
     _m->setOnline(!_net_forcado_off && mqtt_connected());
     _m->tick(millis(), in);
     const bomba::Saidas& o = _m->saidas();

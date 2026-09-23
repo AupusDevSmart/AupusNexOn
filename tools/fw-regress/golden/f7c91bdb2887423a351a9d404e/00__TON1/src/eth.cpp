@@ -96,9 +96,14 @@ bool eth_check_dhcp() {
     }
     if (_hasIp) return true;
 
+    // B3: link sem servidor DHCP (switch sem roteador) -> apos 3 falhas, tenta so' a cada 2 min
+    static uint8_t _dhcpFails = 0; static unsigned long _dhcpLast = 0;
+    if (_dhcpFails >= 3 && millis() - _dhcpLast < 120000UL) return false;
+    _dhcpLast = millis();
     Serial.printf("[ETH] Link UP, tentando DHCP (timeout %lums)...\n",
                   (unsigned long)ETH_DHCP_TIMEOUT_MS);
-    if (Ethernet.begin(_mac, ETH_DHCP_TIMEOUT_MS) != 0) {
+    if (Ethernet.begin(_mac, ETH_DHCP_TIMEOUT_MS, 2000) != 0) {
+        _dhcpFails = 0;
         _hasIp = true;
         Serial.printf("[ETH] DHCP OK -> %s | gw=%s | dns=%s\n",
                       Ethernet.localIP().toString().c_str(),
@@ -107,6 +112,7 @@ bool eth_check_dhcp() {
         return true;
     }
 
+    if (_dhcpFails < 255) _dhcpFails++;
 #ifdef ETH_USE_STATIC_FALLBACK
     // Fallback IP estatico — so se explicitamente habilitado no config.
     // Cuidado: se a rede nao for ETH_STATIC_IP/SUBNET, o broker fica inalcancavel.
@@ -136,3 +142,8 @@ IPAddress eth_local_ip() { return Ethernet.localIP(); }
 bool eth_init()       { return eth_hw_init() && eth_check_dhcp(); }
 bool eth_connected()  { return eth_has_ip(); }
 void eth_maintain()   { if (_hwReady) Ethernet.maintain(); }
+void eth_hw_reset() {
+    Serial.println("[ETH] RESET do W5500 pelo pino (Ethernet com link e sem broker)");
+    _hwReady = false; _hasIp = false;
+    eth_hw_init();
+}

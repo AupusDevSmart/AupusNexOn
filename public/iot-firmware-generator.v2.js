@@ -1963,7 +1963,7 @@ extern char MQTT_CLIENT_ID[20];
         h += `
 // Ethernet W5500
 #define ETH_MAC             { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0x01 }
-#define ETH_DHCP_TIMEOUT_MS 10000
+#define ETH_DHCP_TIMEOUT_MS 4000    // B3: era 10 s bloqueando o laco a cada 30 s
 #define ETH_STATIC_IP       "192.168.1.200"
 #define ETH_GATEWAY         "192.168.1.1"
 #define ETH_SUBNET          "255.255.255.0"
@@ -2101,6 +2101,7 @@ void diag_publish_periodic() {}
 #include "config.h"
 #include "mqtt.h"
 #include "ota.h"
+#include "sd_buffer.h"
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <WiFi.h>
@@ -2129,9 +2130,16 @@ void diag_init() {
     diag_min_free_heap = ESP.getFreeHeap();
 }
 
+// D1: maior volta do laco desde o ultimo diagnostico (base para calibrar o watchdog).
+static uint32_t _loopMaxMs = 0;
+static unsigned long _loopLastMs = 0;
+extern uint32_t diag_i2c_resets __attribute__((weak));
 void diag_tick() {
     uint32_t f = ESP.getFreeHeap();
     if (f < diag_min_free_heap) diag_min_free_heap = f;
+    unsigned long now = millis();
+    if (_loopLastMs && now - _loopLastMs > _loopMaxMs) _loopMaxMs = now - _loopLastMs;
+    _loopLastMs = now;
 }
 
 const char* diag_reset_reason() {
@@ -2182,6 +2190,11 @@ void diag_publish_periodic() {
     doc["sd_writes"]         = diag_sd_writes;
     doc["sd_resends"]        = diag_sd_resends;
     doc["sd_write_errors"]   = diag_sd_write_errors;
+    doc["sd_estado"]         = sd_buffer_state();      // ok | sem_cartao | falha
+    doc["sd_pendentes"]      = sd_buffer_pending();
+    doc["sd_descartadas"]    = sd_buffer_discarded();  // cartao cheio: mais antigas
+    doc["loop_max_ms"]       = _loopMaxMs;             // maior volta do laco desde o ultimo diag
+    doc["i2c_resets"]        = (&diag_i2c_resets) ? diag_i2c_resets : 0;
     doc["min_free_heap"]     = diag_min_free_heap;
     doc["reset_reason"]      = diag_reset_reason();
     doc["restart_cause"]     = mqtt_restart_cause();   // "" | sem_broker | comando
@@ -2198,6 +2211,7 @@ void diag_publish_periodic() {
     char topic[160];
     snprintf(topic, sizeof(topic), "%s/diagnostics", MQTT_TOPIC_BASE);
     if (mqtt_publish_raw(topic, json)) {
+        _loopMaxMs = 0;
         // Diagnostic gerado e publicado pelo firmware NOVO ao vivo: prova que
         // WiFi+MQTT+JSON+counters estao funcionando. Conta como validacao OTA
         // (cobre o caso patologico de TON sem telemetria periodica via mqtt_publish).
@@ -2264,6 +2278,7 @@ static PubSubClient _mqtt(_wifiClient);  // PubSubClient::setClient() troca o tr
 char MQTT_CLIENT_ID[20] = "TON-uninitialized";
 static mqtt_cmd_callback_t _cmdCallback = nullptr;
 static unsigned long _lastReconnect = 0;
+static unsigned long _reconnDelay = MQTT_RECONNECT_MS;   // B2: recuo 5 -> 60 s entre tentativas
 static unsigned long _lastWifiReconnect = 0;
 static unsigned long _lastDrain = 0;
 static unsigned long _lastNetEval = 0;
@@ -2667,9 +2682,11 @@ RTC_NOINIT_ATTR static uint32_t _rtcMagic;
 RTC_NOINIT_ATTR static uint32_t _rtcRestarts;
 RTC_NOINIT_ATTR static uint32_t _rtcEpoch;
 RTC_NOINIT_ATTR static char     _rtcCause[24];
+RTC_NOINIT_ATTR static uint32_t _rtcAutoTs[4];   // D0: epoch dos ultimos reinicios automaticos
 static char _bootCause[24] = "";
 static unsigned long _lastMqttOkMs = 0, _mqttConnSince = 0, _lastReassocMs = 0, _lastRestartTry = 0;
 static unsigned long _restartAt = 0;
+static unsigned long _lastEthReset = 0;
 static char _restartReason[24] = "";
 
 bool mqtt_restart_permitido() {
@@ -2685,8 +2702,21 @@ static bool _doRestart(const char* reason) {
         Serial.printf("[SYS] reinicio (%s) adiado: TON ocupada (OTA/abastecimento)\\n", reason);
         return false;
     }
-    strncpy(_rtcCause, reason, sizeof(_rtcCause) - 1); _rtcCause[sizeof(_rtcCause) - 1] = 0;
     time_t nowE = time(nullptr);
+    // D0 gestor unico: no maximo 4 reinicios automaticos em 6 h (comando manual e o
+    // watchdog de broker, que ja' tem recuo de ate' 1/h, ficam fora do teto).
+    bool automatico = strcmp(reason, "comando") != 0 && strcmp(reason, "sem_broker") != 0;
+    if (automatico && nowE > 1700000000) {
+        int recentes = 0;
+        for (int i = 0; i < 4; i++) if (_rtcAutoTs[i] && (uint32_t)nowE - _rtcAutoTs[i] < 21600UL) recentes++;
+        if (recentes >= 4) {
+            Serial.printf("[SYS] reinicio (%s) NEGADO: teto de 4 reinicios automaticos em 6 h\\n", reason);
+            return false;
+        }
+        for (int i = 3; i > 0; i--) _rtcAutoTs[i] = _rtcAutoTs[i - 1];
+        _rtcAutoTs[0] = (uint32_t)nowE;
+    }
+    strncpy(_rtcCause, reason, sizeof(_rtcCause) - 1); _rtcCause[sizeof(_rtcCause) - 1] = 0;
     _rtcEpoch = (nowE > 1700000000) ? (uint32_t)nowE : 0;
     _rtcMagic = NETWD_MAGIC;
     Serial.printf("[SYS] REINICIANDO a TON (motivo: %s, reinicios seguidos: %lu)\\n", reason, (unsigned long)_rtcRestarts);
@@ -2705,6 +2735,7 @@ void mqtt_request_restart(const char* reason, unsigned long delay_ms) {
 static void _netwdInit() {
     if (_rtcMagic != NETWD_MAGIC || esp_reset_reason() == ESP_RST_POWERON || esp_reset_reason() == ESP_RST_BROWNOUT) {
         _rtcMagic = NETWD_MAGIC; _rtcRestarts = 0; _rtcEpoch = 0; _rtcCause[0] = 0;
+        for (int i = 0; i < 4; i++) _rtcAutoTs[i] = 0;
     }
     _rtcCause[sizeof(_rtcCause) - 1] = 0;
     strncpy(_bootCause, _rtcCause, sizeof(_bootCause) - 1);
@@ -2746,6 +2777,13 @@ static void _netWatchdog() {
         WiFi.disconnect();
         WiFi.begin(_wifiSsid[_wifiIdx], _wifiPass[_wifiIdx]);
         _wifiTryStart = now;
+    }
+    // 1b) Ethernet ativa, cabo com link e sem broker ha 5 min: reset FISICO do W5500 (IO14).
+    //     Criterio ativo (broker nao responde), nao "sem trafego": o keepalive MQTT e' obrigatorio.
+    if (_activeIf == NET_ETH && eth_link_up() && off > 300000UL && now - _lastEthReset > 300000UL) {
+        _lastEthReset = now;
+        if (_mqtt.connected()) _mqtt.disconnect();
+        eth_hw_reset();
     }
     // 2) Reinicio com recuo (10 / 30 / 60 min)
     uint32_t k = _rtcRestarts < 2 ? _rtcRestarts : 2;
@@ -2812,12 +2850,13 @@ void mqtt_init(mqtt_cmd_callback_t callback) {
     // Um sample Modbus com 1-2 timeouts pode passar de 15s (lib ModbusMaster
     // timeout = 2s/transacao, nao configuravel). 60s/30s da' folga real.
     _mqtt.setKeepAlive(60);
-    _mqtt.setSocketTimeout(30);
+    _mqtt.setSocketTimeout(8);   // B1 anti-travamento: broker que aceita TCP e nao responde prendia o laco 30 s
     _netwdInit();
 }
 
 void mqtt_loop() {
     _netWatchdog();   // auto-recuperacao (reassocia / reinicia com recuo)
+    sd_buffer_tick(); // fila do SD: contagem inicial fatiada + remontagem do cartao com falha
     // Mantem stack do W5500 atualizada (DHCP renew, etc.)
     eth_maintain();
 
@@ -2910,7 +2949,7 @@ void mqtt_loop() {
         _wasConnected = false;
         diag_mqtt_disconnects++;
     }
-    if (millis() - _lastReconnect < MQTT_RECONNECT_MS) return;
+    if (millis() - _lastReconnect < _reconnDelay) return;
     _lastReconnect = millis();
 
     Serial.printf("[MQTT] Conectando a %s:%d (%s)...\\n", MQTT_SERVER, MQTT_PORT, MQTT_CLIENT_ID);
@@ -2927,7 +2966,12 @@ void mqtt_loop() {
                            willTopic.c_str(), 1, true, willMsg);
     }
 
+    if (!ok) {
+        _reconnDelay = (_reconnDelay >= 30000UL) ? 60000UL : _reconnDelay * 2;
+        Serial.printf("[MQTT] falha (rc=%d) - nova tentativa em %lus\\n", _mqtt.state(), (unsigned long)(_reconnDelay / 1000));
+    }
     if (ok) {
+        _reconnDelay = MQTT_RECONNECT_MS;
         Serial.println("[MQTT] Conectado!");
         _mqttConnSince = millis();
         _wasConnected = true;
@@ -3016,6 +3060,7 @@ bool mqtt_connected() { return _mqtt.connected(); }
 #include <IPAddress.h>
 
 bool eth_hw_init();           // Inicializa W5500 (so a parte fisica/SPI). Sem DHCP.
+void eth_hw_reset();          // B4: pulso no pino RST (IO14) + reinit; o DHCP refaz sozinho
 bool eth_link_up();           // Cabo plugado e link UP?
 bool eth_has_ip();            // Temos IP atribuido (DHCP ou estatico)?
 bool eth_check_dhcp();        // Tenta DHCP se link UP e ainda sem IP. true = temos IP no fim.
@@ -3131,9 +3176,14 @@ bool eth_check_dhcp() {
     }
     if (_hasIp) return true;
 
+    // B3: link sem servidor DHCP (switch sem roteador) -> apos 3 falhas, tenta so' a cada 2 min
+    static uint8_t _dhcpFails = 0; static unsigned long _dhcpLast = 0;
+    if (_dhcpFails >= 3 && millis() - _dhcpLast < 120000UL) return false;
+    _dhcpLast = millis();
     Serial.printf("[ETH] Link UP, tentando DHCP (timeout %lums)...\\n",
                   (unsigned long)ETH_DHCP_TIMEOUT_MS);
-    if (Ethernet.begin(_mac, ETH_DHCP_TIMEOUT_MS) != 0) {
+    if (Ethernet.begin(_mac, ETH_DHCP_TIMEOUT_MS, 2000) != 0) {
+        _dhcpFails = 0;
         _hasIp = true;
         Serial.printf("[ETH] DHCP OK -> %s | gw=%s | dns=%s\\n",
                       Ethernet.localIP().toString().c_str(),
@@ -3142,6 +3192,7 @@ bool eth_check_dhcp() {
         return true;
     }
 
+    if (_dhcpFails < 255) _dhcpFails++;
 #ifdef ETH_USE_STATIC_FALLBACK
     // Fallback IP estatico — so se explicitamente habilitado no config.
     // Cuidado: se a rede nao for ETH_STATIC_IP/SUBNET, o broker fica inalcancavel.
@@ -3171,6 +3222,11 @@ IPAddress eth_local_ip() { return Ethernet.localIP(); }
 bool eth_init()       { return eth_hw_init() && eth_check_dhcp(); }
 bool eth_connected()  { return eth_has_ip(); }
 void eth_maintain()   { if (_hwReady) Ethernet.maintain(); }
+void eth_hw_reset() {
+    Serial.println("[ETH] RESET do W5500 pelo pino (Ethernet com link e sem broker)");
+    _hwReady = false; _hasIp = false;
+    eth_hw_init();
+}
 `;
     }
 
@@ -6279,6 +6335,22 @@ void bomba_loop(bomba_publish_fn publish) {
     in.nivel_pct        = _nivelPct();
     in.fluxo_lpm        = _fluxo_lpm;
     (void)st;
+    // C4 anti-travamento: reles sem controle no I2C com a bomba fora de ociosa/bloqueada
+    // por mais de 5 s -> bloqueia (persistido no NVS) e reinicia a TON (reinicializa os MCP
+    // com tudo desligado). A emergencia FISICA em serie com a bobina do K1 e' a protecao final.
+    {
+        static unsigned long _tIoFalha = 0;
+        if (relays_io_fault() && _m->estado() != bomba::OCIOSA && _m->estado() != bomba::BLOQUEADA) {
+            if (!_tIoFalha) _tIoFalha = millis();
+            if (millis() - _tIoFalha > 5000UL) {
+                Serial.println("[BOMBA] reles sem controle (I2C) - BLOQUEANDO e reiniciando a TON");
+                _ouv.aoEvento("io_falha", "i2c", _m->uidAtual(), _m->matAtual());
+                _m->bloquear("io_falha", millis());
+                mqtt_request_restart("io_falha", 2000);
+                _tIoFalha = 0;
+            }
+        } else _tIoFalha = 0;
+    }
     _m->setOnline(!_net_forcado_off && mqtt_connected());
     _m->tick(millis(), in);
     const bomba::Saidas& o = _m->saidas();
@@ -7309,7 +7381,7 @@ void setup() {
     delay(2000);
     Serial.printf("\\n  %s v%s - %s\\n", DEVICE_ID, FIRMWARE_VERSION, DEVICE_MODEL);
     Serial.println("  [BOOT] RS485-fix v1.1: drain RX, flush preTx, retry 0xE0, delays 80/1000us");
-    Serial.println("  [BOOT] MQTT-fix v1.2: setKeepAlive(60), setSocketTimeout(30), mqtt_loop entre blocos");
+    Serial.println("  [BOOT] MQTT-fix v1.2: setKeepAlive(60), setSocketTimeout(8), mqtt_loop entre blocos");
     Serial.println("  [BOOT] Cycle v1.2.1: METER_CYCLE_MS=4000 (era 2000) — menos pressao no Modbus/MQTT");
     Serial.println("  [BOOT] TCPlog v1.2.2: log inclui slave id pra desambiguar inversores TCP");
     Serial.println("  [BOOT] ClientID v1.3.0: MQTT_CLIENT_ID derivado do MAC (unico por hardware)");
@@ -7465,7 +7537,7 @@ void loop() {
     if (now - last_input_scan >= INPUT_SCAN_MS) {
         last_input_scan = now;
         inputs_scan();
-
+${spec.has_relays ? '        relays_health_tick();   // C3 anti-travamento: confere os reles no I2C a cada 2 s\n' : ''}
         static bool _io_force = true;        // forca publicacao inicial (boot)
         static bool _mqtt_was_up = false;
         static uint8_t _prev_out = 0;
@@ -7558,6 +7630,17 @@ void loop() {
     if (now - last_sample >= METER_CYCLE_MS) {
         last_sample = now;
         modbus_sample_one();
+    }
+    // C1 anti-travamento: NENHUMA leitura RS485 boa ha 15 min -> reinicia a UART/driver
+    // (1x a cada 15 min). Nao reinicia a TON: inversor desligado a noite e' normal.
+    {
+        static unsigned long _lastUartReinit = 0;
+        if (diag_last_successful_read_ms > 0 && now - diag_last_successful_read_ms > 900000UL
+            && now - _lastUartReinit > 900000UL) {
+            _lastUartReinit = now;
+            Serial.println("[RS485] barramento mudo ha 15 min - reiniciando a UART");
+            modbus_init();
+        }
     }
 `;
             // SOE: drenagem da fila de eventos (só se algum device expõe buffer no catálogo).

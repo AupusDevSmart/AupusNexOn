@@ -2,6 +2,7 @@
 #include "config.h"
 #include "mqtt.h"
 #include "ota.h"
+#include "sd_buffer.h"
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <WiFi.h>
@@ -30,9 +31,16 @@ void diag_init() {
     diag_min_free_heap = ESP.getFreeHeap();
 }
 
+// D1: maior volta do laco desde o ultimo diagnostico (base para calibrar o watchdog).
+static uint32_t _loopMaxMs = 0;
+static unsigned long _loopLastMs = 0;
+extern uint32_t diag_i2c_resets __attribute__((weak));
 void diag_tick() {
     uint32_t f = ESP.getFreeHeap();
     if (f < diag_min_free_heap) diag_min_free_heap = f;
+    unsigned long now = millis();
+    if (_loopLastMs && now - _loopLastMs > _loopMaxMs) _loopMaxMs = now - _loopLastMs;
+    _loopLastMs = now;
 }
 
 const char* diag_reset_reason() {
@@ -83,6 +91,11 @@ void diag_publish_periodic() {
     doc["sd_writes"]         = diag_sd_writes;
     doc["sd_resends"]        = diag_sd_resends;
     doc["sd_write_errors"]   = diag_sd_write_errors;
+    doc["sd_estado"]         = sd_buffer_state();      // ok | sem_cartao | falha
+    doc["sd_pendentes"]      = sd_buffer_pending();
+    doc["sd_descartadas"]    = sd_buffer_discarded();  // cartao cheio: mais antigas
+    doc["loop_max_ms"]       = _loopMaxMs;             // maior volta do laco desde o ultimo diag
+    doc["i2c_resets"]        = (&diag_i2c_resets) ? diag_i2c_resets : 0;
     doc["min_free_heap"]     = diag_min_free_heap;
     doc["reset_reason"]      = diag_reset_reason();
     doc["restart_cause"]     = mqtt_restart_cause();   // "" | sem_broker | comando
@@ -99,6 +112,7 @@ void diag_publish_periodic() {
     char topic[160];
     snprintf(topic, sizeof(topic), "%s/diagnostics", MQTT_TOPIC_BASE);
     if (mqtt_publish_raw(topic, json)) {
+        _loopMaxMs = 0;
         // Diagnostic gerado e publicado pelo firmware NOVO ao vivo: prova que
         // WiFi+MQTT+JSON+counters estao funcionando. Conta como validacao OTA
         // (cobre o caso patologico de TON sem telemetria periodica via mqtt_publish).

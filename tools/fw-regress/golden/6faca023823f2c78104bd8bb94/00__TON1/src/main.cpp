@@ -198,7 +198,7 @@ void setup() {
     delay(2000);
     Serial.printf("\n  %s v%s - %s\n", DEVICE_ID, FIRMWARE_VERSION, DEVICE_MODEL);
     Serial.println("  [BOOT] RS485-fix v1.1: drain RX, flush preTx, retry 0xE0, delays 80/1000us");
-    Serial.println("  [BOOT] MQTT-fix v1.2: setKeepAlive(60), setSocketTimeout(30), mqtt_loop entre blocos");
+    Serial.println("  [BOOT] MQTT-fix v1.2: setKeepAlive(60), setSocketTimeout(8), mqtt_loop entre blocos");
     Serial.println("  [BOOT] Cycle v1.2.1: METER_CYCLE_MS=4000 (era 2000) — menos pressao no Modbus/MQTT");
     Serial.println("  [BOOT] TCPlog v1.2.2: log inclui slave id pra desambiguar inversores TCP");
     Serial.println("  [BOOT] ClientID v1.3.0: MQTT_CLIENT_ID derivado do MAC (unico por hardware)");
@@ -310,6 +310,17 @@ void loop() {
     if (now - last_sample >= METER_CYCLE_MS) {
         last_sample = now;
         modbus_sample_one();
+    }
+    // C1 anti-travamento: NENHUMA leitura RS485 boa ha 15 min -> reinicia a UART/driver
+    // (1x a cada 15 min). Nao reinicia a TON: inversor desligado a noite e' normal.
+    {
+        static unsigned long _lastUartReinit = 0;
+        if (diag_last_successful_read_ms > 0 && now - diag_last_successful_read_ms > 900000UL
+            && now - _lastUartReinit > 900000UL) {
+            _lastUartReinit = now;
+            Serial.println("[RS485] barramento mudo ha 15 min - reiniciando a UART");
+            modbus_init();
+        }
     }
 
     // Publicacao periodica: medias + deltas + last a cada PUBLISH_INTERVAL_MS
