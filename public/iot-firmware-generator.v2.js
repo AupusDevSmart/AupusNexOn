@@ -3024,12 +3024,12 @@ ${spec.lora_role === 'gateway' ? `
         // ativa e qual interface (wifi/eth) — backend usa para auto-discovery.
         char hello[256];
         snprintf(hello, sizeof(hello),
-                 "{\\"online\\":true,\\"version\\":\\"%s\\",\\"model\\":\\"%s\\",\\"mac\\":\\"%s\\",\\"ip\\":\\"%s\\",\\"iface\\":\\"%s\\",\\"reset\\":\\"%s\\",\\"restart_cause\\":\\"%s\\"}",
+                 "{\\"online\\":true,\\"version\\":\\"%s\\",\\"model\\":\\"%s\\",\\"mac\\":\\"%s\\",\\"ip\\":\\"%s\\",\\"iface\\":\\"%s\\",\\"reset\\":\\"%s\\",\\"restart_cause\\":\\"%s\\",\\"up\\":%lu}",
                  FIRMWARE_VERSION, DEVICE_MODEL,
                  WiFi.macAddress().c_str(),
                  _ifLocalIp().c_str(),
                  _ifName(_activeIf),
-                 diag_reset_reason(), _bootCause);
+                 diag_reset_reason(), _bootCause, (unsigned long)(millis() / 1000UL));   // up: segundos desde o boot (NexON so' registra reinicio se for boot recente)
         _mqtt.publish(willTopic.c_str(), hello, true);
         bb_publish(mqtt_publish_raw, MQTT_TOPIC_BASE, true);   // caixa-preta: eventos ainda nao enviados
 

@@ -26,14 +26,14 @@
 #define RS485_CONFIG        SERIAL_8N1
 
 // WiFi (multi-rede: ate 4)
-#define WIFI_SSID           "AUPUS-ENERGIA_2.4G"
-#define WIFI_PASSWORD       "AupuSmart24"
+#define WIFI_SSID           "iPhone do Arthur"
+#define WIFI_PASSWORD       "12345678"
 #define WIFI_TIMEOUT_MS     10000
 #define WIFI_MAX_NETS       4
 #define WIFI_TRY_MS         20000UL
-#define WIFI_CONFIG_HASH    300641298u
-static const char* WIFI_DEF_SSID[] = { "AUPUS-ENERGIA_2.4G" };
-static const char* WIFI_DEF_PASS[] = { "AupuSmart24" };
+#define WIFI_CONFIG_HASH    1285569364u
+static const char* WIFI_DEF_SSID[] = { "iPhone do Arthur" };
+static const char* WIFI_DEF_PASS[] = { "12345678" };
 static const int   WIFI_DEF_COUNT  = 1;
 
 // MQTT
