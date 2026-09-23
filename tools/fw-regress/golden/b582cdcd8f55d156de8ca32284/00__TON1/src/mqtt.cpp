@@ -381,6 +381,114 @@ static void _onMessage(char* topic, byte* payload, unsigned int len) {
     if (_cmdCallback) _cmdCallback(buf);
 }
 
+// =====================================================================
+// AUTO-RECUPERACAO — watchdog de conectividade (caso NS Aparecida, 01/08->16/09:
+// TON 47 dias sem broker com o WiFi "conectado" e a rede da fazenda funcionando;
+// so' voltou tirando da tomada). Nada aqui depende de ter mais de uma rede WiFi.
+//   1) MQTT fora ha NETWD_REASSOC_MS com WiFi associado  -> desassocia e reassocia
+//      (se houver mais de uma rede cadastrada, passa pra proxima)
+//   2) MQTT fora ha 10 / 30 / 60 min (recuo por reinicio seguido) -> ESP.restart()
+//      Se o proprio broker estiver fora, a TON reinicia no maximo 1x/hora (dados no SD).
+// O relogio e' preservado no reinicio (RTC noinit) — sem internet ainda carimba certo.
+// Reinicio so' e' executado se for seguro (sem OTA em curso; posto ocioso/bloqueado).
+// =====================================================================
+#define NETWD_REASSOC_MS   180000UL
+#define NETWD_STABLE_MS    300000UL   // conectado ha 5 min => zera o recuo
+static const unsigned long NETWD_RESTART_MS[3] = { 600000UL, 1800000UL, 3600000UL };
+#define NETWD_MAGIC        0x544F4E57UL
+RTC_NOINIT_ATTR static uint32_t _rtcMagic;
+RTC_NOINIT_ATTR static uint32_t _rtcRestarts;
+RTC_NOINIT_ATTR static uint32_t _rtcEpoch;
+RTC_NOINIT_ATTR static char     _rtcCause[24];
+static char _bootCause[24] = "";
+static unsigned long _lastMqttOkMs = 0, _mqttConnSince = 0, _lastReassocMs = 0, _lastRestartTry = 0;
+static unsigned long _restartAt = 0;
+static char _restartReason[24] = "";
+
+bool mqtt_restart_permitido() {
+    if (ota_in_progress()) return false;
+    return true;
+}
+
+const char* mqtt_restart_cause() { return _bootCause; }
+unsigned long mqtt_conn_age_ms() { return (_mqtt.connected() && _mqttConnSince) ? millis() - _mqttConnSince : 0xFFFFFFFFUL; }
+
+static bool _doRestart(const char* reason) {
+    if (!mqtt_restart_permitido()) {
+        Serial.printf("[SYS] reinicio (%s) adiado: TON ocupada (OTA/abastecimento)\n", reason);
+        return false;
+    }
+    strncpy(_rtcCause, reason, sizeof(_rtcCause) - 1); _rtcCause[sizeof(_rtcCause) - 1] = 0;
+    time_t nowE = time(nullptr);
+    _rtcEpoch = (nowE > 1700000000) ? (uint32_t)nowE : 0;
+    _rtcMagic = NETWD_MAGIC;
+    Serial.printf("[SYS] REINICIANDO a TON (motivo: %s, reinicios seguidos: %lu)\n", reason, (unsigned long)_rtcRestarts);
+    if (_mqtt.connected()) { _mqtt.disconnect(); }
+    delay(200);
+    ESP.restart();
+    return true;
+}
+
+void mqtt_request_restart(const char* reason, unsigned long delay_ms) {
+    strncpy(_restartReason, reason ? reason : "comando", sizeof(_restartReason) - 1);
+    _restartReason[sizeof(_restartReason) - 1] = 0;
+    _restartAt = millis() + (delay_ms ? delay_ms : 1);
+}
+
+static void _netwdInit() {
+    if (_rtcMagic != NETWD_MAGIC || esp_reset_reason() == ESP_RST_POWERON || esp_reset_reason() == ESP_RST_BROWNOUT) {
+        _rtcMagic = NETWD_MAGIC; _rtcRestarts = 0; _rtcEpoch = 0; _rtcCause[0] = 0;
+    }
+    _rtcCause[sizeof(_rtcCause) - 1] = 0;
+    strncpy(_bootCause, _rtcCause, sizeof(_bootCause) - 1);
+    _rtcCause[0] = 0;
+    // Relogio: reinicio por software nao zera o RTC do ESP32, mas a hora do sistema sim.
+    // Restaura a ultima hora conhecida (+3 s do boot) ate o NTP corrigir.
+    if (_bootCause[0] && _rtcEpoch > 1700000000UL && time(nullptr) < 1700000000) {
+        struct timeval tv; tv.tv_sec = (time_t)_rtcEpoch + 3; tv.tv_usec = 0;
+        settimeofday(&tv, nullptr);
+        Serial.printf("[SYS] hora restaurada apos reinicio (%s): epoch=%lu\n", _bootCause, (unsigned long)tv.tv_sec);
+    }
+    _rtcEpoch = 0;
+    if (_bootCause[0]) Serial.printf("[SYS] boot apos reinicio pedido pelo firmware: %s (seguidos: %lu)\n", _bootCause, (unsigned long)_rtcRestarts);
+    _lastMqttOkMs = millis();
+}
+
+static void _netWatchdog() {
+    unsigned long now = millis();
+    if (_restartAt && (long)(now - _restartAt) >= 0) {
+        if (_doRestart(_restartReason)) return;
+        _restartAt = now + 30000UL;   // ocupada: tenta de novo em 30 s
+    }
+    if (_mqtt.connected()) {
+        _lastMqttOkMs = now;
+        if (_rtcRestarts && _mqttConnSince && now - _mqttConnSince > NETWD_STABLE_MS) {
+            Serial.println("[SYS] conexao estavel: recuo do watchdog zerado");
+            _rtcRestarts = 0;
+        }
+        return;
+    }
+    unsigned long off = now - _lastMqttOkMs;
+    // 1) WiFi "conectado" mas sem broker: forca nova associacao (mesma rede se so' houver uma)
+    if (off > NETWD_REASSOC_MS && now - _lastReassocMs > NETWD_REASSOC_MS
+        && _wifiStarted && _activeIf != NET_ETH && WiFi.status() == WL_CONNECTED && _wifiCount > 0) {
+        _lastReassocMs = now;
+        if (_wifiCount > 1) _wifiIdx = (_wifiIdx + 1) % _wifiCount;
+        Serial.printf("[SYS] sem broker ha %lus com WiFi associado -> reassociando em '%s'\n",
+                      (unsigned long)(off / 1000), _wifiSsid[_wifiIdx]);
+        WiFi.disconnect();
+        WiFi.begin(_wifiSsid[_wifiIdx], _wifiPass[_wifiIdx]);
+        _wifiTryStart = now;
+    }
+    // 2) Reinicio com recuo (10 / 30 / 60 min)
+    uint32_t k = _rtcRestarts < 2 ? _rtcRestarts : 2;
+    if (off > NETWD_RESTART_MS[k] && now - _lastRestartTry > 60000UL) {
+        _lastRestartTry = now;
+        if (_rtcRestarts < 1000) _rtcRestarts++;
+        if (!_doRestart("sem_broker")) { if (_rtcRestarts) _rtcRestarts--; }
+    }
+}
+
 void mqtt_init(mqtt_cmd_callback_t callback) {
     _cmdCallback = callback;
 
@@ -438,9 +546,11 @@ void mqtt_init(mqtt_cmd_callback_t callback) {
     // timeout = 2s/transacao, nao configuravel). 60s/30s da' folga real.
     _mqtt.setKeepAlive(60);
     _mqtt.setSocketTimeout(30);
+    _netwdInit();
 }
 
 void mqtt_loop() {
+    _netWatchdog();   // auto-recuperacao (reassocia / reinicia com recuo)
     // Mantem stack do W5500 atualizada (DHCP renew, etc.)
     eth_maintain();
 
@@ -552,6 +662,7 @@ void mqtt_loop() {
 
     if (ok) {
         Serial.println("[MQTT] Conectado!");
+        _mqttConnSince = millis();
         _wasConnected = true;
         _mqtt.subscribe(MQTT_TOPIC_CMD);
         { String wt = String(MQTT_TOPIC_BASE) + "/cmd/wifi"; _mqtt.subscribe(wt.c_str()); Serial.printf("[MQTT] Inscrito em: %s\n", wt.c_str()); }
@@ -565,11 +676,12 @@ void mqtt_loop() {
         // ativa e qual interface (wifi/eth) — backend usa para auto-discovery.
         char hello[256];
         snprintf(hello, sizeof(hello),
-                 "{\"online\":true,\"version\":\"%s\",\"model\":\"%s\",\"mac\":\"%s\",\"ip\":\"%s\",\"iface\":\"%s\"}",
+                 "{\"online\":true,\"version\":\"%s\",\"model\":\"%s\",\"mac\":\"%s\",\"ip\":\"%s\",\"iface\":\"%s\",\"reset\":\"%s\",\"restart_cause\":\"%s\"}",
                  FIRMWARE_VERSION, DEVICE_MODEL,
                  WiFi.macAddress().c_str(),
                  _ifLocalIp().c_str(),
-                 _ifName(_activeIf));
+                 _ifName(_activeIf),
+                 diag_reset_reason(), _bootCause);
         _mqtt.publish(willTopic.c_str(), hello, true);
 
         // Primeira leva ao reconectar — pequena, so pra confirmar fluxo.

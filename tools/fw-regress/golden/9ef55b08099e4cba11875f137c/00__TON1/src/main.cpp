@@ -95,6 +95,17 @@ static bool _process_command_inner(const char* raw, char* result_msg, size_t msg
     String cmd = String(raw); cmd.trim(); cmd.toLowerCase();
     if (cmd.length() == 0) { snprintf(result_msg, msg_sz, "empty"); return false; }
 
+    // Reinicio remoto (MQTT <base>/cmd ou Serial): "reboot" | "reiniciar". Recusa com OTA
+    // em curso ou posto abastecendo; o ack sai antes (reinicia 2 s depois).
+    if (cmd == "reboot" || cmd == "reiniciar" || cmd == "restart") {
+        if (!mqtt_restart_permitido()) { snprintf(result_msg, msg_sz, "reboot_recusado_ton_ocupada"); return false; }
+        // Mensagem RETIDA no broker chega logo apos conectar: ignorar evita loop de reinicio.
+        if (mqtt_conn_age_ms() < 20000UL) { snprintf(result_msg, msg_sz, "reboot_ignorado_recem_conectado"); return false; }
+        mqtt_request_restart("comando", 2000);
+        snprintf(result_msg, msg_sz, "reiniciando_em_2s");
+        return true;
+    }
+
     if (cmd.length() >= 4 && cmd[0] == 'r' && cmd[1] >= '1' && cmd[1] <= '6') {
         snprintf(result_msg, msg_sz, "no_relays_in_model");
         return false;

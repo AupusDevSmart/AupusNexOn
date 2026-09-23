@@ -30,6 +30,8 @@ extern bool g_cmd_from_serial;   // main.cpp
 #define BOMBA_MAT_LIVRE        0   // 1 = matricula digitada nao e' conferida (opcao explicita)
 #define BOMBA_SIM_CMDS         1   // 1 = bancada (TESTE/ ou Simular): card/mat/fluxo/net aceitos por MQTT; 0 = campo: so' pelo Serial
 #define BOMBA_TELEMETRIA_MS    30000UL
+#define BOMBA_NIVEL_BAIXO_MS   3000UL   // AI abaixo do minimo precisa persistir isto p/ encerrar (amostra ruim nao corta)
+#define BOMBA_BOOT_SETTLE_MS   500UL    // espera as entradas do MCP estabilizarem (3 scans de 50 ms) antes do 1o tick
 #define BOMBA_AI_0_MV          0.0f
 #define BOMBA_AI_100_MV        3000.0f
 #define BOMBA_K_FATOR          450.00f
@@ -56,14 +58,29 @@ static long _epochDe(uint32_t ms) {
     long delta = (long)((millis() - ms) / 1000UL);
     return (long)now - delta;
 }
+// Nivel (AI): MEDIANA das ultimas 9 amostras (1 a cada 20 ms). Uma amostra ruim (contato, ruido,
+// glitch do ADC) nao vira "nivel baixo". Bancada 22/09: pilha com mau contato caia a 0 por 1 amostra.
 static float _nivelPct() {
+    static float am[9]; static uint8_t n = 0, idx = 0; static uint32_t t_am = 0;
+    uint32_t now = millis();
+    if (n == 0 || now - t_am >= 20) { t_am = now; am[idx] = adc_read_mv(1); idx = (uint8_t)((idx + 1) % 9); if (n < 9) n++; }
+    float s[9]; for (uint8_t i = 0; i < n; i++) s[i] = am[i];
+    for (uint8_t i = 1; i < n; i++) { float v = s[i]; int j = i - 1; while (j >= 0 && s[j] > v) { s[j + 1] = s[j]; j--; } s[j + 1] = v; }
+    float mv = s[n / 2];
     float span = (BOMBA_AI_100_MV - BOMBA_AI_0_MV); if (span < 1.0f) span = 1.0f;
-    float pct = (adc_read_mv(1) - BOMBA_AI_0_MV) / span * 100.0f;
+    float pct = (mv - BOMBA_AI_0_MV) / span * 100.0f;
     if (pct < 0) pct = 0; if (pct > 100) pct = 100;
     return pct;
 }
 
 // ---- persistencia (NVS ns "posto"): lista (JSON retido) + sessao em andamento ----
+// Bloqueio (falha_partida / contator_colado) PERSISTE no NVS: reset ou queda de energia nao destrava —
+// so' o comando/botao 'rearme' (bancada 22/09: o bloqueio sumia ao religar a TON).
+static void _salvarBloqueio(const char* motivo) {
+    Preferences pr; if (!pr.begin("posto", false)) return;
+    if (motivo && motivo[0]) pr.putString("bloq", motivo); else pr.remove("bloq");
+    pr.end();
+}
 static void _salvarSessao(bool aberta) {
     Preferences pr; if (!pr.begin("posto", false)) return;
     if (!aberta) { pr.remove("sessao"); pr.end(); _sessaoAberta = false; return; }
@@ -146,6 +163,8 @@ struct _Ouv : public bomba::Ouvinte {
         Serial.printf("[BOMBA] %s -> %s  (+%lu ms | t=%lu)\n", bomba::estadoNome(de), bomba::estadoNome(para), _tEstado ? (agora - _tEstado) : 0UL, agora);
         _tEstado = agora;
         if (para == bomba::ABASTECENDO) _salvarSessao(true);
+        if (para == bomba::BLOQUEADA) _salvarBloqueio(_m ? _m->motivoBloqueio() : "restaurado");
+        if (de == bomba::BLOQUEADA) _salvarBloqueio(nullptr);
         _lastTel = 0;   // forca telemetria na proxima volta
     }
 };
@@ -205,7 +224,7 @@ void bomba_init() {
     bomba::Config c;
     c.pulso_bo1_ms = BOMBA_PULSO_MS; c.espera_bi1_ms = BOMBA_ESPERA_BI1_MS; c.janela_mat_ms = BOMBA_JANELA_MAT_MS;
     c.auth_timeout_ms = BOMBA_AUTH_TIMEOUT_MS; c.fluxo_parado_ms = BOMBA_FLUXO_PARADO_MS; c.tempo_max_ms = BOMBA_TEMPO_MAX_MS;
-    c.nivel_min_pct = BOMBA_NIVEL_MIN_PCT; c.exigir_matricula = BOMBA_EXIGIR_MAT != 0; c.matricula_livre = BOMBA_MAT_LIVRE != 0;
+    c.nivel_min_pct = BOMBA_NIVEL_MIN_PCT; c.nivel_baixo_ms = BOMBA_NIVEL_BAIXO_MS; c.exigir_matricula = BOMBA_EXIGIR_MAT != 0; c.matricula_livre = BOMBA_MAT_LIVRE != 0;
     c.tem_contator_aux = true;
     c.rng = esp_random;   // req_id do auth/req com nonce (T8.3)
     static bomba::Maquina m(c, &_ouv);
@@ -216,9 +235,14 @@ void bomba_init() {
     relay_set(3, false);
     relay_set(4, false);
     Preferences pr;
+    String bloq;
     if (pr.begin("posto", true)) {
-        String lista = pr.getString("lista", ""); pr.end();
+        String lista = pr.getString("lista", ""); bloq = pr.getString("bloq", ""); pr.end();
         if (lista.length()) _carregarLista(_m->lista(), lista.c_str(), false);
+    }
+    if (bloq.length()) {
+        _m->bloquear(bloq.c_str(), millis());
+        Serial.printf("[BOMBA] BLOQUEIO restaurado do NVS (%s): reset nao destrava, use 'rearme'\n", bloq.c_str());
     }
     Serial.printf("[OK] Posto de combustivel: maquina de estados (lista v%lu, %d tags) — comandos: card/mat/fluxo/status/rearme/net/lista\n",
                   (unsigned long)_m->lista().versao, _m->lista().ntags());
@@ -237,6 +261,10 @@ void bomba_auth_resp(const char* json) {
 
 void bomba_loop(bomba_publish_fn publish) {
     if (!_m) return;
+    // Boot: o MCP so' tem estado valido apos 3 scans (150 ms); antes disso tudo le "aberto" e a maquina
+    // entraria em MANUAL (evento espurio a cada boot). O filtro das BI inicializa depois da espera.
+    static uint32_t t_boot = 0; if (!t_boot) t_boot = millis() ? millis() : 1;
+    if (millis() - t_boot < BOMBA_BOOT_SETTLE_MS) return;
     if (publish && _pub != publish) {
         _pub = publish;
         _publicarSessaoInterrompida();
@@ -303,8 +331,8 @@ bool bomba_cmd(const String& cmdIn, char* msg, size_t msg_sz) {
     }
     if (low == "status") {
         const bomba::Entradas& e = _m->entradas();
-        Serial.printf("[BOMBA] estado=%s uid=%s mat=%s litros=%.2f nivel=%.0f%% fluxo=%.1f L/min | contator=%d auto=%d emerg=%d bico=%d boia_min=%d boia_alta=%d | online=%d lista=v%lu(%d) ver=%s\n",
-            bomba::estadoNome(_m->estado()), _m->uidAtual(), _m->matAtual(), _m->litros(), e.nivel_pct, _fluxo_lpm,
+        Serial.printf("[BOMBA] estado=%s uid=%s mat=%s litros=%.2f nivel=%.0f%% (an1=%.0f an2=%.0f mV) fluxo=%.1f L/min | contator=%d auto=%d emerg=%d bico=%d boia_min=%d boia_alta=%d | online=%d lista=v%lu(%d) ver=%s\n",
+            bomba::estadoNome(_m->estado()), _m->uidAtual(), _m->matAtual(), _m->litros(), e.nivel_pct, adc_read_mv(1), adc_read_mv(2), _fluxo_lpm,
             e.contator, e.automatico, e.emergencia, e.bico_no_suporte, e.nivel_baixo_boia, e.boia_alta,
             _m->online() ? 1 : 0, (unsigned long)_m->lista().versao, _m->lista().ntags(), FIRMWARE_VERSION);
         _telemetria();

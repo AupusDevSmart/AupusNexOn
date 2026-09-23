@@ -85,6 +85,7 @@ void diag_publish_periodic() {
     doc["sd_write_errors"]   = diag_sd_write_errors;
     doc["min_free_heap"]     = diag_min_free_heap;
     doc["reset_reason"]      = diag_reset_reason();
+    doc["restart_cause"]     = mqtt_restart_cause();   // "" | sem_broker | comando
     if (diag_last_successful_read_ms > 0) {
         doc["silence_sec"] = (uint32_t)((millis() - diag_last_successful_read_ms) / 1000);
     } else {
