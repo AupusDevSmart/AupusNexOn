@@ -292,12 +292,12 @@ export const GeradorIcon: React.FC<IconProps> = ({ width, height, color }) => {
 
 ### Passo 3: Adicionar Botão na Sidebar
 
-**Arquivo:** `components/EditorSidebar.tsx`
+**Arquivo:** `components/EditorToolbar.tsx`
 
 ```diff
 + import { Box } from 'lucide-react';
 
-  export const EditorSidebar = ({ ... }) => {
+  export const EditorToolbar = ({ ... }) => {
 +   const setEditorMode = useDiagramStore(state => state.setEditorMode);
 
     return (
@@ -624,7 +624,7 @@ const handleExportPNG = async () => {
 
 ### Passo 3: Adicionar Botão
 
-**Arquivo:** `components/EditorSidebar.tsx`
+**Arquivo:** `components/EditorToolbar.tsx`
 
 ```tsx
 import { Download } from 'lucide-react';

@@ -11,13 +11,13 @@
  */
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { CircuitBoard, Maximize2, Minimize2, Download } from 'lucide-react';
+import { CircuitBoard, Maximize2, Minimize2, Download, ZoomIn, Edit3, X, Save } from 'lucide-react';
 import { useDiagramStore } from './hooks/useDiagramStore';
 import { DiagramViewport } from './components/DiagramViewer/DiagramViewport';
 import { DiagramConnections } from './components/DiagramViewer/DiagramConnections';
 import { EquipmentNode } from './components/Equipment/EquipmentNode';
 import { exportDiagram, type ExportFormat } from './utils/exportDiagram';
-import { EditorSidebar } from './components/EditorSidebar';
+import { EditorToolbar } from './components/EditorToolbar';
 import { EquipamentoCadastroModal } from './components/EquipamentoCadastroModal';
 import type { EquipamentoApiResponse } from '@/services/equipamentos.services';
 import {
@@ -110,6 +110,7 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
 
   // Modal de criar equipamento rápido
   const [showCreateEquipmentModal, setShowCreateEquipmentModal] = useState(false);
+  const [createTipoId, setCreateTipoId] = useState<string | null>(null); // tipo escolhido no select "Adicionar"
 
   const { toast } = useToast();
 
@@ -276,20 +277,20 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
     setShowEditModal(true);
   };
 
-  const handleDeleteEquipment = (equipmentId: string) => {
-    const equipment = equipamentos.find(eq => eq.id === equipmentId);
-    if (!equipment) return;
-
-    void deleteEquipamentos([equipmentId])
+  // Apaga a seleção atual (botão "Excluir" da barra; mesmo caminho da tecla Del)
+  const handleDeleteSelected = (equipmentIds: string[]) => {
+    if (equipmentIds.length === 0) return;
+    void deleteEquipamentos(equipmentIds)
       .then(() => toast({
-        title: 'Equipamento apagado',
-        description: `${equipment.nome} foi apagado. Ctrl+Z desfaz.`,
+        title: 'Apagado',
+        description: `${equipmentIds.length} equipamento(s) apagado(s). Ctrl+Z desfaz.`,
       }))
       .catch(() => toast({
         title: 'Erro ao apagar',
-        description: 'Não foi possível apagar o equipamento. Veja o console.',
+        description: 'Não foi possível apagar. Veja o console.',
         variant: 'destructive',
       }));
+    clearSelection();
   };
 
   // Handler para adicionar equipamento da unidade ao diagrama
@@ -623,12 +624,7 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
             className="h-6 gap-2"
             title="Ajustar zoom para mostrar todo o diagrama"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="11" cy="11" r="8"></circle>
-              <path d="m21 21-4.35-4.35"></path>
-              <path d="M11 8v6"></path>
-              <path d="M8 11h6"></path>
-            </svg>
+            <ZoomIn className="h-4 w-4" />
             <span className="hidden sm:inline">Ajustar Zoom</span>
           </Button>
 
@@ -683,18 +679,12 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
             >
               {currentMode === 'view' ? (
                 <>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M12 20h9"></path>
-                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
-                  </svg>
+                  <Edit3 className="h-4 w-4" />
                   <span className="hidden sm:inline">Editar</span>
                 </>
               ) : (
                 <>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M9 11l-6 6v3h3l6-6m0 0l3-3m-3 3l3-3m2-5l-3 3m0 0l-3-3"></path>
-                    <line x1="18" y1="13" x2="6" y2="1"></line>
-                  </svg>
+                  <X className="h-4 w-4" />
                   <span className="hidden sm:inline">Sair da Edição</span>
                 </>
               )}
@@ -716,18 +706,36 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
               disabled={!isDirty}
               title="Salvar layout (Ctrl+S)"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
-                <polyline points="17 21 17 13 7 13 7 21"></polyline>
-                <polyline points="7 3 7 8 15 8"></polyline>
-              </svg>
+              <Save className="h-4 w-4" />
               <span className="hidden sm:inline">Salvar</span>
             </Button>
           )}
         </div>
       </div>
 
-      {/* Container principal com sidebar (se modo edição) */}
+      {/* Barra de edição (2ª linha, como no Diagrama IoT): Modo · Adicionar · seleção · atalhos */}
+      {currentMode === 'edit' && (
+        <EditorToolbar
+          availableEquipments={availableEquipments}
+          onCreateEquipment={(tipoId) => {
+            if (!diagrama?.unidadeId) {
+              toast({
+                title: 'Erro',
+                description: 'Diagrama não carregado corretamente. Tente recarregar a página.',
+                variant: 'destructive',
+              });
+              return;
+            }
+            setCreateTipoId(tipoId);
+            setShowCreateEquipmentModal(true);
+          }}
+          onAddEquipmentToDiagram={handleAddEquipmentToDiagram}
+          onEditEquipment={handleEditEquipment}
+          onDeleteSelected={handleDeleteSelected}
+        />
+      )}
+
+      {/* Canvas */}
       <div className="flex-1 flex relative min-h-0" style={{ overflow: 'visible' }}>
         {/* Viewport com diagrama */}
         <DiagramViewport onBackgroundClick={onBackgroundClick}>
@@ -750,36 +758,17 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
           </g>
         </DiagramViewport>
 
-        {/* Sidebar de edição (apenas em modo edit) */}
-        {currentMode === 'edit' && (
-          <EditorSidebar
-            onCreateEquipment={() => {
-              if (!diagrama?.unidadeId) {
-                toast({
-                  title: 'Erro',
-                  description: 'Diagrama não carregado corretamente. Tente recarregar a página.',
-                  variant: 'destructive',
-                });
-                return;
-              }
-              setShowCreateEquipmentModal(true);
-            }}
-            onEditEquipment={handleEditEquipment}
-            onDeleteEquipment={handleDeleteEquipment}
-            availableEquipments={availableEquipments}
-            onAddEquipmentToDiagram={handleAddEquipmentToDiagram}
-          />
-        )}
       </div>
 
       {/* Cadastro simplificado do unifilar (Fase 7): criar */}
       {diagrama?.unidadeId && showCreateEquipmentModal && (
         <EquipamentoCadastroModal
           open={showCreateEquipmentModal}
-          onClose={() => setShowCreateEquipmentModal(false)}
+          onClose={() => { setShowCreateEquipmentModal(false); setCreateTipoId(null); }}
           unidadeId={diagrama.unidadeId}
           mode="create"
-          onCreated={(equip) => { handleEquipamentoCriado(equip); setShowCreateEquipmentModal(false); }}
+          initialTipoId={createTipoId ?? undefined}
+          onCreated={(equip) => { handleEquipamentoCriado(equip); setShowCreateEquipmentModal(false); setCreateTipoId(null); }}
         />
       )}
 

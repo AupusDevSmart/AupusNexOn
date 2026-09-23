@@ -44,7 +44,7 @@ v2/
 │   │   ├── TransformadorIcon.tsx
 │   │   └── ... (outros ícones)
 │   │
-│   ├── EditorSidebar.tsx           # Sidebar com ferramentas
+│   ├── EditorToolbar.tsx           # Sidebar com ferramentas
 │   └── EquipmentEditModal.tsx      # Modal de edição
 │
 ├── 📂 hooks/                        # Estado global
@@ -89,7 +89,7 @@ DiagramV2
 │
 └── Renderização
     ├── <DiagramViewport>        // Canvas SVG
-    ├── <EditorSidebar>          // Ferramentas
+    ├── <EditorToolbar>          // Ferramentas
     ├── <EquipmentEditModal>     // Edição
     └── <ModalCriarEquipamento>  // Criação rápida
 ```
@@ -558,7 +558,7 @@ expect(pixelsToGrid(400)).toBe(10);
   }
 
 // 3. Adicionar botão na sidebar
-  EditorSidebar.tsx:
+  EditorToolbar.tsx:
 + <Button onClick={ativarNovoModo}>Nova Feature</Button>
 ```
 

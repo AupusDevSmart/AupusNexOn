@@ -70,11 +70,12 @@ interface Props {
   mode: 'create' | 'edit';
   equipmentId?: string;      // edit
   equipmentTipoLabel?: string; // edit: rótulo do tipo (fallback)
+  initialTipoId?: string; // create: tipo pré-escolhido no select "Adicionar" da barra do unifilar
   onCreated?: (equip: EquipamentoApiResponse) => void;
   onSaved?: (v: { tag: string; localizacao: string }) => void;
 }
 
-export function EquipamentoCadastroModal({ open, onClose, unidadeId, mode, equipmentId, equipmentTipoLabel, onCreated, onSaved }: Props) {
+export function EquipamentoCadastroModal({ open, onClose, unidadeId, mode, equipmentId, equipmentTipoLabel, initialTipoId, onCreated, onSaved }: Props) {
   const [tipos, setTipos] = useState<Tipo[]>([]);
   const [tipoId, setTipoId] = useState('');
   const [tipoLabel, setTipoLabel] = useState(equipmentTipoLabel ?? '');
@@ -101,7 +102,12 @@ export function EquipamentoCadastroModal({ open, onClose, unidadeId, mode, equip
       setNativos({ comando: [], status: [] }); setPontosComando([]); setPontosStatus([]);
       setLoading(true);
       equipamentosApi.tiposUnifilar()
-        .then((t) => setTipos(Array.isArray(t) ? t : []))
+        .then((t) => {
+          const lista = Array.isArray(t) ? t : [];
+          setTipos(lista);
+          // Veio da barra "Adicionar" com o tipo já escolhido: pré-seleciona e sugere a TAG.
+          if (initialTipoId && lista.some((x) => x.id === initialTipoId)) void escolherTipoDe(lista, initialTipoId);
+        })
         .catch(() => setTipos([]))
         .finally(() => setLoading(false));
     } else if (mode === 'edit' && equipmentId) {
@@ -127,9 +133,9 @@ export function EquipamentoCadastroModal({ open, onClose, unidadeId, mode, equip
   }, [open, mode, equipmentId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Ao escolher o tipo (create), sugere a TAG (sigla + sequencial).
-  const escolherTipo = async (id: string) => {
+  const escolherTipoDe = async (lista: Tipo[], id: string) => {
     setTipoId(id);
-    const t = tipos.find((x) => x.id === id);
+    const t = lista.find((x) => x.id === id);
     setTipoLabel(t?.nome ?? '');
     const nat = t?.pontos_nativos ?? { comando: [], status: [] };
     setNativos(nat);
@@ -141,6 +147,7 @@ export function EquipamentoCadastroModal({ open, onClose, unidadeId, mode, equip
       setTag(prox ?? '');
     } catch { /* mantém o que estiver */ }
   };
+  const escolherTipo = (id: string) => escolherTipoDe(tipos, id);
 
   const podeSalvar = mode === 'create' ? !!tipoId && !saving : !saving;
 

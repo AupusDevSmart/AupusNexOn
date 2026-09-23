@@ -20,7 +20,7 @@ interface DiagramV2Props {
 ```tsx
 <div className="diagram-v2-container">
   {/* Sidebar com ferramentas */}
-  <EditorSidebar
+  <EditorToolbar
     onCreateEquipment={() => setShowCreateModal(true)}
     onEditEquipment={handleEdit}
     onDeleteEquipment={handleDelete}
@@ -303,7 +303,9 @@ const ICON_MAP = {
 
 ---
 
-## 6. EditorSidebar.tsx - Ferramentas
+## 6. EditorToolbar.tsx - Barra de edição
+
+> **2026-09-23:** o painel lateral (EditorSidebar: Ferramenta / Adicionar / Equipamentos da unidade / No Diagrama / Atalhos) foi substituído por uma **segunda linha da barra**, no mesmo formato da barra de edição do Diagrama IoT: `Modo:` Mover/Selecionar · `Adicionar:` select agrupado (Novo equipamento → abre o cadastro com o tipo; Já cadastrados na unidade → entra direto) · ações da seleção (Editar/Excluir) · contadores · popover de Atalhos. A lista "No Diagrama" deixou de existir: editar = duplo-clique no símbolo, apagar = selecionar + Del/Excluir. O texto abaixo descreve a versão antiga.
 
 **O que faz:** Sidebar com botões, lista de equipamentos e atalhos
 
@@ -559,7 +561,7 @@ export const THEMES = {
 | DiagramViewport | Canvas SVG | ✅ SVG + Grid | ✅ Viewport local |
 | EquipmentNode | Equipamento | ✅ Ícone + Label | ❌ Lê do Zustand |
 | DiagramConnections | Linhas | ✅ Paths SVG | ❌ Recebe props |
-| EditorSidebar | Ferramentas | ✅ Botões + Lista | ❌ Lê do Zustand |
+| EditorToolbar | Ferramentas | ✅ Botões + Lista | ❌ Lê do Zustand |
 | EquipmentIconFactory | Ícones | ✅ SVG icons | ❌ Stateless |
 | useDiagramStore | Estado global | ❌ Não renderiza | ✅ Single source of truth |
 | orthogonalRouting | Algoritmos | ❌ Funções puras | ❌ Stateless |
