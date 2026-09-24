@@ -100,7 +100,7 @@ export function EsqueciSenhaForm() {
         <CardFooter className="flex-col space-y-4">
           <Button
             type="submit"
-            className="w-full bg-foreground text-background hover:bg-foreground/90"
+            className="w-full bg-nexon-verde font-medium text-nexon-azul hover:bg-nexon-verde/90"
             disabled={isLoading}
           >
             {isLoading ? (

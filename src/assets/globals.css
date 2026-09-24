@@ -2,12 +2,33 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Identidade visual NexON — tipografia oficial (Lexend), auto-hospedada.
+   Arquivo variável: um só woff2 cobre os pesos 300 a 700. */
+@font-face {
+  font-family: 'Lexend';
+  src: url('/fonts/Lexend-latin.woff2') format('woff2');
+  font-weight: 300 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Paleta oficial do NexON (05-cores/tokens.json). Não muda com o tema:
+   é a marca, não o esquema de cores da interface. */
+:root {
+  --nx-azul: #161633;
+  --nx-verde: #70C04B;
+  --nx-onda: #1D1D3B;
+  --nx-linha: #34345A;
+  --nx-texto-secundario: #A9ACC4;
+  --nx-link-claro: #177A3C;
+}
+
 /* Switch - cores visiveis em light e dark mode */
 .aupus-switch[data-state="unchecked"] {
   background-color: hsl(0, 0%, 78%) !important;
 }
 .aupus-switch[data-state="checked"] {
-  background-color: #059669 !important;
+  background-color: var(--nx-verde) !important;
 }
 .aupus-switch[data-state="unchecked"] span,
 .aupus-switch[data-state="checked"] span {
@@ -17,33 +38,33 @@
   background-color: hsl(0, 0%, 35%) !important;
 }
 .dark .aupus-switch[data-state="checked"] {
-  background-color: #34d399 !important;
+  background-color: var(--nx-verde) !important;
 }
 
 @layer base {
   :root {
-    --background: hsl(0, 0%, 100%);
-    --foreground: hsl(222.2, 84%, 4.9%);
+    --background: hsl(228, 24%, 96%);
+    --foreground: hsl(240, 40%, 14%);
 
-    --card: hsl(0, 0%, 92%);
-    --card-foreground: hsl(0, 0%, 0%);
-    --card-hover: hsl(200, 18%, 90%);
-    --card-foreground-hover: hsl(220, 80%, 5%);
+    --card: hsl(0, 0%, 100%);
+    --card-foreground: hsl(240, 40%, 14%);
+    --card-hover: hsl(228, 24%, 93%);
+    --card-foreground-hover: hsl(240, 42%, 10%);
 
     --popover: hsl(0, 0%, 100%);
-    --popover-foreground: hsl(222.2, 84%, 4.9%);
-    --popover-hover: hsl(0, 0%, 96%);
-    --popover-foreground-hover: hsl(222.2, 84%, 4.9%);
+    --popover-foreground: hsl(240, 40%, 14%);
+    --popover-hover: hsl(228, 24%, 96%);
+    --popover-foreground-hover: hsl(240, 42%, 10%);
 
     --primary: hsl(0, 0%, 100%);
-    --primary-foreground: hsl(0, 0%, 0%);
-    --primary-hover: hsl(221, 59%, 24%);
-    --primary-foreground-hover: hsl(0, 0%, 95%);
+    --primary-foreground: hsl(240, 40%, 14%);
+    --primary-hover: hsl(228, 24%, 96%);
+    --primary-foreground-hover: hsl(240, 42%, 10%);
 
-    --secondary: hsl(0, 0%, 100%);
-    --secondary-foreground: hsl(0, 0%, 0%);
-    --secondary-hover: hsl(0, 0%, 95%);
-    --secondary-foreground-hover: hsl(219, 81%, 8%);
+    --secondary: hsl(228, 24%, 96%);
+    --secondary-foreground: hsl(240, 40%, 14%);
+    --secondary-hover: hsl(228, 20%, 92%);
+    --secondary-foreground-hover: hsl(240, 42%, 10%);
 
     --tertiary: hsl(0, 0%, 73%);
     --tertiary-foreground: hsl(0, 0%, 100%);
@@ -55,26 +76,26 @@
     --info-hover: hsl(206, 79%, 45%);
     --info-foreground-hover: hsl(88, 91%, 84%);
 
-    --success: hsl(138, 98%, 33%);
-    --success-foreground: hsl(0, 0%, 100%);
-    --success-hover: hsl(138, 93%, 24%);
-    --success-foreground-hover: hsl(0, 0%, 100%);
+    --success: hsl(101, 48%, 52%);
+    --success-foreground: hsl(240, 40%, 14%);
+    --success-hover: hsl(101, 48%, 46%);
+    --success-foreground-hover: hsl(240, 42%, 10%);
 
     --warning: hsl(38, 92%, 50%);
     --warning-foreground: hsl(48, 96%, 89%);
     --warning-hover: hsl(38, 87%, 45%);
     --warning-foreground-hover: hsl(48, 91%, 84%);
 
-    --muted: hsl(0, 0%, 98%);
-    --muted-foreground: hsl(0, 0%, 41%);
-    --muted-foreground-2: hsl(210, 4%, 29%);
-    --muted-hover: hsl(0, 0%, 86%);
-    --muted-foreground-hover: hsl(210, 7%, 17%);
+    --muted: hsl(228, 24%, 96%);
+    --muted-foreground: hsl(237, 11%, 40%);
+    --muted-foreground-2: hsl(238, 15%, 34%);
+    --muted-hover: hsl(228, 18%, 90%);
+    --muted-foreground-hover: hsl(240, 25%, 22%);
 
-    --accent: hsl(237, 49%, 91%);
-    --accent-foreground: hsl(0, 0%, 0%);
-    --accent-hover: hsl(238, 46%, 55%);
-    --accent-foreground-hover: hsl(0, 0%, 5%);
+    --accent: hsl(101, 45%, 90%);
+    --accent-foreground: hsl(240, 40%, 14%);
+    --accent-hover: hsl(101, 45%, 84%);
+    --accent-foreground-hover: hsl(240, 42%, 10%);
 
     --destructive: hsl(0, 84%, 60%);
     --destructive-foreground: hsl(210, 40%, 98%);
@@ -86,11 +107,11 @@
     --whatsapp-hover: hsl(120, 56%, 30%);
     --whatsapp-foreground-hover: hsl(0, 0%, 95%);
 
-    --ring: 0;
-    --border: hsl(214.3, 31.8%, 91.4%);
-    --border-hover: hsl(214.3, 26.8%, 86.4%);
-    --input: hsl(0, 0%, 66%);
-    --input-hover: hsl(214.3, 26.8%, 86.4%);
+    --ring: hsl(142, 68%, 28%);
+    --border: hsl(227, 12%, 85%);
+    --border-hover: hsl(227, 12%, 79%);
+    --input: hsl(227, 12%, 78%);
+    --input-hover: hsl(227, 12%, 72%);
 
     --radius: 1rem;
 
@@ -100,14 +121,14 @@
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
 
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 240 40% 14%;
+    --sidebar-primary: 240 40% 14%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 101 45% 90%;
+    --sidebar-accent-foreground: 240 40% 14%;
+    --sidebar-border: 227 12% 85%;
+    --sidebar-ring: 142 68% 28%;
 
     --status-waiting-for-evaluation: hsl(50, 100%, 85%);
     --status-waiting-for-evaluation-foreground: hsl(36, 100%, 24%);
@@ -140,28 +161,28 @@
   }
 
   .dark {
-    --background: hsl(225, 38%, 16%);
-    --foreground: hsl(210, 40%, 98%);
+    --background: hsl(240, 40%, 14%);
+    --foreground: hsl(0, 0%, 100%);
 
-    --card: hsl(0, 0%, 0%);
-    --card-foreground: hsl(210, 40%, 98%);
-    --card-hover: hsl(222.2, 79%, 9%);
-    --card-foreground-hover: hsl(210, 35%, 93%);
+    --card: hsl(240, 45%, 9%);
+    --card-foreground: hsl(0, 0%, 100%);
+    --card-hover: hsl(240, 40%, 14%);
+    --card-foreground-hover: hsl(233, 19%, 90%);
 
-    --popover: hsl(0, 0%, 0%);
-    --popover-foreground: hsl(210, 40%, 98%);
-    --popover-hover: hsl(0, 0%, 10%);
-    --popover-foreground-hover: hsl(210, 35%, 93%);
+    --popover: hsl(240, 45%, 9%);
+    --popover-foreground: hsl(0, 0%, 100%);
+    --popover-hover: hsl(240, 34%, 17%);
+    --popover-foreground-hover: hsl(233, 19%, 90%);
 
-    --primary: hsl(0, 0%, 0%);
-    --primary-foreground: hsl(210, 3%, 89%);
-    --primary-hover: hsl(220, 62%, 29%);
-    --primary-foreground-hover: hsl(210, 8%, 84%);
+    --primary: hsl(240, 45%, 9%);
+    --primary-foreground: hsl(233, 19%, 90%);
+    --primary-hover: hsl(240, 27%, 28%);
+    --primary-foreground-hover: hsl(0, 0%, 100%);
 
-    --secondary: hsl(0, 0%, 9%);
-    --secondary-foreground: hsl(210, 40%, 98%);
-    --secondary-hover: hsl(224, 67%, 15%);
-    --secondary-foreground-hover: hsl(210, 35%, 93%);
+    --secondary: hsl(240, 40%, 14%);
+    --secondary-foreground: hsl(0, 0%, 100%);
+    --secondary-hover: hsl(240, 34%, 19%);
+    --secondary-foreground-hover: hsl(233, 19%, 90%);
 
     --tertiary: hsl(0, 0%, 12%);
     --tertiary-foreground: hsl(0, 0%, 100%);
@@ -173,26 +194,26 @@
     --info-hover: hsl(206, 79%, 45%);
     --info-foreground-hover: hsl(88, 91%, 84%);
 
-    --success: hsl(138, 98%, 33%);
-    --success-foreground: hsl(148, 96%, 89%);
-    --success-hover: hsl(138, 93%, 24%);
-    --success-foreground-hover: hsl(148, 91%, 84%);
+    --success: hsl(101, 48%, 52%);
+    --success-foreground: hsl(240, 40%, 14%);
+    --success-hover: hsl(101, 48%, 46%);
+    --success-foreground-hover: hsl(240, 42%, 10%);
 
     --warning: hsl(48, 96%, 89%);
     --warning-foreground: hsl(38, 92%, 50%);
     --warning-hover: hsl(48, 91%, 84%);
     --warning-foreground-hover: hsl(38, 87%, 45%);
 
-    --muted: hsl(217.2, 32.6%, 17.5%);
-    --muted-foreground: hsl(0, 0%, 52%);
-    --muted-foreground-2: hsl(0, 0%, 83%);
-    --muted-hover: hsl(217.2, 27.6%, 22.5%);
-    --muted-foreground-hover: hsl(215, 15.2%, 70.1%);
+    --muted: hsl(240, 34%, 17%);
+    --muted-foreground: hsl(233, 19%, 72%);
+    --muted-foreground-2: hsl(233, 19%, 85%);
+    --muted-hover: hsl(240, 27%, 24%);
+    --muted-foreground-hover: hsl(233, 19%, 80%);
 
-    --accent: hsl(0, 0%, 27%);
-    --accent-foreground: hsl(0, 0%, 86%);
-    --accent-hover: hsl(0, 0%, 27%);
-    --accent-foreground-hover: hsl(0, 0%, 91%);
+    --accent: hsl(240, 27%, 28%);
+    --accent-foreground: hsl(0, 0%, 100%);
+    --accent-hover: hsl(240, 27%, 33%);
+    --accent-foreground-hover: hsl(0, 0%, 100%);
 
     --destructive: hsl(0, 62%, 30%);
     --destructive-foreground: hsl(210, 40%, 98%);
@@ -204,11 +225,11 @@
     --whatsapp-hover: hsl(120, 56%, 30%);
     --whatsapp-foreground-hover: hsl(0, 0%, 95%);
 
-    --ring: 0;
-    --border: hsl(214, 9%, 15%);
-    --border-hover: hsl(217.2, 27.6%, 22.5%);
-    --input: hsl(0, 0%, 22%);
-    --input-hover: hsl(217.2, 27.6%, 22.5%);
+    --ring: hsl(101, 48%, 52%);
+    --border: hsl(240, 27%, 28%);
+    --border-hover: hsl(240, 27%, 34%);
+    --input: hsl(240, 27%, 30%);
+    --input-hover: hsl(240, 27%, 36%);
 
     --chart-1: 338, 100%, 39%;
     --chart-2: 206, 85%, 32%;
@@ -216,14 +237,14 @@
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
 
-    --sidebar-background: hsl(0, 0%, 100%);
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-background: 240 45% 9%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 101 48% 52%;
+    --sidebar-primary-foreground: 240 40% 14%;
+    --sidebar-accent: 240 27% 28%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 240 27% 28%;
+    --sidebar-ring: 101 48% 52%;
 
     --status-waiting-for-evaluation: hsl(50, 100%, 65%);
     --status-waiting-for-evaluation-foreground: hsl(36, 100%, 85%);

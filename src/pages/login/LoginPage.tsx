@@ -1,5 +1,5 @@
 import { LoginForm } from '@/features/login/components/LoginForm/LoginForm';
-import { LoginBanner } from '@/features/login/components/LoginBanner/LoginBanner';
+import { LoginBanner, LoginMarcaCompacta } from '@/features/login/components/LoginBanner/LoginBanner';
 import { useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useUserStore } from '@/store/useUserStore';
@@ -49,13 +49,15 @@ export function LoginPage() {
 
       {/* Banner lateral - visível apenas em desktop */}
       <LoginBanner
-        bannerSrc="/logoaupus.svg"
         subtitle="Interligando você com o futuro. Energize-se."
       />
 
       {/* Área do formulário - centralizada */}
       <div className="flex flex-col justify-center items-center flex-1 p-4 overflow-y-auto">
-        <LoginForm redirectTo={redirectTo} />
+        <div className="w-full max-w-md">
+          <LoginMarcaCompacta />
+          <LoginForm redirectTo={redirectTo} />
+        </div>
       </div>
     </div>
   );

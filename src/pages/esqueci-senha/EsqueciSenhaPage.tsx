@@ -1,5 +1,5 @@
 import { EsqueciSenhaForm } from '@/features/login/components/EsqueciSenhaForm/EsqueciSenhaForm';
-import { LoginBanner } from '@/features/login/components/LoginBanner/LoginBanner';
+import { LoginBanner, LoginMarcaCompacta } from '@/features/login/components/LoginBanner/LoginBanner';
 import { useTheme } from '@/components/theme-provider';
 import { Moon, Sun } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -28,12 +28,14 @@ export function EsqueciSenhaPage() {
       </Button>
 
       <LoginBanner
-        bannerSrc="/logoaupus.svg"
         subtitle="Interligando você com o futuro. Energize-se."
       />
 
       <div className="flex flex-col justify-center items-center flex-1 p-4 overflow-y-auto">
-        <EsqueciSenhaForm />
+        <div className="w-full max-w-md">
+          <LoginMarcaCompacta />
+          <EsqueciSenhaForm />
+        </div>
       </div>
     </div>
   );

@@ -5,38 +5,67 @@ interface LoginBannerProps {
 }
 
 /**
- * Componente de banner lateral da tela de login
- * Exibe logo e mensagem de boas-vindas
- * Visível apenas em desktop (lg:)
+ * Painel da marca nas telas de entrada (login, esqueci e redefinir senha).
+ * Identidade visual NexON: fundo azul NexON e logo na versão negativa,
+ * independente do tema. Só aparece de lg pra cima; abaixo disso a marca
+ * entra reduzida no topo do formulário (ver LoginMarcaCompacta).
  */
 export function LoginBanner({
-  bannerSrc = '/logoaupus.svg',
+  bannerSrc = '/brand/nexon-logo-negativo.svg',
   title,
   subtitle = 'Interligando você com o futuro. Energize-se.',
 }: LoginBannerProps) {
   return (
-    <div className="hidden lg:flex lg:flex-col lg:justify-center lg:items-center lg:w-1/2 h-full bg-[#0f0e1f] overflow-hidden p-8 border-r border-border/20">
-      {bannerSrc ? (
-        <>
-          <img
-            src={bannerSrc}
-            alt="Aupus Smart Logo"
-            className="max-w-[320px] w-full max-h-full object-contain object-center p-4"
-          />
-          {title && (
-            <h1 className="text-white text-3xl font-semibold mt-6 text-center">
-              {title}
-            </h1>
-          )}
-          <p className="text-white/70 text-center mt-4 px-8 max-w-md text-base">
-            {subtitle}
-          </p>
-        </>
-      ) : (
-        <div className="flex items-center justify-center w-full h-full text-white/50">
-          <span className="text-xl">Banner Placeholder</span>
-        </div>
-      )}
+    <aside className="relative hidden h-full overflow-hidden border-r border-white/10 bg-nexon-azul p-12 lg:flex lg:w-1/2 lg:flex-col lg:justify-between">
+      {/* O pulso é o grafismo divisor da marca Aupus: proporção original
+          preservada e sempre crescendo da esquerda para a direita. */}
+      <img
+        src="/brand/pulso-verde.svg"
+        alt=""
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-auto w-full"
+      />
+
+      <div className="flex flex-1 flex-col items-center justify-center gap-8 text-center">
+        <img
+          src={bannerSrc}
+          alt="NexON"
+          className="h-auto w-full max-w-[340px] object-contain"
+        />
+        {title && (
+          <h1 className="text-center text-3xl font-medium text-white">{title}</h1>
+        )}
+        <p className="max-w-xs text-sm leading-relaxed text-nexon-texto-secundario">
+          {subtitle}
+        </p>
+      </div>
+
+      <div className="flex flex-col items-center gap-2">
+        <span className="text-xs text-white/40">Uma plataforma</span>
+        <img
+          src="/brand/aupus-energia-negativa.png"
+          alt="Aupus Energia"
+          className="h-8 w-auto object-contain opacity-80"
+        />
+      </div>
+    </aside>
+  );
+}
+
+/** Marca reduzida acima do formulário, quando o painel lateral some (< lg). */
+export function LoginMarcaCompacta() {
+  return (
+    <div className="mb-8 flex justify-center lg:hidden">
+      <img
+        src="/brand/nexon-logo-colorido.svg"
+        alt="NexON"
+        className="h-12 w-auto object-contain dark:hidden"
+      />
+      <img
+        src="/brand/nexon-logo-negativo.svg"
+        alt="NexON"
+        className="hidden h-12 w-auto object-contain dark:block"
+      />
     </div>
   );
 }
