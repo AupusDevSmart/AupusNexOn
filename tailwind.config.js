@@ -18,10 +18,22 @@ const config = {
 			}
 		},
 		extend: {
+			fontFamily: {
+				sans: ['Lexend', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+			},
 			spacing: {
         'safe-bottom': 'env(safe-area-inset-bottom)',
       },
 			colors: {
+				// Paleta oficial do NexON (kit de identidade visual).
+				nexon: {
+					azul: 'var(--nx-azul)',
+					verde: 'var(--nx-verde)',
+					onda: 'var(--nx-onda)',
+					linha: 'var(--nx-linha)',
+					'texto-secundario': 'var(--nx-texto-secundario)',
+					'link-claro': 'var(--nx-link-claro)',
+				},
 				status: {
 					'waiting-for-evaluation': {
 						DEFAULT: '#fef08a',

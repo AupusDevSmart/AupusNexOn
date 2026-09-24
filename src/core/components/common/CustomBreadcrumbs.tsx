@@ -31,7 +31,7 @@ export function CustomBreadcrumbs({ className = '' }: { className?: string }) {
 
   const breadcrumbConfig: BreadcrumbConfigItem[] = [
     {
-      label: 'Aupus Energia',
+      label: 'NexON',
       path: null,
     },
     { path: '/dashboard', label: 'Dashboard' },

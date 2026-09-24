@@ -1890,7 +1890,7 @@ export function SinopticoAtivoPage() {
 
     // Cleanup: restaurar título ao desmontar
     return () => {
-      document.title = 'AupusNexOn';
+      document.title = 'NexON';
     };
   }, [unidadeAtual, unidadeId]);
 
