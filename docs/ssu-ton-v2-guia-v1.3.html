@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<title>SSU (ABNT NBR 14522) na TON-V2 — guia de referência v1.3</title>
+<style>
+  @page { size: A4; margin: 0; }
+  * { box-sizing: border-box; }
+  body { font-family: "DejaVu Sans", Arial, sans-serif; font-size: 9.6pt; color: #1b1f2a; margin: 0; padding: 14mm 16mm 16mm 16mm; line-height: 1.38; }
+  h1 { font-size: 19pt; color: #16213e; margin: 0 0 2mm 0; letter-spacing: -0.2px; }
+  .sub { color: #5b6270; font-size: 9pt; margin-bottom: 5mm; border-bottom: 2px solid #3fe04f; padding-bottom: 2mm; }
+  h2 { font-size: 12.5pt; color: #16213e; margin: 6mm 0 2mm 0; border-left: 4px solid #3fe04f; padding-left: 2.5mm; page-break-after: avoid; }
+  h3 { font-size: 10.5pt; color: #16213e; margin: 4mm 0 1.5mm 0; page-break-after: avoid; }
+  p { margin: 1.2mm 0 2mm 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1.5mm 0 3mm 0; page-break-inside: avoid; }
+  th, td { border: 1px solid #d3d7de; padding: 1.3mm 2mm; vertical-align: top; text-align: left; font-size: 8.9pt; }
+  th { background: #16213e; color: #fff; font-weight: 600; }
+  tr:nth-child(even) td { background: #f5f7fa; }
+  code, .mono { font-family: "DejaVu Sans Mono", monospace; font-size: 8.4pt; }
+  pre { font-family: "DejaVu Sans Mono", monospace; font-size: 8.1pt; background: #f2f4f7; border: 1px solid #d3d7de; border-left: 3px solid #16213e; padding: 2mm 2.5mm; margin: 1.5mm 0 3mm 0; white-space: pre; page-break-inside: avoid; }
+  .box { border: 1px solid #3fe04f; background: #f0fdf2; padding: 2mm 3mm; margin: 2mm 0 3mm 0; page-break-inside: avoid; }
+  .warn { border: 1px solid #e0a63f; background: #fff8e8; padding: 2mm 3mm; margin: 2mm 0 3mm 0; page-break-inside: avoid; }
+  .err { border: 1px solid #d84343; background: #fff1f1; padding: 2mm 3mm; margin: 2mm 0 3mm 0; page-break-inside: avoid; }
+  .two { display: table; width: 100%; } .two > div { display: table-cell; width: 50%; vertical-align: top; padding-right: 4mm; } .two > div:last-child { padding-right: 0; }
+  .pb { page-break-before: always; }
+  .small { font-size: 8.3pt; color: #5b6270; }
+  ul { margin: 1mm 0 2mm 0; padding-left: 5mm; } li { margin-bottom: 0.8mm; }
+  .tag { display: inline-block; font-size: 7.6pt; padding: 0 1.4mm; border-radius: 2px; color: #fff; background: #16213e; vertical-align: middle; }
+  .tag.ok { background: #1f9d55; } .tag.new { background: #d97706; }
+  svg text { font-family: "DejaVu Sans", Arial, sans-serif; }
+</style></head>
+<body>
+
+<h1>SSU (ABNT NBR 14522) na TON-V2 — guia de referência</h1>
+<div class="sub">v1.3 · 21/09/2026 · protocolo, firmware, payload, testes e bancada · Aupus Energia · Engenharia IoT ·
+<b>revisão v1.3:</b> nomes dos registradores reativos alinhados ao A-966 real; RX-timeout, wrap de 15 bits e reinício de intervalo aplicados no código; caminho LoRa binário.</div>
+
+<h2>Resumo</h2>
+<table>
+<tr><th style="width:24mm">O que chega</th><td>1 bloco por segundo: segundos restantes do intervalo, posto, quadrante e 2 contadores de pulsos (ativa, reativa) acumulados desde o início do intervalo.</td></tr>
+<tr><th>Energia</th><td>Δ pulsos do <b>mesmo registrador</b> × Ke (kWh/pulso). Nunca comparar contadores de registradores diferentes.</td></tr>
+<tr><th>Enlace</th><td>110 baud, 8N1, coletor aberto, sem delimitador — o bloco é fechado pelo silêncio.</td></tr>
+<tr><th>Hardware</th><td>Borne X14 (X14-2 = SU+, X14-1 = GND) → IO48 · pull-up R47 680 Ω · TVS D4 · UART0 (<code>Serial0</code>), só RX.</td></tr>
+<tr><th>Saída</th><td>Bucket por intervalo de demanda (15 min), JSON no formato do A-966, categoria Gateway no NexON. Em satélite LoRa: JSON plano → frame binário <code>LORA_TYPE_SSU</code>.</td></tr>
+</table>
+
+<h2>Camada física</h2>
+<table>
+<tr><th></th><th>Normal (3.4.1)</th><th>Estendido (3.4.2)</th></tr>
+<tr><td>Velocidade</td><td>110 baud ±3 %</td><td>110 baud ±3 %</td></tr>
+<tr><td>Caractere</td><td>start + 8 + 1–2 stop</td><td>start + 8 + 1 stop</td></tr>
+<tr><td>Bloco / transmissão</td><td>8 octetos / ≈ 800 ms</td><td>9 octetos / ≈ 818 ms</td></tr>
+<tr><td>Silêncio mínimo</td><td>≈ 200 ms</td><td>≈ 182 ms</td></tr>
+</table>
+<p>Bit = 9,09 ms; caractere ≈ 91 ms. Receber sempre em <code>SERIAL_8N1</code>. RX não invertido (idle alto pelo pull-up). Fechar o bloco em qualquer silêncio entre ~10 ms e 182 ms.</p>
+
+<figure style="margin:2mm 0 3mm 0; page-break-inside: avoid;">
+<svg viewBox="0 0 700 120" width="100%" role="img" aria-label="Linha do tempo: bloco de 9 octetos (818 ms), silêncio de 182 ms, próximo bloco; RX-timeout de 1 símbolo dispara no silêncio, de 4 símbolos não">
+  <defs><marker id="ar" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#5b6270"/></marker></defs>
+  <g font-size="9" fill="#1b1f2a">
+    <rect x="40" y="18" width="409" height="22" fill="#16213e"/>
+    <text x="244" y="33" fill="#fff" text-anchor="middle">bloco n · 9 octetos ≈ 818 ms</text>
+    <rect x="449" y="18" width="91" height="22" fill="#e8ebf0" stroke="#d3d7de"/>
+    <text x="494" y="33" text-anchor="middle" fill="#5b6270">≈ 182 ms</text>
+    <rect x="540" y="18" width="150" height="22" fill="#16213e" opacity="0.55"/>
+    <text x="615" y="33" fill="#fff" text-anchor="middle">bloco n+1 …</text>
+    <line x1="40" y1="52" x2="690" y2="52" stroke="#9aa1ad"/>
+    <g fill="#5b6270" font-size="8">
+      <text x="40" y="63">0 ms</text><text x="140" y="63">200</text><text x="240" y="63">400</text><text x="340" y="63">600</text><text x="440" y="63">800</text><text x="540" y="63">1000</text><text x="640" y="63">1200</text>
+    </g>
+    <line x1="449" y1="70" x2="494" y2="70" stroke="#1f9d55" stroke-width="3"/>
+    <text x="40" y="73" fill="#1f9d55">RX-timeout 1 símbolo ≈ 91 ms → dispara dentro do silêncio ✓</text>
+    <line x1="449" y1="86" x2="524" y2="86" stroke="#1f9d55" stroke-width="3"/>
+    <text x="40" y="89" fill="#1f9d55">regra de gap da spec: 150 ms → dispara ✓</text>
+    <line x1="449" y1="102" x2="631" y2="102" stroke="#d84343" stroke-width="3"/>
+    <text x="40" y="105" fill="#d84343">RX-timeout 4 símbolos ≈ 364 ms → bloco n+1 já começou: nunca fecha ✗</text>
+  </g>
+</svg>
+<figcaption class="small">RX-timeout do ESP32 é em <b>símbolos</b> (caracteres), não bits. A 110 baud 1 símbolo ≈ 91 ms. Usar <code>setRxTimeout(1)</code>; com 4 (≈ 364 ms) o bloco nunca fecha — <span class="tag ok">corrigido no gerador em 21/09</span>.</figcaption>
+</figure>
+
+<h2>Formatos de bloco</h2>
+<p>Modo fixo de fábrica. O octeto 3 muda de significado entre os formatos → autodetecção: aceitar o formato só após <b>10 blocos seguidos</b> com tamanho + checksum válidos. Blocos da detecção não acumulam.</p>
+
+<h3>Normal — 8 octetos</h3>
+<table>
+<tr><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>8</th></tr>
+<tr><td>seg[7:0]</td><td>seg[11:8] + flags</td><td>segmento + tarifa</td><td>ativa lo</td><td>ativa hi · 7 bits</td><td>reativa lo</td><td>reativa hi · 7 bits</td><td>LRC</td></tr>
+</table>
+<table>
+<tr><th style="width:16mm">Octeto</th><th style="width:26mm">Bits</th><th>Conteúdo</th></tr>
+<tr><td>1–2</td><td>1[7:0], 2[3:0]</td><td>Segundos restantes (12 bits, regressivo)</td></tr>
+<tr><td>2</td><td>6–7</td><td>Pulsos capacitivos/indutivos computados para UFER/DMCR</td></tr>
+<tr><td>3</td><td>0–3 · 4–5</td><td>Segmento horário (2 = fora de ponta nos vetores) · tarifa: 0 azul, 1 verde, 2 irrigantes, 3 outras</td></tr>
+<tr><td>4–7</td><td>15 bits LE</td><td>Contadores ativa / reativa — máscara <code>0x7F</code> no octeto alto; <b>wrap em 32 768</b></td></tr>
+<tr><td>8</td><td>—</td><td>LRC = ~(XOR dos octetos 1–7)</td></tr>
+</table>
+
+<h3>Estendido — 9 octetos (obrigatório com geração)</h3>
+<table>
+<tr><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>8</th><th>9</th></tr>
+<tr><td>seg[7:0]</td><td>seg[11:8] + bits 4/5/6–7</td><td>posto + quadrante</td><td>ativa lo</td><td>ativa hi</td><td>reativa lo</td><td>reativa hi</td><td>CRC lo</td><td>CRC hi</td></tr>
+</table>
+<table>
+<tr><th style="width:16mm">Octeto</th><th style="width:26mm">Bits</th><th>Conteúdo</th></tr>
+<tr><td>1–2</td><td>1[7:0], 2[3:0]</td><td>Segundos restantes (12 bits, regressivo)</td></tr>
+<tr><td>2</td><td>4</td><td>Toggle a cada reposição de demanda (detectar mudança)</td></tr>
+<tr><td>2</td><td>5</td><td>Toggle a cada fim de intervalo reativo (detectar mudança)</td></tr>
+<tr><td>2</td><td>6–7</td><td>Posto reativo: 0 nenhum, 1 capacitivo, 2 indutivo, 3 ambos</td></tr>
+<tr><td>3</td><td>0–1</td><td>Posto horário: 1 ponta, 2 fora de ponta, 3 quarto posto</td></tr>
+<tr><td>3</td><td>2–3</td><td>Reservados — mascarar</td></tr>
+<tr><td>3</td><td>4–5</td><td>Quadrante por tabela: 00→Q1, 01→Q4, 10→Q2, 11→Q3</td></tr>
+<tr><td>3</td><td>7</td><td>Reativo sendo tarifado agora</td></tr>
+<tr><td>4–7</td><td>16 bits LE</td><td>Contadores ativa / reativa: lo | (hi &lt;&lt; 8); wrap em 65 536</td></tr>
+<tr><td>8–9</td><td>—</td><td>CRC-16/ARC: polinômio refletido 0xA001, init 0x0000, lo primeiro</td></tr>
+</table>
+
+<h2>Validação e decodificação</h2>
+<p>Checksum inválido → descartar o bloco inteiro e contar em <code>ssu_err</code>.</p>
+<div class="two"><div>
+<pre>uint8_t lrc(const uint8_t* d, size_t n) {
+  uint8_t v = 0;
+  for (size_t i = 0; i &lt; n; i++) v ^= d[i];
+  return (uint8_t)~v;
+}
+uint16_t crc16(const uint8_t* d, size_t n) {
+  uint16_t c = 0;                 // ≠ Modbus (0xFFFF)
+  for (size_t i = 0; i &lt; n; i++) {
+    c ^= d[i];
+    for (int b = 0; b &lt; 8; b++)
+      c = (c &amp; 1) ? (c &gt;&gt; 1) ^ 0xA001 : c &gt;&gt; 1;
+  }
+  return c;
+}</pre>
+</div><div>
+<pre>seg      = d[0] | ((d[1] &amp; 0x0F) &lt;&lt; 8);
+bitRepos = d[1] &amp; 0x10;       // toggle
+bitFimR  = d[1] &amp; 0x20;       // toggle
+postoR   = (d[1] &gt;&gt; 6) &amp; 3;   // 0 · cap · ind · ambos
+postoH   = d[2] &amp; 3;          // 1 ponta · 2 fora · 3 quarto
+q        = QUAD[(d[2] &gt;&gt; 4) &amp; 3]; // {1,4,2,3}
+tarifR   = d[2] &amp; 0x80;
+ativa    = d[3] | (d[4] &lt;&lt; 8);
+reativa  = d[5] | (d[6] &lt;&lt; 8);
+// normal: ativa = d[3] | ((d[4] &amp; 0x7F) &lt;&lt; 8)
+//         seg.  = d[2] &amp; 0x0F; tarifa = (d[2]&gt;&gt;4)&amp;3</pre>
+</div></div>
+
+<h3>Exemplo: <span class="mono">3E 80 81 C0 2B 8E 12 55 B8</span></h3>
+<table>
+<tr><th style="width:26mm">Octetos</th><th>Cálculo</th><th style="width:52mm">Resultado</th></tr>
+<tr><td>3E 80</td><td>0x3E + (0x80 &amp; 0x0F)·256</td><td>62 s</td></tr>
+<tr><td>80</td><td>b7–6 = 10</td><td>posto reativo indutivo</td></tr>
+<tr><td>81</td><td>b1–0 = 01 · b5–4 = 00 · b7 = 1</td><td>ponta · Q1 · tarifando reativo</td></tr>
+<tr><td>C0 2B / 8E 12</td><td>0x2BC0 / 0x128E</td><td>11 200 (REG1) / 4 750 (REG3)</td></tr>
+<tr><td>55 B8</td><td>CRC = 0xB855</td><td>válido</td></tr>
+</table>
+
+<h2 class="pb">Quadrantes e registradores</h2>
+<div class="two"><div>
+<table>
+<tr><th>Q</th><th>bits</th><th>Registradores</th><th>JSON</th><th>Sentido</th></tr>
+<tr><td><b>Q1</b></td><td>00</td><td>REG1 + REG3</td><td><code>phf · qhfi</code></td><td>importa · indutivo</td></tr>
+<tr><td><b>Q2</b></td><td>10</td><td>REG2 + REG4</td><td><code>phr · qhfc</code></td><td>exporta · capacitivo</td></tr>
+<tr><td><b>Q3</b></td><td>11</td><td>REG2 + REG5</td><td><code>phr · qhri</code></td><td>exporta · indutivo</td></tr>
+<tr><td><b>Q4</b></td><td>01</td><td>REG1 + REG6</td><td><code>phf · qhrc</code></td><td>importa · capacitivo</td></tr>
+</table>
+<figure style="margin:0">
+<svg viewBox="0 0 260 200" width="100%" role="img" aria-label="Plano P×Q com os quatro quadrantes: Q1 +P +Q qhfi, Q2 −P +Q qhfc, Q3 −P −Q qhri, Q4 +P −Q qhrc">
+ <g stroke="#9aa1ad" stroke-width="1"><line x1="20" y1="100" x2="240" y2="100"/><line x1="130" y1="10" x2="130" y2="190"/></g>
+ <g font-size="9" fill="#1b1f2a">
+  <text x="234" y="96" text-anchor="end">+P (importa)</text><text x="26" y="96">−P (exporta)</text>
+  <text x="134" y="18">+Q</text><text x="134" y="188">−Q</text>
+  <text x="185" y="45" text-anchor="middle" font-weight="bold" fill="#16213e">Q1</text><text x="185" y="58" text-anchor="middle">REG1+REG3</text><text x="185" y="70" text-anchor="middle" fill="#1f9d55">qhfi · indutivo</text>
+  <text x="75" y="45" text-anchor="middle" font-weight="bold" fill="#16213e">Q2</text><text x="75" y="58" text-anchor="middle">REG2+REG4</text><text x="75" y="70" text-anchor="middle" fill="#1f9d55">qhfc · capacitivo</text>
+  <text x="75" y="135" text-anchor="middle" font-weight="bold" fill="#16213e">Q3</text><text x="75" y="148" text-anchor="middle">REG2+REG5</text><text x="75" y="160" text-anchor="middle" fill="#1f9d55">qhri · indutivo</text>
+  <text x="185" y="135" text-anchor="middle" font-weight="bold" fill="#16213e">Q4</text><text x="185" y="148" text-anchor="middle">REG1+REG6</text><text x="185" y="160" text-anchor="middle" fill="#1f9d55">qhrc · capacitivo</text>
+ </g>
+</svg></figure>
+</div><div>
+<table>
+<tr><th>Reg</th><th>Conteúdo (NBR)</th><th>JSON (A-966)</th></tr>
+<tr><td>REG1</td><td>ativa direta</td><td><code>phf</code></td></tr>
+<tr><td>REG2</td><td>ativa reversa</td><td><code>phr</code></td></tr>
+<tr><td>REG3</td><td>reativa Q1</td><td><code>qhfi</code></td></tr>
+<tr><td>REG4</td><td>reativa Q2</td><td><code>qhfc</code></td></tr>
+<tr><td>REG5</td><td>reativa Q3</td><td><code>qhri</code></td></tr>
+<tr><td>REG6</td><td>reativa Q4</td><td><code>qhrc</code></td></tr>
+</table>
+<pre>regAtiva   = (q == 1 || q == 4) ? 1 : 2;
+REG_R[5]   = { 0, 3, 4, 5, 6 };
+regReativa = REG_R[q];
+// JSON: acum[3]→qhfi acum[4]→qhfc
+//       acum[5]→qhri acum[6]→qhrc</pre>
+<div class="box"><b>Convenção dos nomes (a do A-966, que o NexON consome):</b> <b>f/r</b> = sinal de Q (fornecida = +Q, recebida = −Q); <b>i/c</b> = Q1 e Q3 indutivo, Q2 e Q4 capacitivo — sempre relativo ao sentido do fluxo ativo (o mesmo critério da ANEEL para geração). O backend soma <code>qhfi+qhri</code> como indutivo e <code>qhfc+qhrc</code> como capacitivo.</div>
+</div></div>
+<div class="warn"><b>Base da correção (v1.3):</b> 400 buckets reais do "Gateway IoT A-966 1" (UFV, 17/09/2026) cruzados com o quadrante do <code>frame</code>: ativa Q2/Q3 → <code>phr</code>, Q4 → <code>phf</code> (tabela {1,4,2,3} confirmada); reativa <b>Q2 → <code>qhfc</code></b> (57×), <b>Q3 → <code>qhri</code></b> (132×), <b>Q4 → <code>qhrc</code></b> (158×). O v1.2 trazia Q2→qhri / Q3→qhrc / Q4→qhfc — invertido: uma UFV exportando em Q2 apareceria como indutiva.</div>
+<div class="err"><b>Não calcular quadrante como "bits + 1".</b> Acerta só Q1: 01 vira Q2 (consumo contado como injeção), 10 vira Q3 (reativo trocado), 11 vira Q4 (injeção contada como consumo). Sem erro visível — o checksum é válido.</div>
+
+<h2>Regras de acumulação</h2>
+<table>
+<tr><th style="width:26mm">Situação</th><th style="width:40mm">Sintoma</th><th>Tratamento</th></tr>
+<tr><td>Troca de quadrante</td><td>Contador da ativa cai (11 210 → 41)</td><td>É outro registrador. Δ contra o último valor do REG2 — <b>0 se o intervalo foi visto desde o início</b> (reinício observado ⇒ todos os registradores partiram de 0). Baseline só se o REG2 nunca foi visto antes de um reinício (boot no meio do intervalo).</td></tr>
+<tr><td>Wrap</td><td>65 500 → 40 no mesmo registrador</td><td>Δ modular: 76. Normal (15 bits): mod 32 768 — 32 700 → 40 = 108.</td></tr>
+<tr><td>Reinício do intervalo</td><td>Segundos sobem (0 → 899)</td><td>Publicar bucket, zerar acumuladores, base de todos = 0 e todos "vistos"; o 1º bloco novo já conta.</td></tr>
+<tr><td>Fechamento 3×</td><td>Blocos idênticos repetidos</td><td>Δ já dá 0; contar o evento de fechamento uma vez só.</td></tr>
+<tr><td>Bits 4 e 5</td><td>Invertem a cada evento</td><td>Detectar mudança contra o último valor. Bit 5 ≈ a cada 4 intervalos (reativo 1 h).</td></tr>
+</table>
+<pre>const uint16_t MASK = normal ? 0x7FFF : 0xFFFF;
+void processa(uint8_t reg, uint16_t atual) {        // reg = 1..6
+  if (visto[reg]) acumula(reg, (atual - ultimo[reg]) &amp; MASK);
+  ultimo[reg] = atual; visto[reg] = true;
+}
+void reinicioIntervalo() {
+  publicaBucket(); zeraAcumuladores();
+  for (int r = 1; r &lt;= 6; r++) { ultimo[r] = 0; visto[r] = true; }
+}</pre>
+
+<h2 class="pb">Firmware na TON-V2</h2>
+<pre>static HardwareSerial&amp; ssu = Serial0;   // UART0 = o objeto do core (console é USB-CDC); nunca 2ª instância
+ssu.begin(110, SERIAL_8N1, 48, -1);     // RX = IO48, sem TX
+ssu.setRxTimeout(1);                    // 1 símbolo ≈ 91 ms — dispara no silêncio de 182 ms
+ssu.onReceive(onBloco, true);           // callback só copia para fila FreeRTOS</pre>
+<table>
+<tr><th style="width:30mm">Item</th><th>Comportamento</th></tr>
+<tr><td>Parser</td><td>Roda no loop, lendo da fila. A recepção não depende do loop (SD, W5500, LoRa e Modbus bloqueiam por centenas de ms).</td></tr>
+<tr><td>Bucket</td><td><code>acum[REG1..REG6]</code>; publicado quando os segundos reiniciam — alinhado ao intervalo faturado.</td></tr>
+<tr><td>NVS</td><td>Acumuladores e NSU salvos a cada publicação e a cada 60 s.</td></tr>
+<tr><td>Enlace degradado</td><td>30 blocos inválidos seguidos → <code>sts = 0</code> e volta à autodetecção.</td></tr>
+<tr><td>Alarme de formato</td><td>Bloco normal em instalação com geração → pedir saída estendida à concessionária.</td></tr>
+<tr><td>Diagnóstico</td><td><code>/diagnostics</code>: <code>ssu_ok</code>, <code>ssu_err</code>, <code>ssu_fmt</code>, <code>ssu_degradado</code>, <code>ssu_intervalos</code>.</td></tr>
+<tr><td>Gerador</td><td>Com "Medidor Concessionária (SSU)" no diagrama, o IO48 vira RX (sai do <code>/inputs</code>) e é gerado <code>ssu.cpp</code>. Lib: <code>AupusNexOn/firmware-libs/ssu_nbr14522/</code>.</td></tr>
+<tr><td>LoRa (TON4v2 satélite)</td><td>O JSON aninhado do A-966 tem <b>~236 B</b> e <b>não cabe</b> no MTU de 200 B do E220. No satélite (<code>SSU_LORA_BIN=1</code>) o bucket sai em <b>JSON plano</b> (sem <code>frame/ver/time</code>) e vira o frame binário <code>LORA_TYPE_SSU</code> (0x11, ≈ 90 B no ar); o gateway carimba a hora e republica plano; o backend lê <code>phf/phr/qh*</code> tanto em <code>data.{}</code> quanto no topo. <b>Gateway precisa de firmware com a tabela nova</b> (regravar).</td></tr>
+</table>
+
+<h2>Payload e contas no NexON</h2>
+<pre>{ "NSU": 32, "ver": "2.0.0-…",
+  "data": { "cdo": "15", "phf": 0, "phr": 1532, "sts": 1, "qhfi": 0, "qhfc": 4, "qhri": 0, "qhrc": 0,
+            "frame": "00 90 a2 fc 05 04 00 c6 18" },
+  "time": "1789661700", "ke": 0.048, "fmt": 2, "q": 2, "seg": 0, "posto": 2, "ssu_err": 0 }</pre>
+<table>
+<tr><th style="width:34mm">Campo</th><th>Significado</th></tr>
+<tr><td><code>phf … qhrc</code></td><td>Pulsos crus do bucket, 1:1 com REG1…REG6 (nomes da tabela acima)</td></tr>
+<tr><td><code>ke</code></td><td>kWh/pulso do cadastro do medidor; sem ele o backend usa 0,048</td></tr>
+<tr><td><code>fmt · q · seg · posto</code></td><td>Formato (1 normal, 2 estendido), quadrante, segundos e posto do último bloco</td></tr>
+<tr><td><code>sts · ssu_err</code></td><td>Estado do enlace · blocos inválidos</td></tr>
+</table>
+<p>Contas (bucket de 15 min): kWh = pulsos × Ke; kW médio = kWh ÷ 0,25. Ex.: 1 532 × 0,048 = 73,5 kWh → 294 kW exportados.</p>
+<div class="box"><b>Exemplo real do A-966 = caso de teste 9.</b> O frame acima decodifica como Q2 (octeto 3 = A2 → bits 5-4 = 10), ativa 1 532 no REG2 e reativa 4 no REG4 → <code>phr = 1532</code>, <code>qhfc = 4</code> — exatamente o que o A-966 publicou. O <code>ssu.cpp</code> gerado emite o mesmo.</div>
+
+<h2>Testes automatizados</h2>
+<table>
+<tr><th style="width:52mm">Vetor</th><th>Esperado</th></tr>
+<tr><td class="mono">1C 82 92 D0 20 1C 0C 13</td><td>normal · 540 s · fora de ponta · verde · 8 400 / 3 100 · LRC 0x13</td></tr>
+<tr><td class="mono">3E 80 81 C0 2B 8E 12 55 B8</td><td>Q1 · 62 s · ponta · indutivo · 11 200 (REG1) / 4 750 (REG3) · CRC 0xB855</td></tr>
+<tr><td class="mono">82 43 32 29 00 0C 00 98 63</td><td>Q3 · 898 s · fora de ponta · capacitivo · 41 (REG2) / 12 (REG5) · CRC 0x6398</td></tr>
+<tr><td class="mono">01 00 12 16 00 0a 00 f0</td><td>normal · 1 s · fora de ponta · verde · 22 / 10 · LRC 0xF0</td></tr>
+<tr><td class="mono">00 90 a2 fc 05 04 00 c6 18</td><td>Q2 · 0 s · fora de ponta · indutivo (posto reativo) · 1 532 (REG2) / 4 (REG4) · CRC 0x18C6</td></tr>
+</table>
+<table>
+<tr><th style="width:8mm">#</th><th>Caso (<code>test_ssu.cpp</code>)</th><th>Critério</th><th style="width:22mm">Status</th></tr>
+<tr><td>1</td><td>Bloco normal no parser estendido</td><td>Rejeitado</td><td><span class="tag ok">ok</span></td></tr>
+<tr><td>2</td><td>Q1 → Q3 sem reinício visto (boot no meio)</td><td>Sem pico; REG2 = baseline</td><td><span class="tag ok">ok</span></td></tr>
+<tr><td>2b</td><td>Q1 → Q3 com reinício visto</td><td>Δ REG2 = 41, Δ REG5 = 12 (não baseline)</td><td><span class="tag ok">ok</span> <span class="tag new">novo</span></td></tr>
+<tr><td>3</td><td>Q1 → Q4</td><td>Ativa continua no REG1</td><td><span class="tag ok">ok</span></td></tr>
+<tr><td>4</td><td>3 fechamentos idênticos</td><td>1 evento</td><td><span class="tag ok">ok</span></td></tr>
+<tr><td>5</td><td>Bits 4/5 alternando</td><td>1 evento por transição</td><td><span class="tag ok">ok</span></td></tr>
+<tr><td>6</td><td>CRC/LRC com 1 bit errado</td><td>Rejeitado</td><td><span class="tag ok">ok</span></td></tr>
+<tr><td>7</td><td>Wrap 16 bits 65 500 → 40</td><td>Δ = 76</td><td><span class="tag ok">ok</span></td></tr>
+<tr><td>8</td><td>Wrap 15 bits 32 700 → 40 (normal)</td><td>Δ = 108</td><td><span class="tag ok">ok</span> <span class="tag new">novo</span></td></tr>
+<tr><td>9</td><td>Frame Q2 do payload (smoke do gerador)</td><td><code>phr = 1532</code>, <code>qhfc = 4</code> — ordem <code>qhfi,qhfc,qhri,qhrc ← REG3..6</code></td><td><span class="tag ok">ok</span></td></tr>
+<tr><td>10</td><td>Enquadramento a 110 baud (simulador)</td><td>Todo callback com 8 ou 9 bytes, 1/s</td><td>bancada</td></tr>
+</table>
+<p class="small">Estado em 21/09/2026: lib no host <b>55/55</b>; smoke do gerador V2 <b>49/49</b> (inclui rx-timeout 1, Serial0, ordem dos reativos, <code>SSU_LORA_BIN</code>, field-set LoRa); regressão V1 16/16 byte-idêntica; fw-regress 17 projetos reais sem diferença.</p>
+
+<h2 class="pb">Bancada: E750 + Conprove CE-6003</h2>
+<h3>Ligação (tutorial Conprove E750 A2E3 — conferir na tampa do medidor)</h3>
+<table>
+<tr><th>Mala</th><th>E750</th><th>Obs.</th></tr>
+<tr><td>V1, V2, V3 / comum</td><td>1, 2, 3 / 5</td><td>Medidor é autoalimentado: sem tensão, sem SSU</td></tr>
+<tr><td>I1, I2, I3 → retornos</td><td>8, 9, 10 → 15, 14, 13</td><td>Retornos em ordem invertida</td></tr>
+<tr><td>—</td><td>SU+ / SU−</td><td>X14-2 / X14-1 da TON-V2 (direto, sem resistor em série)</td></tr>
+</table>
+<h3>Ângulos (tensões fixas em 0°, −120°, +120°; φ = ∠V − ∠I)</h3>
+<table>
+<tr><th>Alvo</th><th>φ</th><th>I1</th><th>I2</th><th>I3</th><th>SSU esperada</th><th>JSON</th></tr>
+<tr><td>Q1</td><td>+25°</td><td>−25°</td><td>−145°</td><td>+95°</td><td>REG1 + REG3</td><td>phf · qhfi</td></tr>
+<tr><td>Q4</td><td>−25°</td><td>+25°</td><td>−95°</td><td>+145°</td><td>REG1 + REG6</td><td>phf · qhrc</td></tr>
+<tr><td>Q2</td><td>+155°</td><td>−155°</td><td>+85°</td><td>−35°</td><td>REG2 + REG4</td><td>phr · qhfc</td></tr>
+<tr><td>Q3</td><td>−155°</td><td>+155°</td><td>+35°</td><td>−85°</td><td>REG2 + REG5</td><td>phr · qhri</td></tr>
+</table>
+<p>FP 0,92 = ±23,07°. No 1º ponto, conferir o quadrante no mostrador do E750; se vier invertido, trocar o sinal de φ em tudo.</p>
+<h3>Roteiro</h3>
+<ol>
+<li>Só tensão: SSU transmitindo, formato travado, segundos decrescendo, contadores parados.</li>
+<li>Ke de bancada: Q1, φ = 0, 15 min (ex.: 66,4 V × 5 A × 3 ≈ 996 W → 0,249 kWh). Ke = kWh injetados ÷ pulsos. Repetir com φ = 90° para o reativo.</li>
+<li>Um quadrante por intervalo: Q1, Q4, Q2, Q3 — energia só nos 2 registradores do quadrante; conferir que o JSON cai em <code>qhfi / qhrc / qhfc / qhri</code>, nessa ordem.</li>
+<li>Transições (Sequencer): Q1→Q4, Q1→Q3, Q4→Q3 no meio do intervalo, várias vezes — sem pico.</li>
+<li>FP: φ = 23,0° e 23,2° — FP do NexON = cos φ injetado.</li>
+<li>Longa duração: cronometrar o bit 5, observar <code>ssu_err</code>, reboot no meio do intervalo (NVS).</li>
+</ol>
+
+<h2>Pendências</h2>
+<table>
+<tr><th style="width:8mm">#</th><th>O quê</th><th style="width:26mm">Onde</th><th>Critério de fechamento</th><th style="width:30mm">Status</th></tr>
+<tr><td>1</td><td>Valor de <code>setRxTimeout</code> no código gerado</td><td><code>_genSsuCpp</code></td><td>Teste 10</td><td><span class="tag ok">aplicado 21/09</span> (1 símbolo) · confirmar na bancada</td></tr>
+<tr><td>2</td><td>Caso Q1→Q3 do <code>test_ssu.cpp</code></td><td>lib</td><td>Δ REG2 = 41 com intervalo visto</td><td><span class="tag ok">aplicado</span> (caso 2b)</td></tr>
+<tr><td>3</td><td>Wrap de 15 bits no bloco normal</td><td>lib</td><td>Teste 8</td><td><span class="tag ok">aplicado</span></td></tr>
+<tr><td>4</td><td>Mapeamento de registrador no payload</td><td><code>ssu.cpp</code></td><td>Teste 9 — <b>qhfc = REG4</b> (A-966)</td><td><span class="tag ok">aplicado</span></td></tr>
+<tr><td>5</td><td>Uma só instância da UART0</td><td>código gerado</td><td><code>Serial0</code> por referência, sem <code>HardwareSerial(0)</code></td><td><span class="tag ok">aplicado</span></td></tr>
+<tr><td>6</td><td>Spec: <code>Serial2</code>, "bits+1 erra 2 de 4", ângulos 155/205, nomes reativos</td><td>spec</td><td>Spec alinhada a este guia</td><td>aberto</td></tr>
+<tr><td>7</td><td>Convenção de ângulo do CTC; faixas da CE-6003</td><td>mala / CTC</td><td>Quadrante no mostrador = tabela</td><td>aberto</td></tr>
+<tr><td>8</td><td>Ke de cadastro primário × Ke de bancada</td><td>parametrização E750</td><td>Ke<sub>prim</sub> = Ke<sub>sec</sub> × RTC × RTP, se aplicável</td><td>aberto</td></tr>
+<tr><td>9</td><td>Contador 899→0 ou 900→1; intervalo reativo</td><td>bancada</td><td>Captura de uma virada; bit 5 cronometrado</td><td>aberto</td></tr>
+<tr><td>10</td><td>Bucket em satélite LoRa</td><td>gerador (<code>LORA_TYPE_SSU</code>)</td><td>Bucket do satélite chega no NexON via gateway regravado</td><td><span class="tag ok">aplicado</span> · bancada</td></tr>
+</table>
+
+<h2>Referências</h2>
+<table>
+<tr><td style="width:44mm">ABNT NBR 14522:2008</td><td>§3.4.1 normal, §3.4.2 estendido, §3.4.2.6 registradores</td></tr>
+<tr><td>Landis+Gyr E750 (A2E3)</td><td>Modo e constante da SU, intervalos de demanda e reativo</td></tr>
+<tr><td>ESP32-S3 TRM / HardwareSerial.h</td><td>RX timeout em símbolos, <code>onReceive</code>, GPIO matrix</td></tr>
+<tr><td>Conprove</td><td>Manual da CE-6003, CTC (Quick, Sequencer), tutorial E750 A2E3</td></tr>
+<tr><td>Internos</td><td>Spec "Firmware de leitura da SSU" · <code>IOT-SSU-NBR14522-TON-V2-INTEGRACAO.md</code> · <code>REVISAO-SSU-GUIA-v1.2-HW-v1.1.md</code> · <code>firmware-libs/ssu_nbr14522/</code> · <code>mqtt.service.ts › salvarDadosGateway</code> · guia de hardware da TON-V2 (v1.2)</td></tr>
+</table>
+<p class="small"><b>Histórico:</b> v1.2 (21/09) revisão inicial · v1.3 (21/09) nomes reativos pela convenção do A-966 (evidência: 400 buckets reais), exemplo do A-966 promovido a referência/caso 9, LoRa via frame binário, RX-timeout 1 símbolo, wrap 15 bits e "visto" no reinício aplicados na lib (55/55), pendências 1–5 fechadas.</p>
+</body></html>

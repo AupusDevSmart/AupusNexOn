@@ -9,7 +9,8 @@ export interface CNPJInputProps extends Omit<React.InputHTMLAttributes<HTMLInput
   onFormattedChange?: (formatted: string, raw: string) => void;
 }
 
-// ✅ FUNÇÃO: Aplicar máscara de CNPJ
+// ✅ FUNÇÃO: Aplicar máscara de CPF (≤11 dígitos) ou CNPJ (12-14). Muitas fazendas
+// estão no CPF do produtor, não em CNPJ — o input aceita os dois.
 const applyCNPJMask = (value: string): string => {
   // Remove todos os caracteres não numéricos
   const numbers = value.replace(/\D/g, '');
@@ -17,18 +18,18 @@ const applyCNPJMask = (value: string): string => {
   // Limita a 14 dígitos
   const limited = numbers.slice(0, 14);
 
-  // Aplica a máscara baseado no comprimento
-  if (limited.length <= 2) {
-    return limited;
-  } else if (limited.length <= 5) {
-    return limited.replace(/(\d{2})(\d+)/, '$1.$2');
-  } else if (limited.length <= 8) {
-    return limited.replace(/(\d{2})(\d{3})(\d+)/, '$1.$2.$3');
-  } else if (limited.length <= 12) {
-    return limited.replace(/(\d{2})(\d{3})(\d{3})(\d+)/, '$1.$2.$3/$4');
-  } else {
-    return limited.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d+)/, '$1.$2.$3/$4-$5');
+  // CPF (até 11 dígitos): XXX.XXX.XXX-XX
+  if (limited.length <= 11) {
+    if (limited.length <= 3) return limited;
+    if (limited.length <= 6) return limited.replace(/(\d{3})(\d+)/, '$1.$2');
+    if (limited.length <= 9) return limited.replace(/(\d{3})(\d{3})(\d+)/, '$1.$2.$3');
+    return limited.replace(/(\d{3})(\d{3})(\d{3})(\d+)/, '$1.$2.$3-$4');
   }
+  // CNPJ (12-14 dígitos): XX.XXX.XXX/XXXX-XX
+  if (limited.length <= 12) {
+    return limited.replace(/(\d{2})(\d{3})(\d{3})(\d+)/, '$1.$2.$3/$4');
+  }
+  return limited.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d+)/, '$1.$2.$3/$4-$5');
 };
 
 // ✅ FUNÇÃO: Remover máscara (apenas números)
@@ -36,10 +37,26 @@ const removeCNPJMask = (value: string): string => {
   return value.replace(/\D/g, '');
 };
 
-// ✅ FUNÇÃO: Validar CNPJ básica (14 dígitos)
+// ✅ FUNÇÃO: Validar formato — CPF (11) ou CNPJ (14) dígitos
 const isValidCNPJFormat = (cnpj: string): boolean => {
   const numbers = cnpj.replace(/\D/g, '');
-  return numbers.length === 14;
+  return numbers.length === 11 || numbers.length === 14;
+};
+
+// ✅ FUNÇÃO: Validação de CPF (dígitos verificadores)
+const isValidCPFDigits = (cpf: string): boolean => {
+  const n = cpf.replace(/\D/g, '');
+  if (n.length !== 11 || /^(\d)\1+$/.test(n)) return false;
+  let sum = 0;
+  for (let i = 0; i < 9; i++) sum += parseInt(n[i]) * (10 - i);
+  let d1 = 11 - (sum % 11);
+  if (d1 >= 10) d1 = 0;
+  if (parseInt(n[9]) !== d1) return false;
+  sum = 0;
+  for (let i = 0; i < 10; i++) sum += parseInt(n[i]) * (11 - i);
+  let d2 = 11 - (sum % 11);
+  if (d2 >= 10) d2 = 0;
+  return parseInt(n[10]) === d2;
 };
 
 // ✅ COMPONENTE: Input com máscara de CNPJ
@@ -103,8 +120,8 @@ export const CNPJInput = forwardRef<HTMLInputElement, CNPJInputProps>(
           value={applyCNPJMask(value)}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
-          placeholder="00.000.000/0000-00"
-          maxLength={18} // XX.XXX.XXX/XXXX-XX
+          placeholder="CPF ou CNPJ"
+          maxLength={18} // XX.XXX.XXX/XXXX-XX (CPF cabe: XXX.XXX.XXX-XX)
           className={cn(
             className,
             // Estilo baseado na validação
@@ -120,7 +137,7 @@ export const CNPJInput = forwardRef<HTMLInputElement, CNPJInputProps>(
               <div className="text-green-500 text-xs font-medium">✓</div>
             ) : (
               <div className="text-yellow-500 text-xs font-medium">
-                {removeCNPJMask(value).length}/14
+                {removeCNPJMask(value).length} díg
               </div>
             )}
           </div>
@@ -129,7 +146,7 @@ export const CNPJInput = forwardRef<HTMLInputElement, CNPJInputProps>(
         {/* ✅ Helper text */}
         {showValidation && !isValid && (
           <p className="text-xs text-yellow-600 mt-1">
-            Digite todos os 14 dígitos do CNPJ
+            Digite um CPF (11 dígitos) ou CNPJ (14 dígitos)
           </p>
         )}
       </div>
@@ -170,10 +187,11 @@ export const CNPJUtils = {
   unmask: removeCNPJMask,
   isValid: isValidCNPJFormat,
 
-  // Validação completa de CNPJ (algoritmo oficial)
+  // Validação completa de CPF (11) ou CNPJ (14) — algoritmo oficial
   isValidCNPJ: (cnpj: string): boolean => {
     const numbers = removeCNPJMask(cnpj);
 
+    if (numbers.length === 11) return isValidCPFDigits(numbers); // CPF do produtor
     if (numbers.length !== 14) return false;
 
     // Verifica se todos os dígitos são iguais

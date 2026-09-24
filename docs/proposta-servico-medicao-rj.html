@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Proposta de Serviço — Aupus Energia</title>
+<style>
+  @page { size: A4; margin: 10mm 12mm 12mm 12mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Segoe UI","Helvetica Neue",Arial,sans-serif;
+    font-size: 10.5pt; line-height: 1.45; color: #1f2733; margin: 0;
+  }
+
+  /* ---------- Cabeçalho (compacto) ---------- */
+  .head { display: flex; align-items: center; justify-content: space-between; gap: 12mm; }
+  .head .title h1 {
+    font-size: 20pt; color: #16213e; margin: 0 0 3pt 0; letter-spacing: -0.3pt;
+    padding-bottom: 6pt; border-bottom: 4px solid #3fe04f;
+  }
+  .head .title .sub { color: #5b6675; font-size: 10.5pt; margin: 5pt 0 0 0; font-weight: 600; }
+  .head img { width: 33mm; height: auto; }
+
+  .meta { margin: 7pt 0 0 0; font-size: 9pt; color: #5b6675; }
+  .meta b { color: #16213e; }
+  .rota {
+    display: inline-block; margin-top: 6pt; padding: 5pt 12pt;
+    background: #f4f6fa; border-left: 4px solid #16213e; border-radius: 0 3px 3px 0;
+    font-size: 10.5pt; color: #16213e; font-weight: 600;
+  }
+
+  /* ---------- Seções (compacto) ---------- */
+  h2 {
+    font-size: 12pt; color: #16213e; margin: 11pt 0 6pt 0;
+    padding: 4pt 0 4pt 10pt; border-left: 5px solid #3fe04f; background: #f4f6fa;
+  }
+  p { margin: 4pt 0; }
+
+  /* ---------- Parâmetros ---------- */
+  .params { display: flex; gap: 8pt; margin: 6pt 0 0 0; }
+  .params .box {
+    flex: 1; text-align: center; border: 1px solid #d7dce6; border-radius: 4px;
+    padding: 6pt 4pt; background: #fff;
+  }
+  .params .box .n { font-size: 18pt; font-weight: 700; color: #16213e; line-height: 1; }
+  .params .box .l { font-size: 8.5pt; color: #5b6675; margin-top: 3pt; text-transform: uppercase; letter-spacing: .3pt; }
+
+  /* ---------- Tabela ---------- */
+  table { border-collapse: collapse; width: 100%; margin: 6pt 0 0 0; font-size: 9.5pt; }
+  th { background: #16213e; color: #fff; text-align: left; padding: 6pt 9pt; font-weight: 600; border: 1px solid #16213e; }
+  td { padding: 5pt 9pt; border: 1px solid #d7dce6; vertical-align: top; }
+  tr:nth-child(even) td { background: #f7f9fc; }
+  .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .obs { color: #6a7688; font-size: 8.7pt; font-style: italic; }
+  tr.total td {
+    background: #16213e; color: #fff; font-weight: 700; font-size: 12pt; border-color: #16213e;
+  }
+  tr.total td .lbl { font-size: 10pt; font-weight: 600; letter-spacing: .3pt; }
+
+  /* ---------- Nota / condições ---------- */
+  .nota {
+    margin: 9pt 0; padding: 8pt 12pt; background: #f4f6fa;
+    border-left: 4px solid #3fe04f; border-radius: 0 3px 3px 0; font-size: 9pt; color: #2b3648;
+  }
+  .nota ul { margin: 3pt 0 0 0; padding-left: 16pt; }
+  .nota li { margin: 2pt 0; }
+  .cond { font-size: 9pt; color: #2b3648; }
+  .cond b { color: #16213e; }
+
+  /* ---------- Aceite (assinaturas amplas) ---------- */
+  .sign { width: 100%; border: none; margin: 8pt 0 0 0; }
+  .sign td { border: none; background: none; padding: 0 6pt; text-align: center;
+             font-size: 10pt; color: #16213e; font-weight: 600; vertical-align: bottom; }
+  .sign .sigspace { height: 58pt; }               /* espaço em branco para assinar */
+  .sign .line { border-top: 1.5px solid #16213e; margin-bottom: 5pt; height: 0; }
+  .sign .dt { font-size: 8.5pt; color: #5b6675; font-weight: 400; margin-top: 4pt; }
+
+  /* ---------- Rodapé (fluxo normal) ---------- */
+  .ftr { margin-top: 22pt; }
+  .ftr table { width: 100%; border: none; border-top: 2px solid #3fe04f; margin: 0; }
+  .ftr td { border: none; background: none; padding: 5pt 0 0 0; font-size: 8pt; color: #5b6675; }
+  .ftr td b { color: #16213e; }
+  .ftr .r { text-align: right; }
+</style>
+</head>
+<body>
+
+  <div class="head">
+    <div class="title">
+      <h1>Proposta de Serviço</h1>
+      <div class="sub">Instalação de pontos de medição de energia</div>
+    </div>
+    <img src="logo-aupus.png" alt="Aupus Energia">
+  </div>
+
+  <div class="meta">
+    <b>Data:</b> 24/07/2026 &nbsp;·&nbsp; <b>Validade:</b> 15 dias &nbsp;·&nbsp;
+    <b>Cliente:</b> ______________________________ &nbsp;·&nbsp; <b>Ref.:</b> PROP-2026-0724
+  </div>
+  <div class="rota">Goiânia (GO) &nbsp;⇄&nbsp; Rio de Janeiro (RJ)</div>
+
+  <h2>Objeto</h2>
+  <p>
+    Instalação e comissionamento de <b>pontos de medição de energia</b> nas dependências do cliente,
+    no Rio de Janeiro. A equipe técnica da Aupus se desloca de Goiânia, executa a instalação em campo
+    e valida o funcionamento de cada ponto. A equipe permanece hospedada no próprio hotel onde o
+    serviço é realizado — <b>sem custo de hospedagem para esta proposta</b>.
+  </p>
+
+  <h2>Parâmetros do serviço</h2>
+  <div class="params">
+    <div class="box"><div class="n">2</div><div class="l">Pessoas na equipe</div></div>
+    <div class="box"><div class="n">3</div><div class="l">Dias de serviço</div></div>
+    <div class="box"><div class="n">3</div><div class="l">Pontos de medição</div></div>
+  </div>
+
+  <h2>Investimento</h2>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:34%">Item</th>
+        <th class="num" style="width:15%">Valor unitário</th>
+        <th class="num" style="width:15%">Valor total</th>
+        <th style="width:36%">Observação</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Ponto de medição instalado</td>
+        <td class="num">R$ 5.000,00</td>
+        <td class="num">R$ 15.000,00</td>
+        <td class="obs">R$ 5.000 por ponto. Estimativa para 3 pontos; a quantidade necessária será avaliada na visita técnica e o valor ajustado ao número efetivamente instalado.</td>
+      </tr>
+      <tr>
+        <td>Passagens aéreas (ida e volta)</td>
+        <td class="num">R$ 1.100,00</td>
+        <td class="num">R$ 2.200,00</td>
+        <td class="obs">Por pessoa (2)</td>
+      </tr>
+      <tr>
+        <td>Deslocamento RJ — aeroporto → hotel (ida)</td>
+        <td class="num">R$ 70,00</td>
+        <td class="num">R$ 70,00</td>
+        <td class="obs"></td>
+      </tr>
+      <tr>
+        <td>Deslocamento RJ — hotel → aeroporto (volta)</td>
+        <td class="num">R$ 70,00</td>
+        <td class="num">R$ 70,00</td>
+        <td class="obs"></td>
+      </tr>
+      <tr>
+        <td>Alimentação</td>
+        <td class="num">R$ 90,00</td>
+        <td class="num">R$ 540,00</td>
+        <td class="obs">Por pessoa/dia (2 × 3)</td>
+      </tr>
+      <tr>
+        <td>Material / insumos do serviço</td>
+        <td class="num">R$ 0,00</td>
+        <td class="num">R$ 0,00</td>
+        <td class="obs">Se aplicável</td>
+      </tr>
+      <tr class="total">
+        <td colspan="2"><span class="lbl">TOTAL GERAL</span></td>
+        <td class="num">R$ 17.880,00</td>
+        <td></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="nota">
+    <b>Observações</b>
+    <ul>
+      <li>O valor é <b>por ponto instalado</b> (R$ 5.000/ponto). A <b>quantidade de pontos será avaliada durante a visita técnica</b> e o total ajustado ao número efetivamente instalado.</li>
+      <li>Sem custo de hospedagem — a equipe fica no próprio hotel onde o serviço é executado.</li>
+      <li>Valores de deslocamento e alimentação estimados; eventual variação é acertada mediante comprovantes.</li>
+    </ul>
+  </div>
+
+  <p class="cond">
+    <b>Condições comerciais:</b> Proposta válida por 15 dias. Prazo de execução de 3 dias em campo,
+    a agendar conforme disponibilidade das partes. Condições de pagamento a combinar.
+  </p>
+
+  <h2>Aceite</h2>
+  <p class="cond" style="margin:4pt 0 0 0;">
+    Ao assinar, as partes concordam com o objeto, os valores e as condições descritos nesta
+    proposta de serviço.
+  </p>
+  <table class="sign"><tr>
+    <td>
+      <div class="sigspace"></div>
+      <div class="line"></div>Aupus Energia
+      <div class="dt">Data: ______________________</div>
+    </td>
+    <td style="width:6%"></td>
+    <td>
+      <div class="sigspace"></div>
+      <div class="line"></div>Cliente
+      <div class="dt">Data: ______________________</div>
+    </td>
+  </tr></table>
+
+  <div class="ftr">
+    <table><tr>
+      <td><b>Aupus Energia</b> &middot; aupusenergia.com.br</td>
+      <td class="r">Proposta de Serviço &middot; PROP-2026-0724</td>
+    </tr></table>
+  </div>
+
+</body>
+</html>

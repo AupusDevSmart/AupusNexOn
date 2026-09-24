@@ -376,23 +376,25 @@ export const plantasFormFields: FormField[] = [
   // ✅ ATUALIZADO: Campo CNPJ com máscara automática
   {
     key: 'cnpj',
-    label: 'CNPJ',
+    label: 'CNPJ / CPF',
     type: 'custom',
     required: true,
     render: CNPJFieldComponent,
     validation: (value) => {
-      if (!value) return 'CNPJ é obrigatório';
-      
+      if (!value) return 'CNPJ/CPF é obrigatório';
+
       const cleanValue = CNPJUtils.unmask(value.toString());
-      
-      if (cleanValue.length !== 14) {
-        return 'CNPJ deve ter 14 dígitos';
+
+      if (cleanValue.length !== 11 && cleanValue.length !== 14) {
+        return 'Informe um CPF (11 dígitos) ou CNPJ (14 dígitos)';
       }
-      
+
       if (!CNPJUtils.isValidCNPJ(value.toString())) {
-        return 'CNPJ inválido. Verifique os dígitos verificadores.';
+        return cleanValue.length === 11
+          ? 'CPF inválido. Verifique os dígitos verificadores.'
+          : 'CNPJ inválido. Verifique os dígitos verificadores.';
       }
-      
+
       return null;
     },
   },
@@ -420,8 +422,8 @@ export const plantasFormFields: FormField[] = [
     key: 'horarioFuncionamento',
     label: 'Horário de Funcionamento',
     type: 'text',
-    required: true,
-    placeholder: 'Ex: 08:00 às 18:00',
+    required: false,
+    placeholder: 'Ex: 08:00 às 18:00 (opcional)',
   },
 
   // Localização

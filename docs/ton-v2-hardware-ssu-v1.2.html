@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<title>TON-V2 — hardware da entrada SSU v1.2</title>
+<style>
+  @page { size: A4; margin: 0; }
+  * { box-sizing: border-box; }
+  body { font-family: "DejaVu Sans", Arial, sans-serif; font-size: 9.6pt; color: #1b1f2a; margin: 0; padding: 14mm 16mm 16mm 16mm; line-height: 1.38; }
+  h1 { font-size: 19pt; color: #16213e; margin: 0 0 2mm 0; }
+  .sub { color: #5b6270; font-size: 9pt; margin-bottom: 5mm; border-bottom: 2px solid #3fe04f; padding-bottom: 2mm; }
+  h2 { font-size: 12.5pt; color: #16213e; margin: 6mm 0 2mm 0; border-left: 4px solid #3fe04f; padding-left: 2.5mm; page-break-after: avoid; }
+  p { margin: 1.2mm 0 2mm 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1.5mm 0 3mm 0; page-break-inside: avoid; }
+  th, td { border: 1px solid #d3d7de; padding: 1.3mm 2mm; vertical-align: top; text-align: left; font-size: 8.9pt; }
+  th { background: #16213e; color: #fff; font-weight: 600; }
+  tr:nth-child(even) td { background: #f5f7fa; }
+  code { font-family: "DejaVu Sans Mono", monospace; font-size: 8.4pt; }
+  .box { border: 1px solid #3fe04f; background: #f0fdf2; padding: 2mm 3mm; margin: 2mm 0 3mm 0; page-break-inside: avoid; }
+  .err { border: 1px solid #d84343; background: #fff1f1; padding: 2mm 3mm; margin: 2mm 0 3mm 0; page-break-inside: avoid; }
+  .two { display: table; width: 100%; } .two > div { display: table-cell; width: 50%; vertical-align: top; padding-right: 4mm; } .two > div:last-child { padding-right: 0; }
+  .pb { page-break-before: always; }
+  .small { font-size: 8.3pt; color: #5b6270; }
+  ol { margin: 1mm 0 2mm 0; padding-left: 5mm; } li { margin-bottom: 1mm; }
+  .tag { display: inline-block; font-size: 7.6pt; padding: 0 1.4mm; border-radius: 2px; color: #fff; background: #16213e; vertical-align: middle; }
+  .tag.ok { background: #1f9d55; } .tag.bad { background: #d84343; }
+  svg text { font-family: "DejaVu Sans", Arial, sans-serif; }
+</style></head>
+<body>
+<h1>TON-V2 — hardware da entrada SSU</h1>
+<div class="sub">v1.2 · 21/09/2026 · base: esquemático SCH-TON-v1b (recortes conferidos) · Aupus Energia · Engenharia IoT ·
+<b>revisão v1.2:</b> AN_C sem ADC, M0/M1 em GND, reset do W5500 fechado, ligação do simulador sem resistor em série.</div>
+
+<h2>Circuito</h2>
+<figure style="margin:0 0 3mm 0; page-break-inside: avoid;">
+<svg viewBox="0 0 700 150" width="100%" role="img" aria-label="Saída SSU do medidor (opto, coletor aberto) → cabo → borne X14 (X14-2 SU+, X14-1 GND) → nó com pull-up R47 680 Ω para 3V3 e TVS D4 → IO48 (UART0 RX) do ESP32-S3">
+ <defs><marker id="a2" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#5b6270"/></marker></defs>
+ <g font-size="9" fill="#1b1f2a" stroke-width="1.2">
+  <rect x="10" y="30" width="130" height="70" fill="#f5f7fa" stroke="#9aa1ad"/>
+  <text x="75" y="48" text-anchor="middle" font-weight="bold">Medidor E750</text>
+  <text x="75" y="62" text-anchor="middle">saída SSU · opto no medidor</text>
+  <text x="75" y="76" text-anchor="middle" class="small" fill="#5b6270">coletor aberto: só puxa p/ baixo</text>
+  <text x="128" y="93" text-anchor="end">SU+ / SU−</text>
+  <line x1="140" y1="55" x2="260" y2="55" stroke="#1b1f2a"/><text x="200" y="50" text-anchor="middle" fill="#5b6270">cabo (C ≈ 100 pF/m)</text>
+  <line x1="140" y1="85" x2="260" y2="85" stroke="#1b1f2a"/>
+  <rect x="260" y="40" width="40" height="60" fill="#fff" stroke="#16213e"/><text x="280" y="34" text-anchor="middle" font-weight="bold">X14</text>
+  <text x="280" y="59" text-anchor="middle">-2</text><text x="280" y="89" text-anchor="middle">-1</text>
+  <line x1="300" y1="55" x2="470" y2="55" stroke="#1b1f2a"/>
+  <line x1="300" y1="85" x2="400" y2="85" stroke="#1b1f2a"/><text x="405" y="89">GND da TON</text>
+  <line x1="380" y1="55" x2="380" y2="18" stroke="#1b1f2a"/><rect x="368" y="20" width="24" height="18" fill="#fff" stroke="#16213e"/><text x="405" y="30">R47 680 Ω</text><text x="405" y="18">+3V3</text>
+  <line x1="430" y1="55" x2="430" y2="110" stroke="#1b1f2a"/><polygon points="422,80 438,80 430,92" fill="#fff" stroke="#16213e"/><line x1="422" y1="92" x2="438" y2="92" stroke="#16213e"/><text x="445" y="100">D4 TVS LESD5D5.0</text><text x="430" y="122" text-anchor="middle" fill="#5b6270">GND</text>
+  <line x1="470" y1="55" x2="560" y2="55" stroke="#1b1f2a" marker-end="url(#a2)"/>
+  <rect x="562" y="25" width="128" height="70" fill="#f5f7fa" stroke="#9aa1ad"/>
+  <text x="626" y="45" text-anchor="middle" font-weight="bold">ESP32-S3</text>
+  <text x="626" y="60" text-anchor="middle">IO48 · pino 25</text>
+  <text x="626" y="74" text-anchor="middle">UART0 RX (Serial0)</text>
+  <text x="626" y="88" text-anchor="middle" class="small" fill="#5b6270">idle = 3,3 V</text>
+ </g>
+</svg>
+</figure>
+<table>
+<tr><th style="width:22mm">Borne</th><td>X14-2 = SU+ · X14-1 = GND <span class="tag ok">conferido no esquemático</span></td></tr>
+<tr><th>Pino</th><td>IO48 (pino 25 do ESP32-S3-WROOM-1-N8R2), net <code>SU+</code></td></tr>
+<tr><th>Pull-up</th><td>R47 680 Ω para +3V3 — idle alto, RX não invertido</td></tr>
+<tr><th>Proteção</th><td>D4 LESD5D5.0CT1G para GND — só ESD</td></tr>
+<tr><th>Isolação</th><td>No medidor (opto). SU− direto no GND da TON, sem laço de terra</td></tr>
+</table>
+
+<h2>Números</h2>
+<table>
+<tr><th style="width:40mm">Grandeza</th><th style="width:44mm">Valor</th><th>Implicação</th></tr>
+<tr><td>Corrente em nível baixo</td><td>3,3 V ÷ 680 Ω ≈ 4,9 mA</td><td>O opto do medidor tem de drenar isso — medir V<sub>OL</sub> na bancada</td></tr>
+<tr><td>Nível baixo aceito pelo ESP</td><td>≤ 0,25 × VDD ≈ 0,8 V</td><td>V<sub>OL</sub> acima disso → trocar R47 por 1–2,2 kΩ</td></tr>
+<tr><td>Nível alto aceito pelo ESP</td><td>≥ 0,75 × VDD ≈ 2,5 V</td><td>Folga grande com 680 Ω</td></tr>
+<tr><td>Subida, 10 m de cabo</td><td>2,2 × 680 Ω × ~1 nF ≈ 1,6 µs</td><td>Irrelevante contra bit de 9,09 ms (100 m ≈ 16 µs)</td></tr>
+<tr><td>Potência no R47 em nível baixo</td><td>≈ 16 mW</td><td>OK para qualquer encapsulamento</td></tr>
+<tr><td>Resistor em série <b>na fonte</b> (simulador/medidor)</td><td>R<sub>s</sub> forma divisor com R47: V<sub>baixo</sub> = 3,3 · R<sub>s</sub> ÷ (R<sub>s</sub> + 680)</td><td>1 kΩ → <b>1,96 V &gt; V<sub>IL</sub></b> (o ESP nunca lê 0); 100 Ω → 0,42 V OK. Série só depois do pull-up (no IO48) não forma divisor.</td></tr>
+</table>
+<p>O pull-up é escolhido por imunidade a ruído × capacidade de dreno do opto — não por velocidade.</p>
+
+<h2 class="pb">Mapa de pinos (SCH-TON-v1b)</h2>
+<div class="two"><div>
+<table>
+<tr><th>GPIO</th><th>Net</th><th>Função</th></tr>
+<tr><td>IO0</td><td>—</td><td>Boot + LED PROG · strap</td></tr>
+<tr><td>IO1 / IO2</td><td>TR1 / TR2</td><td>Saídas coletor aberto (X11)</td></tr>
+<tr><td>IO3</td><td>CLOCK</td><td>RTC · strap</td></tr>
+<tr><td>IO4 / IO5</td><td>SDA / SCL</td><td>I²C (2× MCP23008, PCA9685)</td></tr>
+<tr><td>IO6 / IO7</td><td>AN1 / AN2</td><td>Analógica tensão (X77), ADC1 — divisor 22K/3K3</td></tr>
+<tr><td>IO8</td><td>D_R</td><td>RS485 DE/~RE</td></tr>
+<tr><td>IO9</td><td>DATA</td><td>RTC</td></tr>
+<tr><td>IO10–IO13</td><td>NSS2, MOSI2, SCLK2, MISO2</td><td>W5500</td></tr>
+<tr><td>IO14</td><td>RESET</td><td>net <code>RESET</code> — <b>não chega ao W5500</b> (ver pendência 2)</td></tr>
+<tr><td>IO15 / IO16</td><td>RX2 / TX2</td><td>LoRa: ESP TX / ESP RX</td></tr>
+<tr><td>IO17 / IO18</td><td>TX1 / RX1</td><td>RS485: ESP RX / ESP TX</td></tr>
+</table>
+</div><div>
+<table>
+<tr><th>GPIO</th><th>Net</th><th>Função</th></tr>
+<tr><td>IO19 / IO20</td><td>USB_DN / DP</td><td>USB nativo (console)</td></tr>
+<tr><td>IO21</td><td>—</td><td>livre</td></tr>
+<tr><td>IO35–IO38</td><td>MOSI, SCLK, MISO, CS</td><td>Cartão SD</td></tr>
+<tr><td>IO39 / IO40</td><td>AN_C2 / AN_C1</td><td>4–20 mA (X77-4 / X77-5) — <b>sem ADC no S3</b>: só nível digital (pendência 6)</td></tr>
+<tr><td>IO41 / IO42</td><td>TR4 / TR3</td><td>Saídas coletor aberto</td></tr>
+<tr><td>IO45</td><td>—</td><td>livre · strap</td></tr>
+<tr><td>IO46</td><td>PWM</td><td>sem destino · strap</td></tr>
+<tr><td>IO47</td><td>AUX</td><td>LoRa AUX</td></tr>
+<tr><td>IO48</td><td>SU+</td><td>SSU → UART0 RX</td></tr>
+<tr><td>TXD0 / RXD0</td><td>—</td><td>livres (console é USB-CDC)</td></tr>
+</table>
+</div></div>
+<p class="small">As nets de UART têm o nome do pino do periférico: o ESP transmite nas nets "RX" (net <code>RX2</code> → RXD do E220; net <code>RX1</code> → DI do MAX485). Nos firmwares, os <code>#define UART2_TX 16 / UART2_RX 15</code> seguem essa mesma ótica do módulo e o <code>begin(baud, cfg, UART2_TX, UART2_RX)</code> = <code>begin(rx=16, tx=15)</code> — eletricamente igual à tabela.</p>
+<table>
+<tr><th>UART</th><th>Uso</th><th>TX (ESP)</th><th>RX (ESP)</th></tr>
+<tr><td>UART0 (<code>Serial0</code>)</td><td>SSU</td><td>—</td><td>IO48</td></tr>
+<tr><td>UART1</td><td>RS485 (DE/~RE no IO8)</td><td>IO18</td><td>IO17</td></tr>
+<tr><td>UART2</td><td>LoRa (AUX no IO47)</td><td>IO15</td><td>IO16</td></tr>
+</table>
+<p class="small">Endereços I²C conferidos no esquemático v1b: MCP23008 entradas A0 = GND, A1 = A2 = +3V3 ⇒ 0x26; relés 0x27; PCA9685 A1 = 1 ⇒ 0x42.</p>
+
+<h2>Checklist de bancada</h2>
+<ol>
+<li>Sem energia: continuidade X14-2 → pino 25 (IO48) e X14-1 → GND; R47 ≈ 680 Ω entre IO48 e 3V3.</li>
+<li>Energizada, sem medidor: IO48 = 3,3 V. Jumper X14-2 → X14-1 com amperímetro: ≈ 4,9 mA.</li>
+<li>Simulador (2º ESP32, <b>TX direto no SU+</b>, GND comum — <b>sem resistor em série</b>: 1 kΩ deixaria o nível baixo em 1,96 V e a TON nunca leria 0; se quiser limitador, ≤ 100 Ω): osciloscópio no IO48 — bit 9,09 ms, bordas limpas; cada callback com 8 ou 9 bytes, 1/s.</li>
+<li>E750 + CE-6003: medir V<sub>OL</sub> real no SU+. Se ≥ 0,8 V, aumentar R47.</li>
+<li>Cabo: repetir o passo 4 com o comprimento previsto em campo.</li>
+<li>Robustez: desconectar/reconectar o cabo rodando — volta à autodetecção sem reboot.</li>
+</ol>
+
+<h2 class="pb">Pendências de hardware</h2>
+<table>
+<tr><th style="width:8mm">#</th><th style="width:34mm">Ponto</th><th>Situação no v1b</th><th>Ação</th></tr>
+<tr><td>1</td><td>IO48 sem resistor série</td><td>D4 só cobre ESD; 12/24 V no SU+ entra pelos diodos internos do ESP</td><td>Avaliar ~1 kΩ em série <b>no lado do IO48</b> (depois do pull-up: não forma divisor, sem efeito no tempo)</td></tr>
+<tr><td>2</td><td>Reset do W5500</td><td><span class="tag ok">fechado</span> IO14 está na net <code>RESET</code>; o NRESET do módulo W5500 está na net <code>RESET2</code> — nets diferentes ⇒ <b>não ligados</b>. O firmware toggla IO14 à toa; o módulo se vira com o POR próprio (bancada validou o W5500)</td><td>Opcional: jumper RESET→RESET2 na próxima revisão, ou tirar o toggle do firmware</td></tr>
+<tr><td>3</td><td>MAX485 em +5 V</td><td>VCC do MAX485CSA++ em +5V; RO (~5 V) direto no IO17 (pino de 3,3 V, não tolerante) — funciona hoje, risco de longo prazo</td><td>Transceptor 3,3 V (família 3485) ou divisor</td></tr>
+<tr><td>4</td><td>Variante do módulo</td><td>IO47/IO48 ficam no domínio VDD_SPI; N8R2 = 3,3 V</td><td>Travar N8R2 na BOM (flash 1,8 V quebraria SU+ e AUX)</td></tr>
+<tr><td>5</td><td>PCA9685 EXTCLK</td><td>Net <code>CLK25MH</code> sem outra ponta (conferido); firmware usa o oscilador interno (validado)</td><td>Ligar ao GND se não houver clock externo</td></tr>
+<tr><td>6</td><td>4–20 mA (AN_C1/AN_C2)</td><td><span class="tag bad">inoperante</span> IO39/IO40 <b>não têm ADC</b> no ESP32-S3 (ADC1 = GPIO1–10, ADC2 = GPIO11–20; confirmado em bancada: <code>Pin 40 is not ADC pin!</code>). Não é saturação: o canal não lê valor analógico nesta revisão — só nível digital pelo limiar</td><td>Próxima revisão: trocar AN_C com IO3/IO9 (RTC, digital, funciona em qualquer pino — IO3/IO9 são ADC1_CH2/CH8) ou ADS1115 no I²C. Aí sim rever o shunt (165 Ω → 3,3 V a 20 mA; ~130 Ω para ver 24 mA)</td></tr>
+<tr><td>7</td><td>W5500 PWDN/NINT · LoRa M0/M1</td><td>PWDN e NINT do W5500 sem ligação (defaults do módulo, OK). <b>M0 e M1 do E220 estão em GND</b> (modo normal fixo) — por isso <code>lora config/pair</code> não funcionam na V2 e o módulo tem de vir pré-configurado</td><td>Conferir defaults do W5500 no datasheet; manter E220 pré-configurado de fábrica</td></tr>
+<tr><td>8</td><td>IO46</td><td>Net <code>PWM</code> sem destino (PWM agora vem do PCA9685)</td><td>Manter sem carga que o puxe para cima (strap)</td></tr>
+</table>
+<p class="small"><b>Histórico:</b> v1.1 (21/09) revisão inicial · v1.2 (21/09) conferência no esquemático: X14/R47/D4 ok; AN_C IO39/40 sem ADC (era "satura"); M0/M1 em GND (era "sem ligação"); reset do W5500 fechado (nets <code>RESET</code> ≠ <code>RESET2</code>); MAX485 em +5 V confirmado; ligação do simulador sem resistor em série; nota de nomenclatura das nets de UART.</p>
+</body></html>
