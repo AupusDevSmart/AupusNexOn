@@ -33,6 +33,12 @@ export type NavigationLink = {
   icon: LucideIcon | React.FC<React.SVGProps<SVGSVGElement>>;
   label: string;
   hint?: string;
+  /**
+   * Outras rotas que contam como "estar nesta página" no menu, além do
+   * `path` e das subrotas dele (ex.: a tela de um ativo aberta a partir da
+   * lista do Sinóptico).
+   */
+  ativoEm?: string[];
   links?: NavigationLink[];
 };
 
@@ -84,6 +90,7 @@ export const navigationLinks: Array<NavigationLink> = [
       {
         key: "supervisorio-sinoptico",
         path: "/supervisorio/sinoptico",
+        ativoEm: ["/supervisorio/sinoptico-ativo"],
         icon: Cpu,
         label: "Sinóptico do Ativo",
         hint: "Visualização detalhada dos ativos",

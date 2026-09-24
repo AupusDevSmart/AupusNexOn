@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
+import { Expandir } from '@/components/ui/expandir';
 import { api } from '@/config/api';
 import { tonBoApi, type TonBo } from '@/services/ton-bo.services';
 import { tonBiApi, type TonBi } from '@/services/ton-bi.services';
@@ -257,7 +258,7 @@ export function VinculosTonSheet({
                           onClick={() => setCorresp(aberto ? null : dev.comp_id)}>
                           {aberto ? '▾ Ocultar' : '▸ Ver'} correspondência de pontos ({total})
                         </button>
-                        {aberto && (
+                        <Expandir aberto={aberto}>
                           <div className="mt-1 rounded-md border overflow-hidden">
                             <div className="flex bg-muted/40 text-[10px] uppercase tracking-wide text-muted-foreground px-2.5 py-1">
                               <div className="flex-1">Título</div><div className="w-28 text-right">Campo JSON</div>
@@ -271,7 +272,7 @@ export function VinculosTonSheet({
                               ))}
                             </div>
                           </div>
-                        )}
+                        </Expandir>
                       </div>
                     );
                   })()}

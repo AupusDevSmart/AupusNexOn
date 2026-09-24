@@ -1,9 +1,11 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
-import { Download, Upload, Save, Trash2, Plus, RefreshCw, AlertCircle, CheckCircle2, ChevronRight, ChevronDown } from 'lucide-react';
+import { Download, Upload, Save, Trash2, Plus, RefreshCw, AlertCircle, CheckCircle2, ChevronRight } from 'lucide-react';
 import { api } from '@/config/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
+import { atrasoLinha, classesLinhaExpandida, DURACAO_EXPANDIR_MS, Expandir } from '@/components/ui/expandir';
+import { cn } from '@/lib/utils';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
@@ -44,7 +46,15 @@ export function GeracaoFvPage() {
   const [status, setStatus] = useState<{ tipo: 'ok' | 'erro'; msg: string } | null>(null);
   const [edits, setEdits] = useState<Record<string, { real: string; prev: string }>>({});
   const [diasAbertos, setDiasAbertos] = useState<Set<string>>(new Set());
-  const toggleDia = (d: string) => setDiasAbertos((s) => { const n = new Set(s); n.has(d) ? n.delete(d) : n.add(d); return n; });
+  // Dia que acabou de fechar: as linhas ficam montadas o tempo da animação de saída.
+  const [diasFechando, setDiasFechando] = useState<Set<string>>(new Set());
+  const toggleDia = (d: string) => {
+    if (diasAbertos.has(d)) {
+      setDiasFechando((s) => new Set(s).add(d));
+      window.setTimeout(() => setDiasFechando((s) => { const n = new Set(s); n.delete(d); return n; }), DURACAO_EXPANDIR_MS);
+    }
+    setDiasAbertos((s) => { const n = new Set(s); n.has(d) ? n.delete(d) : n.add(d); return n; });
+  };
   const fileRef = useRef<HTMLInputElement>(null);
 
   // novo lançamento
@@ -245,7 +255,7 @@ export function GeracaoFvPage() {
             Metas das usinas (kWh/dia)
             <span className="text-xs text-muted-foreground font-normal">— meta fixa do cadastro; vale p/ todas, inclusive as manuais</span>
           </button>
-          {metasAbertas && (
+          <Expandir aberto={metasAbertas}>
             <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1">
               {unidades.map((u) => {
                 const edit = metaEdits[u.unidade_id];
@@ -266,7 +276,7 @@ export function GeracaoFvPage() {
                 );
               })}
             </div>
-          )}
+          </Expandir>
         </CardContent>
       </Card>
 
@@ -319,17 +329,17 @@ export function GeracaoFvPage() {
                     <TableRow className="bg-muted/40 cursor-pointer hover:bg-muted/60" onClick={() => toggleDia(g.data)}>
                       <TableCell colSpan={6}>
                         <div className="flex items-center gap-2 font-medium">
-                          {aberto ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                          <ChevronRight className={cn('h-4 w-4 transition-transform duration-200', aberto && 'rotate-90')} />
                           <span>{g.data}</span>
                           <span className="text-xs text-muted-foreground font-normal">· {g.rows.length} usina(s) · {g.totalReal.toLocaleString('pt-BR', { maximumFractionDigits: 0 })} kWh realizado</span>
                         </div>
                       </TableCell>
                     </TableRow>
-                    {aberto && g.rows.map((l) => {
+                    {(aberto || diasFechando.has(g.data)) && g.rows.map((l, i) => {
                       const k = chave(l);
                       const e = edits[k];
                       return (
-                        <TableRow key={k} className={l.origem === 'manual' ? 'bg-emerald-500/5' : undefined}>
+                        <TableRow key={k} className={cn(l.origem === 'manual' && 'bg-emerald-500/5', classesLinhaExpandida(aberto))} style={aberto ? atrasoLinha(i) : undefined}>
                           <TableCell className="font-medium pl-8">{l.nome}</TableCell>
                           <TableCell className="text-xs text-muted-foreground">{l.data}</TableCell>
                           <TableCell className="text-right">
