@@ -55,7 +55,8 @@ static void _sdUnmountHw() { SD.end(); }
 #endif
 #define SDQ_DRAIN_BUDGET_MS 300UL
 #define SDQ_TICK_BUDGET_MS  20UL
-#define SDQ_REMOUNT_MS      600000UL
+#define SDQ_REMOUNT_MS      600000UL           // cartao que funcionava e falhou
+#define SDQ_REMOUNT_NOCARD_MS 3600000UL        // nunca montou desde o boot (sem cartao): 1x/h
 #define SDQ_FAILS_TO_OFF    3
 #define SDQ_LINE_MAX        1400
 #define SDQ_DIR            "/q"
@@ -314,7 +315,7 @@ int sd_buffer_pending() {
 void sd_buffer_tick() {
     unsigned long now = millis();
     if (!_ready) {
-        if (_st == SDQ_FAIL && now - _lastMount >= SDQ_REMOUNT_MS) {
+        if (_st == SDQ_FAIL && now - _lastMount >= (_everMounted ? SDQ_REMOUNT_MS : SDQ_REMOUNT_NOCARD_MS)) {
             _lastMount = now;
             Serial.println("[SD-BUF] tentando remontar o cartao...");
             _sdUnmountHw();

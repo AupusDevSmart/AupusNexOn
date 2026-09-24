@@ -910,7 +910,8 @@ static void _sdUnmountHw() { SD.end(); }
 #endif
 #define SDQ_DRAIN_BUDGET_MS 300UL
 #define SDQ_TICK_BUDGET_MS  20UL
-#define SDQ_REMOUNT_MS      600000UL
+#define SDQ_REMOUNT_MS      600000UL           // cartao que funcionava e falhou
+#define SDQ_REMOUNT_NOCARD_MS 3600000UL        // nunca montou desde o boot (sem cartao): 1x/h
 #define SDQ_FAILS_TO_OFF    3
 #define SDQ_LINE_MAX        1400
 #define SDQ_DIR            "/q"
@@ -1169,7 +1170,7 @@ int sd_buffer_pending() {
 void sd_buffer_tick() {
     unsigned long now = millis();
     if (!_ready) {
-        if (_st == SDQ_FAIL && now - _lastMount >= SDQ_REMOUNT_MS) {
+        if (_st == SDQ_FAIL && now - _lastMount >= (_everMounted ? SDQ_REMOUNT_MS : SDQ_REMOUNT_NOCARD_MS)) {
             _lastMount = now;
             Serial.println("[SD-BUF] tentando remontar o cartao...");
             _sdUnmountHw();
@@ -1324,6 +1325,7 @@ void bb_log(const char* fmt, ...);                // evento curto (ate 43 caract
 void bb_stage(uint8_t etapa);                     // marca a etapa atual do laco
 void bb_flush();                                  // grava no NVS o que estiver pendente
 const char* bb_stage_name(uint8_t etapa);
+uint32_t bb_boot_count();                        // numero do boot (vai no status: NexON registra cada boot 1x)
 
 enum BbEtapa : uint8_t {
     BB_INICIO = 0, BB_REDE = 1, BB_ENTRADAS = 2, BB_MODBUS_RTU = 3, BB_PUBLICACAO = 4,
@@ -1464,6 +1466,8 @@ void bb_log(const char* fmt, ...) {
 }
 
 void bb_stage(uint8_t s) { _bb.stage = s; }
+
+uint32_t bb_boot_count() { return _bb.boots; }
 
 void bb_flush() { if (_ok && _dirty) _nvsSave(); }
 

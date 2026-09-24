@@ -117,6 +117,11 @@ int main() {
     // 7) Sem cartao no boot
     reset_all(); g_card.broken = true; sdq_host_reboot();
     CHECK(!sd_buffer_init() && std::string(sd_buffer_state()) == "sem_cartao" && sd_buffer_pending() == 0, "7 sem cartao: init falha, TON segue, pendentes 0");
+    g_card.broken = false;
+    g_millis += 700000; sd_buffer_tick();
+    CHECK(!sd_buffer_ready(), "7b sem cartao desde o boot: nao tenta remontar a cada 10 min");
+    g_millis += 3000000; sd_buffer_tick();
+    CHECK(sd_buffer_ready(), "7c cartao inserido depois: monta na tentativa de 1 h");
 
     // 8) Migracao do arquivo antigo (versao anterior do firmware)
     reset_all();

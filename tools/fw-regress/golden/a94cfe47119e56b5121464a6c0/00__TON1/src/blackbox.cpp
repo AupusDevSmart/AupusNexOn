@@ -126,6 +126,8 @@ void bb_log(const char* fmt, ...) {
 
 void bb_stage(uint8_t s) { _bb.stage = s; }
 
+uint32_t bb_boot_count() { return _bb.boots; }
+
 void bb_flush() { if (_ok && _dirty) _nvsSave(); }
 
 int bb_publish(bb_publish_fn pub, const char* topic_base, bool so_novos) {

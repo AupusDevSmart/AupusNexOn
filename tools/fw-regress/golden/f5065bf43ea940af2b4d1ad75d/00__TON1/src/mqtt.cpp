@@ -3,6 +3,7 @@
 #include "sd_buffer.h"
 #include "blackbox.h"
 #include "diag.h"
+#include "esp_private/system_internal.h"   // esp_restart_noos_dig / hint de motivo
 #include "eth.h"
 #include "config.h"
 #include <WiFi.h>
@@ -450,7 +451,11 @@ static bool _doRestart(const char* reason) {
     sd_buffer_flush();
     if (_mqtt.connected()) { _mqtt.disconnect(); }
     delay(200);
-    ESP.restart();
+    // Reinicio DIRETO: o ESP.restart() travou na bancada (24/09) desligando o WiFi enquanto o
+    // radio procurava a rede sumida -> so' o watchdog tirou (60 s). Tudo que importa ja' foi
+    // gravado acima (caixa-preta, ponteiro do SD, teto no NVS); a RTC sobrevive.
+    esp_reset_reason_set_hint(ESP_RST_SW);
+    esp_restart_noos_dig();
     return true;
 }
 
@@ -733,12 +738,12 @@ void mqtt_loop() {
         // ativa e qual interface (wifi/eth) — backend usa para auto-discovery.
         char hello[256];
         snprintf(hello, sizeof(hello),
-                 "{\"online\":true,\"version\":\"%s\",\"model\":\"%s\",\"mac\":\"%s\",\"ip\":\"%s\",\"iface\":\"%s\",\"reset\":\"%s\",\"restart_cause\":\"%s\",\"up\":%lu}",
+                 "{\"online\":true,\"version\":\"%s\",\"model\":\"%s\",\"mac\":\"%s\",\"ip\":\"%s\",\"iface\":\"%s\",\"reset\":\"%s\",\"restart_cause\":\"%s\",\"up\":%lu,\"boot\":%lu}",
                  FIRMWARE_VERSION, DEVICE_MODEL,
                  WiFi.macAddress().c_str(),
                  _ifLocalIp().c_str(),
                  _ifName(_activeIf),
-                 diag_reset_reason(), _bootCause, (unsigned long)(millis() / 1000UL));   // up: segundos desde o boot (NexON so' registra reinicio se for boot recente)
+                 diag_reset_reason(), _bootCause, (unsigned long)(millis() / 1000UL), (unsigned long)bb_boot_count());   // up: segundos desde o boot (NexON so' registra reinicio se for boot recente)
         _mqtt.publish(willTopic.c_str(), hello, true);
         bb_publish(mqtt_publish_raw, MQTT_TOPIC_BASE, true);   // caixa-preta: eventos ainda nao enviados
 

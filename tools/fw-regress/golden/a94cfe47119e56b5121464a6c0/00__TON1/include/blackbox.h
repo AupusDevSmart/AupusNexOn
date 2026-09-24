@@ -15,6 +15,7 @@ void bb_log(const char* fmt, ...);                // evento curto (ate 43 caract
 void bb_stage(uint8_t etapa);                     // marca a etapa atual do laco
 void bb_flush();                                  // grava no NVS o que estiver pendente
 const char* bb_stage_name(uint8_t etapa);
+uint32_t bb_boot_count();                        // numero do boot (vai no status: NexON registra cada boot 1x)
 
 enum BbEtapa : uint8_t {
     BB_INICIO = 0, BB_REDE = 1, BB_ENTRADAS = 2, BB_MODBUS_RTU = 3, BB_PUBLICACAO = 4,
