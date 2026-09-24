@@ -7,10 +7,12 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from "@/components/ui/table";
 import {
-  ChevronRight, ChevronDown, MapPin, Zap, Factory, Building2,
+  ChevronRight, MapPin, Zap, Factory, Building2,
   Search, Loader2, ArrowRight, RefreshCw
 } from "lucide-react";
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { Fragment, useEffect, useRef, useState, useMemo, useCallback } from "react";
+import { atrasoLinha, classesLinhaExpandida, DURACAO_EXPANDIR_MS } from "@/components/ui/expandir";
+import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 import { PlantasService, type PlantaResponse } from "@/services/plantas.services";
 import { type Unidade } from "@/services/unidades.services";
@@ -21,6 +23,21 @@ export function SelecionarUnidadePage() {
   const [plantas, setPlantas] = useState<PlantaResponse[]>([]);
   const [unidadesByPlanta, setUnidadesByPlanta] = useState<Record<string, Unidade[]>>({});
   const [expandedPlantaId, setExpandedPlantaId] = useState<string | null>(null);
+  // Planta que acabou de fechar: as linhas dela ficam montadas o tempo da
+  // animação de saída antes de sumir.
+  const [fechandoId, setFechandoId] = useState<string | null>(null);
+  const plantaAnteriorRef = useRef<string | null>(null);
+  useEffect(() => {
+    const anterior = plantaAnteriorRef.current;
+    plantaAnteriorRef.current = expandedPlantaId;
+    if (!anterior || anterior === expandedPlantaId) return;
+    setFechandoId(anterior);
+    const t = window.setTimeout(
+      () => setFechandoId((f) => (f === anterior ? null : f)),
+      DURACAO_EXPANDIR_MS,
+    );
+    return () => window.clearTimeout(t);
+  }, [expandedPlantaId]);
   const [loadingPlantas, setLoadingPlantas] = useState(true);
   const [search, setSearch] = useState("");
 
@@ -177,20 +194,24 @@ export function SelecionarUnidadePage() {
 
                   {!loadingPlantas && filteredPlantas.map((planta) => {
                     const isExpanded = expandedPlantaId === planta.id;
+                    const mostrarFilhas = isExpanded || fechandoId === planta.id;
+                    const classeFilha = classesLinhaExpandida(isExpanded);
+                    const estiloFilha = (i: number) => (isExpanded ? atrasoLinha(i) : undefined);
                     const unidades = unidadesByPlanta[planta.id] || [];
 
                     return (
-                      <>
+                      <Fragment key={planta.id}>
                         <TableRow
-                          key={planta.id}
                           className="cursor-pointer hover:bg-muted/50"
                           onClick={() => handlePlantaClick(planta.id)}
                         >
                           <TableCell className="w-10">
-                            {isExpanded
-                              ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                              : <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                            }
+                            <ChevronRight
+                              className={cn(
+                                "h-4 w-4 text-muted-foreground transition-transform duration-200",
+                                isExpanded && "rotate-90",
+                              )}
+                            />
                           </TableCell>
                           <TableCell>
                             <div className="space-y-1">
@@ -238,9 +259,9 @@ export function SelecionarUnidadePage() {
                           <TableCell></TableCell>
                         </TableRow>
 
-                        {isExpanded && (
+                        {mostrarFilhas && (
                           !unidadesByPlanta[planta.id] ? (
-                            <TableRow key={`${planta.id}-loading`}>
+                            <TableRow key={`${planta.id}-loading`} className={classeFilha}>
                               <TableCell colSpan={6} className="py-4">
                                 <div className="flex items-center gap-2 pl-12 text-sm text-muted-foreground">
                                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -249,7 +270,7 @@ export function SelecionarUnidadePage() {
                               </TableCell>
                             </TableRow>
                           ) : unidades.length === 0 ? (
-                            <TableRow key={`${planta.id}-empty`}>
+                            <TableRow key={`${planta.id}-empty`} className={classeFilha}>
                               <TableCell colSpan={6} className="py-4">
                                 <div className="pl-12 text-sm text-muted-foreground">
                                   Nenhuma unidade cadastrada nesta planta
@@ -257,10 +278,11 @@ export function SelecionarUnidadePage() {
                               </TableCell>
                             </TableRow>
                           ) : (
-                            unidades.map(unidade => (
+                            unidades.map((unidade, i) => (
                               <TableRow
                                 key={unidade.id}
-                                className="cursor-pointer hover:bg-primary/5 bg-muted/20"
+                                className={cn("cursor-pointer hover:bg-primary/5 bg-muted/20", classeFilha)}
+                                style={estiloFilha(i)}
                                 onClick={() => handleUnidadeClick(unidade.id)}
                               >
                                 <TableCell></TableCell>
@@ -292,7 +314,7 @@ export function SelecionarUnidadePage() {
                             ))
                           )
                         )}
-                      </>
+                      </Fragment>
                     );
                   })}
                 </TableBody>

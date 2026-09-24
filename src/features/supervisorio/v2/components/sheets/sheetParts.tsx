@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Expandir } from '@/components/ui/expandir';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { api } from '@/config/api';
 
@@ -258,7 +259,7 @@ export function Expandable({ title, right, children }: { title: string; right?: 
         <span>{title}</span>
         <span className="flex items-center gap-2 text-xs text-muted-foreground">{right}<span className="inline-block transition-transform" style={{ transform: `rotate(${open ? 180 : 0}deg)` }}>⌄</span></span>
       </button>
-      {open && <div className="divide-y">{children}</div>}
+      <Expandir aberto={open}><div className="divide-y">{children}</div></Expandir>
     </div>
   );
 }

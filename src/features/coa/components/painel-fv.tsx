@@ -217,7 +217,7 @@ export function PainelFv() {
               <ChevronDown className="h-3 w-3 opacity-60" />
             </button>
             {filtroAberto && (
-              <div className="absolute z-30 mt-1 w-64 rounded-md border border-border bg-popover shadow-lg p-2">
+              <div className="absolute z-30 mt-1 w-64 rounded-md border border-border bg-popover shadow-lg p-2 animate-in fade-in-0 zoom-in-95 slide-in-from-top-2 duration-150">
                 <input value={buscaUsina} onChange={(e) => setBuscaUsina(e.target.value)} placeholder="Buscar usina…" autoFocus
                   className="w-full h-7 text-xs rounded border border-input bg-background dark:bg-black px-2 mb-2" />
                 <div className="max-h-56 overflow-y-auto space-y-0.5">

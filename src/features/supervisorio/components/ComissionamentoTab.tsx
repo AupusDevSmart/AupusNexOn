@@ -3,7 +3,9 @@ import { api } from "@/config/api";
 import { equipamentosApi } from "@/services/equipamentos.services";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, AlertTriangle, XCircle, Circle, RefreshCw, ClipboardCheck, ChevronDown, ChevronRight } from "lucide-react";
+import { CheckCircle2, AlertTriangle, XCircle, Circle, RefreshCw, ClipboardCheck, ChevronRight } from "lucide-react";
+import { Expandir } from "@/components/ui/expandir";
+import { cn } from "@/lib/utils";
 
 /**
  * Aba COMISSIONAMENTO do sinóptico. NÚCLEO = conferência humana: o instalador compara os
@@ -299,10 +301,10 @@ export function ComissionamentoTab({
         <div className="mb-3 rounded-md border border-purple-500/30 bg-purple-500/10 px-3 py-2">
           <button onClick={() => setMostrarOrfaos((v) => !v)}
             className="flex items-center gap-1 text-sm font-medium text-purple-700 dark:text-purple-300">
-            {mostrarOrfaos ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+            <ChevronRight className={cn("h-4 w-4 transition-transform duration-200", mostrarOrfaos && "rotate-90")} />
             ⚑ {orfaos.length} equipamento(s) fantasma (fora do diagrama, sem dado)
           </button>
-          {mostrarOrfaos && (
+          <Expandir aberto={mostrarOrfaos}>
             <div className="mt-2 space-y-1.5">
               <p className="text-xs text-muted-foreground">
                 Sobras de exclusão/migração que o unifilar não mostra. Excluir faz soft-delete + desinscreve do MQTT.
@@ -321,7 +323,7 @@ export function ComissionamentoTab({
                 </div>
               ))}
             </div>
-          )}
+          </Expandir>
         </div>
       )}
 
@@ -436,19 +438,19 @@ export function ComissionamentoTab({
                 {/* SANIDADE AUTOMÁTICA — apoio, recolhível */}
                 <button onClick={() => setMostrarChecks((v) => !v)}
                   className="mt-4 flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground">
-                  {mostrarChecks ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                  <ChevronRight className={cn("h-4 w-4 transition-transform duration-200", mostrarChecks && "rotate-90")} />
                   Sanidade automática {preview && nChecksRuins > 0 ? <span className="text-amber-600">({nChecksRuins} a revisar)</span> : ""}
                 </button>
-                {mostrarChecks && preview && (
+                <Expandir aberto={mostrarChecks && !!preview}>
                   <ul className="mt-2 space-y-1.5 pl-1">
-                    {preview.itens.map((it) => (
+                    {(preview?.itens ?? []).map((it) => (
                       <li key={it.chave} className="flex items-start gap-2 text-sm">
                         {ICON[it.status]}
                         <div><span className="font-medium">{it.titulo}</span><span className="text-muted-foreground"> — {it.detalhe}</span></div>
                       </li>
                     ))}
                   </ul>
-                )}
+                </Expandir>
 
                 {/* FOTOS DE PROVA */}
                 <div className="mt-4 border-t pt-3">

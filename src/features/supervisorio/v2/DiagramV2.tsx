@@ -644,7 +644,7 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
             {showExportMenu && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setShowExportMenu(false)} />
-                <div className="absolute right-0 top-7 z-50 min-w-[130px] rounded-md border bg-popover p-1 text-popover-foreground shadow-md">
+                <div className="absolute right-0 top-7 z-50 min-w-[130px] rounded-md border bg-popover p-1 text-popover-foreground shadow-md animate-in fade-in-0 zoom-in-95 slide-in-from-top-2 duration-150">
                   <button
                     className="flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-muted"
                     onClick={() => handleExport('png')}

@@ -1,5 +1,6 @@
 // src/components/common/base-table/BaseTable.tsx
 import React from 'react';
+import { Expandir, useMontadoAteSair } from '@/components/ui/expandir';
 import { 
   Table, 
   TableBody, 
@@ -390,7 +391,9 @@ export function BaseTable<T extends BaseEntity>({
                     )}
                   </div>
 
-                  {expanded && <div className="border-t bg-muted/20">{renderExpandedRow?.(entity)}</div>}
+                  <ConteudoExpandido aberto={expanded} render={() => (
+                    <div className="border-t bg-muted/20">{renderExpandedRow?.(entity)}</div>
+                  )} />
                 </div>
               );
             })}
@@ -471,13 +474,7 @@ export function BaseTable<T extends BaseEntity>({
                     </TableCell>
                   )}
                 </TableRow>
-                {expanded && (
-                  <TableRow className="hover:bg-transparent">
-                    <TableCell colSpan={totalColumns} className="p-0 bg-muted/20">
-                      {renderExpandedRow?.(entity)}
-                    </TableCell>
-                  </TableRow>
-                )}
+                <LinhaExpandida aberto={expanded} colSpan={totalColumns} render={() => renderExpandedRow?.(entity)} />
                 </React.Fragment>
               );
             })
@@ -554,3 +551,33 @@ export function BaseTable<T extends BaseEntity>({
   );
 }
 
+/**
+ * Conteúdo da linha expandida, abrindo e fechando com animação de altura.
+ * `render` só roda enquanto o conteúdo está montado, para não montar o
+ * detalhe de todas as linhas fechadas.
+ */
+function ConteudoExpandido({ aberto, render }: { aberto: boolean; render: () => React.ReactNode }) {
+  const montado = useMontadoAteSair(aberto);
+  return <Expandir aberto={aberto}>{montado ? render() : null}</Expandir>;
+}
+
+/** A linha da tabela fica montada até a animação de fechar terminar. */
+function LinhaExpandida({
+  aberto,
+  colSpan,
+  render,
+}: {
+  aberto: boolean;
+  colSpan: number;
+  render: () => React.ReactNode;
+}) {
+  const montado = useMontadoAteSair(aberto);
+  if (!montado) return null;
+  return (
+    <TableRow className="hover:bg-transparent">
+      <TableCell colSpan={colSpan} className="p-0 bg-muted/20">
+        <ConteudoExpandido aberto={aberto} render={render} />
+      </TableCell>
+    </TableRow>
+  );
+}
