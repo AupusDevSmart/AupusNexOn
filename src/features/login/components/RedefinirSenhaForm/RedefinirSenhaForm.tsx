@@ -10,16 +10,9 @@ import { useRedefinirSenha } from '../../hooks/useRedefinirSenha';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
+import { BOTAO_PRINCIPAL, CAMPO, LINK_DISCRETO, ROTULO } from '../estilo';
 
 /**
  * Formulário de redefinição de senha.
@@ -54,40 +47,40 @@ export function RedefinirSenhaForm() {
   // Link inválido: faltam token ou email na URL.
   if (!token || !email) {
     return (
-      <Card className="w-full max-w-md mx-4 shadow-lg border-border bg-card">
-        <CardHeader className="space-y-1 pb-6">
-          <CardTitle className="text-2xl font-semibold text-center text-foreground">
+      <div className="flex w-full max-w-sm flex-col space-y-6">
+        <div className="space-y-1">
+          <h2 className="text-xl font-semibold text-white text-center">
             Link inválido
-          </CardTitle>
-          <CardDescription className="text-center text-muted-foreground">
+          </h2>
+          <p className="text-sm text-white/60 text-center">
             Este link de redefinição é inválido ou está incompleto. Solicite um novo.
-          </CardDescription>
-        </CardHeader>
-        <CardFooter>
+          </p>
+        </div>
+        <div className="mt-4">
           <Button
             asChild
-            className="w-full bg-nexon-verde font-medium text-nexon-azul hover:bg-nexon-verde/90"
+            className={BOTAO_PRINCIPAL}
           >
             <Link to="/esqueci-senha">Solicitar novo link</Link>
           </Button>
-        </CardFooter>
-      </Card>
+        </div>
+      </div>
     );
   }
 
   return (
-    <Card className="w-full max-w-md mx-4 shadow-lg border-border bg-card">
-      <CardHeader className="space-y-1 pb-6">
-        <CardTitle className="text-2xl font-semibold text-center text-foreground">
+    <div className="flex w-full max-w-sm flex-col space-y-6">
+      <div className="space-y-1">
+        <h2 className="text-xl font-semibold text-white text-center">
           Redefinir senha
-        </CardTitle>
-        <CardDescription className="text-center text-muted-foreground">
-          Defina uma nova senha para <span className="font-medium text-foreground">{email}</span>
-        </CardDescription>
-      </CardHeader>
+        </h2>
+        <p className="text-sm text-white/60 text-center">
+          Defina uma nova senha para <span className="font-medium text-white">{email}</span>
+        </p>
+      </div>
 
       <form onSubmit={handleSubmit(onSubmit)}>
-        <CardContent className="space-y-4">
+        <div className="space-y-4">
           {error && (
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>
@@ -95,7 +88,7 @@ export function RedefinirSenhaForm() {
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="novaSenha">Nova senha</Label>
+            <Label htmlFor="novaSenha" className={ROTULO}>Nova senha</Label>
             <div className="relative">
               <Input
                 id="novaSenha"
@@ -104,12 +97,12 @@ export function RedefinirSenhaForm() {
                 autoComplete="new-password"
                 disabled={isLoading}
                 {...register('novaSenha')}
-                className={errors.novaSenha ? 'border-destructive pr-10' : 'pr-10'}
+                className={`${CAMPO} pr-10 ${errors.novaSenha ? 'border-destructive' : ''}`}
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-white/50 hover:text-white transition-colors"
                 tabIndex={-1}
                 disabled={isLoading}
                 aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
@@ -127,7 +120,7 @@ export function RedefinirSenhaForm() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="confirmarSenha">Confirmar nova senha</Label>
+            <Label htmlFor="confirmarSenha" className={ROTULO}>Confirmar nova senha</Label>
             <Input
               id="confirmarSenha"
               type={showPassword ? 'text' : 'password'}
@@ -135,18 +128,18 @@ export function RedefinirSenhaForm() {
               autoComplete="new-password"
               disabled={isLoading}
               {...register('confirmarSenha')}
-              className={errors.confirmarSenha ? 'border-destructive' : ''}
+              className={`${CAMPO} ${errors.confirmarSenha ? 'border-destructive' : ''}`}
             />
             {errors.confirmarSenha && (
               <p className="text-sm text-destructive">{errors.confirmarSenha.message}</p>
             )}
           </div>
-        </CardContent>
+        </div>
 
-        <CardFooter className="flex-col space-y-4">
+        <div className="mt-4 flex flex-col space-y-4">
           <Button
             type="submit"
-            className="w-full bg-nexon-verde font-medium text-nexon-azul hover:bg-nexon-verde/90"
+            className={BOTAO_PRINCIPAL}
             disabled={isLoading}
           >
             {isLoading ? (
@@ -161,12 +154,12 @@ export function RedefinirSenhaForm() {
 
           <Link
             to="/login"
-            className="text-sm text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
+            className={LINK_DISCRETO}
           >
             Voltar ao login
           </Link>
-        </CardFooter>
+        </div>
       </form>
-    </Card>
+    </div>
   );
 }

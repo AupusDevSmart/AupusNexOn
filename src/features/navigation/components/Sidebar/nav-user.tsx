@@ -103,7 +103,9 @@ export function NavUser() {
               size="lg"
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
-              <Avatar className="h-8 w-8 rounded-lg">
+              {/* No trilho recolhido a foto ocupa o botão inteiro (44px), na
+                  mesma medida da marca e do "Chame a Aupus". */}
+              <Avatar className="h-8 w-8 rounded-lg group-data-[collapsible=icon]:size-11 group-data-[collapsible=icon]:rounded-xl">
                 {avatarUrl && (
                   <AvatarImage
                     src={avatarUrl}
@@ -117,13 +119,14 @@ export function NavUser() {
                     }}
                   />
                 )}
-                <AvatarFallback className="rounded-lg">
+                <AvatarFallback className="rounded-[inherit] bg-nexon-azul text-xs font-semibold text-white">
                   {getInitials(user?.nome || 'Usuário')}
                 </AvatarFallback>
               </Avatar>
-              <div className="grid flex-1 text-left text-sm leading-tight">
+              {/* Nome e e-mail só com o menu aberto: no trilho vazavam ao lado da foto. */}
+              <div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
                 <span className="truncate font-semibold">{user?.nome || 'Usuário'}</span>
-                <span className="truncate text-xs">{user?.email || 'email@exemplo.com'}</span>
+                <span className="truncate text-xs text-muted-foreground">{user?.email || 'email@exemplo.com'}</span>
               </div>
             </SidebarMenuButton>
           </DropdownMenuTrigger>
@@ -135,7 +138,7 @@ export function NavUser() {
           >
             <DropdownMenuLabel className="p-0 font-normal">
               <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-                <Avatar className="h-8 w-8 rounded-lg">
+                <Avatar className="h-10 w-10 rounded-lg">
                   {avatarUrl && (
                     <AvatarImage
                       src={avatarUrl}
@@ -149,13 +152,13 @@ export function NavUser() {
                       }}
                     />
                   )}
-                  <AvatarFallback className="rounded-lg">
+                  <AvatarFallback className="rounded-[inherit] bg-nexon-azul text-xs font-semibold text-white">
                     {getInitials(user?.nome || 'Usuário')}
                   </AvatarFallback>
                 </Avatar>
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-semibold">{user?.nome || 'Usuário'}</span>
-                  <span className="truncate text-xs">{user?.email || 'email@exemplo.com'}</span>
+                  <span className="truncate text-xs text-muted-foreground">{user?.email || 'email@exemplo.com'}</span>
                 </div>
               </div>
             </DropdownMenuLabel>

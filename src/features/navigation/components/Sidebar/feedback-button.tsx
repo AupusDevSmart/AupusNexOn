@@ -84,10 +84,12 @@ export function FeedbackButton() {
         <SidebarMenuButton
           tooltip="Chame a Aupus!"
           onClick={() => setIsOpen(true)}
-          className="rounded-sm bg-blue-600 hover:bg-blue-300 text-card-foreground"
+          // Verde é a cor de ação da marca; texto sobre verde é sempre o azul NexON.
+          className="h-10 rounded-lg bg-nexon-verde font-medium text-nexon-azul hover:bg-nexon-verde/90 hover:text-nexon-azul group-data-[collapsible=icon]:rounded-xl"
         >
-          <MessageCircleWarning className="w-5 h-5 shrink-0 text-card" />
-          <span className="flex text-card">Chame a Aupus!</span>
+          <MessageCircleWarning className="!size-5 shrink-0 group-data-[collapsible=icon]:!size-[22px]" />
+          {/* No trilho recolhido fica só o ícone, como nos demais itens. */}
+          <span className="flex group-data-[collapsible=icon]:hidden">Chame a Aupus!</span>
         </SidebarMenuButton>
       </DialogTrigger>
       <DialogContent className="sm:max-w-[500px]">

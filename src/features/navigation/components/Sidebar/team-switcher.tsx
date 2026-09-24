@@ -6,10 +6,9 @@ import {
 import { useNavigate } from "react-router-dom";
 
 /**
- * Marca no topo da sidebar. Logo compacto do NexON (sem a linha de sinal,
- * que é a versão indicada para cabeçalho de app). Claro/escuro é resolvido
- * só com CSS pela classe `dark` do <html>, que o ThemeProvider já aplica
- * também no tema 'system'.
+ * Topo da sidebar, na mesma medida do seletor de Nexus do Smart Nexus: ícone
+ * do app (32px aberto, 44px no trilho recolhido) e o nome ao lado. O logo por
+ * extenso fica no começo do breadcrumb.
  */
 export function TeamSwitcher() {
   const navigate = useNavigate();
@@ -19,27 +18,19 @@ export function TeamSwitcher() {
       <SidebarMenuItem>
         <SidebarMenuButton
           size="lg"
+          tooltip="NexON"
           className="data-[state=open]:bg-card-accent data-[state=open]:text-card-accent-foreground"
           onClick={() => navigate('/')}
-          aria-label="NexON — início"
         >
-          {/* Sidebar recolhida: só o ícone do app cabe. */}
           <img
             src="/brand/nexon-icone.svg"
-            alt="NexON"
-            className="hidden size-8 shrink-0 rounded-lg group-data-[collapsible=icon]:block"
+            alt=""
+            aria-hidden
+            className="aspect-square size-8 shrink-0 rounded-lg group-data-[collapsible=icon]:size-11 group-data-[collapsible=icon]:rounded-xl"
           />
-          <div className="flex w-full items-center group-data-[collapsible=icon]:hidden">
-            <img
-              src="/brand/nexon-logo-compacto-colorido.svg"
-              alt="NexON"
-              className="h-7 w-auto object-contain dark:hidden"
-            />
-            <img
-              src="/brand/nexon-logo-compacto-negativo.svg"
-              alt="NexON"
-              className="hidden h-7 w-auto object-contain dark:block"
-            />
+          {/* No trilho recolhido fica só o ícone: o nome não cabe. */}
+          <div className="ml-2 flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
+            <span className="font-semibold">NexON</span>
           </div>
         </SidebarMenuButton>
       </SidebarMenuItem>

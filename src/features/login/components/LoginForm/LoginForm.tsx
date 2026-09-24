@@ -6,17 +6,10 @@ import { useLogin } from '../../hooks/useLogin';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import { useState } from 'react';
+import { BOTAO_PRINCIPAL, CAMPO, LINK_DISCRETO, ROTULO } from '../estilo';
 
 interface LoginFormProps {
   redirectTo?: string;
@@ -47,102 +40,80 @@ export function LoginForm({ redirectTo = '/dashboard' }: LoginFormProps) {
   };
 
   return (
-    <Card className="w-full max-w-md mx-4 shadow-lg border-border bg-card">
-      <CardHeader className="space-y-1 pb-6">
-        <CardTitle className="text-2xl font-semibold text-center text-foreground">
-          Login
-        </CardTitle>
-        <CardDescription className="text-center text-muted-foreground">
-          Digite suas credenciais para acessar o sistema
-        </CardDescription>
-      </CardHeader>
+    <div className="flex w-full max-w-sm flex-col space-y-6">
+      <div className="space-y-1">
+        <h2 className="text-xl font-semibold text-white">Faça login na sua conta</h2>
+        <p className="text-sm text-white/60">Entre com seu e-mail e senha para logar</p>
+      </div>
 
-      <form onSubmit={handleSubmit(onSubmit)}>
-        <CardContent className="space-y-4">
-          {/* Alerta de erro global */}
-          {error && (
-            <Alert variant="destructive">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
+      <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4">
+        {/* Alerta de erro global */}
+        {error && (
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
 
-          {/* Campo de Email */}
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              type="email"
-              placeholder="usuario@exemplo.com"
-              autoComplete="email"
-              disabled={isLoading}
-              {...register('email')}
-              className={errors.email ? 'border-destructive' : ''}
-            />
-            {errors.email && (
-              <p className="text-sm text-destructive">{errors.email.message}</p>
-            )}
-          </div>
-
-          {/* Campo de Senha */}
-          <div className="space-y-2">
-            <Label htmlFor="senha">Senha</Label>
-            <div className="relative">
-              <Input
-                id="senha"
-                type={showPassword ? 'text' : 'password'}
-                placeholder="••••••••"
-                autoComplete="current-password"
-                disabled={isLoading}
-                {...register('senha')}
-                className={errors.senha ? 'border-destructive pr-10' : 'pr-10'}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                tabIndex={-1}
-                disabled={isLoading}
-              >
-                {showPassword ? (
-                  <EyeOff className="h-4 w-4" />
-                ) : (
-                  <Eye className="h-4 w-4" />
-                )}
-              </button>
-            </div>
-            {errors.senha && (
-              <p className="text-sm text-destructive">{errors.senha.message}</p>
-            )}
-          </div>
-
-          {/* Link de esqueci senha */}
-          <div className="text-right">
-            <Link
-              to="/esqueci-senha"
-              className="text-sm text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
-            >
-              Esqueceu a senha?
-            </Link>
-          </div>
-        </CardContent>
-
-        <CardFooter>
-          <Button
-            type="submit"
-            className="w-full bg-nexon-verde font-medium text-nexon-azul hover:bg-nexon-verde/90"
+        <div className="space-y-2">
+          <Label htmlFor="email" className={ROTULO}>E-mail</Label>
+          <Input
+            id="email"
+            type="email"
+            placeholder="voce@empresa.com.br"
+            autoComplete="email"
             disabled={isLoading}
-          >
-            {isLoading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Entrando...
-              </>
-            ) : (
-              'Entrar'
-            )}
-          </Button>
-        </CardFooter>
+            {...register('email')}
+            className={`${CAMPO} ${errors.email ? 'border-destructive' : ''}`}
+          />
+          {errors.email && (
+            <p className="text-sm text-destructive">{errors.email.message}</p>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="senha" className={ROTULO}>Senha</Label>
+          <div className="relative">
+            <Input
+              id="senha"
+              type={showPassword ? 'text' : 'password'}
+              placeholder="••••••••"
+              autoComplete="current-password"
+              disabled={isLoading}
+              {...register('senha')}
+              className={`${CAMPO} pr-10 ${errors.senha ? 'border-destructive' : ''}`}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute inset-y-0 right-3 flex items-center text-white/50 hover:text-white"
+              tabIndex={-1}
+              disabled={isLoading}
+            >
+              {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
+          </div>
+          {errors.senha && (
+            <p className="text-sm text-destructive">{errors.senha.message}</p>
+          )}
+        </div>
+
+        <Button type="submit" className={BOTAO_PRINCIPAL} disabled={isLoading}>
+          {isLoading ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Entrando...
+            </>
+          ) : (
+            'Entrar'
+          )}
+        </Button>
+
+        <div className="text-center">
+          <Link to="/esqueci-senha" className={LINK_DISCRETO}>
+            Esqueceu sua senha?
+          </Link>
+        </div>
       </form>
-    </Card>
+    </div>
   );
 }
