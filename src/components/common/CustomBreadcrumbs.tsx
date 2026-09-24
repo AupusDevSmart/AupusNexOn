@@ -297,7 +297,21 @@ export function CustomBreadcrumbs({ className = '' }: { className?: string }) {
               <BItem>
                 {index === 0 ? (
                   <div className="flex items-center gap-2">
-                    <BreadcrumbPage className="text-secondary-foreground font-semibold">
+                    {/* Marca do sistema no começo do caminho, como no Smart Nexus.
+                        Logo compacto (sem a linha): é a versão do kit para
+                        cabeçalho de app. Abaixo de sm o espaço é do caminho e
+                        fica só o nome. */}
+                    <img
+                      src="/brand/nexon-logo-compacto-colorido.svg"
+                      alt="NexON"
+                      className="hidden h-6 w-auto sm:block dark:sm:hidden"
+                    />
+                    <img
+                      src="/brand/nexon-logo-compacto-negativo.svg"
+                      alt="NexON"
+                      className="hidden h-6 w-auto dark:sm:block"
+                    />
+                    <BreadcrumbPage className="text-secondary-foreground font-semibold sm:hidden">
                       {item.label}
                     </BreadcrumbPage>
                   </div>

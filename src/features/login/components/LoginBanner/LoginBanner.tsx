@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react';
+
 interface LoginBannerProps {
   bannerSrc?: string;
   title?: string;
@@ -16,7 +18,7 @@ export function LoginBanner({
   subtitle = 'Interligando você com o futuro. Energize-se.',
 }: LoginBannerProps) {
   return (
-    <aside className="relative hidden h-full overflow-hidden border-r border-white/10 bg-nexon-azul p-12 lg:flex lg:w-1/2 lg:flex-col lg:justify-between">
+    <aside className="relative hidden h-full overflow-hidden border-r border-white/10 bg-white/[0.03] p-12 lg:flex lg:w-1/2 lg:flex-col lg:justify-between">
       {/* O pulso é o grafismo divisor da marca Aupus: proporção original
           preservada e sempre crescendo da esquerda para a direita. */}
       <img
@@ -55,17 +57,28 @@ export function LoginBanner({
 /** Marca reduzida acima do formulário, quando o painel lateral some (< lg). */
 export function LoginMarcaCompacta() {
   return (
-    <div className="mb-8 flex justify-center lg:hidden">
-      <img
-        src="/brand/nexon-logo-colorido.svg"
-        alt="NexON"
-        className="h-12 w-auto object-contain dark:hidden"
-      />
-      <img
-        src="/brand/nexon-logo-negativo.svg"
-        alt="NexON"
-        className="hidden h-12 w-auto object-contain dark:block"
-      />
+    <img
+      src="/brand/nexon-logo-negativo.svg"
+      alt="NexON"
+      className="h-12 w-auto object-contain lg:hidden"
+    />
+  );
+}
+
+/**
+ * Moldura das telas de entrada, igual à do Smart Nexus: fundo azul NexON fixo
+ * (não segue o tema), painel da marca à esquerda e formulário à direita.
+ */
+export function LoginLayout({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex h-screen w-screen overflow-hidden bg-nexon-azul">
+      <LoginBanner />
+      <main className="flex flex-1 flex-col items-center justify-center overflow-y-auto px-6 py-10">
+        <div className="flex w-full max-w-sm flex-col items-center gap-8">
+          <LoginMarcaCompacta />
+          {children}
+        </div>
+      </main>
     </div>
   );
 }
