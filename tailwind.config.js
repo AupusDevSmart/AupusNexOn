@@ -6,7 +6,6 @@ const config = {
 		'./pages/**/*.{ts,tsx}',
 		'./components/**/*.{ts,tsx}',
 		'./src/**/*.{ts,tsx}',
-		'./node_modules/@aupus/shared-pages/dist/**/*.{js,mjs}',
 	],
 	prefix: '',
 	theme: {
