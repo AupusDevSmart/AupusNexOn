@@ -206,7 +206,7 @@ function ensureIoTScripts(): Promise<void> {
     //
     // O catalogo de dispositivos foi movido pro backend (GET /iot-catalog/device-catalog.js)
     // — ele revalida sozinho via ETag. Os demais ainda sao estaticos.
-    const IOT_SCRIPTS_VERSION = '20261001-ssu-3';
+    const IOT_SCRIPTS_VERSION = '20261001-ssu-4';
     const scripts = [
       `${BASE_URL}/iot-catalog/device-catalog.js`,
       `/iot-firmware-base.v2.js?v=${IOT_SCRIPTS_VERSION}`,
@@ -1922,7 +1922,7 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
                     className="w-full h-8 text-sm rounded-md border bg-background px-2"
                   >
                     <option value="">-- Selecionar Modelo --</option>
-                    {(typeof getCatalogByType === 'function' ? getCatalogByType(f.device_type) : []).map((d: any) => (
+                    {(typeof getCatalogByType === 'function' ? getCatalogByType(f.device_type) : []).filter((d: any) => !(Array.isArray((f as any).excluir) && (f as any).excluir.includes(d.id))).map((d: any) => (
                       <option key={d.id} value={d.id}>
                         {d.fabricante} {d.modelo}{d.protocolo ? ` · ${String(d.protocolo).toUpperCase()}` : ''}
                       </option>
