@@ -645,7 +645,13 @@ var CATEGORIES = [
 if (typeof window !== 'undefined' && window.__IOT_PALETTE__) {
     try {
         var _P = window.__IOT_PALETTE__;
-        if (_P.component_types && Object.keys(_P.component_types).length) COMPONENT_TYPES = _P.component_types;
+        if (_P.component_types && Object.keys(_P.component_types).length) {
+            // Medidor SSU (TON v2 lê a concessionária pela SU+) ainda não tem linha na paleta do
+            // banco: mantém a definição embutida em vez de sumir (TON v2 não ligava no medidor).
+            var _ssu = COMPONENT_TYPES.medidor_ssu;
+            COMPONENT_TYPES = _P.component_types;
+            if (_ssu && !COMPONENT_TYPES.medidor_ssu) COMPONENT_TYPES.medidor_ssu = _ssu;
+        }
         if (_P.ton_caps && Object.keys(_P.ton_caps).length) TON_CAPS = _P.ton_caps;
         if (_P.categories && _P.categories.length) CATEGORIES = _P.categories;
         console.log('[IoT] Paleta do DB aplicada (' + Object.keys(COMPONENT_TYPES).length + ' tipos)');

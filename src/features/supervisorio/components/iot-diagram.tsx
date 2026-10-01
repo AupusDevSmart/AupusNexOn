@@ -206,7 +206,7 @@ function ensureIoTScripts(): Promise<void> {
     //
     // O catalogo de dispositivos foi movido pro backend (GET /iot-catalog/device-catalog.js)
     // — ele revalida sozinho via ETag. Os demais ainda sao estaticos.
-    const IOT_SCRIPTS_VERSION = '20260924-antitrav-5';
+    const IOT_SCRIPTS_VERSION = '20261001-ssu-1';
     const scripts = [
       `${BASE_URL}/iot-catalog/device-catalog.js`,
       `/iot-firmware-base.v2.js?v=${IOT_SCRIPTS_VERSION}`,
@@ -753,7 +753,7 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
           const tipoNome = e.tipo_equipamento_rel?.nome ?? e.tipoEquipamento?.nome ?? '';
           const nomeComTipo = `${e.nome ?? ''} ${tipoNome} ${catNome}`;
           if (isTon) return String(catNome).trim().toUpperCase() === 'TON';
-          if (tipo === 'medidor_comum' && /CONCESSION|EQTL/i.test(`${codigo} ${nomeComTipo}`)) return true;
+          if ((tipo === 'medidor_comum' || tipo === 'medidor_ssu') && /CONCESSION|EQTL/i.test(`${codigo} ${nomeComTipo}`)) return true;
           // Identidade = componente IoT ↔ SEU equipamento Modbus (inversor 'ambos',
           // PM/relé 'iot'). Exclui só ativos de POTÊNCIA pura (disjuntor/trafo) — esses
           // não são identidade; o PM apenas os ASSOCIA depois (disjuntor associado).
