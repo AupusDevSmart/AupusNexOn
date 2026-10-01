@@ -634,7 +634,7 @@ var COMPONENT_TYPES = {
 var CATEGORIES = [
     { id: 'controller', label: 'Controladores TON', types: ['ton1', 'ton2', 'ton3', 'ton4', 'ton1v2', 'ton2v2', 'ton3v2', 'ton4v2'] },
     { id: 'infra', label: 'Infraestrutura', types: ['wifi_router', 'mqtt_broker', 'meter_gateway', 'inverter_datalogger', 'conversor'] },
-    { id: 'device', label: 'Dispositivos', types: ['inversor', 'power_meter', 'medidor_comum', 'medidor_ssu', 'rele_protecao'] },
+    { id: 'device', label: 'Dispositivos', types: ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao'] },
     { id: 'irrigacao', label: 'Irrigação / Bomba', types: ['pivo', 'bomba'] },
     { id: 'carregador', label: 'Carregador Elétrico', types: ['carregador'] },
 ];
@@ -1349,6 +1349,9 @@ var DiagramEditor = class {
             return ['tcp'];
         }
 
+        // Medidor Concessionária ligado DIRETO na TON (v2) = SSU (Saida Serial de Usuario na SU+/IO48).
+        // E' o MESMO medidor do caminho via Gateway A966 — o transporte e' decidido pela ligacao.
+        if (types.includes('medidor_comum') && types.some(t => tonTypes.includes(t))) return ['ssu'];
         // Medidor SSU (NBR 14522) ↔ TON v2 = SSU (Saida Serial de Usuario na entrada SU+/IO48)
         if (types.includes('medidor_ssu')) return ['ssu'];
 
@@ -1877,11 +1880,28 @@ var DiagramEditor = class {
             }
         }
 
-        // Rule 4: medidor_comum only connects to meter_gateway (A966)
+        // Rule 4: Medidor Concessionária liga no Gateway A966 (TON v1) OU direto numa TON v2
+        // (Saida Serial de Usuario na entrada SU+/IO48). Uma ligacao so' por medidor; 1 por TON v2.
         if (types.includes('medidor_comum')) {
-            const other = from.type === 'medidor_comum' ? to.type : from.type;
-            if (other !== 'meter_gateway') {
-                return { allowed: false, reason: 'Medidor Concessionária só se conecta ao Gateway A966' };
+            const med = from.type === 'medidor_comum' ? from : to;
+            const outro = from.type === 'medidor_comum' ? to : from;
+            const conns = this.connections || [];
+            if (conns.some(c => c.from.componentId === med.id || c.to.componentId === med.id)) {
+                return { allowed: false, reason: 'Este Medidor Concessionária já está ligado (Gateway A966 ou TON v2 — um dos dois)' };
+            }
+            if (outro.type !== 'meter_gateway') {
+                const cap = TON_CAPS[outro.type];
+                if (!cap || cap.versao !== 2) {
+                    return { allowed: false, reason: 'Medidor Concessionária liga no Gateway A966 ou direto numa TON v2 (entrada SU+)' };
+                }
+                const ssuNaTon = conns.some(c => {
+                    const a = this.components.find(x => x.id === c.from.componentId);
+                    const b = this.components.find(x => x.id === c.to.componentId);
+                    if (!a || !b || (a.id !== outro.id && b.id !== outro.id)) return false;
+                    const oposto = a.id === outro.id ? b : a;
+                    return oposto.type === 'medidor_ssu' || oposto.type === 'medidor_comum';
+                });
+                if (ssuNaTon) return { allowed: false, reason: 'Esta TON já tem um medidor na entrada SU+ (só há uma)' };
             }
         }
 
@@ -1986,6 +2006,8 @@ var DiagramEditor = class {
         if (types.includes('pivo')) return 'rs485';
         // Medidor SSU ↔ TON v2 = Saida Serial de Usuario (entrada SU+)
         if (types.includes('medidor_ssu')) return 'ssu';
+        // Medidor Concessionária direto na TON (v2) = SSU
+        if (types.includes('medidor_comum') && types.some(t => tonTypes.includes(t))) return 'ssu';
         // Router to Broker MQTT = WiFi
         if (types.includes('mqtt_broker') && types.includes('wifi_router')) return 'wifi';
         // Datalogger ↔ Inversor = RS485
