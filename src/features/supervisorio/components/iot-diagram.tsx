@@ -697,8 +697,9 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
   // TON não cria aqui (é Fase 2, auto-create no backend). Ids semeados (estáveis).
   const TIPO_POR_COMPONENTE: Record<string, string> = {
     inversor: '01JAQTE1INVERSOR000000005',
-    power_meter: '01JAQTE1MEDIDOR00000001',
-    medidor_comum: '01JAQTE1MEDIDOR00000001',
+    // (o tipo antigo '01JAQTE1MEDIDOR00000001' sumiu na reestruturação de tipos → "Criar novo" falhava)
+    power_meter: 'tipo-meter-m160-001',                // Power Meter
+    medidor_comum: 'cmsyybblg000jjq1qr1na33zz',        // Medidor Concessionária (EQTL001)
     // Medidor lido pela SSU na TON v2: cai no tipo A966 (categoria Gateway) — mesma
     // ingestão/dashboard do gateway A-966, que ele substitui.
     medidor_ssu: 'tipo-ims-a966-001',
@@ -712,7 +713,9 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
     if (tipoComp === 'inversor') return /INVERSOR|SUN2000/i.test(hay);
     if (tipoComp === 'medidor_ssu')
       return /A966|A-966|SSU|GATEWAY|LANDIS|E750|MEDIDOR/i.test(hay);
-    if (tipoComp === 'power_meter' || tipoComp === 'medidor_comum')
+    if (tipoComp === 'medidor_comum')
+      return /MEDIDOR|CONCESSION|EQTL|LANDIS|A966/i.test(hay);
+    if (tipoComp === 'power_meter')
       return /METER|MEDIDOR|LANDIS|M160|M300|PD666|A966/i.test(hay);
     if (tipoComp === 'rele_protecao') return /RELE/i.test(hay);
     if (tipoComp === 'bomba') return /BOMBA|COMBUST/i.test(hay);
@@ -744,12 +747,18 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
             e.tipo_equipamento_rel?.categoria?.nome ?? e.tipoEquipamento?.categoria?.nome ?? '';
           const codigo =
             e.tipo_equipamento_rel?.codigo ?? e.tipoEquipamento?.codigo ?? e.tipo_equipamento ?? '';
+          // Nome do TIPO entra na decisão: o medidor da concessionária no unifilar se chama
+          // "Padrão de Energia - Ramal de Entrada" (tipo EQTL001 "Medidor Concessionária") —
+          // só pelo nome/código do equipamento ele parecia potência e sumia da lista.
+          const tipoNome = e.tipo_equipamento_rel?.nome ?? e.tipoEquipamento?.nome ?? '';
+          const nomeComTipo = `${e.nome ?? ''} ${tipoNome} ${catNome}`;
           if (isTon) return String(catNome).trim().toUpperCase() === 'TON';
+          if (tipo === 'medidor_comum' && /CONCESSION|EQTL/i.test(`${codigo} ${nomeComTipo}`)) return true;
           // Identidade = componente IoT ↔ SEU equipamento Modbus (inversor 'ambos',
           // PM/relé 'iot'). Exclui só ativos de POTÊNCIA pura (disjuntor/trafo) — esses
           // não são identidade; o PM apenas os ASSOCIA depois (disjuntor associado).
-          if (dominioDoTipo(codigo, e.nome) === 'potencia') return false;
-          return familiaCasa(tipo, codigo, e.nome);
+          if (dominioDoTipo(codigo, nomeComTipo) === 'potencia') return false;
+          return familiaCasa(tipo, codigo, nomeComTipo);
         })
         .map((e: any) => ({ id: (e.id || '').trim(), nome: e.nome }));
     } catch (err) {
