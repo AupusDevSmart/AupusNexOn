@@ -637,6 +637,21 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
   }, []);
 
   // true se o componente IoT é um Power Meter (medidor) — tipos do diagrama IoT.
+  // Todos os equipamentos da unidade. O backend aceita NO MÁXIMO limit=100 (@Max(100)) —
+  // pedir 200 dava 400 e a lista de disjuntores vinha vazia. Pagina até acabar (teto 10 págs).
+  const equipamentosDaUnidade = async (): Promise<any[]> => {
+    if (!unidadeId) return [];
+    const { equipamentosApi } = await import('@/services/equipamentos.services');
+    const todos: any[] = [];
+    for (let page = 1; page <= 10; page++) {
+      const resp = await equipamentosApi.findByUnidade(unidadeId, { limit: 100, page } as any);
+      const lote = resp.data ?? [];
+      todos.push(...lote);
+      if (lote.length < 100) break;
+    }
+    return todos;
+  };
+
   const isPmComp = (type: any): boolean =>
     ['power_meter', 'medidor_comum', 'medidor_ssu'].includes(String(type || '').toLowerCase());
 
@@ -644,9 +659,7 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
   const carregarDisjuntoresUnidade = async () => {
     if (!unidadeId) { setDisjuntoresUnidade([]); return; }
     try {
-      const { equipamentosApi } = await import('@/services/equipamentos.services');
-      const resp = await equipamentosApi.findByUnidade(unidadeId, { limit: 200 });
-      const list = (resp.data ?? [])
+      const list = (await equipamentosDaUnidade())
         .filter((e: any) => {
           if (e.deleted_at) return false;
           const codigo =
@@ -730,8 +743,7 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
     if (!comp || !unidadeId) return [];
     const tipo = String(comp.type || '').toLowerCase();
     try {
-      const { equipamentosApi } = await import('@/services/equipamentos.services');
-      const resp = await equipamentosApi.findByUnidade(unidadeId, { limit: 100 });
+      const resp = { data: await equipamentosDaUnidade() };
       const isTon = tipo.startsWith('ton');
       const jaVinculados = new Set(
         (editorRef.current?.components ?? [])
