@@ -54,10 +54,13 @@ export function InversorSheet({ equipamentoId, nome, onClose }: { equipamentoId:
     ['BC', `${fmt(g('voltage.phase_b-c'), 0)} V`, `${fmt(g('current.phase_b'), 0)} A`],
     ['CA', `${fmt(g('voltage.phase_c-a'), 0)} V`, `${fmt(g('current.phase_c'), 0)} A`],
   ];
+  // Inversor que só informa tensão fase-neutro (ex.: SOFAR G2) abre direto em FN.
+  const soFN = g('voltage.phase_a') != null && g('voltage.phase_a-b') == null;
+  const mostraFF = ff && !soFN;
   const fasesFN: Array<[string, React.ReactNode, React.ReactNode]> = [
-    ['A', '—', `${fmt(g('current.phase_a'), 0)} A`],
-    ['B', '—', `${fmt(g('current.phase_b'), 0)} A`],
-    ['C', '—', `${fmt(g('current.phase_c'), 0)} A`],
+    ['A', `${fmt(g('voltage.phase_a'), 0)} V`, `${fmt(g('current.phase_a'), 0)} A`],
+    ['B', `${fmt(g('voltage.phase_b'), 0)} V`, `${fmt(g('current.phase_b'), 0)} A`],
+    ['C', `${fmt(g('voltage.phase_c'), 0)} V`, `${fmt(g('current.phase_c'), 0)} A`],
   ];
 
   // Tensão por MPPT (dc.mpptN_voltage) e corrente por entrada (dc.stringN_current).
@@ -155,9 +158,9 @@ export function InversorSheet({ equipamentoId, nome, onClose }: { equipamentoId:
 
           {/* CORRENTE ALTERNADA */}
           <GrupoTitulo right={
-            <button type="button" onClick={() => setFf((v) => !v)} className="text-[11px] font-semibold text-muted-foreground hover:text-primary">{ff ? 'FF' : 'FN'}</button>
+            <button type="button" onClick={() => setFf((v) => !v)} className="text-[11px] font-semibold text-muted-foreground hover:text-primary">{mostraFF ? 'FF' : 'FN'}</button>
           }>Corrente alternada</GrupoTitulo>
-          <FasesTable head={['Fase', 'Tensão', 'Corrente']} rows={ff ? fasesFF : fasesFN} />
+          <FasesTable head={['Fase', 'Tensão', 'Corrente']} rows={mostraFF ? fasesFF : fasesFN} />
 
           {/* CORRENTE CONTÍNUA */}
           <GrupoTitulo>Corrente contínua</GrupoTitulo>
