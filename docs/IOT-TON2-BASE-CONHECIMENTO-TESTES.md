@@ -125,7 +125,7 @@ MCU **ESP32-S3-WROOM-1-N8R2** · board PlatformIO `lolin_s3` · flash 8MB `qio_q
 | SD Card | SPI3 MOSI=35, SCLK=36, MISO=37, CS=38 | 8 MHz; workaround GPIO matrix (zona MSPI) |
 | Saídas transistor TR1-4 | IO1, IO2, IO42, IO41 (BC817) | |
 | Relés RL1-6 | MCP 0x27 **GP1-GP6** (via ULN2803) | só variantes ton3/ton4 |
-| Entradas ópticas DIN1-6 | MCP 0x26 **GP0-GP5** (esquemático) | ⚠️ ver §9 — firmware gerado lê GP1-GP6 |
+| Entradas ópticas DIN1-6 | MCP 0x26 **GP1-GP6** (bancada 22/09/2026) | esquemático dizia GP0-GP5 — errado, ver §7.1 |
 | Analógicas AN1/AN2 | IO6, IO7 | divisor 8.01x, máx ~26 V, 12-bit |
 | PWM | IO46 (AOD7N65) | definido, geração 1 kHz/8-bit; função real "não implementada" |
 | RTC | **2 fios dedicados CK=IO3, DT=IO9** (NÃO é o I2C principal) | protocolo próprio, part number DESCONHECIDO; nenhum firmware de produção lê (hora vem de NTP/gateway). Endereço 0x68 em config.h é resquício |
@@ -269,6 +269,8 @@ Funciona em RS485 e TCP direto; **não** no conversor rtu_tcp. Gotcha 7SR5111: *
    d1..d6 = GP1..GP6. Esquemático SCH-TON-v1a (e TON-TESTE corrigido) dizem DIN1-6 = **GP0-GP5**, GP6=M0.
    Ou seja: no gerado, DIN1 nunca é lida e "d6" lê a linha M0 do LoRa. Verificar se algum site usa DIN via
    firmware gerado e corrigir.
+   **Resolvido 22/09/2026:** a bancada (fio no GND, borne a borne) provou X12-1..6 = GP1..GP6 — o
+   firmware gerado estava certo e o esquemático errado. A opção `din_gp0` (GP0-GP5) foi removida em 05/10/2026.
 2. **OTA sem checagem de `target_mac` no firmware gerado** (só ota_safety tem). Com retained QoS1 no
    `<base>/ota/cmd` e base compartilhada de bancada (`AUPUS_TESTE`), uma placa nova pode pegar OTA residual
    de outra. Mitigação: auto-clear + 180 s; recomendação: portar `_ota_mac_matches` pro gerado.

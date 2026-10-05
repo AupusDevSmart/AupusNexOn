@@ -51,7 +51,7 @@ Projeto existente: **"IoT Posto"** (unidade Posto Fazenda Algodoeira) — TON3 (
 4. Sheet da TON → **Comando**: BO1→Ligar, BO2→Permissão, BO3→Solenoide, (BO4→Sinaleiro) · **Status**: BI1→Contator, BI2→Auto/Manual, BI3→Emergência, BI4→Bico, BI5→Boia mínimo, BI6→Boia alta · **Medições**: AI1→Nível (mV0 = 0, mV100 = 3000 para 0–10 V com o divisor; calibrar no T0.3).
 5. **Gerar firmware** (botão normal, **não** o "Simular" — o tópico já começa por `TESTE/`; assim a OTA fica ativa para o T6.5) → compilar → gravar por USB. Avisos do gerador listam qualquer papel não mapeado.
 6. Unifilar → clicar na bomba → aba **Máquinas**: tag `PC-07` (máquina "Trator PC-07") · aba **Operadores**: matrícula `1234` → **Publicar lista na TON** (vai retida em `TESTE/POSTO/BANCADA/cmd/rfid_sync`; a TON mostra `lista vN` no `status`). Para o T2.3 cadastre uma 2ª tag com "Matrículas = 5555".
-7. Para a **TON V2**: mesmo diagrama com `ton3v2` (ou um projeto irmão) — não precisa da opção din_gp0 (a base V2 já lê GP0-7).
+7. Para a **TON V2**: mesmo diagrama com `ton3v2` (ou um projeto irmão) (a base V2 já lê GP0-7).
 
 ## 3. Fiação de bancada (V1 e V2)
 

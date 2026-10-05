@@ -212,8 +212,6 @@ var FirmwareGenerator = class FirmwareGenerator {
             // "Implantar OTA" no modal Firmware. Sem este ID o frontend
             // mostra mensagem orientativa em vez de chamar o backend.
             equipamentoId: (ton.props.equipamento_id || '').trim(),
-            // Mapa de entradas corrigido (DIN1-6 = GP0-GP5) — opcional, so' TONs novas (ver generateProject)
-            din_gp0: !!(ton.props.din_gp0 === true || ton.props.din_gp0 === 'true' || ton.props.din_gp0 === 1 || ton.props.din_gp0 === '1'),
             has_lora: def.has_lora || false,
             has_relays: def.has_relays || false,
             wifi: null,
@@ -708,12 +706,6 @@ var FirmwareGenerator = class FirmwareGenerator {
             files['src/bomba.cpp'] = this._genBombaCpp(spec);
         }
 
-        // Placa v1a com o mapa de entradas CORRIGIDO (DIN1-6 = GP0-GP5 do MCP 0x26).
-        // O base V1 le GP1-GP6 (off-by-one historico) e assim fica pros TONs ja' em campo;
-        // TONs novas (ex.: posto) ligam `din_gp0` na TON e passam a ler as 6 entradas fisicas.
-        if (spec.din_gp0) {
-            files['src/inputs.cpp'] = files['src/inputs.cpp'].replace('bool val = !_mcp.digitalRead(i + 1);', 'bool val = !_mcp.digitalRead(i);   // din_gp0: DIN1-6 = GP0-GP5 (mapa da placa v1a)');
-        }
 
         // OTA depende de WiFi + MQTT_TOPIC_BASE. Sem WiFi, remove do projeto.
         if (!spec.wifi) {
