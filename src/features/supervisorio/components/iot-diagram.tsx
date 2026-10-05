@@ -655,18 +655,18 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
   const isPmComp = (type: any): boolean =>
     ['power_meter', 'medidor_comum', 'medidor_ssu'].includes(String(type || '').toLowerCase());
 
-  // Lista os DISJUNTORES da unidade (unifilar) pra associar a um Power Meter.
+  // Lista os DISJUNTORES da unidade com SCS ligado (unifilar) pra associar a um medidor.
+  // Só esses aparecem na supervisão — associar a um DJ sem SCS não mostraria nada.
+  // Mesma fonte dos cards da Visão Geral (escopada por dono).
   const carregarDisjuntoresUnidade = async () => {
     if (!unidadeId) { setDisjuntoresUnidade([]); return; }
     try {
-      const list = (await equipamentosDaUnidade())
-        .filter((e: any) => {
-          if (e.deleted_at) return false;
-          const codigo =
-            e.tipo_equipamento_rel?.codigo ?? e.tipoEquipamento?.codigo ?? e.tipo_equipamento ?? '';
-          return /DISJUNTOR/i.test(`${codigo} ${e.nome ?? ''}`);
-        })
-        .map((e: any) => ({ id: (e.id || '').trim(), nome: e.nome }));
+      const r = await api.get(`/iot/unidade/${unidadeId.trim()}/elementos-scs`);
+      const payload = r?.data?.data ?? r?.data;
+      const elementos: any[] = payload?.elementos ?? payload?.data?.elementos ?? [];
+      const list = elementos
+        .filter((e: any) => /DISJUNTOR/i.test(`${e.tipo ?? ''} ${e.rotulo ?? ''}`))
+        .map((e: any) => ({ id: String(e.equipamento_id || '').trim(), nome: e.rotulo }));
       setDisjuntoresUnidade(list);
     } catch (err) {
       console.warn('[iot-diagram] carregarDisjuntoresUnidade falhou:', err);
@@ -1962,12 +1962,14 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
                     && !disjuntoresUnidade.some(d => d.id === propsValues['disjuntor_equipamento_id'])
                     && (
                       <option value={propsValues['disjuntor_equipamento_id']} className="text-amber-600">
-                        ⚠ {String(propsValues['disjuntor_equipamento_id'])} (fora da unidade ou removido)
+                        ⚠ {String(propsValues['disjuntor_equipamento_id'])} (sem SCS, fora da unidade ou removido)
                       </option>
                     )}
                 </select>
                 <p className="text-[10px] text-muted-foreground">
-                  Este medidor é só-IoT (coleta de dados). Seus dados aparecem ao clicar no disjuntor associado no unifilar.
+                  {disjuntoresUnidade.length === 0
+                    ? 'Nenhum disjuntor com SCS ligado nesta unidade — ligue o SCS no cadastro do disjuntor (unifilar) para ele aparecer aqui.'
+                    : 'Só disjuntores com SCS ligado. Os dados deste medidor aparecem ao clicar no disjuntor associado no unifilar.'}
                 </p>
               </div>
             )}
