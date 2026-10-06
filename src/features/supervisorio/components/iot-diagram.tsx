@@ -206,7 +206,7 @@ function ensureIoTScripts(): Promise<void> {
     //
     // O catalogo de dispositivos foi movido pro backend (GET /iot-catalog/device-catalog.js)
     // — ele revalida sozinho via ETag. Os demais ainda sao estaticos.
-    const IOT_SCRIPTS_VERSION = '20261005-din-1';
+    const IOT_SCRIPTS_VERSION = '20261006-addr-1';
     const scripts = [
       `${BASE_URL}/iot-catalog/device-catalog.js`,
       `/iot-firmware-base.v2.js?v=${IOT_SCRIPTS_VERSION}`,
@@ -695,8 +695,17 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
 
   const saveComponentProps = async () => {
     if (!propsComp || !editorRef.current) return;
-    const compSalvo = { type: propsComp.type, props: { ...propsValues } };
-    editorRef.current.updateComponentProps(propsComp.id, propsValues);
+    // Endereço Modbus editado à mão: marca _addr_manual pra redistribuição automática
+    // (roda a cada conexão nova) não sobrescrever. Campo vazio = volta pro automático.
+    const valores: Record<string, any> = { ...propsValues };
+    if ('modbus_address' in valores) {
+      const novo = String(valores.modbus_address ?? '').trim();
+      const antes = String(propsComp.props?.modbus_address ?? '').trim();
+      if (novo === '') { valores._addr_manual = false; }
+      else if (novo !== antes) { valores._addr_manual = true; valores.modbus_address = Number(novo) || novo; }
+    }
+    const compSalvo = { type: propsComp.type, props: { ...valores } };
+    editorRef.current.updateComponentProps(propsComp.id, valores);
     setPropsModalOpen(false);
     setPropsComp(null);
     // Persistir alteracao no backend imediatamente

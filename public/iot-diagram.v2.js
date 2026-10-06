@@ -1219,8 +1219,10 @@ var DiagramEditor = class {
             // Skip devices with manual address (_addr_manual flag)
             for (const type of Object.keys(devicesByType)) {
                 const devices = devicesByType[type].sort((a, b) => a.dist - b.dist);
+                // Number(): o modal grava texto ("2") e o contador e' numero — sem isso o
+                // endereco manual nao era reservado e o automatico podia repeti-lo.
                 const manualAddrs = new Set(
-                    devices.filter(d => d.comp.props._addr_manual).map(d => d.comp.props.modbus_address)
+                    devices.filter(d => d.comp.props._addr_manual).map(d => Number(d.comp.props.modbus_address))
                 );
                 let nextAddr = 1;
                 devices.forEach(d => {
