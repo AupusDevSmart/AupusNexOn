@@ -17,6 +17,9 @@ export interface LogMqttResponse {
     valor: number;
   };
   equipamento?: { id: string; nome: string };
+  /** Reconhecimento (ack) gravado no banco — null/ausente = não reconhecido. */
+  reconhecido_em?: string | null;
+  reconhecido_por_texto?: string | null;
 }
 
 export interface FindAllLogsMqttParams {
@@ -31,6 +34,7 @@ export interface FindAllLogsMqttParams {
   dataFinal?: string;
   orderBy?: string;
   orderDirection?: string;
+  status?: 'ativo' | 'reconhecido' | 'resolvido';
 }
 
 function unwrap(response: any) {

@@ -21,7 +21,7 @@ const SEV_DOT: Record<string, string> = {
 };
 
 /**
- * Painel Alarmes Ativos (R5): 5 ultimos logs_mqtt da unidade.
+ * Painel Alarmes Ativos (R5): ativos + reconhecidos ("visto", vindo do banco) da unidade.
  * "Ver todas" leva a /logs/logs-mqtt com o filtro da unidade ja aplicado
  * (via location.state).
  */
@@ -88,8 +88,11 @@ export function AlarmesAtivosPanel({ unidadeId, unidadeNome }: AlarmesAtivosPane
                 </div>
                 <div className="truncate text-[11px] text-muted-foreground">{a.mensagem}</div>
               </div>
-              {ackedIds.has(a.id) ? (
-                <span className="flex shrink-0 items-center gap-0.5 self-center text-[10px] text-muted-foreground">
+              {a.reconhecido_em || ackedIds.has(a.id) ? (
+                <span
+                  className="flex shrink-0 items-center gap-0.5 self-center text-[10px] text-muted-foreground"
+                  title={a.reconhecido_por_texto ? `Reconhecido por ${a.reconhecido_por_texto}` : "Reconhecido"}
+                >
                   <Check className="h-3 w-3" /> visto
                 </span>
               ) : (

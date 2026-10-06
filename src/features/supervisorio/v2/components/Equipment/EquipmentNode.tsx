@@ -64,14 +64,15 @@ const EquipmentNodeImpl: React.FC<EquipmentNodeProps> = ({ equipment, onClick, o
   // Saúde do equipamento: alarme ativo → símbolo muda de cor (trip = CRITICA
   // pisca em vermelho; ALTA = laranja). Reusa os alarmes da unidade (mesma fonte
   // do painel "Alarmes ativos"); o React Query dedupe → 1 request por unidade
-  // mesmo com N nós. É uma primeira versão por recência de log; a versão por
-  // "ativo até reconhecer" (ACK, reconhecido_em) entra depois.
+  // mesmo com N nós. Só pinta alarme ATIVO: reconhecido (ACK, reconhecido_em) ou
+  // resolvido não pinta — mesmo modelo do vermelho no COA.
   const { data: alarmesUnidade = [] } = useAlarmesUnidade(equipment.unidadeId, 50);
   const alarmeSeveridade = useMemo<'CRITICA' | 'ALTA' | null>(() => {
     const id = equipment.id.trim();
     let sev: 'CRITICA' | 'ALTA' | null = null;
     for (const a of alarmesUnidade) {
       if ((a as any)?.equipamento?.id?.trim() !== id) continue;
+      if (a.reconhecido_em) continue;
       const s = String((a as any)?.severidade || '').toUpperCase();
       if (s === 'CRITICA') return 'CRITICA';
       if (s === 'ALTA') sev = 'ALTA';
