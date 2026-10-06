@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { api } from '@/config/api';
 import { acionarPontoApi } from '@/services/acionar-ponto.services';
+import { useCurvaDia, MiniChart } from './sheets/sheetParts';
 
 /**
  * Sheet do DJ (Fase 6 — reestruturação IoT). Data-driven pelo mockup
@@ -21,6 +22,67 @@ interface Bundle {
   pm: { equipamento_id: string; nome: string | null } | null;
   status_fonte: { rele_equipamento_id: string; rele_nome: string | null; campo_aberto: string | null; campo_fechado: string | null } | null;
   comandos: Array<{ ponto: string; ponto_id: string; bo_numero: number; pulso_ms: number; ton_id: string }>;
+  cadastro?: { corrente_nominal_a: number | null; tensao_nominal_v: number | null; alimentado_por: string[]; alimenta: string[] };
+  manobras?: { hoje: number; ultima_em: string | null; ultima_msg: string | null };
+  pm_hoje?: { fp_min: number | null; pt_max_kw: number | null; leituras: number } | null;
+}
+
+/** Consumo/custo de HOJE do PM (GET /equipamentos-dados/:id/custos-energia?periodo=dia) — mesmo cálculo da Gestão de Energia. */
+interface CustosHoje {
+  consumo?: { energia_ponta_kwh: number; energia_fora_ponta_kwh: number; energia_reservado_kwh: number; energia_total_kwh: number; demanda_maxima_kw: number };
+  custos?: { custo_total: number };
+  unidade?: { nome?: string };
+  aviso?: string;
+}
+
+function useCustosHoje(pmId?: string | null) {
+  const [c, setC] = useState<CustosHoje | null>(null);
+  useEffect(() => {
+    if (!pmId) { setC(null); return; }
+    let vivo = true;
+    const d = new Date();
+    const data = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const load = () =>
+      api.get(`/equipamentos-dados/${pmId.trim()}/custos-energia`, { params: { periodo: 'dia', data } })
+        .then((r) => { if (vivo) setC((r?.data?.data ?? r?.data ?? null) as CustosHoje); })
+        .catch(() => { if (vivo) setC(null); });
+    load();
+    const t = setInterval(load, 300000);
+    return () => { vivo = false; clearInterval(t); };
+  }, [pmId]);
+  return c;
+}
+
+const brl = (n: unknown) =>
+  n == null || Number.isNaN(Number(n)) ? '—' : Number(n).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const hora = (iso?: string | null) => {
+  if (!iso) return '';
+  // created_at vem sem fuso (UTC) → trata como UTC e mostra no horário local.
+  const d = new Date(/Z|[+-]\d\d:?\d\d$/.test(iso) ? iso : `${iso.replace(' ', 'T')}Z`);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+};
+
+function Card({ titulo, valor, unidade, sub }: { titulo: string; valor: string; unidade?: string; sub?: string }) {
+  return (
+    <div className="rounded-lg border p-3">
+      <div className="text-[11px] text-muted-foreground">{titulo}</div>
+      <div className="text-xl font-bold">{valor}{unidade && <em className="not-italic text-xs font-medium text-muted-foreground"> {unidade}</em>}</div>
+      {sub && <div className="text-[11px] text-muted-foreground">{sub}</div>}
+    </div>
+  );
+}
+
+function Linhas({ rows }: { rows: Array<[string, React.ReactNode, string?]> }) {
+  return (
+    <div className="rounded-lg border divide-y text-sm">
+      {rows.map(([k, v, sub]) => (
+        <div key={k} className="flex items-start px-3.5 py-2 gap-3">
+          <div className="flex-1 text-muted-foreground">{k}{sub && <div className="text-[11px] text-muted-foreground/70">{sub}</div>}</div>
+          <div className="font-medium text-right">{v}</div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 type Acao = 'Abrir' | 'Fechar';
@@ -64,6 +126,8 @@ export function DisjuntorSheet({ equipamentoId, onClose }: { equipamentoId: stri
   const temPm = bundle?.scs.medicao === 'pm';
   const temIed = bundle?.scs.medicao === 'ied';
   const { dados: pmDados } = useDados(temPm ? bundle?.pm?.equipamento_id : null);
+  const custosHoje = useCustosHoje(temPm ? bundle?.pm?.equipamento_id : null);
+  const curvaPm = useCurvaDia(temPm ? bundle?.pm?.equipamento_id : null, 15);
   // Relé: fonte do status (aberto/fechado) e, na medição 'ied', das grandezas.
   const { dados: releDados, reload: reloadRele } = useDados(
     (bundle?.scs.status || temIed) ? bundle?.status_fonte?.rele_equipamento_id : null,
@@ -252,18 +316,43 @@ export function DisjuntorSheet({ equipamentoId, onClose }: { equipamentoId: stri
                     <p className="text-xs text-muted-foreground">Medição declarada como IED, mas nenhum relé vinculado a este disjuntor no IoT.</p>
                   ) : (
                     <>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="rounded-lg border p-3">
-                          <div className="text-[11px] text-muted-foreground">Potência total</div>
-                          <div className="text-xl font-bold">{fmt(medDados?.Pt != null ? Number(medDados.Pt) / 1000 : null)} <em className="not-italic text-xs font-medium text-muted-foreground">kW</em></div>
-                          <div className="text-[11px] text-muted-foreground">{fmt(medDados?.Qt != null ? Number(medDados.Qt) / 1000 : null)} kvar · {fmt(medDados?.St != null ? Number(medDados.St) / 1000 : null)} kVA</div>
+                      {(() => {
+                        const num = (k: string) => (medDados?.[k] == null || medDados?.[k] === '' ? null : Number(medDados[k]));
+                        const v = [num('Va'), num('Vb'), num('Vc')].filter((x): x is number => x != null && Number.isFinite(x));
+                        const vMed = v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
+                        const iMax = Math.max(...[num('Ia'), num('Ib'), num('Ic')].map((x) => (x != null && Number.isFinite(x) ? x : 0)));
+                        const In = bundle.cadastro?.corrente_nominal_a ?? null;
+                        const fpMin = bundle.pm_hoje?.fp_min;
+                        return (
+                          <div className="grid grid-cols-2 gap-2">
+                            <Card titulo="Potência ativa" valor={fmt(num('Pt') != null ? Number(num('Pt')) / 1000 : null)} unidade="kW"
+                              sub={`${fmt(num('Qt') != null ? Number(num('Qt')) / 1000 : null)} kvar · ${fmt(num('St') != null ? Number(num('St')) / 1000 : null)} kVA`} />
+                            {In ? (
+                              <Card titulo="Carregamento" valor={fmt((iMax / In) * 100, 0)} unidade="%" sub={`${fmt(iMax, 0)} A de ${fmt(In, 0)} A`} />
+                            ) : (
+                              <Card titulo="Corrente máxima" valor={fmt(iMax, 0)} unidade="A" sub="Informe a corrente nominal no cadastro p/ ver o carregamento" />
+                            )}
+                            <Card titulo="Tensão média" valor={fmt(vMed, 0)} unidade="V"
+                              sub={`A ${fmt(num('Va'), 0)} · B ${fmt(num('Vb'), 0)} · C ${fmt(num('Vc'), 0)}`} />
+                            <Card titulo="Fator de potência" valor={fmt(num('FPt'), 2)}
+                              sub={fpMin != null ? `menor hoje ${fmt(fpMin, 2)}` : `Freq ${fmt(num('Freq'), 2)} Hz`} />
+                          </div>
+                        );
+                      })()}
+                      {temPm && (
+                        <div className="mt-2">
+                          <Linhas rows={[
+                            ['Consumo ponta', `${fmt(custosHoje?.consumo?.energia_ponta_kwh, 0)} kWh`, 'hoje'],
+                            ['Fora de ponta', `${fmt(custosHoje?.consumo?.energia_fora_ponta_kwh, 0)} kWh`],
+                            ['Horário reservado', `${fmt(custosHoje?.consumo?.energia_reservado_kwh, 0)} kWh`],
+                            ['Demanda máxima', `${fmt(custosHoje?.consumo?.demanda_maxima_kw ?? bundle.pm_hoje?.pt_max_kw, 1)} kW`],
+                            ['Custo estimado', brl(custosHoje?.custos?.custo_total), custosHoje?.unidade?.nome ? `Tarifa da UC ${custosHoje.unidade.nome}` : 'hoje'],
+                          ]} />
+                          {custosHoje?.aviso && <p className="text-[11px] text-amber-600 mt-1">{custosHoje.aviso}</p>}
+                          <h4 className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold mt-4 mb-2">Gráfico · potência hoje</h4>
+                          <MiniChart serie={curvaPm} unit="kW" />
                         </div>
-                        <div className="rounded-lg border p-3">
-                          <div className="text-[11px] text-muted-foreground">Fator de potência</div>
-                          <div className="text-xl font-bold">{fmt(medDados?.FPt, 2)}</div>
-                          <div className="text-[11px] text-muted-foreground">Freq {fmt(medDados?.Freq, 2)} Hz</div>
-                        </div>
-                      </div>
+                      )}
                       <div className="rounded-lg border mt-2 text-sm overflow-hidden">
                         <div className="flex bg-muted/40 text-[11px] uppercase tracking-wide text-muted-foreground px-3.5 py-2">
                           <div className="flex-1">Fase</div><div className="flex-1 text-right">Tensão</div><div className="flex-1 text-right">Corrente</div>
@@ -285,10 +374,30 @@ export function DisjuntorSheet({ equipamentoId, onClose }: { equipamentoId: stri
               {/* CADASTRO */}
               <div className="pt-5">
                 <h4 className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold mb-2">Cadastro</h4>
-                <div className="rounded-lg border divide-y text-sm">
-                  <div className="flex px-3.5 py-2"><div className="flex-1 text-muted-foreground">Nome</div><div className="font-medium">{nome}</div></div>
-                  <div className="flex px-3.5 py-2"><div className="flex-1 text-muted-foreground">SCS</div><div className="font-medium">{bundle.scs.habilitado ? 'Habilitado' : 'Não'} · cmd {bundle.scs.comando ? 'sim' : 'não'} · sts {bundle.scs.status ? 'sim' : 'não'} · med {bundle.scs.medicao}</div></div>
-                </div>
+                <Linhas rows={[
+                  ['Corrente nominal', bundle.cadastro?.corrente_nominal_a ? `${fmt(bundle.cadastro.corrente_nominal_a, 0)} A` : '—'],
+                  ...(bundle.cadastro?.tensao_nominal_v ? [['Tensão nominal', `${fmt(bundle.cadastro.tensao_nominal_v, 0)} V`] as [string, string]] : []),
+                  ['Alimentado por', bundle.cadastro?.alimentado_por?.length ? bundle.cadastro.alimentado_por.join(', ') : '—'],
+                  ['Alimenta', bundle.cadastro?.alimenta?.length ? bundle.cadastro.alimenta.join(', ') : '—'],
+                  ['SCS', `${bundle.scs.habilitado ? 'Habilitado' : 'Não'} · cmd ${bundle.scs.comando ? 'sim' : 'não'} · sts ${bundle.scs.status ? 'sim' : 'não'} · med ${bundle.scs.medicao}`],
+                ]} />
+              </div>
+
+              {/* REGISTROS (histórico de manobras = comandos enviados) */}
+              <div className="pt-5">
+                <h4 className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold mb-2">Registros</h4>
+                <Linhas rows={[[
+                  'Histórico de manobras',
+                  `${bundle.manobras?.hoje ?? 0} hoje`,
+                  bundle.manobras?.ultima_em
+                    ? `Última: ${bundle.manobras.ultima_msg ?? 'comando'} · ${hora(bundle.manobras.ultima_em)}`
+                    : !temComando
+                      ? 'Sem pontos de comando declarados'
+                      : !temStatus ? 'Só comandos enviados, sem confirmação de posição' : 'Nenhuma manobra registrada',
+                ]]} />
+                <p className="text-[11px] text-muted-foreground mt-2">
+                  {[bundle.status_fonte?.rele_nome, bundle.pm?.nome && `PM ${bundle.pm.nome}`].filter(Boolean).join(' · ')}
+                </p>
               </div>
             </>
           )}
