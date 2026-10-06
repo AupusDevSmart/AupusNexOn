@@ -373,6 +373,9 @@ var FirmwareGeneratorTonV2 = class FirmwareGeneratorTonV2 {
             if (ov.addr != null && ov.addr !== '') entry.addr = Number(ov.addr);
             if (ov.count != null && ov.count !== '') entry.count = Number(ov.count);
             if (ov.value != null && ov.value !== '') entry.value = Number(ov.value);
+            // FC 0x13 (SOFAR 1…40KTL): bloco lido (FC04) + regravado inteiro; start/index = palavra alvo
+            if (ov.start != null && ov.start !== '') entry.start = Number(ov.start);
+            if (ov.index != null && ov.index !== '') entry.index = Number(ov.index);
             boMap[cid] = entry;
         }
         return Object.assign({}, dev, { bo_map: boMap });
@@ -780,7 +783,7 @@ void inverter_tcp_publish_all(tcp_publish_fn publish);
 // Executa comando (bo_map) de um device TCP direto pelo nome — write de coil
 // (FC05) ou registrador (FC06) via MBAP. Retorna false se o device/cmd nao
 // existir no lado TCP (o chamador tenta RS485 primeiro; este e' o fallback).
-bool inverter_tcp_exec_command(const char* device_name, const char* cmd_id);
+bool inverter_tcp_exec_command(const char* device_name, const char* cmd_id, int addr = 0);
 
 // SOE: drena a fila de eventos (EVENTCOUNT + EVENT via FC04) dos devices TCP
 // cujo catalogo tem a chave 'eventos'. Publica evento cru no subtopico "evt".
@@ -807,7 +810,7 @@ extern const uint8_t TCP_INVERTER_IDS[];
 void inverter_tcp_init() {}
 void inverter_tcp_sample_one() {}
 void inverter_tcp_publish_all(tcp_publish_fn) {}
-bool inverter_tcp_exec_command(const char*, const char*) { return false; }
+bool inverter_tcp_exec_command(const char*, const char*, int) { return false; }
 void inverter_tcp_events_poll(tcp_publish_fn) {}
 const uint8_t TCP_INVERTER_IDS[] = {};
 `;
@@ -1270,7 +1273,7 @@ void inverter_tcp_publish_all(tcp_publish_fn publish) {
 // Espelha modbus_exec_command (RS485): match por nome do device + cmd_id;
 // steps[] = multi-write sequencial (SBO). So devices MBAP (datalogger/direto);
 // rele atras de conversor rtu_tcp nao entra (write RTU+CRC nao implementado).
-bool inverter_tcp_exec_command(const char* device_name, const char* cmd_id) {
+bool inverter_tcp_exec_command(const char* device_name, const char* cmd_id, int addr) {
     if (!device_name || !cmd_id) return false;
 `;
         invs.forEach((dev) => {
@@ -1279,7 +1282,7 @@ bool inverter_tcp_exec_command(const char* device_name, const char* cmd_id) {
             const gwd = dev.gateway || {};
             if (cmds.length === 0 || gwd.mode === 'rtu_tcp') return;
             const wArgs = `"${gwd.ip || ''}", ${gwd.port || 502}, ${gwd.timeout_ms || 2000}, ${dev.modbus_address}`;
-            cpp += `    if (strcmp(device_name, "${this._escStr(dev.name)}") == 0) {\n`;
+            cpp += `    if (strcmp(device_name, "${this._escStr(dev.name)}") == 0 && (addr == 0 || addr == ${Number(dev.modbus_address) || 0})) {\n`;
             // Um "step" vira uma chamada _modbus_tcp_write / _modbus_tcp_write_coils:
             //   { func: 0x05, coil: N }               -> FC05, valor 0xFF00 (ON)
             //   { func: 0x06, register: N, value: V }  -> FC06
@@ -5178,7 +5181,7 @@ void modbus_read_all(modbus_publish_fn publish);
 void modbus_events_poll(modbus_publish_fn publish);
 
 // Executa comando BO (write coil). device_name do catalogo, cmd_id conforme bo_map.
-bool modbus_exec_command(const char* device_name, const char* cmd_id);
+bool modbus_exec_command(const char* device_name, const char* cmd_id, int addr = 0);
 
 #endif
 `;
@@ -5293,7 +5296,7 @@ void modbus_init() {
 void modbus_publish_all(modbus_publish_fn) {}
 void modbus_read_all(modbus_publish_fn) {}
 void modbus_events_poll(modbus_publish_fn) {}
-bool modbus_exec_command(const char*, const char*) { return false; }
+bool modbus_exec_command(const char*, const char*, int) { return false; }
 `;
             return cpp;
         }
@@ -5345,16 +5348,81 @@ void modbus_events_poll(modbus_publish_fn publish) {
                 cpp += `    _evt_poll_dev_${idx}(publish);\n`;
             }
         });
-        cpp += `}
+        // FC 0x13 (SOFAR 1…40KTL): helper emitido so' se algum device usar (byte-identico p/ o resto).
+        const usaFc13 = devs.some((d) => Object.values((d.catalog_device && d.catalog_device.bo_map) || {})
+            .some((m) => m && Number(m.func) === 0x13));
+        if (usaFc13) {
+            cpp += `}
 
-bool modbus_exec_command(const char* device_name, const char* cmd_id) {
+// ---------------------------------------------------------------------------
+// FC 0x13 — funcao PROPRIETARIA do SOFAR 1…40KTL (ex.: 33000TL-G2). O bloco de controle
+// (0x1040…0x104F: modo/limite de potencia, liga-desliga…) so' aceita escrita do BLOCO
+// INTEIRO: le com FC04, troca UMA palavra e regrava as 16 com 0x13 (sem byte count).
+// Confirma relendo. ModbusMaster nao tem 0x13 → frame montado aqui, mesmo barramento.
+// ---------------------------------------------------------------------------
+static uint16_t _crc16_mb(const uint8_t* b, size_t n) {
+    uint16_t c = 0xFFFF;
+    for (size_t i = 0; i < n; i++) {
+        c ^= b[i];
+        for (uint8_t k = 0; k < 8; k++) c = (c & 1) ? (uint16_t)((c >> 1) ^ 0xA001) : (uint16_t)(c >> 1);
+    }
+    return c;
+}
+
+static bool _mb_rmw13(uint8_t slave, uint16_t start, uint8_t count, uint8_t idx, uint16_t value) {
+    if (count == 0 || count > 32 || idx >= count) return false;
+    uint16_t w[32];
+    if (_mb.readInputRegisters(start, count) != _mb.ku8MBSuccess) return false;
+    for (uint8_t i = 0; i < count; i++) w[i] = _mb.getResponseBuffer(i);
+    if (w[idx] == value) return true;              // ja' esta' no valor pedido
+    w[idx] = value;
+    uint8_t f[6 + 64 + 2];
+    f[0] = slave; f[1] = 0x13; f[2] = (uint8_t)(start >> 8); f[3] = (uint8_t)start;
+    f[4] = 0; f[5] = count;
+    for (uint8_t i = 0; i < count; i++) { f[6 + 2 * i] = (uint8_t)(w[i] >> 8); f[7 + 2 * i] = (uint8_t)w[i]; }
+    size_t n = 6 + 2 * count;
+    uint16_t crc = _crc16_mb(f, n);
+    f[n] = (uint8_t)crc; f[n + 1] = (uint8_t)(crc >> 8);
+    delay(30);
+    while (_rs485.available()) _rs485.read();
+    _preTx();
+    _rs485.write(f, n + 2);
+    _rs485.flush();
+    _postTx();
+    // Resposta: o protocolo nao documenta o formato (provavel eco de 8 bytes). Aceita
+    // qualquer coisa que nao seja excecao (0x93) e CONFIRMA pela releitura do bloco.
+    uint8_t r[8]; size_t got = 0; unsigned long t0 = millis();
+    while (millis() - t0 < 1500 && got < sizeof(r)) {
+        if (_rs485.available()) r[got++] = (uint8_t)_rs485.read(); else delay(2);
+    }
+    if (got >= 2 && r[0] == slave && r[1] == 0x93) {
+        Serial.printf("[CMD] FC13 slave %u: excecao %u", slave, got >= 3 ? r[2] : 0); Serial.println();
+        return false;
+    }
+    delay(150);
+    _select(slave);
+    if (_mb.readInputRegisters(start, count) != _mb.ku8MBSuccess) return false;
+    bool ok = _mb.getResponseBuffer(idx) == value;
+    Serial.printf("[CMD] FC13 slave %u reg 0x%04X = 0x%04X -> %s", slave, start + idx, value, ok ? "OK" : "nao confirmou"); Serial.println();
+    return ok;
+}
+`;
+            cpp += `
+bool modbus_exec_command(const char* device_name, const char* cmd_id, int addr) {
     if (!device_name || !cmd_id) return false;
 `;
+        } else {
+        cpp += `}
+
+bool modbus_exec_command(const char* device_name, const char* cmd_id, int addr) {
+    if (!device_name || !cmd_id) return false;
+`;
+        }
         devs.forEach((dev) => {
             const bo = (dev.catalog_device && dev.catalog_device.bo_map) || {};
             const cmds = Object.entries(bo);
             if (cmds.length === 0) return;
-            cpp += `    if (strcmp(device_name, "${this._escStr(dev.name)}") == 0) {\n`;
+            cpp += `    if (strcmp(device_name, "${this._escStr(dev.name)}") == 0 && (addr == 0 || addr == ${Number(dev.modbus_address) || 0})) {\n`;
             cpp += `        _select(${dev.modbus_address});\n`;
             // Helper: emite UMA chamada Modbus pra um "step" do bo_map
             // Step pode ser:
@@ -5439,6 +5507,16 @@ bool modbus_exec_command(const char* device_name, const char* cmd_id) {
                     const value = (m.value !== undefined) ? m.value : 1;
                     cpp += `        if (strcmp(cmd_id, "${this._escStr(cid)}") == 0) {\n`;
                     cpp += `            return _mb.writeSingleRegister(${m.register}, ${value}) == _mb.ku8MBSuccess;\n`;
+                    cpp += `        }\n`;
+                } else if (func === 0x13) {
+                    // SOFAR 1…40KTL: le bloco (FC04) + regrava inteiro com 0x13 (ver _mb_rmw13).
+                    if (m.start === undefined || m.index === undefined || m.value === undefined) {
+                        console.warn(`[gen] bo_map ${cid}: func 0x13 exige start/index/value (cadastro do ${dev.name})`);
+                        return;
+                    }
+                    const cnt13 = Number(m.count) || 16;
+                    cpp += `        if (strcmp(cmd_id, "${this._escStr(cid)}") == 0) {\n`;
+                    cpp += `            return _mb_rmw13(${dev.modbus_address}, ${m.start}, ${cnt13}, ${m.index}, ${m.value});\n`;
                     cpp += `        }\n`;
                 } else if (func === 0x0F) {
                     // Write Multiple Coils — DPC double-bit (CB-1 do 7SR5):
@@ -7838,24 +7916,26 @@ static bool _process_command_inner(const char* raw, char* result_msg, size_t msg
         if (!jerr) {
             const char* dev = j["device"] | "";
             const char* cid = j["cmd"] | "";
+            // "addr": endereco Modbus do device (desempata nomes repetidos). Ausente = 0 = so' nome.
+            int caddr = j["addr"] | 0;
             if (dev[0] && cid[0]) {
 `;
         // Despacho: RS485 primeiro (match por nome; false = nao achou OU write falhou),
         // depois devices TCP diretos (inverter_tcp_exec_command). Cada modulo so' tem
         // seus proprios devices, entao no maximo um deles reconhece o nome.
         if (spec.rs485_devices.length > 0 && spec.tcp_devices.length > 0) {
-            cpp += `                bool ok = modbus_exec_command(dev, cid);
-                if (!ok) ok = inverter_tcp_exec_command(dev, cid);
+            cpp += `                bool ok = modbus_exec_command(dev, cid, caddr);
+                if (!ok) ok = inverter_tcp_exec_command(dev, cid, caddr);
                 snprintf(result_msg, msg_sz, "%s/%s:%s", dev, cid, ok ? "OK" : "FAIL");
                 return ok;
 `;
         } else if (spec.rs485_devices.length > 0) {
-            cpp += `                bool ok = modbus_exec_command(dev, cid);
+            cpp += `                bool ok = modbus_exec_command(dev, cid, caddr);
                 snprintf(result_msg, msg_sz, "%s/%s:%s", dev, cid, ok ? "OK" : "FAIL");
                 return ok;
 `;
         } else if (spec.tcp_devices.length > 0) {
-            cpp += `                bool ok = inverter_tcp_exec_command(dev, cid);
+            cpp += `                bool ok = inverter_tcp_exec_command(dev, cid, caddr);
                 snprintf(result_msg, msg_sz, "%s/%s:%s", dev, cid, ok ? "OK" : "FAIL");
                 return ok;
 `;

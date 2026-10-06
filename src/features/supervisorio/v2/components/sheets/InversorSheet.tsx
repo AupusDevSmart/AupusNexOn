@@ -1,4 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
+import { api } from '@/config/api';
+import { acionarPontoApi } from '@/services/acionar-ponto.services';
 import { SheetShell, EstadoHero, KpiGrid, GrupoTitulo, Section, FasesTable, MiniChart, useDados, useCurvaDia, getPath, fmt, tsInfo, BadgeFrescor } from './sheetParts';
 
 /**
@@ -45,6 +48,32 @@ export function InversorSheet({ equipamentoId, nome, onClose }: { equipamentoId:
   const curva = useCurvaDia(equipamentoId, 15);
   const [aba, setAba] = useState('op');
   const [ff, setFf] = useState(true);
+
+  // Comandos acionáveis (pontos Ligar/Desligar JÁ vinculados a um comando Modbus/TON).
+  // Sem vínculo → a seção Controles nem aparece.
+  const [comandos, setComandos] = useState<Array<{ ponto_id: string; ponto: string }>>([]);
+  const [enviando, setEnviando] = useState<string | null>(null);
+  useEffect(() => {
+    let vivo = true;
+    api.get(`/iot/equipamento/${equipamentoId.trim()}/comandos`)
+      .then((r: any) => { const d = r?.data?.data ?? r?.data; if (vivo) setComandos(Array.isArray(d) ? d : (Array.isArray(d?.data) ? d.data : [])); })
+      .catch(() => { if (vivo) setComandos([]); });
+    return () => { vivo = false; };
+  }, [equipamentoId]);
+  const cmdDesligar = comandos.find((c) => /deslig|parar|stop|off/i.test(c.ponto)) ?? null;
+  const cmdLigar = comandos.find((c) => c !== cmdDesligar && /liga|partir|start|on\b/i.test(c.ponto)) ?? null;
+  const acionar = async (c: { ponto_id: string; ponto: string }, acao: string) => {
+    if (!window.confirm(`${acao} o inversor ${nome || ''}?\n\nIsso envia o comando ao equipamento REAL pela TON.`)) return;
+    setEnviando(c.ponto_id);
+    try {
+      const r = await acionarPontoApi.acionar(equipamentoId, c.ponto_id);
+      toast.success(`${acao}: confirmado pela TON`, { description: `${r.comando_tecnico} · ack ${r.latency_ms} ms` });
+    } catch (e: any) {
+      const st = e?.response?.status;
+      const msg = e?.response?.data?.message || e?.response?.data?.error?.message || e?.message || 'falha';
+      toast.error(st === 504 ? 'A TON não respondeu a tempo' : st === 502 ? 'O inversor/TON recusou o comando' : 'Comando não enviado', { description: String(msg) });
+    } finally { setEnviando(null); }
+  };
 
   const g = (p: string) => getPath(dados, p);
   // Valor de parâmetro de config: "—" enquanto a TON não trouxer o registrador.
@@ -185,7 +214,31 @@ export function InversorSheet({ equipamentoId, nome, onClose }: { equipamentoId:
             ]} />
           </div>
 
-          {/* CONTROLES: ocultos até o comando liga/desliga do inversor ser vinculado. */}
+          {/* CONTROLES: só aparecem quando Ligar/Desligar estão vinculados (Configurar I/O no IoT). */}
+          {(cmdLigar || cmdDesligar) && (
+            <>
+              <GrupoTitulo>Controles</GrupoTitulo>
+              <div className="flex gap-2">
+                {cmdDesligar && (
+                  <button
+                    type="button"
+                    className="flex-1 py-2.5 rounded-lg border font-semibold text-sm disabled:opacity-60"
+                    disabled={!!enviando}
+                    onClick={() => acionar(cmdDesligar, 'Desligar')}
+                  >{enviando === cmdDesligar.ponto_id ? 'Enviando…' : 'Desligar'}</button>
+                )}
+                {cmdLigar && (
+                  <button
+                    type="button"
+                    className="flex-1 py-2.5 rounded-lg font-semibold text-sm text-white disabled:opacity-60"
+                    style={{ background: '#177A3C' }}
+                    disabled={!!enviando}
+                    onClick={() => acionar(cmdLigar, 'Ligar')}
+                  >{enviando === cmdLigar.ponto_id ? 'Enviando…' : 'Ligar'}</button>
+                )}
+              </div>
+            </>
+          )}
 
           {/* CURVA */}
           <GrupoTitulo>Curva</GrupoTitulo>
