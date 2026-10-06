@@ -72,10 +72,13 @@ function Card({ titulo, valor, unidade, sub }: { titulo: string; valor: string; 
   );
 }
 
+// Linha sem dado ("—") não aparece — o DJ mostra só o que tem.
 function Linhas({ rows }: { rows: Array<[string, React.ReactNode, string?]> }) {
+  const com = rows.filter(([, v]) => !(typeof v === 'string' && v.trim().startsWith('—')));
+  if (com.length === 0) return null;
   return (
     <div className="rounded-lg border divide-y text-sm">
-      {rows.map(([k, v, sub]) => (
+      {com.map(([k, v, sub]) => (
         <div key={k} className="flex items-start px-3.5 py-2 gap-3">
           <div className="flex-1 text-muted-foreground">{k}{sub && <div className="text-[11px] text-muted-foreground/70">{sub}</div>}</div>
           <div className="font-medium text-right">{v}</div>
@@ -232,9 +235,9 @@ export function DisjuntorSheet({ equipamentoId, onClose }: { equipamentoId: stri
                 </div>
               )}
 
-              {/* ESTADO */}
-              <div className="pt-5">
-                {temStatus ? (
+              {/* ESTADO: só quando há pontos de status (sem status, o bloco não aparece). */}
+              {temStatus && (
+                <div className="pt-5">
                   <div className="rounded-lg border p-4 flex items-center gap-3">
                     <span className={`w-3 h-3 rounded-full ${posicao === 'Fechado' ? 'bg-emerald-500' : posicao === 'Aberto' ? 'bg-gray-400' : 'bg-amber-400'}`} />
                     <div className="flex-1">
@@ -244,13 +247,8 @@ export function DisjuntorSheet({ equipamentoId, onClose }: { equipamentoId: stri
                       )}
                     </div>
                   </div>
-                ) : (
-                  <div className="rounded-lg border p-4">
-                    <b className="text-base text-muted-foreground">Sem supervisão</b>
-                    <p className="text-xs text-muted-foreground mt-1">Sem pontos de status vinculados — a posição não é conhecida pelo sistema.</p>
-                  </div>
-                )}
-              </div>
+                </div>
+              )}
 
               {/* CONTROLES */}
               {temComando && (

@@ -19,7 +19,12 @@ export function usePmsUnidade(unidadeId?: string) {
       });
       const arr: any[] = r.data?.data ?? r.data ?? [];
       return arr
-        .filter((e) => (e.tipo_equipamento_rel?.categoria?.nome ?? "") === PM_CATEGORIA)
+        // PM do cadastro (tipo da categoria "Power Meter") OU o PM criado pelo editor IoT:
+        // esse é só-IoT (não existe no unifilar) e nasce sem tipo, só com
+        // tipo_equipamento = "POWER_METER" — antes ficava de fora e o painel dizia "nenhum PM".
+        .filter((e) =>
+          (e.tipo_equipamento_rel?.categoria?.nome ?? "") === PM_CATEGORIA ||
+          String(e.tipo_equipamento ?? "").trim().toUpperCase() === "POWER_METER")
         .map((e) => ({ id: String(e.id).trim(), nome: e.nome }));
     },
     enabled: !!unidadeId,
