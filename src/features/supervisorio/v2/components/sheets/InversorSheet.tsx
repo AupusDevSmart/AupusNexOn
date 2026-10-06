@@ -91,6 +91,13 @@ export function InversorSheet({ equipamentoId, nome, onClose }: { equipamentoId:
     ? (ffCalculado ? 'Este inversor mede só fase-neutro: entre fases calculado (×√3).' : '')
     : (fnCalculado ? 'Este inversor mede só entre fases: fase-neutro calculado (÷√3).' : '');
 
+  // Falhas (bitfields status.fault_N, ex.: SOFAR 0x0001-0x0005). 0 = sem falha.
+  const falhas = [1, 2, 3, 4, 5].map((n) => ({ n, v: num(`status.fault_${n}`) }));
+  const temFalhas = falhas.some((f) => f.v != null);
+  const ativas = falhas.filter((f) => f.v != null && f.v !== 0);
+  const falhasTxt = ativas.length === 0 ? 'Nenhuma'
+    : ativas.map((f) => `F${f.n}=0x${(f.v as number).toString(16).toUpperCase()}`).join(' · ');
+
   // Aparente e FP: quando o inversor não informa, calcula de P e Q (marcado "calc.").
   const qkvar = kilo('power.reactive_total');
   const sMed = kilo('power.apparent_total');
@@ -229,6 +236,7 @@ export function InversorSheet({ equipamentoId, nome, onClose }: { equipamentoId:
           {/* INFORMAÇÕES */}
           <GrupoTitulo>Informações</GrupoTitulo>
           <Section rows={[
+            ...(temFalhas ? [{ k: 'Falhas', v: falhasTxt }] : []),
             { k: 'Temperatura interna', v: `${fmt(g('temperature.internal'), 0)} °C` },
             { k: 'Resistência de isolamento', v: (() => { const r = num('protection.insulation_resistance'); return r != null && r >= 1000 ? `${fmt(r / 1000, 2)} MΩ` : `${fmt(r, 0)} kΩ`; })() },
           ]} />
