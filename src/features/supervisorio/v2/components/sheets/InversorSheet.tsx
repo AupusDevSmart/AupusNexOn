@@ -40,28 +40,64 @@ export function InversorSheet({ equipamentoId, nome, onClose }: { equipamentoId:
   // Valor de parâmetro de config: "—" enquanto a TON não trouxer o registrador.
   const pv = (p: string, suf = '') => { const x = g(p); return x == null || x === '' ? '—' : `${x}${suf}`; };
   const nomeEq = nome || 'Inversor';
-  const pativa = g('power.active_total');
+  // Contrato do NexON: power.* e dc.total_power chegam em W/VA/var (COA e gráfico dividem
+  // por 1000). Aqui exibimos em kW/kVA/kvar.
+  const kilo = (p: string) => { const x = g(p); return x == null || x === '' ? undefined : Number(x) / 1000; };
+  const pativa = kilo('power.active_total');
   const nominal = g('info.nominal_power');
-  const gerando = pativa != null && Number(pativa) > 0.1;
+  const gerando = pativa != null && pativa > 0.01;
   const pct = nominal ? Math.max(0, Math.min(100, (Number(pativa) / Number(nominal)) * 100)) : undefined;
   // Online = leitura FRESCA (não só "existe última leitura"). Uma leitura de dias
   // atrás não é online — o hero cai p/ "Sem comunicação" e o badge mostra a idade.
   const info = tsInfo(ts);
   const online = info.online;
 
+  // O texto do estado vem do firmware, que só conhece a tabela da Sungrow: p/ outros
+  // fabricantes chega "Unknown" → cai no Gerando/Parado pela potência.
+  const wsTxt = String(g('status.work_state_text') ?? '').trim();
+  const estadoTexto = wsTxt && !/^unknown$/i.test(wsTxt) ? wsTxt : '';
+  const minHoje = g('energy.daily_running_time');
+
+  // Tensões: FF (entre fases) e FN (fase-neutro). Mostra o que o inversor MEDE; o que ele
+  // não mede sai CALCULADO (×√3 / ÷√3, aproximação de rede equilibrada) e marcado "calc.".
+  const num = (p: string) => { const x = g(p); return x == null || x === '' || !Number.isFinite(Number(x)) ? undefined : Number(x); };
+  const R3 = Math.sqrt(3);
+  const ffMed = [num('voltage.phase_a-b'), num('voltage.phase_b-c'), num('voltage.phase_c-a')];
+  const fnMed = [num('voltage.phase_a'), num('voltage.phase_b'), num('voltage.phase_c')];
+  const temFF = ffMed.some((v) => v != null);
+  const temFN = fnMed.some((v) => v != null);
+  const media = (a?: number, b?: number) => (a != null && b != null ? (a + b) / 2 : undefined);
+  // FF a partir de FN: Vab ≈ média(Va,Vb)·√3. FN a partir de FF: Va ≈ média(Vab,Vca)/√3.
+  const ffCalc = [media(fnMed[0], fnMed[1]), media(fnMed[1], fnMed[2]), media(fnMed[2], fnMed[0])].map((v) => (v != null ? v * R3 : undefined));
+  const fnCalc = [media(ffMed[0], ffMed[2]), media(ffMed[0], ffMed[1]), media(ffMed[1], ffMed[2])].map((v) => (v != null ? v / R3 : undefined));
+  const ffVals = temFF ? ffMed : ffCalc;
+  const fnVals = temFN ? fnMed : fnCalc;
+  const ffCalculado = !temFF && temFN;
+  const fnCalculado = !temFN && temFF;
+  // Padrão: abre no que é MEDIDO (só FN → abre em FN).
+  const mostraFF = (temFF || !temFN) ? ff : !ff;
+  const tensaoCel = (v: number | undefined, calc: boolean) => `${fmt(v, 0)} V${calc && v != null ? ' (calc.)' : ''}`;
   const fasesFF: Array<[string, React.ReactNode, React.ReactNode]> = [
-    ['AB', `${fmt(g('voltage.phase_a-b'), 0)} V`, `${fmt(g('current.phase_a'), 0)} A`],
-    ['BC', `${fmt(g('voltage.phase_b-c'), 0)} V`, `${fmt(g('current.phase_b'), 0)} A`],
-    ['CA', `${fmt(g('voltage.phase_c-a'), 0)} V`, `${fmt(g('current.phase_c'), 0)} A`],
+    ['AB', tensaoCel(ffVals[0], ffCalculado), `${fmt(g('current.phase_a'), 0)} A`],
+    ['BC', tensaoCel(ffVals[1], ffCalculado), `${fmt(g('current.phase_b'), 0)} A`],
+    ['CA', tensaoCel(ffVals[2], ffCalculado), `${fmt(g('current.phase_c'), 0)} A`],
   ];
-  // Inversor que só informa tensão fase-neutro (ex.: SOFAR G2) abre direto em FN.
-  const soFN = g('voltage.phase_a') != null && g('voltage.phase_a-b') == null;
-  const mostraFF = ff && !soFN;
   const fasesFN: Array<[string, React.ReactNode, React.ReactNode]> = [
-    ['A', `${fmt(g('voltage.phase_a'), 0)} V`, `${fmt(g('current.phase_a'), 0)} A`],
-    ['B', `${fmt(g('voltage.phase_b'), 0)} V`, `${fmt(g('current.phase_b'), 0)} A`],
-    ['C', `${fmt(g('voltage.phase_c'), 0)} V`, `${fmt(g('current.phase_c'), 0)} A`],
+    ['A', tensaoCel(fnVals[0], fnCalculado), `${fmt(g('current.phase_a'), 0)} A`],
+    ['B', tensaoCel(fnVals[1], fnCalculado), `${fmt(g('current.phase_b'), 0)} A`],
+    ['C', tensaoCel(fnVals[2], fnCalculado), `${fmt(g('current.phase_c'), 0)} A`],
   ];
+  const notaTensao = mostraFF
+    ? (ffCalculado ? 'Este inversor mede só fase-neutro: entre fases calculado (×√3).' : '')
+    : (fnCalculado ? 'Este inversor mede só entre fases: fase-neutro calculado (÷√3).' : '');
+
+  // Aparente e FP: quando o inversor não informa, calcula de P e Q (marcado "calc.").
+  const qkvar = kilo('power.reactive_total');
+  const sMed = kilo('power.apparent_total');
+  const sCalc = sMed == null && pativa != null && qkvar != null ? Math.hypot(pativa, qkvar) : undefined;
+  const fpMed = num('power.power_factor');
+  const fpCalc = fpMed == null && pativa != null && qkvar != null && Math.hypot(pativa, qkvar) > 0
+    ? pativa / Math.hypot(pativa, qkvar) : undefined;
 
   // Tensão por MPPT (dc.mpptN_voltage) e corrente por entrada (dc.stringN_current).
   // Mostra 1..maior-canal-ativo: inclui um canal zerado no meio (string morta, útil ver)
@@ -116,7 +152,7 @@ export function InversorSheet({ equipamentoId, nome, onClose }: { equipamentoId:
           {/* ESTADO */}
           <GrupoTitulo>Estado</GrupoTitulo>
           <EstadoHero
-            label={!online ? 'Sem comunicação' : (g('status.work_state_text') || (gerando ? 'Gerando' : 'Parado'))}
+            label={!online ? 'Sem comunicação' : (estadoTexto || (gerando ? 'Gerando' : 'Parado'))}
             tone={!online ? 'off' : gerando ? 'ok' : 'off'}
             pct={gerando ? pct : undefined}
           />
@@ -127,13 +163,7 @@ export function InversorSheet({ equipamentoId, nome, onClose }: { equipamentoId:
             ]} />
           </div>
 
-          {/* CONTROLES */}
-          <GrupoTitulo>Controles</GrupoTitulo>
-          <div className="flex gap-2">
-            <button className="flex-1 py-2.5 rounded-lg border font-semibold text-sm" disabled>Desligar</button>
-            <button className="flex-1 py-2.5 rounded-lg font-semibold text-sm text-white disabled:opacity-60" style={{ background: '#177A3C' }} disabled>Ligar</button>
-          </div>
-          <p className="text-[11px] text-amber-600 mt-1.5">Comando de liga/desliga do inversor ainda não vinculado — em construção.</p>
+          {/* CONTROLES: ocultos até o comando liga/desliga do inversor ser vinculado. */}
 
           {/* CURVA */}
           <GrupoTitulo>Curva</GrupoTitulo>
@@ -143,29 +173,30 @@ export function InversorSheet({ equipamentoId, nome, onClose }: { equipamentoId:
           <GrupoTitulo>Energia e produção</GrupoTitulo>
           <Section rows={[
             { k: 'Geração total', v: `${fmt(g('energy.total_yield'))} kWh` },
-            { k: 'Tempo de operação hoje', v: `${fmt(g('energy.daily_running_time'), 0)} h` },
+            { k: 'Tempo de operação hoje', v: `${fmt(minHoje == null || minHoje === '' ? undefined : Number(minHoje) / 60, 1)} h` },
             { k: 'Tempo de operação total', v: `${fmt(g('energy.total_running_time'), 0)} h` },
           ]} />
 
           {/* POTÊNCIA E FREQUÊNCIA */}
           <GrupoTitulo>Potência e frequência</GrupoTitulo>
           <Section rows={[
-            { k: 'Potência aparente', v: `${fmt(g('power.apparent_total'))} kVA` },
-            { k: 'Potência reativa', v: `${fmt(g('power.reactive_total'))} kvar` },
+            { k: 'Potência aparente', v: sMed != null ? `${fmt(sMed)} kVA` : sCalc != null ? `${fmt(sCalc)} kVA (calc.)` : '— kVA' },
+            { k: 'Potência reativa', v: `${fmt(qkvar)} kvar` },
             { k: 'Frequência', v: `${fmt(g('power.frequency'), 2)} Hz` },
-            { k: 'Fator de potência', v: fmt(g('power.power_factor'), 2) },
+            { k: 'Fator de potência', v: fpMed != null ? fmt(fpMed, 2) : fpCalc != null ? `${fmt(fpCalc, 2)} (calc.)` : '—' },
           ]} />
 
           {/* CORRENTE ALTERNADA */}
           <GrupoTitulo right={
-            <button type="button" onClick={() => setFf((v) => !v)} className="text-[11px] font-semibold text-muted-foreground hover:text-primary">{mostraFF ? 'FF' : 'FN'}</button>
+            <button type="button" onClick={() => setFf((v) => !v)} className="text-[11px] font-semibold text-muted-foreground hover:text-primary">{mostraFF ? 'Entre fases (FF) ⇄' : 'Fase-neutro (FN) ⇄'}</button>
           }>Corrente alternada</GrupoTitulo>
           <FasesTable head={['Fase', 'Tensão', 'Corrente']} rows={mostraFF ? fasesFF : fasesFN} />
+          {notaTensao && <p className="text-[11px] text-muted-foreground mt-1">{notaTensao}</p>}
 
           {/* CORRENTE CONTÍNUA */}
           <GrupoTitulo>Corrente contínua</GrupoTitulo>
           <Section rows={[
-            { k: 'Potência DC total', v: `${fmt(g('dc.total_power'))} kW` },
+            { k: 'Potência DC total', v: `${fmt(kilo('dc.total_power'))} kW` },
             { k: 'Tensão barramento', v: `${fmt(g('protection.bus_voltage'), 0)} V` },
           ]} />
           {mppts.length > 0 && (
@@ -199,7 +230,7 @@ export function InversorSheet({ equipamentoId, nome, onClose }: { equipamentoId:
           <GrupoTitulo>Informações</GrupoTitulo>
           <Section rows={[
             { k: 'Temperatura interna', v: `${fmt(g('temperature.internal'), 0)} °C` },
-            { k: 'Resistência de isolamento', v: `${fmt(g('protection.insulation_resistance'), 0)} kΩ` },
+            { k: 'Resistência de isolamento', v: (() => { const r = num('protection.insulation_resistance'); return r != null && r >= 1000 ? `${fmt(r / 1000, 2)} MΩ` : `${fmt(r, 0)} kΩ`; })() },
           ]} />
         </>
       )}
