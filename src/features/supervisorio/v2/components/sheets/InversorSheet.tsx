@@ -22,6 +22,16 @@ function ParamRow({ label, faixa, valor, anterior }: { label: string; faixa: str
 }
 
 /**
+ * Grupo de linhas que ESCONDE o que o inversor não informa (valor "—"), em vez de exibir
+ * campo vazio — cada fabricante entrega um conjunto diferente. Sem nenhuma linha, some o grupo.
+ */
+function GrupoInfo({ titulo, rows }: { titulo: string; rows: Array<{ k: string; v: string; mute?: boolean }> }) {
+  const com = rows.filter((r) => !String(r.v).trim().startsWith('—'));
+  if (com.length === 0) return null;
+  return (<><GrupoTitulo>{titulo}</GrupoTitulo><Section rows={com} /></>);
+}
+
+/**
  * Sheet do Inversor Fotovoltaico (mockup arquivos/nexon-web-inversor.html).
  * Data-driven pela telemetria do próprio equipamento IoT (/equipamentos/:id/dados/atual),
  * cujas chaves seguem o catálogo `inversor_solar` (paths aninhados: energy.*, power.*,
@@ -118,6 +128,11 @@ export function InversorSheet({ equipamentoId, nome, onClose }: { equipamentoId:
   const mppts = canaisAte('mppt', '_voltage', 24);
   const strings = canaisAte('string', '_current', 48);
 
+  // DC total: medido, ou calculado Σ V_mppt·I quando há 1 corrente por MPPT (ex.: SOFAR).
+  const dcMed = kilo('dc.total_power');
+  const dcCalc = dcMed == null && mppts.length > 0 && mppts.length === strings.length
+    ? mppts.reduce((acc, m, i) => acc + m.v * strings[i].v, 0) / 1000 : undefined;
+
   return (
     <SheetShell
       title={nomeEq}
@@ -177,16 +192,14 @@ export function InversorSheet({ equipamentoId, nome, onClose }: { equipamentoId:
           <MiniChart serie={curva} unit="kW" />
 
           {/* ENERGIA E PRODUÇÃO */}
-          <GrupoTitulo>Energia e produção</GrupoTitulo>
-          <Section rows={[
+          <GrupoInfo titulo="Energia e produção" rows={[
             { k: 'Geração total', v: `${fmt(g('energy.total_yield'))} kWh` },
             { k: 'Tempo de operação hoje', v: `${fmt(minHoje == null || minHoje === '' ? undefined : Number(minHoje) / 60, 1)} h` },
             { k: 'Tempo de operação total', v: `${fmt(g('energy.total_running_time'), 0)} h` },
           ]} />
 
           {/* POTÊNCIA E FREQUÊNCIA */}
-          <GrupoTitulo>Potência e frequência</GrupoTitulo>
-          <Section rows={[
+          <GrupoInfo titulo="Potência e frequência" rows={[
             { k: 'Potência aparente', v: sMed != null ? `${fmt(sMed)} kVA` : sCalc != null ? `${fmt(sCalc)} kVA (calc.)` : '— kVA' },
             { k: 'Potência reativa', v: `${fmt(qkvar)} kvar` },
             { k: 'Frequência', v: `${fmt(g('power.frequency'), 2)} Hz` },
@@ -201,9 +214,8 @@ export function InversorSheet({ equipamentoId, nome, onClose }: { equipamentoId:
           {notaTensao && <p className="text-[11px] text-muted-foreground mt-1">{notaTensao}</p>}
 
           {/* CORRENTE CONTÍNUA */}
-          <GrupoTitulo>Corrente contínua</GrupoTitulo>
-          <Section rows={[
-            { k: 'Potência DC total', v: `${fmt(kilo('dc.total_power'))} kW` },
+          <GrupoInfo titulo="Corrente contínua" rows={[
+            { k: 'Potência DC total', v: dcMed != null ? `${fmt(dcMed)} kW` : dcCalc != null ? `${fmt(dcCalc)} kW (calc.)` : '— kW' },
             { k: 'Tensão barramento', v: `${fmt(g('protection.bus_voltage'), 0)} V` },
           ]} />
           {mppts.length > 0 && (
@@ -234,8 +246,7 @@ export function InversorSheet({ equipamentoId, nome, onClose }: { equipamentoId:
           )}
 
           {/* INFORMAÇÕES */}
-          <GrupoTitulo>Informações</GrupoTitulo>
-          <Section rows={[
+          <GrupoInfo titulo="Informações" rows={[
             ...(temFalhas ? [{ k: 'Falhas', v: falhasTxt }] : []),
             { k: 'Temperatura interna', v: `${fmt(g('temperature.internal'), 0)} °C` },
             { k: 'Resistência de isolamento', v: (() => { const r = num('protection.insulation_resistance'); return r != null && r >= 1000 ? `${fmt(r / 1000, 2)} MΩ` : `${fmt(r, 0)} kΩ`; })() },
