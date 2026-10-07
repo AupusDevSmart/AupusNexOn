@@ -267,6 +267,15 @@ BO 7/8 configurável só em v2; regressão: TONs v1 intactas (criar/comando/puls
   (log `Pin 40/39 is not ADC pin!` — erro de design confirmado; firmware degrada com
   aviso). Em aberto: **SD falhou 2× (CMD0 mudo — conferir cartão)**, RS485 (sem
   medidor ainda), LoRa eco (sem par), RTC/loopback/PWM-scope/SU+ via `guia`+POP.
+- **Bancada 07/10/2026 (primeiro firmware gerado numa TON4V2 + Landis E750):**
+  - **SD sem cartão travava o boot** (slot vazio: MISO flutuando → `SD.begin` ~36 s em timeouts → task WDT 60 s →
+    ciclo de reinício; na V1 o slot vazio falha rápido). Corrigido no firmware (lib `sd_queue`: sondagem CMD0 rápida
+    com pull-up interno no MISO; falha lenta não repete nem remonta). Hardware: conferir/pôr **pull-up 10 kΩ no
+    MISO/DAT0 do slot**, como na V1.
+  - **SSU não lia o E750** (o mesmo medidor que o A966 lê): ligação correta, mas X14-2 oscila só entre 2,5 e 3 V com o
+    medidor transmitindo → o opto do medidor não drena os ~4,9 mA do **R47 = 680 Ω**; o nível baixo não chega a
+    ≤ 0,8 V e o ESP nunca lê 0 (`ssu_ok = 0`). Ação: **R47 → 10 kΩ** (mínimo 4,7 kΩ) e levar para a próxima
+    revisão. Firmware não muda. Detalhes e contas: `IOT-TON-V2-SSU-R47-PULLUP.md`.
 - Restante: fechar os itens em aberto acima na bancada e **Fase 6** (OTA/campo).
 
 ## 9. Ordem de execução e deploy
