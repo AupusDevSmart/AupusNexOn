@@ -39,14 +39,47 @@
 #define SDQ_WDT() esp_task_wdt_reset()
 #include "blackbox.h"
 #define SDQ_EVENT(m) bb_log("%s", m)
+#include <driver/gpio.h>
 static SPIClass _spiSD(HSPI);
+
+// Sondagem RAPIDA do cartao (CMD0 = GO_IDLE_STATE) antes do SD.begin. Sem cartao, o
+// SD.begin da lib so' desiste depois de varios timeouts de ~6 s (TON V2 em bancada: 36 s
+// tentando, task watchdog de 60 s estourou e a placa entrou em ciclo de reinicio).
+// MISO com pull-up: sem cartao a linha fica em 1 (0xFF), nao flutuando. Cartao presente
+// responde R1 (bit 7 = 0) em ate' 8 bytes.
+static bool _sdProbe() {
+    pinMode(SD_CS, OUTPUT);
+    digitalWrite(SD_CS, HIGH);
+    _spiSD.beginTransaction(SPISettings(400000, MSBFIRST, SPI_MODE0));
+    for (int i = 0; i < 10; i++) _spiSD.transfer(0xFF);      // >= 74 clocks com CS alto
+    digitalWrite(SD_CS, LOW);
+    const uint8_t cmd0[6] = { 0x40, 0x00, 0x00, 0x00, 0x00, 0x95 };
+    for (int i = 0; i < 6; i++) _spiSD.transfer(cmd0[i]);
+    uint8_t r = 0xFF;
+    for (int i = 0; i < 16 && (r & 0x80); i++) r = _spiSD.transfer(0xFF);
+    digitalWrite(SD_CS, HIGH);
+    _spiSD.transfer(0xFF);
+    _spiSD.endTransaction();
+    return (r & 0x80) == 0;
+}
+
 static bool _sdMountHw() {
     _spiSD.begin(SPI1_SCLK_PIN, SPI1_MISO_PIN, SPI1_MOSI_PIN, SD_CS);
-    return SD.begin(SD_CS, _spiSD, 8000000);
+    gpio_pullup_en((gpio_num_t)SPI1_MISO_PIN);
+    bool tem = false;
+    for (int t = 0; t < 3 && !tem; t++) { tem = _sdProbe(); if (!tem) delay(5); }
+    if (!tem) return false;                                  // sem cartao: falha em milissegundos
+    SDQ_WDT();
+    bool ok = SD.begin(SD_CS, _spiSD, 8000000);
+    SDQ_WDT();
+    return ok;
 }
 static void _sdUnmountHw() { SD.end(); }
 #endif
 
+#ifndef SDQ_SLOW_FAIL_MS
+#define SDQ_SLOW_FAIL_MS   3000UL
+#endif
 #ifndef SDQ_SEG_MAX
 #define SDQ_SEG_MAX        65536UL             // bytes por segmento
 #endif
@@ -79,6 +112,10 @@ static uint32_t _recSeg = 0, _recOff = 0, _recEndSeg = 0, _recEndOff = 0;
 static int32_t  _recCount = 0, _recDelta = 0;
 static uint8_t  _fails = 0;
 static unsigned long _lastMount = 0;
+// Montagem que falhou DEVAGAR (> SDQ_SLOW_FAIL_MS): o barramento do SD nao responde (sem
+// cartao numa placa cujo MISO nao fica em 1, ou defeito). Cada nova tentativa travaria o
+// laco por dezenas de segundos → nao repete neste boot (nem a remontagem periodica).
+static bool     _slowFail = false;
 static uint32_t _discarded = 0;
 static char     _line[SDQ_LINE_MAX + 1];
 static uint8_t  _unsaved = 0;             // lotes com avanco ainda nao gravado no NVS
@@ -175,9 +212,17 @@ static void _migrateLegacy(bool dirEmpty) {
 }
 
 static bool _open() {
+    unsigned long t0 = millis();
     bool ok = _sdMountHw();
-    if (!ok) { SDQ_WDT(); _sdUnmountHw(); ok = _sdMountHw(); }
-    if (!ok) return false;
+    // 2a tentativa so' se a 1a falhou RAPIDO (contato/encaixe); falha lenta nao repete.
+    if (!ok && millis() - t0 < SDQ_SLOW_FAIL_MS) { SDQ_WDT(); _sdUnmountHw(); ok = _sdMountHw(); }
+    if (!ok) {
+        if (millis() - t0 >= SDQ_SLOW_FAIL_MS) {
+            _slowFail = true;
+            SDQ_EVENT("sd: montagem lenta falhou, sem novas tentativas neste boot");
+        }
+        return false;
+    }
     if (!SD.exists(SDQ_DIR)) SD.mkdir(SDQ_DIR);
     _loadPtr();
     uint32_t mn, mx; uint64_t tot; bool any;
@@ -315,7 +360,7 @@ int sd_buffer_pending() {
 void sd_buffer_tick() {
     unsigned long now = millis();
     if (!_ready) {
-        if (_st == SDQ_FAIL && now - _lastMount >= (_everMounted ? SDQ_REMOUNT_MS : SDQ_REMOUNT_NOCARD_MS)) {
+        if (_st == SDQ_FAIL && !_slowFail && now - _lastMount >= (_everMounted ? SDQ_REMOUNT_MS : SDQ_REMOUNT_NOCARD_MS)) {
             _lastMount = now;
             Serial.println("[SD-BUF] tentando remontar o cartao...");
             _sdUnmountHw();
@@ -445,6 +490,6 @@ void sdq_host_reboot() {
     _st = SDQ_NOCARD; _ready = false; _everMounted = false;
     _rseg = _roff = _wseg = _wsize = _minSeg = 0; _total = 0; _pend = 0;
     _rec = false; _recSeg = _recOff = _recEndSeg = _recEndOff = 0; _recCount = _recDelta = 0;
-    _fails = 0; _lastMount = 0; _discarded = 0; _unsaved = 0;
+    _fails = 0; _lastMount = 0; _discarded = 0; _unsaved = 0; _slowFail = false;
 }
 #endif
