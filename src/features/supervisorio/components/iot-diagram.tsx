@@ -15,6 +15,7 @@ import { TonAiConfigModal } from './TonAiConfigModal';
 import { ConfigScsTonModal } from './ConfigScsTonModal';
 import { VinculosTonSheet } from './VinculosTonSheet';
 import { DeviceIoConfigModal, tipoTemIo, type DeviceIoConfig } from './DeviceIoConfigModal';
+import { GuiaInstalacaoA966 } from './GuiaInstalacaoA966';
 import { dominioDoTipo } from '../v2/utils/dominioEquipamento';
 
 /**
@@ -206,7 +207,7 @@ function ensureIoTScripts(): Promise<void> {
     //
     // O catalogo de dispositivos foi movido pro backend (GET /iot-catalog/device-catalog.js)
     // — ele revalida sozinho via ETag. Os demais ainda sao estaticos.
-    const IOT_SCRIPTS_VERSION = '20261006-cmd-1';
+    const IOT_SCRIPTS_VERSION = '20261007-a966-1';
     const scripts = [
       `${BASE_URL}/iot-catalog/device-catalog.js`,
       `/iot-firmware-base.v2.js?v=${IOT_SCRIPTS_VERSION}`,
@@ -1975,6 +1976,34 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
               </div>
               </Fragment>
             ))}
+
+            {/* A966: não gera firmware — é o guia de instalação da interface web dele. */}
+            {String(propsComp?.type ?? '') === 'meter_gateway' && (() => {
+              const ed = editorRef.current;
+              const comps: any[] = ed?.components ?? [];
+              const conns: any[] = ed?.connections ?? [];
+              const vizinhos = new Set<string>();
+              for (const c of conns) {
+                if (c?.from?.componentId === propsComp.id) vizinhos.add(c?.to?.componentId);
+                if (c?.to?.componentId === propsComp.id) vizinhos.add(c?.from?.componentId);
+              }
+              // Prefere roteador/broker ligados ao A966; senão, o primeiro do projeto.
+              const acha = (tipo: string) =>
+                comps.find((c) => c.type === tipo && vizinhos.has(c.id)) ?? comps.find((c) => c.type === tipo);
+              const medidor = comps.find((c) => c.type === 'medidor_comum' && vizinhos.has(c.id));
+              return (
+                <div className="space-y-2 pt-3 border-t sm:col-span-2">
+                  <Label className="text-sm font-semibold">Guia de instalação do A966</Label>
+                  <p className="text-[11px] text-muted-foreground">O A966 não usa firmware do NexON: configure-o pela interface web dele seguindo os passos abaixo (valores prontos para copiar).</p>
+                  <GuiaInstalacaoA966
+                    valores={propsValues}
+                    roteador={acha('wifi_router')?.props ?? null}
+                    broker={acha('mqtt_broker')?.props ?? null}
+                    medidorNome={medidor ? String(medidor.props?.name ?? 'Medidor') : null}
+                  />
+                </div>
+              );
+            })()}
 
             {/* Power Meter: disjuntor associado (o PM é só-IoT; exibido via disjuntor). */}
             {isPmComp(propsComp?.type) && (
