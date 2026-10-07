@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Plus, Play, Download, Edit3, Maximize2, Minimize2, ZoomIn, Trash2, FolderPlus, Move, MousePointer2, Save, X, Network, Zap, Terminal, Power } from 'lucide-react';
+import { Plus, Play, Download, Edit3, Maximize2, Minimize2, ZoomIn, Trash2, FolderPlus, Move, MousePointer2, Save, X, Network, Zap, Terminal, Power, BookOpen } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { ESPLoader, Transport } from 'esptool-js';
 import { api } from '@/config/api';
@@ -16,6 +16,7 @@ import { ConfigScsTonModal } from './ConfigScsTonModal';
 import { VinculosTonSheet } from './VinculosTonSheet';
 import { DeviceIoConfigModal, tipoTemIo, type DeviceIoConfig } from './DeviceIoConfigModal';
 import { GuiaInstalacaoA966 } from './GuiaInstalacaoA966';
+import { InstrucoesInstalacaoModal, type ContextoInstalacao } from './InstrucoesInstalacaoModal';
 import { dominioDoTipo } from '../v2/utils/dominioEquipamento';
 
 /**
@@ -360,6 +361,22 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
 
   // Modal de I/O genérico (catálogo-driven) — relé e devices com BI/BO no catálogo.
   const [ioModalOpen, setIoModalOpen] = useState(false);
+  // Instruções de instalação POR MODELO (catálogo) — PM, Medidor Concessionária, inversor.
+  const [instrucoesOpen, setInstrucoesOpen] = useState(false);
+  const TIPOS_COM_INSTRUCAO = ['power_meter', 'medidor_comum', 'medidor_ssu', 'inversor'];
+  // Contexto de ligação do componente no diagrama: muda a instrução (ex.: medidor via A966 ≠ via SSU da TON).
+  const contextoInstalacao = (comp: any): ContextoInstalacao => {
+    const ed = editorRef.current;
+    if (!comp || !ed) return 'padrao';
+    if (String(comp.type) === 'medidor_ssu') return 'ton_ssu';
+    const conns: any[] = (ed.connections ?? []).filter((c: any) => c?.from?.componentId === comp.id || c?.to?.componentId === comp.id);
+    const outro = (c: any) => (ed.components ?? []).find((x: any) => x.id === (c.from.componentId === comp.id ? c.to.componentId : c.from.componentId));
+    if (conns.some((c) => String(outro(c)?.type) === 'meter_gateway')) return 'a966';
+    if (conns.some((c) => String(c?.style) === 'ssu')) return 'ton_ssu';
+    if (conns.some((c) => ['tcp', 'mbap'].includes(String(c?.style)))) return 'tcp';
+    if (conns.some((c) => String(c?.style) === 'rs485')) return 'rs485';
+    return 'padrao';
+  };
   // FASE 6: bo lido do VÍNCULO (fonte da verdade) ao abrir "Configurar I/O".
   // null = ainda não buscado / falhou → o modal cai no props.io_config.bo (fallback).
   const [ioModalVinculoBo, setIoModalVinculoBo] = useState<Record<string, any> | null>(null);
@@ -1977,6 +1994,15 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
               </Fragment>
             ))}
 
+            {/* Instruções de instalação do MODELO escolhido (catálogo → instrucoes por contexto). */}
+            {TIPOS_COM_INSTRUCAO.includes(String(propsComp?.type ?? '')) && (
+              <div className="pt-3 border-t sm:col-span-2">
+                <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => setInstrucoesOpen(true)}>
+                  <BookOpen className="h-4 w-4" />Instruções de instalação
+                </Button>
+              </div>
+            )}
+
             {/* A966: não gera firmware — é o guia de instalação da interface web dele. */}
             {String(propsComp?.type ?? '') === 'meter_gateway' && (() => {
               const ed = editorRef.current;
@@ -2154,6 +2180,16 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
       />
 
       {/* Config de I/O genérica (catálogo-driven): relé e devices com BI/BO. */}
+      <InstrucoesInstalacaoModal
+        open={instrucoesOpen}
+        onClose={() => setInstrucoesOpen(false)}
+        catalogId={propsValues?.catalog_id}
+        modeloNome={(() => {
+          const d = typeof getCatalogDevice === 'function' && propsValues?.catalog_id ? (getCatalogDevice as any)(propsValues.catalog_id) : null;
+          return d ? [d.fabricante, d.modelo].filter(Boolean).join(' ') : undefined;
+        })()}
+        contexto={contextoInstalacao(propsComp)}
+      />
       <DeviceIoConfigModal
         open={ioModalOpen}
         onClose={() => setIoModalOpen(false)}
