@@ -208,7 +208,7 @@ function ensureIoTScripts(): Promise<void> {
     //
     // O catalogo de dispositivos foi movido pro backend (GET /iot-catalog/device-catalog.js)
     // — ele revalida sozinho via ETag. Os demais ainda sao estaticos.
-    const IOT_SCRIPTS_VERSION = '20261007-a966-1';
+    const IOT_SCRIPTS_VERSION = '20261007-a966-2';
     const scripts = [
       `${BASE_URL}/iot-catalog/device-catalog.js`,
       `/iot-firmware-base.v2.js?v=${IOT_SCRIPTS_VERSION}`,
@@ -1873,6 +1873,25 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
           </SheetHeader>
           <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-5">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3 py-3">
+            {String(propsComp?.type ?? '') === 'meter_gateway' && (
+              <div className="sm:col-span-2 rounded-md border bg-muted/30 p-3 space-y-2 text-xs">
+                <div className="font-semibold text-sm">Como acessar o A966</div>
+                <ol className="list-decimal pl-4 space-y-1 text-muted-foreground">
+                  <li>Ligue o A966. No celular, abra o Wi-Fi e conecte na rede que <b>o próprio A966 cria</b> (aparece na lista quando ele está ligado).</li>
+                  <li>Desligue os dados móveis do celular (senão o navegador tenta a internet e não abre a página).</li>
+                  <li>No navegador, abra <b>http://192.168.4.1</b> e entre com usuário <b>IMS</b> e senha <b>IMS</b>.</li>
+                  <li>Preencha cada tela com os valores abaixo e toque em <b>Salvar</b> em cada bloco.</li>
+                </ol>
+                <div className="font-semibold text-sm pt-1">Broker Aupus (padrão — não muda)</div>
+                <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-muted-foreground">
+                  <span>Broker</span><b className="text-foreground">72.60.158.163</b>
+                  <span>Porta</span><b className="text-foreground">1883</b>
+                  <span>TLS</span><b className="text-foreground">desligado</b>
+                  <span>Plataforma</span><b className="text-foreground">Personalizado</b>
+                  <span>Usuário / senha</span><span>pode deixar como está — o broker aceita conexão sem login</span>
+                </div>
+              </div>
+            )}
             {camposProps.map((f: any) => (
               <Fragment key={f.key}>
                 {f.section && (
@@ -1990,6 +2009,8 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
                     ))}
                   </select>
                 )}
+                {/* Ajuda do campo (catálogo/paleta: f.hint) — o formulário também instrui. */}
+                {f.hint && <p className="text-[10px] leading-snug text-muted-foreground">{f.hint}</p>}
               </div>
               </Fragment>
             ))}

@@ -73,22 +73,20 @@ export const GuiaInstalacaoA966: React.FC<GuiaA966Props> = ({ valores, roteador,
   const t = topicoA966(valores);
   const ssid = String(valores?.wifi_ssid ?? '').trim() || String(roteador?.ssid ?? '').trim();
   const senhaWifi = String(valores?.wifi_senha ?? '').trim() || String(roteador?.password ?? '').trim();
-  const usuario = String(valores?.mqtt_usuario ?? '').trim() || 'aupus';
-  const senhaMqtt = String(valores?.mqtt_senha ?? '').trim();
   const brokerIp = String(broker?.ip ?? '').trim() || BROKER_PADRAO;
   const brokerPorta = Number(broker?.port) || PORTA_PADRAO;
   // ID de cliente ÚNICO no broker: dois aparelhos com o mesmo ID (ex.: o "ClientID" de
   // fábrica) se derrubam em loop. Automático = derivado da base da instalação.
   const clientId = String(valores?.client_id ?? '').trim()
     || (t ? `A966-${t.topico.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '')}`.slice(0, 64) : '');
-  const ipFixo = String(valores?.ip_modo ?? 'dhcp') === 'estatico';
+  const ipFixo = String(valores?.ip_modo ?? 'estatico') !== 'dhcp';
 
   const pendencias = [
     !t && 'Preencha o "Tópico base da instalação".',
     !ssid && 'Informe o Wi-Fi do local (aqui ou num Roteador Wi-Fi do projeto).',
-    !senhaMqtt && 'Preencha a senha MQTT.',
     !medidorNome && 'Ligue o Medidor Concessionária a este A966 no diagrama (é ele que recebe a leitura no NexON).',
-    ipFixo && !String(valores?.ip ?? '').trim() && 'IP fixo escolhido, mas o IP não foi preenchido.',
+    ipFixo && !String(valores?.ip ?? '').trim() && 'IP fixo: escolha um IP livre da rede do local e preencha o campo IP fixo.',
+    ipFixo && !String(valores?.gateway ?? '').trim() && 'IP fixo: preencha o Gateway (IP do roteador do local).',
   ].filter(Boolean) as string[];
 
   return (
@@ -99,19 +97,11 @@ export const GuiaInstalacaoA966: React.FC<GuiaA966Props> = ({ valores, roteador,
         </div>
       )}
       <ol className="space-y-3">
-        <Passo n={1} titulo="Conectar no A966">
-          <p>Ligue o A966 e, no celular, conecte na rede Wi-Fi que ele cria.</p>
-        </Passo>
-        <Passo n={2} titulo="Abrir a interface">
-          <Valor rotulo="Endereço" valor="http://192.168.4.1" />
-          <Valor rotulo="Usuário" valor="IMS" />
-          <Valor rotulo="Senha" valor="IMS" />
-        </Passo>
-        <Passo n={3} titulo="Rede (ícone do avião) → Wi-Fi, Ethernet e IP">
+        <Passo n={1} titulo="Rede (ícone do avião) → Wi-Fi, Ethernet e IP">
           <p>Wi-Fi <b>ligado</b>:</p>
           <Valor rotulo="SSID" valor={ssid} />
           <Valor rotulo="Senha" valor={senhaWifi} segredo />
-          <p>Ethernet <b>desligado</b>. IP: {ipFixo ? <><b>DHCP desligado</b> e:</> : <><b>DHCP ligado</b> (o roteador dá o IP).</>}</p>
+          <p>Ethernet <b>desligado</b>. IP: {ipFixo ? <><b>DHCP desligado</b> e um IP livre da rede:</> : <><b>DHCP ligado</b> (o roteador dá o IP).</>}</p>
           {ipFixo && (
             <>
               <Valor rotulo="IP" valor={valores?.ip} />
@@ -121,29 +111,28 @@ export const GuiaInstalacaoA966: React.FC<GuiaA966Props> = ({ valores, roteador,
           )}
           <p>Toque em <b>Salvar</b>.</p>
         </Passo>
-        <Passo n={4} titulo="Rede → MQTT Usuário">
+        <Passo n={2} titulo="Rede → MQTT Usuário">
           <Valor rotulo="Plataforma" valor="Personalizado" />
-          <Valor rotulo="Usuário" valor={usuario} />
-          <Valor rotulo="Senha" valor={senhaMqtt} segredo />
+          <p>Usuário e senha: pode deixar como estão (o broker Aupus aceita conexão sem login).</p>
           <Valor rotulo="ID Cliente" valor={clientId} />
           <p>Não use o "ClientID" de fábrica: dois aparelhos com o mesmo ID se derrubam no broker. <b>Salvar</b>.</p>
         </Passo>
-        <Passo n={5} titulo="Rede → MQTT">
+        <Passo n={3} titulo="Rede → MQTT">
           <p>TLS <b>desligado</b>.</p>
           <Valor rotulo="Broker" valor={brokerIp} />
           <Valor rotulo="Porta" valor={brokerPorta} />
           <Valor rotulo="Tópico" valor={t?.topico} />
           <p><b>Salvar</b>.</p>
         </Passo>
-        <Passo n={6} titulo="Interfaces (ícone das chaves) → SSU e Relógio">
+        <Passo n={4} titulo="Interfaces (ícone das chaves) → SSU e Relógio">
           <p>SSU <b>ligado</b>, com o ID:</p>
           <Valor rotulo="ID" valor={t?.ssuId ?? (String(valores?.ssu_id ?? '').trim() || 'SSU')} />
           <p>PULSOS e RS-485 não precisam ser alterados para o medidor da concessionária. Em <b>Relógio</b>, ajuste a hora atual. <b>Salvar</b>.</p>
         </Passo>
-        <Passo n={7} titulo="Usuário (ícone da pessoa) → trocar a senha padrão">
+        <Passo n={5} titulo="Usuário (ícone da pessoa) → trocar a senha padrão">
           <p>Recomendado: troque o login IMS/IMS (senha antiga <b>IMS</b>, novo usuário e senha) e anote no campo Observação. Só use "Desativar AP" depois de confirmar que os dados chegam no NexON — o AP é o caminho para reconfigurar.</p>
         </Passo>
-        <Passo n={8} titulo="Conferir no NexON">
+        <Passo n={6} titulo="Conferir no NexON">
           <p>O A966 publica a cada ~15 min em:</p>
           <Valor rotulo="Tópico final" valor={t?.publica} />
           <p>{medidorNome ? <>A leitura entra no medidor <b>{medidorNome}</b> (o tópico é gravado nele ao salvar o diagrama).</> : 'Ligue o Medidor Concessionária ao A966 para a leitura entrar no NexON.'}</p>

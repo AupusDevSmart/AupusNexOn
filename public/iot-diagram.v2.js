@@ -277,20 +277,18 @@ var COMPONENT_TYPES = {
         generates_firmware: false,
         // Nao gera firmware: e' o GUIA DE INSTALACAO do A966 (interface web 192.168.4.1).
         // O A966 publica em <Topico>/<ID SSU>/state; o editor monta <base>/A966 + "SSU".
-        defaults: { name: 'A966', mqtt_topic_base: '', ssu_id: 'SSU', mqtt_usuario: 'aupus', mqtt_senha: '', client_id: '', wifi_ssid: '', wifi_senha: '', ip_modo: 'dhcp', ip: '', mascara: '255.255.255.0', gateway: '', note: '' },
+        defaults: { name: 'A966', wifi_ssid: '', wifi_senha: '', ip_modo: 'estatico', ip: '', mascara: '255.255.255.0', gateway: '', mqtt_topic_base: '', ssu_id: 'SSU', client_id: '', note: '' },
         fields: [
-            { key: 'name', label: 'Nome', type: 'text' },
-            { key: 'mqtt_topic_base', label: 'Tópico base da instalação', type: 'text', placeholder: 'PROPRIETARIO/ESTADO/PLANTA/INSTALACAO' },
-            { key: 'ssu_id', label: 'ID da SSU (no A966)', type: 'text', placeholder: 'SSU' },
-            { key: 'mqtt_usuario', label: 'Usuário MQTT', type: 'text', placeholder: 'aupus' },
-            { key: 'mqtt_senha', label: 'Senha MQTT', type: 'text' },
-            { key: 'client_id', label: 'ID Cliente MQTT (vazio = automático)', type: 'text' },
-            { key: 'wifi_ssid', label: 'Wi-Fi do local — SSID (vazio = roteador do projeto)', type: 'text' },
+            { key: 'name', label: 'TAG', type: 'text' },
+            { key: 'wifi_ssid', label: 'Wi-Fi do local — nome (SSID)', type: 'text' },
             { key: 'wifi_senha', label: 'Wi-Fi do local — senha', type: 'text' },
-            { key: 'ip_modo', label: 'Endereço IP', type: 'select', options: [['dhcp', 'DHCP (automático)'], ['estatico', 'IP fixo']] },
+            { key: 'ip_modo', label: 'Endereço IP', type: 'select', options: [['estatico', 'IP fixo (recomendado)'], ['dhcp', 'DHCP (automático)']] },
             { key: 'ip', label: 'IP fixo', type: 'text', placeholder: '192.168.1.104' },
             { key: 'mascara', label: 'Máscara', type: 'text', placeholder: '255.255.255.0' },
             { key: 'gateway', label: 'Gateway', type: 'text', placeholder: '192.168.1.1' },
+            { key: 'mqtt_topic_base', label: 'Tópico base da instalação', type: 'text', placeholder: 'PROPRIETARIO/ESTADO/PLANTA/INSTALACAO' },
+            { key: 'ssu_id', label: 'ID da SSU (no A966)', type: 'text', placeholder: 'SSU' },
+            { key: 'client_id', label: 'ID Cliente MQTT (vazio = automático)', type: 'text' },
             { key: 'note', label: 'Observação', type: 'text' },
         ]
     },
