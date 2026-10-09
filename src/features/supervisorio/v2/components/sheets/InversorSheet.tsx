@@ -34,6 +34,111 @@ function GrupoInfo({ titulo, rows }: { titulo: string; rows: Array<{ k: string; 
   return (<><GrupoTitulo>{titulo}</GrupoTitulo><Section rows={com} /></>);
 }
 
+
+interface SetpointDef { id: string; label: string; unidade?: string; escala?: number; min?: number; max?: number; faixas?: Array<[number, number]>; padrao?: number; obs?: string; avancado?: boolean }
+
+/**
+ * Ajustes do inversor enviados pela TON (setpoints do catálogo do modelo): limite de potência,
+ * fator de potência, reativo… GET/POST /equipamentos/:id/setpoints. O backend converte para
+ * o registrador e valida; a TON confere de novo a faixa antes de escrever. Endereço Modbus
+ * (avançado) fica separado, com aviso.
+ */
+function AjustesInversor({ equipamentoId, nome }: { equipamentoId: string; nome: string }) {
+  const [lista, setLista] = useState<SetpointDef[] | null>(null);
+  const [valores, setValores] = useState<Record<string, string>>({});
+  const [enviando, setEnviando] = useState<string | null>(null);
+  const [ultimo, setUltimo] = useState<Record<string, { ok: boolean; txt: string }>>({});
+  const [verAvancado, setVerAvancado] = useState(false);
+  useEffect(() => {
+    let vivo = true;
+    api.get(`/equipamentos/${equipamentoId.trim()}/setpoints`)
+      .then((r: any) => {
+        const d = r?.data?.data ?? r?.data;
+        const sps: SetpointDef[] = Array.isArray(d?.setpoints) ? d.setpoints : [];
+        if (!vivo) return;
+        setLista(sps);
+        setValores(Object.fromEntries(sps.map((sp) => [sp.id, sp.padrao != null && !sp.avancado ? String(sp.padrao) : ''])));
+      })
+      .catch(() => { if (vivo) setLista([]); });
+    return () => { vivo = false; };
+  }, [equipamentoId]);
+
+  if (!lista || lista.length === 0) return null;
+  const faixaTxt = (sp: SetpointDef) =>
+    (sp.faixas ?? [[sp.min ?? 0, sp.max ?? 0]]).map(([a, b]) => `${a} a ${b}`).join(' ou ') + (sp.unidade ? ` ${sp.unidade}` : '');
+
+  const aplicar = async (sp: SetpointDef) => {
+    const raw = String(valores[sp.id] ?? '').replace(',', '.').trim();
+    const v = Number(raw);
+    if (raw === '' || !Number.isFinite(v)) { toast.error(`${sp.label}: informe um número`); return; }
+    const aviso = sp.avancado ? `\n\nATENÇÃO: ${sp.obs ?? ''}` : '';
+    if (!window.confirm(`Enviar ao inversor ${nome}:\n\n${sp.label} = ${raw}${sp.unidade ? ` ${sp.unidade}` : ''}\n\nO valor vai para o equipamento REAL pela TON.${aviso}`)) return;
+    setEnviando(sp.id);
+    try {
+      const r: any = await api.post(`/equipamentos/${equipamentoId.trim()}/setpoints/${sp.id}`, { valor: v });
+      const d = r?.data?.data ?? r?.data;
+      setUltimo((u) => ({ ...u, [sp.id]: { ok: true, txt: `Aplicado · ack ${d?.latency_ms ?? '?'} ms` } }));
+      toast.success(`${sp.label}: aplicado`, { description: d?.comando_tecnico });
+    } catch (e: any) {
+      const st = e?.response?.status;
+      const msg = e?.response?.data?.message || e?.response?.data?.error?.message || e?.message || 'falha';
+      const titulo = st === 504 ? 'A TON não respondeu' : st === 502 ? 'O inversor/TON recusou' : st === 403 ? 'Sem permissão' : 'Não aplicado';
+      setUltimo((u) => ({ ...u, [sp.id]: { ok: false, txt: `${titulo}: ${String(msg)}` } }));
+      toast.error(titulo, { description: String(msg) });
+    } finally { setEnviando(null); }
+  };
+
+  const linha = (sp: SetpointDef) => (
+    <div key={sp.id} className="py-2.5 border-b last:border-b-0">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-sm font-medium">{sp.label}</div>
+          <div className="text-xs text-muted-foreground">Faixa {faixaTxt(sp)}</div>
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <input
+            inputMode="decimal"
+            value={valores[sp.id] ?? ''}
+            onChange={(e) => setValores((x) => ({ ...x, [sp.id]: e.target.value }))}
+            className="w-20 h-8 rounded-lg border px-2 text-sm text-right tabular-nums bg-background"
+            placeholder={sp.padrao != null ? String(sp.padrao) : ''}
+          />
+          {sp.unidade && <span className="text-xs text-muted-foreground w-3">{sp.unidade}</span>}
+          <button
+            type="button"
+            disabled={!!enviando}
+            onClick={() => aplicar(sp)}
+            className="h-8 px-3 rounded-lg text-xs font-semibold text-white disabled:opacity-60"
+            style={{ background: '#177A3C' }}
+          >{enviando === sp.id ? 'Enviando…' : 'Aplicar'}</button>
+        </div>
+      </div>
+      {sp.obs && <p className="text-[11px] text-muted-foreground mt-1">{sp.obs}</p>}
+      {ultimo[sp.id] && <p className={`text-[11px] mt-1 ${ultimo[sp.id].ok ? 'text-emerald-600' : 'text-red-600'}`}>{ultimo[sp.id].txt}</p>}
+    </div>
+  );
+
+  const normais = lista.filter((sp) => !sp.avancado);
+  const avancados = lista.filter((sp) => sp.avancado);
+  return (
+    <>
+      <GrupoTitulo>Ajustes do inversor</GrupoTitulo>
+      {normais.length > 0 && <div className="rounded-lg border px-3">{normais.map(linha)}</div>}
+      {avancados.length > 0 && (
+        <div className="mt-2">
+          <button type="button" className="text-xs text-muted-foreground hover:text-foreground" onClick={() => setVerAvancado((v) => !v)}>
+            {verAvancado ? '▾' : '▸'} Avançado ({avancados.length})
+          </button>
+          {verAvancado && <div className="rounded-lg border border-amber-300 px-3 mt-1">{avancados.map(linha)}</div>}
+        </div>
+      )}
+      <p className="text-xs text-muted-foreground mt-2">
+        Enviado pela TON que lê o inversor. Exige firmware gerado a partir de 09/10/2026 (com suporte a ajustes).
+      </p>
+    </>
+  );
+}
+
 /**
  * Sheet do Inversor Fotovoltaico (mockup arquivos/nexon-web-inversor.html).
  * Data-driven pela telemetria do próprio equipamento IoT (/equipamentos/:id/dados/atual),
@@ -174,6 +279,7 @@ export function InversorSheet({ equipamentoId, nome, onClose }: { equipamentoId:
     >
       {aba === 'cfg' ? (
         <>
+          <AjustesInversor equipamentoId={equipamentoId} nome={nomeEq} />
           <GrupoTitulo>Parâmetros</GrupoTitulo>
           <Section rows={[
             { k: 'Potência nominal', v: `${fmt(nominal, 0)} kW` },
