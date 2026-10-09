@@ -37,14 +37,18 @@ function GrupoInfo({ titulo, rows }: { titulo: string; rows: Array<{ k: string; 
 
 interface SetpointDef { id: string; label: string; unidade?: string; escala?: number; min?: number; max?: number; faixas?: Array<[number, number]>; padrao?: number; obs?: string; avancado?: boolean }
 
+/** Linha da tela de Regulação e proteção: leitura (valor) e, se o modelo suporta, ajuste. */
+export interface LinhaRegulacao { label: string; faixa: string; valor: string; sp?: string; soSeSuportado?: boolean }
+
 /**
- * Ajustes do inversor enviados pela TON (setpoints do catálogo do modelo): limite de potência,
- * fator de potência, reativo… GET/POST /equipamentos/:id/setpoints. O backend converte para
- * o registrador e valida; a TON confere de novo a faixa antes de escrever. Endereço Modbus
- * (avançado) fica separado, com aviso.
+ * REGULAÇÃO E PROTEÇÃO (mockup nexon-web-inversor): TODAS as linhas aparecem. As que o modelo
+ * do inversor suporta como ajuste (catálogo → setpoints) ganham campo + "Aplicar", enviados
+ * pela TON (GET/POST /equipamentos/:id/setpoints; backend valida/converte, TON confere a
+ * faixa de novo). As demais são leitura ("—" enquanto a TON não lê aquele registrador).
+ * Ajustes "avançados" (endereço Modbus) ficam separados, com aviso.
  */
-function AjustesInversor({ equipamentoId, nome }: { equipamentoId: string; nome: string }) {
-  const [lista, setLista] = useState<SetpointDef[] | null>(null);
+function RegulacaoProtecao({ equipamentoId, nome, linhas }: { equipamentoId: string; nome: string; linhas: LinhaRegulacao[] }) {
+  const [lista, setLista] = useState<SetpointDef[]>([]);
   const [valores, setValores] = useState<Record<string, string>>({});
   const [enviando, setEnviando] = useState<string | null>(null);
   const [ultimo, setUltimo] = useState<Record<string, { ok: boolean; txt: string }>>({});
@@ -63,7 +67,6 @@ function AjustesInversor({ equipamentoId, nome }: { equipamentoId: string; nome:
     return () => { vivo = false; };
   }, [equipamentoId]);
 
-  if (!lista || lista.length === 0) return null;
   const faixaTxt = (sp: SetpointDef) =>
     (sp.faixas ?? [[sp.min ?? 0, sp.max ?? 0]]).map(([a, b]) => `${a} a ${b}`).join(' ou ') + (sp.unidade ? ` ${sp.unidade}` : '');
 
@@ -88,29 +91,32 @@ function AjustesInversor({ equipamentoId, nome }: { equipamentoId: string; nome:
     } finally { setEnviando(null); }
   };
 
-  const linha = (sp: SetpointDef) => (
+  const linhaAjuste = (sp: SetpointDef, label?: string, atual?: string) => (
     <div key={sp.id} className="py-2.5 border-b last:border-b-0">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-sm font-medium">{sp.label}</div>
+          <div className="text-sm font-medium">{label ?? sp.label}</div>
           <div className="text-xs text-muted-foreground">Faixa {faixaTxt(sp)}</div>
         </div>
-        <div className="flex items-center gap-1.5 shrink-0">
-          <input
-            inputMode="decimal"
-            value={valores[sp.id] ?? ''}
-            onChange={(e) => setValores((x) => ({ ...x, [sp.id]: e.target.value }))}
-            className="w-20 h-8 rounded-lg border px-2 text-sm text-right tabular-nums bg-background"
-            placeholder={sp.padrao != null ? String(sp.padrao) : ''}
-          />
-          {sp.unidade && <span className="text-xs text-muted-foreground w-3">{sp.unidade}</span>}
-          <button
-            type="button"
-            disabled={!!enviando}
-            onClick={() => aplicar(sp)}
-            className="h-8 px-3 rounded-lg text-xs font-semibold text-white disabled:opacity-60"
-            style={{ background: '#177A3C' }}
-          >{enviando === sp.id ? 'Enviando…' : 'Aplicar'}</button>
+        <div className="text-right shrink-0">
+          <div className="flex items-center gap-1.5 justify-end">
+            <input
+              inputMode="decimal"
+              value={valores[sp.id] ?? ''}
+              onChange={(e) => setValores((x) => ({ ...x, [sp.id]: e.target.value }))}
+              className="w-20 h-8 rounded-lg border px-2 text-sm text-right tabular-nums bg-background"
+              placeholder={sp.padrao != null ? String(sp.padrao) : ''}
+            />
+            {sp.unidade && <span className="text-xs text-muted-foreground">{sp.unidade}</span>}
+            <button
+              type="button"
+              disabled={!!enviando}
+              onClick={() => aplicar(sp)}
+              className="h-8 px-3 rounded-lg text-xs font-semibold text-white disabled:opacity-60"
+              style={{ background: '#177A3C' }}
+            >{enviando === sp.id ? 'Enviando…' : 'Aplicar'}</button>
+          </div>
+          <div className="text-[11px] text-muted-foreground mt-0.5">Atual {atual ?? '—'}</div>
         </div>
       </div>
       {sp.obs && <p className="text-[11px] text-muted-foreground mt-1">{sp.obs}</p>}
@@ -118,22 +124,36 @@ function AjustesInversor({ equipamentoId, nome }: { equipamentoId: string; nome:
     </div>
   );
 
-  const normais = lista.filter((sp) => !sp.avancado);
+  const porId = new Map(lista.map((sp) => [sp.id, sp]));
+  const usados = new Set<string>();
   const avancados = lista.filter((sp) => sp.avancado);
+  // Nada a comandar nem a ler: a seção some (sem linhas vazias).
+  const temLinha = lista.some((sp) => !sp.avancado) || linhas.some((l) => !l.soSeSuportado && l.valor !== '—');
+  if (!temLinha && avancados.length === 0) return null;
   return (
     <>
-      <GrupoTitulo>Ajustes do inversor</GrupoTitulo>
-      {normais.length > 0 && <div className="rounded-lg border px-3">{normais.map(linha)}</div>}
+      <GrupoTitulo>Regulação e proteção</GrupoTitulo>
+      <div className="rounded-lg border px-3">
+        {linhas.map((l) => {
+          const sp = l.sp ? porId.get(l.sp) : undefined;
+          if (sp) { usados.add(sp.id); return linhaAjuste(sp, l.label, l.valor); }
+          // Sem comando neste modelo: só aparece se a TON publicar a leitura (senão, some).
+          if (l.soSeSuportado || l.valor === '—') return null;
+          return <ParamRow key={l.label} label={l.label} faixa={l.faixa} valor={l.valor} />;
+        })}
+        {/* ajustes do modelo que não têm linha fixa no mockup (ex.: Q % da Sungrow) */}
+        {lista.filter((sp) => !sp.avancado && !usados.has(sp.id) && !linhas.some((l) => l.sp === sp.id)).map((sp) => linhaAjuste(sp))}
+      </div>
       {avancados.length > 0 && (
         <div className="mt-2">
           <button type="button" className="text-xs text-muted-foreground hover:text-foreground" onClick={() => setVerAvancado((v) => !v)}>
             {verAvancado ? '▾' : '▸'} Avançado ({avancados.length})
           </button>
-          {verAvancado && <div className="rounded-lg border border-amber-300 px-3 mt-1">{avancados.map(linha)}</div>}
+          {verAvancado && <div className="rounded-lg border border-amber-300 px-3 mt-1">{avancados.map((sp) => linhaAjuste(sp))}</div>}
         </div>
       )}
-      <p className="text-xs text-muted-foreground mt-2">
-        Enviado pela TON que lê o inversor. Exige firmware gerado a partir de 09/10/2026 (com suporte a ajustes).
+      <p className="text-xs text-muted-foreground mt-3">
+        Ajustes enviados ao inversor pela TON (firmware gerado a partir de 09/10/2026). Só aparece o que este modelo aceita.
       </p>
     </>
   );
@@ -279,7 +299,6 @@ export function InversorSheet({ equipamentoId, nome, onClose }: { equipamentoId:
     >
       {aba === 'cfg' ? (
         <>
-          <AjustesInversor equipamentoId={equipamentoId} nome={nomeEq} />
           <GrupoTitulo>Parâmetros</GrupoTitulo>
           <Section rows={[
             { k: 'Potência nominal', v: `${fmt(nominal, 0)} kW` },
@@ -287,22 +306,20 @@ export function InversorSheet({ equipamentoId, nome, onClose }: { equipamentoId:
             { k: 'Tipo de saída', v: g('info.output_type') ?? '—', mute: true },
             { k: 'Potência reativa nominal', v: `${fmt(g('regulation.nominal_reactive_power'), 0)} kvar` },
           ]} />
-          {/* REGULAÇÃO E PROTEÇÃO (grid-code) — igual ao mockup. UI pronta; os valores só
-              preenchem quando a TON ler esses registradores Modbus (part b). Chaves plausíveis
-              já fiadas → auto-preenchem quando chegarem. */}
-          <GrupoTitulo>Regulação e proteção</GrupoTitulo>
-          <div className="rounded-lg border px-3">
-            <ParamRow label="Modo de reativo" faixa="FP fixo · Q fixo · Q(V)" valor={pv('regulation.reactive_mode_text')} />
-            <ParamRow label="Fator de potência" faixa="0,80 ind a 0,80 cap" valor={pv('regulation.power_factor_setpoint')} />
-            <ParamRow label="Limite de potência ativa" faixa="0 a 100 %" valor={pv('regulation.active_power_limit', ' %')} />
-            <ParamRow label="Sobretensão" faixa="1,05 a 1,20 pu" valor={pv('protection.over_voltage', ' pu')} />
-            <ParamRow label="Subtensão" faixa="0,70 a 0,90 pu" valor={pv('protection.under_voltage', ' pu')} />
-            <ParamRow label="Sobrefrequência" faixa="60,5 a 63,0 Hz" valor={pv('protection.over_frequency', ' Hz')} />
-            <ParamRow label="Subfrequência" faixa="56,0 a 59,5 Hz" valor={pv('protection.under_frequency', ' Hz')} />
-          </div>
-          <p className="text-xs text-muted-foreground mt-3">
-            Interface pronta. Os valores aparecem quando a TON passar a ler estes registradores do inversor (Modbus) — leitura/edição em construção.
-          </p>
+          <RegulacaoProtecao
+            equipamentoId={equipamentoId}
+            nome={nomeEq}
+            linhas={[
+              { label: 'Modo de reativo', faixa: 'FP fixo · Q fixo · Q(V)', valor: pv('regulation.reactive_mode_text') },
+              { label: 'Fator de potência', faixa: '0,80 ind a 0,80 cap', valor: pv('regulation.power_factor_setpoint'), sp: 'sp_fp' },
+              { label: 'Reativo (% da nominal)', faixa: '−100 a 100 %', valor: pv('regulation.reactive_pct', ' %'), sp: 'sp_q_pct', soSeSuportado: true },
+              { label: 'Limite de potência ativa', faixa: '0 a 100 %', valor: pv('regulation.active_power_limit', ' %'), sp: 'sp_limite_pct' },
+              { label: 'Sobretensão', faixa: '1,05 a 1,20 pu', valor: pv('protection.over_voltage', ' pu') },
+              { label: 'Subtensão', faixa: '0,70 a 0,90 pu', valor: pv('protection.under_voltage', ' pu') },
+              { label: 'Sobrefrequência', faixa: '60,5 a 63,0 Hz', valor: pv('protection.over_frequency', ' Hz') },
+              { label: 'Subfrequência', faixa: '56,0 a 59,5 Hz', valor: pv('protection.under_frequency', ' Hz') },
+            ]}
+          />
         </>
       ) : (
         <>
