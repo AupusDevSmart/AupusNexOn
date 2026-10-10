@@ -358,8 +358,8 @@ export function DisjuntorSheet({ equipamentoId, onClose }: { equipamentoId: stri
                         {[['A', 'Va', 'Ia'], ['B', 'Vb', 'Ib'], ['C', 'Vc', 'Ic']].map(([f, vk, ik]) => (
                           <div key={f} className="flex px-3.5 py-2 border-t">
                             <div className="flex-1 text-muted-foreground">{f}</div>
-                            <div className="flex-1 text-right font-medium">{fmt(medDados?.[vk], 0)} V</div>
-                            <div className="flex-1 text-right font-medium">{fmt(medDados?.[ik], 0)} A</div>
+                            <div className="flex-1 text-right font-medium">{fmt(medDados?.[vk], 2)} V</div>
+                            <div className="flex-1 text-right font-medium">{fmt(medDados?.[ik], 2)} A</div>
                           </div>
                         ))}
                       </div>

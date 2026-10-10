@@ -240,16 +240,16 @@ export function InversorSheet({ equipamentoId, nome, onClose }: { equipamentoId:
   const fnCalculado = !temFN && temFF;
   // Padrão: abre no que é MEDIDO (só FN → abre em FN).
   const mostraFF = (temFF || !temFN) ? ff : !ff;
-  const tensaoCel = (v: number | undefined, calc: boolean) => `${fmt(v, 0)} V${calc && v != null ? ' (calc.)' : ''}`;
+  const tensaoCel = (v: number | undefined, calc: boolean) => `${fmt(v, 2)} V${calc && v != null ? ' (calc.)' : ''}`;
   const fasesFF: Array<[string, React.ReactNode, React.ReactNode]> = [
-    ['AB', tensaoCel(ffVals[0], ffCalculado), `${fmt(g('current.phase_a'), 0)} A`],
-    ['BC', tensaoCel(ffVals[1], ffCalculado), `${fmt(g('current.phase_b'), 0)} A`],
-    ['CA', tensaoCel(ffVals[2], ffCalculado), `${fmt(g('current.phase_c'), 0)} A`],
+    ['AB', tensaoCel(ffVals[0], ffCalculado), `${fmt(g('current.phase_a'), 2)} A`],
+    ['BC', tensaoCel(ffVals[1], ffCalculado), `${fmt(g('current.phase_b'), 2)} A`],
+    ['CA', tensaoCel(ffVals[2], ffCalculado), `${fmt(g('current.phase_c'), 2)} A`],
   ];
   const fasesFN: Array<[string, React.ReactNode, React.ReactNode]> = [
-    ['A', tensaoCel(fnVals[0], fnCalculado), `${fmt(g('current.phase_a'), 0)} A`],
-    ['B', tensaoCel(fnVals[1], fnCalculado), `${fmt(g('current.phase_b'), 0)} A`],
-    ['C', tensaoCel(fnVals[2], fnCalculado), `${fmt(g('current.phase_c'), 0)} A`],
+    ['A', tensaoCel(fnVals[0], fnCalculado), `${fmt(g('current.phase_a'), 2)} A`],
+    ['B', tensaoCel(fnVals[1], fnCalculado), `${fmt(g('current.phase_b'), 2)} A`],
+    ['C', tensaoCel(fnVals[2], fnCalculado), `${fmt(g('current.phase_c'), 2)} A`],
   ];
   const notaTensao = mostraFF
     ? (ffCalculado ? 'Este inversor mede só fase-neutro: entre fases calculado (×√3).' : '')
