@@ -12,6 +12,7 @@ export { MedidorIcon } from './MedidorIcon';
 export { DisjuntorIcon } from './DisjuntorIcon';
 export { RedeConcessionariaIcon } from './RedeConcessionariaIcon';
 export { CarregadorEletricoIcon } from './CarregadorEletricoIcon';
+export { CargaIcon } from './CargaIcon';
 
 // Factory and utilities
 export {

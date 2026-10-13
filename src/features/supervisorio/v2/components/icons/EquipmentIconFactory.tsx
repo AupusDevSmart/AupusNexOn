@@ -23,6 +23,7 @@ import { PivoIcon } from './PivoIcon';
 import { CarregadorEletricoIcon } from './CarregadorEletricoIcon';
 import { TONIcon } from './TONIcon';
 import { BombaCombustivelIcon } from './BombaCombustivelIcon';
+import { CargaIcon } from './CargaIcon';
 
 // ============================================================================
 // TIPOS
@@ -82,6 +83,9 @@ const ICON_MAP: Record<string, IconComponent> = {
 
   // 3. Chave
   'CHAVE': ChaveIcon,
+
+  // Carga (só visual no unifilar)
+  'CARGA': CargaIcon,
 
   // 4. Disjuntor BT (Baixa Tensão)
   'DISJUNTOR_BT': DisjuntorIcon,
@@ -302,6 +306,7 @@ export const getEquipmentIcon = (categoria: string | undefined | null): IconComp
 const matchIconByKeyword = (norm: string): IconComponent | null => {
   const k = norm.normalize('NFD').replace(/[̀-ͯ]/g, ''); // tira acentos
   if (k.includes('BOMBA')) return BombaCombustivelIcon;
+  if (k === 'CARGA' || k.startsWith('CARGA_')) return CargaIcon;
   if (k.includes('PIVO')) return PivoIcon;
   if (k.includes('INVERSOR')) return InversorIcon;
   if (k.includes('TRANSFORMADOR') || k.includes('TRAFO')) return TransformadorIcon;

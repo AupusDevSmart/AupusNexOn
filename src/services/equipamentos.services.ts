@@ -409,7 +409,7 @@ export class EquipamentosApiService {
   }
 
   /** Tipos disponíveis no cadastro do unifilar (disp_unifilar), com sigla e pontos nativos. */
-  async tiposUnifilar(): Promise<Array<{ id: string; codigo: string; nome: string; sigla: string | null; pontos_nativos?: { comando: string[]; status: string[] } }>> {
+  async tiposUnifilar(): Promise<Array<{ id: string; codigo: string; nome: string; sigla: string | null; pontos_nativos?: { comando: string[]; status: string[] }; somente_visual?: boolean }>> {
     const r = await api.get<any>(`${this.baseEndpoint}/tipos-unifilar`);
     return (r?.data?.data ?? r?.data ?? []) as any;
   }

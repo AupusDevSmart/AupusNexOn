@@ -18,7 +18,7 @@ import { equipamentosApi, type EquipamentoApiResponse } from '@/services/equipam
  * no IoT.
  */
 type PontosNativos = { comando: string[]; status: string[] };
-type Tipo = { id: string; codigo: string; nome: string; sigla: string | null; pontos_nativos?: PontosNativos };
+type Tipo = { id: string; codigo: string; nome: string; sigla: string | null; pontos_nativos?: PontosNativos; somente_visual?: boolean };
 
 /**
  * Seletor de pontos de uma capacidade (comando ou status). Os nativos do tipo vêm
@@ -88,6 +88,8 @@ export function EquipamentoCadastroModal({ open, onClose, unidadeId, mode, equip
   const [nativos, setNativos] = useState<PontosNativos>({ comando: [], status: [] });
   const [pontosComando, setPontosComando] = useState<string[]>([]);
   const [pontosStatus, setPontosStatus] = useState<string[]>([]);
+  // Tipo só de desenho (ex.: Carga): esconde e zera o SCS.
+  const [somenteVisual, setSomenteVisual] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -100,6 +102,7 @@ export function EquipamentoCadastroModal({ open, onClose, unidadeId, mode, equip
       setTipoId(''); setTag(''); setLocalizacao('');
       setPossuiMedicao(false); setPossuiScs(false); setScsComando(false); setScsStatus(false);
       setNativos({ comando: [], status: [] }); setPontosComando([]); setPontosStatus([]);
+      setSomenteVisual(false);
       setLoading(true);
       equipamentosApi.tiposUnifilar()
         .then((t) => {
@@ -123,6 +126,7 @@ export function EquipamentoCadastroModal({ open, onClose, unidadeId, mode, equip
           setScsComando(!!c?.scs_comando);
           setScsStatus(!!c?.scs_status);
           setTipoLabel(c?.tipo_nome ?? equipmentTipoLabel ?? '');
+          setSomenteVisual(c?.somente_visual === true);
           setNativos(c?.pontos_nativos ?? { comando: [], status: [] });
           setPontosComando(Array.isArray(c?.pontos_comando) ? c.pontos_comando : []);
           setPontosStatus(Array.isArray(c?.pontos_status) ? c.pontos_status : []);
@@ -137,6 +141,9 @@ export function EquipamentoCadastroModal({ open, onClose, unidadeId, mode, equip
     setTipoId(id);
     const t = lista.find((x) => x.id === id);
     setTipoLabel(t?.nome ?? '');
+    const visual = t?.somente_visual === true;
+    setSomenteVisual(visual);
+    if (visual) { setPossuiScs(false); setPossuiMedicao(false); setScsComando(false); setScsStatus(false); }
     const nat = t?.pontos_nativos ?? { comando: [], status: [] };
     setNativos(nat);
     // Os nativos já vêm marcados (o padrão do tipo); desmarca-se o que não se aplica.
@@ -230,6 +237,9 @@ export function EquipamentoCadastroModal({ open, onClose, unidadeId, mode, equip
 
             {/* Supervisão e controle (SCS) — SCS é o guarda-chuva: ao marcá-lo,
                 perguntamos as capacidades: Medição, Comando e/ou Status. */}
+            {somenteVisual ? (
+              <p className="pt-3 border-t text-xs text-muted-foreground">Equipamento só visual no unifilar: sem medição, comando ou status.</p>
+            ) : (
             <div className="pt-1 border-t">
               <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold pt-3 pb-1">Supervisão e controle</div>
               <label className="flex items-center gap-2 py-1.5 cursor-pointer">
@@ -272,6 +282,7 @@ export function EquipamentoCadastroModal({ open, onClose, unidadeId, mode, equip
                 </div>
               )}
             </div>
+            )}
           </div>
         )}
 
