@@ -689,9 +689,24 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
       .filter((e: any) => /DISJUNTOR/i.test(`${e.tipo ?? ''} ${e.rotulo ?? ''}`))
       .map((e: any) => ({ id: String(e.equipamento_id || '').trim(), nome: e.rotulo }));
   };
-  const carregarDisjuntoresUnidade = async () => {
+  // Medidor Concessionária (EQTL001) DESENHADO no unifilar: alvo do medidor lido pelo A-966
+  // ou pela SSU da TON-V2 (mesmo vínculo do PM→DJ: props.disjuntor_equipamento_id) — ao
+  // clicar nele no unifilar, a ficha mostra os dados deste device.
+  const listarMedidoresConcUnifilar = async (): Promise<Array<{ id: string; nome: string }>> => {
+    const todos = await equipamentosDaUnidade();
+    return todos
+      .filter((e: any) => {
+        const cod = String(e.tipo_equipamento_rel?.codigo ?? e.tipoEquipamento?.codigo ?? e.tipo_equipamento ?? '').toUpperCase();
+        const desenhado = e.posicao_x != null || e.posicaoX != null || (e.posicao_x === undefined && e.posicaoX === undefined);
+        return cod === 'EQTL001' && desenhado;
+      })
+      .map((e: any) => ({ id: String(e.id).trim(), nome: `Medidor Concessionária · ${String(e.tag ?? e.nome ?? '').trim()}` }));
+  };
+  const carregarDisjuntoresUnidade = async (tipoComp?: string) => {
     try {
-      setDisjuntoresUnidade(await listarDisjuntoresScs());
+      const ehMedidorConc = ['medidor_comum', 'medidor_ssu'].includes(String(tipoComp ?? '').toLowerCase());
+      // PM → disjuntor; medidor da SSU (A-966 / TON-V2) → Medidor Concessionária.
+      setDisjuntoresUnidade(ehMedidorConc ? await listarMedidoresConcUnifilar() : await listarDisjuntoresScs());
     } catch (err) {
       console.warn('[iot-diagram] carregarDisjuntoresUnidade falhou:', err);
       setDisjuntoresUnidade([]);
@@ -714,7 +729,7 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
       setAvailableTonsForPicker(await listarAtivosParaVinculo(comp));
     }
     // Power Meter: carrega os disjuntores da unidade pro campo "Disjuntor associado".
-    if (isPmComp(comp.type)) void carregarDisjuntoresUnidade();
+    if (isPmComp(comp.type)) void carregarDisjuntoresUnidade(comp.type);
   };
 
   const saveComponentProps = async () => {
@@ -2056,7 +2071,11 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
             {/* Power Meter: disjuntor associado (o PM é só-IoT; exibido via disjuntor). */}
             {isPmComp(propsComp?.type) && (
               <div className="space-y-1 pt-2 border-t sm:col-span-2">
-                <Label className="text-xs">Disjuntor associado (unifilar)</Label>
+                <Label className="text-xs">
+                  {['medidor_comum', 'medidor_ssu'].includes(String(propsComp?.type ?? '').toLowerCase())
+                    ? 'Medidor Concessionária associado (unifilar)'
+                    : 'Disjuntor associado (unifilar)'}
+                </Label>
                 <select
                   value={propsValues['disjuntor_equipamento_id'] ?? ''}
                   onChange={e => setPropsValues(prev => ({ ...prev, disjuntor_equipamento_id: e.target.value }))}
@@ -2075,9 +2094,13 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
                     )}
                 </select>
                 <p className="text-[10px] text-muted-foreground">
-                  {disjuntoresUnidade.length === 0
-                    ? 'Nenhum disjuntor com SCS ligado nesta unidade — ligue o SCS no cadastro do disjuntor (unifilar) para ele aparecer aqui.'
-                    : 'Só disjuntores com SCS ligado. Os dados deste medidor aparecem ao clicar no disjuntor associado no unifilar.'}
+                  {['medidor_comum', 'medidor_ssu'].includes(String(propsComp?.type ?? '').toLowerCase())
+                    ? (disjuntoresUnidade.length === 0
+                        ? 'Nenhum Medidor Concessionária desenhado no unifilar desta unidade.'
+                        : 'Os dados da SSU aparecem ao clicar neste Medidor Concessionária no unifilar.')
+                    : (disjuntoresUnidade.length === 0
+                        ? 'Nenhum disjuntor com SCS ligado nesta unidade — ligue o SCS no cadastro do disjuntor (unifilar) para ele aparecer aqui.'
+                        : 'Só disjuntores com SCS ligado. Os dados deste medidor aparecem ao clicar no disjuntor associado no unifilar.')}
                 </p>
               </div>
             )}
