@@ -293,18 +293,18 @@ foi ligada ou mudada no meio do intervalo de 5 min.
 
 ---
 
-## 10. Pendente: validar Q2 e Q3 (injeção)
+## 10. Q2 e Q3 (injeção) — testados em 14/10
 
-| Ângulo na mala | Esperado no bloco |
-|---|---|
-| **−150°** | `q=2` · `phr` ≈ 1588 · reativo ≈ 917 em **`qhfc`** (pela convenção atual da TON) |
-| **+150°** | `q=3` · `phr` ≈ 1588 · reativo ≈ 917 em **`qhri`** |
+| Medido | Quadrante (medidor) | Campos | Ângulo calculado |
+|---|---|---|---|
+| `phr` 332 · `qhri` 155 por minuto | **Q3** (`q=3`, octeto 3 = `0xb0`) | `phr` + `qhri` | 180° − atan(155/332) = **155°** |
+| `phr` 317 · `qhri` 183 por minuto | **Q3** | `phr` + `qhri` | **150°** |
+| `phr` 184 · `qhfc` 317 por minuto | **Q2** | `phr` + `qhfc` | 180° − atan(317/184) = **120°** (era para ser −150°) |
 
-(valores para 3 fases × 220 V × 10 A, bloco cheio de 5 min). O campo em que o reativo cair
-confirma a nomenclatura — e, se divergir da convenção do A-966, ajusta-se o mapeamento
-`REG_R` no firmware.
-
----
+Decodificação coerente com a física (detalhes em
+[IOT-TON-V2-SSU-TESTE-BANCADA-2026-10-14.md](IOT-TON-V2-SSU-TESTE-BANCADA-2026-10-14.md), seção 4).
+O **nome** do campo de cada quadrante continua sendo convenção — para casar com o A-966,
+repetir +150° com o A-966 no mesmo medidor.
 
 ## 11. Sinal do FP no display do medidor
 
