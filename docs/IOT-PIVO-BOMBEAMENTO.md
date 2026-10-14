@@ -1,6 +1,6 @@
 # Pivô + bombeamento — um equipamento, duas TONs, partida em sequência
 
-> 14/10/2026 · desenho aprovado em conversa · status: **Fases 1–2 entregues para bancada (14/10)**; fusão dos motores no unifilar aguardando execução; Chimarrão sem TON cadastrada.
+> 14/10/2026 · desenho aprovado em conversa · status: **Fases 1–2 entregues (14/10)**; Chimarrão configurada (pivôs 1+2 e 3+11 com bomba compartilhada).
 > Vale para TON V1 e V2 (a diferença entre elas é SSU e quantidade de BI/BO; os dois
 > geradores já têm a máquina de estados do pivô, `_genPivot`).
 
@@ -117,9 +117,17 @@ ficha mostra o progresso ("ligando bomba… aguardando pressão… girando").
 - **Front:** ficha do pivô (unifilar) — Operação: ↺ Esquerda / Desligar / Direita ↻ +
   passos da última sequência; Configuração: bombeamento + tempos.
 - **Migrations:** `2026-10-14_pivo_bombeamento_sequencia.sql` (aplicada),
-  `2026-10-14d_pivo_pontos_nativos.sql` (aplicada), `2026-10-14b_motores_pivo_fusao.sql`
-  (**não aplicada** — simulada: 15 motores; tira os motores-bomba do unifilar),
-  `2026-10-14c_chimarrao_bombeamento_pivos.sql` (sem efeito: TONs da Chimarrão removidas).
+  `2026-10-14d_pivo_pontos_nativos.sql` (aplicada), `2026-10-14c_chimarrao_bombeamento_pivos.sql` (aplicada).
+- **Motor continua existindo** como equipamento do unifilar (serve para outros casos); a ideia
+  de fundir motor→pivô foi descartada.
+- **Chimarrão:** pivôs 1 e 2 dividem a bomba (dois motores que trabalham juntos; a escolha de
+  qual pivô recebe água é manual no pé do pivô) → os dois mandam "ligar bomba" na TON4-1
+  (…8C:5C). Pivôs 3 e 11 dividem a TON4-3 (…82:C0); a chave que direciona a água entre eles
+  é automação futura. BO1 ligar, BO2 desligar (pulso), BI1 ligado.
+- **TONs da Chimarrão restauradas:** os ativos TON2-1 (gateway) e TON4-1/TON4-3 (satélites)
+  estavam soft-deletados desde 04/08, embora o projeto IoT apontasse para eles. Restaurados e
+  corrigido o save do IoT: satélite LoRa (`lora_mode` tx) não recebe mais o tópico da gateway
+  (`<base>/satellite/<MAC>` quando houver MAC; sem MAC, mantém o tópico do ativo).
 
 ### Roteiro de bancada (2 TONs)
 1. Duas TONs com **Tópico Base diferentes** (ex.: `TESTE/BOMBA` e `TESTE/PIVO`) no Lab.

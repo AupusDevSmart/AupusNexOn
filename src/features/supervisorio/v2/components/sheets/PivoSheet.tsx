@@ -255,25 +255,26 @@ function ConfigBombeamento({ pivoId, estado, onSalvo }: { pivoId: string; estado
     <>
       <GrupoTitulo>Bombeamento</GrupoTitulo>
       <div className="space-y-2">
-        <Campo label="Este pivô tem bombeamento" sub="A bomba fica em outra TON; o NexON liga ela antes de girar">
-          <input type="checkbox" className="h-4 w-4" checked={ativo} onChange={(e) => setAtivo(e.target.checked)} />
+        <Campo label="TON da bomba" sub="Antes de girar, o NexON liga a bomba nesta TON e espera a pressão">
+          <select
+            className="max-w-[12rem] rounded-md border bg-background px-2 py-1 text-sm"
+            value={ativo ? f.ton_id : ''}
+            onChange={(e) => { set('ton_id', e.target.value); setAtivo(!!e.target.value); }}
+          >
+            <option value="">Sem bombeamento</option>
+            {(op?.tons ?? []).map((t) => <option key={t.id} value={t.id}>{t.nome} · {t.unidade}</option>)}
+          </select>
         </Campo>
+        {op && op.bombeamentos.length > 0 && (
+          <Campo label="Usar a bomba de outro pivô" sub="Mesma TON e BO = bomba compartilhada">
+            <select className="rounded-md border bg-background px-2 py-1 text-sm" value="" onChange={(e) => copiarDe(e.target.value)}>
+              <option value="">—</option>
+              {op.bombeamentos.map((x) => <option key={x.pivo_id} value={x.pivo_id}>{x.nome}</option>)}
+            </select>
+          </Campo>
+        )}
         {ativo && (
           <>
-            {op && op.bombeamentos.length > 0 && (
-              <Campo label="Usar a bomba de outro pivô" sub="Mesma TON e BO = bomba compartilhada">
-                <select className="rounded-md border bg-background px-2 py-1 text-sm" value="" onChange={(e) => copiarDe(e.target.value)}>
-                  <option value="">—</option>
-                  {op.bombeamentos.map((x) => <option key={x.pivo_id} value={x.pivo_id}>{x.nome}</option>)}
-                </select>
-              </Campo>
-            )}
-            <Campo label="TON da bomba">
-              <select className="max-w-[12rem] rounded-md border bg-background px-2 py-1 text-sm" value={f.ton_id} onChange={(e) => set('ton_id', e.target.value)}>
-                <option value="">Escolha…</option>
-                {(op?.tons ?? []).map((t) => <option key={t.id} value={t.id}>{t.nome} · {t.unidade}</option>)}
-              </select>
-            </Campo>
             <Campo label="Acionamento" sub={f.modo === 'pulso' ? 'Pulso liga, outro pulso desliga (selo/soft-starter)' : 'A TON segura o relé; soltar desliga'}>
               <select className="rounded-md border bg-background px-2 py-1 text-sm" value={f.modo} onChange={(e) => set('modo', e.target.value)}>
                 <option value="pulso">Pulso</option>
@@ -308,7 +309,7 @@ function ConfigBombeamento({ pivoId, estado, onSalvo }: { pivoId: string; estado
       <button
         type="button"
         onClick={salvar}
-        disabled={salvando || (ativo && !f.ton_id)}
+        disabled={salvando}
         className="mt-3 w-full rounded-lg py-2.5 text-sm font-semibold text-white disabled:opacity-50"
         style={{ background: '#177A3C' }}
       >{salvando ? 'Salvando…' : 'Salvar'}</button>
