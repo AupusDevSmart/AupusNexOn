@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { api } from '@/config/api';
 import { acionarPontoApi } from '@/services/acionar-ponto.services';
+import { SsuOperacao } from './sheets/MedidorSheet';
 import { useCurvaDia, MiniChart } from './sheets/sheetParts';
 
 /**
@@ -204,6 +205,9 @@ export function DisjuntorSheet({ equipamentoId, onClose }: { equipamentoId: stri
 
   // Medição: PM associado (medição 'pm') ou o próprio relé/IED (medição 'ied').
   const medDados = temPm ? pmDados : temIed ? releDados : null;
+  // PM associado que na verdade é medidor de concessionária lido pela SSU (TON-V2 / A-966):
+  // o dado é bloco de pulsos, não V/A/kW instantâneos → usa a visão SSU da ficha do medidor.
+  const pmEhSsu = temPm && !!pmDados && ((pmDados as any).NSU != null || (pmDados as any)?.data?.phf != null);
   const medFonte = temPm
     ? (bundle?.pm ? `PM: ${bundle.pm.nome ?? bundle.pm.equipamento_id}` : null)
     : temIed
@@ -312,6 +316,8 @@ export function DisjuntorSheet({ equipamentoId, onClose }: { equipamentoId: stri
                     <p className="text-xs text-muted-foreground">Medição declarada como PM, mas nenhum Power Meter associado — associe em "Configurações SCS" da TON.</p>
                   ) : temIed && !bundle.status_fonte ? (
                     <p className="text-xs text-muted-foreground">Medição declarada como IED, mas nenhum relé vinculado a este disjuntor no IoT.</p>
+                  ) : pmEhSsu && bundle.pm ? (
+                    <SsuOperacao equipamentoId={bundle.pm.equipamento_id} />
                   ) : (
                     <>
                       {(() => {

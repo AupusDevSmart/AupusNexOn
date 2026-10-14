@@ -17,7 +17,7 @@ const janela = (iso?: string | null) => {
  * de 1 em 1 min da TON-V2), a demanda em janelas fixas de 15 min (como a concessionária
  * fatura) e a energia do dia — tudo de /equipamentos-dados/:id/gateway/dashboard.
  */
-function SsuOperacao({ equipamentoId }: { equipamentoId: string }) {
+export function SsuOperacao({ equipamentoId }: { equipamentoId: string }) {
   const { data, error } = useGatewayDashboard(equipamentoId);
   const agora = data?.minuto_a_minuto?.agora ?? null;
   const snap = data?.snapshot ?? null;
