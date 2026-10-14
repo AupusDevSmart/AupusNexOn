@@ -13,7 +13,8 @@
 
 export type PortPosition = 'top' | 'bottom' | 'left' | 'right';
 
-export type LabelPosition = 'top' | 'bottom' | 'left' | 'right';
+/** 'diag' = diagonal inferior direita (padrão: o topo é onde normalmente chega a linha). */
+export type LabelPosition = 'top' | 'bottom' | 'left' | 'right' | 'diag';
 
 export interface Point {
   x: number;

@@ -231,11 +231,12 @@ const EquipmentNodeImpl: React.FC<EquipmentNodeProps> = ({ equipment, onClick, o
       const deltaX = svgP.x - labelDragStart.x;
       const deltaY = svgP.y - labelDragStart.y;
 
-      // Atualizar offset do label
+      // Atualizar offset do label. Nome na posição automática (diagonal) vira 'diag'
+      // explícito ao arrastar — senão o offset seria somado à base antiga (topo) e pulava.
       const newOffsetX = (equipment.labelOffsetX || 0) + deltaX;
       const newOffsetY = (equipment.labelOffsetY || 0) + deltaY;
 
-      updateEquipamentoLabelOffset(equipment.id, newOffsetX, newOffsetY);
+      updateEquipamentoLabelOffset(equipment.id, newOffsetX, newOffsetY, labelAuto(equipment) ? 'diag' : undefined);
 
       // Atualizar ponto de início para próximo movimento
       setLabelDragStart({ x: svgP.x, y: svgP.y });
@@ -288,7 +289,13 @@ const EquipmentNodeImpl: React.FC<EquipmentNodeProps> = ({ equipment, onClick, o
     let labelY = -LABEL.OFFSET;
     let textAnchor: 'start' | 'middle' | 'end' = 'middle';
 
-    switch (equipment.labelPosition) {
+    switch (labelAuto(equipment) ? 'diag' : equipment.labelPosition) {
+      case 'diag':
+        // diagonal inferior direita: fora do caminho das linhas (que chegam em cima/embaixo no centro)
+        labelX = size.width * 0.7;
+        labelY = size.height + LABEL.FONT_SIZE;
+        textAnchor = 'start';
+        break;
       case 'bottom':
         labelY = size.height + LABEL.OFFSET + LABEL.FONT_SIZE;
         break;
@@ -506,4 +513,12 @@ const EquipmentNodeImpl: React.FC<EquipmentNodeProps> = ({ equipment, onClick, o
 
 // Memo: durante o arrasto so o no movido (e as conexoes) re-renderiza — os demais
 // nos sao pulados (props estaveis), eliminando o re-render de todos os icones por frame.
+/**
+ * Nome sem posição escolhida (padrão 'top' e nunca arrastado) → diagonal inferior
+ * direita. No topo ele ficava em cima da linha que chega no equipamento.
+ * Quem já foi arrastado (tem offset) mantém onde está.
+ */
+const labelAuto = (eq: { labelPosition?: string; labelOffsetX?: number; labelOffsetY?: number }) =>
+  (!eq.labelPosition || eq.labelPosition === 'top') && !eq.labelOffsetX && !eq.labelOffsetY;
+
 export const EquipmentNode = React.memo(EquipmentNodeImpl);

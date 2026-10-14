@@ -23,6 +23,7 @@ import {
   Point,
   PortPosition,
   Theme,
+  LabelPosition,
 } from '../types/diagram.types';
 import { convertToVisualConnections } from '../utils/barramentoDetector';
 import { CANVAS, VIEWPORT } from '../utils/diagramConstants';
@@ -130,7 +131,7 @@ interface DiagramActions {
   /**
    * Atualiza offset customizado do label
    */
-  updateEquipamentoLabelOffset: (equipamentoId: string, offsetX: number, offsetY: number) => void;
+  updateEquipamentoLabelOffset: (equipamentoId: string, offsetX: number, offsetY: number, labelPosition?: LabelPosition) => void;
 
   // ============================================================================
   // CRUD - CONEXÕES
@@ -1301,10 +1302,12 @@ if (import.meta.env.PROD) {
         get().recalcularRotas();
       },
 
-      updateEquipamentoLabelOffset: (equipamentoId: string, offsetX: number, offsetY: number) => {
+      updateEquipamentoLabelOffset: (equipamentoId: string, offsetX: number, offsetY: number, labelPosition?: LabelPosition) => {
         set(state => ({
           equipamentos: state.equipamentos.map(eq =>
-            eq.id === equipamentoId ? { ...eq, labelOffsetX: offsetX, labelOffsetY: offsetY } : eq
+            eq.id === equipamentoId
+              ? { ...eq, labelOffsetX: offsetX, labelOffsetY: offsetY, ...(labelPosition ? { labelPosition } : {}) }
+              : eq
           ),
           isDirty: true,
         }));
