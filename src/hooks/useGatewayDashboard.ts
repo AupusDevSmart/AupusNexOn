@@ -48,7 +48,17 @@ export interface GatewayComunicacao {
   ultimo_pulso: string | null;
 }
 
+/** Parcial de 1 em 1 min da TON-V2 (só exibição; energia/demanda vêm dos blocos). */
+export interface GatewayMinuto {
+  timestamp: string;
+  kW_consumo: number;
+  kW_injecao: number;
+  kvar_ind: number;
+  kvar_cap: number;
+}
+
 export interface GatewayDashboardData {
+  minuto_a_minuto?: { agora: GatewayMinuto | null; serie: GatewayMinuto[] };
   equipamento: { id: string; nome: string; tag: string | null; tipo: string | null };
   unidade: { id: string; demanda_carga: number | null; demanda_geracao: number | null } | null;
   snapshot: GatewaySnapshot | null;
@@ -63,12 +73,12 @@ export function useGatewayDashboard(equipamentoId: string | null, n = 5) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchDashboard = useCallback(async () => {
+  const fetchDashboard = useCallback(async (silencioso = false) => {
     if (!equipamentoId) {
       setData(null);
       return;
     }
-    setLoading(true);
+    if (!silencioso) setLoading(true);
     setError(null);
     try {
       const response = await api.get(
@@ -77,6 +87,7 @@ export function useGatewayDashboard(equipamentoId: string | null, n = 5) {
       );
       setData(response.data as GatewayDashboardData);
     } catch (err: any) {
+      if (silencioso) return; // falha na atualização de fundo: mantém o que já está na tela
       setError(err.response?.data?.message || "Erro ao carregar dados do gateway");
       setData(null);
     } finally {
@@ -86,7 +97,11 @@ export function useGatewayDashboard(equipamentoId: string | null, n = 5) {
 
   useEffect(() => {
     void fetchDashboard();
-  }, [fetchDashboard]);
+    // A TON-V2 publica a cada 1 min: atualiza em segundo plano enquanto o modal está aberto.
+    if (!equipamentoId) return;
+    const t = setInterval(() => void fetchDashboard(true), 60_000);
+    return () => clearInterval(t);
+  }, [fetchDashboard, equipamentoId]);
 
-  return { data, loading, error, refetch: fetchDashboard };
+  return { data, loading, error, refetch: () => fetchDashboard() };
 }

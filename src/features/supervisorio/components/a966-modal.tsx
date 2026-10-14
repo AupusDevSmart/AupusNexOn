@@ -7,6 +7,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useGatewayDashboard } from "@/hooks/useGatewayDashboard";
+import { AgoraMinutoCard } from "./a966/AgoraMinutoCard";
 import { Radio, RefreshCw, Wifi, WifiOff } from "lucide-react";
 import { useMemo } from "react";
 import { ComunicacaoCard } from "./a966/ComunicacaoCard";
@@ -195,6 +196,18 @@ export function A966Modal({
             />
           </div>
         </div>
+
+        {/* Minuto a minuto (TON-V2): potência agora + última hora */}
+        {data?.minuto_a_minuto && (
+          <div className="mt-3">
+            <AgoraMinutoCard
+              agora={data.minuto_a_minuto.agora}
+              serie={data.minuto_a_minuto.serie}
+              corConsumo={COR_CONSUMO}
+              corGeracao={COR_GERACAO}
+            />
+          </div>
+        )}
 
         {/* Linha 2: resumo dia + ultimas leituras */}
         {data && (

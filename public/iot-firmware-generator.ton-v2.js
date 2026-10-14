@@ -2062,6 +2062,9 @@ extern char MQTT_CLIENT_ID[20];
 #define SSU_TEM_GERACAO             ${spec.ssu.tem_geracao ? 1 : 0}
 #define SSU_INTERVALO_REATIVO_MIN   ${spec.ssu.intervalo_reativo_min}
 #define SSU_NVS_SAVE_MS             60000UL
+// Parcial de 1 em 1 min no MESMO topico (/data) com "parcial":1 — potencia "agora". So' MQTT
+// (satelite LoRa fica so' no bloco). Energia/demanda continuam vindo do bloco do medidor.
+#define SSU_PARCIAL_MS              60000UL
 // Satelite LoRa (sem internet): bucket em JSON plano -> frame binario LORA_TYPE_SSU (cabe no MTU 200)
 #define SSU_LORA_BIN                ${spec.lora_role === 'satellite' && !spec.wifi ? 1 : 0}
 `;
@@ -2513,6 +2516,12 @@ static uint32_t _intervaloSeg = 0;    // duracao observada do intervalo (s)
 static unsigned long _ultimoSaveMs = 0;
 static bool _alarmeDegradado = false, _alarmeFormato = false, _alarmeSanidade = false;
 static uint32_t _viradasSemBit5 = 0;  // sanidade §7: viradas do intervalo desde a ultima transicao do bit 5
+// Parcial de 1 min: contador PROPRIO (independe da virada do intervalo do medidor — um minuto
+// que atravessa o fim do bloco nao perde pulsos). Zera a cada parcial publicada.
+static uint32_t _minuto[7] = {0};
+static unsigned long _ultParcialMs = 0;
+static uint16_t _segAtual = 0;
+static bool _temLeitura = false;
 
 // Roda na task de eventos da UART (nao e' ISR): copia o bloco pra fila.
 static void _onRx() {
@@ -2616,7 +2625,32 @@ void ssu_tick(ssu_publish_fn publish) {
         if (r.repetido || r.baseline) continue;   // fechamento repetido / ponto de partida
         _acum[r.regAtiva]   += r.deltaAtiva;
         _acum[r.regReativa] += r.deltaReativa;
+        _minuto[r.regAtiva]   += r.deltaAtiva;
+        _minuto[r.regReativa] += r.deltaReativa;
+        _segAtual = r.segundos;
+        _temLeitura = true;
     }
+
+#if !SSU_LORA_BIN
+    // Parcial de 1 em 1 min: pulsos do ultimo minuto (min) + acumulado do intervalo em curso
+    // (acum) + contagem regressiva do intervalo (seg). O backend NAO soma isto na energia nem
+    // na demanda (so' o bloco de fim de intervalo conta) — e' a potencia "agora" da ficha.
+    if (_temLeitura && millis() - _ultParcialMs >= SSU_PARCIAL_MS) {
+        _ultParcialMs = millis();
+        char pp[360];
+        snprintf(pp, sizeof(pp),
+            "{\\"parcial\\":1,\\"NSU\\":%lu,\\"ts\\":%ld,\\"seg\\":%u,\\"ke\\":%.6f,"
+            "\\"min\\":{\\"phf\\":%lu,\\"phr\\":%lu,\\"qhfi\\":%lu,\\"qhfc\\":%lu,\\"qhri\\":%lu,\\"qhrc\\":%lu},"
+            "\\"acum\\":{\\"phf\\":%lu,\\"phr\\":%lu,\\"qhfi\\":%lu,\\"qhfc\\":%lu,\\"qhri\\":%lu,\\"qhrc\\":%lu}}",
+            (unsigned long)_nsu, (long)time(nullptr), (unsigned)_segAtual, (double)SSU_KE,
+            (unsigned long)_minuto[1], (unsigned long)_minuto[2], (unsigned long)_minuto[3],
+            (unsigned long)_minuto[4], (unsigned long)_minuto[5], (unsigned long)_minuto[6],
+            (unsigned long)_acum[1], (unsigned long)_acum[2], (unsigned long)_acum[3],
+            (unsigned long)_acum[4], (unsigned long)_acum[5], (unsigned long)_acum[6]);
+        publish(SSU_SUBTOPIC, pp);
+        for (int i = 1; i <= 6; i++) _minuto[i] = 0;
+    }
+#endif
 
     const ssu::Estatisticas& st = _leitor.stats();
     if (st.enlaceDegradado != _alarmeDegradado) {
