@@ -208,7 +208,7 @@ function ensureIoTScripts(): Promise<void> {
     //
     // O catalogo de dispositivos foi movido pro backend (GET /iot-catalog/device-catalog.js)
     // — ele revalida sozinho via ETag. Os demais ainda sao estaticos.
-    const IOT_SCRIPTS_VERSION = '20261014-ssu-parcial-1';
+    const IOT_SCRIPTS_VERSION = '20261014-ssu-minuto-medidor-1';
     const scripts = [
       `${BASE_URL}/iot-catalog/device-catalog.js`,
       `/iot-firmware-base.v2.js?v=${IOT_SCRIPTS_VERSION}`,

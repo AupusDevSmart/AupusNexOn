@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { iotApiService } from '@/services/iot.services';
 import { useGatewayDashboard } from '@/hooks/useGatewayDashboard';
 import { equipamentosDadosService } from '@/services/equipamentos-dados.service';
-import { EstadoHero, GrupoTitulo, Section, useDados, getPath, fmt, tsInfo } from './sheetParts';
+import { EstadoHero, GrupoTitulo, Section, MiniChart, useDados, getPath, fmt, tsInfo } from './sheetParts';
 import {
   EquipShell, Pill, NeutralPill, Card, SectionLabel, KpiCells, FieldRow, Segmented, Registros,
   useCustos, custosDe, useHistorico, useHorarios, postoEm, fmtHora, bucketize, brl, TONE_BG, TONE_TEXT,
@@ -20,6 +20,17 @@ import {
  */
 
 export interface StatusMed { tone: Tone; label: string; posto?: string }
+
+/** Quadrante NBR 14522 (vem do medidor). Só tem significado com fluxo. */
+const QUADRANTE: Record<number, string> = {
+  1: 'Q1 · consumindo, indutivo',
+  2: 'Q2 · injetando, capacitivo',
+  3: 'Q3 · injetando, indutivo',
+  4: 'Q4 · consumindo, capacitivo',
+};
+/** Posto horário informado pelo medidor (bits 0-1 do octeto 3). */
+const POSTO: Record<number, string> = { 0: 'não informado', 1: 'Ponta', 2: 'Fora de ponta', 3: 'Quarto posto (reservado)' };
+const mmss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
 const hhmmD = (d: Date) => d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 /** "10:45–11:00": o timestamp do pico é o FIM da janela de 15 min. */
@@ -39,6 +50,9 @@ const janelaD = (iso?: string | null) => {
 export function SsuOperacao({ equipamentoId }: { equipamentoId: string }) {
   const { data, error } = useGatewayDashboard(equipamentoId);
   const agora = data?.minuto_a_minuto?.agora ?? null;
+  const intervalo = data?.minuto_a_minuto?.intervalo ?? null;
+  const serie = data?.minuto_a_minuto?.serie ?? [];
+  const comFluxo = !!agora && (agora.kW_consumo > 0.01 || agora.kW_injecao > 0.01);
   const snap = data?.snapshot ?? null;
   const ref = agora ?? snap;
   const injetando = !!ref && ref.kW_injecao > ref.kW_consumo && ref.kW_injecao > 0.05;
@@ -65,6 +79,26 @@ export function SsuOperacao({ equipamentoId }: { equipamentoId: string }) {
             { k: 'Consumo', v: `${fmt(agora.kW_consumo, 2)} kW` },
             ...(temInjecao || agora.kW_injecao > 0 ? [{ k: 'Injeção', v: `${fmt(agora.kW_injecao, 2)} kW` }] : []),
             { k: 'Reativo', v: kvarAgora == null ? '—' : `${fmt(Math.abs(kvarAgora), 2)} kvar${kvarAgora > 0 ? ' ind.' : kvarAgora < 0 ? ' cap.' : ''}` },
+            ...(agora.FP != null ? [{ k: 'Fator de potência', v: `${fmt(agora.FP, 3)}${agora.FP_natureza ? (agora.FP_natureza === 'cap' ? ' cap.' : ' ind.') : ''}` }] : []),
+            ...(agora.q != null ? [{ k: 'Quadrante', v: comFluxo ? (QUADRANTE[agora.q] ?? `Q${agora.q}`) : 'sem fluxo', mute: !comFluxo }] : []),
+            ...(agora.posto != null ? [{ k: 'Posto horário', v: POSTO[agora.posto] ?? String(agora.posto), mute: true }] : []),
+          ]} />
+          {serie.length >= 2 && (
+            <div className="mt-2">
+              <MiniChart serie={serie.map((m) => (m.kW_consumo >= m.kW_injecao ? m.kW_consumo : -m.kW_injecao))} unit="kW · última hora, por minuto (injeção negativa)" />
+            </div>
+          )}
+        </>
+      )}
+
+      {intervalo && (
+        <>
+          <GrupoTitulo right={intervalo.fecha_em_s != null ? <span className="text-[11px] text-muted-foreground">fecha em {mmss(intervalo.fecha_em_s)}</span> : undefined}>
+            Intervalo do medidor em andamento
+          </GrupoTitulo>
+          <Section rows={[
+            { k: 'Energia consumida até agora', sub: `${intervalo.minutos} min do intervalo`, v: `${fmt(intervalo.kwh_consumo, 3)} kWh` },
+            ...(intervalo.kwh_injecao > 0 ? [{ k: 'Energia injetada até agora', v: `${fmt(intervalo.kwh_injecao, 3)} kWh` }] : []),
           ]} />
         </>
       )}
@@ -407,6 +441,7 @@ function MedidorSsu({ equipamentoId, onStatus }: { equipamentoId: string; onStat
   const horarios = useHorarios(equipamentoId);
   const agora = data?.minuto_a_minuto?.agora ?? null;
   const serie = data?.minuto_a_minuto?.serie ?? [];
+  const intervalo = data?.minuto_a_minuto?.intervalo ?? null;
   const snap = data?.snapshot ?? null;
   const dia = data?.resumo_dia;
   const mes = data?.resumo_mes;
@@ -427,14 +462,20 @@ function MedidorSsu({ equipamentoId, onStatus }: { equipamentoId: string; onStat
   let tone: Tone = 'ok', stLabel = 'Normal', stText = 'Comunicando · SSU';
   if (!agora && !snap) { tone = 'off'; stLabel = 'Sem comunicação'; stText = error ?? 'Sem leitura do medidor'; }
   else if (tol != null && demInt != null && demInt > tol) { tone = 'warn'; stLabel = 'Alerta'; stText = 'Demanda do intervalo acima da tolerância'; }
-  useEffect(() => { onStatus({ tone, label: stLabel, posto: postoEm(now, horarios) }); }, [tone, stLabel, horarios]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Posto informado pelo próprio medidor (TON-V2); sem ele, pela janela da concessionária.
+  const postoMedidor = agora?.posto ? POSTO[agora.posto] : null;
+  const posto = postoMedidor ?? postoEm(now, horarios);
+  useEffect(() => { onStatus({ tone, label: stLabel, posto }); }, [tone, stLabel, posto]); // eslint-disable-line react-hooks/exhaustive-deps
+  const comFluxo = !!agora && (agora.kW_consumo > 0.01 || agora.kW_injecao > 0.01);
 
   const kvar = agora ? agora.kvar_ind - agora.kvar_cap : null;
   const rede = agora ? agora.kW_consumo - agora.kW_injecao : null;
   const kpis = [
     { k: 'Rede agora', v: rede != null ? `${fmt(Math.abs(rede), 1)} kW` : '—', s: rede == null ? '' : rede < 0 ? 'injetando · último minuto' : 'importando · último minuto' },
     { k: 'Reativo agora', v: kvar != null ? `${fmt(Math.abs(kvar), 1)} kvar` : '—', s: kvar == null ? '' : kvar < 0 ? 'capacitivo' : 'indutivo' },
-    { k: 'FP do último bloco', v: snap?.FP ? fmt(snap.FP, 2) : '—', s: snap ? `${snap.FP_natureza === 'cap' ? 'capacitivo' : 'indutivo'} · ${hhmm(new Date(snap.timestamp_dados).getTime())}` : '' },
+    agora?.FP != null
+      ? { k: 'FP agora', v: fmt(agora.FP, 2), s: agora.q != null && comFluxo ? (QUADRANTE[agora.q] ?? `Q${agora.q}`) : agora.FP_natureza === 'cap' ? 'capacitivo' : 'indutivo' }
+      : { k: 'FP do último bloco', v: snap?.FP ? fmt(snap.FP, 2) : '—', s: snap ? `${snap.FP_natureza === 'cap' ? 'capacitivo' : 'indutivo'} · ${hhmm(new Date(snap.timestamp_dados).getTime())}` : '' },
     { k: 'Máxima de hoje', v: dia?.pico_consumo ? `${fmt(dia.pico_consumo.kw, 1)} kW` : '—', s: dia?.pico_consumo ? janela15(dia.pico_consumo.timestamp) : 'demanda de 15 min' },
   ];
 
@@ -460,13 +501,18 @@ function MedidorSsu({ equipamentoId, onStatus }: { equipamentoId: string; onStat
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
         <Card className="rounded-2xl px-5 py-[18px] flex flex-col gap-3">
           <div className="flex justify-between items-baseline">
-            <span className="text-sm text-muted-foreground">Intervalo de 15 min · termina em</span>
-            <span className="text-xl font-extrabold tabular-nums">{hhmm(qFim.getTime())}</span>
+            <span className="text-sm text-muted-foreground">Intervalo de 15 min · {intervalo?.fecha_em_s != null ? 'fecha em' : 'termina em'}</span>
+            <span className="text-xl font-extrabold tabular-nums">{intervalo?.fecha_em_s != null ? mmss(intervalo.fecha_em_s) : hhmm(qFim.getTime())}</span>
           </div>
           <div className="flex items-baseline gap-2">
             <span className="text-[44px] leading-[48px] font-extrabold tabular-nums tracking-tight">{demInt != null ? fmt(demInt, 0) : '—'}</span>
             <span className="text-base text-muted-foreground">kW médios no intervalo</span>
           </div>
+          {intervalo && (
+            <span className="text-[13px] text-muted-foreground -mt-1">
+              {fmt(intervalo.kwh_consumo, 2)} kWh consumidos{intervalo.kwh_injecao > 0 ? ` · ${fmt(intervalo.kwh_injecao, 2)} kWh injetados` : ''} em {intervalo.minutos} min
+            </span>
+          )}
           <div className="relative h-3.5 rounded-full bg-[#EEF0F4] dark:bg-white/10">
             {pct != null && <div className="h-full rounded-full" style={{ width: `${Math.max(0, Math.min(100, (pct / 1.2) * 100))}%`, background: tol != null && demInt! > tol ? '#C53030' : pct > 0.95 ? '#B7791F' : '#2E8B47' }} />}
             {contr != null && <div className="absolute -top-1 -bottom-1 w-0.5 bg-foreground" style={{ left: '83.33%' }} />}
