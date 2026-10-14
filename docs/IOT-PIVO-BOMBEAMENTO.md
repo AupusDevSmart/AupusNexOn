@@ -1,6 +1,6 @@
 # Pivô + bombeamento — um equipamento, duas TONs, partida em sequência
 
-> 14/10/2026 · desenho aprovado em conversa · status: **Fase 0 quase concluída** (falta MAC das TON4 dos pivôs).
+> 14/10/2026 · desenho aprovado em conversa · status: **Fases 1–2 entregues para bancada (14/10)**; fusão dos motores no unifilar aguardando execução; Chimarrão sem TON cadastrada.
 > Vale para TON V1 e V2 (a diferença entre elas é SSU e quantidade de BI/BO; os dois
 > geradores já têm a máquina de estados do pivô, `_genPivot`).
 
@@ -17,7 +17,8 @@ O pivô e o bombeamento ficam longe um do outro, então cada um tem a sua TON:
 ```
 
 Para irrigar, a ordem é obrigatória: **liga a bomba → espera pressão → gira o pivô**.
-No unifilar aparece **um** símbolo (Pivô); o bombeamento é parte dele.
+No unifilar aparece **um** símbolo (Pivô); o bombeamento é uma **funcionalidade do pivô**
+(configuração dele), não um equipamento à parte.
 
 ## 2. O que existe hoje (13/10/2026)
 
@@ -30,19 +31,27 @@ No unifilar aparece **um** símbolo (Pivô); o bombeamento é parte dele.
 | TONs dos pivôs na Chimarrão | Tópico `OLI/GO/CHIMARRAO/BOMBAS/satellite/MAC` — "MAC" literal, comando não chega. |
 | Ficha do pivô (PivoSheet) | Mockup: botões desabilitados, "Girar sem água"/"Bloquear na ponta" só visuais. |
 | Programações | Salvas, nunca executadas (não há agendador). |
-| Bloqueio de comando "BOMBA" | `equipamentos-cmd` bloqueia todo tipo com `BOMBA` no código (feito para bomba de combustível) — pegaria a motobomba. |
+| Bloqueio de comando "BOMBA" | `equipamentos-cmd` bloqueia todo tipo com `BOMBA` no código (feito para bomba de combustível) — ajustado na Fase 0 para valer só para combustível. |
 
 ## 3. Decisões
 
-1. **Bombeamento = equipamento próprio, fora do unifilar.** Tipo novo `MOTOBOMBA`
-   (`disp_unifilar=false`, `disp_iot=true`). O pivô aponta para ele em
-   `pivo_config.motobomba_equipamento_id`. Motivo: uma bomba pode servir **vários pivôs**
-   (sistema conjugado) — se cada pivô repetisse "a mesma BO da mesma TON" como ponto
-   próprio, desligar um pivô desligaria a bomba dos outros. Com a bomba como entidade
-   única, a sequência sabe quem ainda está usando.
-   - No IoT, ao configurar o pivô: **"Bombeamento: novo | usar o do Pivô X"**.
-   - O bloqueio de comando manual passa a valer só para `BOMBA_COMBUSTIVEL`.
-2. **Modo de acionamento da bomba** (config da motobomba), porque muda como desligar e
+1. **Bombeamento é uma funcionalidade do pivô — não é outro equipamento.** Fica na
+   configuração do próprio pivô: `pivo_config.bombeamento` (jsonb):
+   ```json
+   { "ativo": true, "ton_id": "<TON da casa de bombas>", "modo": "pulso" | "mantido",
+     "bo_liga": 1, "bo_desliga": 2, "bi_confirma": 1, "confirma_s": 30 }
+   ```
+   - **Por que não pontos em `ton_bo`:** `ton_bo` é UNIQUE(ton_id, bo_numero) — um BO só
+     pode pertencer a um ponto. Dois pivôs com a mesma bomba não caberiam. Na config do
+     pivô, cada um aponta livremente para a TON/BO da bomba.
+   - **Bomba compartilhada (sistema conjugado) é automática:** pivôs cujo bombeamento
+     aponta para a **mesma TON + mesmo `bo_liga`** dividem a bomba. Ninguém precisa
+     cadastrar "conjugado" — no IoT basta, ao configurar o pivô, escolher a mesma TON/BO
+     (com atalho "usar o bombeamento do Pivô X", que só copia os campos).
+   - A sequência consulta os outros pivôs da mesma bomba antes de desligá-la.
+   - `pivo_config.motobomba_equipamento_id` (da migration de 28/09) fica sem uso.
+   - O bloqueio de comando manual vale só para `BOMBA_COMBUSTIVEL` (feito na Fase 0).
+2. **Modo de acionamento da bomba** (campo `modo` do bombeamento), porque muda como desligar e
    o que acontece se a TON reiniciar:
    - `pulso` — soft-starter/contator com selo: um pulso liga, outro pulso (outra BO) desliga.
      Se a TON A reiniciar, a bomba **continua** ligada.
@@ -80,7 +89,7 @@ ficha mostra o progresso ("ligando bomba… aguardando pressão… girando").
 | Fase | Entrega | Muda algo em campo? |
 |---|---|---|
 | **0 — Base** | ✅ `pivo_config`/`pivo_programacoes` aplicadas (14/10); ✅ bloqueio de comando manual só p/ `BOMBA_COMBUSTIVEL`; ⏳ corrigir tópicos `satellite/MAC` (precisa dos MACs reais). | Não |
-| **1 — Modelo** | Tipo `MOTOBOMBA` (junto com o nó do IoT, para não aparecer na paleta sem configuração). IoT: nó Pivô com seção Bombeamento (TON A, BO liga, BO desliga se pulso, BI confirmação, modo) e "usar o do Pivô X"; cadastro grava pontos nos dois equipamentos. | Não |
+| **1 — Modelo** | Coluna `pivo_config.bombeamento` (jsonb). IoT: nó Pivô ganha a seção **Bombeamento** (TON, modo, BO liga, BO desliga se pulso, BI de confirmação) com atalho "usar o do Pivô X"; grava em `pivo_config`. Aviso no IoT quando a TON da bomba tem a BO ocupada por outro ponto. | Não |
 | **2 — Sequência** | Serviço de sequência no backend (estado persistido, timeouts, abort seguro, trilha); endpoint `POST /pivos/:id/irrigar|parar`; ficha do pivô ligada. | Sim — após teste em bancada com 2 TONs |
 | **3 — Firmware** | Backend passa a mandar `pivot on/off/dir` (não mais `rN` soltos) para a TON do pivô; BO de bomba em modo mantido nos geradores V1/V2. | Sim — regravar TONs |
 | **4 — Ficha + agenda** | Bombeamento e pivô no mesmo cartão; programações executadas pelo agendador; bloqueio de ponta valendo também para "Irrigar". | Sim |
@@ -90,3 +99,34 @@ ficha mostra o progresso ("ligando bomba… aguardando pressão… girando").
 - MACs reais das TON4 dos pivôs da Chimarrão (TON4-PIVO1/2/3) para corrigir os tópicos.
 - Qual BI da TON A é o retorno "bomba ligada" em cada instalação (entra no cadastro).
 - Pivôs da NS Aparecida (Pivôs 4–6) estão só com monitoramento (M160) — entram depois.
+
+## 7. Entregue em 14/10/2026 (bancada)
+
+- **Backend:** `PivoSequenciaService` (`aupus-nexon-api/src/modules/pivos/pivo-sequencia.service.ts`).
+  - `GET /pivos/:id/estado` · `POST /pivos/:id/acionar {acao: girar_direita|girar_esquerda|desligar}`
+  - `GET /pivos/:id/bombeamento/opcoes` (TONs da planta + bombeamentos de outros pivôs)
+  - `PUT /pivos/:id/bombeamento {bombeamento, sequencia}`
+  - BO da bomba: `EquipamentosCmdService.acionarBoDireto` (pulso / liga / desliga, mesmas
+    restrições e trilha do acionar). BI: `lerEntradaTon` (`equipamento_io_estado`).
+  - Papéis dos pontos do pivô achados pelo nome (direita / esquerda / desligar; status
+    girando direita/esquerda, desligado, erro). Tipo PIVO ganhou esses **pontos nativos**.
+  - Sequência persistida em `pivo_sequencias`; restart do servidor marca `interrompida`.
+  - Simulado com TONs falsas: partida, desligar, bomba compartilhada (2º pivô não religa,
+    1º desligar mantém bomba), bomba sem confirmação (aborta e desliga), Desligar durante a
+    pressurização (interrompe e desliga tudo).
+- **Front:** ficha do pivô (unifilar) — Operação: ↺ Esquerda / Desligar / Direita ↻ +
+  passos da última sequência; Configuração: bombeamento + tempos.
+- **Migrations:** `2026-10-14_pivo_bombeamento_sequencia.sql` (aplicada),
+  `2026-10-14d_pivo_pontos_nativos.sql` (aplicada), `2026-10-14b_motores_pivo_fusao.sql`
+  (**não aplicada** — simulada: 15 motores; tira os motores-bomba do unifilar),
+  `2026-10-14c_chimarrao_bombeamento_pivos.sql` (sem efeito: TONs da Chimarrão removidas).
+
+### Roteiro de bancada (2 TONs)
+1. Duas TONs com **Tópico Base diferentes** (ex.: `TESTE/BOMBA` e `TESTE/PIVO`) no Lab.
+2. Unifilar do Lab: criar **Pivô de Irrigação** com SCS Comando + Status (cria Girar_direita,
+   Girar_esquerda, Desligar, Girando_direita, Girando_esquerda, Desligado, Erro).
+3. IoT do Lab → TON do pivô → Configurar BOs: BO1 Girar_direita, BO2 Girar_esquerda,
+   BO3 Desligar; Configurar BIs: BI1 Girando_direita, BI2 Girando_esquerda, BI3 Desligado, BI4 Erro.
+4. Ficha do pivô → Configuração → Bombeamento: TON da bomba, Pulso, BO ligar 1, BO desligar 2,
+   BI confirmação 1; Pressurização 10 s para o teste.
+5. Na TON da bomba, simular o retorno "bomba ligada" na BI1 (jumper) quando o relé fechar.
