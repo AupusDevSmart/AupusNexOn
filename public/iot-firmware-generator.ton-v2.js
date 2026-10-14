@@ -574,7 +574,12 @@ var FirmwareGeneratorTonV2 = class FirmwareGeneratorTonV2 {
             return;
         }
         const fmt = String(p.formato_esperado || 'auto').toLowerCase();
-        const ke = parseFloat(p.ke);
+        // Ke (kWh/pulso): manual se informado; senão 0,3 Wh/pulso (constante do medidor no
+        // secundário) × relação do TC × relação do TP.
+        const keManual = parseFloat(p.ke);
+        const rtc = parseFloat(p.relacao_tc) > 0 ? parseFloat(p.relacao_tc) : 1;
+        const rtp = parseFloat(p.relacao_tp) > 0 ? parseFloat(p.relacao_tp) : 1;
+        const ke = Number.isFinite(keManual) && keManual > 0 ? keManual : +(0.0003 * rtc * rtp).toPrecision(6);
         const addr = parseInt(p.modbus_address, 10) || 1;
         result.ssu = {
             name,
@@ -2566,7 +2571,7 @@ static void _publicar(ssu_publish_fn publish, const ssu::Resultado& ult) {
     snprintf(payload, sizeof(payload),
         "{\\"NSU\\":%lu,\\"cdo\\":%lu,\\"phf\\":%lu,\\"phr\\":%lu,\\"sts\\":%d,"
         "\\"qhfi\\":%lu,\\"qhfc\\":%lu,\\"qhri\\":%lu,\\"qhrc\\":%lu,"
-        "\\"ke\\":%.5f,\\"fmt\\":%u,\\"q\\":%u,\\"seg\\":%u,\\"posto\\":%u,\\"ssu_err\\":%lu}",
+        "\\"ke\\":%.6f,\\"fmt\\":%u,\\"q\\":%u,\\"seg\\":%u,\\"posto\\":%u,\\"ssu_err\\":%lu}",
         (unsigned long)_nsu, cdo,
         (unsigned long)_acum[1], (unsigned long)_acum[2], sts,
         (unsigned long)_acum[3], (unsigned long)_acum[4], (unsigned long)_acum[5], (unsigned long)_acum[6],
@@ -2580,7 +2585,7 @@ static void _publicar(ssu_publish_fn publish, const ssu::Resultado& ult) {
     snprintf(payload, sizeof(payload),
         "{\\"NSU\\":%lu,\\"ver\\":\\"%s\\",\\"data\\":{\\"cdo\\":\\"%lu\\",\\"phf\\":%lu,\\"phr\\":%lu,\\"sts\\":%d,"
         "\\"qhfi\\":%lu,\\"qhfc\\":%lu,\\"qhri\\":%lu,\\"qhrc\\":%lu,\\"frame\\":\\"%s\\"},\\"time\\":\\"%ld\\","
-        "\\"ke\\":%.4f,\\"fmt\\":%u,\\"q\\":%u,\\"seg\\":%u,\\"posto\\":%u,\\"ssu_err\\":%lu}",
+        "\\"ke\\":%.6f,\\"fmt\\":%u,\\"q\\":%u,\\"seg\\":%u,\\"posto\\":%u,\\"ssu_err\\":%lu}",
         (unsigned long)_nsu, FIRMWARE_VERSION, cdo,
         (unsigned long)_acum[1], (unsigned long)_acum[2], sts,
         (unsigned long)_acum[3], (unsigned long)_acum[4], (unsigned long)_acum[5], (unsigned long)_acum[6],

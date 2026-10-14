@@ -428,11 +428,15 @@ var COMPONENT_TYPES = {
         ports: ['top', 'bottom', 'left', 'right'],
         generates_firmware: false,
         conn: { role: 'ssu', targets: ['ton'], hint: 'Medidor SSU só se conecta a uma TON v2 (entrada SU+)' },
-        defaults: { name: 'Medidor SSU', catalog_id: '', modbus_address: 1, ke: '', formato_esperado: 'auto', tem_geracao: true, intervalo_reativo_min: 60, equipamento_id: '', disjuntor_equipamento_id: '' },
+        defaults: { name: 'Medidor SSU', catalog_id: '', modbus_address: 1, relacao_tc: 1, relacao_tp: 1, ke: '', formato_esperado: 'auto', tem_geracao: true, intervalo_reativo_min: 60, equipamento_id: '', disjuntor_equipamento_id: '' },
         fields: [
             { key: 'name', label: 'Nome', type: 'text' },
             { key: 'catalog_id', label: 'Modelo', type: 'device_select', device_type: 'gateway_medidor' },
-            { key: 'ke', label: 'Ke — kWh por pulso (vazio = do modelo/backend)', type: 'number', placeholder: 'ex: 0.048' },
+            // Ke = 0,3 Wh/pulso (constante do medidor no secundário, validada em bancada 14/10)
+            // × relação do TC × relação do TP. A TON publica o Ke no bloco; o backend usa.
+            { key: 'relacao_tc', label: 'Relação do TC (ex.: 80/5 → 16; medição direta → 1)', type: 'number', placeholder: '1' },
+            { key: 'relacao_tp', label: 'Relação do TP (sem TP → 1)', type: 'number', placeholder: '1' },
+            { key: 'ke', label: 'Ke manual em kWh/pulso (opcional — vazio = 0,0003 × TC × TP)', type: 'number', placeholder: 'calculado' },
             { key: 'formato_esperado', label: 'Formato da SSU (só validação; a TON autodetecta)', type: 'select', options: [
                 ['auto', 'Autodetectar'],
                 ['estendido', 'Estendido (9 octetos, 4 quadrantes)'],

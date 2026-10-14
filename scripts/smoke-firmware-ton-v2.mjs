@@ -147,7 +147,18 @@ check('caso D: 1 projeto (ton1v2)', pD.length === 1 && pD[0].spec.tonType === 't
 const fD = pD[0].files;
 check('caso D: spec.ssu resolvido (subtopic E750_1/data, ke, formato estendido)',
   pD[0].spec.ssu && pD[0].spec.ssu.subtopic === 'E750_1/data' && pD[0].spec.ssu.ke === 0.048 && pD[0].spec.ssu.formato_esperado === 2);
-check('caso D: lib + glue presentes', !!fD['include/ssu_nbr14522.h'] && !!fD['src/ssu_nbr14522.cpp'] && !!fD['include/ssu.h'] && !!fD['src/ssu.cpp']);
+
+// Ke calculado: sem Ke manual → 0,3 Wh/pulso × RTC × RTP (bancada 14/10/2026)
+{
+  const casoKe = JSON.parse(JSON.stringify(casoD));
+  const ssu = casoKe.components.find((c) => c.type === 'medidor_ssu');
+  ssu.props.ke = ''; ssu.props.relacao_tc = 16; ssu.props.relacao_tp = 1;
+  const pK = new GenV2(editor(casoKe)).generateAll();
+  check('ssu: ke = 0,0003 x RTC(16) x RTP(1) = 0,0048 quando nao ha Ke manual', pK[0].spec.ssu.ke === 0.0048);
+  ssu.props.relacao_tc = ''; ssu.props.relacao_tp = '';
+  const pK1 = new GenV2(editor(casoKe)).generateAll();
+  check('ssu: sem Ke nem relacoes => 0,0003 (medicao direta)', pK1[0].spec.ssu.ke === 0.0003);
+}check('caso D: lib + glue presentes', !!fD['include/ssu_nbr14522.h'] && !!fD['src/ssu_nbr14522.cpp'] && !!fD['include/ssu.h'] && !!fD['src/ssu.cpp']);
 const libDir = join(HERE, '..', 'firmware-libs', 'ssu_nbr14522');
 check('caso D: lib embutida == fonte canonica (ssu_nbr14522.h)', fD['include/ssu_nbr14522.h'] === readFileSync(join(libDir, 'ssu_nbr14522.h'), 'utf8'));
 check('caso D: lib embutida == fonte canonica (ssu_nbr14522.cpp)', fD['src/ssu_nbr14522.cpp'] === readFileSync(join(libDir, 'ssu_nbr14522.cpp'), 'utf8'));
