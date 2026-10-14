@@ -2062,9 +2062,10 @@ extern char MQTT_CLIENT_ID[20];
 #define SSU_TEM_GERACAO             ${spec.ssu.tem_geracao ? 1 : 0}
 #define SSU_INTERVALO_REATIVO_MIN   ${spec.ssu.intervalo_reativo_min}
 #define SSU_NVS_SAVE_MS             60000UL
-// Parcial de 1 em 1 min no MESMO topico (/data) com "parcial":1 — potencia "agora". So' MQTT
-// (satelite LoRa fica so' no bloco). Energia/demanda continuam vindo do bloco do medidor.
-#define SSU_PARCIAL_MS              60000UL
+// Mensagem a cada MINUTO DO MEDIDOR (quando o seg regressivo entra no minuto seguinte), no
+// MESMO formato do bloco + "min" (pulsos do minuto) + "fim":0. No fim do intervalo do medidor
+// sai a de fechamento ("fim":1) = bloco oficial. Minutos alinhados ao intervalo da
+// concessionaria (15 msgs por intervalo de 15 min). So' MQTT; satelite LoRa fica so' no bloco.
 // Satelite LoRa (sem internet): bucket em JSON plano -> frame binario LORA_TYPE_SSU (cabe no MTU 200)
 #define SSU_LORA_BIN                ${spec.lora_role === 'satellite' && !spec.wifi ? 1 : 0}
 `;
@@ -2519,9 +2520,7 @@ static uint32_t _viradasSemBit5 = 0;  // sanidade §7: viradas do intervalo desd
 // Parcial de 1 min: contador PROPRIO (independe da virada do intervalo do medidor — um minuto
 // que atravessa o fim do bloco nao perde pulsos). Zera a cada parcial publicada.
 static uint32_t _minuto[7] = {0};
-static unsigned long _ultParcialMs = 0;
-static uint16_t _segAtual = 0;
-static bool _temLeitura = false;
+static int16_t _minAnt = -1;          // minuto do intervalo (seg / 60) do quadro anterior
 
 // Roda na task de eventos da UART (nao e' ISR): copia o bloco pra fila.
 static void _onRx() {
@@ -2566,18 +2565,21 @@ void ssu_init() {
     _ssu.onReceive(_onRx, true);     // so' no timeout => 1 bloco por chamada
 }
 
-static void _publicar(ssu_publish_fn publish, const ssu::Resultado& ult) {
+// Monta o JSON (formato do gateway A-966 + metadados). fim=1: fechamento do intervalo do
+// medidor (bloco oficial — energia/demanda); fim=0: minuto do medidor (so' potencia "agora").
+// data.* = pulsos ACUMULADOS no intervalo ate aqui; min = pulsos do ultimo minuto.
+static void _montarJson(char* payload, size_t n, const ssu::Resultado& ult, int fim) {
     const ssu::Estatisticas& st = _leitor.stats();
     int sts = (st.enlaceDegradado || _alarmeFormato) ? 0 : 1;
     unsigned long cdo = _intervaloSeg ? (_intervaloSeg + 30) / 60 : 15;
     // Ordem dos campos reativos: qhfi=REG3(Q1) qhfc=REG4(Q2) qhri=REG5(Q3) qhrc=REG6(Q4).
     // O backend soma qhfi+qhri como indutivo e qhfc+qhrc como capacitivo — igual ao A-966.
-    char payload[448];
 #if SSU_LORA_BIN
     // Satelite LoRa: JSON PLANO e curto (sem frame/ver/time) — vira o frame binario
     // LORA_TYPE_SSU (~90 B no ar, cabe no MTU 200 do E220). O gateway carimba o
     // timestamp e republica plano; o backend le phf/phr/qh* em data.{} OU no topo.
-    snprintf(payload, sizeof(payload),
+    (void)fim;
+    snprintf(payload, n,
         "{\\"NSU\\":%lu,\\"cdo\\":%lu,\\"phf\\":%lu,\\"phr\\":%lu,\\"sts\\":%d,"
         "\\"qhfi\\":%lu,\\"qhfc\\":%lu,\\"qhri\\":%lu,\\"qhrc\\":%lu,"
         "\\"ke\\":%.6f,\\"fmt\\":%u,\\"q\\":%u,\\"seg\\":%u,\\"posto\\":%u,\\"ssu_err\\":%lu}",
@@ -2590,24 +2592,42 @@ static void _publicar(ssu_publish_fn publish, const ssu::Resultado& ult) {
     char frame[32]; int p = 0;
     for (uint8_t i = 0; i < ult.rawLen && p < (int)sizeof(frame) - 3; i++)
         p += snprintf(frame + p, sizeof(frame) - p, "%s%02x", i ? " " : "", ult.raw[i]);
-    // JSON identico ao do gateway A-966 (ingestao do backend por categoria Gateway) + metadados
-    snprintf(payload, sizeof(payload),
+    snprintf(payload, n,
         "{\\"NSU\\":%lu,\\"ver\\":\\"%s\\",\\"data\\":{\\"cdo\\":\\"%lu\\",\\"phf\\":%lu,\\"phr\\":%lu,\\"sts\\":%d,"
         "\\"qhfi\\":%lu,\\"qhfc\\":%lu,\\"qhri\\":%lu,\\"qhrc\\":%lu,\\"frame\\":\\"%s\\"},\\"time\\":\\"%ld\\","
-        "\\"ke\\":%.6f,\\"fmt\\":%u,\\"q\\":%u,\\"seg\\":%u,\\"posto\\":%u,\\"ssu_err\\":%lu}",
+        "\\"ke\\":%.6f,\\"fmt\\":%u,\\"q\\":%u,\\"seg\\":%u,\\"posto\\":%u,\\"ssu_err\\":%lu,\\"fim\\":%d,"
+        "\\"min\\":{\\"phf\\":%lu,\\"phr\\":%lu,\\"qhfi\\":%lu,\\"qhfc\\":%lu,\\"qhri\\":%lu,\\"qhrc\\":%lu}}",
         (unsigned long)_nsu, FIRMWARE_VERSION, cdo,
         (unsigned long)_acum[1], (unsigned long)_acum[2], sts,
         (unsigned long)_acum[3], (unsigned long)_acum[4], (unsigned long)_acum[5], (unsigned long)_acum[6],
         frame, (long)time(nullptr), (double)SSU_KE, (unsigned)st.formato, (unsigned)ult.quadrante,
-        (unsigned)ult.segundos, (unsigned)ult.postoHorario, (unsigned long)st.blocosInvalidos);
+        (unsigned)ult.segundos, (unsigned)ult.postoHorario, (unsigned long)st.blocosInvalidos, fim,
+        (unsigned long)_minuto[1], (unsigned long)_minuto[2], (unsigned long)_minuto[3],
+        (unsigned long)_minuto[4], (unsigned long)_minuto[5], (unsigned long)_minuto[6]);
 #endif
+}
+
+// Fechamento do intervalo do medidor (fim=1) = bloco oficial.
+static void _publicar(ssu_publish_fn publish, const ssu::Resultado& ult) {
+    char payload[640];
+    _montarJson(payload, sizeof(payload), ult, 1);
     publish(SSU_SUBTOPIC, payload);
-    Serial.printf("[SSU] bucket publicado: phf=%lu phr=%lu (fmt=%u, %lu min)\\n",
-                  (unsigned long)_acum[1], (unsigned long)_acum[2], (unsigned)st.formato, cdo);
+    Serial.printf("[SSU] bloco do intervalo publicado: phf=%lu phr=%lu (fmt=%u)\\n",
+                  (unsigned long)_acum[1], (unsigned long)_acum[2], (unsigned)_leitor.stats().formato);
     _nsu++;
-    for (int i = 1; i <= 6; i++) _acum[i] = 0;
+    for (int i = 1; i <= 6; i++) { _acum[i] = 0; _minuto[i] = 0; }
     _salvarNvs();
 }
+
+#if !SSU_LORA_BIN
+// Minuto do medidor (fim=0): so' para a potencia "agora"; nao zera o acumulado do intervalo.
+static void _publicarMinuto(ssu_publish_fn publish, const ssu::Resultado& ult) {
+    char payload[640];
+    _montarJson(payload, sizeof(payload), ult, 0);
+    publish(SSU_SUBTOPIC, payload);
+    for (int i = 1; i <= 6; i++) _minuto[i] = 0;
+}
+#endif
 
 void ssu_tick(ssu_publish_fn publish) {
     if (!_fila) return;
@@ -2627,30 +2647,17 @@ void ssu_tick(ssu_publish_fn publish) {
         _acum[r.regReativa] += r.deltaReativa;
         _minuto[r.regAtiva]   += r.deltaAtiva;
         _minuto[r.regReativa] += r.deltaReativa;
-        _segAtual = r.segundos;
-        _temLeitura = true;
-    }
-
 #if !SSU_LORA_BIN
-    // Parcial de 1 em 1 min: pulsos do ultimo minuto (min) + acumulado do intervalo em curso
-    // (acum) + contagem regressiva do intervalo (seg). O backend NAO soma isto na energia nem
-    // na demanda (so' o bloco de fim de intervalo conta) — e' a potencia "agora" da ficha.
-    if (_temLeitura && millis() - _ultParcialMs >= SSU_PARCIAL_MS) {
-        _ultParcialMs = millis();
-        char pp[360];
-        snprintf(pp, sizeof(pp),
-            "{\\"parcial\\":1,\\"NSU\\":%lu,\\"ts\\":%ld,\\"seg\\":%u,\\"ke\\":%.6f,"
-            "\\"min\\":{\\"phf\\":%lu,\\"phr\\":%lu,\\"qhfi\\":%lu,\\"qhfc\\":%lu,\\"qhri\\":%lu,\\"qhrc\\":%lu},"
-            "\\"acum\\":{\\"phf\\":%lu,\\"phr\\":%lu,\\"qhfi\\":%lu,\\"qhfc\\":%lu,\\"qhri\\":%lu,\\"qhrc\\":%lu}}",
-            (unsigned long)_nsu, (long)time(nullptr), (unsigned)_segAtual, (double)SSU_KE,
-            (unsigned long)_minuto[1], (unsigned long)_minuto[2], (unsigned long)_minuto[3],
-            (unsigned long)_minuto[4], (unsigned long)_minuto[5], (unsigned long)_minuto[6],
-            (unsigned long)_acum[1], (unsigned long)_acum[2], (unsigned long)_acum[3],
-            (unsigned long)_acum[4], (unsigned long)_acum[5], (unsigned long)_acum[6]);
-        publish(SSU_SUBTOPIC, pp);
-        for (int i = 1; i <= 6; i++) _minuto[i] = 0;
-    }
+        // Minuto do MEDIDOR: o seg e' regressivo; quando seg/60 diminui, fechou um minuto do
+        // intervalo (alinhado ao intervalo da concessionaria). Na virada do intervalo o seg
+        // SOBE (fimIntervaloDemanda) e quem publica e' o _publicar (fim=1).
+        {
+            int16_t m = (int16_t)(r.segundos / 60);
+            if (_minAnt >= 0 && m < _minAnt) _publicarMinuto(publish, r);
+            _minAnt = m;
+        }
 #endif
+    }
 
     const ssu::Estatisticas& st = _leitor.stats();
     if (st.enlaceDegradado != _alarmeDegradado) {

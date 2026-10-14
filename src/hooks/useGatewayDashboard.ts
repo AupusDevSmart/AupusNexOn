@@ -55,10 +55,26 @@ export interface GatewayMinuto {
   kW_injecao: number;
   kvar_ind: number;
   kvar_cap: number;
+  // TON-V2 (minuto do medidor): quadrante/posto do último segundo do minuto, FP do minuto
+  nsu?: number | null;
+  seg?: number | null;
+  q?: number | null;
+  posto?: number | null;
+  FP?: number | null;
+  FP_natureza?: "ind" | "cap" | null;
+}
+
+/** Intervalo do medidor em andamento (TON-V2): acumulado até agora + quanto falta. */
+export interface GatewayIntervalo {
+  nsu: number;
+  kwh_consumo: number;
+  kwh_injecao: number;
+  minutos: number;
+  fecha_em_s: number | null;
 }
 
 export interface GatewayDashboardData {
-  minuto_a_minuto?: { agora: GatewayMinuto | null; serie: GatewayMinuto[] };
+  minuto_a_minuto?: { agora: GatewayMinuto | null; serie: GatewayMinuto[]; intervalo?: GatewayIntervalo | null };
   equipamento: { id: string; nome: string; tag: string | null; tipo: string | null };
   unidade: { id: string; demanda_carga: number | null; demanda_geracao: number | null } | null;
   snapshot: GatewaySnapshot | null;

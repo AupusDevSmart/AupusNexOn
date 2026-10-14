@@ -226,12 +226,24 @@ FP = P ÷ √(P² + Q²)        natureza: indutivo se o reativo veio em qhfi/qhr
                                      capacitivo se veio em qhfc/qhrc
 ```
 
-### Parcial de 1 minuto (TON-V2): `min` × `acum`
-- `min` = pulsos do **último minuto** → potência "agora".
-- `acum` = pulsos desde o **início do intervalo** do medidor (zera quando o bloco fecha).
-- Logo após o fechamento, `acum` pode ser **menor** que `min` (o minuto ainda contém o fim do
-  bloco anterior; o `acum` acabou de zerar).
-- A parcial **não entra** em energia nem demanda — essas vêm só dos blocos.
+### Minuto do medidor (TON-V2): `fim`, `min` e `data.*`
+
+A TON publica **uma mensagem por minuto do intervalo do medidor**, no mesmo formato do bloco:
+
+| Campo | Significado |
+|---|---|
+| `fim` | `0` = minuto do medidor (só "agora") · `1` = **fechamento do intervalo** (bloco oficial) |
+| `min` | pulsos do **último minuto** → potência "agora" (× Ke × 60) |
+| `data.phf`… | pulsos **acumulados no intervalo até aqui** (no `fim:1`, o total do intervalo) |
+| `q` · `posto` · `seg` | quadrante, posto horário e segundos que faltam, do último segundo |
+
+- **Sincronização com a concessionária:** o minuto é contado pelo `seg` regressivo **do
+  medidor** (publica quando `seg ÷ 60` diminui), não pelo relógio da TON. Intervalo de 15 min
+  → 14 mensagens `fim:0` + 1 `fim:1`, alinhadas ao intervalo da Equatorial; Σ `min` = bloco.
+- **Energia e demanda** vêm **só** das mensagens `fim:1`; as `fim:0` vão para `ssu_minutos`
+  (curva e "agora"), nunca para o histórico.
+- Satélite LoRa continua mandando só o bloco (tempo de rádio).
+- Formato anterior (`"parcial":1` com `acum`, firmware de 14/10 manhã) ainda é aceito.
 
 ---
 

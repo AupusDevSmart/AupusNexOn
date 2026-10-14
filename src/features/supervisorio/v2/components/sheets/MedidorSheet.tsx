@@ -1,7 +1,18 @@
 import { useEffect, useState } from 'react';
 import { iotApiService } from '@/services/iot.services';
-import { SheetShell, EstadoHero, GrupoTitulo, Section, FasesTable, useDados, getPath, fmt, tsInfo, BadgeFrescor } from './sheetParts';
+import { SheetShell, EstadoHero, GrupoTitulo, Section, FasesTable, MiniChart, useDados, getPath, fmt, tsInfo, BadgeFrescor } from './sheetParts';
 import { useGatewayDashboard } from '@/hooks/useGatewayDashboard';
+
+/** Quadrante NBR 14522 (vem do medidor). Só tem significado com fluxo. */
+const QUADRANTE: Record<number, string> = {
+  1: 'Q1 · consumindo, indutivo',
+  2: 'Q2 · injetando, capacitivo',
+  3: 'Q3 · injetando, indutivo',
+  4: 'Q4 · consumindo, capacitivo',
+};
+/** Posto horário informado pelo medidor (bits 0-1 do octeto 3). */
+const POSTO: Record<number, string> = { 0: 'não informado', 1: 'Ponta', 2: 'Fora de ponta', 3: 'Quarto posto (reservado)' };
+const mmss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
 const hhmm = (d: Date) => d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 /** "10:45–11:00": o timestamp do pico é o FIM da janela de 15 min. */
@@ -20,6 +31,9 @@ const janela = (iso?: string | null) => {
 export function SsuOperacao({ equipamentoId }: { equipamentoId: string }) {
   const { data, error } = useGatewayDashboard(equipamentoId);
   const agora = data?.minuto_a_minuto?.agora ?? null;
+  const intervalo = data?.minuto_a_minuto?.intervalo ?? null;
+  const serie = data?.minuto_a_minuto?.serie ?? [];
+  const comFluxo = !!agora && (agora.kW_consumo > 0.01 || agora.kW_injecao > 0.01);
   const snap = data?.snapshot ?? null;
   const ref = agora ?? snap;
   const injetando = !!ref && ref.kW_injecao > ref.kW_consumo && ref.kW_injecao > 0.05;
@@ -46,6 +60,26 @@ export function SsuOperacao({ equipamentoId }: { equipamentoId: string }) {
             { k: 'Consumo', v: `${fmt(agora.kW_consumo, 2)} kW` },
             ...(temInjecao || agora.kW_injecao > 0 ? [{ k: 'Injeção', v: `${fmt(agora.kW_injecao, 2)} kW` }] : []),
             { k: 'Reativo', v: kvarAgora == null ? '—' : `${fmt(Math.abs(kvarAgora), 2)} kvar${kvarAgora > 0 ? ' ind.' : kvarAgora < 0 ? ' cap.' : ''}` },
+            ...(agora.FP != null ? [{ k: 'Fator de potência', v: `${fmt(agora.FP, 3)}${agora.FP_natureza ? (agora.FP_natureza === 'cap' ? ' cap.' : ' ind.') : ''}` }] : []),
+            ...(agora.q != null ? [{ k: 'Quadrante', v: comFluxo ? (QUADRANTE[agora.q] ?? `Q${agora.q}`) : 'sem fluxo', mute: !comFluxo }] : []),
+            ...(agora.posto != null ? [{ k: 'Posto horário', v: POSTO[agora.posto] ?? String(agora.posto), mute: true }] : []),
+          ]} />
+          {serie.length >= 2 && (
+            <div className="mt-2">
+              <MiniChart serie={serie.map((m) => (m.kW_consumo >= m.kW_injecao ? m.kW_consumo : -m.kW_injecao))} unit="kW · última hora, por minuto (injeção negativa)" />
+            </div>
+          )}
+        </>
+      )}
+
+      {intervalo && (
+        <>
+          <GrupoTitulo right={intervalo.fecha_em_s != null ? <span className="text-[11px] text-muted-foreground">fecha em {mmss(intervalo.fecha_em_s)}</span> : undefined}>
+            Intervalo do medidor em andamento
+          </GrupoTitulo>
+          <Section rows={[
+            { k: 'Energia consumida até agora', sub: `${intervalo.minutos} min do intervalo`, v: `${fmt(intervalo.kwh_consumo, 3)} kWh` },
+            ...(intervalo.kwh_injecao > 0 ? [{ k: 'Energia injetada até agora', v: `${fmt(intervalo.kwh_injecao, 3)} kWh` }] : []),
           ]} />
         </>
       )}
