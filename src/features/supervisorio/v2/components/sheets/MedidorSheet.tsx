@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { iotApiService } from '@/services/iot.services';
 import { SheetShell, EstadoHero, GrupoTitulo, Section, FasesTable, useDados, getPath, fmt, tsInfo, BadgeFrescor } from './sheetParts';
 import { useGatewayDashboard } from '@/hooks/useGatewayDashboard';
 
@@ -92,7 +93,19 @@ function SsuOperacao({ equipamentoId }: { equipamentoId: string }) {
 const raiz3 = Math.sqrt(3);
 
 export function MedidorSheet({ equipamentoId, nome, onClose }: { equipamentoId: string; nome?: string; onClose: () => void }) {
-  const { dados, ts } = useDados(equipamentoId);
+  // Fonte da medição: o device IoT associado a este medidor em "Vínculos → Medições"
+  // (TON-V2 com SSU, A-966, PM…) — mesmo lookup do DJ→PM. Sem vínculo, o próprio medidor.
+  const [fonte, setFonte] = useState<{ id: string; nome: string | null } | null>(null);
+  useEffect(() => {
+    let vivo = true;
+    setFonte(null);
+    iotApiService.powerMeterByDisjuntor(equipamentoId)
+      .then((r) => { if (vivo && r?.equipamento_id) setFonte({ id: r.equipamento_id.trim(), nome: r.nome }); })
+      .catch(() => undefined);
+    return () => { vivo = false; };
+  }, [equipamentoId]);
+  const idDados = fonte?.id ?? equipamentoId;
+  const { dados, ts } = useDados(idDados);
   const [aba, setAba] = useState('op');
   const [ff, setFf] = useState(false);
 
@@ -145,7 +158,10 @@ export function MedidorSheet({ equipamentoId, nome, onClose }: { equipamentoId: 
           <p className="text-xs text-muted-foreground mt-3">Demanda contratada e janelas de posto tarifário serão editáveis aqui. Em construção.</p>
         </>
       ) : ehSsu ? (
-        <SsuOperacao equipamentoId={equipamentoId} />
+        <>
+          <SsuOperacao equipamentoId={idDados} />
+          {fonte && <p className="text-[11px] text-muted-foreground mt-1">Fonte da medição: {fonte.nome ?? fonte.id} (Vínculos → Medições).</p>}
+        </>
       ) : (
         <>
           {/* ESTADO */}

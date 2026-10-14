@@ -1978,6 +1978,26 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
                     {f.options?.map((o: any) => <option key={o[0]} value={o[0]}>{o[1]}</option>)}
                   </select>
                 )}
+                {f.type === 'topic_preview' && (() => {
+                  // Tópicos que a TON publica: um por dispositivo ligado a ela (RS485, TCP,
+                  // SSU) no formato do firmware <base>/<nome>_<endereço>/data, + os da própria TON.
+                  const ed = editorRef.current;
+                  const base = String(propsValues.mqtt_topic_base ?? '').trim().replace(/\/+$/, '');
+                  if (!base) return <p className="text-[11px] text-muted-foreground">Preencha o Tópico Base.</p>;
+                  const INFRA = /^(wifi_router|mqtt_broker|ton|conversor|datalogger)/i;
+                  const devs = (ed?.connections ?? [])
+                    .filter((c: any) => c.from.componentId === propsComp.id || c.to.componentId === propsComp.id)
+                    .map((c: any) => ed.components.find((x: any) => x.id === (c.from.componentId === propsComp.id ? c.to.componentId : c.from.componentId)))
+                    .filter((d: any) => d && !INFRA.test(String(d.type ?? '')));
+                  const topicos = devs.map((d: any) => `${base}/${String(d.props?.name ?? d.type)}_${parseInt(d.props?.modbus_address, 10) || 1}/data`);
+                  return (
+                    <div className="space-y-0.5 text-[11px] font-mono">
+                      {topicos.length === 0 && <p className="font-sans text-muted-foreground">Nenhum dispositivo ligado a esta TON.</p>}
+                      {topicos.map((t: string) => <div key={t} className="truncate rounded bg-muted/50 px-1.5 py-1" title={t}>{t}</div>)}
+                      <div className="pt-1 font-sans text-muted-foreground">Da TON: {base}/status · /diagnostics · /inputs</div>
+                    </div>
+                  );
+                })()}
                 {f.type === 'device_select' && (
                   <select
                     value={propsValues[f.key] ?? ''}
