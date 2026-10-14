@@ -6,7 +6,8 @@
  */
 
 import { Point, PortPosition, Equipment } from '../types/diagram.types';
-import { getEquipmentSizeInPixels, gridToPixels, GRID } from './diagramConstants';
+import { getEquipmentSizeInPixels, gridToPixels, GRID, ICON_SCALE } from './diagramConstants';
+import { getEquipmentIconBody } from '../components/icons/EquipmentIconFactory';
 
 // ============================================================================
 // TIPOS
@@ -63,6 +64,25 @@ export const getPortPoint = (
 
   const centerX = baseX + size.width / 2;
   const centerY = baseY + size.height / 2;
+
+  // A linha encosta no CORPO do símbolo (os ícones não têm terminais próprios):
+  // limite do corpo no viewBox → pixels do nó → escala do símbolo sobre o centro.
+  const body = getEquipmentIconBody(equipment.categoria, equipment.tipo);
+  if (body) {
+    const sx = size.width / body.vbW;
+    const sy = size.height / body.vbH;
+    const px = (v: number) => centerX + (baseX + v * sx - centerX) * ICON_SCALE;
+    const py = (v: number) => centerY + (baseY + v * sy - centerY) * ICON_SCALE;
+    // nunca fora do nó (ícone que encosta na borda)
+    const clampY = (y: number) => Math.min(baseY + size.height, Math.max(baseY, y));
+    const clampX = (x: number) => Math.min(baseX + size.width, Math.max(baseX, x));
+    switch (port) {
+      case 'top': return { point: { x: centerX, y: clampY(py(body.top)) }, direction: 'up' };
+      case 'bottom': return { point: { x: centerX, y: clampY(py(body.bottom)) }, direction: 'down' };
+      case 'left': return { point: { x: clampX(px(body.left)), y: centerY }, direction: 'left' };
+      case 'right': return { point: { x: clampX(px(body.right)), y: centerY }, direction: 'right' };
+    }
+  }
 
   switch (port) {
     case 'top':

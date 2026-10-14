@@ -35,10 +35,8 @@ export const BancoCapacitorIcon: React.FC<BancoCapacitorIconProps> = ({
       strokeLinecap="round"
       strokeLinejoin="round"
     >
-      <line x1="40" y1="8" x2="40" y2="34" />
       <line x1="25" y1="34" x2="55" y2="34" />
       <line x1="25" y1="43" x2="55" y2="43" />
-      <line x1="40" y1="43" x2="40" y2="72" />
     </svg>
   );
 };

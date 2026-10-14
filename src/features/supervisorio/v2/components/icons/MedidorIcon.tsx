@@ -36,9 +36,6 @@ export const MedidorIcon: React.FC<MedidorIconProps> = ({
       strokeLinecap="round"
       strokeLinejoin="round"
     >
-      {/* terminais */}
-      <line x1="40" y1="5" x2="40" y2="13" />
-      <line x1="40" y1="67" x2="40" y2="75" />
       {/* corpo do medidor */}
       <rect x="16" y="13" width="48" height="54" rx="6" />
       {/* visor */}

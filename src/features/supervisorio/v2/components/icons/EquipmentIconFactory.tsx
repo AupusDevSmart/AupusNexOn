@@ -259,6 +259,40 @@ const ICON_MAP: Record<string, IconComponent> = {
 };
 
 // ============================================================================
+// CORPO DO SÍMBOLO (onde a linha de conexão encosta)
+// ============================================================================
+
+/**
+ * Limites do CORPO de cada símbolo, nas unidades do viewBox (vbW × vbH).
+ * Os ícones não desenham terminais: a própria linha de conexão vai da porta até
+ * aqui (getPortPoint). Ícone sem entrada → borda do nó (comportamento antigo).
+ */
+export interface IconBody { top: number; bottom: number; left: number; right: number; vbW: number; vbH: number }
+const B = (top: number, bottom: number, left: number, right: number, vbW = 80, vbH = 80): IconBody =>
+  ({ top, bottom, left, right, vbW, vbH });
+const ICON_BODY = new Map<IconComponent, IconBody>([
+  [DisjuntorIcon, B(22, 58, 22, 58)],
+  [TransformadorIcon, B(17, 63, 25, 55)],
+  [InversorIcon, B(18, 62, 18, 62)],
+  [MedidorIcon, B(13, 67, 16, 64)],
+  [QGBTIcon, B(16, 66, 18, 62)],
+  [CarregadorEletricoIcon, B(16, 64, 26, 54)],
+  [PivoIcon, B(23, 65, 19, 61)],
+  [TONIcon, B(14.6, 60, 15, 65)],
+  [BancoCapacitorIcon, B(34, 43, 25, 55)],
+  [ModulosPVIcon, B(16, 50, 14, 66)],
+  [ChaveIcon, B(52.5, 111.5, 22, 43.5, 80, 160)],
+  [RedeConcessionariaIcon, B(19, 59, 24, 56)],
+  [CargaIcon, B(8, 72, 19, 61)],
+  [BombaCombustivelIcon, B(16, 66, 16, 66)],
+  [MotorEletricoIcon, B(11.8, 68.2, 0, 80)],
+]);
+
+/** Corpo do símbolo de um equipamento (mesma resolução do ícone desenhado). */
+export const getEquipmentIconBody = (categoria?: string | null, tipo?: string | null): IconBody | null =>
+  ICON_BODY.get(getEquipmentIcon(categoria || tipo)) ?? null;
+
+// ============================================================================
 // FACTORY FUNCTION
 // ============================================================================
 

@@ -1,6 +1,6 @@
 /**
  * MÓDULOS PV ICON (estilo Traço / IEC)
- * Painel fotovoltaico: retângulo com grade de células + terminal.
+ * Painel fotovoltaico: retângulo com grade de células (sem terminal: a linha de conexão encosta no corpo).
  * Inline SVG monocromático (currentColor) → recolorível e serializável.
  */
 
@@ -39,7 +39,6 @@ export const ModulosPVIcon: React.FC<ModulosPVIconProps> = ({
       <line x1="14" y1="33" x2="66" y2="33" strokeWidth={strokeWidth * 0.8} />
       <line x1="31.3" y1="16" x2="31.3" y2="50" strokeWidth={strokeWidth * 0.8} />
       <line x1="48.6" y1="16" x2="48.6" y2="50" strokeWidth={strokeWidth * 0.8} />
-      <line x1="40" y1="50" x2="40" y2="72" />
     </svg>
   );
 };

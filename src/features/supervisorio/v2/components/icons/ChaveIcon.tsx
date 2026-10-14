@@ -35,14 +35,12 @@ export const ChaveIcon: React.FC<ChaveIconProps> = ({
       strokeLinecap="round"
       strokeLinejoin="round"
     >
-      {/* terminal superior + contato */}
-      <line x1="40" y1="18" x2="40" y2="52" />
+      {/* contato superior */}
       <circle cx="40" cy="56" r="3.5" fill="currentColor" stroke="none" />
       {/* lâmina articulada (aberta) */}
       <line x1="40" y1="56" x2="22" y2="104" />
-      {/* contato inferior + terminal */}
+      {/* contato inferior */}
       <circle cx="40" cy="108" r="3.5" fill="currentColor" stroke="none" />
-      <line x1="40" y1="108" x2="40" y2="142" />
     </svg>
   );
 };

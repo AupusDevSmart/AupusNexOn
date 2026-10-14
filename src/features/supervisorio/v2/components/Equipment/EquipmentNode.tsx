@@ -19,8 +19,7 @@ import {
   PORT,
   LABEL,
   SELECTION,
-  getThemeColors,
-} from '../../utils/diagramConstants';
+  getThemeColors, ICON_SCALE } from '../../utils/diagramConstants';
 import { EquipmentIconWrapper } from '../icons/EquipmentIconFactory';
 import { DiagramaPontosBox } from '@/features/supervisorio/sinoptico/components/DiagramaPontosBox';
 import { useDisjuntorEstado } from '../../hooks/useDisjuntorEstado';
@@ -364,7 +363,6 @@ const EquipmentNodeImpl: React.FC<EquipmentNodeProps> = ({ equipment, onClick, o
     // Junction point não escala (é um ponto pequeno por definição).
     const cx = size.width / 2;
     const cy = size.height / 2;
-    const ICON_SCALE = 1.25;
     const transform = isJunctionPoint
       ? undefined
       : `translate(${cx} ${cy}) scale(${ICON_SCALE}) translate(${-cx} ${-cy})`;

@@ -53,7 +53,6 @@ export const TONIcon: React.FC<TONIconProps> = ({
       >
         TON
       </text>
-      <line x1="40" y1="60" x2="40" y2="72" />
     </svg>
   );
 };

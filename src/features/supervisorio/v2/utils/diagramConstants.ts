@@ -29,6 +29,12 @@ export const VIEWPORT = {
 // GRID
 // ============================================================================
 
+/**
+ * Escala do símbolo sobre o centro do nó ("tudo um pouco maior"). Usada no
+ * EquipmentNode (desenho) e no getPortPoint (onde a linha encosta no corpo).
+ */
+export const ICON_SCALE = 1.25;
+
 export const GRID = {
   SIZE: 40, // Tamanho da célula do grid (pixels)
   COLOR_LIGHT: 'rgba(0, 0, 0, 0.12)', // Cor do grid (tema claro) - mais visível

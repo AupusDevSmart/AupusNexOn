@@ -35,10 +35,8 @@ export const TransformadorIcon: React.FC<TransformadorIconProps> = ({
       strokeLinecap="round"
       strokeLinejoin="round"
     >
-      <line x1="40" y1="8" x2="40" y2="17" />
       <circle cx="40" cy="32" r="15" />
       <circle cx="40" cy="48" r="15" />
-      <line x1="40" y1="63" x2="40" y2="72" />
     </svg>
   );
 };

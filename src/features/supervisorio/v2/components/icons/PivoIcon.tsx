@@ -35,7 +35,6 @@ export const PivoIcon: React.FC<PivoIconProps> = ({
       strokeLinecap="round"
       strokeLinejoin="round"
     >
-      <line x1="40" y1="6" x2="40" y2="18" />
       <circle cx="40" cy="44" r="21" strokeWidth={strokeWidth * 0.8} strokeDasharray="4 4" />
       <line x1="40" y1="44" x2="61" y2="44" />
       <circle cx="40" cy="44" r="3" fill="currentColor" stroke="none" />

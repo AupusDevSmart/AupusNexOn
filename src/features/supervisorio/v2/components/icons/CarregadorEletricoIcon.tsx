@@ -1,6 +1,6 @@
 /**
  * CARREGADOR ELÉTRICO ICON (estilo Traço)
- * Estação de recarga: corpo com display + raio + terminal.
+ * Estação de recarga: corpo com display + raio (sem terminal: a linha de conexão encosta no corpo).
  * Inline SVG monocromático (currentColor) → recolorível e serializável.
  */
 
@@ -35,7 +35,6 @@ export const CarregadorEletricoIcon: React.FC<CarregadorEletricoIconProps> = ({
       strokeLinecap="round"
       strokeLinejoin="round"
     >
-      <line x1="40" y1="8" x2="40" y2="16" />
       <rect x="26" y="16" width="28" height="48" rx="4" />
       <rect x="31" y="22" width="18" height="13" rx="2" strokeWidth={strokeWidth * 0.8} />
       <path

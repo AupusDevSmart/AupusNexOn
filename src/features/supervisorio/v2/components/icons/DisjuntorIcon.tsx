@@ -1,5 +1,6 @@
 /**
- * DISJUNTOR ICON — estilo SCADA (Elipse): CAIXA FECHADA (quadrado sólido) + terminais.
+ * DISJUNTOR ICON — estilo SCADA (Elipse): CAIXA FECHADA (quadrado sólido), sem terminais
+ * (a linha de conexão encosta no corpo — ver getEquipmentIconBody/getPortPoint).
  *
  * A posição do disjuntor é comunicada pela COR do quadrado, não por um contato
  * desenhado dentro dele: vermelho = FECHADO, verde = ABERTO (convenção de sala de
@@ -43,9 +44,6 @@ export const DisjuntorIcon: React.FC<DisjuntorIconProps> = ({
       strokeLinecap="round"
       strokeLinejoin="round"
     >
-      {/* terminais */}
-      <line x1="40" y1="6" x2="40" y2="22" />
-      <line x1="40" y1="58" x2="40" y2="74" />
       {/* corpo: caixa fechada (quadrado sólido), cantos quase retos como no Elipse */}
       <rect x="22" y="22" width="36" height="36" rx="2" fill="currentColor" />
     </svg>

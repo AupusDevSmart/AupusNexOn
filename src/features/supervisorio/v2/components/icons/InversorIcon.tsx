@@ -35,7 +35,6 @@ export const InversorIcon: React.FC<InversorIconProps> = ({
       strokeLinecap="round"
       strokeLinejoin="round"
     >
-      <line x1="40" y1="8" x2="40" y2="18" />
       <rect x="18" y="18" width="44" height="44" rx="4" />
       <line x1="22" y1="58" x2="58" y2="22" />
       {/* senóide (AC) — canto superior esquerdo */}
@@ -43,7 +42,6 @@ export const InversorIcon: React.FC<InversorIconProps> = ({
       {/* "=" (DC) — canto inferior direito */}
       <line x1="45" y1="48" x2="57" y2="48" strokeWidth={strokeWidth * 0.85} />
       <line x1="45" y1="53" x2="57" y2="53" strokeWidth={strokeWidth * 0.85} />
-      <line x1="40" y1="62" x2="40" y2="72" />
     </svg>
   );
 };
