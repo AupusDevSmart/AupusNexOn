@@ -208,7 +208,7 @@ function ensureIoTScripts(): Promise<void> {
     //
     // O catalogo de dispositivos foi movido pro backend (GET /iot-catalog/device-catalog.js)
     // — ele revalida sozinho via ETag. Os demais ainda sao estaticos.
-    const IOT_SCRIPTS_VERSION = '20261014-ssu-ke-1';
+    const IOT_SCRIPTS_VERSION = '20261014-ssu-parcial-1';
     const scripts = [
       `${BASE_URL}/iot-catalog/device-catalog.js`,
       `/iot-firmware-base.v2.js?v=${IOT_SCRIPTS_VERSION}`,
@@ -674,6 +674,13 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
     return todos;
   };
 
+  // Medidor da SSU (A-966 / TON-V2): associa ao MEDIDOR CONCESSIONÁRIA do unifilar (o PM vai no DJ).
+  const isMedConcComp = (type: any): boolean =>
+    ['medidor_comum', 'medidor_ssu'].includes(String(type || '').toLowerCase());
+  // PM e medidor da SSU: o vínculo com o unifilar é props.disjuntor_equipamento_id.
+  const vinculaPorAlvo = (type: any): boolean =>
+    String(type || '').toLowerCase() === 'power_meter' || isMedConcComp(type);
+
   const isPmComp = (type: any): boolean =>
     ['power_meter', 'medidor_comum', 'medidor_ssu'].includes(String(type || '').toLowerCase());
 
@@ -839,7 +846,9 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
     if (!linkavel) return;
     const lista = tipo === 'power_meter'
       ? await listarDisjuntoresScs().catch(() => [])
-      : await listarAtivosParaVinculo(comp);
+      : isMedConcComp(tipo)
+        ? await listarMedidoresConcUnifilar().catch(() => [])
+        : await listarAtivosParaVinculo(comp);
     setAssociarLista(lista);
     setAssociarComp(comp);
   };
@@ -847,7 +856,8 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
   const aplicarVinculo = async (equipId: string) => {
     if (!associarComp || !editorRef.current) return;
     // Power Meter: a escolha é o DISJUNTOR que ele mede (o ativo do PM é só-IoT, criado no save).
-    if (String(associarComp.type || '').toLowerCase() === 'power_meter') {
+    // Medidor da SSU: a escolha é o MEDIDOR CONCESSIONÁRIA do unifilar (mesmo campo).
+    if (vinculaPorAlvo(associarComp.type)) {
       editorRef.current.updateComponentProps(associarComp.id, { ...associarComp.props, disjuntor_equipamento_id: equipId });
       setAssociarComp(null);
       await saveCurrentDiagram();
@@ -1830,7 +1840,8 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
         <DialogContent className="sm:max-w-md overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {String(associarComp?.type || '').toLowerCase() === 'power_meter' ? 'Qual disjuntor este Power Meter mede?' : <>Qual {String(associarComp?.type || '').toLowerCase().startsWith('ton')
+              {String(associarComp?.type || '').toLowerCase() === 'power_meter' ? 'Qual disjuntor este Power Meter mede?'
+                : isMedConcComp(associarComp?.type) ? 'Qual Medidor Concessionária do unifilar é este?' : <>Qual {String(associarComp?.type || '').toLowerCase().startsWith('ton')
                 ? 'TON'
                 : String(associarComp?.type || '').toLowerCase() === 'inversor'
                 ? 'inversor'
@@ -1841,7 +1852,11 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
           </DialogHeader>
           <div className="flex flex-col gap-1 max-h-[50dvh] overflow-y-auto py-1">
             {associarLista.length === 0 && (
-              String(associarComp?.type || '').toLowerCase() === 'power_meter' ? (
+              isMedConcComp(associarComp?.type) ? (
+                <p className="text-xs text-muted-foreground py-2">
+                  Nenhum Medidor Concessionária desenhado no unifilar desta unidade. Desenhe-o no unifilar e associe depois nas propriedades deste medidor.
+                </p>
+              ) : String(associarComp?.type || '').toLowerCase() === 'power_meter' ? (
                 <p className="text-xs text-muted-foreground py-2">
                   Nenhum disjuntor com SCS ligado nesta unidade. Ligue o SCS (medição PM) no cadastro do disjuntor no unifilar e associe depois nas propriedades do Power Meter.
                 </p>
@@ -1863,7 +1878,7 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
             ))}
           </div>
           <DialogFooter className="gap-2">
-            {String(associarComp?.type || '').toLowerCase() !== 'power_meter' && (
+            {!vinculaPorAlvo(associarComp?.type) && (
               <Button onClick={criarNovoAtivo} disabled={associarBusy}>
                 <Plus className="h-4 w-4 mr-1" />
                 {associarBusy ? 'Criando…' : 'Criar novo'}
@@ -1872,7 +1887,7 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
             {/* TON sempre tem equipamento (comando/OTA ancoram nele) → sem "sem vínculo". */}
             {associarComp && !String(associarComp.type || '').toLowerCase().startsWith('ton') && (
               <Button variant="outline" onClick={() => setAssociarComp(null)}>
-                {String(associarComp.type || '').toLowerCase() === 'power_meter' ? 'Associar depois' : 'Deixar sem vínculo'}
+                {vinculaPorAlvo(associarComp.type) ? 'Associar depois' : 'Deixar sem vínculo'}
               </Button>
             )}
           </DialogFooter>
