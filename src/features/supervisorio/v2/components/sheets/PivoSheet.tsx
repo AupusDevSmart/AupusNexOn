@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type CSSProperties, type Rea
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { api } from '@/config/api';
+import { useUserStore } from '@/store/useUserStore';
 import { useDados, getPath, fmt, tsInfo } from './sheetParts';
 import { useCustos, linhasPosto, brl, unwrap, useHistorico, janela, bucketize, type Periodo } from './equipUi';
 import {
@@ -33,8 +34,16 @@ interface Estado {
   pivo: { comandos: { direita: boolean; esquerda: boolean; desligar: boolean }; status: { direita: Bin; esquerda: Bin; desligado: Bin; erro: Bin } };
   bombeamento: null | Bombeamento;
   sequencia_cfg: { pressurizacao_s: number; confirma_giro_s: number };
-  sequencia: null | { id: string; acao: string; status: string; passos: Passo[]; erro: string | null; created_at: string; finished_at: string | null };
+  sequencia: null | { id: string; acao: string; status: string; passos: Passo[]; erro: string | null; created_at: string; finished_at: string | null; origem?: string };
+  /** Automação do servidor (programação, agendamento, parada, ponta). Ausente em API antiga. */
+  irrigacao?: {
+    ativa: boolean; atual: IrrigacaoSrv | null; parar_em: string | null; ultima: IrrigacaoSrv | null;
+    agendada: null | { id: string; acao: string; irrigacao: IrrigacaoSrv | null; inicio_em: string };
+    pausada_ponta: null | { retoma_as: string };
+    bomba_em_uso_por: string | null;
+  };
 }
+interface IrrigacaoSrv { modo: string; config: ConfigIrrigacao; parada: Parada | { tipo: 'porTempo'; minutos: number }; programacao?: { nome: string } | null }
 interface Janela { ativo: boolean; inicio: string; fim: string; dias: number[] }
 interface ParametrosPivo {
   pressao_minima: number | null; lamina_100: number | null; tempo_volta_100: number | null; correcao_angulo_zero: number | null;
@@ -286,10 +295,23 @@ function RegistrosPivo({ equipamentoId, extra, estreito }: { equipamentoId: stri
 const kpiCel = (i: number): CSSProperties => ({ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, ...(i % 3 ? { borderLeft: `1px solid ${NX.linha}` } : {}) });
 const chaveParada = (id: string) => `nexon:pivo:ultima-parada:${id}`;
 
+/**
+ * Perfis do mockup: Admin/Analista mexem em tudo; Proprietário só no horário de ponta e
+ * na programação; Operador (e demais) só leem a Configuração. A API confere de novo.
+ */
+function usePerfilPivo() {
+  const { getUserRole, hasPermission } = useUserStore();
+  const role = getUserRole();
+  const tecnico = ['super_admin', 'admin', 'analista', 'gerente'].includes(role) || hasPermission('equipamentos.manage');
+  const prop = tecnico || role === 'proprietario' || hasPermission('equipamentos.acionar_ponto');
+  return { tecnico, prop };
+}
+
 export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: string; nome?: string; onClose: () => void }) {
   const id = equipamentoId.trim();
   const titulo = nome || 'Pivô';
   const estreito = useEstreito();
+  const perfil = usePerfilPivo();
   const { dados, ts } = useDados(id);
   const { estado, erro, carregar, executando } = usePivoEstado(id);
   const prog = useProgramacoes(id);
@@ -307,6 +329,14 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   const [ultimaParada, setUltimaParada] = useState<Parada>(() => {
     try { const v = localStorage.getItem(chaveParada(id)); return v ? JSON.parse(v) : { tipo: 'semParar' }; } catch { return { tipo: 'semParar' }; }
   });
+  // A última irrigação gravada no servidor vale para qualquer navegador/app.
+  const ultimaSrv = estado?.irrigacao?.ultima;
+  useEffect(() => {
+    if (!ultimaSrv?.config) return;
+    setUltima({ ...CONFIG_PADRAO, ...ultimaSrv.config, faixasCanhao: ultimaSrv.config.faixasCanhao ?? [] });
+    const p = ultimaSrv.parada;
+    if (p && p.tipo !== 'porTempo') setUltimaParada(p);
+  }, [ultimaSrv]);
   const [cfgPivo, setCfgPivo] = useState<PivoConfig | null>(null);
   const carregarCfg = useCallback(() => {
     api.get(`/pivos/${id}/config`).then((r) => setCfgPivo(corpo<PivoConfig>(r) ?? null)).catch(() => setCfgPivo(null));
@@ -324,9 +354,18 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   const st = estado?.pivo.status;
   const b = estado?.bombeamento ?? null;
   const seq = estado?.sequencia ?? null;
-  const girando = st?.direita === 1 || st?.esquerda === 1;
-  const sentido: 'direita' | 'esquerda' | null = st?.direita === 1 ? 'direita' : st?.esquerda === 1 ? 'esquerda' : null;
+  const irrSrv = estado?.irrigacao;
+  const semStatus = st?.direita == null && st?.esquerda == null && st?.desligado == null;
+  // Sem BI de status na TON: vale o que o servidor comandou (sequência concluída e não desligada).
+  const girando = st?.direita === 1 || st?.esquerda === 1 || (semStatus && !!irrSrv?.ativa && seq?.status !== 'executando');
+  const cfgAtual = irrSrv?.atual?.config ?? null;
+  const sentido: 'direita' | 'esquerda' | null = st?.direita === 1 ? 'direita' : st?.esquerda === 1 ? 'esquerda'
+    : girando && cfgAtual ? (cfgAtual.direcao === 'Avanço' ? 'direita' : 'esquerda') : null;
+  const emUsoPor = !girando ? irrSrv?.bomba_em_uso_por ?? null : null;
+  const agendada = irrSrv?.agendada ?? null;
+  const pausaPonta = irrSrv?.pausada_ponta ?? null;
   const direcaoAtual = sentido === 'direita' ? 'Avanço' : sentido === 'esquerda' ? 'Reverso' : ultima.direcao;
+  const cfgGiro = cfgAtual ?? ultima;
   const angulo = num('angulo', 'posicao');
   const angTxt = angulo != null ? `${fmt(angulo, 1)}°` : '—';
   const ligando = executando && seq?.acao !== 'desligar';
@@ -340,14 +379,25 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
     if (executando && seq?.acao === 'desligar') return { tone: 'ok', label: 'Normal', texto: 'Desligando…' };
     if (ligando) return { tone: 'ok', label: 'Normal', texto: b ? 'Esperando pressurização · bomba ligada' : 'Ligando…' };
     if (falha) return { tone: 'bad', label: 'Falha', texto: falhaPressao ? 'Falha de pressão · Parado' : st?.erro === 1 ? 'Falha no painel · Parado' : 'Falha na partida · Parado' };
-    if (girando) return { tone: 'ok', label: 'Normal', texto: ultima.semAgua ? `Girando · ${direcaoAtual} · Seco` : `Irrigando · ${ultima.percentual}% · ${direcaoAtual} · Molhado` };
+    if (girando) return { tone: 'ok', label: 'Normal', texto: cfgGiro.semAgua ? `Girando · ${direcaoAtual} · Seco` : `Irrigando · ${cfgGiro.percentual}% · ${direcaoAtual} · Molhado` };
+    if (pausaPonta) return { tone: 'ok', label: 'Normal', texto: `Pausado pelo horário de ponta · retoma às ${pausaPonta.retoma_as}` };
+    if (emUsoPor) return { tone: 'ok', label: 'Normal', texto: `Parado · Bomba em uso pelo ${emUsoPor}` };
     if (st?.desligado === 1 || st?.direita === 0 || st?.esquerda === 0) return { tone: 'ok', label: 'Normal', texto: 'Parado · Painel energizado' };
+    if (semStatus && estado) return { tone: 'ok', label: 'Normal', texto: 'Parado' };
     if (!estado && !info.online) return { tone: 'off', label: 'Sem comunicação', texto: info.hasTs ? `Última leitura ${info.idade}` : 'Sem leitura' };
     return { tone: 'warn', label: 'Alerta', texto: 'Status do pivô não lido da TON' };
   })();
 
   // "Término previsto hoje 22:10 · ângulo final 0°" (parada por ângulo da última irrigação).
   const eta = useMemo(() => {
+    if (girando && irrSrv?.parar_em) {
+      const f = new Date(irrSrv.parar_em);
+      const d0 = new Date(); d0.setHours(0, 0, 0, 0);
+      const dias = Math.floor((new Date(f).setHours(0, 0, 0, 0) - d0.getTime()) / 86400000);
+      const quando = dias <= 0 ? 'hoje' : dias === 1 ? 'amanhã' : `em ${dias} dias`;
+      const p = irrSrv.atual?.parada;
+      return `Término previsto ${quando} ${f.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}${p?.tipo === 'porAngulo' ? ` · ângulo final ${p.angulo}°` : ''}${irrSrv.atual?.programacao ? ` · ${irrSrv.atual.programacao.nome}` : ''}`;
+    }
     if (!girando || ultimaParada.tipo !== 'porAngulo' || angulo == null) return null;
     const p = previsao(ultima, ultimaParada, direcaoAtual as ConfigIrrigacao['direcao'], angulo, 21, new Date());
     if (!p.fim) return null;
@@ -355,14 +405,18 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
     const dias = Math.floor((new Date(p.fim).setHours(0, 0, 0, 0) - d0.getTime()) / 86400000);
     const quando = dias <= 0 ? 'hoje' : dias === 1 ? 'amanhã' : `em ${dias} dias`;
     return `Término previsto ${quando} ${p.fim.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} · ângulo final ${ultimaParada.angulo}°`;
-  }, [girando, ultimaParada, angulo, ultima, direcaoAtual]);
+  }, [girando, ultimaParada, angulo, ultima, direcaoAtual, irrSrv]);
+  const agendadaTxt = agendada
+    ? `Início agendado ${new Date(agendada.inicio_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}${agendada.irrigacao ? ` · ${resumoConfig({ ...CONFIG_PADRAO, ...agendada.irrigacao.config })}` : ''}`
+    : null;
 
   const acaoDe = (c: ConfigIrrigacao): Acao => (c.direcao === 'Avanço' ? 'girar_direita' : 'girar_esquerda');
   const acionar = async (acao: Acao, irrigacao?: EnvioIrrigacao) => {
     setModal(null); setConfirmOpen(false);
     setEnviando(acao);
     try {
-      await api.post(`/pivos/${id}/acionar`, irrigacao ? { acao, irrigacao } : { acao });
+      const r = await api.post(`/pivos/${id}/acionar`, irrigacao ? { acao, irrigacao } : { acao });
+      const res = corpo<{ status?: string; inicio_em?: string }>(r);
       if (irrigacao) {
         setUltima(irrigacao.config); setUltimaParada(irrigacao.parada);
         try {
@@ -370,7 +424,11 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
           localStorage.setItem(chaveParada(id), JSON.stringify(irrigacao.parada));
         } catch { /* sem storage */ }
       }
-      toast.success(`${ACAO_LABEL[acao]}: sequência iniciada`, { description: b ? 'Bomba, pressurização e giro — acompanhe em Registros.' : undefined });
+      if (res?.status === 'agendada' && res.inicio_em) {
+        toast.success(`Irrigação agendada para ${new Date(res.inicio_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}`, { description: 'O servidor liga o pivô na hora — acompanhe em Registros.' });
+      } else {
+        toast.success(`${ACAO_LABEL[acao]}: sequência iniciada`, { description: irrigacao?.config.semAgua ? 'Girando sem água: a bomba não liga.' : b ? 'Bomba, pressurização e giro — acompanhe em Registros.' : undefined });
+      }
       setEnvio(null);
       await carregar();
     } catch (e) {
@@ -405,8 +463,9 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
     const v = bNum(ff) ?? num(ff) ?? num(`V${f}`), i = bNum(`I${f}`) ?? num(`I${f}`);
     return [ff.slice(1).toUpperCase(), v != null ? `${fmt(v, 0)} V` : '—', i != null ? `${fmt(i, 1)} A` : '—'];
   });
-  const bStatus = !b ? '—' : falhaPressao ? 'Desligada · falha de pressão' : b.ligada === 1 ? 'Ligada' : b.ligada === 0 ? 'Desligada' : 'Sem retorno';
-  const bCor = !b ? NX.neutro : falhaPressao ? NX.bad : b.ligada === 1 ? NX.ok : NX.neutro;
+  const bStatus = !b ? '—' : falhaPressao ? 'Desligada · falha de pressão' : emUsoPor ? `Em uso pelo ${emUsoPor}` : b.ligada === 1 ? 'Ligada'
+    : b.ligada === 0 ? 'Desligada' : girando && !cfgGiro.semAgua ? 'Ligada' : girando ? 'Desligada · girando sem água' : 'Sem retorno';
+  const bCor = !b ? NX.neutro : falhaPressao ? NX.bad : emUsoPor || b.ligada === 1 || (b.ligada == null && girando && !cfgGiro.semAgua) ? NX.ok : NX.neutro;
   const bSub = !b ? 'Não configurado' : `${b.ton_nome ?? 'TON'}${b.ton_removida ? ' (removida!)' : ''} · ${b.compartilhada_com.length ? 'sistema conjugado' : 'ligada junto com o pivô'}`;
 
   // Passos da última sequência entram em Registros (✓✓ = confirmado pelo equipamento).
@@ -420,15 +479,17 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   // Botão principal
   const cmdOff = on ? !estado?.pivo.comandos.desligar && !b : !estado?.pivo.comandos[ultima.direcao === 'Avanço' ? 'direita' : 'esquerda'];
   const busy = !!enviando || (executando && seq?.acao === 'desligar');
-  const cmdLabel = busy ? 'Executando…' : on ? 'Desligar' : 'Ligar';
-  const cmdStyle = s.cmd(busy || cmdOff ? 'busy' : on ? 'outline' : 'primary');
+  const desligaAgenda = !on && !!agendada;
+  const cmdLabel = emUsoPor && !on ? `Bomba em uso pelo ${emUsoPor}` : busy ? 'Executando…' : on || desligaAgenda ? (desligaAgenda ? 'Cancelar agendamento' : 'Desligar') : 'Ligar';
+  const cmdBloq = (!!emUsoPor && !on) || (cmdOff && !desligaAgenda);
+  const cmdStyle = s.cmd(busy || cmdBloq ? 'busy' : on || desligaAgenda ? 'outline' : 'primary');
 
-  const confirmQ = confirmKind === 'stop' ? `Desligar ${titulo}?` : confirmKind === 'start' && envio ? tituloEnvio(envio.modo) : `Ligar ${titulo}?`;
+  const confirmQ = confirmKind === 'stop' ? (desligaAgenda ? 'Cancelar o início agendado?' : `Desligar ${titulo}?`) : confirmKind === 'start' && envio ? tituloEnvio(envio.modo) : `Ligar ${titulo}?`;
   const paradaTxt = (p: Parada, e?: EnvioIrrigacao | null) => (e?.modo === 'angulo' ? `ângulo final ${e.anguloFinal ?? 0}°`
     : p.tipo === 'porAngulo' ? `para em ${p.angulo}°` : p.tipo === 'porVoltas' ? `${p.voltas} volta${p.voltas > 1 ? 's' : ''}` : 'sem parada');
   const partida = b ? ' A bomba liga e o pivô gira após a pressurização.' : '';
   const confirmNote = confirmKind === 'stop'
-    ? `O pivô para na posição atual (${angTxt})${b ? ' e a bomba desliga' : ''}.`
+    ? desligaAgenda ? `${agendadaTxt}. O pivô não vai ligar sozinho.` : `O pivô para na posição atual (${angTxt})${b ? ' e a bomba desliga' : ''}.`
     : confirmKind === 'start' && envio
       ? `Com esta configuração: ${resumoConfig(envio.config)} · ${paradaTxt(envio.parada, envio)}${envio.inicio ? ` · início ${envio.inicio.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : ''}.${partida}`
       : `Com a última configuração: ${resumoConfig(ultima)} · sem parada.${partida}`;
@@ -468,10 +529,11 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
                   <span style={{ fontSize: 14, color: NX.mudo }}>{texto}</span>
                 </div>
                 {eta && <span style={{ fontSize: 13, color: NX.mudo }}>{eta}</span>}
+                {agendadaTxt && <span style={{ fontSize: 13, color: NX.mudo }}>{agendadaTxt}</span>}
                 {erro && <span style={{ fontSize: 13, color: NX.warn }}>{erro}</span>}
               </div>
-              <button type="button" disabled={busy || cmdOff} style={cmdStyle}
-                onClick={() => { setConfirmKind(on ? 'stop' : 'quick'); setConfirmOpen(true); }}>{cmdLabel}</button>
+              <button type="button" disabled={busy || cmdBloq} style={cmdStyle}
+                onClick={() => { setConfirmKind(on || desligaAgenda ? 'stop' : 'quick'); setConfirmOpen(true); }}>{cmdLabel}</button>
               <button type="button" onClick={() => abrirIrr('simples')}
                 style={{ alignSelf: 'center', height: 36, padding: '0 10px', display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 700, color: NX.mudo }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={NX.mudo} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12" /><circle cx="16" cy="6" r="2" /><circle cx="10" cy="12" r="2" /><circle cx="18" cy="18" r="2" /></svg>
@@ -542,7 +604,7 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
           <RegistrosPivo equipamentoId={id} extra={regSeq} estreito={estreito} />
         </div>
       ) : (
-        <ConfigPivo pivoId={id} estado={estado} cfg={cfgPivo} onSalvo={() => { void carregar(); carregarCfg(); }}
+        <ConfigPivo pivoId={id} estado={estado} cfg={cfgPivo} perfil={perfil} onSalvo={() => { void carregar(); carregarCfg(); }}
           progs={prog.progs} onRemoverProg={prog.remover} onAdicionarHorario={() => abrirIrr('agenda')} />
       )}
 
@@ -666,8 +728,8 @@ const PARAMS = [
   { key: 'correcao_angulo_zero', label: 'Correção do ângulo zero', hint: 'Faixa −180 a 180°', unit: '°', min: -180, max: 180, real: true, d: 0 },
 ] as const;
 
-function ConfigPivo({ pivoId, estado, cfg, onSalvo, progs, onRemoverProg, onAdicionarHorario }: {
-  pivoId: string; estado: Estado | null; cfg: PivoConfig | null; onSalvo: () => void;
+function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg, onAdicionarHorario }: {
+  pivoId: string; estado: Estado | null; cfg: PivoConfig | null; perfil: { tecnico: boolean; prop: boolean }; onSalvo: () => void;
   progs: Programacao[] | null; onRemoverProg: (id: string) => void; onAdicionarHorario: () => void;
 }) {
   const [op, setOp] = useState<Opcoes | null>(null);
@@ -806,40 +868,38 @@ function ConfigPivo({ pivoId, estado, cfg, onSalvo, progs, onRemoverProg, onAdic
     }
   };
 
-  const campo = (k: keyof FormBomba, min: number, max: number) => (
-    <input inputMode="numeric" value={f[k]} onChange={(e) => set(k, e.target.value)}
-      style={s.campo(false, (f[k] !== '' && !numOk(f[k], min, max)) || (k !== 'bi_confirma' && f[k] === ''))} />
-  );
   const timeStyle: CSSProperties = { height: 38, borderRadius: 10, border: `1px solid ${NX.borda}`, padding: '0 10px', fontSize: 15, fontWeight: 700, color: NX.texto, background: NX.card };
   const nProg = progs?.length ?? 0;
   const agFull = nProg >= 5;
+  const roTec = !perfil.tecnico;
+  const roProp = !perfil.prop;
 
   return (
     <div style={{ padding: '20px 24px 28px 24px', ...col(10) }}>
       {secao('BOMBEAMENTO', 4)}
       <div style={{ ...s.card, padding: '0 16px' }}>
-        <NxSwitchRow first title="Este pivô tem bombeamento" sub="Ligar o pivô com água liga a bomba; desligar o pivô desliga a bomba" on={ativo} onToggle={() => setAtivo((v) => !v)} />
+        <NxSwitchRow first title="Este pivô tem bombeamento" sub="Ligar o pivô com água liga a bomba; desligar o pivô desliga a bomba" on={ativo} disabled={roTec} onToggle={() => setAtivo((v) => !v)} />
         {ativo && (
           <>
             <Linha titulo="Bomba" sub="TON e medidor de energia da bomba">
-              <ChipSelect label="Bomba" value={f.ton_id} onChange={(v) => set('ton_id', v)}>
+              <ChipSelect label="Bomba" disabled={roTec} value={f.ton_id} onChange={(v) => set('ton_id', v)}>
                 <option value="">Escolha a TON…</option>
                 {(op?.tons ?? []).map((t) => <option key={t.id} value={t.id}>{t.nome} · {t.unidade}</option>)}
               </ChipSelect>
             </Linha>
-            <NxSwitchRow title="Sistema conjugado" sub="A bomba atende outro pivô · um pivô por vez" on={conj} onToggle={() => setConj((v) => !v)} />
+            <NxSwitchRow title="Sistema conjugado" sub="A bomba atende outro pivô · um pivô por vez" on={conj} disabled={roTec} onToggle={() => setConj((v) => !v)} />
             {conj && (
               <div style={{ borderTop: `1px solid ${NX.linha}`, padding: '12px 0', ...col(10) }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                   <span style={{ fontSize: 14, fontWeight: 700 }}>Outro pivô</span>
-                  <ChipSelect label="Outro pivô" height={36} value={conjPivo} onChange={copiarDe}>
+                  <ChipSelect label="Outro pivô" height={36} disabled={roTec} value={conjPivo} onChange={copiarDe}>
                     <option value="">—</option>
                     {(op?.bombeamentos ?? []).filter((x) => x.pivo_id !== pivoId).map((x) => <option key={x.pivo_id} value={x.pivo_id}>{x.nome}</option>)}
                   </ChipSelect>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 14, fontWeight: 700 }}>Direcionamento da água</span>
-                  <NxSeg<'valvula' | 'fisico'> value={agua.direcionamento} onChange={(v) => setAgua((a) => ({ ...a, direcionamento: v }))} options={[{ v: 'valvula', label: 'Válvula pelo NexON' }, { v: 'fisico', label: 'Intertravamento físico' }]} />
+                  <NxSeg<'valvula' | 'fisico'> disabled={roTec} value={agua.direcionamento} onChange={(v) => setAgua((a) => ({ ...a, direcionamento: v }))} options={[{ v: 'valvula', label: 'Válvula pelo NexON' }, { v: 'fisico', label: 'Intertravamento físico' }]} />
                 </div>
                 {agua.direcionamento === 'valvula' && (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
@@ -847,7 +907,7 @@ function ConfigPivo({ pivoId, estado, cfg, onSalvo, progs, onRemoverProg, onAdic
                       <span style={{ fontSize: 14, fontWeight: 700 }}>Saída que comanda a válvula</span>
                       <span style={{ fontSize: 12, color: NX.mudo }}>Válvula solenoide na adutora, junto ao pivô mais próximo</span>
                     </span>
-                    <ChipSelect label="Saída que comanda a válvula" height={36} value={agua.valvula} onChange={(v) => setAgua((a) => ({ ...a, valvula: v }))}>
+                    <ChipSelect label="Saída que comanda a válvula" height={36} disabled={roTec} value={agua.valvula} onChange={(v) => setAgua((a) => ({ ...a, valvula: v }))}>
                       <option value="">—</option>
                       {(op?.tons ?? []).flatMap((t) => Array.from({ length: 8 }, (_, i) => (
                         <option key={`${t.id}|${i + 1}`} value={`${t.id}|${i + 1}`}>{t.nome} · BO{i + 1}</option>
@@ -873,7 +933,7 @@ function ConfigPivo({ pivoId, estado, cfg, onSalvo, progs, onRemoverProg, onAdic
               <span style={{ fontSize: 15, fontWeight: 700 }}>{p.label}</span>
               <span style={{ fontSize: 12, color: ruim ? NX.bad : NX.mudo }}>{p.hint}</span>
             </label>
-            <input id={`w-${p.key}`} inputMode="decimal" value={val} style={s.campo(false, ruim)}
+            <input id={`w-${p.key}`} inputMode="decimal" value={val} disabled={roTec} style={s.campo(roTec, ruim)}
               onChange={(e) => { if (ehSeq) setSeq((x) => ({ ...x, [p.key]: e.target.value })); else setPar((x) => ({ ...x, [p.key]: e.target.value })); }} />
             <span style={{ fontSize: 14, color: NX.mudo, width: 28 }}>{p.unit}</span>
           </div>
@@ -882,13 +942,13 @@ function ConfigPivo({ pivoId, estado, cfg, onSalvo, progs, onRemoverProg, onAdic
 
       {secao('HORÁRIO DE PONTA', 10)}
       <div style={{ ...s.card, padding: '0 16px' }}>
-        <NxSwitchRow first title="Bloquear no horário de ponta" sub="Pausa a irrigação e retoma ao fim da ponta" on={!!ponta?.ativo} disabled={!ponta}
+        <NxSwitchRow first title="Bloquear no horário de ponta" sub="Pausa a irrigação e retoma ao fim da ponta" on={!!ponta?.ativo} disabled={!ponta || roProp}
           onToggle={() => setPonta((p) => (p ? { ...p, ativo: !p.ativo } : p))} />
         <div style={{ borderTop: `1px solid ${NX.linha}`, padding: '12px 0', display: 'flex', gap: 12 }}>
           {(['inicio', 'fim'] as const).map((k) => (
             <label key={k} style={{ flex: 1, ...col(4) }}>
               <span style={{ fontSize: 12, color: NX.mudo }}>{k === 'inicio' ? 'Início' : 'Fim'}</span>
-              <input type="time" disabled={!ponta} value={ponta?.[k] ?? ''} onChange={(e) => setPonta((p) => (p ? { ...p, [k]: e.target.value } : p))} style={timeStyle} />
+              <input type="time" disabled={!ponta || roProp} value={ponta?.[k] ?? ''} onChange={(e) => setPonta((p) => (p ? { ...p, [k]: e.target.value } : p))} style={timeStyle} />
             </label>
           ))}
         </div>
@@ -905,21 +965,24 @@ function ConfigPivo({ pivoId, estado, cfg, onSalvo, progs, onRemoverProg, onAdic
                 <span style={{ fontSize: 15, fontWeight: 700 }}>{t.quando}</span>
                 <span style={{ fontSize: 12, color: NX.mudo }}>{t.det}</span>
               </span>
-              <button type="button" aria-label="Remover horário" onClick={() => onRemoverProg(p.id)} style={{ width: 36, height: 36, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <button type="button" aria-label="Remover horário" disabled={roProp} onClick={() => onRemoverProg(p.id)} style={{ width: 36, height: 36, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <IcoLixo />
               </button>
             </div>
           );
         })}
-        <button type="button" disabled={agFull || progs == null} onClick={onAdicionarHorario}
-          style={{ width: '100%', height: 46, ...(nProg > 0 || progs == null ? { borderTop: `1px solid ${NX.linha}` } : {}), fontSize: 14, fontWeight: 800, textAlign: 'center', color: agFull ? NX.desab : VERDE }}>
+        <button type="button" disabled={agFull || progs == null || roProp} onClick={onAdicionarHorario}
+          style={{ width: '100%', height: 46, ...(nProg > 0 || progs == null ? { borderTop: `1px solid ${NX.linha}` } : {}), fontSize: 14, fontWeight: 800, textAlign: 'center', color: agFull || roProp ? NX.desab : VERDE }}>
           {agFull ? 'Limite de 5 horários' : '+ Adicionar horário'}
         </button>
       </div>
 
-      <button type="button" disabled={saveOff} onClick={() => setRevisar(true)} style={s.save(saveOff)}>
-        {invalido ? 'Valor fora da faixa' : n === 0 ? 'Salvar' : `Revisar ${n} ${n > 1 ? 'alterações' : 'alteração'}`}
-      </button>
+      {!roProp && (
+        <button type="button" disabled={saveOff} onClick={() => setRevisar(true)} style={s.save(saveOff)}>
+          {invalido ? 'Valor fora da faixa' : n === 0 ? 'Salvar' : `Revisar ${n} ${n > 1 ? 'alterações' : 'alteração'}`}
+        </button>
+      )}
+      {roProp && <span style={{ textAlign: 'center', fontSize: 13, color: NX.mudo, marginTop: 6 }}>Somente leitura para este perfil</span>}
       <span style={{ fontSize: 12, color: NX.mudo, marginTop: 6 }}>
         Os comandos do pivô (ligar, desligar, direção, sem água, canhão) e os status vêm dos pontos ligados às BO/BI da TON do pivô (editor IoT → TON → Configurar BOs/BIs).
       </span>
