@@ -40,6 +40,7 @@ import { MedidorSheet } from './components/sheets/MedidorSheet';
 import { MotorSheet } from './components/sheets/MotorSheet';
 import { PivoSheet } from './components/sheets/PivoSheet';
 import { sheetKindFor } from './components/sheets/sheetKind';
+import { isPowerMeter } from '@/features/supervisorio/components/power-meter/helpers';
 import { getCommandsForCategoria } from './utils/commandRegistry';
 
 // ============================================================================
@@ -396,7 +397,9 @@ export const DiagramV2Wrapper: React.FC<DiagramV2WrapperProps> = ({
               if (!modoEdicao) {
                 const _tp = (String((equipment as any).tipo || '') + ' ' + String((equipment as any).categoria || '')).toLowerCase();
                 if (_tp.includes('disjuntor')) { setDjSheetId(equipment.id.trim()); return; }
-                const _kind = sheetKindFor((equipment as any).tipo, (equipment as any).categoria);
+                // Power Meter e A-966 pelo mesmo critério do sinóptico (tipo, tag ou nome), não só pela categoria.
+                const _kind = sheetKindFor((equipment as any).tipo, (equipment as any).categoria)
+                  ?? (isPowerMeter(equipment as any) || /a-?966/i.test(`${(equipment as any).tipo ?? ''} ${equipment.nome ?? ''} ${(equipment as any).tag ?? ''}`) ? 'medidor' : null);
                 if (_kind) { setEqpSheet({ kind: _kind, id: equipment.id.trim(), nome: equipment.nome }); return; }
               }
               // Bomba de Combustível: TEM automação (BOs), mas o acionamento é

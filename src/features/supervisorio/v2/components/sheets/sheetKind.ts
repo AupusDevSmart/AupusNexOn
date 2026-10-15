@@ -9,6 +9,9 @@ export function sheetKindFor(tipo?: string | null, categoria?: string | null): S
   const t = (String(tipo || '') + ' ' + String(categoria || '')).toLowerCase();
   if (t.includes('inversor')) return 'inversor';
   if (t.includes('medidor')) return 'medidor';
+  // Power Meter (M160/PD666…) e gateway A-966 (SSU): categoria "Power Meter"/"Gateway",
+  // sem "medidor" no texto — sem isto o clique caía no modal antigo de power meter.
+  if (/power\s*meter|meter_m\d|\bm160\b|pd666|a-?966|ims_a966|landis|\bssu\b/.test(t)) return 'medidor';
   // Medidor Concessionária: tipo EQTL001, categoria "Padrão de Energia - Ramal de Entrada"
   // (nenhum dos dois tem "medidor" no texto) — lido pelo A-966 ou pela SSU da TON-V2.
   if (t.includes('eqtl') || t.includes('concession') || t.includes('padrão de energia') || t.includes('padrao de energia')) return 'medidor';
