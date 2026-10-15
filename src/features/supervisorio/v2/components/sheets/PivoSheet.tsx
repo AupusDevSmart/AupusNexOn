@@ -36,7 +36,14 @@ interface Estado {
   sequencia: null | { id: string; acao: string; status: string; passos: Passo[]; erro: string | null; created_at: string; finished_at: string | null };
 }
 interface Janela { ativo: boolean; inicio: string; fim: string; dias: number[] }
-interface PivoConfig { bloqueio_ponta: Janela; reservado: Janela; origem_ponta: { numero_uc?: string; concessionaria?: string } | null }
+interface ParametrosPivo {
+  pressao_minima: number | null; lamina_100: number | null; tempo_volta_100: number | null; correcao_angulo_zero: number | null;
+  direcionamento: 'valvula' | 'fisico'; valvula_ton_id: string | null; valvula_bo: number | null;
+}
+interface PivoConfig {
+  bloqueio_ponta: Janela; reservado: Janela; origem_ponta: { numero_uc?: string; concessionaria?: string } | null;
+  parametros?: ParametrosPivo; unidade_nome?: string | null; planta_nome?: string | null; proprietario_nome?: string | null;
+}
 interface Opcoes {
   tons: Array<{ id: string; nome: string; topico: string | null; unidade: string }>;
   bombeamentos: Array<{ pivo_id: string; nome: string; bombeamento: Partial<Bombeamento> | null }>;
@@ -442,7 +449,7 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   return (
     <NxShell
       title={titulo}
-      subtitle={custoDia?.unidade?.nome ?? (info.hasTs ? info.label : 'Sem leitura de energia')}
+      subtitle={[cfgPivo?.unidade_nome ?? custoDia?.unidade?.nome, cfgPivo?.planta_nome, cfgPivo?.proprietario_nome].filter(Boolean).join(' · ') || (info.hasTs ? info.label : 'Sem leitura de energia')}
       right={<span style={s.pill(tone)}><span style={s.pillDot(tone)} />{label}</span>}
       tabs={[{ key: 'op', label: 'Operação' }, { key: 'cfg', label: 'Configuração' }]}
       tab={aba}
@@ -551,7 +558,7 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
         {modal === 'irr' && (
           <IrrigacaoAvancada
             key={irrAba}
-            nome={titulo} angulo={angulo} ultima={ultima} lamina100={7.15} tempoVolta100={21} ponta={ponta}
+            nome={titulo} angulo={angulo} ultima={ultima} lamina100={cfgPivo?.parametros?.lamina_100 ?? 7.15} tempoVolta100={cfgPivo?.parametros?.tempo_volta_100 ?? 21} ponta={ponta}
             enviando={!!enviando} abaInicial={irrAba}
             programacoes={prog.progs} onRemoverProgramacao={prog.remover} onSalvarProgramacao={prog.salvar}
             onEnviar={(e) => { setEnvio(e); setConfirmKind('start'); setConfirmOpen(true); }}
@@ -651,12 +658,12 @@ function Linha({ titulo, sub, children, minHeight = 56 }: { titulo: string; sub?
 }
 
 const PARAMS = [
-  { key: 'pressurizacao_s', label: 'Tempo para pressurizar', hint: 'Espera entre a bomba ligar e o pivô girar · faixa 10 a 600 s', unit: 's', min: 10, max: 600, real: true },
-  { key: 'confirma_giro_s', label: 'Confirmação do giro', hint: 'Tempo para o status "Irrigando" aparecer · faixa 5 a 120 s', unit: 's', min: 5, max: 120, real: true },
-  { key: 'pmin', label: 'Pressão mínima', hint: 'Abaixo dela: falha de pressão · faixa 0,5 a 6,0 bar', unit: 'bar', min: 0.5, max: 6, real: false },
-  { key: 'lam', label: 'Lâmina d’água a 100%', hint: 'Faixa 2,00 a 20,00 mm', unit: 'mm', min: 2, max: 20, real: false },
-  { key: 'volta', label: 'Tempo de volta a 100%', hint: 'Base da previsão de término · faixa 6 a 72 h', unit: 'h', min: 6, max: 72, real: false },
-  { key: 'ang0', label: 'Correção do ângulo zero', hint: 'Faixa −180 a 180°', unit: '°', min: -180, max: 180, real: false },
+  { key: 'pressurizacao_s', label: 'Tempo para pressurizar', hint: 'Espera entre a bomba ligar e o pivô girar · faixa 10 a 600 s', unit: 's', min: 10, max: 600, real: true, d: 0 },
+  { key: 'confirma_giro_s', label: 'Confirmação do giro', hint: 'Tempo para o status "Irrigando" aparecer · faixa 5 a 120 s', unit: 's', min: 5, max: 120, real: true, d: 0 },
+  { key: 'pressao_minima', label: 'Pressão mínima', hint: 'Abaixo dela: falha de pressão · faixa 0,5 a 6,0 bar', unit: 'bar', min: 0.5, max: 6, real: true, d: 1 },
+  { key: 'lamina_100', label: 'Lâmina d’água a 100%', hint: 'Faixa 2,00 a 20,00 mm', unit: 'mm', min: 2, max: 20, real: true, d: 2 },
+  { key: 'tempo_volta_100', label: 'Tempo de volta a 100%', hint: 'Base da previsão de término · faixa 6 a 72 h', unit: 'h', min: 6, max: 72, real: true, d: 1 },
+  { key: 'correcao_angulo_zero', label: 'Correção do ângulo zero', hint: 'Faixa −180 a 180°', unit: '°', min: -180, max: 180, real: true, d: 0 },
 ] as const;
 
 function ConfigPivo({ pivoId, estado, cfg, onSalvo, progs, onRemoverProg, onAdicionarHorario }: {
@@ -672,6 +679,19 @@ function ConfigPivo({ pivoId, estado, cfg, onSalvo, progs, onRemoverProg, onAdic
   const [conj, setConj] = useState(false);
   const [conjPivo, setConjPivo] = useState('');
   const [ponta, setPonta] = useState<Janela | null>(null);
+  // Parâmetros de irrigação e válvula (pivo_config.parametros) — texto do campo × gravado.
+  const fmtPar = (v: number | null | undefined, d: number) => (v == null ? '' : v.toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d }));
+  const [par, setPar] = useState<Record<string, string>>({});
+  const [agua, setAgua] = useState<{ direcionamento: 'valvula' | 'fisico'; valvula: string }>({ direcionamento: 'valvula', valvula: '' });
+  useEffect(() => {
+    const pp = cfg?.parametros;
+    setPar({
+      pressao_minima: fmtPar(pp?.pressao_minima, 1), lamina_100: fmtPar(pp?.lamina_100, 2),
+      tempo_volta_100: fmtPar(pp?.tempo_volta_100, 1), correcao_angulo_zero: fmtPar(pp?.correcao_angulo_zero, 0),
+    });
+    setAgua({ direcionamento: pp?.direcionamento ?? 'valvula', valvula: pp?.valvula_ton_id && pp?.valvula_bo ? `${pp.valvula_ton_id}|${pp.valvula_bo}` : '' });
+  }, [cfg]);  
+  const parNum = (k: string) => { const t = (par[k] ?? '').trim(); return t === '' ? null : Number(t.replace(',', '.')); };
   const [revisar, setRevisar] = useState(false);
   const [gravando, setGravando] = useState(false);
 
@@ -710,14 +730,21 @@ function ConfigPivo({ pivoId, estado, cfg, onSalvo, progs, onRemoverProg, onAdic
     add('Este pivô tem bombeamento', base.ativo ? 'Sim' : 'Não', ativo ? 'Sim' : 'Não');
     if (ativo) {
       add('Bomba', base.ativo ? tonNome(base.f.ton_id) : '—', tonNome(f.ton_id));
-      add('Acionamento', base.ativo ? (base.f.modo === 'pulso' ? 'Pulso' : 'Contato mantido') : '—', f.modo === 'pulso' ? 'Pulso' : 'Contato mantido');
-      add('BO de ligar', base.ativo ? base.f.bo_liga : '—', f.bo_liga);
-      if (f.modo === 'pulso') { add('BO de desligar', base.f.bo_desliga || '—', f.bo_desliga || '—'); add('Duração do pulso', `${base.f.pulso_ms} ms`, `${f.pulso_ms} ms`); }
-      add('BI de confirmação', base.f.bi_confirma || '—', f.bi_confirma || '—');
-      add('Tempo para confirmar a bomba', `${base.f.confirma_s} s`, `${f.confirma_s} s`);
     }
     add('Tempo para pressurizar', `${base.seq.pressurizacao_s} s`, `${Number(seq.pressurizacao_s)} s`);
     add('Confirmação do giro', `${base.seq.confirma_giro_s} s`, `${Number(seq.confirma_giro_s)} s`);
+    for (const p of PARAMS.slice(2)) {
+      const antes = cfg?.parametros?.[p.key as keyof ParametrosPivo] as number | null | undefined;
+      const agora = parNum(p.key);
+      if ((antes ?? null) !== agora) add(p.label, antes == null ? '—' : `${fmtPar(antes, p.d)} ${p.unit}`, agora == null ? '—' : `${fmtPar(agora, p.d)} ${p.unit}`);
+    }
+    if (conj) {
+      const pp = cfg?.parametros;
+      add('Direcionamento da água', (pp?.direcionamento ?? 'valvula') === 'valvula' ? 'Válvula pelo NexON' : 'Intertravamento físico', agua.direcionamento === 'valvula' ? 'Válvula pelo NexON' : 'Intertravamento físico');
+      const vAntes = pp?.valvula_ton_id && pp?.valvula_bo ? `${pp.valvula_ton_id}|${pp.valvula_bo}` : '';
+      const vTxt = (v: string) => { if (!v) return '—'; const [t, bo] = v.split('|'); return `${tonNome(t)} · BO${bo}`; };
+      if (agua.direcionamento === 'valvula') add('Saída que comanda a válvula', vTxt(vAntes), vTxt(agua.valvula));
+    }
     if (cfg && ponta) {
       const a = cfg.bloqueio_ponta;
       add('Bloquear no horário de ponta', a.ativo ? 'Sim' : 'Não', ponta.ativo ? 'Sim' : 'Não');
@@ -725,21 +752,23 @@ function ConfigPivo({ pivoId, estado, cfg, onSalvo, progs, onRemoverProg, onAdic
       add('Horário de ponta · fim', a.fim, ponta.fim);
     }
     return out;
-  }, [base, ativo, f, seq, cfg, ponta]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [base, ativo, f, seq, cfg, ponta, par, agua, conj]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const bombaRuim = ativo && (!f.ton_id || !numOk(f.bo_liga, 1, 16) || !numOk(f.confirma_s, 5, 300)
     || (f.modo === 'pulso' && (!numOk(f.bo_desliga, 1, 16) || !numOk(f.pulso_ms, 100, 10000)))
     || (f.bi_confirma !== '' && !numOk(f.bi_confirma, 1, 16)));
   const seqRuim = !numOk(seq.pressurizacao_s, 10, 600) || !numOk(seq.confirma_giro_s, 5, 120);
   const pontaRuim = !!ponta && !(/^\d{2}:\d{2}$/.test(ponta.inicio) && /^\d{2}:\d{2}$/.test(ponta.fim));
-  const invalido = bombaRuim || seqRuim || pontaRuim;
+  const parRuim = PARAMS.slice(2).some((p) => { const v = parNum(p.key); return v != null && (Number.isNaN(v) || v < p.min || v > p.max); });
+  const invalido = bombaRuim || seqRuim || pontaRuim || parRuim;
   const n = mudancas.length;
   const saveOff = invalido || n === 0;
 
   const gravar = async () => {
     setGravando(true);
     try {
-      const bombaMudou = mudancas.some((m) => !m.label.startsWith('Horário de ponta') && m.label !== 'Bloquear no horário de ponta');
+      const daConfig = new Set(['Bloquear no horário de ponta', 'Horário de ponta · início', 'Horário de ponta · fim', 'Direcionamento da água', 'Saída que comanda a válvula', ...PARAMS.slice(2).map((p) => p.label)]);
+      const bombaMudou = mudancas.some((m) => !daConfig.has(m.label));
       if (bombaMudou) {
         await api.put(`/pivos/${pivoId}/bombeamento`, {
           bombeamento: ativo ? {
@@ -752,7 +781,20 @@ function ConfigPivo({ pivoId, estado, cfg, onSalvo, progs, onRemoverProg, onAdic
         });
       }
       const pontaMudou = cfg && ponta && (cfg.bloqueio_ponta.ativo !== ponta.ativo || cfg.bloqueio_ponta.inicio !== ponta.inicio || cfg.bloqueio_ponta.fim !== ponta.fim);
-      if (pontaMudou) await api.put(`/pivos/${pivoId}/config`, { bloqueio_ponta: ponta });
+      const parMudou = mudancas.some((m) => PARAMS.slice(2).some((p) => p.label === m.label) || m.label === 'Direcionamento da água' || m.label === 'Saída que comanda a válvula');
+      if (pontaMudou || parMudou) {
+        const [vt, vb] = agua.valvula ? agua.valvula.split('|') : [null, null];
+        await api.put(`/pivos/${pivoId}/config`, {
+          ...(pontaMudou ? { bloqueio_ponta: ponta } : {}),
+          ...(parMudou ? {
+            parametros: {
+              pressao_minima: parNum('pressao_minima'), lamina_100: parNum('lamina_100'),
+              tempo_volta_100: parNum('tempo_volta_100'), correcao_angulo_zero: parNum('correcao_angulo_zero'),
+              direcionamento: agua.direcionamento, valvula_ton_id: vt, valvula_bo: vb ? Number(vb) : null,
+            },
+          } : {}),
+        });
+      }
       toast.success('Configuração do pivô salva');
       // O gravado passa a ser o rascunho (não espera o refresh do estado).
       setBase({ ativo, f, seq: { pressurizacao_s: Number(seq.pressurizacao_s), confirma_giro_s: Number(seq.confirma_giro_s) } });
@@ -785,18 +827,6 @@ function ConfigPivo({ pivoId, estado, cfg, onSalvo, progs, onRemoverProg, onAdic
                 {(op?.tons ?? []).map((t) => <option key={t.id} value={t.id}>{t.nome} · {t.unidade}</option>)}
               </ChipSelect>
             </Linha>
-            <Linha titulo="Acionamento" sub={f.modo === 'pulso' ? 'Pulso liga, outro pulso desliga (selo/soft-starter)' : 'A TON segura o relé; soltar desliga'}>
-              <NxSeg value={f.modo} onChange={(v) => set('modo', v)} options={[{ v: 'pulso', label: 'Pulso' }, { v: 'mantido', label: 'Contato mantido' }]} />
-            </Linha>
-            <Linha titulo="BO de ligar" sub="Saída da TON que liga a bomba · 1 a 16">{campo('bo_liga', 1, 16)}</Linha>
-            {f.modo === 'pulso' && (
-              <>
-                <Linha titulo="BO de desligar" sub="Saída da TON que desliga a bomba · 1 a 16">{campo('bo_desliga', 1, 16)}</Linha>
-                <Linha titulo="Duração do pulso" sub="Faixa 100 a 10.000 ms">{campo('pulso_ms', 100, 10000)}</Linha>
-              </>
-            )}
-            <Linha titulo="BI de confirmação" sub="Retorno “bomba ligada” · vazio = sem confirmação">{campo('bi_confirma', 1, 16)}</Linha>
-            <Linha titulo="Tempo para confirmar a bomba" sub="Faixa 5 a 300 s">{campo('confirma_s', 5, 300)}</Linha>
             <NxSwitchRow title="Sistema conjugado" sub="A bomba atende outro pivô · um pivô por vez" on={conj} onToggle={() => setConj((v) => !v)} />
             {conj && (
               <div style={{ borderTop: `1px solid ${NX.linha}`, padding: '12px 0', ...col(10) }}>
@@ -809,17 +839,22 @@ function ConfigPivo({ pivoId, estado, cfg, onSalvo, progs, onRemoverProg, onAdic
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 14, fontWeight: 700 }}>Direcionamento da água</span>
-                  <NxSeg<'valv' | 'fis'> value="valv" disabled onChange={() => undefined} options={[{ v: 'valv', label: 'Válvula pelo NexON' }, { v: 'fis', label: 'Intertravamento físico' }]} />
+                  <NxSeg<'valvula' | 'fisico'> value={agua.direcionamento} onChange={(v) => setAgua((a) => ({ ...a, direcionamento: v }))} options={[{ v: 'valvula', label: 'Válvula pelo NexON' }, { v: 'fisico', label: 'Intertravamento físico' }]} />
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                  <span style={col(2)}>
-                    <span style={{ fontSize: 14, fontWeight: 700 }}>Saída que comanda a válvula</span>
-                    <span style={{ fontSize: 12, color: NX.mudo }}>Válvula solenoide na adutora, junto ao pivô mais próximo</span>
-                  </span>
-                  <span style={{ height: 36, padding: '0 12px', borderRadius: 10, border: `1px solid ${NX.borda}`, display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 700, flex: 'none' }}>
-                    — <IcoChevron />
-                  </span>
-                </div>
+                {agua.direcionamento === 'valvula' && (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                    <span style={col(2)}>
+                      <span style={{ fontSize: 14, fontWeight: 700 }}>Saída que comanda a válvula</span>
+                      <span style={{ fontSize: 12, color: NX.mudo }}>Válvula solenoide na adutora, junto ao pivô mais próximo</span>
+                    </span>
+                    <ChipSelect label="Saída que comanda a válvula" height={36} value={agua.valvula} onChange={(v) => setAgua((a) => ({ ...a, valvula: v }))}>
+                      <option value="">—</option>
+                      {(op?.tons ?? []).flatMap((t) => Array.from({ length: 8 }, (_, i) => (
+                        <option key={`${t.id}|${i + 1}`} value={`${t.id}|${i + 1}`}>{t.nome} · BO{i + 1}</option>
+                      )))}
+                    </ChipSelect>
+                  </div>
+                )}
               </div>
             )}
           </>
@@ -828,16 +863,18 @@ function ConfigPivo({ pivoId, estado, cfg, onSalvo, progs, onRemoverProg, onAdic
 
       {secao('PARTIDA E IRRIGAÇÃO', 10)}
       {PARAMS.map((p) => {
-        const val = p.real ? seq[p.key as 'pressurizacao_s' | 'confirma_giro_s'] : '—';
-        const ruim = p.real && !numOk(val, p.min, p.max);
+        const ehSeq = p.key === 'pressurizacao_s' || p.key === 'confirma_giro_s';
+        const val = ehSeq ? seq[p.key as 'pressurizacao_s' | 'confirma_giro_s'] : (par[p.key] ?? '');
+        const nv = Number(String(val).replace(',', '.'));
+        const ruim = ehSeq ? !numOk(val, p.min, p.max) : val !== '' && (Number.isNaN(nv) || nv < p.min || nv > p.max);
         return (
           <div key={p.key} style={{ ...s.card, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
             <label htmlFor={`w-${p.key}`} style={{ flex: 1, ...col(2) }}>
               <span style={{ fontSize: 15, fontWeight: 700 }}>{p.label}</span>
               <span style={{ fontSize: 12, color: ruim ? NX.bad : NX.mudo }}>{p.hint}</span>
             </label>
-            <input id={`w-${p.key}`} inputMode="decimal" value={val} disabled={!p.real} style={s.campo(!p.real, ruim)}
-              onChange={(e) => { if (p.real) setSeq((x) => ({ ...x, [p.key]: e.target.value })); }} />
+            <input id={`w-${p.key}`} inputMode="decimal" value={val} style={s.campo(false, ruim)}
+              onChange={(e) => { if (ehSeq) setSeq((x) => ({ ...x, [p.key]: e.target.value })); else setPar((x) => ({ ...x, [p.key]: e.target.value })); }} />
             <span style={{ fontSize: 14, color: NX.mudo, width: 28 }}>{p.unit}</span>
           </div>
         );
