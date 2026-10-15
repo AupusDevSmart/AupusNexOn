@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '@/config/api';
 import { iotApiService } from '@/services/iot.services';
 import { useGatewayDashboard } from '@/hooks/useGatewayDashboard';
@@ -6,22 +7,23 @@ import { useGatewayTendencia } from '@/hooks/useGatewayTendencia';
 import { equipamentosDadosService } from '@/services/equipamentos-dados.service';
 import { EstadoHero, GrupoTitulo, Section, MiniChart, useDados, getPath, fmt, tsInfo } from './sheetParts';
 import {
-  EquipShell, Pill, NeutralPill, Card, SectionLabel, KpiCells, FieldRow, Segmented, Registros,
-  useCustos, custosDe, useHistorico, useHorarios, postoEm, fmtHora, bucketize, brl, unwrap, TONE_BG, TONE_TEXT,
-  type Tone, type HistPoint,
+  useCustos, custosDe, useHistorico, useHorarios, postoEm, fmtHora, bucketize, unwrap,
+  type HistPoint, type Horarios,
 } from './equipUi';
+import { NX, s, NxShell, type NxTone } from './nxMock';
 
 /**
- * Modal do Medidor da concessionária — mockup "Web — Modal do Medidor" (NEXON-5).
+ * Modal do Medidor da concessionária — mockup "Web — Modal do Medidor" (NEXON-5),
+ * marcação, textos e medidas iguais ao HTML (estilos inline, cores do kit nxMock).
  * Duas fontes de medição, escolhidas pelo vínculo em "Vínculos → Medições":
  *  - SSU (A-966 / TON-V2): pulsos por bloco; "agora" é a parcial de 1 em 1 min,
- *    demanda e energia vêm de /equipamentos-dados/:id/gateway/dashboard;
+ *    demanda e energia vêm de /equipamentos-dados/:id/gateway/dashboard e /gateway/tendencia;
  *  - telemetria direta (PM M160/PD666): Pt/Qt/St em W; intervalo de 15 min, fluxo
- *    do dia e FP saem do histórico de hoje; demanda do mês e energia por posto de
- *    /custos-energia.
+ *    do dia e FP saem do histórico; demanda do mês e energia por posto de /custos-energia.
+ * O que não tem fonte de dado (geração dos inversores, reativo excedente…) aparece com "—".
  */
 
-export interface StatusMed { tone: Tone; label: string; posto?: string }
+export interface StatusMed { tone: NxTone; label: string; posto?: string }
 
 /** Quadrante NBR 14522 (vem do medidor). Só tem significado com fluxo. */
 const QUADRANTE: Record<number, string> = {
@@ -139,15 +141,403 @@ export function SsuOperacao({ equipamentoId }: { equipamentoId: string }) {
   );
 }
 
+// ============================================================ modal (layout do mockup)
+
 const INJ = '#1A9BB5';
+const VERDE = '#2E8B47';
+const AMBAR = '#B7791F';
+const VERM = '#C53030';
+const VERDE_CLARO = '#9CC9A8';
+const Q15 = 15 * 60_000;
+const DIA = 86_400_000;
+const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+
 const kw = (w: unknown) => { const v = Number(w); return Number.isFinite(v) ? v / 1000 : null; };
 const fpDe = (d: Record<string, unknown>) => {
   const f = Number(d?.FPt); if (Number.isFinite(f) && f !== 0) return Math.abs(f);
-  const p = Number(d?.Pt), s = Number(d?.St);
-  return Number.isFinite(p) && Number.isFinite(s) && s > 0 ? Math.min(1, Math.abs(p) / s) : null;
+  const p = Number(d?.Pt), q = Number(d?.St);
+  return Number.isFinite(p) && Number.isFinite(q) && q > 0 ? Math.min(1, Math.abs(p) / q) : null;
 };
+/** FP a partir de P e Q (kW/kvar). */
+const fpPQ = (p: number, q: number) => { const sv = Math.hypot(p, q); return sv > 0 ? Math.abs(p) / sv : null; };
 const hhmm = (t: number) => new Date(t).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+const ddmm = (t: number) => new Date(t).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+const n0 = (v: number | null | undefined) => fmt(v, 0);
+/** kW como no mockup ("268"); abaixo de 100 com uma casa ("2,4"). */
+const kwTxt = (v: number | null | undefined) => (v == null || !Number.isFinite(v) ? '—' : fmt(v, Math.abs(v) >= 100 ? 0 : 1));
+const inicioDoDia = (t = Date.now()) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
+const inicioDoMes = (t = Date.now()) => { const d = new Date(t); return new Date(d.getFullYear(), d.getMonth(), 1).getTime(); };
+const diasNoMes = (t = Date.now()) => { const d = new Date(t); return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate(); };
+const desde = () => `01/${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+const VAZIO = ' ';
+
+/** Grades de 2 colunas do mockup: viram 1 coluna abaixo de 760 px. */
+const CSS_MED = '.nx-eq .nxm-g2{display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:16px;align-items:stretch}'
+  + '@media (max-width:759px){.nx-eq .nxm-g2{grid-template-columns:minmax(0, 1fr)}}';
+
+const card16: CSSProperties = { background: NX.card, border: `1px solid ${NX.borda}`, borderRadius: 16 };
+const card14: CSSProperties = { background: NX.card, border: `1px solid ${NX.borda}`, borderRadius: 14 };
+const tab: CSSProperties = { fontVariantNumeric: 'tabular-nums' };
+const cel = (i: number): CSSProperties => ({ display: 'flex', flexDirection: 'column', gap: 2, padding: '0 18px', ...(i % 2 ? { borderLeft: `1px solid ${NX.linha}` } : {}) });
+
+type Per = 'hoje' | 'ciclo';
+interface Kpi { k: string; v: string; s: string }
+interface FpRow { k: string; s: string; v: string; w: boolean }
+interface PostoE { c: number | null; i: number | null }
+type Postos = Record<'Ponta' | 'Fora de ponta' | 'Reservado', PostoE> & { Total: PostoE };
+
+/** Tudo o que a tela mostra; as duas fontes (SSU e PM) preenchem este modelo. */
+interface Vista {
+  tone: NxTone; stLabel: string; stText: string;
+  terminaEm: string; proj: number | null; contr: number | null; tol: number | null;
+  kpis: Kpi[];
+  gen: boolean;
+  per: Per; setPer: (p: Per) => void;
+  /** 96 intervalos de hoje, fluxo líquido em kW (injeção negativa). */
+  hoje: Array<number | null> | null;
+  /** Um ponto por dia do mês: máxima de 15 min de consumo e de injeção. */
+  ciclo: Array<{ c: number | null; i: number | null }> | null;
+  horarios: Horarios;
+  maxMes: { kw: number; t: number | null } | null;
+  meses: Array<{ k: string; v: number | null }>;
+  injMaxMes: { kw: number; t: number } | null;
+  fps: FpRow[];
+  postos: Postos | null;
+  reativa: string; excedente: string;
+  equipamentoId: string;
+}
+
+function Fluxo({ v }: { v: Vista }) {
+  const { per, gen, contr, tol, hoje, ciclo, horarios } = v;
+  const W = 720, PH = 138;
+  const pos: number[] = [], neg: number[] = [];
+  if (per === 'hoje') (hoje ?? []).forEach((x) => { if (x != null) (x >= 0 ? pos : neg).push(Math.abs(x)); });
+  else (ciclo ?? []).forEach((d) => { if (d.c != null) pos.push(d.c); if (d.i != null) neg.push(d.i); });
+  const TOP = Math.max((contr ?? 0) * 1.2, Math.max(0, ...pos) * 1.05, 1);
+  const BOT = gen ? Math.max(TOP / 2, Math.max(0, ...neg) * 1.1) : 0;
+  const H = (x: number) => (x / (TOP + BOT)) * PH;
+  const zY = Math.round((10 + H(TOP)) * 10) / 10;
+  const cY = contr != null ? Math.round((zY - H(contr)) * 10) / 10 : null;
+  const cor = (x: number) => (x < 0 ? INJ : tol != null && x > tol ? VERM : VERDE);
+  const util = new Date().getDay() !== 0 && new Date().getDay() !== 6;
+  const [p0, p1] = horarios.ponta;
+  const X = (i: number) => Math.round(i * 7.5 * 10) / 10;
+  const nDias = diasNoMes();
+  const sw = W / nDias;
+  const vazio = per === 'hoje' ? hoje != null && !hoje.some((x) => x != null) : ciclo != null && !ciclo.some((d) => d.c != null || d.i != null);
+  const ticks = per === 'hoje'
+    ? [0, 6, 12, 18, 24].map((h) => ({ x: (h / 24) * W, l: `${String(h).padStart(2, '0')}h` }))
+    : [1, 8, 15, 22, nDias].map((d, i, a) => ({ x: i === 0 ? 0 : i === a.length - 1 ? W : (d - 0.5) * sw, l: String(d).padStart(2, '0') }));
+  return (
+    <svg viewBox="0 0 720 180" width="100%" height="180" style={{ display: 'block', marginTop: 8 }} role="img"
+      aria-label={per === 'hoje' ? 'Fluxo na rede por intervalo de 15 minutos hoje' : 'Demanda máxima de 15 minutos por dia do ciclo'}>
+      {per === 'hoje' && util && p1 > p0 && (
+        <>
+          <rect x={X(p0 * 4)} y="10" width={X(p1 * 4) - X(p0 * 4)} height="138" fill="rgba(197,48,48,0.07)" />
+          <text x={(X(p0 * 4) + X(p1 * 4)) / 2} y="142" fontSize="11" fill={VERM} textAnchor="middle">Ponta</text>
+        </>
+      )}
+      {per === 'hoje'
+        ? (hoje ?? []).map((x, i) => {
+          if (x == null) return null;
+          const a = Math.max(0.5, Math.round(H(Math.abs(x)) * 10) / 10);
+          return <rect key={i} x={X(i) + 0.9} y={x >= 0 ? Math.round((zY - a) * 10) / 10 : zY} width="5.6" height={a} rx="1" fill={cor(x)} />;
+        })
+        : (ciclo ?? []).map((d, i) => (
+          <g key={i}>
+            {d.c != null && d.c > 0 && <rect x={i * sw + sw * 0.125} y={zY - Math.max(0.5, H(d.c))} width={sw * 0.75} height={Math.max(0.5, H(d.c))} rx="1" fill={cor(d.c)} />}
+            {gen && d.i != null && d.i > 0 && <rect x={i * sw + sw * 0.125} y={zY} width={sw * 0.75} height={Math.max(0.5, H(d.i))} rx="1" fill={INJ} />}
+          </g>
+        ))}
+      {cY != null && (
+        <>
+          <line x1="0" x2="720" y1={cY} y2={cY} stroke={NX.texto} strokeOpacity="0.55" strokeDasharray="5 5" />
+          <text x="720" y={cY - 6} fontSize="11" fill={NX.caixaTx} textAnchor="end">Contratada {n0(contr)} kW</text>
+        </>
+      )}
+      <line x1="0" x2="720" y1={zY} y2={zY} stroke={NX.off} />
+      {vazio && <text x="360" y="80" fontSize="12" fill={NX.mudo} textAnchor="middle">Sem leituras no período</text>}
+      {ticks.map((t, i) => (
+        <text key={i} x={t.x} y="168" fontSize="11" fill={NX.mudo} textAnchor={i === 0 ? undefined : i === ticks.length - 1 ? 'end' : 'middle'}>{t.l}</text>
+      ))}
+    </svg>
+  );
+}
+
+function FpCard({ fps }: { fps: FpRow[] }) {
+  return (
+    <div style={{ ...card14, padding: '0 18px' }}>
+      <div style={{ fontSize: 15, fontWeight: 800, padding: '12px 0' }}>Fator de potência e reativo</div>
+      {fps.map((f) => (
+        <div key={f.k} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: 54, borderTop: `1px solid ${NX.linha}` }}>
+          <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span style={{ fontSize: 14, fontWeight: 700 }}>{f.k}</span>
+            <span style={{ fontSize: 12, color: NX.mudo }}>{f.s}</span>
+          </span>
+          <span style={{ fontSize: 18, fontWeight: 800, ...tab, whiteSpace: 'nowrap', color: f.w ? AMBAR : NX.texto }}>{f.v}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+interface LogMqtt { mensagem?: string | null; severidade?: string | null; created_at?: string; regra?: { nome?: string | null } | null }
+
+/** Registros do equipamento (regras de log MQTT), no formato do mockup: DATA · evento. */
+function RegistrosMed({ equipamentoId }: { equipamentoId: string }) {
+  const [rows, setRows] = useState<LogMqtt[] | null>(null);
+  useEffect(() => {
+    let vivo = true;
+    api.get('/logs-mqtt', { params: { equipamentoId: equipamentoId.trim(), limit: 4, page: 1 } })
+      .then((r) => { if (vivo) { const d = unwrap<LogMqtt[] | { data?: LogMqtt[] }>(r); setRows(Array.isArray(d) ? d : d?.data ?? []); } })
+      .catch(() => { if (vivo) setRows([]); });
+    return () => { vivo = false; };
+  }, [equipamentoId]);
+  const logs = (rows ?? []).map((l) => {
+    const sev = String(l.severidade ?? '').toUpperCase();
+    const t = l.created_at ? new Date(l.created_at).getTime() : 0;
+    return { t, q: t ? `${ddmm(t)} ${hhmm(t)}` : '—', txt: l.mensagem ?? l.regra?.nome ?? 'Evento', w: sev === 'CRITICA' || sev === 'CRÍTICA' || sev === 'ALTA' || sev === 'MEDIA' || sev === 'MÉDIA' };
+  }).sort((a, b) => b.t - a.t).slice(0, 4);
+  return (
+    <div style={{ ...card14, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px' }}>
+        <span style={{ fontSize: 15, fontWeight: 800 }}>Registros</span>
+        <Link to={`/logs/logs-mqtt?equipamentoId=${encodeURIComponent(equipamentoId.trim())}`} style={{ fontSize: 13, fontWeight: 800, textDecoration: 'none' }}>Ver todos ›</Link>
+      </div>
+      {rows == null || logs.length === 0 ? (
+        <div style={{ padding: '10px 16px', borderTop: `1px solid ${NX.linha}`, fontSize: 14, color: NX.mudo }}>{rows == null ? 'Carregando…' : 'Nenhum registro deste equipamento.'}</div>
+      ) : logs.map((l, i) => (
+        <div key={i} style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: 12, alignItems: 'center', padding: '10px 16px', borderTop: `1px solid ${NX.linha}` }}>
+          <span style={{ fontSize: 13, color: NX.mudo, ...tab }}>{l.q}</span>
+          <span style={{ fontSize: 14, color: l.w ? AMBAR : NX.texto, ...(l.w ? { fontWeight: 700 } : {}) }}>{l.txt}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Corpo da aba Operação — mesma marcação do mockup para as duas fontes. */
+function MedidorVista({ v }: { v: Vista }) {
+  const { contr, tol, proj, gen } = v;
+  const pct = contr && proj != null ? proj / contr : null;
+  const over = tol != null && proj != null && proj > tol;
+  const maxPct = contr && v.maxMes ? v.maxMes.kw / contr : null;
+  const folga = tol != null && v.maxMes ? tol - v.maxMes.kw : null;
+  const mVals = v.meses.map((m) => m.v ?? 0);
+  const MS = Math.max((contr ?? 0) * 1.2, Math.max(0, ...mVals) * 1.1, 1);
+  const MH = (x: number) => (x / MS) * 112;
+  const ultrap = v.meses.filter((m) => tol != null && m.v != null && m.v > tol);
+  const cicloTxt = `desde ${desde()}`;
+  const gens: Kpi[] = [
+    { k: 'Geração agora', v: '—', s: 'inversores da instalação' },
+    { k: 'Máx. geração do mês', v: '—', s: VAZIO },
+    { k: 'Produzida hoje', v: '—', s: 'até agora' },
+    { k: 'Produzida no ciclo', v: '—', s: cicloTxt },
+    { k: 'Injeção máx. do mês', v: v.injMaxMes ? `${kwTxt(v.injMaxMes.kw)} kW` : '—', s: v.injMaxMes ? `${ddmm(v.injMaxMes.t)} · ${hhmm(v.injMaxMes.t)} · medidor` : 'medidor' },
+    { k: 'Autoconsumo no ciclo', v: '—', s: VAZIO },
+  ];
+  const C = { P: VERM, FP: '#3B6FD6', HR: VERDE } as const;
+  const dot = (c: keyof typeof C | ''): CSSProperties => ({ width: 8, height: 8, borderRadius: 3, flex: 'none', background: c ? C[c] : 'transparent' });
+  const p = v.postos;
+  const e = (x: number | null | undefined) => (p == null || x == null ? '—' : n0(x));
+  const liq = (x: PostoE | undefined) => (x && x.c != null && x.i != null ? x.c - x.i : null);
+  const postosG = [
+    { k: 'Ponta', r: p?.Ponta, d: 'P' as const },
+    { k: 'Fora ponta', r: p?.['Fora de ponta'], d: 'FP' as const },
+    { k: 'Reservado', r: p?.Reservado, d: 'HR' as const },
+    { k: 'Total', r: p?.Total, d: '' as const },
+  ];
+  const postosN = [
+    { k: 'Ponta', r: p?.Ponta, d: 'P' as const },
+    { k: 'Fora de ponta', r: p?.['Fora de ponta'], d: 'FP' as const },
+    { k: 'Reservado (HR)', r: p?.Reservado, d: 'HR' as const },
+    { k: 'Total', r: p?.Total, d: '' as const },
+  ];
+  const segBtn = (sel: boolean): CSSProperties => ({ height: 30, padding: '0 12px', fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', ...(sel ? { borderRadius: 9, background: NX.card } : { color: NX.mudo }) });
+
+  return (
+    <div style={{ padding: '20px 24px 28px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <style>{CSS_MED}</style>
+      <div className="nxm-g2">
+        <div style={{ ...card16, padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <span style={{ fontSize: 14, color: NX.mudo }}>Intervalo de 15 min · termina em</span>
+            <span style={{ fontSize: 20, fontWeight: 800, ...tab }}>{v.terminaEm}</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+            <span style={{ fontSize: 44, lineHeight: '48px', fontWeight: 800, ...tab, letterSpacing: -1 }}>{kwTxt(proj)}</span>
+            <span style={{ fontSize: 16, color: NX.mudo }}>kW projetados</span>
+          </div>
+          <div style={{ position: 'relative', height: 14, borderRadius: 7, background: NX.linha }}>
+            {pct != null && <div style={{ height: '100%', borderRadius: 7, width: `${Math.max(0, Math.min(100, (pct / 1.2) * 100))}%`, background: over ? VERM : pct > 0.95 ? AMBAR : VERDE }} />}
+            <div style={{ position: 'absolute', top: -4, bottom: -4, width: 2, background: NX.texto, left: '83.33%' }} />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: NX.mudo }}>
+            <span>{pct != null ? `${Math.round(pct * 100)}% da contratada` : '— da contratada'}</span>
+            <span>Contratada {n0(contr)} kW · tolerância {n0(tol)} kW</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, borderTop: `1px solid ${NX.linha}`, paddingTop: 12 }}>
+            <span style={s.stDot(v.tone)} />
+            <span style={s.stLabel(v.tone)}>{v.stLabel}</span>
+            <span style={{ fontSize: 14, color: NX.mudo }}>{v.stText}</span>
+          </div>
+        </div>
+        <div style={{ ...card16, padding: '18px 0', display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', alignContent: 'space-around', rowGap: 18 }}>
+          {v.kpis.map((k, i) => (
+            <div key={k.k} style={cel(i)}>
+              <span style={{ fontSize: 12, color: NX.mudo }}>{k.k}</span>
+              <span style={{ fontSize: 24, fontWeight: 800, ...tab }}>{k.v}</span>
+              <span style={{ fontSize: 11, color: NX.mudo, whiteSpace: 'nowrap' }}>{k.s || VAZIO}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ ...card14, padding: '12px 16px 14px 16px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', rowGap: 8 }}>
+          <span style={{ fontSize: 15, fontWeight: 800 }}>{gen ? 'Fluxo na rede por intervalo de 15 min' : 'Demanda por intervalo de 15 min'}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            {gen && (
+              <span style={{ display: 'flex', gap: 14, fontSize: 12, color: NX.mudo }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ width: 10, height: 10, borderRadius: 2, background: VERDE }} />Consumo</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ width: 10, height: 10, borderRadius: 2, background: INJ }} />Injeção</span>
+              </span>
+            )}
+            <div style={{ display: 'flex', gap: 4, padding: 3, borderRadius: 12, background: NX.seg }}>
+              <button type="button" aria-pressed={v.per === 'hoje'} onClick={() => v.setPer('hoje')} style={segBtn(v.per === 'hoje')}>Hoje</button>
+              <button type="button" aria-pressed={v.per === 'ciclo'} onClick={() => v.setPer('ciclo')} style={segBtn(v.per === 'ciclo')}>Ciclo</button>
+            </div>
+          </div>
+        </div>
+        <Fluxo v={v} />
+      </div>
+
+      <div className="nxm-g2">
+        <div style={{ ...card14, padding: '12px 18px 14px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <span style={{ fontSize: 15, fontWeight: 800 }}>Demanda × contratada</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 12 }}>
+            <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <span style={{ fontSize: 12, color: NX.mudo }}>Máxima do mês</span>
+              <span style={{ fontSize: 26, fontWeight: 800, ...tab }}>{v.maxMes ? `${kwTxt(v.maxMes.kw)} kW` : '—'}</span>
+              <span style={{ fontSize: 12, color: NX.mudo }}>
+                {v.maxMes?.t != null ? `${ddmm(v.maxMes.t)} · ${hhmm(v.maxMes.t)} · ${postoEm(new Date(v.maxMes.t - 60_000), v.horarios).toLowerCase()}` : '—'}
+              </span>
+            </span>
+            <span style={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'flex-end' }}>
+              <span style={{ fontSize: 20, fontWeight: 800, ...tab }}>{maxPct != null ? `${Math.round(maxPct * 100)}%` : '—'}</span>
+              <span style={{ fontSize: 12, color: NX.mudo }}>da contratada</span>
+              {folga != null && folga < 0
+                ? <span style={{ fontSize: 12, color: VERM, fontWeight: 800 }}>{n0(-folga)} kW acima da tolerância</span>
+                : <span style={{ fontSize: 12, color: NX.mudo }}>folga até tolerância {folga != null ? `${n0(folga)} kW` : '—'}</span>}
+            </span>
+          </div>
+          <svg viewBox="0 0 334 150" width="100%" height="150" role="img" aria-label="Demanda máxima por mês comparada à contratada">
+            {v.meses.map((m, i) => {
+              const h = Math.round(MH(m.v ?? 0) * 10) / 10, x = 12 + i * 54, cur = i === v.meses.length - 1;
+              const ov = tol != null && m.v != null && m.v > tol;
+              return (
+                <g key={m.k + i}>
+                  {m.v != null && <rect x={x} y={Math.round((128 - h) * 10) / 10} width="32" height={h} rx="4" fill={ov ? VERM : cur ? VERDE : VERDE_CLARO} />}
+                  {m.v != null && <text x={x + 16} y={Math.round((128 - h - 5) * 10) / 10} fontSize="11" fill={ov ? VERM : NX.caixaTx} textAnchor="middle" fontWeight="700">{n0(m.v)}</text>}
+                  <text x={x + 16} y="146" fontSize="11" fill={NX.mudo} textAnchor="middle">{m.k}</text>
+                </g>
+              );
+            })}
+            {contr != null && <line x1="0" x2="334" y1={Math.round((128 - MH(contr)) * 10) / 10} y2={Math.round((128 - MH(contr)) * 10) / 10} stroke={NX.texto} strokeOpacity="0.55" strokeDasharray="5 5" />}
+            {tol != null && <line x1="0" x2="334" y1={Math.round((128 - MH(tol)) * 10) / 10} y2={Math.round((128 - MH(tol)) * 10) / 10} stroke={VERM} strokeOpacity="0.6" strokeDasharray="2 4" />}
+            <line x1="0" x2="334" y1="128" y2="128" stroke={NX.borda} />
+          </svg>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, color: NX.mudo, gap: 8 }}>
+            <span style={{ display: 'flex', gap: 14 }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ width: 14, borderTop: `1.5px dashed ${NX.texto}` }} />Contratada {n0(contr)}</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ width: 14, borderTop: `1.5px dashed ${VERM}` }} />Tolerância {n0(tol)}</span>
+            </span>
+            {ultrap.length > 0
+              ? <span style={{ color: VERM, fontWeight: 800 }}>{ultrap.length} ultrapassage{ultrap.length > 1 ? 'ns' : 'm'} · {ultrap.map((m) => m.k).join(', ')}</span>
+              : <span>Sem ultrapassagem</span>}
+          </div>
+        </div>
+        {gen ? (
+          <div style={{ ...card14, padding: '12px 0 14px 0', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <span style={{ fontSize: 15, fontWeight: 800, padding: '0 18px' }}>Geração</span>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', rowGap: 16 }}>
+              {gens.map((g, i) => (
+                <div key={g.k} style={cel(i)}>
+                  <span style={{ fontSize: 12, color: NX.mudo }}>{g.k}</span>
+                  <span style={{ fontSize: 20, fontWeight: 800, ...tab }}>{g.v}</span>
+                  <span style={{ fontSize: 11, color: NX.mudo, whiteSpace: 'nowrap' }}>{g.s}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : <FpCard fps={v.fps} />}
+      </div>
+
+      <div className={gen ? 'nxm-g2' : undefined} style={gen ? undefined : { display: 'block' }}>
+        <div style={{ ...card14, padding: '0 18px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0' }}>
+            <span style={{ fontSize: 15, fontWeight: 800 }}>Energia do ciclo</span>
+            <span style={{ fontSize: 12, color: NX.mudo }}>{cicloTxt}</span>
+          </div>
+          {gen ? (
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1fr', fontSize: 11, fontWeight: 700, color: NX.mudo, letterSpacing: 0.4, padding: '6px 0', borderTop: `1px solid ${NX.linha}` }}>
+                <span>kWh</span><span style={{ textAlign: 'right' }}>CONSUMIDA</span><span style={{ textAlign: 'right' }}>INJETADA</span><span style={{ textAlign: 'right' }}>LÍQUIDA</span>
+              </div>
+              {postosG.map((r) => (
+                <div key={r.k} style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1fr', alignItems: 'center', minHeight: 40, fontSize: 14, borderTop: `1px solid ${NX.linha}`, ...(r.d ? {} : { fontWeight: 800 }) }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}><span style={dot(r.d)} />{r.k}</span>
+                  <span style={{ textAlign: 'right', ...tab }}>{e(r.r?.c)}</span>
+                  <span style={{ textAlign: 'right', ...tab, color: INJ }}>{e(r.r?.i)}</span>
+                  <span style={{ textAlign: 'right', ...tab }}>{e(liq(r.r))}</span>
+                </div>
+              ))}
+            </>
+          ) : (
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', fontSize: 11, fontWeight: 700, color: NX.mudo, letterSpacing: 0.4, padding: '6px 0', borderTop: `1px solid ${NX.linha}` }}>
+                <span>POSTO</span><span style={{ textAlign: 'right' }}>CONSUMIDA kWh</span>
+              </div>
+              {postosN.map((r) => (
+                <div key={r.k} style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', alignItems: 'center', minHeight: 40, fontSize: 14, borderTop: `1px solid ${NX.linha}`, ...(r.d ? {} : { fontWeight: 800 }) }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span style={dot(r.d)} />{r.k}</span>
+                  <span style={{ textAlign: 'right', ...tab }}>{e(r.r?.c)}</span>
+                </div>
+              ))}
+            </>
+          )}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: 44, borderTop: `1px solid ${NX.linha}` }}>
+            <span style={{ fontSize: 14, fontWeight: 700 }}>Energia reativa</span>
+            <span style={{ fontSize: 15, fontWeight: 800, ...tab }}>{v.reativa}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: 48, borderTop: `1px solid ${NX.linha}` }}>
+            <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontSize: 14, fontWeight: 700 }}>Reativo excedente</span><span style={{ fontSize: 12, color: NX.mudo }}>Abaixo de FP 0,92</span></span>
+            <span style={{ fontSize: 15, fontWeight: 800, color: v.excedente === '—' ? NX.texto : AMBAR, ...tab }}>{v.excedente}</span>
+          </div>
+        </div>
+        {gen && <FpCard fps={v.fps} />}
+      </div>
+
+      <RegistrosMed equipamentoId={v.equipamentoId} />
+    </div>
+  );
+}
+
+/** Linhas de FP sem fonte de dado: o mockup pede o mês/ciclo, a telemetria não traz. */
+const fpsSemFonte = (): FpRow[] => [
+  { k: 'Menor FP indutivo', s: 'limite 0,92', v: '—', w: false },
+  { k: 'Menor FP capacitivo', s: 'horário capacitivo do medidor', v: '—', w: false },
+  { k: 'FP médio do ciclo', s: `desde ${desde()}`, v: '—', w: false },
+  { k: 'Reativo máx. do mês', s: VAZIO, v: '—', w: false },
+];
+
+/** Rótulos dos últimos n meses (o atual por último). */
+const rotulosMeses = (n = 6) => {
+  const h = new Date();
+  return Array.from({ length: n }, (_, k) => MESES[new Date(h.getFullYear(), h.getMonth() - (n - 1 - k), 1).getMonth()]);
+};
+
+// ------------------------------------------------------------------ fonte PM
 
 /** Demanda máxima dos últimos N meses (um /custos-energia por mês). */
 function useDemandaMeses(equipamentoId: string, n = 6) {
@@ -166,395 +556,163 @@ function useDemandaMeses(equipamentoId: string, n = 6) {
   return rows;
 }
 
-function FluxoDia({ pts, contratada, tol, horarios, gerando }: {
-  pts: HistPoint[]; contratada: number | null; tol: number | null; horarios: ReturnType<typeof useHorarios>; gerando: boolean;
-}) {
-  const ini = new Date(); ini.setHours(0, 0, 0, 0);
-  const W = 720, PH = 138, N = 96;
-  const vals = bucketize(pts, ini.getTime(), ini.getTime() + 86400000, N, (d) => kw(d?.Pt));
-  const pos = Math.max(contratada ?? 0, ...vals.map((v) => (v != null && v > 0 ? v : 0)), 1) * 1.1;
-  const neg = gerando ? Math.max(...vals.map((v) => (v != null && v < 0 ? -v : 0)), 0) * 1.1 : 0;
-  const H = (v: number) => (v / (pos + neg)) * PH;
-  const zY = 10 + H(pos);
-  const X = (i: number) => (i / N) * W;
-  const util = ini.getDay() !== 0 && ini.getDay() !== 6;
-  const [p0, p1] = horarios.ponta;
-  const cY = contratada != null ? zY - H(contratada) : null;
-  return (
-    <svg viewBox="0 0 720 180" width="100%" height="180" className="block mt-2" role="img" aria-label="Fluxo na rede por intervalo de 15 minutos hoje">
-      {util && <rect x={(p0 / 24) * W} y="10" width={((p1 - p0) / 24) * W} height={PH} fill="rgba(197,48,48,0.07)" />}
-      {util && <text x={(((p0 + p1) / 2) / 24) * W} y="142" fontSize="11" fill="#C53030" textAnchor="middle">Ponta</text>}
-      {vals.map((v, i) => {
-        if (v == null) return null;
-        const a = H(Math.abs(v));
-        const c = v < 0 ? INJ : tol != null && v > tol ? '#C53030' : '#2E8B47';
-        return <rect key={i} x={X(i) + 0.9} y={v >= 0 ? zY - a : zY} width="5.6" height={Math.max(a, 0.5)} rx="1" fill={c} />;
-      })}
-      {cY != null && <line x1="0" x2={W} y1={cY} y2={cY} className="stroke-foreground" strokeOpacity="0.55" strokeDasharray="5 5" />}
-      {cY != null && <text x={W} y={cY - 6} fontSize="11" className="fill-muted-foreground" textAnchor="end">Contratada {fmt(contratada, 0)} kW</text>}
-      <line x1="0" x2={W} y1={zY} y2={zY} className="stroke-border" />
-      {[0, 6, 12, 18, 24].map((h, i) => (
-        <text key={h} x={(h / 24) * W} y="168" fontSize="11" className="fill-muted-foreground" textAnchor={i === 0 ? 'start' : i === 4 ? 'end' : 'middle'}>{String(h).padStart(2, '0')}h</text>
-      ))}
-    </svg>
-  );
-}
-
 /** Operação do medidor com telemetria direta (PM M160/PD666: Pt/Qt/St em W). */
 function MedidorPm({ equipamentoId, onStatus }: { equipamentoId: string; onStatus: (s: StatusMed) => void }) {
   const { dados, ts } = useDados(equipamentoId);
-  const [per, setPer] = useState<'hoje' | 'ciclo'>('hoje');
+  const [per, setPer] = useState<Per>('hoje');
   const info = tsInfo(ts);
-  const g = (p: string) => getPath(dados, p);
-  const n = (p: string) => { const v = g(p); return v == null || v === '' || Number.isNaN(Number(v)) ? null : Number(v); };
+  const n = (p: string) => { const v = getPath(dados, p); return v == null || v === '' || Number.isNaN(Number(v)) ? null : Number(v); };
 
-  // Histórico de hoje (fluxo, intervalo de 15 min, FP). Recarrega a cada 5 min.
+  // Histórico de hoje (fluxo, intervalo de 15 min, FP). Recarrega a cada 2 min.
   const [tick, setTick] = useState(0);
-  useEffect(() => { const t = setInterval(() => setTick((x) => x + 1), 300000); return () => clearInterval(t); }, []);
-  const [ini, fim] = useMemo(() => { const a = new Date(); a.setHours(0, 0, 0, 0); return [a, new Date()]; }, [tick]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { const t = setInterval(() => setTick((x) => x + 1), 120_000); return () => clearInterval(t); }, []);
+  const [ini, fim, mesIni] = useMemo(() => [new Date(inicioDoDia()), new Date(), new Date(inicioDoMes())], [tick]); // eslint-disable-line react-hooks/exhaustive-deps
   const { pts } = useHistorico(equipamentoId, ini, fim);
+  // Ciclo: histórico do mês, só quando a aba Ciclo do gráfico é aberta.
+  const { pts: ptsMes } = useHistorico(equipamentoId, mesIni, fim, per === 'ciclo');
 
   const { res: mes } = useCustos(equipamentoId, 'mes');
-  const { res: dia } = useCustos(equipamentoId, 'dia');
   const meses = useDemandaMeses(equipamentoId);
   const horarios = useHorarios(equipamentoId);
 
-  const contratada = Number(mes?.consumo?.demanda_contratada_kw) || null;
-  const tol = contratada != null ? contratada * 1.05 : null;
+  const contr = Number(mes?.consumo?.demanda_contratada_kw) || null;
+  const tol = contr != null ? contr * 1.05 : null;
 
-  const agora = new Date();
-  const qIni = new Date(agora); qIni.setMinutes(Math.floor(agora.getMinutes() / 15) * 15, 0, 0);
-  const qFim = new Date(qIni.getTime() + 15 * 60000);
-  const noIntervalo = (pts ?? []).filter((p) => p.t >= qIni.getTime());
-  const mediaInt = (f: (d: Record<string, unknown>) => number | null) => {
+  const now = Date.now();
+  const qIni = inicioDoDia(now) + Math.floor((now - inicioDoDia(now)) / Q15) * Q15;
+  const qFim = qIni + Q15;
+  const ptAgora = kw(n('Pt'));
+  const noIntervalo = (pts ?? []).filter((p) => p.t >= qIni);
+  const media = (f: (d: Record<string, unknown>) => number | null) => {
     const v = noIntervalo.map((p) => f(p.d)).filter((x): x is number => x != null && Number.isFinite(x));
     return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
   };
-  const ptAgora = kw(n('Pt'));
-  const demInt = mediaInt((d) => kw(d?.Pt)) ?? ptAgora;
-  const fpInt = (() => { const p = mediaInt((d) => Math.abs(Number(d?.Pt))), s = mediaInt((d) => Number(d?.St)); return p != null && s ? Math.min(1, p / s) : null; })();
-  const pct = contratada && demInt != null ? demInt / contratada : null;
+  // Projeção: média até agora + leitura atual mantida até o fim do intervalo.
+  const mediaInt = media((d) => kw(d?.Pt));
+  const decorrido = Math.min(1, (now - qIni) / Q15);
+  const proj = mediaInt != null && ptAgora != null ? mediaInt * decorrido + ptAgora * (1 - decorrido) : mediaInt ?? ptAgora;
+  const fpInt = (() => { const p = media((d) => Math.abs(Number(d?.Pt))), st = media((d) => Number(d?.St)); return p != null && st ? Math.min(1, p / st) : null; })();
 
-  let tone: Tone = 'ok', stLabel = 'Normal', stText = 'Comunicando';
+  let tone: NxTone = 'ok', stLabel = 'Normal', stText = 'Comunicando · medidor online';
   if (!info.online) { tone = 'off'; stLabel = 'Sem comunicação'; stText = info.hasTs ? `Última leitura ${info.idade}` : 'Sem leitura'; }
-  else if (tol != null && demInt != null && demInt > tol) { tone = 'warn'; stLabel = 'Alerta'; stText = 'Demanda do intervalo acima da tolerância'; }
+  else if (tol != null && proj != null && proj > tol) { tone = 'warn'; stLabel = 'Alerta'; stText = 'Projeção acima da tolerância'; }
+  const posto = postoEm(new Date(now), horarios);
+  useEffect(() => { onStatus({ tone, label: stLabel, posto }); }, [tone, stLabel, posto]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fpAgora = dados ? fpDe(dados) : null;
   const qt = kw(n('Qt'));
-  const kpis = [
-    { k: 'Rede agora', v: ptAgora != null ? `${fmt(Math.abs(ptAgora), 0)} kW` : '—', s: ptAgora == null ? '' : ptAgora < 0 ? 'injetando' : 'importando' },
-    { k: 'Reativo agora', v: qt != null ? `${fmt(Math.abs(qt), 0)} kvar` : '—', s: qt == null ? '' : qt < 0 ? 'capacitivo' : 'indutivo' },
-    { k: 'FP agora', v: fpAgora != null ? fmt(fpAgora, 2) : '—', s: 'última leitura' },
+  const kpis: Kpi[] = [
+    { k: 'Rede agora', v: ptAgora != null ? `${kwTxt(Math.abs(ptAgora))} kW` : '—', s: ptAgora == null ? '' : `${ptAgora < 0 ? 'injetando' : 'importando'} · última leitura` },
+    { k: 'Reativo agora', v: qt != null ? `${kwTxt(Math.abs(qt))} kvar` : '—', s: qt == null ? '' : `${qt < 0 ? 'capacitivo' : 'indutivo'} · última leitura` },
+    { k: 'FP último minuto', v: fpAgora != null ? fmt(fpAgora, 2) : '—', s: qt == null ? '' : qt < 0 ? 'capacitivo' : 'indutivo' },
     { k: 'FP do intervalo', v: fpInt != null ? fmt(fpInt, 2) : '—', s: 'intervalo em andamento' },
   ];
 
-  // FP e reativo de hoje, a partir do histórico.
-  const fpHoje = useMemo(() => {
-    if (!pts || pts.length === 0) return null;
-    let minFp: { v: number; t: number } | null = null, maxQ: { v: number; t: number } | null = null, s = 0, c = 0;
-    for (const p of pts) {
-      const f = fpDe(p.d);
-      if (f != null && Math.abs(Number(p.d?.Pt)) > 1000) { s += f; c++; if (!minFp || f < minFp.v) minFp = { v: f, t: p.t }; }
-      const q = kw(p.d?.Qt);
-      if (q != null && (!maxQ || Math.abs(q) > maxQ.v)) maxQ = { v: Math.abs(q), t: p.t };
-    }
-    const dem = bucketize(pts, ini.getTime(), ini.getTime() + 86400000, 96, (d) => kw(d?.Pt));
-    let maxD: { v: number; i: number } | null = null;
-    dem.forEach((v, i) => { if (v != null && (!maxD || v > maxD.v)) maxD = { v, i }; });
-    return { minFp, maxQ, media: c ? s / c : null, maxD: maxD as { v: number; i: number } | null };
+  const gen = (pts ?? []).some((p) => Number(p.d?.Pt) < 0) || (ptAgora ?? 0) < 0;
+  const hoje = useMemo(() => {
+    if (!pts) return null;
+    const b = bucketize(pts as HistPoint[], ini.getTime(), ini.getTime() + DIA, 96, (d) => kw(d?.Pt));
+    return b;
   }, [pts, ini]);
-  const fps = [
-    { k: 'Menor FP de hoje', s: fpHoje?.minFp ? `${hhmm(fpHoje.minFp.t)} · limite 0,92` : 'limite 0,92', v: fpHoje?.minFp ? fmt(fpHoje.minFp.v, 2) : '—', w: !!fpHoje?.minFp && fpHoje.minFp.v < 0.92 },
-    { k: 'FP médio de hoje', s: 'com carga acima de 1 kW', v: fpHoje?.media != null ? fmt(fpHoje.media, 2) : '—', w: fpHoje?.media != null && fpHoje.media < 0.92 },
-    { k: 'Reativo máx. de hoje', s: fpHoje?.maxQ ? hhmm(fpHoje.maxQ.t) : '', v: fpHoje?.maxQ ? `${fmt(fpHoje.maxQ.v, 0)} kvar` : '—', w: false },
-    { k: 'Demanda máx. de hoje', s: fpHoje?.maxD ? `intervalo das ${fmtHora(fpHoje.maxD.i / 4)}` : '', v: fpHoje?.maxD ? `${fmt(fpHoje.maxD.v, 0)} kW` : '—', w: tol != null && !!fpHoje?.maxD && fpHoje.maxD.v > tol },
-  ];
-
-  const energia = per === 'hoje' ? dia : mes;
-  const postos = energia ? [
-    { k: 'Ponta', cor: 'bg-red-600', kwh: energia.consumo.energia_ponta_kwh, rs: energia.custos.custo_ponta },
-    { k: 'Fora de ponta', cor: 'bg-blue-600', kwh: energia.consumo.energia_fora_ponta_kwh, rs: energia.custos.custo_fora_ponta },
-    { k: 'Reservado (HR)', cor: 'bg-emerald-600', kwh: (energia.consumo.energia_reservado_kwh || 0) + (energia.consumo.energia_irrigante_kwh || 0), rs: (energia.custos.custo_reservado || 0) + (energia.custos.custo_irrigante || 0) },
-  ] : [];
+  const hojeComProj = hoje ? hoje.map((x, i) => (i === Math.floor((qIni - ini.getTime()) / Q15) && proj != null ? proj : x)) : null;
+  const ciclo = useMemo(() => {
+    if (!ptsMes) return null;
+    const nd = diasNoMes(mesIni.getTime());
+    const b = bucketize(ptsMes, mesIni.getTime(), mesIni.getTime() + nd * DIA, nd * 96, (d) => kw(d?.Pt));
+    return Array.from({ length: nd }, (_, d) => {
+      const sl = b.slice(d * 96, d * 96 + 96).filter((x): x is number => x != null);
+      const c = sl.filter((x) => x > 0), i = sl.filter((x) => x < 0).map((x) => -x);
+      return { c: c.length ? Math.max(...c) : null, i: i.length ? Math.max(...i) : null };
+    });
+  }, [ptsMes, mesIni]);
 
   const maxMes = Number(mes?.consumo?.demanda_maxima_kw) || null;
-  const mesesMax = Math.max(tol ?? 0, ...(meses ?? []).map((m) => m.v ?? 0), 1) * 1.1;
-  const MH = (v: number) => (v / mesesMax) * 112;
-  const ultrap = (meses ?? []).filter((m) => tol != null && m.v != null && m.v > tol);
-
-  useEffect(() => { onStatus({ tone, label: stLabel, posto: postoEm(agora, horarios) }); }, [tone, stLabel]); // eslint-disable-line react-hooks/exhaustive-deps
+  const c = mes?.consumo;
+  const postos: Postos | null = c ? {
+    Ponta: { c: c.energia_ponta_kwh ?? null, i: null },
+    'Fora de ponta': { c: c.energia_fora_ponta_kwh ?? null, i: null },
+    Reservado: { c: (c.energia_reservado_kwh || 0) + (c.energia_irrigante_kwh || 0), i: null },
+    Total: { c: c.energia_total_kwh ?? null, i: null },
+  } : null;
 
   return (
-        <div className="flex flex-col gap-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
-            <Card className="rounded-2xl px-5 py-[18px] flex flex-col gap-3">
-              <div className="flex justify-between items-baseline">
-                <span className="text-sm text-muted-foreground">Intervalo de 15 min · termina em</span>
-                <span className="text-xl font-extrabold tabular-nums">{hhmm(qFim.getTime())}</span>
-              </div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-[44px] leading-[48px] font-extrabold tabular-nums tracking-tight">{demInt != null ? fmt(demInt, 0) : '—'}</span>
-                <span className="text-base text-muted-foreground">kW médios no intervalo</span>
-              </div>
-              <div className="relative h-3.5 rounded-full bg-[#EEF0F4] dark:bg-white/10">
-                {pct != null && (
-                  <div className="h-full rounded-full" style={{ width: `${Math.min(100, (pct / 1.2) * 100)}%`, background: tol != null && demInt! > tol ? '#C53030' : pct > 0.95 ? '#B7791F' : '#2E8B47' }} />
-                )}
-                {contratada != null && <div className="absolute -top-1 -bottom-1 w-0.5 bg-foreground" style={{ left: '83.33%' }} />}
-              </div>
-              <div className="flex justify-between text-[13px] text-muted-foreground gap-2">
-                <span>{pct != null ? `${Math.round(pct * 100)}% da contratada` : 'Demanda contratada não cadastrada'}</span>
-                {contratada != null && <span>Contratada {fmt(contratada, 0)} kW · tolerância {fmt(tol, 0)} kW</span>}
-              </div>
-              <div className="flex items-center gap-2 border-t border-border pt-3">
-                <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${TONE_BG[tone]}`} />
-                <span className={`text-[15px] font-extrabold ${TONE_TEXT[tone]}`}>{stLabel}</span>
-                <span className="text-sm text-muted-foreground">{stText}</span>
-              </div>
-            </Card>
-            <Card className="rounded-2xl py-[18px] flex items-center">
-              <div className="w-full"><KpiCells items={kpis} cols={2} size="lg" align="left" /></div>
-            </Card>
-          </div>
-
-          <Card className="px-4 pt-3 pb-3.5">
-            <div className="flex justify-between items-center gap-3 flex-wrap">
-              <span className="text-[15px] font-extrabold">Fluxo na rede por intervalo de 15 min · hoje</span>
-              <span className="flex gap-3.5 text-xs text-muted-foreground">
-                <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-[#2E8B47]" />Consumo</span>
-                <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: INJ }} />Injeção</span>
-              </span>
-            </div>
-            {pts == null ? <div className="h-[180px] grid place-items-center text-xs text-muted-foreground">Carregando…</div>
-              : pts.length === 0 ? <div className="h-[180px] grid place-items-center text-xs text-muted-foreground">Sem leituras hoje</div>
-                : <FluxoDia pts={pts} contratada={contratada} tol={tol} horarios={horarios} gerando={pts.some((p) => Number(p.d?.Pt) < 0)} />}
-          </Card>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
-            <Card className="px-[18px] pt-3 pb-3.5 flex flex-col gap-2.5">
-              <span className="text-[15px] font-extrabold">Demanda × contratada</span>
-              <div className="flex justify-between items-end gap-3">
-                <span className="flex flex-col gap-0.5">
-                  <span className="text-xs text-muted-foreground">Máxima do mês</span>
-                  <span className="text-[26px] font-extrabold tabular-nums">{maxMes != null ? `${fmt(maxMes, 0)} kW` : '—'}</span>
-                </span>
-                {contratada != null && maxMes != null && (
-                  <span className="flex flex-col gap-0.5 items-end">
-                    <span className="text-xl font-extrabold tabular-nums">{Math.round((maxMes / contratada) * 100)}%</span>
-                    <span className="text-xs text-muted-foreground">da contratada</span>
-                    <span className="text-xs text-muted-foreground">{tol! - maxMes >= 0 ? `folga até tolerância ${fmt(tol! - maxMes, 0)} kW` : `${fmt(maxMes - tol!, 0)} kW acima da tolerância`}</span>
-                  </span>
-                )}
-              </div>
-              {meses == null ? <div className="h-[150px] grid place-items-center text-xs text-muted-foreground">Carregando…</div> : (
-                <svg viewBox="0 0 334 150" width="100%" height="150" role="img" aria-label="Demanda máxima por mês comparada à contratada">
-                  {meses.map((m, i) => {
-                    const v = m.v ?? 0, h = MH(v), x = 12 + i * 54, cur = i === meses.length - 1, over = tol != null && v > tol;
-                    return (
-                      <g key={m.k + i}>
-                        <rect x={x} y={128 - h} width="32" height={h} rx="4" fill={over ? '#C53030' : cur ? '#2E8B47' : '#9CC9A8'} />
-                        {m.v != null && <text x={x + 16} y={128 - h - 5} fontSize="11" textAnchor="middle" fontWeight="700" fill={over ? '#C53030' : 'currentColor'}>{fmt(v, 0)}</text>}
-                        <text x={x + 16} y="146" fontSize="11" className="fill-muted-foreground" textAnchor="middle">{m.k}</text>
-                      </g>
-                    );
-                  })}
-                  {contratada != null && <line x1="0" x2="334" y1={128 - MH(contratada)} y2={128 - MH(contratada)} className="stroke-foreground" strokeOpacity="0.55" strokeDasharray="5 5" />}
-                  {tol != null && <line x1="0" x2="334" y1={128 - MH(tol)} y2={128 - MH(tol)} stroke="#C53030" strokeOpacity="0.6" strokeDasharray="2 4" />}
-                  <line x1="0" x2="334" y1="128" y2="128" className="stroke-border" />
-                </svg>
-              )}
-              <div className="flex justify-between items-center text-xs text-muted-foreground gap-2">
-                {contratada != null ? (
-                  <span className="flex gap-3.5">
-                    <span className="flex items-center gap-1.5"><span className="w-3.5 border-t-[1.5px] border-dashed border-foreground" />Contratada {fmt(contratada, 0)}</span>
-                    <span className="flex items-center gap-1.5"><span className="w-3.5 border-t-[1.5px] border-dashed border-red-600" />Tolerância {fmt(tol, 0)}</span>
-                  </span>
-                ) : <span>Sem demanda contratada no cadastro da unidade</span>}
-                {ultrap.length > 0 && <span className="text-red-600 font-extrabold">{ultrap.length} ultrapassage{ultrap.length > 1 ? 'ns' : 'm'} · {ultrap.map((m) => m.k).join(', ')}</span>}
-              </div>
-            </Card>
-            <Card className="px-[18px]">
-              <div className="text-[15px] font-extrabold py-3">Fator de potência e reativo</div>
-              {fps.map((f) => (
-                <div key={f.k} className="flex justify-between items-center min-h-[54px] border-t border-border gap-3">
-                  <span className="flex flex-col gap-0.5">
-                    <span className="text-sm font-bold">{f.k}</span>
-                    {f.s && <span className="text-xs text-muted-foreground">{f.s}</span>}
-                  </span>
-                  <span className={`text-lg font-extrabold tabular-nums whitespace-nowrap ${f.w ? 'text-amber-600 dark:text-amber-400' : ''}`}>{f.v}</span>
-                </div>
-              ))}
-            </Card>
-          </div>
-
-          <Card className="px-[18px]">
-            <div className="flex justify-between items-center py-3 gap-3">
-              <span className="text-[15px] font-extrabold">Energia por posto</span>
-              <Segmented size="sm" value={per} onChange={setPer} options={[{ v: 'hoje', label: 'Hoje' }, { v: 'ciclo', label: 'Mês' }]} />
-            </div>
-            {!energia ? (
-              <div className="py-3 border-t border-border text-sm text-muted-foreground">Sem cálculo por posto (confira a unidade e a tarifa do medidor).</div>
-            ) : (
-              <>
-                <div className="grid grid-cols-[1.3fr_1fr_1fr] text-[11px] font-bold text-muted-foreground tracking-[0.4px] py-1.5 border-t border-border">
-                  <span>POSTO</span><span className="text-right">CONSUMIDA kWh</span><span className="text-right">VALOR</span>
-                </div>
-                {postos.map((p) => (
-                  <div key={p.k} className="grid grid-cols-[1.3fr_1fr_1fr] items-center min-h-[40px] text-sm border-t border-border">
-                    <span className="flex items-center gap-2"><span className={`w-2 h-2 rounded-[3px] ${p.cor}`} />{p.k}</span>
-                    <span className="text-right tabular-nums">{fmt(p.kwh, 0)}</span>
-                    <span className="text-right tabular-nums">{brl(p.rs)}</span>
-                  </div>
-                ))}
-                <div className="grid grid-cols-[1.3fr_1fr_1fr] items-center min-h-[40px] text-sm font-extrabold border-t border-border">
-                  <span>Total</span>
-                  <span className="text-right tabular-nums">{fmt(energia.consumo.energia_total_kwh, 0)}</span>
-                  <span className="text-right tabular-nums">{brl(energia.custos.custo_total)}</span>
-                </div>
-              </>
-            )}
-            <div className="flex justify-between items-center min-h-[44px] border-t border-border">
-              <span className="text-sm font-bold">Injetada (acumulado do medidor)</span>
-              <span className="text-[15px] font-extrabold tabular-nums" style={{ color: INJ }}>{n('consumo_phr') != null ? `${fmt(n('consumo_phr'), 0)} kWh` : '—'}</span>
-            </div>
-            <div className="flex justify-between items-center min-h-[44px] border-t border-border">
-              <span className="text-sm font-bold">Consumida (acumulado do medidor)</span>
-              <span className="text-[15px] font-extrabold tabular-nums">{(n('consumo_phf') ?? n('phf')) != null ? `${fmt(n('consumo_phf') ?? n('phf'), 0)} kWh` : '—'}</span>
-            </div>
-          </Card>
-
-          <Registros equipamentoId={equipamentoId} limite={4} />
-        </div>
+    <MedidorVista v={{
+      tone, stLabel, stText, terminaEm: hhmm(qFim), proj, contr, tol, kpis, gen, per, setPer,
+      hoje: hojeComProj, ciclo: per === 'ciclo' ? ciclo : null, horarios,
+      maxMes: maxMes != null ? { kw: maxMes, t: null } : null,
+      meses: meses ?? rotulosMeses().map((k) => ({ k, v: null })),
+      injMaxMes: null, fps: fpsSemFonte(), postos, reativa: '—', excedente: '—', equipamentoId,
+    }} />
   );
 }
 
+// ------------------------------------------------------------------ fonte SSU
 
-/** Janela "10:45–11:00" de um pico (o timestamp é o FIM da janela de 15 min). */
-const janela15 = (iso?: string | null) => {
-  if (!iso) return '';
-  const fim = new Date(iso).getTime();
-  return `${hhmm(fim - 15 * 60_000)}–${hhmm(fim)}`;
-};
-const dataCurta = (iso: string) => new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+interface Bloco { t: number; c: number; i: number; h: number }
+interface MesBlocos { k: string; ini: number; fim: number; blocos: Bloco[] | null }
 
-interface Bloco { t: number; c: number; i: number }
-interface MesBlocos { k: string; ini: number; fim: number; blocos: Bloco[] }
-const MESES_CURTOS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-
-/** Blocos de 15 min (kW consumo/injeção) dos últimos n meses — /gateway/tendencia?intervalo=15. */
+/**
+ * Blocos de 15 min (kW consumo/injeção) dos últimos n meses — /gateway/tendencia?periodo=custom.
+ * intervalo=15 força blocos de 15 min em janelas de até 62 dias (API, PR #10): um pedido por
+ * mês. O timestamp do bloco é o FIM da janela do medidor.
+ * Carrega do mês atual para trás e vai publicando mês a mês.
+ */
 function useBlocosMeses(equipamentoId: string, n = 6) {
-  const [meses, setMeses] = useState<MesBlocos[] | null>(null);
+  const [meses, setMeses] = useState<MesBlocos[]>(() => listaMeses(n));
   useEffect(() => {
     let vivo = true;
-    const hoje = new Date();
-    const lista = Array.from({ length: n }, (_, k) => {
-      const ini = new Date(hoje.getFullYear(), hoje.getMonth() - (n - 1 - k), 1);
-      const fim = new Date(ini.getFullYear(), ini.getMonth() + 1, 1);
-      return { k: MESES_CURTOS[ini.getMonth()], ini: ini.getTime(), fim: Math.min(fim.getTime(), Date.now()) };
-    });
-    Promise.all(lista.map((m) =>
-      api.get(`/equipamentos-dados/${equipamentoId.trim()}/gateway/tendencia`, {
-        params: { periodo: 'custom', inicio: new Date(m.ini).toISOString(), fim: new Date(m.fim).toISOString(), intervalo: 15 },
+    const lista = listaMeses(n);
+    setMeses(lista);
+    const buscar = (ini: number, fim: number) => api.get(`/equipamentos-dados/${equipamentoId.trim()}/gateway/tendencia`, {
+      params: { periodo: 'custom', inicio: new Date(ini).toISOString(), fim: new Date(fim).toISOString(), intervalo: 15 },
+    })
+      .then((r) => {
+        const d = unwrap<{ intervalo_min?: number; dados?: Array<{ timestamp: string; kW_consumo: number; kW_injecao: number }> }>(r);
+        const h = (Number(d?.intervalo_min) || 15) / 60;
+        return (d?.dados ?? []).map((x) => ({ t: new Date(x.timestamp).getTime(), c: Number(x.kW_consumo) || 0, i: Number(x.kW_injecao) || 0, h }));
       })
-        .then((r) => ((unwrap<{ dados?: Array<{ timestamp: string; kW_consumo: number; kW_injecao: number }> }>(r)?.dados) ?? [])
-          .map((d) => ({ t: new Date(d.timestamp).getTime(), c: Number(d.kW_consumo) || 0, i: Number(d.kW_injecao) || 0 })))
-        .catch(() => [] as Bloco[]),
-    )).then((bs) => { if (vivo) setMeses(lista.map((m, k) => ({ ...m, blocos: bs[k] }))); });
+      .catch(() => [] as Bloco[]);
+    void (async () => {
+      for (let k = lista.length - 1; k >= 0 && vivo; k--) {
+        const m = lista[k];
+        const bs = (await buscar(m.ini, m.fim)).sort((x, y) => x.t - y.t);
+        if (vivo) setMeses((prev) => prev.map((p, j) => (j === k ? { ...p, blocos: bs } : p)));
+      }
+    })();
     return () => { vivo = false; };
   }, [equipamentoId, n]);
   return meses;
 }
+function listaMeses(n: number): MesBlocos[] {
+  const hoje = new Date();
+  return Array.from({ length: n }, (_, k) => {
+    const ini = new Date(hoje.getFullYear(), hoje.getMonth() - (n - 1 - k), 1);
+    const fim = new Date(ini.getFullYear(), ini.getMonth() + 1, 1);
+    return { k: MESES[ini.getMonth()], ini: ini.getTime(), fim: Math.min(fim.getTime(), Date.now()), blocos: null };
+  });
+}
 
-/** Energia por posto a partir dos blocos de 15 min (kWh = kW × 0,25 h). */
-function energiaPorPosto(blocos: Bloco[], horarios: ReturnType<typeof useHorarios>) {
-  const acc: Record<string, { c: number; i: number }> = { Ponta: { c: 0, i: 0 }, 'Fora de ponta': { c: 0, i: 0 }, Reservado: { c: 0, i: 0 } };
+/** Energia por posto a partir dos blocos (kWh = kW × duração do bloco). */
+function energiaPorPosto(blocos: Bloco[], horarios: Horarios): Postos {
+  const acc: Postos = { Ponta: { c: 0, i: 0 }, 'Fora de ponta': { c: 0, i: 0 }, Reservado: { c: 0, i: 0 }, Total: { c: 0, i: 0 } };
   for (const b of blocos) {
-    const p = postoEm(new Date(b.t), horarios);
-    acc[p].c += b.c * 0.25; acc[p].i += b.i * 0.25;
+    const p = postoEm(new Date(b.t - 60_000), horarios);
+    acc[p].c = (acc[p].c ?? 0) + b.c * b.h; acc[p].i = (acc[p].i ?? 0) + b.i * b.h;
+    acc.Total.c = (acc.Total.c ?? 0) + b.c * b.h; acc.Total.i = (acc.Total.i ?? 0) + b.i * b.h;
   }
   return acc;
 }
 
-/** Fluxo na rede por intervalo do medidor (15 min), hoje ou nos últimos 7 dias — /gateway/tendencia. */
-function SsuFluxo({ equipamentoId, contr, tol, temInjecao, horarios, mesAtual }: {
-  equipamentoId: string; contr: number | null; tol: number | null; temInjecao: boolean; horarios: ReturnType<typeof useHorarios>; mesAtual: MesBlocos | null;
-}) {
-  const [per, setPer] = useState<'24H' | '7D' | 'MES'>('24H');
-  const { data: dataT, loading } = useGatewayTendencia(equipamentoId, per === 'MES' ? '24H' : per);
-  const data = per === 'MES' ? null : dataT;
-  // Mês: uma barra por dia com a demanda máxima de 15 min daquele dia.
-  const pts = per === 'MES'
-    ? (() => {
-      const porDia = new Map<number, { c: number; i: number }>();
-      for (const b of mesAtual?.blocos ?? []) {
-        const d = new Date(b.t); d.setHours(12, 0, 0, 0);
-        const k = d.getTime(), a = porDia.get(k) ?? { c: 0, i: 0 };
-        porDia.set(k, { c: Math.max(a.c, b.c), i: Math.max(a.i, b.i) });
-      }
-      return [...porDia.entries()].map(([t, v]) => ({ timestamp: new Date(t).toISOString(), kW_consumo: v.c, kW_injecao: v.i, num_leituras: 0 }));
-    })()
-    : data?.dados ?? [];
-  const W = 720, PH = 138;
-  const ini = per === '24H' ? (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); })() : per === 'MES' ? (mesAtual?.ini ?? Date.now()) : Date.now() - 7 * 86400000;
-  const fim = per === '24H' ? ini + 86400000 : per === 'MES' ? new Date(new Date(ini).getFullYear(), new Date(ini).getMonth() + 1, 1).getTime() : Date.now();
-  const vis = pts.filter((p) => { const t = new Date(p.timestamp).getTime(); return t >= ini && t <= fim; });
-  const maxPos = Math.max(contr ?? 0, ...vis.map((p) => p.kW_consumo), 0.1) * 1.1;
-  const maxNeg = temInjecao ? Math.max(...vis.map((p) => p.kW_injecao), 0) * 1.1 : 0;
-  const H = (v: number) => (v / (maxPos + maxNeg)) * PH;
-  const zY = 10 + H(maxPos);
-  const X = (t: number) => ((t - ini) / (fim - ini)) * W;
-  const bw = per === 'MES' ? (W / 31) * 0.7 : Math.max(1.5, (W / ((fim - ini) / ((data?.intervalo_min ?? 15) * 60000))) * 0.75);
-  const util = new Date(ini).getDay() !== 0 && new Date(ini).getDay() !== 6;
-  const [p0, p1] = horarios.ponta;
-  const ticks = per === '24H'
-    ? [0, 6, 12, 18, 24].map((h) => ({ f: h / 24, l: `${String(h).padStart(2, '0')}h` }))
-    : per === 'MES' ? [1, 8, 15, 22].map((d) => ({ f: ((d - 0.5) / ((fim - ini) / 86400000)), l: String(d).padStart(2, '0') }))
-    : Array.from({ length: 5 }, (_, i) => ({ f: i / 4, l: new Date(ini + ((fim - ini) * i) / 4).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) }));
-  return (
-    <Card className="px-4 pt-3 pb-3.5">
-      <div className="flex justify-between items-center gap-3 flex-wrap">
-        <span className="text-[15px] font-extrabold">{per === 'MES' ? 'Demanda máxima de 15 min por dia' : temInjecao ? 'Fluxo na rede por intervalo de 15 min' : 'Demanda por intervalo de 15 min'}</span>
-        <div className="flex items-center gap-4">
-          {temInjecao && (
-            <span className="flex gap-3.5 text-xs text-muted-foreground">
-              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-[#2E8B47]" />Consumo</span>
-              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: INJ }} />Injeção</span>
-            </span>
-          )}
-          <Segmented size="sm" value={per} onChange={setPer} options={[{ v: '24H', label: 'Hoje' }, { v: '7D', label: 'Semana' }, { v: 'MES', label: 'Mês' }]} />
-        </div>
-      </div>
-      {(per === 'MES' ? !mesAtual : loading && !data) ? <div className="h-[180px] grid place-items-center text-xs text-muted-foreground">Carregando…</div>
-        : vis.length === 0 ? <div className="h-[180px] grid place-items-center text-xs text-muted-foreground">Sem blocos do medidor no período</div> : (
-          <svg viewBox="0 0 720 180" width="100%" height="180" className="block mt-2" role="img" aria-label="Fluxo na rede por intervalo de 15 minutos">
-            {per === '24H' && util && <rect x={(p0 / 24) * W} y="10" width={((p1 - p0) / 24) * W} height={PH} fill="rgba(197,48,48,0.07)" />}
-            {per === '24H' && util && <text x={(((p0 + p1) / 2) / 24) * W} y="142" fontSize="11" fill="#C53030" textAnchor="middle">Ponta</text>}
-            {vis.map((p) => {
-              const x = X(new Date(p.timestamp).getTime());
-              const c = H(p.kW_consumo), i = H(p.kW_injecao);
-              return (
-                <g key={p.timestamp}>
-                  {p.kW_consumo > 0 && <rect x={x - bw / 2} y={zY - c} width={bw} height={Math.max(c, 0.5)} rx="1" fill={tol != null && p.kW_consumo > tol ? '#C53030' : '#2E8B47'} />}
-                  {temInjecao && p.kW_injecao > 0 && <rect x={x - bw / 2} y={zY} width={bw} height={Math.max(i, 0.5)} rx="1" fill={INJ} />}
-                </g>
-              );
-            })}
-            {contr != null && <line x1="0" x2={W} y1={zY - H(contr)} y2={zY - H(contr)} className="stroke-foreground" strokeOpacity="0.55" strokeDasharray="5 5" />}
-            {contr != null && <text x={W} y={zY - H(contr) - 6} fontSize="11" className="fill-muted-foreground" textAnchor="end">Contratada {fmt(contr, 0)} kW</text>}
-            <line x1="0" x2={W} y1={zY} y2={zY} className="stroke-border" />
-            {ticks.map((t, i) => (
-              <text key={i} x={t.f * W} y="168" fontSize="11" className="fill-muted-foreground" textAnchor={i === 0 ? 'start' : i === ticks.length - 1 ? 'end' : 'middle'}>{t.l}</text>
-            ))}
-          </svg>
-        )}
-    </Card>
-  );
-}
-
-/** Operação do medidor lido pela SSU (A-966 / TON-V2), no layout novo. */
+/** Operação do medidor lido pela SSU (A-966 / TON-V2). */
 function MedidorSsu({ equipamentoId, onStatus }: { equipamentoId: string; onStatus: (s: StatusMed) => void }) {
   const { data, error } = useGatewayDashboard(equipamentoId);
   const horarios = useHorarios(equipamentoId);
+  const [per, setPer] = useState<Per>('hoje');
+  const { data: tend, refetch } = useGatewayTendencia(equipamentoId, '24H');
+  useEffect(() => { const t = setInterval(() => void refetch(), 60_000); return () => clearInterval(t); }, [refetch]);
+  const meses = useBlocosMeses(equipamentoId);
+  const mesAtual = meses[meses.length - 1];
+
   const agora = data?.minuto_a_minuto?.agora ?? null;
   const serie = data?.minuto_a_minuto?.serie ?? [];
   const intervalo = data?.minuto_a_minuto?.intervalo ?? null;
@@ -562,234 +720,141 @@ function MedidorSsu({ equipamentoId, onStatus }: { equipamentoId: string; onStat
   const dia = data?.resumo_dia;
   const mes = data?.resumo_mes;
   const contr = data?.unidade?.demanda_carga ?? null;
-  const contrG = data?.unidade?.demanda_geracao ?? null;
   const tol = contr != null ? contr * 1.05 : null;
-  const temInjecao = (dia?.injecao_kwh ?? 0) > 0 || (mes?.pico_injecao?.kw ?? 0) > 0 || (agora?.kW_injecao ?? 0) > 0;
-  const meses = useBlocosMeses(equipamentoId);
-  const mesAtual = meses ? meses[meses.length - 1] : null;
-  const postosMes = mesAtual ? energiaPorPosto(mesAtual.blocos, horarios) : null;
-  const barrasMes = (meses ?? []).map((m) => ({ k: m.k, v: m.blocos.length ? Math.max(...m.blocos.map((b) => b.c)) : null }));
-  const mesesMax = Math.max(tol ?? 0, ...barrasMes.map((m) => m.v ?? 0), 1) * 1.1;
-  const MH = (v: number) => (v / mesesMax) * 112;
-  const ultrap = barrasMes.filter((m) => tol != null && m.v != null && m.v > tol);
+  const gen = (dia?.injecao_kwh ?? 0) > 0 || (mes?.pico_injecao?.kw ?? 0) > 0 || (agora?.kW_injecao ?? 0) > 0
+    || !!mesAtual?.blocos?.some((b) => b.i > 0);
 
-  const now = new Date();
-  const qIni = new Date(now); qIni.setMinutes(Math.floor(now.getMinutes() / 15) * 15, 0, 0);
-  const qFim = new Date(qIni.getTime() + 15 * 60_000);
-  const noIntervalo = serie.filter((m) => new Date(m.timestamp).getTime() >= qIni.getTime());
-  const demInt = noIntervalo.length
-    ? noIntervalo.reduce((a, m) => a + (m.kW_consumo - m.kW_injecao), 0) / noIntervalo.length
-    : agora ? agora.kW_consumo - agora.kW_injecao : null;
-  const pct = contr && demInt != null ? demInt / contr : null;
+  // Fim do intervalo do medidor: "fecha em N s" contado a partir da leitura do dashboard.
+  const [fimInt, setFimInt] = useState<number | null>(null);
+  useEffect(() => {
+    setFimInt(intervalo?.fecha_em_s != null ? Math.round((Date.now() + intervalo.fecha_em_s * 1000) / 60_000) * 60_000 : null);
+  }, [intervalo]);
+  const now = Date.now();
+  const dIni = inicioDoDia(now);
+  const qIni = dIni + Math.floor((now - dIni) / Q15) * Q15;
+  const terminaEm = hhmm(fimInt ?? qIni + Q15);
 
-  let tone: Tone = 'ok', stLabel = 'Normal', stText = 'Comunicando · SSU';
-  if (!agora && !snap) { tone = 'off'; stLabel = 'Sem comunicação'; stText = error ?? 'Sem leitura do medidor'; }
-  else if (tol != null && demInt != null && demInt > tol) { tone = 'warn'; stLabel = 'Alerta'; stText = 'Demanda do intervalo acima da tolerância'; }
-  // Posto informado pelo próprio medidor (TON-V2); sem ele, pela janela da concessionária.
-  const postoMedidor = agora?.posto ? POSTO[agora.posto] : null;
-  const posto = postoMedidor ?? postoEm(now, horarios);
-  useEffect(() => { onStatus({ tone, label: stLabel, posto }); }, [tone, stLabel, posto]); // eslint-disable-line react-hooks/exhaustive-deps
-  const comFluxo = !!agora && (agora.kW_consumo > 0.01 || agora.kW_injecao > 0.01);
-
-  const kvar = agora ? agora.kvar_ind - agora.kvar_cap : null;
   const rede = agora ? agora.kW_consumo - agora.kW_injecao : null;
-  const kpis = [
-    { k: 'Rede agora', v: rede != null ? `${fmt(Math.abs(rede), 1)} kW` : '—', s: rede == null ? '' : rede < 0 ? 'injetando · último minuto' : 'importando · último minuto' },
-    { k: 'Reativo agora', v: kvar != null ? `${fmt(Math.abs(kvar), 1)} kvar` : '—', s: kvar == null ? '' : kvar < 0 ? 'capacitivo' : 'indutivo' },
-    agora?.FP != null
-      ? { k: 'FP agora', v: fmt(agora.FP, 2), s: agora.q != null && comFluxo ? (QUADRANTE[agora.q] ?? `Q${agora.q}`) : agora.FP_natureza === 'cap' ? 'capacitivo' : 'indutivo' }
-      : { k: 'FP do último bloco', v: snap?.FP ? fmt(snap.FP, 2) : '—', s: snap ? `${snap.FP_natureza === 'cap' ? 'capacitivo' : 'indutivo'} · ${hhmm(new Date(snap.timestamp_dados).getTime())}` : '' },
-    { k: 'Máxima de hoje', v: dia?.pico_consumo ? `${fmt(dia.pico_consumo.kw, 1)} kW` : '—', s: dia?.pico_consumo ? janela15(dia.pico_consumo.timestamp) : 'demanda de 15 min' },
+  const kvar = agora ? agora.kvar_ind - agora.kvar_cap : null;
+  // Projeção: energia líquida já medida no intervalo + minuto atual mantido até o fim.
+  const noIntervalo = serie.filter((m) => new Date(m.timestamp).getTime() >= qIni);
+  const proj = intervalo && intervalo.fecha_em_s != null
+    ? (intervalo.kwh_consumo - intervalo.kwh_injecao + (rede ?? 0) * (intervalo.fecha_em_s / 3600)) / 0.25
+    : noIntervalo.length ? noIntervalo.reduce((a, m) => a + (m.kW_consumo - m.kW_injecao), 0) / noIntervalo.length : rede;
+
+  const info = tsInfo(agora?.timestamp ?? snap?.timestamp_dados ?? null);
+  let tone: NxTone = 'ok', stLabel = 'Normal', stText = 'Comunicando · TON online';
+  if (!info.online) { tone = 'off'; stLabel = 'Sem comunicação'; stText = error ?? (info.hasTs ? `Última leitura ${info.idade}` : 'Sem leitura do medidor'); }
+  else if (tol != null && proj != null && proj > tol) { tone = 'warn'; stLabel = 'Alerta'; stText = 'Projeção acima da tolerância'; }
+  // Posto informado pelo próprio medidor (TON-V2); sem ele, pela janela da concessionária.
+  const POSTO_PILL: Record<number, string> = { 1: 'Ponta', 2: 'Fora de ponta', 3: 'Reservado' };
+  const posto = (agora?.posto ? POSTO_PILL[agora.posto] : null) ?? postoEm(new Date(now), horarios);
+  useEffect(() => { onStatus({ tone, label: stLabel, posto }); }, [tone, stLabel, posto]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const fpMin = agora ? (agora.FP ?? fpPQ(rede ?? 0, kvar ?? 0)) : null;
+  const natMin = agora ? (agora.FP_natureza ?? ((kvar ?? 0) < 0 ? 'cap' : 'ind')) : null;
+  const sp = noIntervalo.reduce((a, m) => a + (m.kW_consumo - m.kW_injecao), 0);
+  const sq = noIntervalo.reduce((a, m) => a + (m.kvar_ind - m.kvar_cap), 0);
+  const fpInt = noIntervalo.length ? fpPQ(sp, sq) : null;
+  const kpis: Kpi[] = [
+    { k: 'Rede agora', v: rede != null ? `${kwTxt(Math.abs(rede))} kW` : '—', s: rede == null ? '' : `${rede < 0 ? 'injetando' : 'importando'} · média 1 min` },
+    { k: 'Reativo agora', v: kvar != null ? `${kwTxt(Math.abs(kvar))} kvar` : '—', s: kvar == null ? '' : `${kvar < 0 ? 'capacitivo' : 'indutivo'} · média 1 min` },
+    { k: 'FP último minuto', v: fpMin != null ? fmt(fpMin, 2) : '—', s: natMin == null ? '' : natMin === 'cap' ? 'capacitivo' : 'indutivo' },
+    { k: 'FP do intervalo', v: fpInt != null ? fmt(fpInt, 2) : '—', s: 'intervalo em andamento' },
   ];
 
-  const maxMes = mes?.pico_consumo?.kw ?? null;
-  const fps = [
-    { k: 'FP do último bloco', s: snap ? `${hhmm(new Date(snap.timestamp_dados).getTime())} · limite 0,92` : 'limite 0,92', v: snap?.FP ? fmt(snap.FP, 2) : '—', w: !!snap?.FP && snap.FP < 0.92 },
-    { k: 'Reativo indutivo hoje', s: 'kvarh', v: dia ? `${fmt(dia.q_ind_kvarh, 1)}` : '—', w: false },
-    { k: 'Reativo capacitivo hoje', s: 'kvarh', v: dia ? `${fmt(dia.q_cap_kvarh, 1)}` : '—', w: false },
-    ...(temInjecao ? [{ k: 'Injeção máx. do mês', s: mes?.pico_injecao ? `${dataCurta(mes.pico_injecao.timestamp)} · ${janela15(mes.pico_injecao.timestamp)}${contrG != null ? ` · contratada ${fmt(contrG, 0)} kW` : ''}` : '', v: mes?.pico_injecao ? `${fmt(mes.pico_injecao.kw, 1)} kW` : '—', w: contrG != null && (mes?.pico_injecao?.kw ?? 0) > contrG }] : []),
-  ];
+  // Hoje: 96 intervalos; o bloco com timestamp T é a janela [T−15 min, T).
+  const hoje = useMemo(() => {
+    if (!tend) return null;
+    const out: Array<number | null> = Array.from({ length: 96 }, () => null);
+    for (const p of tend.dados ?? []) {
+      const i = Math.round((new Date(p.timestamp).getTime() - dIni) / Q15) - 1;
+      if (i >= 0 && i < 96) out[i] = p.kW_consumo - (gen ? p.kW_injecao : 0);
+    }
+    return out;
+  }, [tend, dIni, gen]);
+  const iAtual = Math.floor((now - dIni) / Q15);
+  const hojeComProj = hoje ? hoje.map((x, i) => (i === iAtual && proj != null ? proj : x)) : null;
+  const ciclo = useMemo(() => {
+    if (!mesAtual?.blocos) return null;
+    const out = Array.from({ length: diasNoMes(mesAtual.ini) }, () => ({ c: null as number | null, i: null as number | null }));
+    for (const b of mesAtual.blocos) {
+      const d = new Date(b.t - 60_000).getDate() - 1;
+      if (!out[d]) continue;
+      out[d] = { c: Math.max(out[d].c ?? 0, b.c), i: Math.max(out[d].i ?? 0, b.i) };
+    }
+    return out;
+  }, [mesAtual]);
+
+  const barras = meses.map((m, k) => {
+    const v = m.blocos?.length ? Math.max(...m.blocos.map((b) => b.c)) : null;
+    // Mês atual: o pico do dashboard é o mesmo cálculo do faturamento.
+    return { k: m.k, v: k === meses.length - 1 && mes?.pico_consumo ? Math.max(mes.pico_consumo.kw, v ?? 0) : v };
+  });
+  const postos = mesAtual?.blocos ? energiaPorPosto(mesAtual.blocos, horarios) : null;
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
-        <Card className="rounded-2xl px-5 py-[18px] flex flex-col gap-3">
-          <div className="flex justify-between items-baseline">
-            <span className="text-sm text-muted-foreground">Intervalo de 15 min · {intervalo?.fecha_em_s != null ? 'fecha em' : 'termina em'}</span>
-            <span className="text-xl font-extrabold tabular-nums">{intervalo?.fecha_em_s != null ? mmss(intervalo.fecha_em_s) : hhmm(qFim.getTime())}</span>
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-[44px] leading-[48px] font-extrabold tabular-nums tracking-tight">{demInt != null ? fmt(demInt, 0) : '—'}</span>
-            <span className="text-base text-muted-foreground">kW médios no intervalo</span>
-          </div>
-          {intervalo && (
-            <span className="text-[13px] text-muted-foreground -mt-1">
-              {fmt(intervalo.kwh_consumo, 2)} kWh consumidos{intervalo.kwh_injecao > 0 ? ` · ${fmt(intervalo.kwh_injecao, 2)} kWh injetados` : ''} em {intervalo.minutos} min
-            </span>
-          )}
-          <div className="relative h-3.5 rounded-full bg-[#EEF0F4] dark:bg-white/10">
-            {pct != null && <div className="h-full rounded-full" style={{ width: `${Math.max(0, Math.min(100, (pct / 1.2) * 100))}%`, background: tol != null && demInt! > tol ? '#C53030' : pct > 0.95 ? '#B7791F' : '#2E8B47' }} />}
-            {contr != null && <div className="absolute -top-1 -bottom-1 w-0.5 bg-foreground" style={{ left: '83.33%' }} />}
-          </div>
-          <div className="flex justify-between text-[13px] text-muted-foreground gap-2">
-            <span>{pct != null ? `${Math.round(pct * 100)}% da contratada` : 'Demanda contratada não cadastrada'}</span>
-            {contr != null && <span>Contratada {fmt(contr, 0)} kW · tolerância {fmt(tol, 0)} kW</span>}
-          </div>
-          <div className="flex items-center gap-2 border-t border-border pt-3">
-            <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${TONE_BG[tone]}`} />
-            <span className={`text-[15px] font-extrabold ${TONE_TEXT[tone]}`}>{stLabel}</span>
-            <span className="text-sm text-muted-foreground truncate">{stText}</span>
-          </div>
-        </Card>
-        <Card className="rounded-2xl py-[18px] flex items-center">
-          <div className="w-full"><KpiCells items={kpis} cols={2} size="lg" align="left" /></div>
-        </Card>
-      </div>
+    <MedidorVista v={{
+      tone, stLabel, stText, terminaEm, proj, contr, tol, kpis, gen, per, setPer,
+      hoje: hojeComProj, ciclo, horarios,
+      maxMes: mes?.pico_consumo ? { kw: mes.pico_consumo.kw, t: new Date(mes.pico_consumo.timestamp).getTime() } : null,
+      meses: barras,
+      injMaxMes: mes?.pico_injecao ? { kw: mes.pico_injecao.kw, t: new Date(mes.pico_injecao.timestamp).getTime() } : null,
+      fps: fpsSemFonte(), postos, reativa: '—', excedente: '—', equipamentoId,
+    }} />
+  );
+}
 
-      <SsuFluxo equipamentoId={equipamentoId} contr={contr} tol={tol} temInjecao={temInjecao} horarios={horarios} mesAtual={mesAtual} />
+// ------------------------------------------------------------- Configuração
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
-        <Card className="px-[18px] pt-3 pb-3.5 flex flex-col gap-2.5">
-          <span className="text-[15px] font-extrabold">Demanda × contratada</span>
-          <div className="flex justify-between items-end gap-3">
-            <span className="flex flex-col gap-0.5">
-              <span className="text-xs text-muted-foreground">Máxima do mês</span>
-              <span className="text-[26px] font-extrabold tabular-nums">{maxMes != null ? `${fmt(maxMes, 1)} kW` : '—'}</span>
-              {mes?.pico_consumo && <span className="text-xs text-muted-foreground">{dataCurta(mes.pico_consumo.timestamp)} · {janela15(mes.pico_consumo.timestamp)} · {postoEm(new Date(new Date(mes.pico_consumo.timestamp).getTime() - 60_000), horarios).toLowerCase()}</span>}
-            </span>
-            {contr != null && maxMes != null && (
-              <span className="flex flex-col gap-0.5 items-end">
-                <span className="text-xl font-extrabold tabular-nums">{Math.round((maxMes / contr) * 100)}%</span>
-                <span className="text-xs text-muted-foreground">da contratada</span>
-                <span className={`text-xs ${maxMes > tol! ? 'text-red-600 font-extrabold' : 'text-muted-foreground'}`}>
-                  {maxMes <= tol! ? `folga até tolerância ${fmt(tol! - maxMes, 0)} kW` : `${fmt(maxMes - tol!, 0)} kW acima da tolerância`}
-                </span>
-              </span>
-            )}
-          </div>
-          {meses == null ? <div className="h-[150px] grid place-items-center text-xs text-muted-foreground">Carregando…</div> : (
-            <svg viewBox="0 0 334 150" width="100%" height="150" role="img" aria-label="Demanda máxima por mês comparada à contratada">
-              {barrasMes.map((m, i) => {
-                const v = m.v ?? 0, h = MH(v), x = 12 + i * 54, cur = i === barrasMes.length - 1, over = tol != null && v > tol;
-                return (
-                  <g key={m.k + i}>
-                    <rect x={x} y={128 - h} width="32" height={h} rx="4" fill={over ? '#C53030' : cur ? '#2E8B47' : '#9CC9A8'} />
-                    {m.v != null && <text x={x + 16} y={128 - h - 5} fontSize="11" textAnchor="middle" fontWeight="700" fill={over ? '#C53030' : 'currentColor'}>{fmt(v, 0)}</text>}
-                    <text x={x + 16} y="146" fontSize="11" className="fill-muted-foreground" textAnchor="middle">{m.k}</text>
-                  </g>
-                );
-              })}
-              {contr != null && <line x1="0" x2="334" y1={128 - MH(contr)} y2={128 - MH(contr)} className="stroke-foreground" strokeOpacity="0.55" strokeDasharray="5 5" />}
-              {tol != null && <line x1="0" x2="334" y1={128 - MH(tol)} y2={128 - MH(tol)} stroke="#C53030" strokeOpacity="0.6" strokeDasharray="2 4" />}
-              <line x1="0" x2="334" y1="128" y2="128" className="stroke-border" />
-            </svg>
-          )}
-          <div className="flex justify-between items-center text-xs text-muted-foreground gap-2">
-            {contr != null ? (
-              <span className="flex gap-3.5">
-                <span className="flex items-center gap-1.5"><span className="w-3.5 border-t-[1.5px] border-dashed border-foreground" />Contratada {fmt(contr, 0)}</span>
-                <span className="flex items-center gap-1.5"><span className="w-3.5 border-t-[1.5px] border-dashed border-red-600" />Tolerância {fmt(tol, 0)}</span>
-              </span>
-            ) : <span>Sem demanda contratada no cadastro da unidade</span>}
-            {ultrap.length > 0 && <span className="text-red-600 font-extrabold">{ultrap.length} ultrapassage{ultrap.length > 1 ? 'ns' : 'm'} · {ultrap.map((m) => m.k).join(', ')}</span>}
-          </div>
-        </Card>
-        <Card className="px-[18px]">
-          <div className="text-[15px] font-extrabold py-3">Fator de potência e reativo</div>
-          {fps.map((f) => (
-            <div key={f.k} className="flex justify-between items-center min-h-[54px] border-t border-border gap-3">
-              <span className="flex flex-col gap-0.5">
-                <span className="text-sm font-bold">{f.k}</span>
-                {f.s && <span className="text-xs text-muted-foreground">{f.s}</span>}
-              </span>
-              <span className={`text-lg font-extrabold tabular-nums whitespace-nowrap ${f.w ? 'text-amber-600 dark:text-amber-400' : ''}`}>{f.v}</span>
-            </div>
-          ))}
-        </Card>
-      </div>
-
-      <Card className="px-[18px]">
-        <div className="flex justify-between items-center py-3">
-          <span className="text-[15px] font-extrabold">Energia do mês</span>
-          <span className="text-xs text-muted-foreground">desde 01/{String(new Date().getMonth() + 1).padStart(2, '0')} · blocos de 15 min</span>
-        </div>
-        {!postosMes ? <div className="py-3 border-t border-border text-sm text-muted-foreground">Carregando…</div> : (() => {
-          const cols = temInjecao ? 'grid-cols-[1.2fr_1fr_1fr_1fr]' : 'grid-cols-[1.3fr_1fr]';
-          const linhas = [['Ponta', 'bg-red-600'], ['Fora de ponta', 'bg-blue-600'], ['Reservado', 'bg-emerald-600']] as const;
-          const tot = Object.values(postosMes).reduce((a, v) => ({ c: a.c + v.c, i: a.i + v.i }), { c: 0, i: 0 });
-          return (
-            <>
-              <div className={`grid ${cols} text-[11px] font-bold text-muted-foreground tracking-[0.4px] py-1.5 border-t border-border`}>
-                <span>kWh</span><span className="text-right">CONSUMIDA</span>{temInjecao && <><span className="text-right">INJETADA</span><span className="text-right">LÍQUIDA</span></>}
-              </div>
-              {linhas.map(([k, cor]) => (
-                <div key={k} className={`grid ${cols} items-center min-h-[40px] text-sm border-t border-border`}>
-                  <span className="flex items-center gap-2"><span className={`w-2 h-2 rounded-[3px] ${cor}`} />{k}</span>
-                  <span className="text-right tabular-nums">{fmt(postosMes[k].c, 0)}</span>
-                  {temInjecao && <><span className="text-right tabular-nums" style={{ color: INJ }}>{fmt(postosMes[k].i, 0)}</span><span className="text-right tabular-nums">{fmt(postosMes[k].c - postosMes[k].i, 0)}</span></>}
-                </div>
-              ))}
-              <div className={`grid ${cols} items-center min-h-[40px] text-sm font-extrabold border-t border-border`}>
-                <span>Total</span><span className="text-right tabular-nums">{fmt(tot.c, 0)}</span>
-                {temInjecao && <><span className="text-right tabular-nums" style={{ color: INJ }}>{fmt(tot.i, 0)}</span><span className="text-right tabular-nums">{fmt(tot.c - tot.i, 0)}</span></>}
-              </div>
-            </>
-          );
-        })()}
-        <div className="flex justify-between items-center min-h-[44px] border-t border-border">
-          <span className="flex flex-col gap-0.5"><span className="text-sm font-bold">Energia reativa hoje</span><span className="text-xs text-muted-foreground">indutiva · capacitiva</span></span>
-          <span className="text-[15px] font-extrabold tabular-nums">{dia ? `${fmt(dia.q_ind_kvarh, 1)} · ${fmt(dia.q_cap_kvarh, 1)} kvarh` : '—'}</span>
-        </div>
-      </Card>
-
-      <Registros equipamentoId={equipamentoId} limite={4} />
+function CfgRow({ t, h, v, first }: { t: string; h?: string; v: ReactNode; first?: boolean }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 62, ...(first ? {} : { borderTop: `1px solid ${NX.linha}` }) }}>
+      <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <span style={{ fontSize: 15, fontWeight: 700 }}>{t}</span>
+        {h && <span style={{ fontSize: 12, color: NX.mudo }}>{h}</span>}
+      </span>
+      <span style={{ fontSize: 15, fontWeight: 800, ...tab, whiteSpace: 'nowrap' }}>{v}</span>
     </div>
   );
 }
 
-/** Aba Configuração: demanda contratada e postos tarifários (leitura). */
+/** Aba Configuração: demanda contratada, postos tarifários e tarifa (leitura). */
 function MedidorConfig({ equipamentoId, ssuId }: { equipamentoId: string; ssuId: string | null }) {
   const horarios = useHorarios(equipamentoId);
   const { res: mes } = useCustos(equipamentoId, 'mes');
   const { data } = useGatewayDashboard(ssuId);
   const contr = data?.unidade?.demanda_carga ?? (Number(mes?.consumo?.demanda_contratada_kw) || null);
   const contrG = data?.unidade?.demanda_geracao ?? null;
+  const un = mes?.unidade;
   return (
-    <div className="flex flex-col gap-2.5">
-      <SectionLabel className="mt-1">Demanda contratada</SectionLabel>
-      <Card className="px-4">
-        <FieldRow first label="Consumo (carga)" sub="Cadastro da unidade consumidora">
-          <span className="text-[15px] text-muted-foreground">{contr != null ? `${fmt(contr, 0)} kW` : '—'}</span>
-        </FieldRow>
-        <FieldRow label="Tolerância" sub="5% acima da contratada">
-          <span className="text-[15px] text-muted-foreground">{contr != null ? `${fmt(contr * 1.05, 0)} kW` : '—'}</span>
-        </FieldRow>
-        <FieldRow label="Geração">
-          <span className="text-[15px] text-muted-foreground">{contrG != null ? `${fmt(contrG, 0)} kW` : '—'}</span>
-        </FieldRow>
-      </Card>
-      <SectionLabel className="mt-2.5">Postos tarifários</SectionLabel>
-      <Card className="px-4">
-        <FieldRow first label="Ponta" sub="Dias úteis">
-          <span className="text-[15px] text-muted-foreground">{fmtHora(horarios.ponta[0])} – {fmtHora(horarios.ponta[1])}</span>
-        </FieldRow>
-        <FieldRow label="Reservado (HR)">
-          <span className="text-[15px] text-muted-foreground">{horarios.reservado ? `${fmtHora(horarios.reservado[0])} – ${fmtHora(horarios.reservado[1])}` : '—'}</span>
-        </FieldRow>
-        <FieldRow label="Fora de ponta" sub="Todo o restante do dia">
-          <span className="text-[15px] text-muted-foreground">—</span>
-        </FieldRow>
-        <FieldRow label="Tarifa usada no valor">
-          <span className="text-[15px] text-muted-foreground">{mes?.tarifa_fonte === 'PERSONALIZADA' ? 'Personalizada' : mes ? 'Concessionária' : '—'}</span>
-        </FieldRow>
-      </Card>
-      <p className="text-xs text-muted-foreground mt-1">
+    <div style={{ padding: '20px 24px 28px 24px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <span style={s.label}>DEMANDA CONTRATADA</span>
+      <div style={{ ...s.card, padding: '0 18px' }}>
+        <CfgRow first t="Consumo (carga)" h="Cadastro da unidade consumidora" v={contr != null ? `${n0(contr)} kW` : '—'} />
+        <CfgRow t="Tolerância" h="5% acima da contratada" v={contr != null ? `${n0(contr * 1.05)} kW` : '—'} />
+        <CfgRow t="Geração" h="Cadastro da unidade consumidora" v={contrG != null ? `${n0(contrG)} kW` : '—'} />
+      </div>
+      <span style={{ ...s.label, marginTop: 12 }}>POSTOS TARIFÁRIOS</span>
+      <div style={{ ...s.card, padding: '0 18px' }}>
+        <CfgRow first t="Ponta" h="Dias úteis" v={`${fmtHora(horarios.ponta[0])} – ${fmtHora(horarios.ponta[1])}`} />
+        <CfgRow t="Reservado (HR)" h="Todos os dias" v={horarios.reservado ? `${fmtHora(horarios.reservado[0])} – ${fmtHora(horarios.reservado[1])}` : '—'} />
+        <CfgRow t="Fora de ponta" h="Todo o restante do dia" v="—" />
+      </div>
+      <span style={{ ...s.label, marginTop: 12 }}>TARIFA</span>
+      <div style={{ ...s.card, padding: '0 18px' }}>
+        <CfgRow first t="Tarifa usada no valor" h="Custos por posto tarifário" v={mes?.tarifa_fonte === 'PERSONALIZADA' ? 'Personalizada' : mes ? 'Concessionária' : '—'} />
+        <CfgRow t="Grupo / subgrupo" h={un?.irrigante ? 'Irrigante' : undefined} v={un ? [un.grupo, un.subgrupo].filter(Boolean).join(' / ') || '—' : '—'} />
+      </div>
+      <span style={{ fontSize: 12, color: NX.mudo, marginTop: 4 }}>
         {horarios.daConcessionaria ? 'Horários da concessionária ligada à unidade (edição no cadastro de concessionárias).' : 'Concessionária sem janela cadastrada: padrão 18:00–21:00.'}
         {' '}Demanda contratada é editada no cadastro da unidade.
-      </p>
+      </span>
     </div>
   );
 }
+
+// -------------------------------------------------------------------- modal
 
 export function MedidorSheet({ equipamentoId, nome, onClose }: { equipamentoId: string; nome?: string; onClose: () => void }) {
   // Fonte da medição: o device IoT associado a este medidor em "Vínculos → Medições"
@@ -804,19 +869,27 @@ export function MedidorSheet({ equipamentoId, nome, onClose }: { equipamentoId: 
     return () => { vivo = false; };
   }, [equipamentoId]);
   const idDados = fonte?.id ?? equipamentoId;
-  const { dados, ts } = useDados(idDados);
-  const info = tsInfo(ts);
+  const { dados } = useDados(idDados);
   const g = (p: string) => getPath(dados, p);
   // Bloco da SSU (A-966 / TON-V2): tem NSU e pulsos em data.phf — não é telemetria instantânea.
   const ehSsu = !!dados && (g('NSU') != null || g('data.phf') != null);
   const [aba, setAba] = useState('op');
   const [status, setStatus] = useState<StatusMed>({ tone: 'off', label: 'Sem comunicação' });
+  const { res: custos } = useCustos(idDados, 'mes');
+  const un = custos?.unidade;
+  const tarifa = !custos ? null : custos.tarifa_fonte === 'PERSONALIZADA' ? 'tarifa personalizada' : un?.subgrupo ? `tarifa ${un.subgrupo}` : null;
+  const subtitle = ['Entrada', un?.nome ?? fonte?.nome ?? null, ehSsu ? 'SSU via TON' : 'medidor direto', tarifa].filter(Boolean).join(' · ');
 
   return (
-    <EquipShell
+    <NxShell
       title={nome || 'Medidor da concessionária'}
-      subtitle={[fonte ? `Medição: ${fonte.nome ?? fonte.id}` : null, ehSsu ? 'SSU' : null, info.hasTs ? info.label : 'Sem leitura'].filter(Boolean).join(' · ')}
-      right={<>{status.posto && <NeutralPill>{status.posto}</NeutralPill>}<Pill tone={status.tone}>{status.label}</Pill></>}
+      subtitle={subtitle}
+      right={(
+        <>
+          {status.posto && <span style={{ height: 30, padding: '0 12px', borderRadius: 15, background: NX.trilho, fontSize: 13, fontWeight: 800, display: 'flex', alignItems: 'center', whiteSpace: 'nowrap' }}>{status.posto}</span>}
+          <span style={s.pill(status.tone)}><span style={s.pillDot(status.tone)} />{status.label}</span>
+        </>
+      )}
       tabs={[{ key: 'op', label: 'Operação' }, { key: 'cfg', label: 'Configuração' }]}
       tab={aba}
       onTab={setAba}
@@ -827,7 +900,7 @@ export function MedidorSheet({ equipamentoId, nome, onClose }: { equipamentoId: 
         : ehSsu
           ? <MedidorSsu equipamentoId={idDados} onStatus={setStatus} />
           : <MedidorPm equipamentoId={idDados} onStatus={setStatus} />}
-    </EquipShell>
+    </NxShell>
   );
 }
 
