@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { api } from '@/config/api';
 import { iotApiService } from '@/services/iot.services';
 import { useGatewayDashboard } from '@/hooks/useGatewayDashboard';
 import { useGatewayTendencia } from '@/hooks/useGatewayTendencia';
@@ -6,7 +7,7 @@ import { equipamentosDadosService } from '@/services/equipamentos-dados.service'
 import { EstadoHero, GrupoTitulo, Section, MiniChart, useDados, getPath, fmt, tsInfo } from './sheetParts';
 import {
   EquipShell, Pill, NeutralPill, Card, SectionLabel, KpiCells, FieldRow, Segmented, Registros,
-  useCustos, custosDe, useHistorico, useHorarios, postoEm, fmtHora, bucketize, brl, TONE_BG, TONE_TEXT,
+  useCustos, custosDe, useHistorico, useHorarios, postoEm, fmtHora, bucketize, brl, unwrap, TONE_BG, TONE_TEXT,
   type Tone, type HistPoint,
 } from './equipUi';
 
@@ -436,32 +437,83 @@ const janela15 = (iso?: string | null) => {
 };
 const dataCurta = (iso: string) => new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 
+interface Bloco { t: number; c: number; i: number }
+interface MesBlocos { k: string; ini: number; fim: number; blocos: Bloco[] }
+const MESES_CURTOS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+
+/** Blocos de 15 min (kW consumo/injeção) dos últimos n meses — /gateway/tendencia?intervalo=15. */
+function useBlocosMeses(equipamentoId: string, n = 6) {
+  const [meses, setMeses] = useState<MesBlocos[] | null>(null);
+  useEffect(() => {
+    let vivo = true;
+    const hoje = new Date();
+    const lista = Array.from({ length: n }, (_, k) => {
+      const ini = new Date(hoje.getFullYear(), hoje.getMonth() - (n - 1 - k), 1);
+      const fim = new Date(ini.getFullYear(), ini.getMonth() + 1, 1);
+      return { k: MESES_CURTOS[ini.getMonth()], ini: ini.getTime(), fim: Math.min(fim.getTime(), Date.now()) };
+    });
+    Promise.all(lista.map((m) =>
+      api.get(`/equipamentos-dados/${equipamentoId.trim()}/gateway/tendencia`, {
+        params: { periodo: 'custom', inicio: new Date(m.ini).toISOString(), fim: new Date(m.fim).toISOString(), intervalo: 15 },
+      })
+        .then((r) => ((unwrap<{ dados?: Array<{ timestamp: string; kW_consumo: number; kW_injecao: number }> }>(r)?.dados) ?? [])
+          .map((d) => ({ t: new Date(d.timestamp).getTime(), c: Number(d.kW_consumo) || 0, i: Number(d.kW_injecao) || 0 })))
+        .catch(() => [] as Bloco[]),
+    )).then((bs) => { if (vivo) setMeses(lista.map((m, k) => ({ ...m, blocos: bs[k] }))); });
+    return () => { vivo = false; };
+  }, [equipamentoId, n]);
+  return meses;
+}
+
+/** Energia por posto a partir dos blocos de 15 min (kWh = kW × 0,25 h). */
+function energiaPorPosto(blocos: Bloco[], horarios: ReturnType<typeof useHorarios>) {
+  const acc: Record<string, { c: number; i: number }> = { Ponta: { c: 0, i: 0 }, 'Fora de ponta': { c: 0, i: 0 }, Reservado: { c: 0, i: 0 } };
+  for (const b of blocos) {
+    const p = postoEm(new Date(b.t), horarios);
+    acc[p].c += b.c * 0.25; acc[p].i += b.i * 0.25;
+  }
+  return acc;
+}
+
 /** Fluxo na rede por intervalo do medidor (15 min), hoje ou nos últimos 7 dias — /gateway/tendencia. */
-function SsuFluxo({ equipamentoId, contr, tol, temInjecao, horarios }: {
-  equipamentoId: string; contr: number | null; tol: number | null; temInjecao: boolean; horarios: ReturnType<typeof useHorarios>;
+function SsuFluxo({ equipamentoId, contr, tol, temInjecao, horarios, mesAtual }: {
+  equipamentoId: string; contr: number | null; tol: number | null; temInjecao: boolean; horarios: ReturnType<typeof useHorarios>; mesAtual: MesBlocos | null;
 }) {
-  const [per, setPer] = useState<'24H' | '7D'>('24H');
-  const { data, loading } = useGatewayTendencia(equipamentoId, per);
-  const pts = data?.dados ?? [];
+  const [per, setPer] = useState<'24H' | '7D' | 'MES'>('24H');
+  const { data: dataT, loading } = useGatewayTendencia(equipamentoId, per === 'MES' ? '24H' : per);
+  const data = per === 'MES' ? null : dataT;
+  // Mês: uma barra por dia com a demanda máxima de 15 min daquele dia.
+  const pts = per === 'MES'
+    ? (() => {
+      const porDia = new Map<number, { c: number; i: number }>();
+      for (const b of mesAtual?.blocos ?? []) {
+        const d = new Date(b.t); d.setHours(12, 0, 0, 0);
+        const k = d.getTime(), a = porDia.get(k) ?? { c: 0, i: 0 };
+        porDia.set(k, { c: Math.max(a.c, b.c), i: Math.max(a.i, b.i) });
+      }
+      return [...porDia.entries()].map(([t, v]) => ({ timestamp: new Date(t).toISOString(), kW_consumo: v.c, kW_injecao: v.i, num_leituras: 0 }));
+    })()
+    : data?.dados ?? [];
   const W = 720, PH = 138;
-  const ini = per === '24H' ? (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); })() : Date.now() - 7 * 86400000;
-  const fim = per === '24H' ? ini + 86400000 : Date.now();
+  const ini = per === '24H' ? (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); })() : per === 'MES' ? (mesAtual?.ini ?? Date.now()) : Date.now() - 7 * 86400000;
+  const fim = per === '24H' ? ini + 86400000 : per === 'MES' ? new Date(new Date(ini).getFullYear(), new Date(ini).getMonth() + 1, 1).getTime() : Date.now();
   const vis = pts.filter((p) => { const t = new Date(p.timestamp).getTime(); return t >= ini && t <= fim; });
   const maxPos = Math.max(contr ?? 0, ...vis.map((p) => p.kW_consumo), 0.1) * 1.1;
   const maxNeg = temInjecao ? Math.max(...vis.map((p) => p.kW_injecao), 0) * 1.1 : 0;
   const H = (v: number) => (v / (maxPos + maxNeg)) * PH;
   const zY = 10 + H(maxPos);
   const X = (t: number) => ((t - ini) / (fim - ini)) * W;
-  const bw = Math.max(1.5, (W / ((fim - ini) / ((data?.intervalo_min ?? 15) * 60000))) * 0.75);
+  const bw = per === 'MES' ? (W / 31) * 0.7 : Math.max(1.5, (W / ((fim - ini) / ((data?.intervalo_min ?? 15) * 60000))) * 0.75);
   const util = new Date(ini).getDay() !== 0 && new Date(ini).getDay() !== 6;
   const [p0, p1] = horarios.ponta;
   const ticks = per === '24H'
     ? [0, 6, 12, 18, 24].map((h) => ({ f: h / 24, l: `${String(h).padStart(2, '0')}h` }))
+    : per === 'MES' ? [1, 8, 15, 22].map((d) => ({ f: ((d - 0.5) / ((fim - ini) / 86400000)), l: String(d).padStart(2, '0') }))
     : Array.from({ length: 5 }, (_, i) => ({ f: i / 4, l: new Date(ini + ((fim - ini) * i) / 4).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) }));
   return (
     <Card className="px-4 pt-3 pb-3.5">
       <div className="flex justify-between items-center gap-3 flex-wrap">
-        <span className="text-[15px] font-extrabold">{temInjecao ? 'Fluxo na rede por intervalo de 15 min' : 'Demanda por intervalo de 15 min'}</span>
+        <span className="text-[15px] font-extrabold">{per === 'MES' ? 'Demanda máxima de 15 min por dia' : temInjecao ? 'Fluxo na rede por intervalo de 15 min' : 'Demanda por intervalo de 15 min'}</span>
         <div className="flex items-center gap-4">
           {temInjecao && (
             <span className="flex gap-3.5 text-xs text-muted-foreground">
@@ -469,10 +521,10 @@ function SsuFluxo({ equipamentoId, contr, tol, temInjecao, horarios }: {
               <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: INJ }} />Injeção</span>
             </span>
           )}
-          <Segmented size="sm" value={per} onChange={setPer} options={[{ v: '24H', label: 'Hoje' }, { v: '7D', label: 'Semana' }]} />
+          <Segmented size="sm" value={per} onChange={setPer} options={[{ v: '24H', label: 'Hoje' }, { v: '7D', label: 'Semana' }, { v: 'MES', label: 'Mês' }]} />
         </div>
       </div>
-      {loading && !data ? <div className="h-[180px] grid place-items-center text-xs text-muted-foreground">Carregando…</div>
+      {(per === 'MES' ? !mesAtual : loading && !data) ? <div className="h-[180px] grid place-items-center text-xs text-muted-foreground">Carregando…</div>
         : vis.length === 0 ? <div className="h-[180px] grid place-items-center text-xs text-muted-foreground">Sem blocos do medidor no período</div> : (
           <svg viewBox="0 0 720 180" width="100%" height="180" className="block mt-2" role="img" aria-label="Fluxo na rede por intervalo de 15 minutos">
             {per === '24H' && util && <rect x={(p0 / 24) * W} y="10" width={((p1 - p0) / 24) * W} height={PH} fill="rgba(197,48,48,0.07)" />}
@@ -513,6 +565,13 @@ function MedidorSsu({ equipamentoId, onStatus }: { equipamentoId: string; onStat
   const contrG = data?.unidade?.demanda_geracao ?? null;
   const tol = contr != null ? contr * 1.05 : null;
   const temInjecao = (dia?.injecao_kwh ?? 0) > 0 || (mes?.pico_injecao?.kw ?? 0) > 0 || (agora?.kW_injecao ?? 0) > 0;
+  const meses = useBlocosMeses(equipamentoId);
+  const mesAtual = meses ? meses[meses.length - 1] : null;
+  const postosMes = mesAtual ? energiaPorPosto(mesAtual.blocos, horarios) : null;
+  const barrasMes = (meses ?? []).map((m) => ({ k: m.k, v: m.blocos.length ? Math.max(...m.blocos.map((b) => b.c)) : null }));
+  const mesesMax = Math.max(tol ?? 0, ...barrasMes.map((m) => m.v ?? 0), 1) * 1.1;
+  const MH = (v: number) => (v / mesesMax) * 112;
+  const ultrap = barrasMes.filter((m) => tol != null && m.v != null && m.v > tol);
 
   const now = new Date();
   const qIni = new Date(now); qIni.setMinutes(Math.floor(now.getMinutes() / 15) * 15, 0, 0);
@@ -587,7 +646,7 @@ function MedidorSsu({ equipamentoId, onStatus }: { equipamentoId: string; onStat
         </Card>
       </div>
 
-      <SsuFluxo equipamentoId={equipamentoId} contr={contr} tol={tol} temInjecao={temInjecao} horarios={horarios} />
+      <SsuFluxo equipamentoId={equipamentoId} contr={contr} tol={tol} temInjecao={temInjecao} horarios={horarios} mesAtual={mesAtual} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
         <Card className="px-[18px] pt-3 pb-3.5 flex flex-col gap-2.5">
@@ -608,11 +667,32 @@ function MedidorSsu({ equipamentoId, onStatus }: { equipamentoId: string; onStat
               </span>
             )}
           </div>
-          <div className="flex justify-between items-center min-h-[40px] border-t border-border text-sm">
-            <span>Máxima de hoje</span>
-            <span className="font-extrabold tabular-nums">{dia?.pico_consumo ? `${fmt(dia.pico_consumo.kw, 1)} kW · ${janela15(dia.pico_consumo.timestamp)}` : '—'}</span>
+          {meses == null ? <div className="h-[150px] grid place-items-center text-xs text-muted-foreground">Carregando…</div> : (
+            <svg viewBox="0 0 334 150" width="100%" height="150" role="img" aria-label="Demanda máxima por mês comparada à contratada">
+              {barrasMes.map((m, i) => {
+                const v = m.v ?? 0, h = MH(v), x = 12 + i * 54, cur = i === barrasMes.length - 1, over = tol != null && v > tol;
+                return (
+                  <g key={m.k + i}>
+                    <rect x={x} y={128 - h} width="32" height={h} rx="4" fill={over ? '#C53030' : cur ? '#2E8B47' : '#9CC9A8'} />
+                    {m.v != null && <text x={x + 16} y={128 - h - 5} fontSize="11" textAnchor="middle" fontWeight="700" fill={over ? '#C53030' : 'currentColor'}>{fmt(v, 0)}</text>}
+                    <text x={x + 16} y="146" fontSize="11" className="fill-muted-foreground" textAnchor="middle">{m.k}</text>
+                  </g>
+                );
+              })}
+              {contr != null && <line x1="0" x2="334" y1={128 - MH(contr)} y2={128 - MH(contr)} className="stroke-foreground" strokeOpacity="0.55" strokeDasharray="5 5" />}
+              {tol != null && <line x1="0" x2="334" y1={128 - MH(tol)} y2={128 - MH(tol)} stroke="#C53030" strokeOpacity="0.6" strokeDasharray="2 4" />}
+              <line x1="0" x2="334" y1="128" y2="128" className="stroke-border" />
+            </svg>
+          )}
+          <div className="flex justify-between items-center text-xs text-muted-foreground gap-2">
+            {contr != null ? (
+              <span className="flex gap-3.5">
+                <span className="flex items-center gap-1.5"><span className="w-3.5 border-t-[1.5px] border-dashed border-foreground" />Contratada {fmt(contr, 0)}</span>
+                <span className="flex items-center gap-1.5"><span className="w-3.5 border-t-[1.5px] border-dashed border-red-600" />Tolerância {fmt(tol, 0)}</span>
+              </span>
+            ) : <span>Sem demanda contratada no cadastro da unidade</span>}
+            {ultrap.length > 0 && <span className="text-red-600 font-extrabold">{ultrap.length} ultrapassage{ultrap.length > 1 ? 'ns' : 'm'} · {ultrap.map((m) => m.k).join(', ')}</span>}
           </div>
-          {contr == null && <p className="text-xs text-muted-foreground">Sem demanda contratada no cadastro da unidade.</p>}
         </Card>
         <Card className="px-[18px]">
           <div className="text-[15px] font-extrabold py-3">Fator de potência e reativo</div>
@@ -630,22 +710,35 @@ function MedidorSsu({ equipamentoId, onStatus }: { equipamentoId: string; onStat
 
       <Card className="px-[18px]">
         <div className="flex justify-between items-center py-3">
-          <span className="text-[15px] font-extrabold">Energia de hoje</span>
-          <span className="text-xs text-muted-foreground">blocos do medidor</span>
+          <span className="text-[15px] font-extrabold">Energia do mês</span>
+          <span className="text-xs text-muted-foreground">desde 01/{String(new Date().getMonth() + 1).padStart(2, '0')} · blocos de 15 min</span>
         </div>
+        {!postosMes ? <div className="py-3 border-t border-border text-sm text-muted-foreground">Carregando…</div> : (() => {
+          const cols = temInjecao ? 'grid-cols-[1.2fr_1fr_1fr_1fr]' : 'grid-cols-[1.3fr_1fr]';
+          const linhas = [['Ponta', 'bg-red-600'], ['Fora de ponta', 'bg-blue-600'], ['Reservado', 'bg-emerald-600']] as const;
+          const tot = Object.values(postosMes).reduce((a, v) => ({ c: a.c + v.c, i: a.i + v.i }), { c: 0, i: 0 });
+          return (
+            <>
+              <div className={`grid ${cols} text-[11px] font-bold text-muted-foreground tracking-[0.4px] py-1.5 border-t border-border`}>
+                <span>kWh</span><span className="text-right">CONSUMIDA</span>{temInjecao && <><span className="text-right">INJETADA</span><span className="text-right">LÍQUIDA</span></>}
+              </div>
+              {linhas.map(([k, cor]) => (
+                <div key={k} className={`grid ${cols} items-center min-h-[40px] text-sm border-t border-border`}>
+                  <span className="flex items-center gap-2"><span className={`w-2 h-2 rounded-[3px] ${cor}`} />{k}</span>
+                  <span className="text-right tabular-nums">{fmt(postosMes[k].c, 0)}</span>
+                  {temInjecao && <><span className="text-right tabular-nums" style={{ color: INJ }}>{fmt(postosMes[k].i, 0)}</span><span className="text-right tabular-nums">{fmt(postosMes[k].c - postosMes[k].i, 0)}</span></>}
+                </div>
+              ))}
+              <div className={`grid ${cols} items-center min-h-[40px] text-sm font-extrabold border-t border-border`}>
+                <span>Total</span><span className="text-right tabular-nums">{fmt(tot.c, 0)}</span>
+                {temInjecao && <><span className="text-right tabular-nums" style={{ color: INJ }}>{fmt(tot.i, 0)}</span><span className="text-right tabular-nums">{fmt(tot.c - tot.i, 0)}</span></>}
+              </div>
+            </>
+          );
+        })()}
         <div className="flex justify-between items-center min-h-[44px] border-t border-border">
-          <span className="text-sm font-bold">Consumida</span>
-          <span className="text-[15px] font-extrabold tabular-nums">{dia ? `${fmt(dia.consumo_kwh, 1)} kWh` : '—'}</span>
-        </div>
-        {temInjecao && (
-          <div className="flex justify-between items-center min-h-[44px] border-t border-border">
-            <span className="text-sm font-bold">Injetada</span>
-            <span className="text-[15px] font-extrabold tabular-nums" style={{ color: INJ }}>{dia ? `${fmt(dia.injecao_kwh, 1)} kWh` : '—'}</span>
-          </div>
-        )}
-        <div className="flex justify-between items-center min-h-[44px] border-t border-border">
-          <span className="text-sm font-bold">Energia reativa</span>
-          <span className="text-[15px] font-extrabold tabular-nums">{dia ? `${fmt(dia.q_ind_kvarh + dia.q_cap_kvarh, 1)} kvarh` : '—'}</span>
+          <span className="flex flex-col gap-0.5"><span className="text-sm font-bold">Energia reativa hoje</span><span className="text-xs text-muted-foreground">indutiva · capacitiva</span></span>
+          <span className="text-[15px] font-extrabold tabular-nums">{dia ? `${fmt(dia.q_ind_kvarh, 1)} · ${fmt(dia.q_cap_kvarh, 1)} kvarh` : '—'}</span>
         </div>
       </Card>
 
