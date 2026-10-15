@@ -14,9 +14,8 @@ import {
  * histórico de recargas e exportação para a contabilidade.
  * Configuração: valor do kWh, dados do carregador e moradores autorizados.
  *
- * A API não tem "parar recarga" (encerra ao desconectar o carro), nem leitura da
- * bateria do carro, nem edição do valor do kWh pela tela: esses pontos ficam
- * como leitura/"—".
+ * Parar recarga: POST /carregador-eletrico/:id/parar (corta o contator e fecha a sessão).
+ * A API não lê a bateria do carro nem edita o valor do kWh pela tela: ficam como leitura/"—".
  */
 
 interface Carregador { id: string; nome: string; unidade_nome?: string; planta_id?: string }
@@ -140,7 +139,7 @@ export function CarregadorModal({ carregador, open, onOpenChange }: { carregador
   const [plantaId, setPlantaId] = useState<string | undefined>(carregador?.planta_id);
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState('');
-  const [modal, setModal] = useState<null | 'iniciar' | 'vaga' | 'export'>(null);
+  const [modal, setModal] = useState<null | 'iniciar' | 'vaga' | 'parar' | 'export'>(null);
   const [moradorSel, setMoradorSel] = useState('');
   const [busy, setBusy] = useState(false);
   const [novo, setNovo] = useState<null | { nome: string; apartamento: string; tag_uid: string }>(null);
@@ -221,6 +220,11 @@ export function CarregadorModal({ carregador, open, onOpenChange }: { carregador
     } catch (e) { setMsg(erroMsg(e, 'Falha ao enviar')); setBusy(false); }
   };
 
+  const parar = async () => {
+    setBusy(true); setMsg('');
+    try { await api.post(`/carregador-eletrico/${id}/parar`); setMsg('Recarga parada.'); fechar(); await carregar(); }
+    catch (e) { setMsg(erroMsg(e, 'Falha ao parar a recarga')); setBusy(false); }
+  };
   const addMorador = async () => {
     if (!novo?.nome.trim()) return;
     setMsg('');
@@ -321,10 +325,14 @@ export function CarregadorModal({ carregador, open, onOpenChange }: { carregador
             </div>
           </div>
 
-          <BigButton variant={carregando ? 'outline' : 'primary'} disabled={moradores.length === 0} onClick={() => setModal(carregando ? 'vaga' : 'iniciar')}>
-            {carregando ? 'Pedir a vaga' : 'Iniciar recarga'}
+          <BigButton variant={carregando ? 'outline' : 'primary'} disabled={busy || (!carregando && moradores.length === 0)} onClick={() => setModal(carregando ? 'parar' : 'iniciar')}>
+            {busy ? 'Executando…' : carregando ? 'Parar recarga' : 'Iniciar recarga'}
           </BigButton>
-          {carregando && <p className="text-[12px] text-muted-foreground -mt-2 text-center">A recarga encerra sozinha ao desconectar o carro (a TON corta o fornecimento).</p>}
+          {carregando && (
+            <button type="button" onClick={() => setModal('vaga')} className="self-center -mt-2 h-9 px-2.5 text-sm font-bold text-muted-foreground hover:text-foreground">
+              Outro morador quer a vaga?
+            </button>
+          )}
           {moradores.length === 0 && <p className="text-[12px] text-amber-600 dark:text-amber-400 -mt-2 text-center">Cadastre um morador na aba Configuração para liberar recargas.</p>}
 
           <Card className="overflow-hidden">
@@ -420,6 +428,13 @@ export function CarregadorModal({ carregador, open, onOpenChange }: { carregador
           <p className="text-xs text-muted-foreground">Não é possível remover o morador com recarga em andamento. A recarga fica no nome de quem foi liberado (base da cobrança do condomínio).</p>
         </div>
       )}
+
+      <SubDialog open={modal === 'parar'} onClose={fechar} title="Parar recarga?" width={400}>
+        <p className="text-sm text-muted-foreground">
+          Recarregado até agora: {fmt(kwhAtual ?? 0, 1)} kWh{tarifa != null && kwhAtual != null ? ` · ${brl(kwhAtual * tarifa)} (estimado)` : ''}{sa?.morador_nome ? ` · ${sa.morador_nome}` : ''}
+        </p>
+        <DialogButtons onCancel={fechar} onConfirm={parar} confirmLabel="Parar" busy={busy} />
+      </SubDialog>
 
       <SubDialog
         open={modal === 'iniciar' || modal === 'vaga'}
