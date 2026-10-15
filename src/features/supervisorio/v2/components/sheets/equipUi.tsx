@@ -54,8 +54,8 @@ export function EquipShell({
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent
-        className="max-w-[820px] w-[96vw] p-0 gap-0 overflow-hidden flex flex-col bg-[#F1F2F6] dark:bg-[#0E0E24] rounded-2xl"
-        style={{ height: '90vh', maxHeight: '90vh' }}
+        // Sheet lateral de altura total (padrão do Dialog do projeto): só a largura muda.
+        className="max-w-[820px] w-full p-0 gap-0 overflow-hidden flex flex-col bg-[#F1F2F6] dark:bg-[#0E0E24] sm:rounded-l-2xl"
       >
         <div className="px-6 pt-5 pr-14 shrink-0">
           <div className="flex items-start justify-between gap-4">
@@ -215,7 +215,11 @@ export function SubDialog({ open, onClose, title, subtitle, width = 440, childre
 }) {
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="p-[22px] gap-3 rounded-[18px]" style={{ maxWidth: width, width: '94vw' }}>
+      <DialogContent
+        // Diálogo centralizado por cima da sheet (o Dialog padrão do projeto é lateral).
+        className="p-[22px] gap-3 rounded-[18px] border top-1/2 bottom-auto left-1/2 right-auto -translate-x-1/2 -translate-y-1/2 max-h-[90dvh] data-[state=open]:slide-in-from-right-0 data-[state=closed]:slide-out-to-right-0"
+        style={{ maxWidth: width, width: '94vw' }}
+      >
         <div className="flex flex-col gap-0.5 pr-8">
           <DialogTitle className="text-lg font-extrabold">{title}</DialogTitle>
           {subtitle && <span className="text-[13px] text-muted-foreground">{subtitle}</span>}
@@ -384,8 +388,10 @@ export function CollapsibleChart({ equipamentoId, title, summary, series, unit =
 
 interface LogMqtt { id: string; mensagem?: string | null; severidade?: string | null; created_at?: string; regra?: { nome?: string | null } | null }
 
-/** Registros do equipamento (eventos das regras de log MQTT). */
-export function Registros({ equipamentoId, limite = 6 }: { equipamentoId: string; limite?: number }) {
+export interface RegistroExtra { t: number; txt: string; quem: string; ok?: boolean; ruim?: boolean }
+
+/** Registros do equipamento: eventos das regras de log MQTT + extras (ex.: passos do comando). */
+export function Registros({ equipamentoId, limite = 6, extra = [] }: { equipamentoId: string; limite?: number; extra?: RegistroExtra[] }) {
   const [rows, setRows] = useState<LogMqtt[] | null>(null);
   useEffect(() => {
     let vivo = true;
@@ -394,28 +400,38 @@ export function Registros({ equipamentoId, limite = 6 }: { equipamentoId: string
       .catch(() => { if (vivo) setRows([]); });
     return () => { vivo = false; };
   }, [equipamentoId, limite]);
+  const todos: RegistroExtra[] = useMemo(() => [
+    ...extra,
+    ...(rows ?? []).map((l) => {
+      const sev = String(l.severidade ?? '').toUpperCase();
+      return { t: l.created_at ? new Date(l.created_at).getTime() : 0, txt: l.mensagem ?? l.regra?.nome ?? 'Evento', quem: l.regra?.nome ?? 'Sistema', ruim: sev === 'CRITICA' || sev === 'CRÍTICA' || sev === 'ALTA' };
+    }),
+  ].sort((x, y) => y.t - x.t).slice(0, Math.max(limite, extra.length)), [rows, extra, limite]);
   return (
     <Card className="overflow-hidden">
       <div className="flex justify-between items-center px-4 py-3">
         <span className="text-[15px] font-extrabold">Registros</span>
         <Link to={`/logs/logs-mqtt?equipamentoId=${encodeURIComponent(equipamentoId.trim())}`} className="text-[13px] font-bold text-[#177A3C] dark:text-emerald-400 no-underline">Ver todos ›</Link>
       </div>
-      {rows == null ? (
+      <div className="grid grid-cols-[120px_1fr_160px_28px] gap-3 px-4 py-2 text-[11px] font-bold text-muted-foreground tracking-[0.4px] border-t">
+        <span>DATA/HORA</span><span>EVENTO</span><span>ORIGEM</span><span />
+      </div>
+      {rows == null && !extra.length ? (
         <div className="px-4 py-3 border-t text-sm text-muted-foreground">Carregando…</div>
-      ) : rows.length === 0 ? (
+      ) : todos.length === 0 ? (
         <div className="px-4 py-3 border-t text-sm text-muted-foreground">Nenhum registro deste equipamento.</div>
-      ) : rows.map((l) => {
-        const sev = String(l.severidade ?? '').toUpperCase();
-        const ruim = sev === 'CRITICA' || sev === 'CRÍTICA' || sev === 'ALTA';
-        const quando = l.created_at ? new Date(l.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(',', '') : '—';
-        return (
-          <div key={l.id} className={`grid grid-cols-[120px_1fr_160px] gap-3 items-center px-4 py-2.5 border-t ${ruim ? 'bg-red-500/[0.06]' : ''}`}>
-            <span className="text-[13px] text-muted-foreground tabular-nums">{quando}</span>
-            <span className={`text-sm ${ruim ? 'text-red-600 dark:text-red-400 font-bold' : ''}`}>{l.mensagem ?? l.regra?.nome ?? 'Evento'}</span>
-            <span className="text-[13px] text-muted-foreground truncate">{l.regra?.nome ?? 'Sistema'}</span>
-          </div>
-        );
-      })}
+      ) : todos.map((l, i) => (
+        <div key={i} className={`grid grid-cols-[120px_1fr_160px_28px] gap-3 items-center px-4 py-2.5 border-t ${l.ruim ? 'bg-red-500/[0.06]' : ''}`}>
+          <span className="text-[13px] text-muted-foreground tabular-nums">{l.t ? new Date(l.t).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(',', '') : '—'}</span>
+          <span className={`text-sm ${l.ruim ? 'text-red-600 dark:text-red-400 font-bold' : ''}`}>{l.txt}</span>
+          <span className="text-[13px] text-muted-foreground truncate">{l.quem}</span>
+          <span className="flex justify-center">
+            {l.ok && (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1F7A43" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" role="img" aria-label="Confirmado pelo equipamento"><path d="M2 13l4 4 8-9" /><path d="M10 15l2 2 8-9" /></svg>
+            )}
+          </span>
+        </div>
+      ))}
     </Card>
   );
 }

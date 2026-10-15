@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { iotApiService } from '@/services/iot.services';
 import { useGatewayDashboard } from '@/hooks/useGatewayDashboard';
+import { useGatewayTendencia } from '@/hooks/useGatewayTendencia';
 import { equipamentosDadosService } from '@/services/equipamentos-dados.service';
 import { EstadoHero, GrupoTitulo, Section, MiniChart, useDados, getPath, fmt, tsInfo } from './sheetParts';
 import {
@@ -435,6 +436,69 @@ const janela15 = (iso?: string | null) => {
 };
 const dataCurta = (iso: string) => new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 
+/** Fluxo na rede por intervalo do medidor (15 min), hoje ou nos últimos 7 dias — /gateway/tendencia. */
+function SsuFluxo({ equipamentoId, contr, tol, temInjecao, horarios }: {
+  equipamentoId: string; contr: number | null; tol: number | null; temInjecao: boolean; horarios: ReturnType<typeof useHorarios>;
+}) {
+  const [per, setPer] = useState<'24H' | '7D'>('24H');
+  const { data, loading } = useGatewayTendencia(equipamentoId, per);
+  const pts = data?.dados ?? [];
+  const W = 720, PH = 138;
+  const ini = per === '24H' ? (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); })() : Date.now() - 7 * 86400000;
+  const fim = per === '24H' ? ini + 86400000 : Date.now();
+  const vis = pts.filter((p) => { const t = new Date(p.timestamp).getTime(); return t >= ini && t <= fim; });
+  const maxPos = Math.max(contr ?? 0, ...vis.map((p) => p.kW_consumo), 0.1) * 1.1;
+  const maxNeg = temInjecao ? Math.max(...vis.map((p) => p.kW_injecao), 0) * 1.1 : 0;
+  const H = (v: number) => (v / (maxPos + maxNeg)) * PH;
+  const zY = 10 + H(maxPos);
+  const X = (t: number) => ((t - ini) / (fim - ini)) * W;
+  const bw = Math.max(1.5, (W / ((fim - ini) / ((data?.intervalo_min ?? 15) * 60000))) * 0.75);
+  const util = new Date(ini).getDay() !== 0 && new Date(ini).getDay() !== 6;
+  const [p0, p1] = horarios.ponta;
+  const ticks = per === '24H'
+    ? [0, 6, 12, 18, 24].map((h) => ({ f: h / 24, l: `${String(h).padStart(2, '0')}h` }))
+    : Array.from({ length: 5 }, (_, i) => ({ f: i / 4, l: new Date(ini + ((fim - ini) * i) / 4).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) }));
+  return (
+    <Card className="px-4 pt-3 pb-3.5">
+      <div className="flex justify-between items-center gap-3 flex-wrap">
+        <span className="text-[15px] font-extrabold">{temInjecao ? 'Fluxo na rede por intervalo de 15 min' : 'Demanda por intervalo de 15 min'}</span>
+        <div className="flex items-center gap-4">
+          {temInjecao && (
+            <span className="flex gap-3.5 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-[#2E8B47]" />Consumo</span>
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: INJ }} />Injeção</span>
+            </span>
+          )}
+          <Segmented size="sm" value={per} onChange={setPer} options={[{ v: '24H', label: 'Hoje' }, { v: '7D', label: 'Semana' }]} />
+        </div>
+      </div>
+      {loading && !data ? <div className="h-[180px] grid place-items-center text-xs text-muted-foreground">Carregando…</div>
+        : vis.length === 0 ? <div className="h-[180px] grid place-items-center text-xs text-muted-foreground">Sem blocos do medidor no período</div> : (
+          <svg viewBox="0 0 720 180" width="100%" height="180" className="block mt-2" role="img" aria-label="Fluxo na rede por intervalo de 15 minutos">
+            {per === '24H' && util && <rect x={(p0 / 24) * W} y="10" width={((p1 - p0) / 24) * W} height={PH} fill="rgba(197,48,48,0.07)" />}
+            {per === '24H' && util && <text x={(((p0 + p1) / 2) / 24) * W} y="142" fontSize="11" fill="#C53030" textAnchor="middle">Ponta</text>}
+            {vis.map((p) => {
+              const x = X(new Date(p.timestamp).getTime());
+              const c = H(p.kW_consumo), i = H(p.kW_injecao);
+              return (
+                <g key={p.timestamp}>
+                  {p.kW_consumo > 0 && <rect x={x - bw / 2} y={zY - c} width={bw} height={Math.max(c, 0.5)} rx="1" fill={tol != null && p.kW_consumo > tol ? '#C53030' : '#2E8B47'} />}
+                  {temInjecao && p.kW_injecao > 0 && <rect x={x - bw / 2} y={zY} width={bw} height={Math.max(i, 0.5)} rx="1" fill={INJ} />}
+                </g>
+              );
+            })}
+            {contr != null && <line x1="0" x2={W} y1={zY - H(contr)} y2={zY - H(contr)} className="stroke-foreground" strokeOpacity="0.55" strokeDasharray="5 5" />}
+            {contr != null && <text x={W} y={zY - H(contr) - 6} fontSize="11" className="fill-muted-foreground" textAnchor="end">Contratada {fmt(contr, 0)} kW</text>}
+            <line x1="0" x2={W} y1={zY} y2={zY} className="stroke-border" />
+            {ticks.map((t, i) => (
+              <text key={i} x={t.f * W} y="168" fontSize="11" className="fill-muted-foreground" textAnchor={i === 0 ? 'start' : i === ticks.length - 1 ? 'end' : 'middle'}>{t.l}</text>
+            ))}
+          </svg>
+        )}
+    </Card>
+  );
+}
+
 /** Operação do medidor lido pela SSU (A-966 / TON-V2), no layout novo. */
 function MedidorSsu({ equipamentoId, onStatus }: { equipamentoId: string; onStatus: (s: StatusMed) => void }) {
   const { data, error } = useGatewayDashboard(equipamentoId);
@@ -478,15 +542,6 @@ function MedidorSsu({ equipamentoId, onStatus }: { equipamentoId: string; onStat
       : { k: 'FP do último bloco', v: snap?.FP ? fmt(snap.FP, 2) : '—', s: snap ? `${snap.FP_natureza === 'cap' ? 'capacitivo' : 'indutivo'} · ${hhmm(new Date(snap.timestamp_dados).getTime())}` : '' },
     { k: 'Máxima de hoje', v: dia?.pico_consumo ? `${fmt(dia.pico_consumo.kw, 1)} kW` : '—', s: dia?.pico_consumo ? janela15(dia.pico_consumo.timestamp) : 'demanda de 15 min' },
   ];
-
-  // Última hora, minuto a minuto (consumo para cima, injeção para baixo).
-  const W = 720, PH = 138;
-  const maxPos = Math.max(contr ?? 0, ...serie.map((m) => m.kW_consumo), 0.1) * 1.1;
-  const maxNeg = temInjecao ? Math.max(...serie.map((m) => m.kW_injecao), 0) * 1.1 : 0;
-  const H = (v: number) => (v / (maxPos + maxNeg)) * PH;
-  const zY = 10 + H(maxPos);
-  const t0 = now.getTime() - 60 * 60_000;
-  const X = (t: number) => ((t - t0) / (60 * 60_000)) * W;
 
   const maxMes = mes?.pico_consumo?.kw ?? null;
   const fps = [
@@ -532,37 +587,7 @@ function MedidorSsu({ equipamentoId, onStatus }: { equipamentoId: string; onStat
         </Card>
       </div>
 
-      <Card className="px-4 pt-3 pb-3.5">
-        <div className="flex justify-between items-center gap-3 flex-wrap">
-          <span className="text-[15px] font-extrabold">Fluxo na rede · última hora, minuto a minuto</span>
-          <span className="flex gap-3.5 text-xs text-muted-foreground">
-            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-[#2E8B47]" />Consumo</span>
-            {temInjecao && <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: INJ }} />Injeção</span>}
-          </span>
-        </div>
-        {serie.length === 0 ? <div className="h-[180px] grid place-items-center text-xs text-muted-foreground">Sem parciais de 1 min na última hora</div> : (
-          <svg viewBox="0 0 720 180" width="100%" height="180" className="block mt-2" role="img" aria-label="Fluxo na rede minuto a minuto na última hora">
-            {serie.map((m) => {
-              const x = X(new Date(m.timestamp).getTime());
-              const c = H(m.kW_consumo), i = H(m.kW_injecao);
-              return (
-                <g key={m.timestamp}>
-                  {m.kW_consumo > 0 && <rect x={x - 5} y={zY - c} width="10" height={Math.max(c, 0.5)} rx="1" fill={tol != null && m.kW_consumo > tol ? '#C53030' : '#2E8B47'} />}
-                  {m.kW_injecao > 0 && <rect x={x - 5} y={zY} width="10" height={Math.max(i, 0.5)} rx="1" fill={INJ} />}
-                </g>
-              );
-            })}
-            {contr != null && <line x1="0" x2={W} y1={zY - H(contr)} y2={zY - H(contr)} className="stroke-foreground" strokeOpacity="0.55" strokeDasharray="5 5" />}
-            {contr != null && <text x={W} y={zY - H(contr) - 6} fontSize="11" className="fill-muted-foreground" textAnchor="end">Contratada {fmt(contr, 0)} kW</text>}
-            <line x1="0" x2={W} y1={zY} y2={zY} className="stroke-border" />
-            {[0, 15, 30, 45, 60].map((mm, i) => (
-              <text key={mm} x={(mm / 60) * W} y="168" fontSize="11" className="fill-muted-foreground" textAnchor={i === 0 ? 'start' : i === 4 ? 'end' : 'middle'}>
-                {i === 4 ? 'agora' : hhmm(t0 + mm * 60_000)}
-              </text>
-            ))}
-          </svg>
-        )}
-      </Card>
+      <SsuFluxo equipamentoId={equipamentoId} contr={contr} tol={tol} temInjecao={temInjecao} horarios={horarios} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
         <Card className="px-[18px] pt-3 pb-3.5 flex flex-col gap-2.5">
@@ -622,16 +647,9 @@ function MedidorSsu({ equipamentoId, onStatus }: { equipamentoId: string; onStat
           <span className="text-sm font-bold">Energia reativa</span>
           <span className="text-[15px] font-extrabold tabular-nums">{dia ? `${fmt(dia.q_ind_kvarh + dia.q_cap_kvarh, 1)} kvarh` : '—'}</span>
         </div>
-        {data?.comunicacao && (
-          <div className="flex justify-between items-center min-h-[44px] border-t border-border">
-            <span className="flex flex-col gap-0.5"><span className="text-sm font-bold">Comunicação hoje</span><span className="text-xs text-muted-foreground">blocos recebidos / esperados</span></span>
-            <span className="text-[15px] font-extrabold tabular-nums">{data.comunicacao.leituras_recebidas_hoje}/{data.comunicacao.leituras_esperadas} · {fmt(data.comunicacao.percentual, 0)}%</span>
-          </div>
-        )}
       </Card>
 
       <Registros equipamentoId={equipamentoId} limite={4} />
-      <p className="text-[11px] text-muted-foreground">Medidor lido pela SSU: energia e demanda vêm dos blocos do medidor; o "agora" é a parcial de 1 em 1 min da TON.</p>
     </div>
   );
 }

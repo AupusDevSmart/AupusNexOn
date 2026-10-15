@@ -1,11 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { SlidersHorizontal } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/config/api';
 import { useDados, getPath, fmt, tsInfo } from './sheetParts';
 import {
   EquipShell, Pill, Card, SectionLabel, StatusLine, KpiCells, BigButton, Switch, FieldRow, Segmented,
-  SubDialog, DialogButtons, CollapsibleChart, Registros, useCustos, linhasPosto, brl, unwrap, ACAO, type Tone,
+  SubDialog, DialogButtons, CollapsibleChart, Registros, useCustos, linhasPosto, brl, unwrap, ACAO, type Tone, type RegistroExtra,
 } from './equipUi';
+import {
+  IrrigacaoAvancada, CONFIG_PADRAO, arco, textoFaixas, tituloEnvio, resumoConfig, previsao,
+  type ConfigIrrigacao, type EnvioIrrigacao, type FaixaCanhao,
+} from './PivoIrrigacao';
 
 /**
  * Modal do Pivô — mockup "Web — Modal do Pivô" (NEXON-5), sobre a operação em
@@ -54,7 +59,6 @@ const erroMsg = (e: unknown): string => {
   const x = e as { response?: { data?: { message?: string; data?: { message?: string } } }; message?: string };
   return x?.response?.data?.message ?? x?.response?.data?.data?.message ?? x?.message ?? 'Falha';
 };
-const hora = (iso: string) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 const ACAO_LABEL: Record<string, string> = { girar_direita: 'Girar à direita', girar_esquerda: 'Girar à esquerda', desligar: 'Desligar' };
 const DIAS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
 const diasTxt = (d: number[]) => {
@@ -79,7 +83,7 @@ function usePivoEstado(id: string) {
   return { estado, erro, carregar, executando };
 }
 
-function MapaPivo({ angulo, girando, falha, sentido }: { angulo: number | null; girando: boolean; falha: boolean; sentido: string | null }) {
+function MapaPivo({ angulo, girando, falha, sentido, faixas }: { angulo: number | null; girando: boolean; falha: boolean; sentido: string | null; faixas: FaixaCanhao[] }) {
   const cx = 179, cy = 150, r = 118;
   const pt = (a: number) => { const t = (a * Math.PI) / 180; return [cx + r * Math.sin(t), cy - r * Math.cos(t)]; };
   const a = angulo ?? 0;
@@ -87,7 +91,7 @@ function MapaPivo({ angulo, girando, falha, sentido }: { angulo: number | null; 
   const a1 = sentido === 'esquerda' ? a - 47 : a + 47;
   const [p0, p1] = [pt(Math.min(a, a1)), pt(Math.max(a, a1))];
   const setor = `M${cx} ${cy} L${p0[0].toFixed(1)} ${p0[1].toFixed(1)} A${r} ${r} 0 0 1 ${p1[0].toFixed(1)} ${p1[1].toFixed(1)} Z`;
-  const sentidoTxt = sentido === 'direita' ? 'Direita' : sentido === 'esquerda' ? 'Esquerda' : null;
+  const sentidoTxt = sentido === 'direita' ? 'Avanço' : sentido === 'esquerda' ? 'Reverso' : null;
   return (
     <div className="rounded-2xl overflow-hidden relative h-[300px] bg-[#26301F]">
       <svg viewBox="0 0 358 300" width="100%" height="300" preserveAspectRatio="xMidYMid slice" className="block" role="img" aria-label={angulo != null ? `Pivô, ângulo atual ${fmt(angulo, 1)} graus` : 'Pivô, ângulo não informado'}>
@@ -98,6 +102,7 @@ function MapaPivo({ angulo, girando, falha, sentido }: { angulo: number | null; 
         <circle cx="365" cy="230" r="100" fill="#3E4B33" />
         <circle cx={cx} cy={cy} r={r} fill="#5B5A3C" stroke="rgba(255,255,255,0.35)" strokeWidth="1.5" />
         {(girando || falha) && angulo != null && <path d={setor} fill={falha ? 'rgba(229,88,79,0.45)' : 'rgba(114,191,74,0.5)'} />}
+        {faixas.map((f) => <path key={f.id} d={arco(cx, cy, r + 7, f.liga, ((f.desliga - f.liga) % 360 + 360) % 360)} fill="none" stroke="#70C04B" strokeWidth="3" strokeLinecap="round" />)}
         {angulo != null && <line x1={cx} y1={cy} x2={ax} y2={ay} stroke="#FFFFFF" strokeWidth="3" strokeLinecap="round" />}
         <circle cx={cx} cy={cy} r="4" fill="#FFFFFF" />
         <path d="M173 22 L185 22 L179 32 Z" fill="#FFFFFF" />
@@ -114,7 +119,17 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   const { dados, ts } = useDados(id);
   const { estado, erro, carregar, executando } = usePivoEstado(id);
   const [aba, setAba] = useState('op');
-  const [modal, setModal] = useState<null | 'cost' | Acao>(null);
+  const [modal, setModal] = useState<null | 'cost' | 'ligar' | 'desligar' | 'irr' | 'envio'>(null);
+  const [envio, setEnvio] = useState<EnvioIrrigacao | null>(null);
+  // Última irrigação enviada por este navegador (a TON só recebe direção e liga/desliga).
+  const chaveUltima = `nexon:pivo:ultima:${id}`;
+  const [ultima, setUltima] = useState<ConfigIrrigacao>(() => {
+    try { const v = localStorage.getItem(chaveUltima); return v ? { ...CONFIG_PADRAO, ...JSON.parse(v) } : CONFIG_PADRAO; } catch { return CONFIG_PADRAO; }
+  });
+  const [ponta, setPonta] = useState<Janela | null>(null);
+  useEffect(() => {
+    api.get(`/pivos/${id}/config`).then((r) => setPonta(corpo<PivoConfig>(r)?.bloqueio_ponta ?? null)).catch(() => setPonta(null));
+  }, [id]);
   const [enviando, setEnviando] = useState<Acao | null>(null);
   const [custoPer, setCustoPer] = useState<'dia' | 'mes'>('dia');
 
@@ -140,12 +155,16 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
     return { tone: 'off', label: 'Sem status', texto: 'Status do pivô não lido da TON' };
   })();
 
-  const acionar = async (acao: Acao) => {
+  const acionar = async (acao: Acao, irrigacao?: EnvioIrrigacao) => {
     setEnviando(acao);
     try {
-      await api.post(`/pivos/${id}/acionar`, { acao });
-      toast.success(`${ACAO_LABEL[acao]}: sequência iniciada`, { description: 'Acompanhe os passos no modal.' });
-      setModal(null);
+      await api.post(`/pivos/${id}/acionar`, irrigacao ? { acao, irrigacao } : { acao });
+      if (irrigacao) {
+        setUltima(irrigacao.config);
+        try { localStorage.setItem(chaveUltima, JSON.stringify(irrigacao.config)); } catch { /* sem storage */ }
+      }
+      toast.success(`${ACAO_LABEL[acao]}: sequência iniciada`, { description: b ? 'Bomba, pressurização e giro — acompanhe em Registros.' : undefined });
+      setModal(null); setEnvio(null);
       await carregar();
     } catch (e) {
       toast.error(`${ACAO_LABEL[acao]}: não iniciou`, { description: erroMsg(e) });
@@ -153,6 +172,7 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
       setEnviando(null);
     }
   };
+  const acaoDe = (c: ConfigIrrigacao): Acao => (c.direcao === 'Avanço' ? 'girar_direita' : 'girar_esquerda');
 
   const media = (...ks: string[]) => { const v = ks.map((k) => num(k)).filter((x): x is number => x != null); return v.length ? v.reduce((a, c) => a + c, 0) / v.length : null; };
   const tensao = media('Vab', 'Vbc', 'Vca') ?? media('Va', 'Vb', 'Vc');
@@ -171,10 +191,23 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
     return [num(ff) != null ? ff.slice(1).toUpperCase() : f.toUpperCase(), v != null ? `${fmt(v, 0)} V` : '—', i != null ? `${fmt(i, 1)} A` : '—'];
   });
 
+  const bNum = (...ks: string[]) => num(...ks.map((k) => `bomba.${k}`), ...ks.map((k) => `bomba_${k}`));
+  const bKpis = [
+    { k: 'Pressão recalque', v: bNum('pressao') != null ? `${fmt(bNum('pressao'), 1)} bar` : '—' },
+    { k: 'Potência', v: bNum('Pt', 'potencia') != null ? `${fmt(bNum('Pt', 'potencia'), 1)} kW` : '—' },
+    { k: 'FP', v: bNum('FPt', 'fp') != null ? fmt(bNum('FPt', 'fp'), 2) : '—' },
+    { k: 'Temp. motor', v: bNum('temperatura') != null ? `${fmt(bNum('temperatura'), 0)} °C` : '—' },
+    { k: 'Horímetro', v: bNum('horimetro') != null ? `${fmt(bNum('horimetro'), 0)} h` : '—' },
+    { k: 'Partidas', v: bNum('partidas') != null ? fmt(bNum('partidas'), 0) : '—' },
+  ];
+  // Passos da última sequência entram em Registros (✓✓ = confirmado pelo equipamento).
+  const regSeq: RegistroExtra[] = (seq?.passos ?? []).map((p) => ({
+    t: new Date(p.t).getTime(), txt: p.msg, quem: p.etapa === 'comando' ? 'Comando' : 'Sistema', ok: p.ok === true, ruim: p.ok === false,
+  }));
+
   const { res: custoDia } = useCustos(id, 'dia');
   const { res: custoSel } = useCustos(id, custoPer, undefined, modal === 'cost');
   const pressS = estado?.sequencia_cfg.pressurizacao_s ?? 120;
-  const confirmaComando = modal === 'girar_direita' || modal === 'girar_esquerda' || modal === 'desligar';
 
   return (
     <EquipShell
@@ -190,39 +223,21 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
         <div className="flex flex-col gap-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
             <div className="flex flex-col gap-3">
-              <MapaPivo angulo={angulo} girando={girando} falha={st?.erro === 1} sentido={sentido} />
-              <StatusLine tone={tone} label={label} text={texto} extra={erro ? <span className="text-amber-600 dark:text-amber-400">{erro}</span> : undefined} />
+              <MapaPivo angulo={angulo} girando={girando} falha={st?.erro === 1} sentido={sentido} faixas={ultima.canhao ? ultima.faixasCanhao : []} />
+              <StatusLine tone={tone} label={label} text={texto} extra={erro ? <span className="text-amber-600 dark:text-amber-400">{erro}</span> : girando ? `${resumoConfig(ultima)}${ultima.canhao ? ' · canhão ligado' : ''}` : undefined} />
               {girando || executando ? (
                 <BigButton variant="outline" disabled={!!enviando || (!estado?.pivo.comandos.desligar && !b)} onClick={() => setModal('desligar')}>
                   {enviando === 'desligar' ? 'Executando…' : 'Desligar'}
                 </BigButton>
               ) : (
-                <div className="grid grid-cols-2 gap-2">
-                  <BigButton disabled={!!enviando || !estado?.pivo.comandos.esquerda} onClick={() => setModal('girar_esquerda')}>↺ Ligar à esquerda</BigButton>
-                  <BigButton disabled={!!enviando || !estado?.pivo.comandos.direita} onClick={() => setModal('girar_direita')}>Ligar à direita ↻</BigButton>
-                </div>
+                <BigButton disabled={!!enviando || !estado?.pivo.comandos[ultima.direcao === 'Avanço' ? 'direita' : 'esquerda']} onClick={() => setModal('ligar')}>
+                  {enviando ? 'Executando…' : 'Ligar'}
+                </BigButton>
               )}
-              <p className="text-xs text-muted-foreground text-center">
-                {b ? `Ligar aciona a bomba (${b.ton_nome ?? 'TON'}), espera ${pressS}s de pressurização e gira o pivô.` : 'Sem bombeamento configurado: os botões só comandam o pivô.'}
-              </p>
-              {seq && (
-                <Card className="overflow-hidden">
-                  <div className="flex justify-between items-center px-4 py-2.5">
-                    <span className="text-sm font-extrabold">Última sequência · {ACAO_LABEL[seq.acao] ?? seq.acao}</span>
-                    <span className="text-xs text-muted-foreground tabular-nums">{hora(seq.created_at)}</span>
-                  </div>
-                  {(seq.passos ?? []).map((p, i) => (
-                    <div key={i} className="flex items-start gap-2 px-4 py-1.5 text-[13px] border-t">
-                      <span className={p.ok === true ? 'text-emerald-600' : p.ok === false ? 'text-red-600' : 'text-amber-600'}>{p.ok === true ? '✓' : p.ok === false ? '✕' : '•'}</span>
-                      <span className="flex-1">{p.msg}</span>
-                      <span className="text-muted-foreground tabular-nums">{hora(p.t)}</span>
-                    </div>
-                  ))}
-                  <div className="px-4 py-2 text-[13px] font-bold border-t">
-                    {seq.status === 'executando' ? 'Em andamento…' : seq.status === 'concluida' ? 'Concluída' : seq.status === 'interrompida' ? 'Interrompida' : `Falhou${seq.erro ? `: ${seq.erro}` : ''}`}
-                  </div>
-                </Card>
-              )}
+              <button type="button" onClick={() => setModal('irr')} disabled={girando || executando}
+                className="self-center h-11 px-2.5 flex items-center gap-1.5 text-sm font-bold text-muted-foreground hover:text-foreground disabled:opacity-50">
+                <SlidersHorizontal className="w-4 h-4" /> Irrigação avançada
+              </button>
             </div>
             <div className="flex flex-col gap-3">
               <Card className="py-3.5"><KpiCells items={kpis} cols={3} /></Card>
@@ -238,13 +253,7 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
                     {!b ? '—' : b.ligada === 1 ? 'Ligada' : b.ligada === 0 ? 'Desligada' : 'Sem retorno'}
                   </span>
                 </div>
-                {b && (
-                  <div className="px-4 text-sm">
-                    <FieldRow first label="Acionamento"><span className="text-muted-foreground">{b.modo === 'pulso' ? `Pulso · BO${b.bo_liga}/BO${b.bo_desliga ?? '—'}` : `Contato mantido · BO${b.bo_liga}`}</span></FieldRow>
-                    <FieldRow label="Confirmação"><span className="text-muted-foreground">{b.bi_confirma ? `BI${b.bi_confirma} · ${b.confirma_s ?? 30} s` : 'Sem confirmação'}</span></FieldRow>
-                    {b.compartilhada_com.length > 0 && <FieldRow label="Compartilhada com"><span className="text-muted-foreground">{b.compartilhada_com.join(', ')}</span></FieldRow>}
-                  </div>
-                )}
+                <div className="py-3"><KpiCells items={bKpis} cols={3} size="sm" /></div>
                 <div className="border-t px-4">
                   <div className="grid grid-cols-3 text-[11px] font-bold text-muted-foreground py-2 tracking-[0.4px]">
                     <span>FASE</span><span className="text-right">TENSÃO</span><span className="text-right">CORRENTE</span>
@@ -280,24 +289,43 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
             series={[{ label: 'Total', color: '#177A3C', pick: (d) => { const v = Number(d?.Pt ?? d?.['power.active_total']); return Number.isFinite(v) ? (Math.abs(v) > 1000 ? v / 1000 : v) : null; } }]}
           />
 
-          <Registros equipamentoId={id} />
+          <Registros equipamentoId={id} extra={regSeq} />
         </div>
       ) : (
         <ConfigPivo pivoId={id} estado={estado} onSalvo={carregar} />
       )}
 
-      <SubDialog
-        open={confirmaComando}
-        onClose={() => setModal(null)}
-        title={modal === 'desligar' ? `Desligar ${nome || 'pivô'}?` : `Ligar ${nome || 'pivô'} à ${modal === 'girar_direita' ? 'direita' : 'esquerda'}?`}
-        width={400}
-      >
+      <SubDialog open={modal === 'ligar' || modal === 'desligar'} onClose={() => setModal(null)} width={400}
+        title={modal === 'desligar' ? `Desligar ${nome || 'pivô'}?` : `Ligar ${nome || 'pivô'}?`}>
         <p className="text-sm text-muted-foreground">
           {modal === 'desligar'
-            ? `O pivô para na posição atual${angulo != null ? ` (${fmt(angulo, 1)}°)` : ''}${b ? ' e a bomba desliga se nenhum outro pivô dela estiver girando' : ''}.`
-            : b ? `A bomba liga, o NexON espera ${pressS}s de pressurização e o pivô gira.` : 'O pivô começa a girar (sem bombeamento configurado).'}
+            ? `O pivô para na posição atual (${angulo != null ? `${fmt(angulo, 1)}°` : '—'}).${b ? ' A bomba desliga se nenhum outro pivô dela estiver girando.' : ''}`
+            : `Com a última configuração: ${resumoConfig(ultima)} · sem parada.${b ? ` A bomba liga e o pivô gira após ${pressS}s de pressurização.` : ''}`}
         </p>
-        <DialogButtons onCancel={() => setModal(null)} onConfirm={() => confirmaComando && acionar(modal as Acao)} busy={!!enviando} />
+        <DialogButtons onCancel={() => setModal(null)} busy={!!enviando}
+          onConfirm={() => (modal === 'desligar' ? acionar('desligar') : acionar(acaoDe(ultima), { modo: 'simples', config: ultima, parada: { tipo: 'semParar' }, inicio: null }))} />
+      </SubDialog>
+
+      <SubDialog open={modal === 'irr'} onClose={() => setModal(null)} title="Irrigação avançada" width={560}
+        subtitle={`${nome || 'Pivô'} · ângulo atual ${angulo != null ? `${fmt(angulo, 1)}°` : '—'}`}>
+        <IrrigacaoAvancada
+          nome={nome || 'Pivô'} angulo={angulo} ultima={ultima} lamina100={7.15} tempoVolta100={21} ponta={ponta}
+          agenda={<AgendaPivo pivoId={id} />} enviando={!!enviando}
+          onEnviar={(e) => { setEnvio(e); setModal('envio'); }}
+        />
+      </SubDialog>
+
+      <SubDialog open={modal === 'envio' && !!envio} onClose={() => setModal('irr')} width={420} title={envio ? tituloEnvio(envio.modo) : ''}>
+        {envio && (
+          <>
+            <p className="text-sm text-muted-foreground">
+              {resumoConfig({ ...envio.config })} · {previsao(envio.config, envio.parada, envio.config.direcao, angulo ?? 0, 21, envio.inicio ?? new Date()).texto}
+              {envio.inicio ? ` · início ${envio.inicio.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : ''}
+            </p>
+            {envio.config.canhao && <p className="text-sm text-muted-foreground">{textoFaixas(envio.config.faixasCanhao)}</p>}
+            <DialogButtons onCancel={() => setModal('irr')} busy={!!enviando} onConfirm={() => acionar(acaoDe(envio.config), envio)} />
+          </>
+        )}
       </SubDialog>
 
       <SubDialog open={modal === 'cost'} onClose={() => setModal(null)} title="Custos por horário" width={520} subtitle={`${nome || 'Pivô'} · tarifa com impostos`}>
@@ -348,7 +376,6 @@ const selectCls = 'h-[38px] max-w-[15rem] rounded-[10px] border bg-background px
 function ConfigPivo({ pivoId, estado, onSalvo }: { pivoId: string; estado: Estado | null; onSalvo: () => void }) {
   const [op, setOp] = useState<Opcoes | null>(null);
   const [cfg, setCfg] = useState<PivoConfig | null>(null);
-  const [progs, setProgs] = useState<Programacao[] | null>(null);
   // Base (gravado) × rascunho
   const [base, setBase] = useState<{ ativo: boolean; f: FormBomba; seq: { pressurizacao_s: number; confirma_giro_s: number } } | null>(null);
   const [ativo, setAtivo] = useState(false);
@@ -357,11 +384,9 @@ function ConfigPivo({ pivoId, estado, onSalvo }: { pivoId: string; estado: Estad
   const [ponta, setPonta] = useState<Janela | null>(null);
   const [revisar, setRevisar] = useState(false);
   const [gravando, setGravando] = useState(false);
-  const [novaProg, setNovaProg] = useState<null | { hora: string; horas: string; dias: number[]; sentido: 'horario' | 'anti_horario'; velocidade: string; com_agua: boolean }>(null);
 
   const carregarCfg = useCallback(() => {
     api.get(`/pivos/${pivoId}/config`).then((r) => { const c = corpo<PivoConfig>(r); setCfg(c); setPonta(c?.bloqueio_ponta ?? null); }).catch(() => setCfg(null));
-    api.get(`/pivos/${pivoId}/programacoes`).then((r) => setProgs(corpo<Programacao[]>(r) ?? [])).catch(() => setProgs([]));
   }, [pivoId]);
   useEffect(() => {
     api.get(`/pivos/${pivoId}/bombeamento/opcoes`).then((r) => setOp(corpo<Opcoes>(r))).catch(() => setOp({ tons: [], bombeamentos: [] }));
@@ -444,25 +469,6 @@ function ConfigPivo({ pivoId, estado, onSalvo }: { pivoId: string; estado: Estad
     }
   };
 
-  const criarProg = async () => {
-    if (!novaProg) return;
-    const horas = Number(String(novaProg.horas).replace(',', '.'));
-    try {
-      await api.post(`/pivos/${pivoId}/programacoes`, {
-        nome: `${diasTxt(novaProg.dias)} · ${novaProg.hora}`, ativo: true, hora_inicio: novaProg.hora, dias: novaProg.dias,
-        modo: 'tempo', duracao_min: Math.round(horas * 60), sentido: novaProg.sentido,
-        velocidade: Number(novaProg.velocidade) || null, com_agua: novaProg.com_agua,
-      });
-      setNovaProg(null); carregarCfg(); toast.success('Horário adicionado');
-    } catch (e) { toast.error('Não adicionou', { description: erroMsg(e) }); }
-  };
-  const removerProg = async (pid: string) => {
-    try { await api.delete(`/pivos/${pivoId}/programacoes/${pid}`); carregarCfg(); }
-    catch (e) { toast.error('Não removeu', { description: erroMsg(e) }); }
-  };
-
-  const nProg = progs?.length ?? 0;
-  const horasOk = novaProg && /^\d{2}:\d{2}$/.test(novaProg.hora) && novaProg.dias.length > 0 && Number(String(novaProg.horas).replace(',', '.')) > 0;
 
   return (
     <div className="flex flex-col gap-2.5">
@@ -539,33 +545,7 @@ function ConfigPivo({ pivoId, estado, onSalvo }: { pivoId: string; estado: Estad
         </p>
       </Card>
 
-      <SectionLabel className="mt-2.5">Programação de horários · {nProg}/5</SectionLabel>
-      <Card className="px-4">
-        {progs == null && <div className="min-h-[58px] flex items-center text-sm text-muted-foreground">Carregando…</div>}
-        {progs?.length === 0 && <div className="min-h-[58px] flex items-center text-sm text-muted-foreground">Nenhum horário programado.</div>}
-        {(progs ?? []).map((p, i) => (
-          <div key={p.id} className={`flex items-center gap-3 min-h-[58px] ${i ? 'border-t border-border' : ''}`}>
-            <span className="flex-1 flex flex-col gap-0.5">
-              <span className="text-[15px] font-bold">{diasTxt(p.dias)} · {p.hora_inicio}{p.duracao_min ? ` · ${fmt(p.duracao_min / 60, 1)} h` : ''}</span>
-              <span className="text-xs text-muted-foreground">
-                {[p.velocidade != null ? `${fmt(p.velocidade, 0)}%` : null, p.com_agua === false ? 'Seco' : 'Molhado', p.sentido === 'horario' ? 'Direita' : 'Esquerda', p.ativo ? null : 'pausado'].filter(Boolean).join(' · ')}
-              </span>
-            </span>
-            <button type="button" onClick={() => removerProg(p.id)} aria-label="Remover horário" className="w-9 h-9 rounded-[10px] grid place-items-center text-red-600 hover:bg-red-500/10">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></svg>
-            </button>
-          </div>
-        ))}
-        <button
-          type="button"
-          disabled={nProg >= 5 || progs == null}
-          onClick={() => setNovaProg({ hora: '21:00', horas: '8', dias: [1, 2, 3, 4, 5], sentido: 'horario', velocidade: '100', com_agua: true })}
-          className={`w-full h-[46px] border-t border-border text-sm font-extrabold ${nProg >= 5 ? 'text-muted-foreground' : 'text-[#177A3C] dark:text-emerald-400'}`}
-        >
-          {nProg >= 5 ? 'Limite de 5 horários' : '+ Adicionar horário'}
-        </button>
-      </Card>
-      <p className="text-xs text-muted-foreground">A programação fica salva no NexON; a partida automática pelo servidor ainda não roda.</p>
+      <AgendaPivo pivoId={pivoId} titulo />
 
       <button
         type="button"
@@ -588,41 +568,108 @@ function ConfigPivo({ pivoId, estado, onSalvo }: { pivoId: string; estado: Estad
         <DialogButtons onCancel={() => setRevisar(false)} onConfirm={gravar} cancelLabel="Voltar" busy={gravando} />
       </SubDialog>
 
-      <SubDialog open={!!novaProg} onClose={() => setNovaProg(null)} title="Adicionar horário" width={460}>
-        {novaProg && (
-          <>
-            <div className="grid grid-cols-2 gap-2.5">
-              <label className="flex flex-col gap-1"><span className="text-xs text-muted-foreground">Início</span>
-                <input type="time" value={novaProg.hora} onChange={(e) => setNovaProg({ ...novaProg, hora: e.target.value })} className="h-[38px] rounded-[10px] border px-2.5 text-[15px] font-bold bg-background" />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Agenda / Programação de horários (mesma lista no painel e na Configuração)
+// ---------------------------------------------------------------------------
+const GRUPOS_DIAS: Array<{ v: string; label: string; dias: number[] }> = [
+  { v: 'uteis', label: 'Seg a sex', dias: [1, 2, 3, 4, 5] },
+  { v: 'todos', label: 'Todos os dias', dias: [1, 2, 3, 4, 5, 6, 7] },
+  { v: 'fds', label: 'Sáb e dom', dias: [6, 7] },
+];
+const fimDe = (ini: string, min?: number | null) => {
+  if (!min) return null;
+  const [h, m] = ini.split(':').map(Number);
+  const t = (h * 60 + m + min) % 1440;
+  return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+};
+
+function AgendaPivo({ pivoId, titulo }: { pivoId: string; titulo?: boolean }) {
+  const [progs, setProgs] = useState<Programacao[] | null>(null);
+  const [nova, setNova] = useState<null | { grupo: string; ini: string; fim: string; direcao: 'Avanço' | 'Reverso'; seco: boolean; pct: number }>(null);
+  const [salvando, setSalvando] = useState(false);
+  const carregar = useCallback(() => {
+    api.get(`/pivos/${pivoId}/programacoes`).then((r) => setProgs(corpo<Programacao[]>(r) ?? [])).catch(() => setProgs([]));
+  }, [pivoId]);
+  useEffect(() => { carregar(); }, [carregar]);
+  const n = progs?.length ?? 0;
+  const remover = async (pid: string) => {
+    try { await api.delete(`/pivos/${pivoId}/programacoes/${pid}`); carregar(); }
+    catch (e) { toast.error('Não removeu', { description: erroMsg(e) }); }
+  };
+  const adicionar = async () => {
+    if (!nova) return;
+    const g = GRUPOS_DIAS.find((x) => x.v === nova.grupo)!;
+    const [h0, m0] = nova.ini.split(':').map(Number), [h1, m1] = nova.fim.split(':').map(Number);
+    const dur = ((h1 * 60 + m1) - (h0 * 60 + m0) + 1440) % 1440 || 1440;
+    setSalvando(true);
+    try {
+      await api.post(`/pivos/${pivoId}/programacoes`, {
+        nome: `${g.label} · ${nova.ini} → ${nova.fim}`, ativo: true, hora_inicio: nova.ini, dias: g.dias, modo: 'tempo',
+        duracao_min: dur, sentido: nova.direcao === 'Avanço' ? 'horario' : 'anti_horario',
+        velocidade: nova.seco ? null : nova.pct, com_agua: !nova.seco,
+      });
+      setNova(null); carregar(); toast.success('Agendamento salvo');
+    } catch (e) { toast.error('Não salvou', { description: erroMsg(e) }); } finally { setSalvando(false); }
+  };
+  return (
+    <div className="flex flex-col gap-2.5">
+      {titulo && <SectionLabel className="mt-2.5">Programação de horários · {n}/5</SectionLabel>}
+      {progs == null && <div className="text-sm text-muted-foreground">Carregando…</div>}
+      {progs?.length === 0 && !titulo && <div className="text-sm text-muted-foreground">Nenhum horário programado.</div>}
+      {(progs ?? []).map((p) => {
+        const fim = fimDe(p.hora_inicio, p.duracao_min);
+        const dir = p.sentido === 'horario' ? 'Avanço' : 'Reverso';
+        return (
+          <Card key={p.id} className="px-4 min-h-[60px] flex items-center gap-3">
+            <span className="flex-1 flex flex-col gap-0.5 py-2">
+              <span className="text-sm font-bold">{diasTxt(p.dias)} · {p.hora_inicio}{fim ? ` → ${fim}` : ''}</span>
+              <span className="text-xs text-muted-foreground">{p.com_agua === false ? `— · Seco · ${dir}` : `${p.velocidade != null ? `${fmt(p.velocidade, 0)}%` : '—'} · Molhado · ${dir}`}{p.ativo ? '' : ' · pausado'}</span>
+            </span>
+            <button type="button" onClick={() => remover(p.id)} aria-label="Remover horário" className="w-9 h-9 rounded-[10px] grid place-items-center text-red-600 hover:bg-red-500/10">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></svg>
+            </button>
+          </Card>
+        );
+      })}
+      {nova ? (
+        <Card className="p-4 flex flex-col gap-3">
+          <span className="text-[15px] font-extrabold">Novo horário</span>
+          <Segmented value={nova.grupo} onChange={(v) => setNova({ ...nova, grupo: v })} options={GRUPOS_DIAS.map((g) => ({ v: g.v, label: g.label }))} />
+          <div className="grid grid-cols-2 gap-2.5">
+            {(['ini', 'fim'] as const).map((k) => (
+              <label key={k} className="flex flex-col gap-1"><span className="text-xs text-muted-foreground">{k === 'ini' ? 'Início' : 'Fim'}</span>
+                <input type="time" value={nova[k]} onChange={(e) => setNova({ ...nova, [k]: e.target.value })} className="h-[38px] rounded-[10px] border px-2.5 text-[15px] font-bold bg-background" />
               </label>
-              <label className="flex flex-col gap-1"><span className="text-xs text-muted-foreground">Duração (h)</span>
-                <input inputMode="decimal" value={novaProg.horas} onChange={(e) => setNovaProg({ ...novaProg, horas: e.target.value })} className="h-[38px] rounded-[10px] border px-2.5 text-[15px] font-bold bg-background" />
-              </label>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {DIAS.map((d, i) => {
-                const on = novaProg.dias.includes(i + 1);
-                return (
-                  <button key={d} type="button" aria-pressed={on}
-                    onClick={() => setNovaProg({ ...novaProg, dias: on ? novaProg.dias.filter((x) => x !== i + 1) : [...novaProg.dias, i + 1].sort() })}
-                    className={`h-8 px-3 rounded-[9px] text-[13px] font-extrabold ${on ? ACAO : 'bg-[#EEF0F4] dark:bg-white/10 text-muted-foreground'}`}>{d}</button>
-                );
-              })}
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-[15px] font-bold">Direção</span>
-              <Segmented value={novaProg.sentido} onChange={(v) => setNovaProg({ ...novaProg, sentido: v })} options={[{ v: 'anti_horario', label: 'Esquerda' }, { v: 'horario', label: 'Direita' }]} />
-            </div>
-            <FieldRow first label="Com água" sub={novaProg.com_agua ? 'Molhado (liga a bomba)' : 'Seco (a bomba não liga)'}>
-              <Switch on={novaProg.com_agua} onChange={() => setNovaProg({ ...novaProg, com_agua: !novaProg.com_agua })} label="Com água" />
-            </FieldRow>
-            <FieldRow first label="Percentímetro" sub="0 a 100%">
-              <input inputMode="numeric" value={novaProg.velocidade} onChange={(e) => setNovaProg({ ...novaProg, velocidade: e.target.value })} className={inputCls} />
-            </FieldRow>
-            <DialogButtons onCancel={() => setNovaProg(null)} onConfirm={criarProg} confirmLabel="Adicionar" disabled={!horasOk} />
-          </>
-        )}
-      </SubDialog>
+            ))}
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-[15px] font-bold">Direção</span>
+            <Segmented value={nova.direcao} onChange={(v) => setNova({ ...nova, direcao: v })} options={[{ v: 'Avanço', label: 'Avanço' }, { v: 'Reverso', label: 'Reverso' }]} />
+          </div>
+          <FieldRow first label="Girar sem água" sub={nova.seco ? 'Sem água (seco)' : 'Com água (molhado)'}>
+            <Switch on={nova.seco} onChange={() => setNova({ ...nova, seco: !nova.seco })} label="Girar sem água" />
+          </FieldRow>
+          <FieldRow first label="Percentímetro" sub="10 a 100%">
+            <span className={`flex items-center gap-2 ${nova.seco ? 'opacity-50' : ''}`}>
+              <button type="button" disabled={nova.seco} onClick={() => setNova({ ...nova, pct: Math.max(10, nova.pct - 5) })} className="w-9 h-9 rounded-[10px] border font-extrabold">−</button>
+              <span className="w-12 text-center font-extrabold">{nova.pct}%</span>
+              <button type="button" disabled={nova.seco} onClick={() => setNova({ ...nova, pct: Math.min(100, nova.pct + 5) })} className="w-9 h-9 rounded-[10px] border font-extrabold">+</button>
+            </span>
+          </FieldRow>
+          <DialogButtons onCancel={() => setNova(null)} onConfirm={adicionar} confirmLabel="Adicionar" busy={salvando} />
+        </Card>
+      ) : (
+        <button type="button" disabled={n >= 5 || progs == null}
+          onClick={() => setNova({ grupo: 'uteis', ini: '21:00', fim: '05:00', direcao: 'Avanço', seco: false, pct: 100 })}
+          className={`h-[52px] rounded-[14px] border-[1.5px] border-dashed border-border text-sm font-extrabold ${n >= 5 ? 'text-muted-foreground' : 'text-[#177A3C] dark:text-emerald-400'}`}>
+          {n >= 5 ? 'Limite de 5 horários' : '+ Adicionar horário'}
+        </button>
+      )}
+      <p className="text-xs text-muted-foreground">A programação fica salva no NexON; a partida automática pelo servidor ainda não roda.</p>
     </div>
   );
 }
