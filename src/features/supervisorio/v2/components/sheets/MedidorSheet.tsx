@@ -318,7 +318,10 @@ function RegistrosMed({ equipamentoId }: { equipamentoId: string }) {
 
 /** Corpo da aba Operação — mesma marcação do mockup para as duas fontes. */
 function MedidorVista({ v }: { v: Vista }) {
-  const { contr, tol, proj, gen } = v;
+  const { contr, tol, proj } = v;
+  const res = useResumoMedidor(v.equipamentoId);
+  const g = res?.geracao ?? null;
+  const gen = v.gen || !!g || (res?.injecao_kwh ?? 0) > 0;
   const pct = contr && proj != null ? proj / contr : null;
   const over = tol != null && proj != null && proj > tol;
   const maxPct = contr && v.maxMes ? v.maxMes.kw / contr : null;
@@ -328,14 +331,19 @@ function MedidorVista({ v }: { v: Vista }) {
   const MH = (x: number) => (x / MS) * 112;
   const ultrap = v.meses.filter((m) => tol != null && m.v != null && m.v > tol);
   const cicloTxt = `desde ${desde()}`;
+  const injMax = v.injMaxMes ?? (res?.injecao_max ? { kw: res.injecao_max.kw, t: new Date(res.injecao_max.timestamp).getTime() } : null);
+  const kwh = (x: number | null | undefined) => (x == null ? '—' : `${n0(x)} kWh`);
   const gens: Kpi[] = [
-    { k: 'Geração agora', v: '—', s: 'inversores da instalação' },
-    { k: 'Máx. geração do mês', v: '—', s: VAZIO },
-    { k: 'Produzida hoje', v: '—', s: 'até agora' },
-    { k: 'Produzida no ciclo', v: '—', s: cicloTxt },
-    { k: 'Injeção máx. do mês', v: v.injMaxMes ? `${kwTxt(v.injMaxMes.kw)} kW` : '—', s: v.injMaxMes ? `${ddmm(v.injMaxMes.t)} · ${hhmm(v.injMaxMes.t)} · medidor` : 'medidor' },
-    { k: 'Autoconsumo no ciclo', v: '—', s: VAZIO },
+    { k: 'Geração agora', v: g?.agora_kw != null ? `${kwTxt(g.agora_kw)} kW` : '—', s: g ? `${g.inversores} inversor${g.inversores > 1 ? 'es' : ''} da instalação` : 'inversores da instalação' },
+    { k: 'Máx. geração do mês', v: g?.max_mes ? `${kwTxt(g.max_mes.kw)} kW` : '—', s: g?.max_mes ? quando(g.max_mes.timestamp) : VAZIO },
+    { k: 'Produzida hoje', v: kwh(g?.hoje_kwh), s: 'até agora' },
+    { k: 'Produzida no ciclo', v: kwh(g?.ciclo_kwh), s: cicloTxt },
+    { k: 'Injeção máx. do mês', v: injMax ? `${kwTxt(injMax.kw)} kW` : '—', s: injMax ? `${ddmm(injMax.t)} · ${hhmm(injMax.t)} · medidor` : 'medidor' },
+    { k: 'Autoconsumo no ciclo', v: kwh(g?.autoconsumo_kwh), s: g?.autoconsumo_kwh != null && g.ciclo_kwh ? `${Math.round((g.autoconsumo_kwh / g.ciclo_kwh) * 100)}% da produção` : VAZIO },
   ];
+  const fps = fpsDoResumo(res, cicloTxt);
+  const reativa = res ? `${n0(res.energia_reativa_kvarh)} kvarh` : v.reativa;
+  const excedente = res ? `${n0(res.reativo_excedente_kvarh)} kvarh` : v.excedente;
   const C = { P: VERM, FP: '#3B6FD6', HR: VERDE } as const;
   const dot = (c: keyof typeof C | ''): CSSProperties => ({ width: 8, height: 8, borderRadius: 3, flex: 'none', background: c ? C[c] : 'transparent' });
   const p = v.postos;
@@ -470,7 +478,7 @@ function MedidorVista({ v }: { v: Vista }) {
               ))}
             </div>
           </div>
-        ) : <FpCard fps={v.fps} />}
+        ) : <FpCard fps={fps} />}
       </div>
 
       <div className={gen ? 'nxm-g2' : undefined} style={gen ? undefined : { display: 'block' }}>
@@ -508,14 +516,14 @@ function MedidorVista({ v }: { v: Vista }) {
           )}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: 44, borderTop: `1px solid ${NX.linha}` }}>
             <span style={{ fontSize: 14, fontWeight: 700 }}>Energia reativa</span>
-            <span style={{ fontSize: 15, fontWeight: 800, ...tab }}>{v.reativa}</span>
+            <span style={{ fontSize: 15, fontWeight: 800, ...tab }}>{reativa}</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: 48, borderTop: `1px solid ${NX.linha}` }}>
             <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><span style={{ fontSize: 14, fontWeight: 700 }}>Reativo excedente</span><span style={{ fontSize: 12, color: NX.mudo }}>Abaixo de FP 0,92</span></span>
-            <span style={{ fontSize: 15, fontWeight: 800, color: v.excedente === '—' ? NX.texto : AMBAR, ...tab }}>{v.excedente}</span>
+            <span style={{ fontSize: 15, fontWeight: 800, color: !res || res.reativo_excedente_kvarh <= 0 ? NX.texto : AMBAR, ...tab }}>{excedente}</span>
           </div>
         </div>
-        {gen && <FpCard fps={v.fps} />}
+        {gen && <FpCard fps={fps} />}
       </div>
 
       <RegistrosMed equipamentoId={v.equipamentoId} />
@@ -530,6 +538,47 @@ const fpsSemFonte = (): FpRow[] => [
   { k: 'FP médio do ciclo', s: `desde ${desde()}`, v: '—', w: false },
   { k: 'Reativo máx. do mês', s: VAZIO, v: '—', w: false },
 ];
+
+/** Resumo do ciclo calculado na API (GET /equipamentos-dados/:id/medidor/resumo). */
+interface ResumoMedidor {
+  ciclo_inicio: string;
+  injecao_kwh: number;
+  injecao_max: { kw: number; timestamp: string } | null;
+  fp_min_ind: { fp: number; timestamp: string } | null;
+  fp_min_cap: { fp: number; timestamp: string } | null;
+  fp_medio: number | null;
+  reativo_max: { kvar: number; natureza: 'ind' | 'cap'; timestamp: string } | null;
+  energia_reativa_kvarh: number;
+  reativo_excedente_kvarh: number;
+  geracao: null | {
+    inversores: number; agora_kw: number | null; max_mes: { kw: number; timestamp: string } | null;
+    hoje_kwh: number | null; ciclo_kwh: number | null; autoconsumo_kwh: number | null;
+  };
+}
+function useResumoMedidor(equipamentoId: string) {
+  const [res, setRes] = useState<ResumoMedidor | null>(null);
+  useEffect(() => {
+    let vivo = true;
+    const ler = () => api.get(`/equipamentos-dados/${equipamentoId.trim()}/medidor/resumo`)
+      .then((r) => { if (vivo) setRes(unwrap<ResumoMedidor>(r)); })
+      .catch(() => undefined);
+    void ler();
+    const t = setInterval(ler, 5 * 60_000);
+    return () => { vivo = false; clearInterval(t); };
+  }, [equipamentoId]);
+  return res;
+}
+const quando = (iso?: string | null) => (iso ? `${ddmm(new Date(iso).getTime() - 60_000)} · ${hhmm(new Date(iso).getTime() - 15 * 60_000)}` : VAZIO);
+function fpsDoResumo(r: ResumoMedidor | null, cicloTxt: string): FpRow[] {
+  if (!r) return fpsSemFonte();
+  const f2 = (x: number) => fmt(x, 2);
+  return [
+    { k: 'Menor FP indutivo', s: r.fp_min_ind ? `${quando(r.fp_min_ind.timestamp)} · limite 0,92` : 'limite 0,92', v: r.fp_min_ind ? f2(r.fp_min_ind.fp) : '—', w: !!r.fp_min_ind && r.fp_min_ind.fp < 0.92 },
+    { k: 'Menor FP capacitivo', s: r.fp_min_cap ? `${quando(r.fp_min_cap.timestamp)} · horário capacitivo do medidor` : 'horário capacitivo do medidor', v: r.fp_min_cap ? f2(r.fp_min_cap.fp) : '—', w: !!r.fp_min_cap && r.fp_min_cap.fp < 0.92 },
+    { k: 'FP médio do ciclo', s: cicloTxt, v: r.fp_medio != null ? f2(r.fp_medio) : '—', w: r.fp_medio != null && r.fp_medio < 0.92 },
+    { k: 'Reativo máx. do mês', s: r.reativo_max ? `${quando(r.reativo_max.timestamp)} · ${r.reativo_max.natureza === 'cap' ? 'capacitivo' : 'indutivo'}` : VAZIO, v: r.reativo_max ? `${n0(r.reativo_max.kvar)} kvar` : '—', w: false },
+  ];
+}
 
 /** Rótulos dos últimos n meses (o atual por último). */
 const rotulosMeses = (n = 6) => {
