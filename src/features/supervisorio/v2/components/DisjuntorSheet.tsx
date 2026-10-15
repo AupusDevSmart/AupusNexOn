@@ -1,21 +1,23 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { api } from '@/config/api';
 import { acionarPontoApi } from '@/services/acionar-ponto.services';
+import type { CustosEnergiaResponseDto } from '@/types/dtos/custos-energia-dto';
 import { SsuOperacao } from './sheets/MedidorSheet';
-import { useCurvaDia, MiniChart } from './sheets/sheetParts';
+import { NX, s, NxShell, NxDialog, NxDialogHead, NxDialogButtons, type NxTone } from './sheets/nxMock';
+import { Registros, linhasPosto, brl, type RegistroExtra } from './sheets/equipUi';
+import { Bloco, Rotulo, StatusNx, Exclama, LinhasNx, FasesNx, Duas, Coluna, GraficoNx, type GrupoGrandezaNx, type LinhaNx } from './sheets/InversorSheet';
 
 /**
- * Sheet do DJ (Fase 6 — reestruturação IoT). Data-driven pelo mockup
- * arquivos/nexon-web-dj.html: a tela se monta pelo que foi DECLARADO no cadastro
- * (colunas scs_*) e VINCULADO no arqIoT (PM/relé/ton_bo). Lê:
+ * Modal do DJ no web — tela "Equipamento · DJ UBS" do app (NEXON-5) adaptada ao
+ * padrão dos modais web (Pivô/Medidor). Data-driven pelo que foi DECLARADO no
+ * cadastro (colunas scs_*) e VINCULADO no arqIoT (PM/relé/ton_bo). Lê:
  *   - GET /iot/disjuntor/:id/scs-bundle  (declaração + PM + fonte de status + comandos)
  *   - GET /equipamentos/:pmId/dados/atual  (telemetria do PM associado — medição 'pm')
  *   - GET /equipamentos/:releId/dados/atual (status aberto/fechado via relé; medição 'ied')
- * Comando: POST /equipamentos/:id/pontos/:pontoId/acionar (mesmo caminho do
- * EquipamentoAcionarModal) — o ponto Abrir/Fechar vem de `comandos` (ton_bo).
+ *   - GET /equipamentos-dados/:pmId/custos-energia?periodo=dia (consumo/custo de hoje)
+ * Comando: POST /equipamentos/:id/pontos/:pontoId/acionar — o ponto Abrir/Fechar vem
+ * de `comandos` (ton_bo), sempre com o diálogo "Abrir/Fechar <DJ>?".
  */
 interface Bundle {
   equipamento: { id: string; nome: string | null };
@@ -28,14 +30,10 @@ interface Bundle {
   pm_hoje?: { fp_min: number | null; pt_max_kw: number | null; leituras: number } | null;
 }
 
-/** Consumo/custo de HOJE do PM (GET /equipamentos-dados/:id/custos-energia?periodo=dia) — mesmo cálculo da Gestão de Energia. */
-interface CustosHoje {
-  consumo?: { energia_ponta_kwh: number; energia_fora_ponta_kwh: number; energia_reservado_kwh: number; energia_total_kwh: number; demanda_maxima_kw: number };
-  custos?: { custo_total: number };
-  unidade?: { nome?: string };
-  aviso?: string;
-}
+type Telemetria = Record<string, unknown>;
+type CustosHoje = Partial<CustosEnergiaResponseDto>;
 
+/** Consumo/custo de HOJE do PM — mesmo cálculo da Gestão de Energia. */
 function useCustosHoje(pmId?: string | null) {
   const [c, setC] = useState<CustosHoje | null>(null);
   useEffect(() => {
@@ -54,48 +52,20 @@ function useCustosHoje(pmId?: string | null) {
   return c;
 }
 
-const brl = (n: unknown) =>
-  n == null || Number.isNaN(Number(n)) ? '—' : Number(n).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-const hora = (iso?: string | null) => {
-  if (!iso) return '';
-  // created_at vem sem fuso (UTC) → trata como UTC e mostra no horário local.
+/** created_at vem sem fuso (UTC) → Date local. */
+const dataUtc = (iso?: string | null) => {
+  if (!iso) return null;
   const d = new Date(/Z|[+-]\d\d:?\d\d$/.test(iso) ? iso : `${iso.replace(' ', 'T')}Z`);
-  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  return Number.isNaN(d.getTime()) ? null : d;
 };
-
-function Card({ titulo, valor, unidade, sub }: { titulo: string; valor: string; unidade?: string; sub?: string }) {
-  return (
-    <div className="rounded-lg border p-3">
-      <div className="text-[11px] text-muted-foreground">{titulo}</div>
-      <div className="text-xl font-bold">{valor}{unidade && <em className="not-italic text-xs font-medium text-muted-foreground"> {unidade}</em>}</div>
-      {sub && <div className="text-[11px] text-muted-foreground">{sub}</div>}
-    </div>
-  );
-}
-
-// Linha sem dado ("—") não aparece — o DJ mostra só o que tem.
-function Linhas({ rows }: { rows: Array<[string, React.ReactNode, string?]> }) {
-  const com = rows.filter(([, v]) => !(typeof v === 'string' && v.trim().startsWith('—')));
-  if (com.length === 0) return null;
-  return (
-    <div className="rounded-lg border divide-y text-sm">
-      {com.map(([k, v, sub]) => (
-        <div key={k} className="flex items-start px-3.5 py-2 gap-3">
-          <div className="flex-1 text-muted-foreground">{k}{sub && <div className="text-[11px] text-muted-foreground/70">{sub}</div>}</div>
-          <div className="font-medium text-right">{v}</div>
-        </div>
-      ))}
-    </div>
-  );
-}
 
 type Acao = 'Abrir' | 'Fechar';
 
 const fmt = (n: unknown, d = 1) =>
-  n == null || Number.isNaN(Number(n)) ? '—' : Number(n).toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d });
+  n == null || n === '' || Number.isNaN(Number(n)) ? '—' : Number(n).toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d });
 
 function useDados(equipamentoId?: string | null) {
-  const [dados, setDados] = useState<Record<string, any> | null>(null);
+  const [dados, setDados] = useState<Telemetria | null>(null);
   const [tick, setTick] = useState(0);
   // `reload` força uma leitura fora do polling de 15 s (usado logo após um comando).
   const reload = useCallback(() => setTick((t) => t + 1), []);
@@ -104,7 +74,7 @@ function useDados(equipamentoId?: string | null) {
     let vivo = true;
     const load = () =>
       api.get(`/equipamentos/${equipamentoId.trim()}/dados/atual`)
-        .then((r) => { if (vivo) setDados((r?.data?.dado?.dados ?? r?.data?.data?.dado?.dados ?? null) as any); })
+        .then((r) => { if (vivo) setDados((r?.data?.dado?.dados ?? r?.data?.data?.dado?.dados ?? null) as Telemetria | null); })
         .catch(() => { if (vivo) setDados(null); });
     load();
     const t = setInterval(load, 15000);
@@ -113,9 +83,21 @@ function useDados(equipamentoId?: string | null) {
   return { dados, reload };
 }
 
+/** Parâmetros de proteção do mockup (sem leitura/gravação pelo NexON ainda). */
+const PARAMS_DJ = [
+  { key: 'sobV', label: 'Sobretensão', faixa: '400 a 440', unit: 'V' },
+  { key: 'subV', label: 'Subtensão', faixa: '300 a 380', unit: 'V' },
+  { key: 'sobI', label: 'Sobrecorrente', faixa: '50 a 400', unit: 'A' },
+  { key: 'deseq', label: 'Desequilíbrio de tensão', faixa: '1,0 a 10,0', unit: '%' },
+  { key: 'fpMin', label: 'FP mínimo', faixa: '0,80 a 1,00', unit: '' },
+];
+
 export function DisjuntorSheet({ equipamentoId, onClose }: { equipamentoId: string; onClose: () => void }) {
   const [bundle, setBundle] = useState<Bundle | null>(null);
   const [loading, setLoading] = useState(true);
+  const [aba, setAba] = useState('op');
+  const [ff, setFf] = useState(true);
+  const [custosAberto, setCustosAberto] = useState(false);
 
   useEffect(() => {
     let vivo = true;
@@ -131,7 +113,6 @@ export function DisjuntorSheet({ equipamentoId, onClose }: { equipamentoId: stri
   const temIed = bundle?.scs.medicao === 'ied';
   const { dados: pmDados } = useDados(temPm ? bundle?.pm?.equipamento_id : null);
   const custosHoje = useCustosHoje(temPm ? bundle?.pm?.equipamento_id : null);
-  const curvaPm = useCurvaDia(temPm ? bundle?.pm?.equipamento_id : null, 15);
   // Relé: fonte do status (aberto/fechado) e, na medição 'ied', das grandezas.
   const { dados: releDados, reload: reloadRele } = useDados(
     (bundle?.scs.status || temIed) ? bundle?.status_fonte?.rele_equipamento_id : null,
@@ -156,42 +137,37 @@ export function DisjuntorSheet({ equipamentoId, onClose }: { equipamentoId: stri
   const cmdFechar = useMemo(() => bundle?.comandos.find((c) => /fechar|close/i.test(c.ponto)) ?? null, [bundle]);
   const [confirmando, setConfirmando] = useState<Acao | null>(null);
   const [enviando, setEnviando] = useState<Acao | null>(null);
-  const [ultimo, setUltimo] = useState<{ ok: boolean; texto: string } | null>(null);
-  // Confirmação em dois cliques (sem sub-modal): o segundo clique em até 6 s dispara.
-  useEffect(() => {
-    if (!confirmando) return undefined;
-    const t = setTimeout(() => setConfirmando(null), 6000);
-    return () => clearTimeout(t);
-  }, [confirmando]);
+  const [ultimo, setUltimo] = useState<{ ok: boolean; texto: string; t: number; acao: Acao } | null>(null);
 
   const executar = async (acao: Acao) => {
     const cmd = acao === 'Abrir' ? cmdAbrir : cmdFechar;
     if (!cmd || enviando) return;
-    setConfirmando(null);
     setEnviando(acao);
     setUltimo(null);
     try {
       const r = await acionarPontoApi.acionar(equipamentoId, cmd.ponto_id);
-      setUltimo({ ok: true, texto: `${acao} confirmado pela TON · ack ${r.latency_ms} ms · ${r.comando_tecnico}` });
+      setUltimo({ ok: true, texto: `${acao} confirmado pela TON · ack ${r.latency_ms} ms · ${r.comando_tecnico}`, t: Date.now(), acao });
       toast.success(`${nome}: ${acao.toUpperCase()} executado`, {
         description: `${r.comando_semantico} · pulso ${r.pulso_ms} ms · ack ${r.latency_ms} ms`,
       });
       // O relé publica a posição nova logo após a manobra — relê fora do polling.
       [1200, 3000, 6000].forEach((ms) => setTimeout(reloadRele, ms));
-    } catch (err: any) {
-      const status = err?.response?.status;
-      const apiMsg = err?.response?.data?.error?.message ?? err?.response?.data?.message;
+    } catch (err) {
+      const e = err as { response?: { status?: number; data?: { message?: string; error?: { message?: string } } }; message?: string };
+      const status = e?.response?.status;
+      const apiMsg = e?.response?.data?.error?.message ?? e?.response?.data?.message;
       let titulo = `Falha ao ${acao.toLowerCase()}`;
-      let desc: string = apiMsg ?? err?.message ?? 'Erro desconhecido';
+      let desc: string = apiMsg ?? e?.message ?? 'Erro desconhecido';
       if (status === 504) { titulo = 'TON não respondeu'; desc = 'Timeout — TON offline ou sem rede.'; }
       else if (status === 502) titulo = 'TON recusou o comando';
       else if (status === 503) titulo = 'Broker MQTT desconectado';
       else if (status === 400) titulo = 'Configuração incompleta';
       else if (status === 403) titulo = 'Sem permissão para comandar';
-      setUltimo({ ok: false, texto: `${titulo}: ${desc}` });
+      setUltimo({ ok: false, texto: `${titulo}: ${desc}`, t: Date.now(), acao });
       toast.error(titulo, { description: desc });
     } finally {
       setEnviando(null);
+      setConfirmando(null);
     }
   };
 
@@ -199,215 +175,299 @@ export function DisjuntorSheet({ equipamentoId, onClose }: { equipamentoId: stri
   // bundle chega e revela que está desabilitado). A configuração é na edição do unifilar.
   const scsOff = !!bundle && !bundle.scs.habilitado;
   useEffect(() => { if (scsOff) onClose(); }, [scsOff, onClose]);
-  // Não renderiza o Dialog enquanto carrega o bundle NEM se o SCS está desabilitado:
-  // evita o "abre e fecha rápido" (flash) num DJ que não é pra ser clicável.
+  // Não renderiza enquanto carrega o bundle NEM se o SCS está desabilitado (evita o flash).
   if (loading || scsOff) return null;
 
   // Medição: PM associado (medição 'pm') ou o próprio relé/IED (medição 'ied').
   const medDados = temPm ? pmDados : temIed ? releDados : null;
-  // PM associado que na verdade é medidor de concessionária lido pela SSU (TON-V2 / A-966):
-  // o dado é bloco de pulsos, não V/A/kW instantâneos → usa a visão SSU da ficha do medidor.
-  const pmEhSsu = temPm && !!pmDados && ((pmDados as any).NSU != null || (pmDados as any)?.data?.phf != null);
-  const medFonte = temPm
-    ? (bundle?.pm ? `PM: ${bundle.pm.nome ?? bundle.pm.equipamento_id}` : null)
-    : temIed
-      ? (bundle?.status_fonte ? `IED: ${bundle.status_fonte.rele_nome ?? bundle.status_fonte.rele_equipamento_id}` : null)
-      : null;
+  // PM que na verdade é medidor de concessionária lido pela SSU: usa a visão SSU da ficha do medidor.
+  const pmEhSsu = temPm && !!pmDados && (pmDados.NSU != null || (pmDados.data as { phf?: unknown } | undefined)?.phf != null);
+  const medOk = (temPm && !!bundle?.pm && !pmEhSsu) || (temIed && !!bundle?.status_fonte);
+  const num = (k: string) => { const v = medDados?.[k]; return v == null || v === '' || !Number.isFinite(Number(v)) ? null : Number(v); };
+  const kilo = (k: string) => { const v = num(k); return v == null ? null : v / 1000; };
+  const flag = (k: string) => (releDados?.[k] == null ? null : !!releDados[k]);
 
-  const btnBase = 'flex-1 py-2.5 rounded-lg font-semibold text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-colors';
+  const pt = kilo('Pt');
+  const iMax = Math.max(...['Ia', 'Ib', 'Ic'].map((k) => num(k) ?? 0));
+  const In = bundle?.cadastro?.corrente_nominal_a ?? null;
+  const local = flag('local');
+  const remoto = flag('remoto');
+  const mola = flag('mola_carregada');
+  const modoTxt = local === true ? 'Local' : remoto === true || local === false ? 'Remoto' : '—';
+  const porComando = posicao === 'Aberto' && /abr/i.test(bundle?.manobras?.ultima_msg ?? (ultimo?.ok ? ultimo.acao : ''));
+
+  // Status (vocabulário do mockup: Normal / Alerta / Falha / Sem comunicação).
+  let tone: NxTone; let stLabel: string; let stText: string;
+  if (temStatus && !releDados) { tone = 'off'; stLabel = 'Sem comunicação'; stText = bundle?.status_fonte ? 'Sem leitura do relé' : 'Nenhum relé de status vinculado'; }
+  else if (temStatus && !posicao) { tone = 'warn'; stLabel = 'Alerta'; stText = 'Posição indefinida'; }
+  else if (temStatus && mola === false && posicao === 'Aberto') { tone = 'warn'; stLabel = 'Alerta'; stText = 'Mola descarregada'; }
+  else if (temStatus) { tone = 'ok'; stLabel = 'Normal'; stText = posicao === 'Fechado' ? 'Fechado' : porComando ? 'Aberto por comando' : 'Aberto'; }
+  else if ((temPm || temIed) && !medDados && !pmEhSsu) { tone = 'off'; stLabel = 'Sem comunicação'; stText = 'Sem leitura da medição'; }
+  else { tone = 'ok'; stLabel = 'Normal'; stText = 'Posição não monitorada'; }
+
+  const fechado = posicao === 'Fechado';
+  const posCor = fechado ? NX.ok : posicao === 'Aberto' ? NX.mudo : NX.neutro;
+
+  // Comando (mockup: um botão — Abrir quando fechado, Fechar quando aberto).
+  const botoes: Acao[] = posicao === 'Fechado' ? ['Abrir'] : posicao === 'Aberto' ? ['Fechar'] : ['Abrir', 'Fechar'];
+  const alimenta = bundle?.cadastro?.alimenta ?? [];
+  const alvo = alimenta.length ? alimenta.join(', ') : 'A instalação';
+  const plural = alimenta.length > 1;
+  const nota = confirmando === 'Abrir'
+    ? `${alvo} ${plural ? 'serão desenergizados' : alimenta.length ? 'será desenergizado' : 'será desenergizada'}.`
+    : `${alvo} ${plural ? 'serão energizados' : alimenta.length ? 'será energizado' : 'será energizada'}.`;
+
+  // Por fase: FF (Vab/Vbc/Vca) e FN (Va/Vb/Vc) conforme o que a medição publica.
+  const temFF = ['Vab', 'Vbc', 'Vca'].some((k) => num(k) != null);
+  const temFN = ['Va', 'Vb', 'Vc'].some((k) => num(k) != null);
+  const mostraFF = temFF && (!temFN || ff);
+  const vTxt = (k: string) => (num(k) == null ? '—' : `${fmt(num(k), 0)} V`);
+  const aTxt = (k: string) => (num(k) == null ? '—' : `${fmt(num(k), 1)} A`);
+  const fases: Array<[string, string, string]> = mostraFF
+    ? [['AB', vTxt('Vab'), aTxt('Ia')], ['BC', vTxt('Vbc'), aTxt('Ib')], ['CA', vTxt('Vca'), aTxt('Ic')]]
+    : [['A', vTxt('Va'), aTxt('Ia')], ['B', vTxt('Vb'), aTxt('Ib')], ['C', vTxt('Vc'), aTxt('Ic')]];
+
+  const pickN = (k: string, div = 1) => (d: Telemetria) => { const x = d?.[k]; const v = Number(x); return x == null || x === '' || !Number.isFinite(v) ? null : v / div; };
+  const catalogo: GrupoGrandezaNx[] = [
+    { label: 'Potência ativa · kW', unit: 'kW', items: [{ id: 'pAt', label: 'Ativa', short: 'Ativa', pick: pickN('Pt', 1000) }] },
+    { label: 'Potência reativa · kvar', unit: 'kvar', items: [{ id: 'pRe', label: 'Reativa', short: 'Reativa', pick: pickN('Qt', 1000) }] },
+    { label: 'Corrente · A', unit: 'A', items: (['a', 'b', 'c'] as const).map((f) => ({ id: `i${f}`, label: `Fase ${f.toUpperCase()}`, short: `I ${f.toUpperCase()}`, pick: pickN(`I${f}`) })) },
+    { label: 'Tensão · V', unit: 'V', items: (temFF ? [['AB', 'Vab'], ['BC', 'Vbc'], ['CA', 'Vca']] : [['A', 'Va'], ['B', 'Vb'], ['C', 'Vc']]).map(([l, k]) => ({ id: `v${l}`, label: l, short: `V ${l}`, pick: pickN(k) })) },
+    { label: 'Fator de potência', unit: 'FP', items: [{ id: 'fp', label: 'FP', short: 'FP', pick: pickN('FPt') }] },
+    { label: 'Frequência · Hz', unit: 'Hz', items: [{ id: 'hz', label: 'Frequência', short: 'Freq.', pick: pickN('Freq') }] },
+  ];
+  const medId = temPm ? bundle?.pm?.equipamento_id : temIed ? bundle?.status_fonte?.rele_equipamento_id : null;
+
+  const potRows: LinhaNx[] = [
+    { k: 'Ativa', v: pt != null ? `${fmt(pt, 1)} kW${pt < -0.05 ? ' · injetando' : ''}` : '—' },
+    { k: 'Reativa', v: kilo('Qt') != null ? `${fmt(kilo('Qt'), 1)} kvar` : '—' },
+    { k: 'Aparente', v: kilo('St') != null ? `${fmt(kilo('St'), 1)} kVA` : '—' },
+    { k: 'Fator de potência', v: num('FPt') != null ? fmt(num('FPt'), 2) : '—', sub: bundle?.pm_hoje?.fp_min != null ? `menor hoje ${fmt(bundle.pm_hoje.fp_min, 2)}` : undefined },
+    { k: 'Frequência', v: num('Freq') != null ? `${fmt(num('Freq'), 2)} Hz` : '—' },
+    In
+      ? { k: 'Carregamento', v: `${fmt((iMax / In) * 100, 0)}%`, sub: `${fmt(iMax, 0)} A de ${fmt(In, 0)} A`, opcional: !medDados }
+      : { k: 'Corrente máxima', v: medDados ? `${fmt(iMax, 0)} A` : '—', sub: 'Informe a corrente nominal no cadastro p/ ver o carregamento', opcional: true },
+  ];
+
+  const consumo = custosHoje?.consumo;
+  const custoOk = !!(custosHoje?.consumo && custosHoje?.custos);
+  const demandaMax = consumo?.demanda_maxima_kw ?? bundle?.pm_hoje?.pt_max_kw ?? null;
+
+  // Registros: eventos do equipamento + última manobra do bundle + resultado do comando desta sessão.
+  const extras: RegistroExtra[] = [];
+  const ultimaEm = dataUtc(bundle?.manobras?.ultima_em);
+  if (ultimaEm) extras.push({ t: ultimaEm.getTime(), txt: bundle?.manobras?.ultima_msg ?? 'Comando', quem: 'Comando' });
+  if (ultimo) extras.push({ t: ultimo.t, txt: ultimo.texto, quem: 'Você', ok: ultimo.ok, ruim: !ultimo.ok });
+  const manobrasTxt = !temComando
+    ? 'Sem pontos de comando declarados'
+    : `${bundle?.manobras?.hoje ?? 0} ${(bundle?.manobras?.hoje ?? 0) === 1 ? 'manobra' : 'manobras'} hoje${!temStatus ? ' · só comandos enviados, sem confirmação de posição' : ''}`;
+
+  const subtitulo = [bundle?.status_fonte?.rele_nome && `via ${bundle.status_fonte.rele_nome}`, bundle?.pm?.nome && `PM ${bundle.pm.nome}`].filter(Boolean).join(' · ') || 'Disjuntor';
+
+  const notaMed = temPm && !bundle?.pm
+    ? 'Medição declarada como PM, mas nenhum Power Meter associado — associe em "Configurações SCS" da TON.'
+    : temIed && !bundle?.status_fonte
+      ? 'Medição declarada como IED, mas nenhum relé vinculado a este disjuntor no IoT.'
+      : !temPm && !temIed ? 'Sem medição declarada neste disjuntor.' : null;
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="max-w-lg p-0 gap-0 overflow-hidden flex flex-col">
-        <div className="px-5 py-4 border-b flex items-center gap-2 shrink-0">
-          <h2 className="text-lg font-bold flex-1 truncate">{nome}</h2>
-          {bundle && !bundle.scs.habilitado && (
-            <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">SCS desabilitado</span>
-          )}
+    <NxShell
+      title={nome}
+      subtitle={subtitulo}
+      right={<span style={s.pill(tone)}><span style={s.pillDot(tone)} />{stLabel}</span>}
+      tabs={[{ key: 'op', label: 'Operação' }, { key: 'cfg', label: 'Configuração' }]}
+      tab={aba}
+      onTab={setAba}
+      onClose={onClose}
+    >
+      {!bundle ? (
+        <div style={{ padding: 32, textAlign: 'center', fontSize: 14, color: NX.mudo }}>Sem dados do disjuntor.</div>
+      ) : aba === 'cfg' ? (
+        <div style={{ padding: '20px 24px 28px 24px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <Rotulo style={{ marginTop: 4 }}>Parâmetros do disjuntor</Rotulo>
+          {PARAMS_DJ.map((p) => (
+            <Bloco key={p.key} style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <label htmlFor={`cfg-${p.key}`} style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <span style={{ fontSize: 15, fontWeight: 700 }}>{p.label}</span>
+                <span style={{ fontSize: 12, color: NX.mudo }}>Faixa {p.faixa}{p.unit ? ` ${p.unit}` : ''}</span>
+              </label>
+              <input id={`cfg-${p.key}`} inputMode="decimal" value="—" disabled readOnly style={s.campo(true)} />
+              <span style={{ fontSize: 14, color: NX.mudo, width: 28 }}>{p.unit}</span>
+            </Bloco>
+          ))}
+          <button type="button" disabled style={s.save(true)}>Sem alterações</button>
+          <span style={{ fontSize: 12, color: NX.mudo, marginTop: 6 }}>
+            Limites de tensão, corrente e FP: o NexON ainda não lê nem grava estes parâmetros no relé do disjuntor.
+          </span>
+          <Rotulo style={{ marginTop: 10 }}>Cadastro</Rotulo>
+          <LinhasNx rows={[
+            { k: 'Corrente nominal', v: bundle.cadastro?.corrente_nominal_a ? `${fmt(bundle.cadastro.corrente_nominal_a, 0)} A` : '—' },
+            { k: 'Tensão nominal', v: bundle.cadastro?.tensao_nominal_v ? `${fmt(bundle.cadastro.tensao_nominal_v, 0)} V` : '—' },
+            { k: 'Alimentado por', v: bundle.cadastro?.alimentado_por?.length ? bundle.cadastro.alimentado_por.join(', ') : '—' },
+            { k: 'Alimenta', v: alimenta.length ? alimenta.join(', ') : '—' },
+            { k: 'SCS', v: `${bundle.scs.habilitado ? 'Habilitado' : 'Não'} · cmd ${bundle.scs.comando ? 'sim' : 'não'} · sts ${bundle.scs.status ? 'sim' : 'não'} · med ${bundle.scs.medicao}` },
+          ]} />
+          <span style={{ fontSize: 12, color: NX.mudo, marginTop: 6 }}>Comando, status e medição vêm dos pontos ligados às BO/BI da TON e do PM/relé associado (edição do equipamento no unifilar → Configurações SCS).</span>
         </div>
-
-        <div className="flex-1 min-h-0 overflow-auto px-5 pb-6">
-          {loading && <div className="py-8 text-center text-sm text-muted-foreground">Carregando…</div>}
-          {!loading && !bundle && <div className="py-8 text-center text-sm text-muted-foreground">Sem dados do disjuntor.</div>}
-
-          {bundle && (
-            <>
-              {!bundle.scs.habilitado && (
-                <div className="mt-5 rounded-lg border border-dashed p-4 text-center">
-                  <p className="text-sm text-muted-foreground">SCS desabilitado neste disjuntor.</p>
-                  <p className="text-[11px] text-muted-foreground mt-1">Habilite medição/comando/status na <b>edição do equipamento</b> (modo edição do unifilar).</p>
-                </div>
-              )}
-
-              {/* ESTADO: só quando há pontos de status (sem status, o bloco não aparece). */}
+      ) : (
+        <div style={{ padding: '20px 24px 28px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <Duas>
+            <Coluna>
+              <StatusNx tone={tone} label={stLabel} text={stText} />
               {temStatus && (
-                <div className="pt-5">
-                  <div className="rounded-lg border p-4 flex items-center gap-3">
-                    <span className={`w-3 h-3 rounded-full ${posicao === 'Fechado' ? 'bg-emerald-500' : posicao === 'Aberto' ? 'bg-gray-400' : 'bg-amber-400'}`} />
-                    <div className="flex-1">
-                      <b className="text-base">{posicao ?? 'Aguardando'}</b>
-                      {bundle.status_fonte?.rele_nome && (
-                        <div className="text-[11px] text-muted-foreground">via {bundle.status_fonte.rele_nome}</div>
-                      )}
-                    </div>
+                <Bloco style={{ padding: '14px 0', display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                    <span style={{ width: 40, height: 40, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', background: fechado ? 'rgba(46,139,71,0.12)' : 'rgba(138,143,163,0.14)' }}>
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={posCor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M12 3v5" /><path d="M12 21v-4" /><path d={fechado || !posicao ? 'M12 8v9' : 'M12 17l5-8'} strokeOpacity={posicao ? 1 : 0.4} />
+                      </svg>
+                    </span>
+                    <span style={{ fontSize: 16, fontWeight: 800, color: posicao ? posCor : NX.mudo }}>{posicao ?? '—'}</span>
+                    <span style={{ fontSize: 12, color: NX.mudo }}>Posição</span>
                   </div>
-                </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', gap: 2, borderLeft: `1px solid ${NX.linha}` }}>
+                    <span style={{ fontSize: 16, fontWeight: 800, color: local === true ? NX.warn : modoTxt === '—' ? NX.mudo : NX.texto }}>{modoTxt}</span>
+                    <span style={{ fontSize: 12, color: NX.mudo }}>Comando</span>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', gap: 2, borderLeft: `1px solid ${NX.linha}` }}>
+                    <span style={{ fontSize: 16, fontWeight: 800, color: mola == null ? NX.mudo : mola ? NX.texto : NX.warn }}>{mola == null ? '—' : mola ? 'Carregada' : 'Descarregada'}</span>
+                    <span style={{ fontSize: 12, color: NX.mudo }}>Mola</span>
+                  </div>
+                </Bloco>
               )}
-
-              {/* CONTROLES */}
               {temComando && (
-                <div className="pt-5">
-                  <h4 className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold mb-2">Controles</h4>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      disabled={!cmdAbrir || !!enviando}
-                      onClick={() => (confirmando === 'Abrir' ? executar('Abrir') : setConfirmando('Abrir'))}
-                      className={`${btnBase} border ${confirmando === 'Abrir' ? 'border-amber-500 text-amber-700 bg-amber-50 dark:text-amber-300 dark:bg-amber-950/40' : ''}`}
-                    >
-                      {enviando === 'Abrir' ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                      {enviando === 'Abrir' ? 'Abrindo…' : confirmando === 'Abrir' ? 'Confirmar abrir' : 'Abrir'}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={!cmdFechar || !!enviando}
-                      onClick={() => (confirmando === 'Fechar' ? executar('Fechar') : setConfirmando('Fechar'))}
-                      className={`${btnBase} text-white ${confirmando === 'Fechar' ? 'ring-2 ring-amber-500' : ''}`}
-                      style={{ background: '#177A3C' }}
-                    >
-                      {enviando === 'Fechar' ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                      {enviando === 'Fechar' ? 'Fechando…' : confirmando === 'Fechar' ? 'Confirmar fechar' : 'Fechar'}
-                    </button>
-                  </div>
-                  {confirmando && !enviando && (
-                    <p className="text-xs text-amber-600 mt-2">Clique de novo para confirmar <b>{confirmando.toLowerCase()}</b> · cancela sozinho em 6 s.</p>
-                  )}
-                  {ultimo && (
-                    <p className={`text-xs mt-2 ${ultimo.ok ? 'text-emerald-600' : 'text-red-600'}`}>{ultimo.texto}</p>
+                <>
+                  {local === true ? (
+                    <button type="button" disabled style={s.cmd('busy')}>Modo local</button>
+                  ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${botoes.length}, minmax(0, 1fr))`, gap: 8 }}>
+                      {botoes.map((b) => {
+                        const c = b === 'Abrir' ? cmdAbrir : cmdFechar;
+                        const off = !c || !!enviando;
+                        return (
+                          <button key={b} type="button" disabled={off} onClick={() => setConfirmando(b)}
+                            style={s.cmd(off ? 'busy' : b === 'Abrir' ? 'outline' : 'primary')}>
+                            {enviando ? 'Executando…' : b}
+                          </button>
+                        );
+                      })}
+                    </div>
                   )}
                   {bundle.comandos.length === 0 && (
-                    <p className="text-xs text-amber-600 mt-2">Comando declarado, mas sem vínculo a canal (BO) da TON — configure em "Configurações SCS".</p>
+                    <span style={{ fontSize: 12, color: NX.warn, textAlign: 'center' }}>Comando declarado, mas sem vínculo a canal (BO) da TON — configure em "Configurações SCS".</span>
                   )}
-                </div>
+                  {local === true && <span style={{ fontSize: 12, color: NX.mudo, textAlign: 'center' }}>Disjuntor em modo local: comando remoto bloqueado.</span>}
+                  {ultimo && <span style={{ fontSize: 12, fontWeight: 700, color: ultimo.ok ? NX.ok : NX.bad }}>{ultimo.texto}</span>}
+                </>
               )}
-
-              {/* STATUS */}
-              {temStatus && (
-                <div className="pt-5">
-                  <h4 className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold mb-2">Status</h4>
-                  <div className="rounded-lg border divide-y text-sm">
-                    {[['Aberto', posicao === 'Aberto'], ['Fechado', posicao === 'Fechado'], ['Mola carregada', releDados?.['mola_carregada']], ['Local', releDados?.['local']], ['Remoto', releDados?.['remoto']]].map(([k, v]) => (
-                      <div key={String(k)} className="flex items-center px-3.5 py-2">
-                        <div className="flex-1 text-muted-foreground">{k}</div>
-                        <div className={`font-semibold ${v ? '' : 'text-muted-foreground font-normal'}`}>{v == null ? '—' : v ? 'Sim' : 'Não'}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* MEDIÇÃO (PM associado ou o próprio IED/relé) */}
-              {(temPm || temIed) && (
-                <div className="pt-5">
-                  <h4 className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold mb-2">
-                    Medição {temIed ? '· IED (relé)' : '· PM'}
-                  </h4>
-                  {temPm && !bundle.pm ? (
-                    <p className="text-xs text-muted-foreground">Medição declarada como PM, mas nenhum Power Meter associado — associe em "Configurações SCS" da TON.</p>
-                  ) : temIed && !bundle.status_fonte ? (
-                    <p className="text-xs text-muted-foreground">Medição declarada como IED, mas nenhum relé vinculado a este disjuntor no IoT.</p>
-                  ) : pmEhSsu && bundle.pm ? (
-                    <SsuOperacao equipamentoId={bundle.pm.equipamento_id} />
-                  ) : (
-                    <>
-                      {(() => {
-                        const num = (k: string) => (medDados?.[k] == null || medDados?.[k] === '' ? null : Number(medDados[k]));
-                        const v = [num('Va'), num('Vb'), num('Vc')].filter((x): x is number => x != null && Number.isFinite(x));
-                        const vMed = v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
-                        const iMax = Math.max(...[num('Ia'), num('Ib'), num('Ic')].map((x) => (x != null && Number.isFinite(x) ? x : 0)));
-                        const In = bundle.cadastro?.corrente_nominal_a ?? null;
-                        const fpMin = bundle.pm_hoje?.fp_min;
-                        return (
-                          <div className="grid grid-cols-2 gap-2">
-                            <Card titulo="Potência ativa" valor={fmt(num('Pt') != null ? Number(num('Pt')) / 1000 : null)} unidade="kW"
-                              sub={`${fmt(num('Qt') != null ? Number(num('Qt')) / 1000 : null)} kvar · ${fmt(num('St') != null ? Number(num('St')) / 1000 : null)} kVA`} />
-                            {In ? (
-                              <Card titulo="Carregamento" valor={fmt((iMax / In) * 100, 0)} unidade="%" sub={`${fmt(iMax, 0)} A de ${fmt(In, 0)} A`} />
-                            ) : (
-                              <Card titulo="Corrente máxima" valor={fmt(iMax, 0)} unidade="A" sub="Informe a corrente nominal no cadastro p/ ver o carregamento" />
-                            )}
-                            <Card titulo="Tensão média" valor={fmt(vMed, 0)} unidade="V"
-                              sub={`A ${fmt(num('Va'), 0)} · B ${fmt(num('Vb'), 0)} · C ${fmt(num('Vc'), 0)}`} />
-                            <Card titulo="Fator de potência" valor={fmt(num('FPt'), 2)}
-                              sub={fpMin != null ? `menor hoje ${fmt(fpMin, 2)}` : `Freq ${fmt(num('Freq'), 2)} Hz`} />
-                          </div>
-                        );
-                      })()}
-                      {temPm && (
-                        <div className="mt-2">
-                          <Linhas rows={[
-                            ['Consumo ponta', `${fmt(custosHoje?.consumo?.energia_ponta_kwh, 0)} kWh`, 'hoje'],
-                            ['Fora de ponta', `${fmt(custosHoje?.consumo?.energia_fora_ponta_kwh, 0)} kWh`],
-                            ['Horário reservado', `${fmt(custosHoje?.consumo?.energia_reservado_kwh, 0)} kWh`],
-                            ['Demanda máxima', `${fmt(custosHoje?.consumo?.demanda_maxima_kw ?? bundle.pm_hoje?.pt_max_kw, 1)} kW`],
-                            ['Custo estimado', brl(custosHoje?.custos?.custo_total), custosHoje?.unidade?.nome ? `Tarifa da UC ${custosHoje.unidade.nome}` : 'hoje'],
-                          ]} />
-                          {custosHoje?.aviso && <p className="text-[11px] text-amber-600 mt-1">{custosHoje.aviso}</p>}
-                          <h4 className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold mt-4 mb-2">Gráfico · potência hoje</h4>
-                          <MiniChart serie={curvaPm} unit="kW" />
-                        </div>
-                      )}
-                      <div className="rounded-lg border mt-2 text-sm overflow-hidden">
-                        <div className="flex bg-muted/40 text-[11px] uppercase tracking-wide text-muted-foreground px-3.5 py-2">
-                          <div className="flex-1">Fase</div><div className="flex-1 text-right">Tensão</div><div className="flex-1 text-right">Corrente</div>
-                        </div>
-                        {[['A', 'Va', 'Ia'], ['B', 'Vb', 'Ib'], ['C', 'Vc', 'Ic']].map(([f, vk, ik]) => (
-                          <div key={f} className="flex px-3.5 py-2 border-t">
-                            <div className="flex-1 text-muted-foreground">{f}</div>
-                            <div className="flex-1 text-right font-medium">{fmt(medDados?.[vk], 2)} V</div>
-                            <div className="flex-1 text-right font-medium">{fmt(medDados?.[ik], 2)} A</div>
-                          </div>
+            </Coluna>
+            <Coluna>
+              {pmEhSsu && bundle.pm ? (
+                <Bloco style={{ padding: '4px 16px 12px 16px' }}><SsuOperacao equipamentoId={bundle.pm.equipamento_id} /></Bloco>
+              ) : notaMed || !medOk ? (
+                <Bloco style={{ padding: '14px 16px', fontSize: 13, color: NX.mudo }}>{notaMed ?? 'Sem medição.'}</Bloco>
+              ) : (
+                <>
+                  {temPm && (
+                    <Bloco style={{ padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 16 }}>
+                      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
+                        {[['Consumida', consumo?.energia_total_kwh], ['Injetada', null]].map(([k, v]) => (
+                          <span key={String(k)} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            <span style={{ fontSize: 13, color: NX.mudo }}>{k} · hoje</span>
+                            <span style={{ fontSize: 24, lineHeight: '30px', fontWeight: 800, fontVariantNumeric: 'tabular-nums', color: v == null ? NX.mudo : NX.texto }}>
+                              {fmt(v, 1)}<span style={{ fontSize: 14, fontWeight: 700, color: NX.mudo, marginLeft: 4 }}>kWh</span>
+                            </span>
+                          </span>
                         ))}
                       </div>
-                      {medFonte && <p className="text-[11px] text-muted-foreground mt-2">{medFonte}</p>}
-                    </>
+                      {custosHoje?.aviso && <Exclama title={custosHoje.aviso} />}
+                    </Bloco>
                   )}
-                </div>
+                  <LinhasNx titulo="Potência" rows={potRows} />
+                </>
               )}
+            </Coluna>
+          </Duas>
 
-              {/* CADASTRO */}
-              <div className="pt-5">
-                <h4 className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold mb-2">Cadastro</h4>
-                <Linhas rows={[
-                  ['Corrente nominal', bundle.cadastro?.corrente_nominal_a ? `${fmt(bundle.cadastro.corrente_nominal_a, 0)} A` : '—'],
-                  ...(bundle.cadastro?.tensao_nominal_v ? [['Tensão nominal', `${fmt(bundle.cadastro.tensao_nominal_v, 0)} V`] as [string, string]] : []),
-                  ['Alimentado por', bundle.cadastro?.alimentado_por?.length ? bundle.cadastro.alimentado_por.join(', ') : '—'],
-                  ['Alimenta', bundle.cadastro?.alimenta?.length ? bundle.cadastro.alimenta.join(', ') : '—'],
-                  ['SCS', `${bundle.scs.habilitado ? 'Habilitado' : 'Não'} · cmd ${bundle.scs.comando ? 'sim' : 'não'} · sts ${bundle.scs.status ? 'sim' : 'não'} · med ${bundle.scs.medicao}`],
-                ]} />
-              </div>
-
-              {/* REGISTROS (histórico de manobras = comandos enviados) */}
-              <div className="pt-5">
-                <h4 className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold mb-2">Registros</h4>
-                <Linhas rows={[[
-                  'Histórico de manobras',
-                  `${bundle.manobras?.hoje ?? 0} hoje`,
-                  bundle.manobras?.ultima_em
-                    ? `Última: ${bundle.manobras.ultima_msg ?? 'comando'} · ${hora(bundle.manobras.ultima_em)}`
-                    : !temComando
-                      ? 'Sem pontos de comando declarados'
-                      : !temStatus ? 'Só comandos enviados, sem confirmação de posição' : 'Nenhuma manobra registrada',
-                ]]} />
-                <p className="text-[11px] text-muted-foreground mt-2">
-                  {[bundle.status_fonte?.rele_nome, bundle.pm?.nome && `PM ${bundle.pm.nome}`].filter(Boolean).join(' · ')}
-                </p>
-              </div>
-            </>
+          {medOk && temPm && (
+            <button type="button" onClick={() => setCustosAberto(true)}
+              className="grid grid-cols-1 min-[760px]:grid-cols-3"
+              style={{ ...s.card, width: '100%', boxSizing: 'border-box', alignItems: 'center', minHeight: 76, padding: '8px 0' }}>
+              <span style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '4px 20px', minWidth: 0 }}>
+                <span style={{ fontSize: 13, color: NX.mudo, whiteSpace: 'nowrap' }}>Valor da energia hoje</span>
+                <span style={{ fontSize: 22, fontWeight: 800, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{brl(custosHoje?.custos?.custo_total)}</span>
+              </span>
+              <span style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '4px 20px', borderLeft: `1px solid ${NX.linha}`, minWidth: 0 }}>
+                <span style={{ fontSize: 13, color: NX.mudo, whiteSpace: 'nowrap' }}>Demanda máxima</span>
+                <span style={{ fontSize: 22, fontWeight: 800, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{demandaMax != null ? `${fmt(demandaMax, 1)} kW` : '—'}</span>
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '0 20px', borderLeft: `1px solid ${NX.linha}`, height: 44, fontSize: 14, fontWeight: 800, color: NX.acao, whiteSpace: 'nowrap' }}>
+                <span>Custos por horário</span><span>›</span>
+              </span>
+            </button>
           )}
+
+          {medOk && (
+            <GraficoNx equipamentoId={medId} catalogo={catalogo} padrao={['pAt']}
+              resumo={pt != null ? `${fmt(pt, 1)} kW agora` : undefined} />
+          )}
+
+          <Duas>
+            {medOk ? (
+              <FasesNx rows={fases} ff={mostraFF} onFF={setFf} temToggle={temFF && temFN}
+                nota={temPm ? `PM: ${bundle.pm?.nome ?? bundle.pm?.equipamento_id}` : `IED: ${bundle.status_fonte?.rele_nome ?? bundle.status_fonte?.rele_equipamento_id}`} />
+            ) : <div />}
+            <LinhasNx titulo="Cadastro" rows={[
+              { k: 'Corrente nominal', v: bundle.cadastro?.corrente_nominal_a ? `${fmt(bundle.cadastro.corrente_nominal_a, 0)} A` : '—' },
+              { k: 'Tensão nominal', v: bundle.cadastro?.tensao_nominal_v ? `${fmt(bundle.cadastro.tensao_nominal_v, 0)} V` : '—', opcional: true },
+              { k: 'Alimentado por', v: bundle.cadastro?.alimentado_por?.length ? bundle.cadastro.alimentado_por.join(', ') : '—' },
+              { k: 'Alimenta', v: alimenta.length ? alimenta.join(', ') : '—' },
+            ]} />
+          </Duas>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <Registros equipamentoId={equipamentoId} extra={extras} />
+            <span style={{ fontSize: 12, color: NX.mudo, padding: '0 4px' }}>Histórico de manobras · {manobrasTxt}</span>
+          </div>
         </div>
-      </DialogContent>
-    </Dialog>
+      )}
+
+      <NxDialog open={!!confirmando} onClose={() => { if (!enviando) setConfirmando(null); }} label="Confirmar comando">
+        <span style={{ fontSize: 18, fontWeight: 800 }}>{confirmando} {nome}?</span>
+        <span style={{ fontSize: 14, color: NX.mudo }}>{nota}</span>
+        <span style={{ fontSize: 13, color: NX.mudo }}>O comando vai para o equipamento real pela TON.</span>
+        <NxDialogButtons onCancel={() => setConfirmando(null)} busy={!!enviando} onConfirm={() => { if (confirmando) void executar(confirmando); }} />
+      </NxDialog>
+
+      <NxDialog open={custosAberto} onClose={() => setCustosAberto(false)} label="Custos por horário" width={520}>
+        <NxDialogHead title="Custos por horário" sub={`${nome} · hoje${custosHoje?.unidade?.nome ? ` · tarifa da UC ${custosHoje.unidade.nome}` : ''}`} onClose={() => setCustosAberto(false)} />
+        {!custoOk ? (
+          <span style={{ fontSize: 14, color: NX.mudo, padding: '12px 0' }}>Sem custo calculado para hoje (confira a unidade e a tarifa do PM).</span>
+        ) : (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr 1fr', fontSize: 11, fontWeight: 700, color: NX.mudo, letterSpacing: 0.4, padding: '6px 0' }}>
+              <span>POSTO</span><span style={{ textAlign: 'right' }}>kWh</span><span style={{ textAlign: 'right' }}>R$/kWh</span><span style={{ textAlign: 'right' }}>R$</span>
+            </div>
+            {linhasPosto(custosHoje as CustosEnergiaResponseDto).map((r) => (
+              <div key={r.k} style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr 1fr', fontSize: 14, padding: '8px 0', borderTop: `1px solid ${NX.linha}` }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span className={`w-2.5 h-2.5 rounded-[3px] ${r.cor}`} />{r.k}</span>
+                <span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(r.kwh, 0)}</span>
+                <span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.tarifa != null ? fmt(r.tarifa, 2) : '—'}</span>
+                <span style={{ textAlign: 'right', fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{brl(r.rs)}</span>
+              </div>
+            ))}
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 16, fontWeight: 800, borderTop: `2px solid ${NX.texto}`, paddingTop: 10, marginTop: 2 }}>
+              <span>Total</span><span>{brl(custosHoje?.custos?.custo_total)}</span>
+            </div>
+            <span style={{ fontSize: 13, color: NX.mudo }}>
+              {fmt(consumo?.energia_total_kwh, 0)} kWh · demanda máxima {demandaMax != null ? `${fmt(demandaMax, 1)} kW` : '—'}
+            </span>
+          </>
+        )}
+        {custosHoje?.aviso && <span style={{ fontSize: 13, color: NX.warn }}>{custosHoje.aviso}</span>}
+        <button type="button" onClick={() => setCustosAberto(false)} style={{ height: 44, borderRadius: 12, background: NX.acao, color: '#FFFFFF', fontWeight: 800, textAlign: 'center', marginTop: 8 }}>Fechar</button>
+      </NxDialog>
+    </NxShell>
   );
 }
 

@@ -1,28 +1,24 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { SlidersHorizontal } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { api } from '@/config/api';
 import { useDados, getPath, fmt, tsInfo } from './sheetParts';
+import { useCustos, linhasPosto, brl, unwrap, useHistorico, janela, bucketize, type Periodo } from './equipUi';
 import {
-  EquipShell, Pill, Card, SectionLabel, StatusLine, KpiCells, BigButton, Switch, FieldRow, Segmented,
-  SubDialog, DialogButtons, CollapsibleChart, Registros, useCustos, linhasPosto, brl, unwrap, ACAO, type Tone, type RegistroExtra,
-} from './equipUi';
+  NX, s, NxShell, NxDialog, NxDialogButtons, NxSwitchRow, NxSeg, IcoChevron, IcoLixo, IcoCheck2, type NxTone,
+} from './nxMock';
 import {
-  IrrigacaoAvancada, CONFIG_PADRAO, arco, textoFaixas, tituloEnvio, resumoConfig, previsao,
-  type ConfigIrrigacao, type EnvioIrrigacao, type FaixaCanhao,
+  IrrigacaoAvancada, CONFIG_PADRAO, arco, tituloEnvio, resumoConfig, previsao, textoProgramacao,
+  type ConfigIrrigacao, type EnvioIrrigacao, type FaixaCanhao, type Parada, type Programacao, type NovaProgramacao, type AbaIrrigacao,
 } from './PivoIrrigacao';
 
 /**
- * Modal do Pivô — mockup "Web — Modal do Pivô" (NEXON-5), sobre a operação em
- * SEQUÊNCIA com o bombeamento (docs/IOT-PIVO-BOMBEAMENTO.md): "Girar ←/→" faz o
- * backend ligar a bomba, confirmar, esperar a pressurização e só então girar;
- * "Desligar" para o pivô e desliga a bomba se nenhum outro pivô dela estiver girando.
- *
- * Operação: mapa, status, comando (com confirmação), última sequência, indicadores,
- * bombeamento, custo por posto, gráfico recolhível e registros.
- * Configuração: bombeamento, partida, bloqueio de ponta (/pivos/:id/config) e
- * programação de horários (/pivos/:id/programacoes), com revisão antes de gravar.
- * Ângulo, pressão e horímetro vêm da telemetria por melhor esforço ("—" sem leitura).
+ * Modal do Pivô — cópia 1:1 do mockup "Web — Modal do Pivô" (NEXON-5), sobre a operação
+ * em SEQUÊNCIA com o bombeamento (docs/IOT-PIVO-BOMBEAMENTO.md): "Ligar" faz o backend
+ * ligar a bomba, confirmar, esperar a pressurização e só então girar; "Desligar" para o
+ * pivô e desliga a bomba se nenhum outro pivô dela estiver girando.
+ * Dados reais: /pivos/:id/estado, /acionar, /bombeamento, /config, /programacoes,
+ * telemetria (/equipamentos/:id/dados), custos por posto e /logs-mqtt. Sem leitura → "—".
  */
 
 type Bin = 0 | 1 | null;
@@ -41,10 +37,6 @@ interface Estado {
 }
 interface Janela { ativo: boolean; inicio: string; fim: string; dias: number[] }
 interface PivoConfig { bloqueio_ponta: Janela; reservado: Janela; origem_ponta: { numero_uc?: string; concessionaria?: string } | null }
-interface Programacao {
-  id: string; nome: string; ativo: boolean; hora_inicio: string; dias: number[]; modo: 'percurso' | 'tempo';
-  duracao_min?: number | null; sentido: 'horario' | 'anti_horario'; velocidade?: number | null; com_agua?: boolean;
-}
 interface Opcoes {
   tons: Array<{ id: string; nome: string; topico: string | null; unidade: string }>;
   bombeamentos: Array<{ pivo_id: string; nome: string; bombeamento: Partial<Bombeamento> | null }>;
@@ -59,15 +51,9 @@ const erroMsg = (e: unknown): string => {
   const x = e as { response?: { data?: { message?: string; data?: { message?: string } } }; message?: string };
   return x?.response?.data?.message ?? x?.response?.data?.data?.message ?? x?.message ?? 'Falha';
 };
-const ACAO_LABEL: Record<string, string> = { girar_direita: 'Girar à direita', girar_esquerda: 'Girar à esquerda', desligar: 'Desligar' };
-const DIAS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
-const diasTxt = (d: number[]) => {
-  const s = [...d].sort((a, b) => a - b).join(',');
-  if (s === '1,2,3,4,5') return 'Seg a sex';
-  if (s === '1,2,3,4,5,6,7') return 'Todos os dias';
-  if (s === '6,7') return 'Sáb e dom';
-  return d.map((x) => DIAS[x - 1]).join(', ');
-};
+const ACAO_LABEL: Record<Acao, string> = { girar_direita: 'Ligar · Avanço', girar_esquerda: 'Ligar · Reverso', desligar: 'Desligar' };
+const col = (gap: number): CSSProperties => ({ display: 'flex', flexDirection: 'column', gap });
+const VERDE = '#1F7A43';
 
 function usePivoEstado(id: string) {
   const [estado, setEstado] = useState<Estado | null>(null);
@@ -83,88 +69,302 @@ function usePivoEstado(id: string) {
   return { estado, erro, carregar, executando };
 }
 
-function MapaPivo({ angulo, girando, falha, sentido, faixas }: { angulo: number | null; girando: boolean; falha: boolean; sentido: string | null; faixas: FaixaCanhao[] }) {
-  const cx = 179, cy = 150, r = 118;
-  const pt = (a: number) => { const t = (a * Math.PI) / 180; return [cx + r * Math.sin(t), cy - r * Math.cos(t)]; };
+/** Programação de horários (/pivos/:id/programacoes) — mesma lista na Configuração e na aba Agenda. */
+function useProgramacoes(pivoId: string) {
+  const [progs, setProgs] = useState<Programacao[] | null>(null);
+  const carregar = useCallback(() => {
+    api.get(`/pivos/${pivoId}/programacoes`).then((r) => setProgs(corpo<Programacao[]>(r) ?? [])).catch(() => setProgs([]));
+  }, [pivoId]);
+  useEffect(() => { carregar(); }, [carregar]);
+  const remover = async (pid: string) => {
+    try { await api.delete(`/pivos/${pivoId}/programacoes/${pid}`); carregar(); toast.success('Horário removido'); }
+    catch (e) { toast.error('Não removeu', { description: erroMsg(e) }); }
+  };
+  const salvar = async (p: NovaProgramacao) => {
+    try { await api.post(`/pivos/${pivoId}/programacoes`, p); carregar(); toast.success('Agendamento salvo'); return true; }
+    catch (e) { toast.error('Não salvou', { description: erroMsg(e) }); return false; }
+  };
+  return { progs, remover, salvar };
+}
+
+/** Abaixo de 760 px a grade de 2 colunas vira 1. */
+function useEstreito(max = 759) {
+  const q = `(max-width: ${max}px)`;
+  const [v, setV] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.(q).matches);
+  useEffect(() => {
+    const m = window.matchMedia?.(q);
+    if (!m) return;
+    const on = () => setV(m.matches);
+    on();
+    m.addEventListener('change', on);
+    return () => m.removeEventListener('change', on);
+  }, [q]);
+  return v;
+}
+
+// ------------------------------------------------------------------ mapa
+const pt = (cx: number, cy: number, r: number, a: number) => {
+  const t = (a * Math.PI) / 180;
+  return [Math.round((cx + r * Math.sin(t)) * 10) / 10, Math.round((cy - r * Math.cos(t)) * 10) / 10];
+};
+const setorD = (cx: number, cy: number, r: number, a0: number, a1: number) => {
+  const span = (((a1 - a0) % 360) + 360) % 360;
+  const p0 = pt(cx, cy, r, a0), p1 = pt(cx, cy, r, a0 + span);
+  return `M${cx} ${cy} L${p0[0]} ${p0[1]} A${r} ${r} 0 ${span > 180 ? 1 : 0} 1 ${p1[0]} ${p1[1]} Z`;
+};
+
+function MapaPivo({ angulo, girando, falha, sentido, direcao, faixas }: {
+  angulo: number | null; girando: boolean; falha: boolean; sentido: 'direita' | 'esquerda' | null; direcao: string; faixas: FaixaCanhao[];
+}) {
   const a = angulo ?? 0;
-  const [ax, ay] = pt(a);
-  const a1 = sentido === 'esquerda' ? a - 47 : a + 47;
-  const [p0, p1] = [pt(Math.min(a, a1)), pt(Math.max(a, a1))];
-  const setor = `M${cx} ${cy} L${p0[0].toFixed(1)} ${p0[1].toFixed(1)} A${r} ${r} 0 0 1 ${p1[0].toFixed(1)} ${p1[1].toFixed(1)} Z`;
-  const sentidoTxt = sentido === 'direita' ? 'Avanço' : sentido === 'esquerda' ? 'Reverso' : null;
+  const arm = pt(179, 150, 118, a);
+  const setor = sentido === 'esquerda' ? setorD(179, 150, 118, a - 47, a) : setorD(179, 150, 118, a, a + 47);
   return (
-    <div className="rounded-2xl overflow-hidden relative h-[300px] bg-[#26301F]">
-      <svg viewBox="0 0 358 300" width="100%" height="300" preserveAspectRatio="xMidYMid slice" className="block" role="img" aria-label={angulo != null ? `Pivô, ângulo atual ${fmt(angulo, 1)} graus` : 'Pivô, ângulo não informado'}>
+    <div style={{ borderRadius: 16, overflow: 'hidden', position: 'relative', height: 300, background: '#26301F' }}>
+      <svg viewBox="0 0 358 300" width="100%" height="300" preserveAspectRatio="xMidYMid slice" style={{ display: 'block' }} role="img"
+        aria-label={angulo != null ? `Mapa do pivô, ângulo atual ${fmt(angulo, 1)} graus` : 'Mapa do pivô, ângulo não informado'}>
         <rect x="0" y="0" width="358" height="300" fill="#2B3523" />
         <path d="M0 230 C60 210 90 270 150 300 L0 300 Z" fill="#1F2A1A" />
         <path d="M250 0 C270 40 320 50 358 40 L358 0 Z" fill="#5A4E35" opacity="0.6" />
         <circle cx="-10" cy="50" r="90" fill="#3A4730" />
         <circle cx="365" cy="230" r="100" fill="#3E4B33" />
-        <circle cx={cx} cy={cy} r={r} fill="#5B5A3C" stroke="rgba(255,255,255,0.35)" strokeWidth="1.5" />
-        {(girando || falha) && angulo != null && <path d={setor} fill={falha ? 'rgba(229,88,79,0.45)' : 'rgba(114,191,74,0.5)'} />}
-        {faixas.map((f) => <path key={f.id} d={arco(cx, cy, r + 7, f.liga, ((f.desliga - f.liga) % 360 + 360) % 360)} fill="none" stroke="#70C04B" strokeWidth="3" strokeLinecap="round" />)}
-        {angulo != null && <line x1={cx} y1={cy} x2={ax} y2={ay} stroke="#FFFFFF" strokeWidth="3" strokeLinecap="round" />}
-        <circle cx={cx} cy={cy} r="4" fill="#FFFFFF" />
+        <circle cx="179" cy="150" r="118" fill="#5B5A3C" stroke="rgba(255,255,255,0.35)" strokeWidth="1.5" />
+        <path d={(girando || falha) && angulo != null ? setor : 'M0 0'} fill={falha ? 'rgba(229,88,79,0.45)' : 'rgba(114,191,74,0.5)'} />
+        {faixas.map((f) => <path key={f.id} d={arco(179, 150, 125, f.liga, ((f.desliga - f.liga) % 360 + 360) % 360)} fill="none" stroke="#70C04B" strokeWidth="3" strokeLinecap="round" />)}
+        {angulo != null && <line x1="179" y1="150" x2={arm[0]} y2={arm[1]} stroke="#FFFFFF" strokeWidth="3" strokeLinecap="round" />}
+        <circle cx="179" cy="150" r="4" fill="#FFFFFF" />
         <path d="M173 22 L185 22 L179 32 Z" fill="#FFFFFF" />
       </svg>
-      <div className="absolute top-3 left-3 h-[30px] px-3 rounded-full bg-[rgba(14,14,34,0.75)] text-white flex items-center text-[13px] font-bold">
-        {angulo != null ? `${fmt(angulo, 1)}°` : 'Ângulo —'}{sentidoTxt ? ` · ${sentidoTxt}` : ''}
+      <div style={{ position: 'absolute', top: 12, left: 12, height: 30, padding: '0 12px', borderRadius: 15, background: 'rgba(14,14,34,0.75)', color: '#FFFFFF', display: 'flex', alignItems: 'center', fontSize: 13, fontWeight: 700 }}>
+        {angulo != null ? `${fmt(angulo, 1)}°` : '—°'} · {direcao}
       </div>
     </div>
   );
 }
 
+// ------------------------------------------------------------- gráfico
+const kw = (v: unknown) => { const n = Number(v); return v == null || v === '' || !Number.isFinite(n) ? null : Math.abs(n) > 1000 ? n / 1000 : n; };
+const SERIES = [
+  { label: 'Total', color: VERDE, pick: (d: Record<string, unknown>) => kw(d?.Pt ?? d?.['power.active_total']) },
+  { label: 'Bomba', color: '#3B6FD6', pick: (d: Record<string, unknown>) => kw(getPath(d, 'bomba.Pt') ?? d?.bomba_Pt ?? getPath(d, 'bomba.potencia') ?? d?.bomba_potencia) },
+];
+function eixoX(p: Periodo, ini: Date, fim: Date) {
+  if (p === 'hoje') return [0, 6, 12, 18, 24].map((h) => ({ f: h / 24, label: `${String(h).padStart(2, '0')}h` }));
+  const span = fim.getTime() - ini.getTime();
+  return Array.from({ length: 5 }, (_, i) => ({ f: i / 4, label: new Date(ini.getTime() + (span * i) / 4).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) }));
+}
+
+function GraficoPotencia({ equipamentoId, resumo }: { equipamentoId: string; resumo: string }) {
+  const [open, setOpen] = useState(false);
+  const [per, setPer] = useState<Periodo>('hoje');
+  const [ini, fim] = useMemo(() => {
+    const [a, b] = janela(per);
+    if (per === 'hoje') { const e = new Date(a); e.setDate(e.getDate() + 1); return [a, e]; }
+    return [a, b];
+  }, [per, open]); // eslint-disable-line react-hooks/exhaustive-deps
+  const { pts, loading } = useHistorico(equipamentoId, ini, per === 'hoje' ? new Date() : fim, open);
+  const N = per === 'hoje' ? 96 : per === 'semana' ? 168 : 180;
+  const linhas = useMemo(() => {
+    if (!pts) return null;
+    const vals = SERIES.map((x) => bucketize(pts, ini.getTime(), fim.getTime(), N, x.pick));
+    const max = Math.max(1, ...vals.flat().filter((v): v is number => v != null));
+    const paths = vals.map((arr) => {
+      let d = ''; let pen = false;
+      arr.forEach((v, i) => {
+        if (v == null) { pen = false; return; }
+        d += `${pen ? 'L' : 'M'}${(((i + 0.5) / N) * 700).toFixed(1)} ${Math.round(140 - (v / max) * 130)} `; pen = true;
+      });
+      return d;
+    });
+    return { paths, max, vazio: paths.every((p) => !p) };
+  }, [pts, ini, fim, N]);
+  const aba = (sel: boolean): CSSProperties => ({ height: 30, padding: '0 12px', borderRadius: 9, fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', ...(sel ? { background: NX.card } : { color: NX.mudo }) });
+
+  return (
+    <div style={{ ...s.card, padding: '0 16px' }}>
+      <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} style={{ width: '100%', minHeight: 52, display: 'flex', alignItems: 'center', gap: 12 }}>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={VERDE} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 17l5-6 4 3 5-7 4 4" /><path d="M3 21h18" /></svg>
+        <span style={{ flex: 1, fontSize: 15, fontWeight: 800 }}>Gráfico de potência</span>
+        <span style={{ fontSize: 13, color: NX.mudo }}>{resumo}</span>
+        <IcoChevron size={18} style={{ transition: 'transform .15s', transform: `rotate(${open ? 180 : 0}deg)` }} />
+      </button>
+      {open && (
+        <div style={{ borderTop: `1px solid ${NX.linha2}`, padding: '12px 0 16px 0', ...col(8) }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 4, padding: 3, borderRadius: 12, background: NX.seg }}>
+              {(['hoje', 'semana', 'mes'] as const).map((p) => (
+                <button key={p} type="button" aria-pressed={per === p} onClick={() => setPer(p)} style={aba(per === p)}>{p === 'hoje' ? 'Hoje' : p === 'semana' ? 'Semana' : 'Mês'}</button>
+              ))}
+            </div>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 14, fontSize: 13, color: NX.mudo }}>
+              {SERIES.map((x) => (
+                <span key={x.label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ width: 10, height: 3, background: x.color, borderRadius: 2 }} />{x.label}</span>
+              ))}
+              <button type="button" aria-label="Escolher grandezas do gráfico" style={{ width: 32, height: 32, borderRadius: 16, background: NX.seg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={VERDE} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1" /></svg>
+              </button>
+            </span>
+          </div>
+          {loading || !linhas ? (
+            <div style={{ height: 170, display: 'grid', placeItems: 'center', fontSize: 13, color: NX.mudo }}>Carregando…</div>
+          ) : linhas.vazio ? (
+            <div style={{ height: 170, display: 'grid', placeItems: 'center', fontSize: 13, color: NX.mudo }}>Sem leituras no período</div>
+          ) : (
+            <svg viewBox="0 0 700 170" width="100%" height="170" role="img" aria-label="Potência do pivô e da bomba">
+              <line x1="0" x2="700" y1="10" y2="10" stroke={NX.linha} />
+              <line x1="0" x2="700" y1="140" y2="140" stroke={NX.borda} />
+              <text x="0" y="24" fontSize="11" fill={NX.mudo}>{fmt(linhas.max, 0)} kW</text>
+              {linhas.paths.map((d, i) => d && <path key={i} d={d} fill="none" stroke={SERIES[i].color} strokeWidth={i ? 2 : 2.2} strokeLinejoin="round" />)}
+              {eixoX(per, ini, fim).map((t, i, a) => (
+                <text key={i} x={t.f * 700} y="160" fontSize="11" fill={NX.mudo} textAnchor={i === 0 ? undefined : i === a.length - 1 ? 'end' : 'middle'}>{t.label}</text>
+              ))}
+            </svg>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ------------------------------------------------------------- registros
+interface LogMqtt { id: string; mensagem?: string | null; severidade?: string | null; created_at?: string; regra?: { nome?: string | null } | null }
+interface Reg { t: number; txt: string; quem: string; ok?: boolean; ruim?: boolean }
+
+function RegistrosPivo({ equipamentoId, extra, estreito }: { equipamentoId: string; extra: Reg[]; estreito: boolean }) {
+  const [rows, setRows] = useState<LogMqtt[] | null>(null);
+  useEffect(() => {
+    let vivo = true;
+    api.get('/logs-mqtt', { params: { equipamentoId, limit: 6, page: 1 } })
+      .then((r) => { if (vivo) { const d = unwrap<LogMqtt[] | { data?: LogMqtt[] }>(r); setRows(Array.isArray(d) ? d : d?.data ?? []); } })
+      .catch(() => { if (vivo) setRows([]); });
+    return () => { vivo = false; };
+  }, [equipamentoId]);
+  const todos: Reg[] = useMemo(() => [
+    ...extra,
+    ...(rows ?? []).map((l) => {
+      const sev = String(l.severidade ?? '').toUpperCase();
+      return { t: l.created_at ? new Date(l.created_at).getTime() : 0, txt: l.mensagem ?? l.regra?.nome ?? 'Evento', quem: l.regra?.nome ?? 'Sistema', ruim: sev === 'CRITICA' || sev === 'CRÍTICA' || sev === 'ALTA' };
+    }),
+  ].sort((x, y) => y.t - x.t).slice(0, Math.max(6, extra.length)), [rows, extra]);
+  const grade = estreito ? '84px 1fr 96px 24px' : '120px 1fr 160px 28px';
+  const gap = estreito ? 8 : 12;
+  return (
+    <div style={{ ...s.card, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px' }}>
+        <span style={{ fontSize: 15, fontWeight: 800 }}>Registros</span>
+        <Link to={`/logs/logs-mqtt?equipamentoId=${encodeURIComponent(equipamentoId)}`} style={{ fontSize: 13, fontWeight: 700, textDecoration: 'none' }}>Ver todos ›</Link>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: grade, gap, padding: '8px 16px', fontSize: 11, fontWeight: 700, color: NX.mudo, letterSpacing: 0.4, borderTop: `1px solid ${NX.linha2}` }}>
+        <span>DATA/HORA</span><span>EVENTO</span><span>ORIGEM</span><span />
+      </div>
+      {rows == null && !extra.length ? (
+        <div style={{ padding: '10px 16px', borderTop: `1px solid ${NX.linha}`, fontSize: 14, color: NX.mudo }}>Carregando…</div>
+      ) : todos.length === 0 ? (
+        <div style={{ padding: '10px 16px', borderTop: `1px solid ${NX.linha}`, fontSize: 14, color: NX.mudo }}>Nenhum registro deste equipamento.</div>
+      ) : todos.map((l, i) => (
+        <div key={i} style={{ display: 'grid', gridTemplateColumns: grade, gap, alignItems: 'center', padding: '10px 16px', borderTop: `1px solid ${NX.linha}`, ...(l.ruim ? { background: 'rgba(197,48,48,0.06)' } : {}) }}>
+          <span style={{ fontSize: 13, color: NX.mudo, fontVariantNumeric: 'tabular-nums' }}>
+            {l.t ? new Date(l.t).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(',', '') : '—'}
+          </span>
+          <span style={{ fontSize: 14, color: l.ruim ? NX.bad : NX.texto, ...(l.ruim ? { fontWeight: 700 } : {}) }}>{l.txt}</span>
+          <span style={{ fontSize: 13, color: NX.mudo, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.quem}</span>
+          <span style={{ display: 'flex', justifyContent: 'center' }}>{l.ok && <IcoCheck2 />}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------ modal
+const kpiCel = (i: number): CSSProperties => ({ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, ...(i % 3 ? { borderLeft: `1px solid ${NX.linha}` } : {}) });
+const chaveParada = (id: string) => `nexon:pivo:ultima-parada:${id}`;
+
 export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: string; nome?: string; onClose: () => void }) {
   const id = equipamentoId.trim();
+  const titulo = nome || 'Pivô';
+  const estreito = useEstreito();
   const { dados, ts } = useDados(id);
   const { estado, erro, carregar, executando } = usePivoEstado(id);
+  const prog = useProgramacoes(id);
   const [aba, setAba] = useState('op');
-  const [modal, setModal] = useState<null | 'cost' | 'ligar' | 'desligar' | 'irr' | 'envio'>(null);
+  const [modal, setModal] = useState<null | 'cost' | 'irr'>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmKind, setConfirmKind] = useState<'quick' | 'stop' | 'start'>('quick');
+  const [irrAba, setIrrAba] = useState<AbaIrrigacao>('simples');
   const [envio, setEnvio] = useState<EnvioIrrigacao | null>(null);
   // Última irrigação enviada por este navegador (a TON só recebe direção e liga/desliga).
   const chaveUltima = `nexon:pivo:ultima:${id}`;
   const [ultima, setUltima] = useState<ConfigIrrigacao>(() => {
     try { const v = localStorage.getItem(chaveUltima); return v ? { ...CONFIG_PADRAO, ...JSON.parse(v) } : CONFIG_PADRAO; } catch { return CONFIG_PADRAO; }
   });
-  const [ponta, setPonta] = useState<Janela | null>(null);
-  useEffect(() => {
-    api.get(`/pivos/${id}/config`).then((r) => setPonta(corpo<PivoConfig>(r)?.bloqueio_ponta ?? null)).catch(() => setPonta(null));
+  const [ultimaParada, setUltimaParada] = useState<Parada>(() => {
+    try { const v = localStorage.getItem(chaveParada(id)); return v ? JSON.parse(v) : { tipo: 'semParar' }; } catch { return { tipo: 'semParar' }; }
+  });
+  const [cfgPivo, setCfgPivo] = useState<PivoConfig | null>(null);
+  const carregarCfg = useCallback(() => {
+    api.get(`/pivos/${id}/config`).then((r) => setCfgPivo(corpo<PivoConfig>(r) ?? null)).catch(() => setCfgPivo(null));
   }, [id]);
+  useEffect(() => { carregarCfg(); }, [carregarCfg]);
+  const ponta = cfgPivo?.bloqueio_ponta ?? null;
   const [enviando, setEnviando] = useState<Acao | null>(null);
   const [custoPer, setCustoPer] = useState<'dia' | 'mes'>('dia');
 
   const g = (p: string) => getPath(dados, p);
   const num = (...ps: string[]) => { for (const p of ps) { const v = g(p); if (v != null && v !== '' && !Number.isNaN(Number(v))) return Number(v); } return null; };
   const info = tsInfo(ts);
-  const ptW = num('Pt', 'power.active_total');
-  const ptKw = ptW == null ? null : Math.abs(ptW) > 1000 ? ptW / 1000 : ptW;
+  const ptKw = kw(g('Pt') ?? g('power.active_total'));
 
   const st = estado?.pivo.status;
   const b = estado?.bombeamento ?? null;
   const seq = estado?.sequencia ?? null;
   const girando = st?.direita === 1 || st?.esquerda === 1;
-  const sentido = st?.direita === 1 ? 'direita' : st?.esquerda === 1 ? 'esquerda' : null;
+  const sentido: 'direita' | 'esquerda' | null = st?.direita === 1 ? 'direita' : st?.esquerda === 1 ? 'esquerda' : null;
+  const direcaoAtual = sentido === 'direita' ? 'Avanço' : sentido === 'esquerda' ? 'Reverso' : ultima.direcao;
   const angulo = num('angulo', 'posicao');
+  const angTxt = angulo != null ? `${fmt(angulo, 1)}°` : '—';
+  const ligando = executando && seq?.acao !== 'desligar';
+  const on = girando || ligando;
+  // Última partida que falhou (nas últimas 6 h) e o pivô parado: falha.
+  const falhaSeq = !!seq?.erro && !executando && !girando && Date.now() - new Date(seq.finished_at ?? seq.created_at).getTime() < 6 * 3600000;
+  const falhaPressao = falhaSeq && /press/i.test(seq?.erro ?? '');
+  const falha = st?.erro === 1 || falhaSeq;
 
-  const { tone, label, texto } = ((): { tone: Tone; label: string; texto: string } => {
-    if (executando) return { tone: 'warn', label: 'Alerta', texto: seq?.acao === 'desligar' ? 'Desligando…' : 'Partindo · bomba e pressurização' };
-    if (st?.erro === 1) return { tone: 'bad', label: 'Falha', texto: 'Erro no painel do pivô · Parado' };
-    if (girando) return { tone: 'ok', label: 'Normal', texto: `Girando à ${sentido}${b ? ` · bomba ${b.ligada === 1 ? 'ligada' : b.ligada === 0 ? 'desligada' : '—'}` : ''}` };
-    if (st?.desligado === 1 || st?.direita === 0 || st?.esquerda === 0) return { tone: 'ok', label: 'Normal', texto: 'Parado' };
+  const { tone, label, texto } = ((): { tone: NxTone; label: string; texto: string } => {
+    if (executando && seq?.acao === 'desligar') return { tone: 'ok', label: 'Normal', texto: 'Desligando…' };
+    if (ligando) return { tone: 'ok', label: 'Normal', texto: b ? 'Esperando pressurização · bomba ligada' : 'Ligando…' };
+    if (falha) return { tone: 'bad', label: 'Falha', texto: falhaPressao ? 'Falha de pressão · Parado' : st?.erro === 1 ? 'Falha no painel · Parado' : 'Falha na partida · Parado' };
+    if (girando) return { tone: 'ok', label: 'Normal', texto: ultima.semAgua ? `Girando · ${direcaoAtual} · Seco` : `Irrigando · ${ultima.percentual}% · ${direcaoAtual} · Molhado` };
+    if (st?.desligado === 1 || st?.direita === 0 || st?.esquerda === 0) return { tone: 'ok', label: 'Normal', texto: 'Parado · Painel energizado' };
     if (!estado && !info.online) return { tone: 'off', label: 'Sem comunicação', texto: info.hasTs ? `Última leitura ${info.idade}` : 'Sem leitura' };
-    return { tone: 'off', label: 'Sem status', texto: 'Status do pivô não lido da TON' };
+    return { tone: 'warn', label: 'Alerta', texto: 'Status do pivô não lido da TON' };
   })();
 
+  // "Término previsto hoje 22:10 · ângulo final 0°" (parada por ângulo da última irrigação).
+  const eta = useMemo(() => {
+    if (!girando || ultimaParada.tipo !== 'porAngulo' || angulo == null) return null;
+    const p = previsao(ultima, ultimaParada, direcaoAtual as ConfigIrrigacao['direcao'], angulo, 21, new Date());
+    if (!p.fim) return null;
+    const d0 = new Date(); d0.setHours(0, 0, 0, 0);
+    const dias = Math.floor((new Date(p.fim).setHours(0, 0, 0, 0) - d0.getTime()) / 86400000);
+    const quando = dias <= 0 ? 'hoje' : dias === 1 ? 'amanhã' : `em ${dias} dias`;
+    return `Término previsto ${quando} ${p.fim.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} · ângulo final ${ultimaParada.angulo}°`;
+  }, [girando, ultimaParada, angulo, ultima, direcaoAtual]);
+
+  const acaoDe = (c: ConfigIrrigacao): Acao => (c.direcao === 'Avanço' ? 'girar_direita' : 'girar_esquerda');
   const acionar = async (acao: Acao, irrigacao?: EnvioIrrigacao) => {
+    setModal(null); setConfirmOpen(false);
     setEnviando(acao);
     try {
       await api.post(`/pivos/${id}/acionar`, irrigacao ? { acao, irrigacao } : { acao });
       if (irrigacao) {
-        setUltima(irrigacao.config);
-        try { localStorage.setItem(chaveUltima, JSON.stringify(irrigacao.config)); } catch { /* sem storage */ }
+        setUltima(irrigacao.config); setUltimaParada(irrigacao.parada);
+        try {
+          localStorage.setItem(chaveUltima, JSON.stringify(irrigacao.config));
+          localStorage.setItem(chaveParada(id), JSON.stringify(irrigacao.parada));
+        } catch { /* sem storage */ }
       }
       toast.success(`${ACAO_LABEL[acao]}: sequência iniciada`, { description: b ? 'Bomba, pressurização e giro — acompanhe em Registros.' : undefined });
-      setModal(null); setEnvio(null);
+      setEnvio(null);
       await carregar();
     } catch (e) {
       toast.error(`${ACAO_LABEL[acao]}: não iniciou`, { description: erroMsg(e) });
@@ -172,193 +372,244 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
       setEnviando(null);
     }
   };
-  const acaoDe = (c: ConfigIrrigacao): Acao => (c.direcao === 'Avanço' ? 'girar_direita' : 'girar_esquerda');
 
   const media = (...ks: string[]) => { const v = ks.map((k) => num(k)).filter((x): x is number => x != null); return v.length ? v.reduce((a, c) => a + c, 0) / v.length : null; };
   const tensao = media('Vab', 'Vbc', 'Vca') ?? media('Va', 'Vb', 'Vc');
   const corrente = media('Ia', 'Ib', 'Ic');
   const kpis = [
-    { k: 'Ângulo', v: angulo != null ? `${fmt(angulo, 1)}°` : '—' },
+    { k: 'Ângulo', v: angTxt },
     { k: 'Pressão', v: num('pressao') != null ? `${fmt(num('pressao'), 1)} bar` : '—' },
     { k: 'Tensão', v: tensao != null ? `${fmt(tensao, 0)} V` : '—' },
     { k: 'Potência total', v: ptKw != null ? `${fmt(ptKw, 1)} kW` : '—' },
     { k: 'Corrente pivô', v: corrente != null ? `${fmt(corrente, 1)} A` : '—' },
     { k: 'Horímetro', v: num('horimetro') != null ? `${fmt(num('horimetro'), 0)} h` : '—' },
   ];
-  const fases: Array<[string, string, string]> = (['a', 'b', 'c'] as const).map((f) => {
-    const ff = { a: 'Vab', b: 'Vbc', c: 'Vca' }[f], fn = `V${f}`;
-    const v = num(ff) ?? num(fn), i = num(`I${f}`);
-    return [num(ff) != null ? ff.slice(1).toUpperCase() : f.toUpperCase(), v != null ? `${fmt(v, 0)} V` : '—', i != null ? `${fmt(i, 1)} A` : '—'];
-  });
-
   const bNum = (...ks: string[]) => num(...ks.map((k) => `bomba.${k}`), ...ks.map((k) => `bomba_${k}`));
   const bKpis = [
     { k: 'Pressão recalque', v: bNum('pressao') != null ? `${fmt(bNum('pressao'), 1)} bar` : '—' },
-    { k: 'Potência', v: bNum('Pt', 'potencia') != null ? `${fmt(bNum('Pt', 'potencia'), 1)} kW` : '—' },
+    { k: 'Potência', v: bNum('Pt', 'potencia') != null ? `${fmt(kw(bNum('Pt', 'potencia')), 1)} kW` : '—' },
     { k: 'FP', v: bNum('FPt', 'fp') != null ? fmt(bNum('FPt', 'fp'), 2) : '—' },
     { k: 'Temp. motor', v: bNum('temperatura') != null ? `${fmt(bNum('temperatura'), 0)} °C` : '—' },
     { k: 'Horímetro', v: bNum('horimetro') != null ? `${fmt(bNum('horimetro'), 0)} h` : '—' },
     { k: 'Partidas', v: bNum('partidas') != null ? fmt(bNum('partidas'), 0) : '—' },
   ];
+  const fases: Array<[string, string, string]> = (['a', 'b', 'c'] as const).map((f) => {
+    const ff = { a: 'Vab', b: 'Vbc', c: 'Vca' }[f];
+    const v = bNum(ff) ?? num(ff) ?? num(`V${f}`), i = bNum(`I${f}`) ?? num(`I${f}`);
+    return [ff.slice(1).toUpperCase(), v != null ? `${fmt(v, 0)} V` : '—', i != null ? `${fmt(i, 1)} A` : '—'];
+  });
+  const bStatus = !b ? '—' : falhaPressao ? 'Desligada · falha de pressão' : b.ligada === 1 ? 'Ligada' : b.ligada === 0 ? 'Desligada' : 'Sem retorno';
+  const bCor = !b ? NX.neutro : falhaPressao ? NX.bad : b.ligada === 1 ? NX.ok : NX.neutro;
+  const bSub = !b ? 'Não configurado' : `${b.ton_nome ?? 'TON'}${b.ton_removida ? ' (removida!)' : ''} · ${b.compartilhada_com.length ? 'sistema conjugado' : 'ligada junto com o pivô'}`;
+
   // Passos da última sequência entram em Registros (✓✓ = confirmado pelo equipamento).
-  const regSeq: RegistroExtra[] = (seq?.passos ?? []).map((p) => ({
+  const regSeq: Reg[] = useMemo(() => (seq?.passos ?? []).map((p) => ({
     t: new Date(p.t).getTime(), txt: p.msg, quem: p.etapa === 'comando' ? 'Comando' : 'Sistema', ok: p.ok === true, ruim: p.ok === false,
-  }));
+  })), [seq?.passos]);
 
   const { res: custoDia } = useCustos(id, 'dia');
   const { res: custoSel } = useCustos(id, custoPer, undefined, modal === 'cost');
-  const pressS = estado?.sequencia_cfg.pressurizacao_s ?? 120;
+
+  // Botão principal
+  const cmdOff = on ? !estado?.pivo.comandos.desligar && !b : !estado?.pivo.comandos[ultima.direcao === 'Avanço' ? 'direita' : 'esquerda'];
+  const busy = !!enviando || (executando && seq?.acao === 'desligar');
+  const cmdLabel = busy ? 'Executando…' : on ? 'Desligar' : 'Ligar';
+  const cmdStyle = s.cmd(busy || cmdOff ? 'busy' : on ? 'outline' : 'primary');
+
+  const confirmQ = confirmKind === 'stop' ? `Desligar ${titulo}?` : confirmKind === 'start' && envio ? tituloEnvio(envio.modo) : `Ligar ${titulo}?`;
+  const paradaTxt = (p: Parada, e?: EnvioIrrigacao | null) => (e?.modo === 'angulo' ? `ângulo final ${e.anguloFinal ?? 0}°`
+    : p.tipo === 'porAngulo' ? `para em ${p.angulo}°` : p.tipo === 'porVoltas' ? `${p.voltas} volta${p.voltas > 1 ? 's' : ''}` : 'sem parada');
+  const partida = b ? ' A bomba liga e o pivô gira após a pressurização.' : '';
+  const confirmNote = confirmKind === 'stop'
+    ? `O pivô para na posição atual (${angTxt})${b ? ' e a bomba desliga' : ''}.`
+    : confirmKind === 'start' && envio
+      ? `Com esta configuração: ${resumoConfig(envio.config)} · ${paradaTxt(envio.parada, envio)}${envio.inicio ? ` · início ${envio.inicio.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : ''}.${partida}`
+      : `Com a última configuração: ${resumoConfig(ultima)} · sem parada.${partida}`;
+  const doConfirm = () => {
+    if (confirmKind === 'stop') void acionar('desligar');
+    else if (confirmKind === 'start' && envio) void acionar(acaoDe(envio.config), envio);
+    else void acionar(acaoDe(ultima), { modo: 'simples', config: ultima, parada: { tipo: 'semParar' }, inicio: null });
+  };
+  const cancelConfirm = () => setConfirmOpen(false);
+  const abrirIrr = (a: AbaIrrigacao = 'simples') => { setIrrAba(a); setModal('irr'); };
+
+  const custoGrid: CSSProperties = estreito
+    ? { gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', rowGap: 8, padding: '12px 0' }
+    : { gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' };
+  const linhasCusto = linhasPosto(custoSel);
+  const corPosto = (k: string) => (k === 'Ponta' ? NX.bad : k === 'Fora de ponta' ? '#3B6FD6' : NX.ok);
 
   return (
-    <EquipShell
-      title={nome || 'Pivô'}
-      subtitle={info.hasTs ? info.label : 'Sem leitura de energia'}
-      right={<Pill tone={tone}>{label}</Pill>}
+    <NxShell
+      title={titulo}
+      subtitle={custoDia?.unidade?.nome ?? (info.hasTs ? info.label : 'Sem leitura de energia')}
+      right={<span style={s.pill(tone)}><span style={s.pillDot(tone)} />{label}</span>}
       tabs={[{ key: 'op', label: 'Operação' }, { key: 'cfg', label: 'Configuração' }]}
       tab={aba}
       onTab={setAba}
       onClose={onClose}
     >
       {aba === 'op' ? (
-        <div className="flex flex-col gap-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
-            <div className="flex flex-col gap-3">
-              <MapaPivo angulo={angulo} girando={girando} falha={st?.erro === 1} sentido={sentido} faixas={ultima.canhao ? ultima.faixasCanhao : []} />
-              <StatusLine tone={tone} label={label} text={texto} extra={erro ? <span className="text-amber-600 dark:text-amber-400">{erro}</span> : girando ? `${resumoConfig(ultima)}${ultima.canhao ? ' · canhão ligado' : ''}` : undefined} />
-              {girando || executando ? (
-                <BigButton variant="outline" disabled={!!enviando || (!estado?.pivo.comandos.desligar && !b)} onClick={() => setModal('desligar')}>
-                  {enviando === 'desligar' ? 'Executando…' : 'Desligar'}
-                </BigButton>
-              ) : (
-                <BigButton disabled={!!enviando || !estado?.pivo.comandos[ultima.direcao === 'Avanço' ? 'direita' : 'esquerda']} onClick={() => setModal('ligar')}>
-                  {enviando ? 'Executando…' : 'Ligar'}
-                </BigButton>
-              )}
-              <button type="button" onClick={() => setModal('irr')} disabled={girando || executando}
-                className="self-center h-11 px-2.5 flex items-center gap-1.5 text-sm font-bold text-muted-foreground hover:text-foreground disabled:opacity-50">
-                <SlidersHorizontal className="w-4 h-4" /> Irrigação avançada
+        <div style={{ padding: '20px 24px 28px 24px', ...col(16) }}>
+          <div style={{ display: 'grid', gridTemplateColumns: estreito ? 'minmax(0, 1fr)' : 'repeat(2, minmax(0, 1fr))', gap: 16, alignItems: 'start' }}>
+            <div style={col(12)}>
+              <MapaPivo angulo={angulo} girando={girando} falha={falha} sentido={sentido} direcao={direcaoAtual} faixas={ultima.canhao ? ultima.faixasCanhao : []} />
+              <div style={{ ...s.card, padding: '12px 16px', ...col(4) }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={s.stDot(tone)} />
+                  <span style={s.stLabel(tone)}>{label}</span>
+                  <span style={{ fontSize: 14, color: NX.mudo }}>{texto}</span>
+                </div>
+                {eta && <span style={{ fontSize: 13, color: NX.mudo }}>{eta}</span>}
+                {erro && <span style={{ fontSize: 13, color: NX.warn }}>{erro}</span>}
+              </div>
+              <button type="button" disabled={busy || cmdOff} style={cmdStyle}
+                onClick={() => { setConfirmKind(on ? 'stop' : 'quick'); setConfirmOpen(true); }}>{cmdLabel}</button>
+              <button type="button" onClick={() => abrirIrr('simples')}
+                style={{ alignSelf: 'center', height: 36, padding: '0 10px', display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 700, color: NX.mudo }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={NX.mudo} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12" /><circle cx="16" cy="6" r="2" /><circle cx="10" cy="12" r="2" /><circle cx="18" cy="18" r="2" /></svg>
+                Irrigação avançada
               </button>
             </div>
-            <div className="flex flex-col gap-3">
-              <Card className="py-3.5"><KpiCells items={kpis} cols={3} /></Card>
-              <Card className="overflow-hidden">
-                <div className="flex items-center justify-between px-4 py-3 border-b">
-                  <span className="flex flex-col gap-0.5 min-w-0">
-                    <span className="text-[15px] font-extrabold">Bombeamento</span>
-                    <span className="text-xs text-muted-foreground truncate">
-                      {!b ? 'Não configurado' : `${b.ton_nome ?? 'TON'}${b.ton_removida ? ' (removida!)' : ''} · ${b.compartilhada_com.length ? 'sistema conjugado' : 'ligada junto com o pivô'}`}
-                    </span>
-                  </span>
-                  <span className={`text-[13px] font-extrabold ${b?.ligada === 1 ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`}>
-                    {!b ? '—' : b.ligada === 1 ? 'Ligada' : b.ligada === 0 ? 'Desligada' : 'Sem retorno'}
-                  </span>
-                </div>
-                <div className="py-3"><KpiCells items={bKpis} cols={3} size="sm" /></div>
-                <div className="border-t px-4">
-                  <div className="grid grid-cols-3 text-[11px] font-bold text-muted-foreground py-2 tracking-[0.4px]">
-                    <span>FASE</span><span className="text-right">TENSÃO</span><span className="text-right">CORRENTE</span>
+            <div style={col(12)}>
+              <div style={{ ...s.card, padding: '14px 0', display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', rowGap: 14 }}>
+                {kpis.map((k, i) => (
+                  <div key={k.k} style={kpiCel(i)}>
+                    <span style={{ fontSize: 17, fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{k.v}</span>
+                    <span style={{ fontSize: 12, color: NX.mudo }}>{k.k}</span>
                   </div>
-                  {fases.map((f) => (
-                    <div key={f[0]} className="grid grid-cols-3 text-sm py-[7px] border-t border-border">
-                      <span>{f[0]}</span><span className="text-right font-bold tabular-nums">{f[1]}</span><span className="text-right font-bold tabular-nums">{f[2]}</span>
+                ))}
+              </div>
+              <div style={{ ...s.card, overflow: 'hidden' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: `1px solid ${NX.linha2}`, gap: 12 }}>
+                  <span style={{ ...col(2), minWidth: 0 }}>
+                    <span style={{ fontSize: 15, fontWeight: 800 }}>Bombeamento</span>
+                    <span style={{ fontSize: 12, color: NX.mudo }}>{bSub}</span>
+                  </span>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: bCor, textAlign: 'right' }}>{bStatus}</span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', rowGap: 12, padding: '12px 0' }}>
+                  {bKpis.map((k, i) => (
+                    <div key={k.k} style={kpiCel(i)}>
+                      <span style={{ fontSize: 15, fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{k.v}</span>
+                      <span style={{ fontSize: 11, color: NX.mudo, textAlign: 'center' }}>{k.k}</span>
                     </div>
                   ))}
                 </div>
-              </Card>
+                <div style={{ borderTop: `1px solid ${NX.linha2}`, padding: '0 16px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', fontSize: 11, fontWeight: 700, color: NX.mudo, padding: '8px 0', letterSpacing: 0.4 }}>
+                    <span>FASE</span><span style={{ textAlign: 'right' }}>TENSÃO</span><span style={{ textAlign: 'right' }}>CORRENTE</span>
+                  </div>
+                  {fases.map((f) => (
+                    <div key={f[0]} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', fontSize: 14, padding: '7px 0', borderTop: `1px solid ${NX.linha}` }}>
+                      <span>{f[0]}</span>
+                      <span style={{ textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{f[1]}</span>
+                      <span style={{ textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{f[2]}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
 
-          <button type="button" onClick={() => setModal('cost')} className="w-full bg-white dark:bg-[#161633] border rounded-[14px] grid grid-cols-3 items-center min-h-[76px] text-left hover:bg-black/[0.03] dark:hover:bg-white/5">
-            <span className="flex flex-col gap-0.5 px-5 min-w-0">
-              <span className="text-[13px] text-muted-foreground whitespace-nowrap">Custo hoje</span>
-              <span className="text-[22px] font-extrabold tabular-nums whitespace-nowrap">{brl(custoDia?.custos.custo_total)}</span>
+          <button type="button" onClick={() => setModal('cost')}
+            style={{ width: '100%', boxSizing: 'border-box', ...s.card, display: 'grid', alignItems: 'center', minHeight: 76, ...custoGrid }}>
+            <span style={{ ...col(2), padding: '0 20px', minWidth: 0 }}>
+              <span style={{ fontSize: 13, color: NX.mudo, whiteSpace: 'nowrap' }}>Custo desta irrigação</span>
+              <span style={{ fontSize: 22, fontWeight: 800, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{brl(custoDia?.custos.custo_total)}</span>
             </span>
-            <span className="flex flex-col gap-0.5 px-5 border-l border-border min-w-0">
-              <span className="text-[13px] text-muted-foreground whitespace-nowrap">Energia do pivô</span>
-              <span className="text-[22px] font-extrabold tabular-nums whitespace-nowrap">{custoDia ? `${fmt(custoDia.consumo.energia_total_kwh, 0)} kWh` : '—'}</span>
+            <span style={{ ...col(2), padding: '0 20px', borderLeft: `1px solid ${NX.linha}`, minWidth: 0 }}>
+              <span style={{ fontSize: 13, color: NX.mudo, whiteSpace: 'nowrap' }}>Energia do pivô</span>
+              <span style={{ fontSize: 22, fontWeight: 800, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{custoDia ? `${fmt(custoDia.consumo.energia_total_kwh, 0)} kWh` : '—'}</span>
             </span>
-            <span className="flex items-center justify-between gap-2 px-5 border-l border-border h-11 text-sm font-extrabold text-[#177A3C] dark:text-emerald-400 whitespace-nowrap">
+            <span style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '0 20px', height: 44, fontSize: 14, fontWeight: 800, color: VERDE, whiteSpace: 'nowrap',
+              ...(estreito ? { gridColumn: '1 / -1', borderTop: `1px solid ${NX.linha}` } : { borderLeft: `1px solid ${NX.linha}` }),
+            }}>
               <span>Custos por horário</span><span>›</span>
             </span>
           </button>
 
-          <CollapsibleChart
-            equipamentoId={id}
-            title="Gráfico de potência"
-            summary={ptKw != null ? `${fmt(ptKw, 1)} kW agora` : undefined}
-            series={[{ label: 'Total', color: '#177A3C', pick: (d) => { const v = Number(d?.Pt ?? d?.['power.active_total']); return Number.isFinite(v) ? (Math.abs(v) > 1000 ? v / 1000 : v) : null; } }]}
-          />
+          <GraficoPotencia equipamentoId={id} resumo={ptKw != null ? `${fmt(ptKw, 1)} kW agora` : '—'} />
 
-          <Registros equipamentoId={id} extra={regSeq} />
+          <RegistrosPivo equipamentoId={id} extra={regSeq} estreito={estreito} />
         </div>
       ) : (
-        <ConfigPivo pivoId={id} estado={estado} onSalvo={carregar} />
+        <ConfigPivo pivoId={id} estado={estado} cfg={cfgPivo} onSalvo={() => { void carregar(); carregarCfg(); }}
+          progs={prog.progs} onRemoverProg={prog.remover} onAdicionarHorario={() => abrirIrr('agenda')} />
       )}
 
-      <SubDialog open={modal === 'ligar' || modal === 'desligar'} onClose={() => setModal(null)} width={400}
-        title={modal === 'desligar' ? `Desligar ${nome || 'pivô'}?` : `Ligar ${nome || 'pivô'}?`}>
-        <p className="text-sm text-muted-foreground">
-          {modal === 'desligar'
-            ? `O pivô para na posição atual (${angulo != null ? `${fmt(angulo, 1)}°` : '—'}).${b ? ' A bomba desliga se nenhum outro pivô dela estiver girando.' : ''}`
-            : `Com a última configuração: ${resumoConfig(ultima)} · sem parada.${b ? ` A bomba liga e o pivô gira após ${pressS}s de pressurização.` : ''}`}
-        </p>
-        <DialogButtons onCancel={() => setModal(null)} busy={!!enviando}
-          onConfirm={() => (modal === 'desligar' ? acionar('desligar') : acionar(acaoDe(ultima), { modo: 'simples', config: ultima, parada: { tipo: 'semParar' }, inicio: null }))} />
-      </SubDialog>
+      {/* Confirmar comando */}
+      <NxDialog open={confirmOpen} onClose={cancelConfirm} label="Confirmar comando" width={380}>
+        <span style={{ fontSize: 18, fontWeight: 800 }}>{confirmQ}</span>
+        <span style={{ fontSize: 14, color: NX.mudo }}>{confirmNote}</span>
+        <NxDialogButtons onCancel={cancelConfirm} onConfirm={doConfirm} />
+      </NxDialog>
 
-      <SubDialog open={modal === 'irr'} onClose={() => setModal(null)} title="Irrigação avançada" width={560}
-        subtitle={`${nome || 'Pivô'} · ângulo atual ${angulo != null ? `${fmt(angulo, 1)}°` : '—'}`}>
-        <IrrigacaoAvancada
-          nome={nome || 'Pivô'} angulo={angulo} ultima={ultima} lamina100={7.15} tempoVolta100={21} ponta={ponta}
-          agenda={<AgendaPivo pivoId={id} />} enviando={!!enviando}
-          onEnviar={(e) => { setEnvio(e); setModal('envio'); }}
-        />
-      </SubDialog>
-
-      <SubDialog open={modal === 'envio' && !!envio} onClose={() => setModal('irr')} width={420} title={envio ? tituloEnvio(envio.modo) : ''}>
-        {envio && (
-          <>
-            <p className="text-sm text-muted-foreground">
-              {resumoConfig({ ...envio.config })} · {previsao(envio.config, envio.parada, envio.config.direcao, angulo ?? 0, 21, envio.inicio ?? new Date()).texto}
-              {envio.inicio ? ` · início ${envio.inicio.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : ''}
-            </p>
-            {envio.config.canhao && <p className="text-sm text-muted-foreground">{textoFaixas(envio.config.faixasCanhao)}</p>}
-            <DialogButtons onCancel={() => setModal('irr')} busy={!!enviando} onConfirm={() => acionar(acaoDe(envio.config), envio)} />
-          </>
+      {/* Irrigação avançada */}
+      <NxDialog open={modal === 'irr'} onClose={() => setModal(null)} label="Irrigação avançada" width={520}>
+        {modal === 'irr' && (
+          <IrrigacaoAvancada
+            key={irrAba}
+            nome={titulo} angulo={angulo} ultima={ultima} lamina100={7.15} tempoVolta100={21} ponta={ponta}
+            enviando={!!enviando} abaInicial={irrAba}
+            programacoes={prog.progs} onRemoverProgramacao={prog.remover} onSalvarProgramacao={prog.salvar}
+            onEnviar={(e) => { setEnvio(e); setConfirmKind('start'); setConfirmOpen(true); }}
+            onClose={() => setModal(null)}
+          />
         )}
-      </SubDialog>
+      </NxDialog>
 
-      <SubDialog open={modal === 'cost'} onClose={() => setModal(null)} title="Custos por horário" width={520} subtitle={`${nome || 'Pivô'} · tarifa com impostos`}>
-        <Segmented value={custoPer} onChange={setCustoPer} options={[{ v: 'dia', label: 'Hoje' }, { v: 'mes', label: 'Mês' }]} />
-        {!custoSel ? (
-          <p className="text-sm text-muted-foreground py-4">Sem custo calculado para o período (confira a unidade e a tarifa do equipamento).</p>
-        ) : (
-          <>
-            <div className="grid grid-cols-[1.4fr_1fr_1fr_1fr] text-[11px] font-bold text-muted-foreground tracking-[0.4px] py-1">
-              <span>POSTO</span><span className="text-right">kWh</span><span className="text-right">R$/kWh</span><span className="text-right">R$</span>
-            </div>
-            {linhasPosto(custoSel).map((r) => (
-              <div key={r.k} className="grid grid-cols-[1.4fr_1fr_1fr_1fr] text-sm py-2 border-t border-border">
-                <span className="flex items-center gap-2"><span className={`w-2.5 h-2.5 rounded-[3px] ${r.cor}`} />{r.k}</span>
-                <span className="text-right tabular-nums">{fmt(r.kwh, 0)}</span>
-                <span className="text-right tabular-nums">{r.tarifa != null ? fmt(r.tarifa, 2) : '—'}</span>
-                <span className="text-right font-extrabold tabular-nums">{brl(r.rs)}</span>
+      {/* Custos por horário */}
+      <NxDialog open={modal === 'cost'} onClose={() => setModal(null)} label="Custos por horário" width={520}>
+        <div style={col(12)}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={col(2)}>
+              <span style={{ fontSize: 19, fontWeight: 800 }}>Custos por horário</span>
+              <span style={{ fontSize: 13, color: NX.mudo }}>{titulo} · tarifa com impostos · {custoPer === 'mes' ? 'mês até hoje' : girando ? 'irrigação em andamento' : 'hoje'}</span>
+            </span>
+            <button type="button" aria-label="Fechar" onClick={() => setModal(null)} style={{ width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={NX.mudo} strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+            </button>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 4, padding: 4, borderRadius: 12, background: NX.seg }}>
+            <button type="button" aria-pressed={custoPer === 'dia'} onClick={() => setCustoPer('dia')} style={s.dTab(custoPer === 'dia')}>Irrigação</button>
+            <button type="button" aria-pressed={custoPer === 'mes'} onClick={() => setCustoPer('mes')} style={s.dTab(custoPer === 'mes')}>Mês</button>
+            <button type="button" disabled aria-pressed={false} title="Sem dados por safra" style={{ ...s.dTab(false), color: NX.desab }}>Safra</button>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr 1fr', fontSize: 11, fontWeight: 700, color: NX.mudo, letterSpacing: 0.4, padding: '4px 0' }}>
+            <span>POSTO</span><span style={{ textAlign: 'right' }}>kWh</span><span style={{ textAlign: 'right' }}>R$/kWh</span><span style={{ textAlign: 'right' }}>R$</span>
+          </div>
+          {!custoSel ? (
+            <div style={{ fontSize: 14, color: NX.mudo, padding: '8px 0', borderTop: `1px solid ${NX.linha}` }}>Sem custo calculado para o período (confira a unidade e a tarifa do equipamento).</div>
+          ) : (
+            <>
+              {linhasCusto.map((r) => (
+                <div key={r.k} style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr 1fr', fontSize: 14, padding: '8px 0', borderTop: `1px solid ${NX.linha}` }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: corPosto(r.k) }} />{r.k}</span>
+                  <span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(r.kwh, 0)}</span>
+                  <span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.tarifa != null ? fmt(r.tarifa, 2) : '—'}</span>
+                  <span style={{ textAlign: 'right', fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{brl(r.rs)}</span>
+                </div>
+              ))}
+              <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr 1fr', fontSize: 14, padding: '8px 0', borderTop: `1px solid ${NX.linha}`, color: NX.mudo }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: NX.neutro }} />Demanda</span>
+                <span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>—</span>
+                <span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>—</span>
+                <span style={{ textAlign: 'right', fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{custoPer === 'mes' && Number(custoSel.custos.custo_demanda) > 0 ? brl(custoSel.custos.custo_demanda) : 'a apurar'}</span>
               </div>
-            ))}
-            <div className="grid grid-cols-[1.4fr_1fr_1fr_1fr] text-sm py-2 border-t border-border text-muted-foreground">
-              <span className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-[3px] bg-[#8A8FA3]" />Demanda</span>
-              <span className="text-right">—</span><span className="text-right">—</span>
-              <span className="text-right">{custoPer === 'dia' ? 'a apurar' : brl(custoSel.custos.custo_demanda)}</span>
-            </div>
-            <div className="flex justify-between text-base font-extrabold border-t-2 border-foreground pt-2.5">
-              <span>Total</span><span>{brl(custoSel.custos.custo_total)}</span>
-            </div>
-            <div className="text-[13px] text-muted-foreground">{fmt(custoSel.consumo.energia_total_kwh, 0)} kWh · {custoSel.tarifa_fonte === 'PERSONALIZADA' ? 'tarifa personalizada' : 'tarifa da concessionária'}</div>
-          </>
-        )}
-        <button type="button" onClick={() => setModal(null)} className={`h-11 rounded-xl font-extrabold ${ACAO}`}>Fechar</button>
-      </SubDialog>
-    </EquipShell>
+            </>
+          )}
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 16, fontWeight: 800, borderTop: `2px solid ${NX.texto}`, paddingTop: 10 }}>
+            <span>Total</span><span>{brl(custoSel?.custos.custo_total)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 13, color: NX.mudo }}>
+            <span>Pivô {custoSel ? fmt(custoSel.consumo.energia_total_kwh, 0) : '—'} kWh · {brl(custoSel?.custos.custo_total)} &nbsp;|&nbsp; Bombeamento —</span>
+            <span style={{ whiteSpace: 'nowrap' }}>R$/mm/ha: —</span>
+          </div>
+        </div>
+      </NxDialog>
+    </NxShell>
   );
 }
 
@@ -370,39 +621,81 @@ const formDe = (o?: Partial<Bombeamento> | null): FormBomba => ({
   ton_id: o?.ton_id ?? '', modo: o?.modo ?? 'pulso', bo_liga: String(o?.bo_liga ?? 1), bo_desliga: String(o?.bo_desliga ?? ''),
   bi_confirma: String(o?.bi_confirma ?? ''), confirma_s: String(o?.confirma_s ?? 30), pulso_ms: String(o?.pulso_ms ?? 1000),
 });
-const inputCls = 'w-[84px] h-[38px] rounded-[10px] border bg-background text-[15px] font-extrabold text-right px-2.5 tabular-nums';
-const selectCls = 'h-[38px] max-w-[15rem] rounded-[10px] border bg-background px-2.5 text-sm font-bold';
+const numOk = (v: string, min: number, max: number) => { const n = Number(String(v).replace(',', '.')); return v !== '' && Number.isFinite(n) && n >= min && n <= max; };
+const secao = (t: string, mt: number) => <span style={{ ...s.label, marginTop: mt }}>{t}</span>;
 
-function ConfigPivo({ pivoId, estado, onSalvo }: { pivoId: string; estado: Estado | null; onSalvo: () => void }) {
+/** Select nativo com a cara do chip do mockup ("Bomba 01 · TON 112 · Casa de bombas ⌄"). */
+function ChipSelect({ value, onChange, label, height = 38, disabled, children }: {
+  value: string; onChange: (v: string) => void; label: string; height?: number; disabled?: boolean; children: ReactNode;
+}) {
+  return (
+    <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', minWidth: 0, maxWidth: '60%' }}>
+      <select aria-label={label} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)}
+        style={{ height, padding: '0 34px 0 12px', borderRadius: 10, border: `1px solid ${NX.borda}`, fontSize: 14, fontWeight: 700, color: NX.texto, background: NX.card, appearance: 'none', WebkitAppearance: 'none', maxWidth: '100%', textOverflow: 'ellipsis', cursor: disabled ? 'default' : 'pointer' }}>
+        {children}
+      </select>
+      <IcoChevron style={{ position: 'absolute', right: 12, pointerEvents: 'none' }} />
+    </span>
+  );
+}
+function Linha({ titulo, sub, children, minHeight = 56 }: { titulo: string; sub?: string; children: ReactNode; minHeight?: number }) {
+  return (
+    <div style={{ borderTop: `1px solid ${NX.linha}`, minHeight, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+      <span style={col(2)}>
+        <span style={{ fontSize: 15, fontWeight: 700 }}>{titulo}</span>
+        {sub && <span style={{ fontSize: 12, color: NX.mudo }}>{sub}</span>}
+      </span>
+      {children}
+    </div>
+  );
+}
+
+const PARAMS = [
+  { key: 'pressurizacao_s', label: 'Tempo para pressurizar', hint: 'Espera entre a bomba ligar e o pivô girar · faixa 10 a 600 s', unit: 's', min: 10, max: 600, real: true },
+  { key: 'confirma_giro_s', label: 'Confirmação do giro', hint: 'Tempo para o status "Irrigando" aparecer · faixa 5 a 120 s', unit: 's', min: 5, max: 120, real: true },
+  { key: 'pmin', label: 'Pressão mínima', hint: 'Abaixo dela: falha de pressão · faixa 0,5 a 6,0 bar', unit: 'bar', min: 0.5, max: 6, real: false },
+  { key: 'lam', label: 'Lâmina d’água a 100%', hint: 'Faixa 2,00 a 20,00 mm', unit: 'mm', min: 2, max: 20, real: false },
+  { key: 'volta', label: 'Tempo de volta a 100%', hint: 'Base da previsão de término · faixa 6 a 72 h', unit: 'h', min: 6, max: 72, real: false },
+  { key: 'ang0', label: 'Correção do ângulo zero', hint: 'Faixa −180 a 180°', unit: '°', min: -180, max: 180, real: false },
+] as const;
+
+function ConfigPivo({ pivoId, estado, cfg, onSalvo, progs, onRemoverProg, onAdicionarHorario }: {
+  pivoId: string; estado: Estado | null; cfg: PivoConfig | null; onSalvo: () => void;
+  progs: Programacao[] | null; onRemoverProg: (id: string) => void; onAdicionarHorario: () => void;
+}) {
   const [op, setOp] = useState<Opcoes | null>(null);
-  const [cfg, setCfg] = useState<PivoConfig | null>(null);
   // Base (gravado) × rascunho
   const [base, setBase] = useState<{ ativo: boolean; f: FormBomba; seq: { pressurizacao_s: number; confirma_giro_s: number } } | null>(null);
   const [ativo, setAtivo] = useState(false);
   const [f, setF] = useState<FormBomba>(formDe());
   const [seq, setSeq] = useState({ pressurizacao_s: '120', confirma_giro_s: '30' });
+  const [conj, setConj] = useState(false);
+  const [conjPivo, setConjPivo] = useState('');
   const [ponta, setPonta] = useState<Janela | null>(null);
   const [revisar, setRevisar] = useState(false);
   const [gravando, setGravando] = useState(false);
 
-  const carregarCfg = useCallback(() => {
-    api.get(`/pivos/${pivoId}/config`).then((r) => { const c = corpo<PivoConfig>(r); setCfg(c); setPonta(c?.bloqueio_ponta ?? null); }).catch(() => setCfg(null));
-  }, [pivoId]);
   useEffect(() => {
     api.get(`/pivos/${pivoId}/bombeamento/opcoes`).then((r) => setOp(corpo<Opcoes>(r))).catch(() => setOp({ tons: [], bombeamentos: [] }));
-    carregarCfg();
-  }, [pivoId, carregarCfg]);
+  }, [pivoId]);
+  useEffect(() => { setPonta(cfg?.bloqueio_ponta ?? null); }, [cfg]);
   useEffect(() => {
     if (!estado || base) return;
     const b = estado.bombeamento;
     const fb = formDe(b);
     setBase({ ativo: !!b, f: fb, seq: estado.sequencia_cfg });
-    setAtivo(!!b); setF(fb);
+    setAtivo(!!b); setF(fb); setConj(!!b?.compartilhada_com.length);
     setSeq({ pressurizacao_s: String(estado.sequencia_cfg.pressurizacao_s), confirma_giro_s: String(estado.sequencia_cfg.confirma_giro_s) });
   }, [estado, base]);
+  useEffect(() => {
+    if (conjPivo || !op || !f.ton_id) return;
+    const o = op.bombeamentos.find((x) => x.pivo_id !== pivoId && x.bombeamento?.ton_id === f.ton_id);
+    if (o) setConjPivo(o.pivo_id);
+  }, [op, f.ton_id, conjPivo, pivoId]);
 
   const set = (k: keyof FormBomba, v: string) => setF((x) => ({ ...x, [k]: v }));
   const copiarDe = (pid: string) => {
+    setConjPivo(pid);
     const o = op?.bombeamentos.find((x) => x.pivo_id === pid)?.bombeamento;
     if (!o) return;
     setAtivo(true); setF(formDe(o));
@@ -414,37 +707,39 @@ function ConfigPivo({ pivoId, estado, onSalvo }: { pivoId: string; estado: Estad
     if (!base) return [];
     const out: Array<{ label: string; de: string; para: string }> = [];
     const add = (label: string, de: string, para: string) => { if (de !== para) out.push({ label, de, para }); };
-    add('Bombeamento', base.ativo ? 'Sim' : 'Não', ativo ? 'Sim' : 'Não');
+    add('Este pivô tem bombeamento', base.ativo ? 'Sim' : 'Não', ativo ? 'Sim' : 'Não');
     if (ativo) {
-      add('TON da bomba', base.ativo ? tonNome(base.f.ton_id) : '—', tonNome(f.ton_id));
-      add('Acionamento', base.ativo ? base.f.modo : '—', f.modo);
+      add('Bomba', base.ativo ? tonNome(base.f.ton_id) : '—', tonNome(f.ton_id));
+      add('Acionamento', base.ativo ? (base.f.modo === 'pulso' ? 'Pulso' : 'Contato mantido') : '—', f.modo === 'pulso' ? 'Pulso' : 'Contato mantido');
       add('BO de ligar', base.ativo ? base.f.bo_liga : '—', f.bo_liga);
-      if (f.modo === 'pulso') { add('BO de desligar', base.f.bo_desliga || '—', f.bo_desliga || '—'); add('Pulso (ms)', base.f.pulso_ms, f.pulso_ms); }
+      if (f.modo === 'pulso') { add('BO de desligar', base.f.bo_desliga || '—', f.bo_desliga || '—'); add('Duração do pulso', `${base.f.pulso_ms} ms`, `${f.pulso_ms} ms`); }
       add('BI de confirmação', base.f.bi_confirma || '—', f.bi_confirma || '—');
-      add('Tempo para confirmar a bomba (s)', base.f.confirma_s, f.confirma_s);
+      add('Tempo para confirmar a bomba', `${base.f.confirma_s} s`, `${f.confirma_s} s`);
     }
-    add('Tempo para pressurizar (s)', String(base.seq.pressurizacao_s), seq.pressurizacao_s);
-    add('Confirmação do giro (s)', String(base.seq.confirma_giro_s), seq.confirma_giro_s);
+    add('Tempo para pressurizar', `${base.seq.pressurizacao_s} s`, `${Number(seq.pressurizacao_s)} s`);
+    add('Confirmação do giro', `${base.seq.confirma_giro_s} s`, `${Number(seq.confirma_giro_s)} s`);
     if (cfg && ponta) {
       const a = cfg.bloqueio_ponta;
       add('Bloquear no horário de ponta', a.ativo ? 'Sim' : 'Não', ponta.ativo ? 'Sim' : 'Não');
-      add('Ponta · início', a.inicio, ponta.inicio);
-      add('Ponta · fim', a.fim, ponta.fim);
+      add('Horário de ponta · início', a.inicio, ponta.inicio);
+      add('Horário de ponta · fim', a.fim, ponta.fim);
     }
     return out;
   }, [base, ativo, f, seq, cfg, ponta]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const numOk = (v: string, min: number, max: number) => { const n = Number(v); return v !== '' && Number.isFinite(n) && n >= min && n <= max; };
-  const invalido = !numOk(seq.pressurizacao_s, 0, 900) || !numOk(seq.confirma_giro_s, 5, 300)
-    || (ativo && (!f.ton_id || !numOk(f.bo_liga, 1, 16) || !numOk(f.confirma_s, 5, 300)
-      || (f.modo === 'pulso' && (!numOk(f.bo_desliga, 1, 16) || !numOk(f.pulso_ms, 100, 10000)))
-      || (f.bi_confirma !== '' && !numOk(f.bi_confirma, 1, 16))))
-    || (!!ponta && !(/^\d{2}:\d{2}$/.test(ponta.inicio) && /^\d{2}:\d{2}$/.test(ponta.fim)));
+  const bombaRuim = ativo && (!f.ton_id || !numOk(f.bo_liga, 1, 16) || !numOk(f.confirma_s, 5, 300)
+    || (f.modo === 'pulso' && (!numOk(f.bo_desliga, 1, 16) || !numOk(f.pulso_ms, 100, 10000)))
+    || (f.bi_confirma !== '' && !numOk(f.bi_confirma, 1, 16)));
+  const seqRuim = !numOk(seq.pressurizacao_s, 10, 600) || !numOk(seq.confirma_giro_s, 5, 120);
+  const pontaRuim = !!ponta && !(/^\d{2}:\d{2}$/.test(ponta.inicio) && /^\d{2}:\d{2}$/.test(ponta.fim));
+  const invalido = bombaRuim || seqRuim || pontaRuim;
+  const n = mudancas.length;
+  const saveOff = invalido || n === 0;
 
   const gravar = async () => {
     setGravando(true);
     try {
-      const bombaMudou = mudancas.some((m) => !m.label.startsWith('Ponta') && m.label !== 'Bloquear no horário de ponta');
+      const bombaMudou = mudancas.some((m) => !m.label.startsWith('Horário de ponta') && m.label !== 'Bloquear no horário de ponta');
       if (bombaMudou) {
         await api.put(`/pivos/${pivoId}/bombeamento`, {
           bombeamento: ativo ? {
@@ -461,7 +756,7 @@ function ConfigPivo({ pivoId, estado, onSalvo }: { pivoId: string; estado: Estad
       toast.success('Configuração do pivô salva');
       // O gravado passa a ser o rascunho (não espera o refresh do estado).
       setBase({ ativo, f, seq: { pressurizacao_s: Number(seq.pressurizacao_s), confirma_giro_s: Number(seq.confirma_giro_s) } });
-      setRevisar(false); onSalvo(); carregarCfg();
+      setRevisar(false); onSalvo();
     } catch (e) {
       toast.error('Não salvou', { description: erroMsg(e) });
     } finally {
@@ -469,207 +764,142 @@ function ConfigPivo({ pivoId, estado, onSalvo }: { pivoId: string; estado: Estad
     }
   };
 
+  const campo = (k: keyof FormBomba, min: number, max: number) => (
+    <input inputMode="numeric" value={f[k]} onChange={(e) => set(k, e.target.value)}
+      style={s.campo(false, (f[k] !== '' && !numOk(f[k], min, max)) || (k !== 'bi_confirma' && f[k] === ''))} />
+  );
+  const timeStyle: CSSProperties = { height: 38, borderRadius: 10, border: `1px solid ${NX.borda}`, padding: '0 10px', fontSize: 15, fontWeight: 700, color: NX.texto, background: NX.card };
+  const nProg = progs?.length ?? 0;
+  const agFull = nProg >= 5;
 
   return (
-    <div className="flex flex-col gap-2.5">
-      <SectionLabel className="mt-1">Bombeamento</SectionLabel>
-      <Card className="px-4">
-        <FieldRow first label="Este pivô tem bombeamento" sub="Ligar o pivô com água liga a bomba; desligar o pivô desliga a bomba">
-          <Switch on={ativo} onChange={() => setAtivo((v) => !v)} label="Este pivô tem bombeamento" />
-        </FieldRow>
+    <div style={{ padding: '20px 24px 28px 24px', ...col(10) }}>
+      {secao('BOMBEAMENTO', 4)}
+      <div style={{ ...s.card, padding: '0 16px' }}>
+        <NxSwitchRow first title="Este pivô tem bombeamento" sub="Ligar o pivô com água liga a bomba; desligar o pivô desliga a bomba" on={ativo} onToggle={() => setAtivo((v) => !v)} />
         {ativo && (
           <>
-            <FieldRow label="Bomba" sub="TON que comanda a bomba">
-              <select className={selectCls} value={f.ton_id} onChange={(e) => set('ton_id', e.target.value)}>
+            <Linha titulo="Bomba" sub="TON e medidor de energia da bomba">
+              <ChipSelect label="Bomba" value={f.ton_id} onChange={(v) => set('ton_id', v)}>
                 <option value="">Escolha a TON…</option>
                 {(op?.tons ?? []).map((t) => <option key={t.id} value={t.id}>{t.nome} · {t.unidade}</option>)}
-              </select>
-            </FieldRow>
-            {op && op.bombeamentos.length > 0 && (
-              <FieldRow label="Sistema conjugado" sub="Usar a bomba de outro pivô · um pivô por vez">
-                <select className={selectCls} value="" onChange={(e) => copiarDe(e.target.value)}>
-                  <option value="">—</option>
-                  {op.bombeamentos.map((x) => <option key={x.pivo_id} value={x.pivo_id}>{x.nome}</option>)}
-                </select>
-              </FieldRow>
-            )}
-            <FieldRow label="Acionamento" sub={f.modo === 'pulso' ? 'Pulso liga, outro pulso desliga (selo/soft-starter)' : 'A TON segura o relé; soltar desliga'}>
-              <Segmented value={f.modo} onChange={(v) => set('modo', v)} options={[{ v: 'pulso', label: 'Pulso' }, { v: 'mantido', label: 'Contato mantido' }]} />
-            </FieldRow>
-            <FieldRow label="BO de ligar"><input className={inputCls} inputMode="numeric" value={f.bo_liga} onChange={(e) => set('bo_liga', e.target.value)} /></FieldRow>
+              </ChipSelect>
+            </Linha>
+            <Linha titulo="Acionamento" sub={f.modo === 'pulso' ? 'Pulso liga, outro pulso desliga (selo/soft-starter)' : 'A TON segura o relé; soltar desliga'}>
+              <NxSeg value={f.modo} onChange={(v) => set('modo', v)} options={[{ v: 'pulso', label: 'Pulso' }, { v: 'mantido', label: 'Contato mantido' }]} />
+            </Linha>
+            <Linha titulo="BO de ligar" sub="Saída da TON que liga a bomba · 1 a 16">{campo('bo_liga', 1, 16)}</Linha>
             {f.modo === 'pulso' && (
               <>
-                <FieldRow label="BO de desligar"><input className={inputCls} inputMode="numeric" value={f.bo_desliga} onChange={(e) => set('bo_desliga', e.target.value)} /></FieldRow>
-                <FieldRow label="Duração do pulso" sub="100 a 10.000 ms"><input className={inputCls} inputMode="numeric" value={f.pulso_ms} onChange={(e) => set('pulso_ms', e.target.value)} /></FieldRow>
+                <Linha titulo="BO de desligar" sub="Saída da TON que desliga a bomba · 1 a 16">{campo('bo_desliga', 1, 16)}</Linha>
+                <Linha titulo="Duração do pulso" sub="Faixa 100 a 10.000 ms">{campo('pulso_ms', 100, 10000)}</Linha>
               </>
             )}
-            <FieldRow label="BI de confirmação" sub="Retorno 'bomba ligada' (vazio = sem confirmação)"><input className={inputCls} inputMode="numeric" value={f.bi_confirma} onChange={(e) => set('bi_confirma', e.target.value)} /></FieldRow>
-            <FieldRow label="Tempo para confirmar a bomba" sub="5 a 300 s"><input className={inputCls} inputMode="numeric" value={f.confirma_s} onChange={(e) => set('confirma_s', e.target.value)} /></FieldRow>
+            <Linha titulo="BI de confirmação" sub="Retorno “bomba ligada” · vazio = sem confirmação">{campo('bi_confirma', 1, 16)}</Linha>
+            <Linha titulo="Tempo para confirmar a bomba" sub="Faixa 5 a 300 s">{campo('confirma_s', 5, 300)}</Linha>
+            <NxSwitchRow title="Sistema conjugado" sub="A bomba atende outro pivô · um pivô por vez" on={conj} onToggle={() => setConj((v) => !v)} />
+            {conj && (
+              <div style={{ borderTop: `1px solid ${NX.linha}`, padding: '12px 0', ...col(10) }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <span style={{ fontSize: 14, fontWeight: 700 }}>Outro pivô</span>
+                  <ChipSelect label="Outro pivô" height={36} value={conjPivo} onChange={copiarDe}>
+                    <option value="">—</option>
+                    {(op?.bombeamentos ?? []).filter((x) => x.pivo_id !== pivoId).map((x) => <option key={x.pivo_id} value={x.pivo_id}>{x.nome}</option>)}
+                  </ChipSelect>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 14, fontWeight: 700 }}>Direcionamento da água</span>
+                  <NxSeg<'valv' | 'fis'> value="valv" disabled onChange={() => undefined} options={[{ v: 'valv', label: 'Válvula pelo NexON' }, { v: 'fis', label: 'Intertravamento físico' }]} />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <span style={col(2)}>
+                    <span style={{ fontSize: 14, fontWeight: 700 }}>Saída que comanda a válvula</span>
+                    <span style={{ fontSize: 12, color: NX.mudo }}>Válvula solenoide na adutora, junto ao pivô mais próximo</span>
+                  </span>
+                  <span style={{ height: 36, padding: '0 12px', borderRadius: 10, border: `1px solid ${NX.borda}`, display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 700, flex: 'none' }}>
+                    — <IcoChevron />
+                  </span>
+                </div>
+              </div>
+            )}
           </>
         )}
-      </Card>
+      </div>
 
-      <SectionLabel className="mt-2.5">Partida e irrigação</SectionLabel>
-      {([
-        ['pressurizacao_s', 'Tempo para pressurizar', 'Espera entre a bomba ligar e o pivô girar · faixa 0 a 900 s', 0, 900],
-        ['confirma_giro_s', 'Confirmação do giro', 'Tempo para o status "girando" aparecer · faixa 5 a 300 s', 5, 300],
-      ] as const).map(([k, lbl, hint, mn, mx]) => {
-        const ok = numOk(seq[k], mn, mx);
+      {secao('PARTIDA E IRRIGAÇÃO', 10)}
+      {PARAMS.map((p) => {
+        const val = p.real ? seq[p.key as 'pressurizacao_s' | 'confirma_giro_s'] : '—';
+        const ruim = p.real && !numOk(val, p.min, p.max);
         return (
-          <Card key={k} className="px-4 py-2.5 flex items-center gap-3">
-            <label htmlFor={`pv-${k}`} className="flex-1 flex flex-col gap-0.5">
-              <span className="text-[15px] font-bold">{lbl}</span>
-              <span className={`text-xs ${ok ? 'text-muted-foreground' : 'text-red-600'}`}>{hint}</span>
+          <div key={p.key} style={{ ...s.card, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <label htmlFor={`w-${p.key}`} style={{ flex: 1, ...col(2) }}>
+              <span style={{ fontSize: 15, fontWeight: 700 }}>{p.label}</span>
+              <span style={{ fontSize: 12, color: ruim ? NX.bad : NX.mudo }}>{p.hint}</span>
             </label>
-            <input id={`pv-${k}`} inputMode="numeric" value={seq[k]} onChange={(e) => setSeq((s) => ({ ...s, [k]: e.target.value }))} className={`${inputCls} ${ok ? '' : 'border-red-600'}`} />
-            <span className="text-sm text-muted-foreground w-7">s</span>
-          </Card>
+            <input id={`w-${p.key}`} inputMode="decimal" value={val} disabled={!p.real} style={s.campo(!p.real, ruim)}
+              onChange={(e) => { if (p.real) setSeq((x) => ({ ...x, [p.key]: e.target.value })); }} />
+            <span style={{ fontSize: 14, color: NX.mudo, width: 28 }}>{p.unit}</span>
+          </div>
         );
       })}
 
-      <SectionLabel className="mt-2.5">Horário de ponta</SectionLabel>
-      <Card className="px-4">
-        <FieldRow first label="Bloquear no horário de ponta" sub="Pausa a irrigação e retoma ao fim da ponta">
-          <Switch on={!!ponta?.ativo} disabled={!ponta} onChange={() => setPonta((p) => (p ? { ...p, ativo: !p.ativo } : p))} label="Bloquear no horário de ponta" />
-        </FieldRow>
-        <div className="border-t border-border py-3 flex gap-3">
+      {secao('HORÁRIO DE PONTA', 10)}
+      <div style={{ ...s.card, padding: '0 16px' }}>
+        <NxSwitchRow first title="Bloquear no horário de ponta" sub="Pausa a irrigação e retoma ao fim da ponta" on={!!ponta?.ativo} disabled={!ponta}
+          onToggle={() => setPonta((p) => (p ? { ...p, ativo: !p.ativo } : p))} />
+        <div style={{ borderTop: `1px solid ${NX.linha}`, padding: '12px 0', display: 'flex', gap: 12 }}>
           {(['inicio', 'fim'] as const).map((k) => (
-            <label key={k} className="flex-1 flex flex-col gap-1">
-              <span className="text-xs text-muted-foreground">{k === 'inicio' ? 'Início' : 'Fim'}</span>
-              <input type="time" disabled={!ponta} value={ponta?.[k] ?? ''} onChange={(e) => setPonta((p) => (p ? { ...p, [k]: e.target.value } : p))} className="h-[38px] rounded-[10px] border px-2.5 text-[15px] font-bold bg-background" />
+            <label key={k} style={{ flex: 1, ...col(4) }}>
+              <span style={{ fontSize: 12, color: NX.mudo }}>{k === 'inicio' ? 'Início' : 'Fim'}</span>
+              <input type="time" disabled={!ponta} value={ponta?.[k] ?? ''} onChange={(e) => setPonta((p) => (p ? { ...p, [k]: e.target.value } : p))} style={timeStyle} />
             </label>
           ))}
         </div>
-        <p className="text-xs text-muted-foreground pb-3">
-          {ponta ? `${diasTxt(ponta.dias)}${cfg?.origem_ponta?.concessionaria ? ` · ${cfg.origem_ponta.concessionaria}` : ''}` : 'Configuração do pivô indisponível.'}
-        </p>
-      </Card>
+      </div>
 
-      <AgendaPivo pivoId={pivoId} titulo />
-
-      <button
-        type="button"
-        disabled={invalido || mudancas.length === 0}
-        onClick={() => setRevisar(true)}
-        className={`h-[50px] rounded-xl mt-2.5 text-base font-extrabold text-white ${invalido || mudancas.length === 0 ? 'bg-[#8DBA9A] dark:bg-white/10 dark:text-muted-foreground' : ACAO}`}
-      >
-        {invalido ? 'Valor fora da faixa' : mudancas.length === 0 ? 'Salvar' : `Revisar ${mudancas.length} ${mudancas.length > 1 ? 'alterações' : 'alteração'}`}
-      </button>
-      <p className="text-xs text-muted-foreground mt-1.5">
-        Os comandos do pivô (girar à direita/esquerda, desligar) e os status (girando, desligado, erro) vêm dos pontos do pivô ligados às BO/BI da TON do pivô (editor IoT → TON → Configurar BOs/BIs).
-      </p>
-
-      <SubDialog open={revisar} onClose={() => setRevisar(false)} title="Confirmar alterações" width={440}>
-        {mudancas.map((c) => (
-          <div key={c.label} className="flex justify-between gap-3 text-[15px] py-1.5 border-b border-border">
-            <span>{c.label}</span><span className="text-right"><span className="text-muted-foreground">{c.de}</span> → <b>{c.para}</b></span>
-          </div>
-        ))}
-        <DialogButtons onCancel={() => setRevisar(false)} onConfirm={gravar} cancelLabel="Voltar" busy={gravando} />
-      </SubDialog>
-
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Agenda / Programação de horários (mesma lista no painel e na Configuração)
-// ---------------------------------------------------------------------------
-const GRUPOS_DIAS: Array<{ v: string; label: string; dias: number[] }> = [
-  { v: 'uteis', label: 'Seg a sex', dias: [1, 2, 3, 4, 5] },
-  { v: 'todos', label: 'Todos os dias', dias: [1, 2, 3, 4, 5, 6, 7] },
-  { v: 'fds', label: 'Sáb e dom', dias: [6, 7] },
-];
-const fimDe = (ini: string, min?: number | null) => {
-  if (!min) return null;
-  const [h, m] = ini.split(':').map(Number);
-  const t = (h * 60 + m + min) % 1440;
-  return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
-};
-
-function AgendaPivo({ pivoId, titulo }: { pivoId: string; titulo?: boolean }) {
-  const [progs, setProgs] = useState<Programacao[] | null>(null);
-  const [nova, setNova] = useState<null | { grupo: string; ini: string; fim: string; direcao: 'Avanço' | 'Reverso'; seco: boolean; pct: number }>(null);
-  const [salvando, setSalvando] = useState(false);
-  const carregar = useCallback(() => {
-    api.get(`/pivos/${pivoId}/programacoes`).then((r) => setProgs(corpo<Programacao[]>(r) ?? [])).catch(() => setProgs([]));
-  }, [pivoId]);
-  useEffect(() => { carregar(); }, [carregar]);
-  const n = progs?.length ?? 0;
-  const remover = async (pid: string) => {
-    try { await api.delete(`/pivos/${pivoId}/programacoes/${pid}`); carregar(); }
-    catch (e) { toast.error('Não removeu', { description: erroMsg(e) }); }
-  };
-  const adicionar = async () => {
-    if (!nova) return;
-    const g = GRUPOS_DIAS.find((x) => x.v === nova.grupo)!;
-    const [h0, m0] = nova.ini.split(':').map(Number), [h1, m1] = nova.fim.split(':').map(Number);
-    const dur = ((h1 * 60 + m1) - (h0 * 60 + m0) + 1440) % 1440 || 1440;
-    setSalvando(true);
-    try {
-      await api.post(`/pivos/${pivoId}/programacoes`, {
-        nome: `${g.label} · ${nova.ini} → ${nova.fim}`, ativo: true, hora_inicio: nova.ini, dias: g.dias, modo: 'tempo',
-        duracao_min: dur, sentido: nova.direcao === 'Avanço' ? 'horario' : 'anti_horario',
-        velocidade: nova.seco ? null : nova.pct, com_agua: !nova.seco,
-      });
-      setNova(null); carregar(); toast.success('Agendamento salvo');
-    } catch (e) { toast.error('Não salvou', { description: erroMsg(e) }); } finally { setSalvando(false); }
-  };
-  return (
-    <div className="flex flex-col gap-2.5">
-      {titulo && <SectionLabel className="mt-2.5">Programação de horários · {n}/5</SectionLabel>}
-      {progs == null && <div className="text-sm text-muted-foreground">Carregando…</div>}
-      {progs?.length === 0 && !titulo && <div className="text-sm text-muted-foreground">Nenhum horário programado.</div>}
-      {(progs ?? []).map((p) => {
-        const fim = fimDe(p.hora_inicio, p.duracao_min);
-        const dir = p.sentido === 'horario' ? 'Avanço' : 'Reverso';
-        return (
-          <Card key={p.id} className="px-4 min-h-[60px] flex items-center gap-3">
-            <span className="flex-1 flex flex-col gap-0.5 py-2">
-              <span className="text-sm font-bold">{diasTxt(p.dias)} · {p.hora_inicio}{fim ? ` → ${fim}` : ''}</span>
-              <span className="text-xs text-muted-foreground">{p.com_agua === false ? `— · Seco · ${dir}` : `${p.velocidade != null ? `${fmt(p.velocidade, 0)}%` : '—'} · Molhado · ${dir}`}{p.ativo ? '' : ' · pausado'}</span>
-            </span>
-            <button type="button" onClick={() => remover(p.id)} aria-label="Remover horário" className="w-9 h-9 rounded-[10px] grid place-items-center text-red-600 hover:bg-red-500/10">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></svg>
-            </button>
-          </Card>
-        );
-      })}
-      {nova ? (
-        <Card className="p-4 flex flex-col gap-3">
-          <span className="text-[15px] font-extrabold">Novo horário</span>
-          <Segmented value={nova.grupo} onChange={(v) => setNova({ ...nova, grupo: v })} options={GRUPOS_DIAS.map((g) => ({ v: g.v, label: g.label }))} />
-          <div className="grid grid-cols-2 gap-2.5">
-            {(['ini', 'fim'] as const).map((k) => (
-              <label key={k} className="flex flex-col gap-1"><span className="text-xs text-muted-foreground">{k === 'ini' ? 'Início' : 'Fim'}</span>
-                <input type="time" value={nova[k]} onChange={(e) => setNova({ ...nova, [k]: e.target.value })} className="h-[38px] rounded-[10px] border px-2.5 text-[15px] font-bold bg-background" />
-              </label>
-            ))}
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-[15px] font-bold">Direção</span>
-            <Segmented value={nova.direcao} onChange={(v) => setNova({ ...nova, direcao: v })} options={[{ v: 'Avanço', label: 'Avanço' }, { v: 'Reverso', label: 'Reverso' }]} />
-          </div>
-          <FieldRow first label="Girar sem água" sub={nova.seco ? 'Sem água (seco)' : 'Com água (molhado)'}>
-            <Switch on={nova.seco} onChange={() => setNova({ ...nova, seco: !nova.seco })} label="Girar sem água" />
-          </FieldRow>
-          <FieldRow first label="Percentímetro" sub="10 a 100%">
-            <span className={`flex items-center gap-2 ${nova.seco ? 'opacity-50' : ''}`}>
-              <button type="button" disabled={nova.seco} onClick={() => setNova({ ...nova, pct: Math.max(10, nova.pct - 5) })} className="w-9 h-9 rounded-[10px] border font-extrabold">−</button>
-              <span className="w-12 text-center font-extrabold">{nova.pct}%</span>
-              <button type="button" disabled={nova.seco} onClick={() => setNova({ ...nova, pct: Math.min(100, nova.pct + 5) })} className="w-9 h-9 rounded-[10px] border font-extrabold">+</button>
-            </span>
-          </FieldRow>
-          <DialogButtons onCancel={() => setNova(null)} onConfirm={adicionar} confirmLabel="Adicionar" busy={salvando} />
-        </Card>
-      ) : (
-        <button type="button" disabled={n >= 5 || progs == null}
-          onClick={() => setNova({ grupo: 'uteis', ini: '21:00', fim: '05:00', direcao: 'Avanço', seco: false, pct: 100 })}
-          className={`h-[52px] rounded-[14px] border-[1.5px] border-dashed border-border text-sm font-extrabold ${n >= 5 ? 'text-muted-foreground' : 'text-[#177A3C] dark:text-emerald-400'}`}>
-          {n >= 5 ? 'Limite de 5 horários' : '+ Adicionar horário'}
+      {secao(`PROGRAMAÇÃO DE HORÁRIOS · ${nProg}/5`, 10)}
+      <div style={{ ...s.card, padding: '0 16px' }}>
+        {progs == null && <div style={{ minHeight: 58, display: 'flex', alignItems: 'center', fontSize: 14, color: NX.mudo }}>Carregando…</div>}
+        {(progs ?? []).map((p, i) => {
+          const t = textoProgramacao(p);
+          return (
+            <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 12, minHeight: 58, ...(i > 0 ? { borderTop: `1px solid ${NX.linha}` } : {}) }}>
+              <span style={{ flex: 1, ...col(2) }}>
+                <span style={{ fontSize: 15, fontWeight: 700 }}>{t.quando}</span>
+                <span style={{ fontSize: 12, color: NX.mudo }}>{t.det}</span>
+              </span>
+              <button type="button" aria-label="Remover horário" onClick={() => onRemoverProg(p.id)} style={{ width: 36, height: 36, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <IcoLixo />
+              </button>
+            </div>
+          );
+        })}
+        <button type="button" disabled={agFull || progs == null} onClick={onAdicionarHorario}
+          style={{ width: '100%', height: 46, ...(nProg > 0 || progs == null ? { borderTop: `1px solid ${NX.linha}` } : {}), fontSize: 14, fontWeight: 800, textAlign: 'center', color: agFull ? NX.desab : VERDE }}>
+          {agFull ? 'Limite de 5 horários' : '+ Adicionar horário'}
         </button>
-      )}
-      <p className="text-xs text-muted-foreground">A programação fica salva no NexON; a partida automática pelo servidor ainda não roda.</p>
+      </div>
+
+      <button type="button" disabled={saveOff} onClick={() => setRevisar(true)} style={s.save(saveOff)}>
+        {invalido ? 'Valor fora da faixa' : n === 0 ? 'Salvar' : `Revisar ${n} ${n > 1 ? 'alterações' : 'alteração'}`}
+      </button>
+      <span style={{ fontSize: 12, color: NX.mudo, marginTop: 6 }}>
+        Os comandos do pivô (ligar, desligar, direção, sem água, canhão) e os status vêm dos pontos ligados às BO/BI da TON do pivô (editor IoT → TON → Configurar BOs/BIs).
+      </span>
+
+      <NxDialog open={revisar} onClose={() => { if (!gravando) setRevisar(false); }} label="Confirmar alterações" width={440}>
+        <div style={col(10)}>
+          <span style={{ fontSize: 18, fontWeight: 800 }}>Confirmar alterações</span>
+          {mudancas.map((c) => (
+            <div key={c.label} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 15, padding: '6px 0', borderBottom: `1px solid ${NX.linha}` }}>
+              <span>{c.label}</span><span style={{ textAlign: 'right' }}><span style={{ color: NX.mudo }}>{c.de}</span> → <b>{c.para}</b></span>
+            </div>
+          ))}
+          {gravando
+            ? <span style={{ fontSize: 14, color: NX.mudo, textAlign: 'center', padding: '6px 0' }}>Gravando e aguardando releitura da TON…</span>
+            : <NxDialogButtons onCancel={() => setRevisar(false)} onConfirm={gravar} cancelLabel="Voltar" marginTop={8} />}
+        </div>
+      </NxDialog>
     </div>
   );
 }
