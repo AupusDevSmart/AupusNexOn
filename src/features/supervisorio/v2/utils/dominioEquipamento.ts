@@ -88,6 +88,9 @@ export function dominioDoTipo(codigo?: string | null, nome?: string | null): Dom
   // A-966 é gateway/medidor de entrada e FICA no unifilar (ambos) — precisa vir antes
   // de PADROES_IOT_DEVICE pra não ser pego por 'MEDIDOR' num nome como "Medidor A966".
   if (hay.includes('A966')) return 'ambos';
+  // Medidor Concessionária (EQTL001) é elemento do UNIFILAR (entrada de energia), lido pelo
+  // A-966 ou pela SSU da TON-V2 — antes do 'MEDIDOR' abaixo, que o esconderia por nome.
+  if (c === 'EQTL001') return 'ambos';
   // Power Meters e relé → só IoT.
   if (PADROES_IOT_DEVICE.some(p => hay.includes(p))) return 'iot';
   if (PADROES_AMBOS.some(p => hay.includes(p))) return 'ambos';
