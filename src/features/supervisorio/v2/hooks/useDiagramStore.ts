@@ -905,9 +905,40 @@ export const useDiagramStore = create<DiagramStore>()(
             ).values()
           );
 
-          console.log('[loadDiagrama] ✅ Junction points recriados:', junctionPointsUnicos.length, junctionPointsUnicos);
+          // Lixo de desenho: ligação de um ponto pra ELE MESMO (comprimento zero) e trechos
+          // feitos SÓ de pontos de junção (não chegam a nenhum equipamento). O JP é virtual —
+          // nasce das ligações —, então esse lixo fazia um "JP solto" que não dava pra apagar.
+          // Descarta ao carregar; o próximo salvar grava o diagrama limpo.
+          const ehJp = (id?: string | null) => String(id ?? '').startsWith('junction-');
+          const semLaco = conexoes.filter(c => (c.equipamentoOrigemId ?? '').trim() !== (c.equipamentoDestinoId ?? '').trim());
+          const adj = new Map<string, string[]>();
+          for (const c of semLaco) {
+            const a = (c.equipamentoOrigemId ?? '').trim(), b = (c.equipamentoDestinoId ?? '').trim();
+            if (!a || !b) continue;
+            adj.set(a, [...(adj.get(a) ?? []), b]);
+            adj.set(b, [...(adj.get(b) ?? []), a]);
+          }
+          const soJp = new Set<string>();   // nós de componentes sem nenhum equipamento real
+          const visto = new Set<string>();
+          for (const inicio of adj.keys()) {
+            if (visto.has(inicio)) continue;
+            const comp: string[] = []; const fila = [inicio]; visto.add(inicio);
+            while (fila.length) {
+              const n = fila.shift()!; comp.push(n);
+              for (const v of adj.get(n) ?? []) if (!visto.has(v)) { visto.add(v); fila.push(v); }
+            }
+            if (comp.every(ehJp)) comp.forEach(n => soJp.add(n));
+          }
+          const conexoesLimpas = semLaco.filter(c => !soJp.has((c.equipamentoOrigemId ?? '').trim()));
+          const usados = new Set(conexoesLimpas.flatMap(c => [(c.equipamentoOrigemId ?? '').trim(), (c.equipamentoDestinoId ?? '').trim()]));
+          const jpsLimpos = junctionPointsUnicos.filter(jp => usados.has(jp.id));
+          if (conexoesLimpas.length !== conexoes.length) {
+            console.warn(`[loadDiagrama] descartadas ${conexoes.length - conexoesLimpas.length} ligação(ões) sem equipamento (laço/JP solto)`);
+          }
+
+          console.log('[loadDiagrama] ✅ Junction points recriados:', jpsLimpos.length, jpsLimpos);
           console.log('[loadDiagrama] 🔍 Equipamentos espalhados:', equipamentosEspalhados.length);
-          console.log('[loadDiagrama] 🔍 Total equipamentos no diagrama:', [...equipamentosEspalhados, ...junctionPointsUnicos].length);
+          console.log('[loadDiagrama] 🔍 Total equipamentos no diagrama:', [...equipamentosEspalhados, ...jpsLimpos].length);
 
           // Construir objeto diagrama completo COM junction points
           const diagramaRawExtra = diagramaRaw as unknown as { unidadeId?: string; grupos?: Grupo[] };
@@ -916,8 +947,8 @@ export const useDiagramStore = create<DiagramStore>()(
             unidadeId: diagramaRawExtra.unidadeId || diagramaRaw.unidade_id,
             nome: diagramaRaw.nome,
             descricao: diagramaRaw.descricao,
-            equipamentos: [...equipamentosEspalhados, ...junctionPointsUnicos], // ✅ INCLUIR junction points
-            conexoes,
+            equipamentos: [...equipamentosEspalhados, ...jpsLimpos], // ✅ INCLUIR junction points
+            conexoes: conexoesLimpas,
             grupos: diagramaRawExtra.grupos || [],
             createdAt: new Date(diagramaRaw.created_at),
             updatedAt: new Date(diagramaRaw.updated_at),
@@ -926,7 +957,7 @@ export const useDiagramStore = create<DiagramStore>()(
 
           // Calcular conexões visuais e barramentos
           // ⚡ IMPORTANTE: Passar TODOS os equipamentos, incluindo junction points
-          const todosEquipamentos = [...equipamentosEspalhados, ...junctionPointsUnicos];
+          const todosEquipamentos = [...equipamentosEspalhados, ...jpsLimpos];
           console.log('[loadDiagrama] 🔍 Passando para convertToVisualConnections:', {
             totalEquipamentos: todosEquipamentos.length,
             junctionPoints: todosEquipamentos.filter(eq => eq.tipo === 'JUNCTION_POINT').length,
@@ -934,7 +965,7 @@ export const useDiagramStore = create<DiagramStore>()(
           });
 
           const { visualConnections, barramentos } = convertToVisualConnections(
-            conexoes,
+            conexoesLimpas,
             todosEquipamentos  // ⚡ FIX: Passar junction points também
           );
 
@@ -1325,6 +1356,8 @@ if (import.meta.env.PROD) {
         equipamentoDestinoId: string,
         portaDestino: PortPosition
       ) => {
+        // Ligação de um ponto pra ele mesmo não existe (virava um "JP solto" impossível de apagar).
+        if ((equipamentoOrigemId ?? '').trim() === (equipamentoDestinoId ?? '').trim()) return;
         // ⚡ IMPORTANTE: Trimizar IDs ao criar conexão (previne trailing spaces)
         const novaConexao: Connection = {
           id: `temp-${Date.now()}`, // ID temporário (backend vai gerar o real)
