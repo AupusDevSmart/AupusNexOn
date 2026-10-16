@@ -115,7 +115,7 @@ export function ControleSyncFvPage() {
 
       {/* Budget por provedor */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        {budget.length === 0 && <div className="text-sm text-muted-foreground">Nenhuma usina configurada ainda.</div>}
+        {budget.length === 0 && <div className="col-span-full rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">Nenhuma usina configurada ainda.</div>}
         {budget.map((b) => {
           const pct = Math.min(100, (b.req_hora / b.limite) * 100);
           const cor = pct >= 90 ? 'bg-red-500' : pct >= 70 ? 'bg-amber-500' : 'bg-emerald-500';

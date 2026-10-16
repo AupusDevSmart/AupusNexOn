@@ -115,11 +115,11 @@
 
     --radius: 1rem;
 
-    --chart-1: 338, 100%, 39%;
-    --chart-2: 206, 85%, 32%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
+    --chart-1: #5AAE39;
+    --chart-2: #2F6FED;
+    --chart-3: #E39A12;
+    --chart-4: #7C5CE6;
+    --chart-5: #0FA3B1;
 
     --sidebar-background: 0 0% 100%;
     --sidebar-foreground: 240 40% 14%;
@@ -158,6 +158,38 @@
     --status-waiting-pickup-foreground: hsl(0, 0%, 30%);
     --status-no-conditions-repair: hsl(0, 0%, 40%);
     --status-no-conditions-repair-foreground: hsl(0, 0%, 20%);
+    --legend: #FFFFFF;
+    --legend-foreground: #161633;
+    --legend-muted: #EEF0F4;
+    --legend-muted-foreground: #5F6478;
+    --legend-track: #E3E6EE;
+    --chart-background: #FFFFFF;
+    --chart-foreground: #161633;
+    --chart-foreground-muted: #8A8FA8;
+    --chart-line-primary: var(--chart-1);
+    --chart-line-secondary: var(--chart-2);
+    --chart-crosshair: #161633;
+    --chart-indicator-color: #161633;
+    --chart-indicator-secondary-color: #A9ACC4;
+    --chart-marker-badge-background: #161633;
+    --chart-marker-badge-foreground: #FFFFFF;
+    --chart-segment-background: rgba(22, 22, 51, 0.06);
+    --chart-segment-line: rgba(22, 22, 51, 0.35);
+    --chart-grid: #E3E6EE;
+    --chart-brush-border: var(--chart-grid);
+    --chart-tooltip-background: #161633;
+    --chart-tooltip-foreground: #FFFFFF;
+    --chart-tooltip-muted: #A9ACC4;
+    --chart-marker-background: #F1F2F6;
+    --chart-marker-border: #D5D8E2;
+    --chart-marker-foreground: #161633;
+    --chart-label: #5F6478;
+    --chart-scale-01: oklch(0.98 0.003 106);
+    --chart-scale-02: oklch(0.92 0.008 106);
+    --chart-scale-03: oklch(0.82 0.015 106);
+    --chart-scale-04: oklch(0.68 0.02 106);
+    --chart-scale-05: oklch(0.55 0.025 106);
+    --chart-scale-pattern-color: oklch(0.96 0.005 106);
   }
 
   .dark {
@@ -231,11 +263,11 @@
     --input: hsl(240, 27%, 30%);
     --input-hover: hsl(240, 27%, 36%);
 
-    --chart-1: 338, 100%, 39%;
-    --chart-2: 206, 85%, 32%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
+    --chart-1: #70C04B;
+    --chart-2: #5B9BFF;
+    --chart-3: #F5B132;
+    --chart-4: #A78BFA;
+    --chart-5: #2FC4D2;
 
     --sidebar-background: 240 45% 9%;
     --sidebar-foreground: 0 0% 100%;
@@ -274,6 +306,38 @@
     --status-waiting-pickup-foreground: hsl(0, 0%, 50%);
     --status-no-conditions-repair: hsl(0, 0%, 20%);
     --status-no-conditions-repair-foreground: hsl(0, 0%, 40%);
+    --legend: #161633;
+    --legend-foreground: #FFFFFF;
+    --legend-muted: rgba(255, 255, 255, 0.08);
+    --legend-muted-foreground: #A9ACC4;
+    --legend-track: #34345A;
+    --chart-background: #161633;
+    --chart-foreground: #FFFFFF;
+    --chart-foreground-muted: #7C80A0;
+    --chart-crosshair: #A9ACC4;
+    --chart-indicator-color: #FFFFFF;
+    --chart-indicator-secondary-color: #A9ACC4;
+    --chart-marker-badge-background: #70C04B;
+    --chart-marker-badge-foreground: #161633;
+    --chart-segment-background: rgba(169, 172, 196, 0.08);
+    --chart-segment-line: rgba(169, 172, 196, 0.45);
+    --chart-grid: rgba(169, 172, 196, 0.22);
+    --chart-brush-border: var(--chart-grid);
+    --chart-marker-background: #1D1D3B;
+    --chart-marker-border: #34345A;
+    --chart-marker-foreground: #FFFFFF;
+    --chart-label: #A9ACC4;
+    --chart-line-primary: var(--chart-1);
+    --chart-line-secondary: var(--chart-2);
+    --chart-tooltip-background: #0E0E24;
+    --chart-tooltip-foreground: #FFFFFF;
+    --chart-tooltip-muted: #A9ACC4;
+    --chart-scale-01: oklch(0.28 0.03 270);
+    --chart-scale-02: oklch(0.38 0.04 270);
+    --chart-scale-03: oklch(0.48 0.05 270);
+    --chart-scale-04: oklch(0.58 0.06 270);
+    --chart-scale-05: oklch(0.68 0.07 270);
+    --chart-scale-pattern-color: oklch(0.145 0 0);
   }
 }
 
@@ -543,32 +607,6 @@
 
   .animate-spin-slow {
     animation: spin-slow 20s linear infinite;
-  }
-
-  /* Tooltip opaco para gráficos */
-  .chart-tooltip-opaque {
-    background-color: hsl(var(--card)) !important;
-    background-image: none !important;
-    backdrop-filter: none !important;
-    opacity: 1 !important;
-    border: 3px solid hsl(var(--primary)) !important;
-    border-radius: 16px !important;
-    box-shadow: 0 15px 50px rgba(0, 0, 0, 0.4) !important;
-    padding: 16px !important;
-    min-width: 280px !important;
-  }
-
-  /* Garante que o tooltip não herda transparência de elementos pais */
-  .recharts-tooltip-wrapper {
-    opacity: 1 !important;
-    pointer-events: auto !important;
-  }
-
-  /* Força fundo sólido no conteúdo do tooltip */
-  .recharts-tooltip-wrapper .recharts-default-tooltip {
-    background-color: hsl(var(--card)) !important;
-    background-image: none !important;
-    opacity: 1 !important;
   }
 
 }

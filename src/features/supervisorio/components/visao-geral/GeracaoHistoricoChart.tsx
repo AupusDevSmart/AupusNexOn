@@ -1,15 +1,24 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
-} from 'recharts';
 import { ChevronLeft, ChevronRight, Download, Loader2 } from 'lucide-react';
-import { coaApi, type PeriodoGeracao, type SerieGeracao } from '@/features/coa/api/coa-api';
+import { curveMonotoneX } from '@visx/curve';
+import { AreaChart, Area } from '@/components/charts/area-chart';
+import { BarChart } from '@/components/charts/bar-chart';
+import { Bar } from '@/components/charts/bar';
+import { BarXAxis } from '@/components/charts/bar-x-axis';
+import { Grid } from '@/components/charts/grid';
+import { XAxis } from '@/components/charts/x-axis';
+import { YAxis } from '@/components/charts/y-axis';
+import { ChartTooltip } from '@/components/charts/tooltip';
+import { COR } from '@/components/graficos/cores';
+import { TooltipDestaque } from '@/components/graficos/tooltip-destaque';
+import { coaApi, type PeriodoGeracao, type PontoGeracao, type SerieGeracao } from '@/features/coa/api/coa-api';
 import { formatEnergy } from '@/utils/formatEnergy';
 
 /**
  * Gráfico de geração com histórico, no estilo do portal do fabricante: Dia / Mês /
  * Ano / Total com navegação por data. Alimentado por GET /coa/unidades/:id/geracao
  * (snapshots horários da nuvem + fechamento diário). Uma série, um eixo.
+ * Dia é série de tempo (área, eixo em horas); mês/ano/total são barras por categoria.
  */
 const PERIODOS: Array<{ k: PeriodoGeracao; rotulo: string }> = [
   { k: 'dia', rotulo: 'Dia' },
@@ -17,6 +26,10 @@ const PERIODOS: Array<{ k: PeriodoGeracao; rotulo: string }> = [
   { k: 'ano', rotulo: 'Ano' },
   { k: 'total', rotulo: 'Total' },
 ];
+
+const UNIDADE_PERIODO: Record<PeriodoGeracao, string> = { dia: 'hora', mes: 'dia', ano: 'mês', total: 'ano' };
+
+const MARGEM = { top: 12, right: 16, bottom: 28, left: 56 };
 
 const hojeSP = () =>
   new Intl.DateTimeFormat('en-CA', {
@@ -54,29 +67,39 @@ function rotuloReferencia(ref: string, periodo: PeriodoGeracao): string {
 const nf = (v: number, d = 1) => v.toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d });
 const compacto = (v: number) => (Math.abs(v) >= 1000 ? `${nf(v / 1000, 1)}k` : nf(v, 0));
 
-function TooltipGeracao({ active, payload, label, periodo }: any) {
-  if (!active || !payload?.length) return null;
-  const p = payload[0]?.payload as { kwh: number | null; acumulado?: number | null };
-  if (p?.kwh == null) return null;
-  let titulo = String(label ?? '');
-  if (periodo === 'dia') {
-    const h = parseInt(titulo, 10);
-    if (!Number.isNaN(h) && h > 0) titulo = `${String(h - 1).padStart(2, '0')}:00–${titulo}`;
-  }
-  return (
-    <div className="rounded-md border bg-popover px-3 py-2 text-xs shadow-md">
-      <div className="font-medium text-foreground">{titulo}</div>
-      <div className="mt-0.5 text-muted-foreground">
-        {periodo === 'dia' ? 'Energia na hora' : 'Energia'}:{' '}
-        <span className="font-semibold text-foreground tabular-nums">{nf(p.kwh, 2)} kWh</span>
-      </div>
-      {periodo === 'dia' && p.acumulado != null && (
-        <div className="text-muted-foreground">
-          Acumulado do dia: <span className="font-semibold text-foreground tabular-nums">{nf(p.acumulado, 1)} kWh</span>
-        </div>
-      )}
-    </div>
-  );
+/** Ponto do modo Dia: série de tempo do bklit exige `date` como Date local. */
+interface PontoDia extends Record<string, unknown> {
+  date: Date;
+  rotulo: string;
+  kwh: number;
+  acumulado: number | null;
+}
+
+/** Ponto dos modos Mês / Ano / Total: categoria no eixo X. */
+interface PontoBarra extends Record<string, unknown> {
+  rotulo: string;
+  kwh: number | null;
+}
+
+/** "HH:00" no dia `ref` (YYYY-MM-DD), em horário local. Rótulo fora do padrão cai no índice. */
+function dataDoRotulo(ref: string, rotulo: string, indice: number): Date {
+  const [y, m, d] = ref.split('-').map(Number);
+  const hm = /^(\d{1,2}):(\d{2})$/.exec(rotulo);
+  const hora = hm ? Number(hm[1]) : indice;
+  const minuto = hm ? Number(hm[2]) : 0;
+  return new Date(y, m - 1, d, hora, minuto);
+}
+
+/** Texto do tooltip de hora, como antes: "06:00–07:00" para o rótulo "07:00". */
+function faixaHora(rotulo: string): string {
+  const h = parseInt(rotulo, 10);
+  if (!Number.isNaN(h) && h > 0) return `${String(h - 1).padStart(2, '0')}:00–${rotulo}`;
+  return rotulo;
+}
+
+function mensagemErro(e: unknown): string {
+  const msg = (e as { response?: { data?: { message?: unknown } } } | null)?.response?.data?.message;
+  return typeof msg === 'string' && msg ? msg : 'Não foi possível carregar o histórico de geração.';
 }
 
 export function GeracaoHistoricoChart({ unidadeId }: { unidadeId: string }) {
@@ -93,9 +116,9 @@ export function GeracaoHistoricoChart({ unidadeId }: { unidadeId: string }) {
     setErro(null);
     try {
       setSerie(await coaApi.getGeracao(unidadeId, periodo, periodo === 'total' ? undefined : ref));
-    } catch (e: any) {
+    } catch (e: unknown) {
       setSerie(null);
-      setErro(e?.response?.data?.message || 'Não foi possível carregar o histórico de geração.');
+      setErro(mensagemErro(e));
     } finally {
       setLoading(false);
     }
@@ -110,8 +133,29 @@ export function GeracaoHistoricoChart({ unidadeId }: { unidadeId: string }) {
     return () => clearInterval(t);
   }, [periodo, ref, hoje, carregar]);
 
-  const pontos = serie?.pontos ?? [];
+  const pontos = useMemo<PontoGeracao[]>(() => serie?.pontos ?? [], [serie]);
   const temDado = pontos.some((p) => p.kwh != null && p.kwh > 0);
+
+  // Enquanto troca de período/data, a série em tela ainda é a anterior: o tipo de
+  // gráfico e as datas seguem o que a API devolveu, não o que foi pedido.
+  const periodoSerie: PeriodoGeracao = serie?.periodo ?? periodo;
+  const refSerie = serie?.referencia ?? ref;
+
+  // Dia: horas sem leitura (kwh null) ficam de fora em vez de virar 0 na curva.
+  const pontosDia = useMemo<PontoDia[]>(() => {
+    if (periodoSerie !== 'dia') return [];
+    const lista: PontoDia[] = [];
+    pontos.forEach((p, i) => {
+      if (p.kwh == null) return;
+      lista.push({ date: dataDoRotulo(refSerie, p.rotulo, i), rotulo: p.rotulo, kwh: p.kwh, acumulado: p.acumulado ?? null });
+    });
+    return lista.sort((a, b) => a.date.getTime() - b.date.getTime());
+  }, [periodoSerie, pontos, refSerie]);
+
+  const pontosBarra = useMemo<PontoBarra[]>(
+    () => (periodoSerie === 'dia' ? [] : pontos.map((p) => ({ rotulo: p.rotulo, kwh: p.kwh }))),
+    [periodoSerie, pontos],
+  );
 
   const exportarCsv = () => {
     if (!serie) return;
@@ -119,7 +163,7 @@ export function GeracaoHistoricoChart({ unidadeId }: { unidadeId: string }) {
       'periodo;rotulo;kwh',
       ...serie.pontos.map((p) => `${periodo};${p.rotulo};${p.kwh == null ? '' : String(p.kwh).replace('.', ',')}`),
     ];
-    const blob = new Blob([`﻿${linhas.join('\n')}`], { type: 'text/csv;charset=utf-8' });
+    const blob = new Blob([`\uFEFF${linhas.join('\n')}`], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -128,11 +172,6 @@ export function GeracaoHistoricoChart({ unidadeId }: { unidadeId: string }) {
     URL.revokeObjectURL(url);
   };
 
-  // Azul da série de geração (o mesmo azul que o mapa do COA usa). O primary do tema é
-  // quase neutro e deixava a curva cinza, com cara de desabilitada.
-  const cor = '#3B82F6';
-  const eixoX = { dataKey: 'rotulo', tick: { fontSize: 11 }, tickLine: false, axisLine: false, stroke: 'hsl(var(--muted-foreground))' };
-  const eixoY = { tick: { fontSize: 11 }, tickLine: false, axisLine: false, width: 44, tickFormatter: compacto, stroke: 'hsl(var(--muted-foreground))' };
   const btnNav = 'grid h-8 w-8 place-items-center rounded-md border hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40';
 
   return (
@@ -193,9 +232,7 @@ export function GeracaoHistoricoChart({ unidadeId }: { unidadeId: string }) {
         </div>
       )}
 
-      <div className="px-4 pt-3 text-[11px] text-muted-foreground">
-        kWh por {periodo === 'dia' ? 'hora' : periodo === 'mes' ? 'dia' : periodo === 'ano' ? 'mês' : 'ano'}
-      </div>
+      <div className="px-4 pt-3 text-[11px] text-muted-foreground">kWh por {UNIDADE_PERIODO[periodo]}</div>
       <div className="relative h-72 px-2 pb-3 pt-1">
         {loading && (
           <div className="absolute inset-0 z-10 grid place-items-center bg-card/60">
@@ -211,42 +248,72 @@ export function GeracaoHistoricoChart({ unidadeId }: { unidadeId: string }) {
               )}
             </div>
           </div>
+        ) : periodoSerie === 'dia' ? (
+          pontosDia.length > 1 && (
+            <AreaChart
+              data={pontosDia}
+              aspectRatio="auto"
+              className="h-full"
+              margin={MARGEM}
+              animationDuration={600}
+            >
+              <Grid horizontal numTicksRows={4} />
+              <Area
+                dataKey="kwh"
+                fill={COR.geracao}
+                fillOpacity={0.35}
+                gradientToOpacity={0.02}
+                strokeWidth={2}
+                curve={curveMonotoneX}
+              />
+              <XAxis numTicks={7} />
+              <YAxis numTicks={4} formatValue={compacto} />
+              <ChartTooltip
+                showDots
+                content={({ point }) => {
+                  const p = point as PontoDia;
+                  return (
+                    <TooltipDestaque
+                      titulo={faixaHora(p.rotulo)}
+                      valor={nf(p.kwh, 2)}
+                      unidade="kWh"
+                      rotulo="Energia na hora"
+                      linhas={p.acumulado != null ? [{ label: 'Acumulado do dia', value: `${nf(p.acumulado, 1)} kWh` }] : undefined}
+                    />
+                  );
+                }}
+              />
+            </AreaChart>
+          )
         ) : (
-          <ResponsiveContainer width="100%" height="100%">
-            {periodo === 'dia' ? (
-              <AreaChart data={pontos} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id={`grad-geracao-${unidadeId}`} x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={cor} stopOpacity={0.35} />
-                    <stop offset="100%" stopColor={cor} stopOpacity={0.02} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis {...eixoX} interval={2} />
-                <YAxis {...eixoY} />
-                <Tooltip content={<TooltipGeracao periodo={periodo} />} cursor={{ stroke: 'hsl(var(--muted-foreground))', strokeDasharray: '3 3' }} />
-                <Area
-                  type="monotone"
-                  dataKey="kwh"
-                  stroke={cor}
-                  strokeWidth={2}
-                  fill={`url(#grad-geracao-${unidadeId})`}
-                  connectNulls={false}
-                  dot={false}
-                  activeDot={{ r: 4 }}
-                  isAnimationActive={false}
-                />
-              </AreaChart>
-            ) : (
-              <BarChart data={pontos} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-                <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis {...eixoX} interval={periodo === 'mes' ? 1 : 0} />
-                <YAxis {...eixoY} />
-                <Tooltip content={<TooltipGeracao periodo={periodo} />} cursor={{ fill: 'hsl(var(--muted))', opacity: 0.5 }} />
-                <Bar dataKey="kwh" fill={cor} radius={[4, 4, 0, 0]} maxBarSize={28} isAnimationActive={false} />
-              </BarChart>
-            )}
-          </ResponsiveContainer>
+          pontosBarra.length > 0 && (
+            <BarChart
+              data={pontosBarra}
+              xDataKey="rotulo"
+              aspectRatio="auto"
+              className="h-full"
+              margin={MARGEM}
+              barGap={0.3}
+              barWidth={periodoSerie === 'total' ? 28 : undefined}
+              animationDuration={600}
+            >
+              <Grid horizontal numTicksRows={4} />
+              <Bar dataKey="kwh" fill={COR.geracao} lineCap={4} />
+              <BarXAxis maxLabels={periodoSerie === 'mes' ? 16 : 12} showAllLabels={periodoSerie !== 'mes'} />
+              <YAxis numTicks={4} formatValue={compacto} />
+              <ChartTooltip
+                showDatePill={false}
+                showCrosshair={false}
+                showDots={false}
+                content={({ point }) => {
+                  const p = point as PontoBarra;
+                  const titulo = periodoSerie === 'mes' ? `Dia ${p.rotulo}` : p.rotulo;
+                  if (p.kwh == null) return <TooltipDestaque titulo={titulo} rotulo="Sem dado de geração" />;
+                  return <TooltipDestaque titulo={titulo} valor={nf(p.kwh, 2)} unidade="kWh" rotulo="Energia" />;
+                }}
+              />
+            </BarChart>
+          )
         )}
       </div>
     </div>

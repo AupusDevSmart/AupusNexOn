@@ -93,8 +93,8 @@ export function VisaoGeralUsina({ unidadeId, unidadeNome }: { unidadeId: string;
       </div>
 
       {loading && !u ? (
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          {[0, 1, 2, 3].map((i) => <div key={i} className="h-[92px] animate-pulse rounded-lg border bg-muted/40" />)}
+        <div className="grid grid-cols-2 gap-3">
+          {[0, 1].map((i) => <div key={i} className="h-[92px] animate-pulse rounded-lg border bg-black/5 dark:bg-white/5" />)}
         </div>
       ) : !u ? (
         <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">

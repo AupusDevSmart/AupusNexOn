@@ -8,6 +8,15 @@ import tseslint from 'typescript-eslint'
 export default tseslint.config(
   { ignores: ['dist'] },
   {
+    // Código do registry bklit (src/components/charts): vendorizado, segue as regras de lá.
+    files: ['src/components/charts/**/*.{ts,tsx}', 'src/components/shimmering-text.tsx'],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
+      'react-refresh/only-export-components': 'off',
+      'react-hooks/exhaustive-deps': 'off',
+    },
+  },
+  {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ['**/*.{ts,tsx}'],
     languageOptions: {

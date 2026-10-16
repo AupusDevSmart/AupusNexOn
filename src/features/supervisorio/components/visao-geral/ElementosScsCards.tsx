@@ -89,7 +89,8 @@ export function ElementosScsCards({ unidadeId }: { unidadeId: string }) {
   return (
     <div>
       <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Equipamentos</div>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+      {/* flex-wrap com basis fixo: a última linha cresce e preenche a largura, sem buraco no grid. */}
+      <div className="flex flex-wrap gap-2 [&>*]:min-w-[150px] [&>*]:flex-1 [&>*]:basis-[180px]">
         {els.map((el) => {
           const Icone = IconeDoTipo(el.tipo);
           const on = online(el.ts);

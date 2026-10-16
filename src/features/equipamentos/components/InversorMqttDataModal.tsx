@@ -375,7 +375,7 @@ export function InversorMqttDataModal({ equipamentoId, open, onOpenChange, onCon
               <CardTitle className="text-base font-medium">Potência e Frequência</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 [&>*:last-child]:col-span-2 md:[&>*:last-child]:col-span-1">
                 <div className="text-center p-3 border rounded-lg">
                   <div className="text-xs text-muted-foreground mb-1">Ativa</div>
                   <div className="text-lg font-semibold">{formatPowerGeneric(inversorData.power?.active_total || 0, 'W')}</div>

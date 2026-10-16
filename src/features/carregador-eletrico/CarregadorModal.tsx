@@ -1,9 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react';
+import type { CSSProperties } from 'react';
 import { api } from '@/config/api';
 import { fmt } from '@/features/supervisorio/v2/components/sheets/sheetParts';
 import { useHistorico, bucketize, brl, unwrap } from '@/features/supervisorio/v2/components/sheets/equipUi';
 import { NX, s, NxShell, NxDialog, NxDialogHead, NxDialogButtons, NxSeg } from '@/features/supervisorio/v2/components/sheets/nxMock';
+import { curveMonotoneX } from '@visx/curve';
+import { ComposedChart } from '@/components/charts/composed-chart';
+import { Area } from '@/components/charts/area-chart';
+import { Line } from '@/components/charts/line';
+import { Grid } from '@/components/charts/grid';
+import { XAxis } from '@/components/charts/x-axis';
+import { YAxis } from '@/components/charts/y-axis';
+import { ChartTooltip } from '@/components/charts/tooltip';
+import { COR } from '@/components/graficos/cores';
+import { TooltipDestaque } from '@/components/graficos/tooltip-destaque';
+import { LINHA_SO_DOMINIO, linhasDeBuckets } from '@/components/graficos/linhas-de-buckets';
 
 /**
  * Modal do Carregador (condomínio) — porte 1:1 do mockup "Web — Modal do Carregador" (NEXON-5).
@@ -103,7 +114,6 @@ export function CarregadorModal({ carregador, open, onOpenChange }: { carregador
   const [novo, setNovo] = useState<null | { nome: string; apartamento: string; tag_uid: string; email: string; validade: string }>(null);
   const [tarifaDraft, setTarifaDraft] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
-  const [cur, setCur] = useState<number | null>(null);
   // Exportação
   const mesesOpc = useMemo(() => {
     const h = new Date();
@@ -199,7 +209,7 @@ export function CarregadorModal({ carregador, open, onOpenChange }: { carregador
   const fechar = () => { setModal(null); };
   const comando = async (fn: () => Promise<unknown>, falha: string) => {
     setModal(null); setBusy(true); setErro('');
-    try { await fn(); await carregar(); setCur(null); }
+    try { await fn(); await carregar(); }
     catch (e) { setErro(erroMsg(e, falha)); }
     finally { setBusy(false); }
   };
@@ -245,30 +255,16 @@ export function CarregadorModal({ carregador, open, onOpenChange }: { carregador
       : { background: NX.off }),
   };
 
-  // Curva
-  const W = 330, TOP = 20, BOT = 118, N = 80;
+  // Curva de potência da recarga (bklit): buckets do início da sessão até agora;
+  // `teto` (série invisível) leva o eixo até a potência nominal do carregador.
+  const N = 80;
   const t0 = curvaIni?.getTime() ?? 0, t1 = curvaFim?.getTime() ?? 1;
   const vals = carregando && pts && curvaIni ? bucketize(pts, t0, t1, N, kwDe) : [];
-  const pontos = vals
-    .map((v, i) => (v == null ? null : { x: Math.round(((i + 0.5) / N) * W * 10) / 10, v, t: t0 + ((i + 0.5) / N) * (t1 - t0) }))
-    .filter((p): p is { x: number; v: number; t: number } => p != null);
-  const maxLido = Math.max(0, ...pontos.map((p) => p.v));
+  const curva = linhasDeBuckets(t0, t1, { potencia: vals });
+  const maxLido = Math.max(0, ...curva.map((p) => Number(p.potencia)));
   const MAXP = Math.ceil((Math.max(potencia ?? 0, maxLido, 1) + 1) / 2) * 2;
-  const Y = (p: number) => Math.round((BOT - (Math.max(0, p) / MAXP) * (BOT - TOP)) * 10) / 10;
-  const realD = pontos.map((p, i) => `${i ? 'L' : 'M'}${p.x} ${Y(p.v)}`).join(' ');
-  const areaD = pontos.length ? `${realD} L${pontos[pontos.length - 1].x} ${BOT} L${pontos[0].x} ${BOT} Z` : 'M0 0';
-  const sel = pontos.length
-    ? cur == null ? pontos[pontos.length - 1] : pontos.reduce((a, p) => (Math.abs(p.x - cur * W) < Math.abs(a.x - cur * W) ? p : a))
-    : null;
-  const curX = sel?.x ?? 0, curY = sel ? Y(sel.v) : BOT;
-  const tipX = curX > 230 ? curX - 8 : curX + 8;
-  const tipY = Math.max(32, curY - 10);
-  const readout = sel ? `${hm(new Date(sel.t))} · ${fmt(sel.v, 1)} kW` : '—';
-  const onMove = (e: ReactPointerEvent<SVGRectElement>) => {
-    const r = e.currentTarget.getBoundingClientRect();
-    setCur(Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)));
-  };
-  const kwAgora = pontos.length ? pontos[pontos.length - 1].v : null;
+  curva.forEach((p) => { p.teto = MAXP; });
+  const kwAgora = curva.length ? Number(curva[curva.length - 1].potencia) : null;
 
   const pillText = carregando ? 'Carregando' : 'Disponível';
   const stText = carregando
@@ -428,22 +424,20 @@ export function CarregadorModal({ carregador, open, onOpenChange }: { carregador
               </div>
               <div style={{ ...CARD, borderRadius: 14, padding: '14px 16px 10px 16px', flex: 1, display: 'flex', flexDirection: 'column' }}>
                 <span style={{ fontSize: 15, fontWeight: 800 }}>Curva de potência</span>
-                <svg viewBox={`0 0 ${W} 150`} width="100%" height="150" style={{ display: 'block', marginTop: 8 }} role="img" aria-label="Curva de potência da recarga">
-                  <text x="0" y="12" fontSize="11" fill={NX.mudo}>{MAXP} kW</text>
-                  <line x1="0" x2={W} y1={TOP} y2={TOP} stroke={NX.linha} />
-                  <line x1="0" x2={W} y1={BOT} y2={BOT} stroke={NX.borda} />
-                  <path d={areaD} fill="rgba(46,139,71,0.18)" stroke="none" />
-                  <path d={realD || 'M0 0'} fill="none" stroke="#2E8B47" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-                  <line x1={W - 1} x2={W - 1} y1={TOP} y2={BOT} stroke="#B9BDCB" strokeDasharray="2 3" />
-                  {sel && <>
-                    <line x1={curX} x2={curX} y1={TOP} y2={BOT} stroke={NX.texto} strokeOpacity="0.35" />
-                    <circle cx={curX} cy={curY} r="4.5" fill="#2E8B47" stroke={NX.card} strokeWidth="2" />
-                  </>}
-                  <text x={sel ? tipX : 8} y={sel ? tipY : 32} fontSize="11" fontWeight="700" fill={NX.texto} textAnchor={sel && curX > 230 ? 'end' : 'start'}>{readout}</text>
-                  <text x="0" y="140" fontSize="11" fill={NX.mudo}>{inicioSa ? hm(inicioSa) : '—'}</text>
-                  <text x={W} y="140" fontSize="11" fill={NX.mudo} textAnchor="end">agora</text>
-                  <rect x="0" y="0" width={W} height="150" fill="transparent" style={{ touchAction: 'none', cursor: 'crosshair' }} onPointerMove={onMove} onPointerDown={onMove} />
-                </svg>
+                <div style={{ height: 150, marginTop: 8 }} role="img" aria-label="Curva de potência da recarga">
+                  <ComposedChart data={curva} aspectRatio="auto" className="h-full"
+                    margin={{ top: 8, right: 8, bottom: 24, left: 48 }} animationDuration={0}>
+                    <Grid horizontal numTicksRows={3} />
+                    <Area dataKey="potencia" fill={COR.potencia} fillOpacity={0.25} gradientToOpacity={0.04} strokeWidth={2.2} curve={curveMonotoneX} animate={false} />
+                    <Line dataKey="teto" {...LINHA_SO_DOMINIO} />
+                    <XAxis numTicks={2} />
+                    <YAxis numTicks={3} formatValue={(x) => `${fmt(x, Number.isInteger(x) ? 0 : 1)} kW`} />
+                    <ChartTooltip showDots content={({ point }) => {
+                      const p = point as { date: Date; potencia: number };
+                      return <TooltipDestaque titulo={hm(p.date)} valor={fmt(p.potencia, 1)} unidade="kW" rotulo="Potência" />;
+                    }} />
+                  </ComposedChart>
+                </div>
               </div>
             </div>
           </div>

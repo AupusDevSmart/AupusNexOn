@@ -32,6 +32,7 @@ import {
   Wind,
   RotateCw,
 } from "lucide-react";
+import { Gauge as GaugeArco } from "@/components/charts/gauge";
 import { useState, useEffect } from "react";
 import { ProgramacaoPivoModal, ProgramacaoPivo } from "./programacao-pivo-modal";
 
@@ -75,7 +76,7 @@ interface PivoModalProps {
   onPararIrrigacao?: () => void;
 }
 
-// Componente Relógio (Gauge)
+// Componente Relógio (Gauge do bklit): arco de 0 a 100% do máximo, valor e unidade no centro
 function GaugeDisplay({ value, max, label, unit, icon: Icon }: {
   value: number;
   max: number;
@@ -83,51 +84,28 @@ function GaugeDisplay({ value, max, label, unit, icon: Icon }: {
   unit: string;
   icon: React.ElementType;
 }) {
-  const percentage = (value / max) * 100;
-  const rotation = (percentage / 100) * 180 - 90; // -90 a +90 graus
+  const percentage = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0;
 
   return (
     <div className="flex flex-col items-center justify-center p-4">
-      <div className="relative w-32 h-32">
-        {/* Arco de fundo */}
-        <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
-          <circle
-            cx="50"
-            cy="50"
-            r="40"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="8"
-            className="text-muted-foreground/20"
-            strokeDasharray="126 252"
-            strokeLinecap="round"
-          />
-          {/* Arco de progresso */}
-          <circle
-            cx="50"
-            cy="50"
-            r="40"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="8"
-            className="text-primary transition-all duration-500"
-            strokeDasharray={`${(percentage / 100) * 126} 252`}
-            strokeLinecap="round"
-          />
-        </svg>
-
-        {/* Ícone central */}
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <Icon className="h-6 w-6 mb-1 text-muted-foreground" />
-          <span className="text-2xl font-bold">{value}</span>
-          <span className="text-xs text-muted-foreground">{unit}</span>
-        </div>
+      <div className="w-32 h-32">
+        <GaugeArco
+          width={128}
+          height={128}
+          value={percentage}
+          centerValue={value}
+          defaultLabel={unit}
+          totalNotches={32}
+          formatOptions={{ maximumFractionDigits: 1 }}
+        />
       </div>
-      <p className="text-sm font-medium mt-2 text-center">{label}</p>
+      <p className="text-sm font-medium mt-2 text-center flex items-center gap-1.5">
+        <Icon className="h-4 w-4 text-muted-foreground" />
+        {label}
+      </p>
     </div>
   );
 }
-
 // Componente Visualizador de Posição do Pivô
 function PosicaoPivo({ direcaoAtual, direcaoReferencia, horimetro }: { direcaoAtual: number; direcaoReferencia: number; horimetro: number }) {
   const [filtro, setFiltro] = useState<'dia' | 'semana' | 'mes' | 'personalizado'>('dia');

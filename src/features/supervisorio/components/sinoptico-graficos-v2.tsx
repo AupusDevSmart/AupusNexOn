@@ -1,93 +1,40 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
 import { Activity, Settings, TrendingUp, Zap, AlertTriangle, Loader2, Expand, ChevronLeft, ChevronRight } from "lucide-react";
-import { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import {
-  Bar,
-  BarChart,
-  Brush,
-  CartesianGrid,
-  Legend,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-import { ConfiguracaoDemandaModal, ConfiguracaoDemanda, EquipamentoConfig } from "./ConfiguracaoDemandaModal";
+import { useState, useEffect, useMemo } from "react";
 import type { ReactNode } from "react";
-import { CATEGORIA_FLUXO, resolverFluxoEquipamento } from "../utils/categoria-fluxo";
-import { useDemandaAgregada, PeriodoFiltro } from "@/hooks/useDemandaAgregada";
-
-// ---- Navegação ‹ › do período (dia/mês/ano) — referência em periodo.data/mes/ano ----
-const pad2 = (n: number) => String(n).padStart(2, '0');
-/** Hoje em YYYY-MM-DD no fuso do navegador (o mesmo que o backend usa pra montar o dia). */
-const hojeLocalISO = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-};
-/** 'YYYY-MM-DD' → Date local à meia-noite (sem o deslocamento de UTC do `new Date(iso)`). */
-const parseDiaLocal = (iso?: string): Date | null => {
-  if (!iso) return null;
-  const [y, m, d] = iso.split('-').map(Number);
-  if (!y || !m || !d) return null;
-  return new Date(y, m - 1, d, 0, 0, 0, 0);
-};
-const ehDiaAtual = (p: PeriodoFiltro) => p.tipo !== 'dia' || !p.data || p.data === hojeLocalISO();
-const deslocarPeriodo = (p: PeriodoFiltro, passo: number): PeriodoFiltro => {
-  const hoje = new Date();
-  if (p.tipo === 'dia') {
-    const base = parseDiaLocal(p.data) ?? new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
-    base.setDate(base.getDate() + passo);
-    return { tipo: 'dia', data: `${base.getFullYear()}-${pad2(base.getMonth() + 1)}-${pad2(base.getDate())}` };
-  }
-  if (p.tipo === 'mes') {
-    const [y, m] = (p.mes ?? `${hoje.getFullYear()}-${pad2(hoje.getMonth() + 1)}`).split('-').map(Number);
-    const base = new Date(y, m - 1 + passo, 1);
-    return { tipo: 'mes', mes: `${base.getFullYear()}-${pad2(base.getMonth() + 1)}` };
-  }
-  if (p.tipo === 'ano') {
-    const y = Number(p.ano ?? hoje.getFullYear());
-    return { tipo: 'ano', ano: String(y + passo) };
-  }
-  return p;
-};
-const podeAvancarPeriodo = (p: PeriodoFiltro): boolean => {
-  const prox = deslocarPeriodo(p, 1);
-  const hoje = hojeLocalISO();
-  if (prox.tipo === 'dia') return (prox.data ?? '') <= hoje;
-  if (prox.tipo === 'mes') return (prox.mes ?? '') <= hoje.slice(0, 7);
-  if (prox.tipo === 'ano') return (prox.ano ?? '') <= hoje.slice(0, 4);
-  return false;
-};
-const rotuloPeriodo = (p: PeriodoFiltro): string => {
-  const hoje = new Date();
-  if (p.tipo === 'dia') {
-    if (!p.data || p.data === hojeLocalISO()) return 'Hoje';
-    const [y, m, d] = p.data.split('-');
-    return `${d}/${m}/${y}`;
-  }
-  if (p.tipo === 'mes') {
-    const [y, m] = (p.mes ?? `${hoje.getFullYear()}-${pad2(hoje.getMonth() + 1)}`).split('-').map(Number);
-    const s = new Date(y, m - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
-    return s.charAt(0).toUpperCase() + s.slice(1);
-  }
-  if (p.tipo === 'ano') return String(p.ano ?? hoje.getFullYear());
-  return '';
-};
-import { useDadosM160 } from "@/hooks/useDadosM160";
-import { useIsMobile } from "@/hooks/use-mobile";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/config/api";
-import { useTheme } from "@/components/theme-provider";
+import { useDemandaAgregada, type PeriodoFiltro } from "@/hooks/useDemandaAgregada";
+import { useDadosM160 } from "@/hooks/useDadosM160";
+import { ConfiguracaoDemandaModal, type ConfiguracaoDemanda, type EquipamentoConfig } from "./ConfiguracaoDemandaModal";
+import { CATEGORIA_FLUXO, resolverFluxoEquipamento } from "../utils/categoria-fluxo";
+import {
+  analisarQualidadeDados,
+  deslocarPeriodo,
+  ehDiaAtual,
+  inicioISO,
+  podeAvancarPeriodo,
+  rotuloPeriodo,
+} from "./sinoptico-graficos-v2/periodo";
+import { formatarEnergia } from "./sinoptico-graficos-v2/formatos";
+import {
+  montarPontosDemanda,
+  montarPontosEnergia,
+  montarPontosFases,
+  type Dominio,
+  type FasesAtivas,
+  type PontoDemanda,
+} from "./sinoptico-graficos-v2/dados";
+import { GraficoDemanda, type ReferenciasDemanda } from "./sinoptico-graficos-v2/GraficoDemanda";
+import { GraficoEnergia } from "./sinoptico-graficos-v2/GraficoEnergia";
+import { GraficoFases } from "./sinoptico-graficos-v2/GraficoFases";
+import { ControlesFases } from "./sinoptico-graficos-v2/ControlesFases";
 
 // Desabilitar logs de debug em produção
 const noop = () => {};
@@ -96,7 +43,6 @@ if (import.meta.env.PROD) {
   console.info = noop;
   console.debug = noop;
 }
-
 
 interface SinopticoGraficosV2Props {
   unidadeId?: string;
@@ -109,60 +55,33 @@ interface SinopticoGraficosV2Props {
   controleVariavel?: ReactNode;
 }
 
-interface CustomTooltipProps {
-  active?: boolean;
-  payload?: Array<{ value: number; name: string; color: string }>;
-  label?: string;
-  unidade?: string;
+/** Configuração salva na API, já convertida para o formato do front. */
+interface ConfiguracaoApi {
+  fonte: string;
+  mostrarDetalhes: boolean;
+  intervaloAtualizacao: number;
+  aplicarPerdas: boolean;
+  fatorPerdas: number;
+  valorContratado: number;
+  percentualAdicional: number;
+  /** IDs selecionados, processados depois que os equipamentos chegam. */
+  equipamentosIds: string[];
+  fluxoManual: NonNullable<ConfiguracaoDemanda['fluxoManual']>;
 }
 
-const CustomTooltip = ({ active, payload, label, unidade = '' }: CustomTooltipProps) => {
-  if (!active || !payload || payload.length === 0) return null;
-  return (
-    <div className="bg-background border border-border rounded-lg shadow-lg p-3">
-      <p className="text-sm font-medium">{label}</p>
-      {payload.map((entry, index) => (
-        <p key={index} className="text-sm" style={{ color: entry.color }}>
-          {`${entry.name}: ${entry.value.toFixed(2)}${unidade ? ' ' + unidade : ''}`}
-        </p>
-      ))}
-    </div>
-  );
-};
-
-/**
- * Qualidade dos dados — limitado a SEM_DADOS e DESATUALIZADO.
- * Só faz sentido para período "dia" (live); mês/ano são consultas históricas.
- */
-function analisarQualidadeDados(dados: Array<{ timestamp?: string }>) {
-  if (!dados || dados.length === 0) {
-    return { status: 'SEM_DADOS' as const, mensagem: 'Nenhum dado disponível' };
-  }
-  const ultimo = dados[dados.length - 1]?.timestamp;
-  if (!ultimo) return { status: 'OK' as const, mensagem: '' };
-  const diferencaHoras = (Date.now() - new Date(ultimo).getTime()) / 3_600_000;
-  if (diferencaHoras > 2) {
-    return {
-      status: 'DESATUALIZADO' as const,
-      mensagem: `Último dado: ${Math.floor(diferencaHoras)}h atrás`,
-    };
-  }
-  return { status: 'OK' as const, mensagem: '' };
+/** Equipamento como vem de GET /unidades/:id/equipamentos. */
+interface EquipamentoApi {
+  id: string;
+  nome: string;
+  status?: string;
+  tipo_equipamento?: string;
+  tipo_equipamento_rel?: { codigo?: string; categoria?: { nome?: string } };
 }
 
-function formatarEnergia(kwh: number): string {
-  if (Math.abs(kwh) >= 1000) {
-    return `${(kwh / 1000).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MWh`;
-  }
-  return `${kwh.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} kWh`;
-}
-
-const MESES_PT_CURTOS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-
-function inicioISO(d: Date) {
-  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60_000);
-  return local.toISOString().slice(0, 16);
-}
+const FASES_TODAS: FasesAtivas = { A: true, B: true, C: true };
+/** Altura dos gráficos no modo compacto (toggle Demanda/Tensão/FP do sinóptico). */
+const ALTURA_COMPACTA = 'h-[150px] xl:h-auto xl:flex-1 xl:min-h-0';
+const SEM_DEMANDA = { pontos: [] as PontoDemanda[], dominio: undefined as Dominio | undefined };
 
 export function SinopticoGraficosV2({
   unidadeId,
@@ -172,15 +91,11 @@ export function SinopticoGraficosV2({
   apenasGrafico,
   controleVariavel,
 }: SinopticoGraficosV2Props) {
-  const { theme } = useTheme();
-  const isMobile = useIsMobile();
   const [modalOpen, setModalOpen] = useState(false);
   const [modalExpandidoOpen, setModalExpandidoOpen] = useState(false);
 
   // Período do gráfico de Demanda
   const [periodo, setPeriodo] = useState<PeriodoFiltro>({ tipo: 'dia' });
-  // Zoom/pan do gráfico de Demanda (janela de índices sobre os dados; null = tudo).
-  const [zoomWin, setZoomWin] = useState<{ start: number; end: number } | null>(null);
   const [customAberto, setCustomAberto] = useState(false);
   const [customInicio, setCustomInicio] = useState<string>(() => {
     const d = new Date();
@@ -191,19 +106,15 @@ export function SinopticoGraficosV2({
 
   // Estados para gráficos de tensão e FP
   const [m160Selecionado, setM160Selecionado] = useState<string>('');
-  const [fasesTensao, setFasesTensao] = useState({ A: true, B: true, C: true });
-  const [fasesFP, setFasesFP] = useState({ A: true, B: true, C: true });
+  const [fasesTensao, setFasesTensao] = useState<FasesAtivas>(FASES_TODAS);
+  const [fasesFP, setFasesFP] = useState<FasesAtivas>(FASES_TODAS);
   const [modalTensaoOpen, setModalTensaoOpen] = useState(false);
   const [modalFPOpen, setModalFPOpen] = useState(false);
-
-  // Determinar cor da linha de demanda baseada no tema
-  const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-  const corLinhaDemanda = isDark ? '#ffffff' : '#000000';
 
   // OTIMIZAÇÃO: Buscar configuração da API com prioridade alta
   const { data: configData, refetch: refetchConfig } = useQuery({
     queryKey: ['configuracao-demanda', unidadeId],
-    queryFn: async () => {
+    queryFn: async (): Promise<ConfiguracaoApi | null> => {
       if (!unidadeId) return null;
 
       try {
@@ -214,24 +125,20 @@ export function SinopticoGraficosV2({
           // A API retorna dentro de response.data.data
           const apiData = response.data.data || response.data;
 
-          // Primeiro, criar o objeto de configuração básico
-          const config = {
+          return {
             fonte: apiData.fonte || 'AGRUPAMENTO',
-            equipamentos: [], // Vamos preencher depois
             mostrarDetalhes: apiData.mostrar_detalhes !== false,
             intervaloAtualizacao: apiData.intervalo_atualizacao || 30,
             aplicarPerdas: apiData.aplicar_perdas !== false,
             fatorPerdas: Number(apiData.fator_perdas) || 3,
             valorContratado: Number(apiData.valor_contratado) || valorContratado,
-            percentualAdicional: Number(apiData.percentual_adicional) || percentualAdicional
+            percentualAdicional: Number(apiData.percentual_adicional) || percentualAdicional,
+            // Guardar os IDs selecionados para processar depois
+            equipamentosIds: Array.isArray(apiData.equipamentos_ids) ? apiData.equipamentos_ids : [],
+            fluxoManual: apiData.fluxo_manual ?? apiData.fluxoManual ?? {},
           };
-
-          // Guardar os IDs selecionados para processar depois
-          (config as any).equipamentosIds = apiData.equipamentos_ids || [];
-
-          return config;
         }
-      } catch (error) {
+      } catch {
         // Erro silencioso - não há config salva ainda
       }
       return null;
@@ -256,11 +163,10 @@ export function SinopticoGraficosV2({
   // Buscar equipamentos disponíveis
   const {
     data: equipamentosData,
-    isLoading: isLoadingEquipamentos,
     refetch: refetchEquipamentos
   } = useQuery({
     queryKey: ['equipamentos-agrupamento', unidadeId],
-    queryFn: async () => {
+    queryFn: async (): Promise<EquipamentoConfig[]> => {
       if (!unidadeId) return [];
 
       try {
@@ -271,14 +177,14 @@ export function SinopticoGraficosV2({
           }
         });
 
-        const equipamentosArray = response.data?.data || [];
+        const equipamentosArray: EquipamentoApi[] = response.data?.data || [];
 
         if (equipamentosArray && equipamentosArray.length > 0) {
           // Mapear para formato do modal. Fluxo padrao vem da categoria —
           // ver utils/categoria-fluxo.ts pra tabela completa. AMBIGUO fica
           // como literal aqui; resolveFluxoManual() embaixo substitui pela
           // escolha do admin quando aplicavel.
-          return equipamentosArray.map((equip: any): EquipamentoConfig => {
+          return equipamentosArray.map((equip): EquipamentoConfig => {
             const tipo = equip.tipo_equipamento_rel?.codigo || equip.tipo_equipamento || '';
             const categoria = equip.tipo_equipamento_rel?.categoria?.nome || '';
             const fluxoPadrao = CATEGORIA_FLUXO[categoria] ?? 'NEUTRO';
@@ -295,7 +201,7 @@ export function SinopticoGraficosV2({
           });
         }
         return [];
-      } catch (error) {
+      } catch {
         return [];
       }
     },
@@ -316,33 +222,22 @@ export function SinopticoGraficosV2({
   // Atualizar configuração quando dados da API chegarem
   useEffect(() => {
     if (configData && equipamentosData && equipamentosData.length > 0) {
-      // Verificar se configData tem equipamentosIds ou equipamentos_ids
-      const equipamentosIds = (configData as any).equipamentosIds ||
-                              (configData as any).equipamentos_ids ||
-                              [];
-
       // Limpar espaços dos IDs para comparação
-      const equipamentosIdsTrimmed = Array.isArray(equipamentosIds)
-        ? equipamentosIds.map((id: string) => id.trim())
-        : [];
+      const equipamentosIdsTrimmed = configData.equipamentosIds.map((id) => id.trim());
 
       // Mesclar equipamentos disponíveis com os IDs selecionados da configuração
-      const equipamentosComSelecao = equipamentosData.map(equip => {
-        const equipIdTrimmed = equip.id.trim();
-        const estaSelecionado = equipamentosIdsTrimmed.includes(equipIdTrimmed);
-        return {
-          ...equip,
-          selecionado: estaSelecionado
-        };
-      });
-
-      const fluxoManualApi =
-        (configData as any).fluxoManual ?? (configData as any).fluxo_manual ?? {};
+      const equipamentosComSelecao = equipamentosData.map(equip => ({
+        ...equip,
+        selecionado: equipamentosIdsTrimmed.includes(equip.id.trim()),
+      }));
 
       setConfiguracao({
-        ...(configData as ConfiguracaoDemanda),
         equipamentos: equipamentosComSelecao,
-        fluxoManual: fluxoManualApi,
+        fluxoManual: configData.fluxoManual,
+        mostrarDetalhes: configData.mostrarDetalhes,
+        intervaloAtualizacao: configData.intervaloAtualizacao,
+        aplicarPerdas: configData.aplicarPerdas,
+        fatorPerdas: configData.fatorPerdas,
         demandaContratada: valorContratado,
       });
     } else if (equipamentosData && equipamentosData.length > 0 && !configData) {
@@ -379,7 +274,7 @@ export function SinopticoGraficosV2({
   });
 
   // Usar hook de dados M160 para tensão e FP
-  const { dados: dadosM160, equipamentosM160, isLoading: isLoadingM160, isInitialLoading: isInitialLoadingM160 } = useDadosM160(unidadeId, m160Selecionado);
+  const { dados: dadosM160, equipamentosM160, isInitialLoading: isInitialLoadingM160 } = useDadosM160(unidadeId, m160Selecionado);
 
   // Selecionar automaticamente o primeiro M160 disponível
   useEffect(() => {
@@ -441,195 +336,24 @@ export function SinopticoGraficosV2({
     }
   };
 
-  // Dados formatados conforme o período selecionado.
-  // - dia: template de slots de 5min + merge (linhas contratado/adicional)
-  // - custom: pontos brutos com label "dd/MM HH:mm"
-  // - mes: barras por dia (energia kWh)
-  // - ano: barras por mês (energia kWh)
-  const dadosFormatadosPotencia = useMemo(() => {
-    if (!dados || dados.length === 0) return [];
+  // Séries dos gráficos no formato do bklit (ponto com Date, ordenado, sem nulos).
+  // - dia: potência com eixo fixo 00:00 → agora e linhas contratado/adicional
+  // - custom: potência com eixo = extensão dos dados
+  // - mes/ano: barras de energia (kWh) por dia/mês
+  const demanda = useMemo(() => {
+    if (!dados || dados.length === 0) return SEM_DEMANDA;
+    if (periodo.tipo !== 'dia' && periodo.tipo !== 'custom') return SEM_DEMANDA;
+    return montarPontosDemanda(dados, periodo, valorContratado, percentualAdicional);
+  }, [dados, periodo, valorContratado, percentualAdicional]);
 
-    if (periodo.tipo === 'dia') {
-      // Dia de referência: periodo.data (navegação ‹ ›) ou hoje. Num dia passado o
-      // template de slots vai até 23:55; hoje, só até agora.
-      const hoje = parseDiaLocal(periodo.data) ?? new Date();
-      hoje.setHours(0, 0, 0, 0);
-      const inicioDeHoje = hoje.getTime();
-      const fimDoDia = inicioDeHoje + 86_400_000;
-      const ehHoje = ehDiaAtual(periodo);
-      const valorAdicional = valorContratado * (1 + percentualAdicional / 100);
+  const energia = useMemo(
+    () => (dados && (periodo.tipo === 'mes' || periodo.tipo === 'ano') ? montarPontosEnergia(dados, periodo.tipo) : []),
+    [dados, periodo.tipo],
+  );
 
-      const dadosDeHoje = dados.filter(item => {
-        if (!item.timestamp) return false;
-        const t = new Date(item.timestamp).getTime();
-        return t >= inicioDeHoje && t < fimDoDia;
-      });
-
-      const agora = new Date();
-      const todosOsHorarios: any[] = [];
-      const horaFinal = ehHoje ? agora.getHours() : 23;
-      const minutoFinal = ehHoje ? agora.getMinutes() : 59;
-
-      for (let h = 0; h <= horaFinal; h++) {
-        const maxMinutos = h === horaFinal ? minutoFinal : 59;
-        for (let m = 0; m <= maxMinutos; m += 5) {
-          const ts = new Date(hoje);
-          ts.setHours(h, m, 0, 0);
-          todosOsHorarios.push({
-            timestamp: ts.toISOString(),
-            hora: ts.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-            potencia: null,
-            valorContratado,
-            valorAdicional,
-          });
-        }
-      }
-
-      const dadosMap = new Map(
-        dadosDeHoje.map(item => {
-          const hora = new Date(item.timestamp!).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-          return [hora, { hora, timestamp: item.timestamp, potencia: item.potencia_kw, valorContratado, valorAdicional }];
-        }),
-      );
-
-      return todosOsHorarios.map(slot => dadosMap.get(slot.hora) ?? slot);
-    }
-
-    if (periodo.tipo === 'custom') {
-      return dados.map(item => {
-        const ts = item.timestamp ? new Date(item.timestamp) : null;
-        return {
-          timestamp: item.timestamp,
-          hora: ts
-            ? ts.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
-            : '',
-          potencia: item.potencia_kw,
-        };
-      });
-    }
-
-    if (periodo.tipo === 'mes') {
-      return dados.map(item => ({
-        label: String(item.dia ?? ''),
-        energia: item.energia_kwh,
-      }));
-    }
-
-    // ano
-    return dados.map(item => ({
-      label: item.mes_nome ? item.mes_nome.slice(0, 3) : MESES_PT_CURTOS[(item.mes_numero ?? 1) - 1],
-      energia: item.energia_kwh,
-    }));
-  }, [dados, periodo.tipo, periodo.data, valorContratado, percentualAdicional]);
-
-  // Formatar dados de tensão e FP do M160 - com período completo de 00:00 até agora
-  const dadosFormatadosTensao = useMemo(() => {
-    if (!dadosM160 || dadosM160.length === 0) return [];
-
-    // Criar array com todas as horas do dia de 00:00 até agora
-    const agora = new Date();
-    const hoje = new Date();
-    hoje.setHours(0, 0, 0, 0);
-    const todosOsHorarios: any[] = [];
-
-    // Ir até a hora atual
-    const horaFinal = agora.getHours();
-    const minutoFinal = agora.getMinutes();
-
-    for (let h = 0; h <= horaFinal; h++) {
-      const maxMinutos = (h === horaFinal) ? minutoFinal : 59;
-      for (let m = 0; m <= maxMinutos; m += 5) { // ✅ De 5 em 5 minutos
-        const timestamp = new Date(hoje);
-        timestamp.setHours(h, m, 0, 0);
-        todosOsHorarios.push({
-          hora: timestamp.toLocaleTimeString("pt-BR", {
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
-          tensaoA: null,
-          tensaoB: null,
-          tensaoC: null,
-        });
-      }
-    }
-
-    // Mesclar dados reais com o template
-    const dadosMap = new Map(
-      dadosM160.map((item) => [
-        new Date(item.timestamp).toLocaleTimeString("pt-BR", {
-          hour: "2-digit",
-          minute: "2-digit",
-          timeZone: 'America/Sao_Paulo',
-        }),
-        {
-          hora: new Date(item.timestamp).toLocaleTimeString("pt-BR", {
-            hour: "2-digit",
-            minute: "2-digit",
-            timeZone: 'America/Sao_Paulo',
-          }),
-          tensaoA: item.tensaoA,
-          tensaoB: item.tensaoB,
-          tensaoC: item.tensaoC,
-        }
-      ])
-    );
-
-    return todosOsHorarios.map(slot => dadosMap.get(slot.hora) || slot);
-  }, [dadosM160]);
-
-  const dadosFormatadosFP = useMemo(() => {
-    if (!dadosM160 || dadosM160.length === 0) return [];
-
-    // Criar array com todas as horas do dia de 00:00 até agora
-    const agora = new Date();
-    const hoje = new Date();
-    hoje.setHours(0, 0, 0, 0);
-    const todosOsHorarios: any[] = [];
-
-    // Ir até a hora atual
-    const horaFinal = agora.getHours();
-    const minutoFinal = agora.getMinutes();
-
-    for (let h = 0; h <= horaFinal; h++) {
-      const maxMinutos = (h === horaFinal) ? minutoFinal : 59;
-      for (let m = 0; m <= maxMinutos; m += 5) { // ✅ De 5 em 5 minutos
-        const timestamp = new Date(hoje);
-        timestamp.setHours(h, m, 0, 0);
-        todosOsHorarios.push({
-          hora: timestamp.toLocaleTimeString("pt-BR", {
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
-          fatorPotenciaA: null,
-          fatorPotenciaB: null,
-          fatorPotenciaC: null,
-        });
-      }
-    }
-
-    // Mesclar dados reais com o template
-    const dadosMap = new Map(
-      dadosM160.map((item) => [
-        new Date(item.timestamp).toLocaleTimeString("pt-BR", {
-          hour: "2-digit",
-          minute: "2-digit",
-          timeZone: 'America/Sao_Paulo',
-        }),
-        {
-          hora: new Date(item.timestamp).toLocaleTimeString("pt-BR", {
-            hour: "2-digit",
-            minute: "2-digit",
-            timeZone: 'America/Sao_Paulo',
-          }),
-          fatorPotenciaA: item.fatorPotenciaA,
-          fatorPotenciaB: item.fatorPotenciaB,
-          fatorPotenciaC: item.fatorPotenciaC,
-        }
-      ])
-    );
-
-    return todosOsHorarios.map(slot => dadosMap.get(slot.hora) || slot);
-  }, [dadosM160]);
+  // Tensão e FP do M160 — sempre o dia corrente, eixo de 00:00 até agora
+  const tensao = useMemo(() => montarPontosFases(dadosM160, 'tensao'), [dadosM160]);
+  const fp = useMemo(() => montarPontosFases(dadosM160, 'fp'), [dadosM160]);
 
   // Há equipamentos cadastrados na unidade (com MQTT). Mostra card mesmo sem seleção.
   const temEquipamentosDisponiveis = equipamentosData && equipamentosData.length > 0;
@@ -649,7 +373,26 @@ export function SinopticoGraficosV2({
   );
 
   const ehSeriesPotencia = periodo.tipo === 'dia' || periodo.tipo === 'custom';
-  const unidadeGrafico = ehSeriesPotencia ? 'kW' : 'kWh';
+  const tipoEnergia: 'mes' | 'ano' = periodo.tipo === 'mes' ? 'mes' : 'ano';
+  const temDadosDemanda = ehSeriesPotencia ? demanda.pontos.length > 0 : energia.length > 0;
+  // Linhas de referência (contratado e contratado + adicional) só no período "dia".
+  const referencias = useMemo<ReferenciasDemanda | undefined>(
+    () =>
+      periodo.tipo === 'dia'
+        ? { contratado: valorContratado, adicional: valorContratado * (1 + percentualAdicional / 100), percentualAdicional }
+        : undefined,
+    [periodo.tipo, valorContratado, percentualAdicional],
+  );
+  // Troca de período zera o zoom
+  const chaveZoomDemanda = `${periodo.tipo}|${periodo.data ?? ''}|${periodo.inicio ?? ''}|${periodo.fim ?? ''}`;
+
+  const alturaDemanda = apenasGrafico
+    ? ALTURA_COMPACTA
+    : soDemanda
+      ? 'h-[350px] xl:h-auto xl:flex-1 xl:min-h-0'
+      : 'h-[350px]';
+  const alturaM160 = apenasGrafico ? ALTURA_COMPACTA : 'h-[300px]';
+  const alturaVazioDemanda = apenasGrafico ? ALTURA_COMPACTA : 'h-[300px]';
 
   const handlePeriodoTipoChange = (novoTipo: string) => {
     if (novoTipo === 'dia') setPeriodo({ tipo: 'dia' });
@@ -673,76 +416,6 @@ export function SinopticoGraficosV2({
       new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
     return `${fmt(periodo.inicio)} – ${fmt(periodo.fim)}`;
   }, [periodo]);
-
-  // ===== Zoom (scroll) + Pan (arrastar com botão direito) do gráfico de Demanda =====
-  // Recharts com eixo X categórico não tem domínio numérico → fatiamos os dados numa
-  // janela [start,end]. Scroll = zoom no cursor; arrastar c/ botão direito = pan;
-  // duplo-clique reseta. Wheel via listener NATIVO (não-passivo) p/ preventDefault valer.
-  const chartWrapElRef = useRef<HTMLDivElement | null>(null);
-  const wheelCleanupRef = useRef<(() => void) | null>(null);
-  const dragRef = useRef<{ x: number; start: number; end: number } | null>(null);
-  const zoomWinRef = useRef(zoomWin);
-  const dataLenRef = useRef(0);
-  zoomWinRef.current = zoomWin;
-  dataLenRef.current = dadosFormatadosPotencia.length;
-
-  useEffect(() => { setZoomWin(null); }, [periodo.tipo, periodo.inicio, periodo.fim]);
-
-  const dadosVisiveis = useMemo(() => {
-    const tp = dadosFormatadosPotencia.length;
-    if (!zoomWin || tp === 0) return dadosFormatadosPotencia;
-    const s = Math.max(0, Math.min(zoomWin.start, tp - 2));
-    const e = Math.max(s + 1, Math.min(zoomWin.end, tp - 1));
-    return dadosFormatadosPotencia.slice(s, e + 1);
-  }, [dadosFormatadosPotencia, zoomWin]);
-
-  const setChartWrap = useCallback((el: HTMLDivElement | null) => {
-    chartWrapElRef.current = el;
-    if (wheelCleanupRef.current) { wheelCleanupRef.current(); wheelCleanupRef.current = null; }
-    if (!el) return;
-    const onWheelNative = (ev: WheelEvent) => {
-      const tp = dataLenRef.current;
-      if (tp < 3) return;
-      ev.preventDefault();
-      const cur = zoomWinRef.current ?? { start: 0, end: tp - 1 };
-      const rect = el.getBoundingClientRect();
-      const frac = Math.min(1, Math.max(0, (ev.clientX - rect.left) / rect.width));
-      const span = cur.end - cur.start;
-      const cursorIdx = cur.start + frac * span;
-      let newSpan = Math.round(span * (ev.deltaY < 0 ? 0.8 : 1.25)); // scroll up = zoom in
-      newSpan = Math.max(2, Math.min(tp - 1, newSpan));
-      if (newSpan >= tp - 1) { setZoomWin(null); return; } // voltou ao total
-      let ns = Math.round(cursorIdx - frac * newSpan);
-      let ne = ns + newSpan;
-      if (ns < 0) { ns = 0; ne = newSpan; }
-      if (ne > tp - 1) { ne = tp - 1; ns = ne - newSpan; }
-      setZoomWin({ start: Math.max(0, ns), end: ne });
-    };
-    el.addEventListener('wheel', onWheelNative, { passive: false });
-    wheelCleanupRef.current = () => el.removeEventListener('wheel', onWheelNative);
-  }, []);
-
-  const handleChartMouseDown = (ev: React.MouseEvent<HTMLDivElement>) => {
-    if ((ev.button !== 0 && ev.button !== 2) || dataLenRef.current < 3) return; // esquerdo ou direito
-    ev.preventDefault();
-    const tp = dataLenRef.current;
-    const cur = zoomWinRef.current ?? { start: 0, end: tp - 1 };
-    dragRef.current = { x: ev.clientX, start: cur.start, end: cur.end };
-  };
-  const handleChartMouseMove = (ev: React.MouseEvent<HTMLDivElement>) => {
-    if (!dragRef.current || !chartWrapElRef.current) return;
-    const tp = dataLenRef.current;
-    const rect = chartWrapElRef.current.getBoundingClientRect();
-    const span = dragRef.current.end - dragRef.current.start;
-    const dxFrac = (ev.clientX - dragRef.current.x) / rect.width;
-    const shift = Math.round(-dxFrac * span); // arrastar p/ direita = ver mais cedo
-    let ns = dragRef.current.start + shift;
-    let ne = dragRef.current.end + shift;
-    if (ns < 0) { ns = 0; ne = span; }
-    if (ne > tp - 1) { ne = tp - 1; ns = ne - span; }
-    setZoomWin({ start: Math.max(0, ns), end: ne });
-  };
-  const endChartDrag = () => { dragRef.current = null; };
 
   return (
     <div className={`w-full flex flex-col gap-4 ${(soDemanda && !apenasGrafico) || apenasGrafico ? 'xl:flex-1 xl:min-h-0' : ''}`}>
@@ -877,24 +550,24 @@ export function SinopticoGraficosV2({
         <CardContent className={`p-2 ${(soDemanda && !apenasGrafico) || apenasGrafico ? 'xl:flex-1 xl:min-h-0 xl:flex xl:flex-col' : ''}`}>
           {/* Alerta de qualidade — só em modo 'dia' */}
           {periodo.tipo === 'dia' && qualidadeDados.status !== 'OK' && (
-            <div className="mb-3 p-2 rounded-md bg-muted/40">
+            <div className="mb-3 p-2 rounded-md bg-black/5 dark:bg-white/5">
               <div className="flex items-center gap-2">
-                <AlertTriangle className="h-3.5 w-3.5 text-muted-foreground/70" />
+                <AlertTriangle className="h-3.5 w-3.5 text-muted-foreground opacity-70" />
                 <p className="text-xs text-muted-foreground">
-                  {qualidadeDados.status === 'SEM_DADOS' && <>Nenhum dado disponível · <span className="text-muted-foreground/60">Verifique serviço MQTT</span></>}
-                  {qualidadeDados.status === 'DESATUALIZADO' && <>Dados desatualizados ({qualidadeDados.mensagem}) · <span className="text-muted-foreground/60">Conexão MQTT interrompida ou equipamentos offline</span></>}
+                  {qualidadeDados.status === 'SEM_DADOS' && <>Nenhum dado disponível · <span className="text-muted-foreground opacity-60">Verifique serviço MQTT</span></>}
+                  {qualidadeDados.status === 'DESATUALIZADO' && <>Dados desatualizados ({qualidadeDados.mensagem}) · <span className="text-muted-foreground opacity-60">Conexão MQTT interrompida ou equipamentos offline</span></>}
                 </p>
               </div>
             </div>
           )}
 
           {isInitialLoading ? (
-            <div className={`flex flex-col items-center justify-center space-y-3 ${apenasGrafico ? 'h-[150px] xl:h-auto xl:flex-1 xl:min-h-0' : 'h-[300px]'}`}>
+            <div className={`flex flex-col items-center justify-center space-y-3 ${alturaVazioDemanda}`}>
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
               <p className="text-sm text-muted-foreground">Carregando dados do gráfico...</p>
             </div>
-          ) : dadosFormatadosPotencia.length === 0 ? (
-            <div className={`flex flex-col items-center justify-center space-y-3 ${apenasGrafico ? 'h-[150px] xl:h-auto xl:flex-1 xl:min-h-0' : 'h-[300px]'}`}>
+          ) : !temDadosDemanda ? (
+            <div className={`flex flex-col items-center justify-center space-y-3 ${alturaVazioDemanda}`}>
               <AlertTriangle className="h-8 w-8 text-muted-foreground" />
               <div className="text-center space-y-2">
                 <p className="text-sm font-medium text-muted-foreground">
@@ -908,72 +581,15 @@ export function SinopticoGraficosV2({
               </div>
             </div>
           ) : ehSeriesPotencia ? (
-            <div
-              ref={setChartWrap}
-              onMouseDown={handleChartMouseDown}
-              onMouseMove={handleChartMouseMove}
-              onMouseUp={endChartDrag}
-              onMouseLeave={endChartDrag}
-              onContextMenu={(e) => e.preventDefault()}
-              onDoubleClick={() => setZoomWin(null)}
-              title="Scroll = zoom nas horas · segurar e arrastar = mover · duplo-clique = resetar"
-              className={`${apenasGrafico ? 'h-[150px] xl:h-auto xl:flex-1 xl:min-h-0' : soDemanda ? 'h-[350px] xl:h-auto xl:flex-1 xl:min-h-0' : 'h-[350px]'} select-none cursor-grab active:cursor-grabbing`}
-            >
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={dadosVisiveis}>
-                <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                <XAxis dataKey="hora" fontSize={isMobile ? 10 : 12} interval="preserveStartEnd" minTickGap={isMobile ? 28 : 12} />
-                <YAxis fontSize={10} label={{ value: unidadeGrafico, angle: -90, position: 'insideLeft' }} />
-                <Tooltip content={<CustomTooltip unidade={unidadeGrafico} />} />
-                <Legend wrapperStyle={{ fontSize: isMobile ? '10px' : '12px' }} iconType="line" />
-                <Line
-                  type="monotone"
-                  dataKey="potencia"
-                  name="Demanda"
-                  stroke={corLinhaDemanda}
-                  strokeWidth={2}
-                  dot={false}
-                  activeDot={{ r: 4 }}
-                  connectNulls={true}
-                />
-                {periodo.tipo === 'dia' && (
-                  <>
-                    <Line
-                      type="monotone"
-                      dataKey="valorContratado"
-                      name="Valor Contratado"
-                      stroke="#9ca3af"
-                      strokeWidth={1.5}
-                      strokeDasharray="5 5"
-                      dot={false}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="valorAdicional"
-                      name={`Contratado + ${percentualAdicional}%`}
-                      stroke="#6b7280"
-                      strokeWidth={1.5}
-                      strokeDasharray="5 5"
-                      dot={false}
-                    />
-                  </>
-                )}
-              </LineChart>
-            </ResponsiveContainer>
-            </div>
+            <GraficoDemanda
+              pontos={demanda.pontos}
+              dominio={demanda.dominio}
+              referencias={referencias}
+              chaveZoom={chaveZoomDemanda}
+              className={alturaDemanda}
+            />
           ) : (
-            <div className={apenasGrafico ? 'h-[150px] xl:h-auto xl:flex-1 xl:min-h-0' : soDemanda ? 'h-[350px] xl:h-auto xl:flex-1 xl:min-h-0' : 'h-[350px]'}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={dadosFormatadosPotencia}>
-                <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                <XAxis dataKey="label" fontSize={isMobile ? 10 : 12} interval="preserveStartEnd" minTickGap={isMobile ? 28 : 12} />
-                <YAxis fontSize={10} label={{ value: unidadeGrafico, angle: -90, position: 'insideLeft' }} />
-                <Tooltip content={<CustomTooltip unidade={unidadeGrafico} />} />
-                <Legend wrapperStyle={{ fontSize: isMobile ? '10px' : '12px' }} iconType="rect" />
-                <Bar dataKey="energia" name="Energia" fill={corLinhaDemanda} radius={[2, 2, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-            </div>
+            <GraficoEnergia pontos={energia} tipo={tipoEnergia} className={alturaDemanda} />
           )}
         </CardContent>
       </Card>
@@ -1003,55 +619,27 @@ export function SinopticoGraficosV2({
           </div>
         </CardHeader>
         <CardContent className={`p-2 ${apenasGrafico ? 'xl:flex-1 xl:min-h-0 xl:flex xl:flex-col' : ''}`}>
-          {/* Controles */}
-          <div className={`flex flex-wrap items-center gap-x-3 gap-y-2 ${apenasGrafico ? 'mb-2' : 'mb-4'}`}>
-            {/* Medidor + Fases na mesma linha, compactos */}
-            <div className="flex items-center gap-1.5">
-              <Label htmlFor="m160-tensao" className="text-xs text-muted-foreground">Medidor</Label>
-              <Select value={m160Selecionado} onValueChange={setM160Selecionado}>
-                <SelectTrigger id="m160-tensao" className="h-7 w-[150px] text-xs">
-                  <SelectValue placeholder="Selecione" />
-                </SelectTrigger>
-                <SelectContent>
-                  {equipamentosM160.map((eq) => (
-                    <SelectItem key={eq.id} value={eq.id}>
-                      {eq.tag || eq.nome}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-center gap-2.5">
-              <span className="text-xs text-muted-foreground">Fases:</span>
-              {(['A', 'B', 'C'] as const).map((f) => (
-                <label
-                  key={f}
-                  htmlFor={`fase-${f.toLowerCase()}-tensao`}
-                  className="flex items-center gap-1 text-xs cursor-pointer"
-                >
-                  <Checkbox
-                    id={`fase-${f.toLowerCase()}-tensao`}
-                    className="h-3.5 w-3.5"
-                    checked={fasesTensao[f]}
-                    onCheckedChange={(checked) =>
-                      setFasesTensao((prev) => ({ ...prev, [f]: !!checked }))
-                    }
-                  />
-                  {f}
-                </label>
-              ))}
-            </div>
-          </div>
+          {/* Controles: medidor + fases (as fases levam a cor da série) */}
+          <ControlesFases
+            sufixo="tensao"
+            variante="card"
+            className={apenasGrafico ? 'mb-2' : 'mb-4'}
+            medidores={equipamentosM160}
+            medidorSelecionado={m160Selecionado}
+            onMedidor={setM160Selecionado}
+            fases={fasesTensao}
+            onFases={setFasesTensao}
+          />
 
           {/* Gráfico */}
           {isInitialLoadingM160 ? (
-            <div className={`flex flex-col items-center justify-center space-y-3 ${apenasGrafico ? 'h-[150px] xl:h-auto xl:flex-1 xl:min-h-0' : 'h-[300px]'}`}>
+            <div className={`flex flex-col items-center justify-center space-y-3 ${alturaM160}`}>
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
               <p className="text-sm text-muted-foreground">Carregando dados...</p>
             </div>
           ) : !m160Selecionado ? (
-            <div className={`flex flex-col items-center justify-center space-y-3 ${apenasGrafico ? 'h-[150px] xl:h-auto xl:flex-1 xl:min-h-0' : 'h-[300px]'}`}>
-              <Activity className="h-12 w-12 text-muted-foreground/50" />
+            <div className={`flex flex-col items-center justify-center space-y-3 ${alturaM160}`}>
+              <Activity className="h-12 w-12 text-muted-foreground opacity-50" />
               <div className="text-center space-y-1">
                 <p className="text-sm font-medium text-muted-foreground">
                   Nenhum M160 disponível
@@ -1061,9 +649,9 @@ export function SinopticoGraficosV2({
                 </p>
               </div>
             </div>
-          ) : dadosFormatadosTensao.length === 0 ? (
-            <div className={`flex flex-col items-center justify-center space-y-3 ${apenasGrafico ? 'h-[150px] xl:h-auto xl:flex-1 xl:min-h-0' : 'h-[300px]'}`}>
-              <Activity className="h-12 w-12 text-muted-foreground/50" />
+          ) : tensao.pontos.length === 0 ? (
+            <div className={`flex flex-col items-center justify-center space-y-3 ${alturaM160}`}>
+              <Activity className="h-12 w-12 text-muted-foreground opacity-50" />
               <div className="text-center space-y-1">
                 <p className="text-sm font-medium text-muted-foreground">
                   Sem dados de tensão
@@ -1074,62 +662,14 @@ export function SinopticoGraficosV2({
               </div>
             </div>
           ) : (
-            <div className={`bg-card p-4 rounded-lg border ${apenasGrafico ? 'xl:flex-1 xl:min-h-0' : ''}`}>
-              <ResponsiveContainer width="100%" height={apenasGrafico ? (isMobile ? 150 : '100%') : 300}>
-                <LineChart data={dadosFormatadosTensao}>
-                  <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                <XAxis dataKey="hora" fontSize={isMobile ? 10 : 12} interval="preserveStartEnd" minTickGap={isMobile ? 28 : 12} />
-                <YAxis
-                  fontSize={12}
-                  domain={["dataMin - 5", "dataMax + 5"]}
-                  label={{
-                    value: "V",
-                    angle: -90,
-                    position: "insideLeft",
-                  }}
-                />
-                <Tooltip content={<CustomTooltip />} />
-                <Legend wrapperStyle={{ fontSize: isMobile ? '10px' : '12px' }} iconType="line" />
-
-                {fasesTensao.A && (
-                  <Line
-                    type="monotone"
-                    dataKey="tensaoA"
-                    name="Tensão Fase A"
-                    stroke="#ef4444"
-                    strokeWidth={2}
-                    dot={false}
-                    activeDot={{ r: 5 }}
-                    connectNulls={true}
-                  />
-                )}
-                {fasesTensao.B && (
-                  <Line
-                    type="monotone"
-                    dataKey="tensaoB"
-                    name="Tensão Fase B"
-                    stroke="#ffffff"
-                    strokeWidth={2}
-                    dot={false}
-                    activeDot={{ r: 5 }}
-                    connectNulls={true}
-                  />
-                )}
-                {fasesTensao.C && (
-                  <Line
-                    type="monotone"
-                    dataKey="tensaoC"
-                    name="Tensão Fase C"
-                    stroke="#3b82f6"
-                    strokeWidth={2}
-                    dot={false}
-                    activeDot={{ r: 5 }}
-                    connectNulls={true}
-                  />
-                )}
-              </LineChart>
-            </ResponsiveContainer>
-            </div>
+            <GraficoFases
+              pontos={tensao.pontos}
+              dominio={tensao.dominio}
+              grandeza="tensao"
+              fases={fasesTensao}
+              chaveZoom={m160Selecionado}
+              className={`rounded-lg border bg-card p-2 ${alturaM160}`}
+            />
           )}
         </CardContent>
       </Card>
@@ -1159,55 +699,27 @@ export function SinopticoGraficosV2({
           </div>
         </CardHeader>
         <CardContent className={`p-2 ${apenasGrafico ? 'xl:flex-1 xl:min-h-0 xl:flex xl:flex-col' : ''}`}>
-          {/* Controles */}
-          <div className={`flex flex-wrap items-center gap-x-3 gap-y-2 ${apenasGrafico ? 'mb-2' : 'mb-4'}`}>
-            {/* Medidor + Fases na mesma linha, compactos */}
-            <div className="flex items-center gap-1.5">
-              <Label htmlFor="m160-fp" className="text-xs text-muted-foreground">Medidor</Label>
-              <Select value={m160Selecionado} onValueChange={setM160Selecionado}>
-                <SelectTrigger id="m160-fp" className="h-7 w-[150px] text-xs">
-                  <SelectValue placeholder="Selecione" />
-                </SelectTrigger>
-                <SelectContent>
-                  {equipamentosM160.map((eq) => (
-                    <SelectItem key={eq.id} value={eq.id}>
-                      {eq.tag || eq.nome}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-center gap-2.5">
-              <span className="text-xs text-muted-foreground">Fases:</span>
-              {(['A', 'B', 'C'] as const).map((f) => (
-                <label
-                  key={f}
-                  htmlFor={`fase-${f.toLowerCase()}-fp`}
-                  className="flex items-center gap-1 text-xs cursor-pointer"
-                >
-                  <Checkbox
-                    id={`fase-${f.toLowerCase()}-fp`}
-                    className="h-3.5 w-3.5"
-                    checked={fasesFP[f]}
-                    onCheckedChange={(checked) =>
-                      setFasesFP((prev) => ({ ...prev, [f]: !!checked }))
-                    }
-                  />
-                  {f}
-                </label>
-              ))}
-            </div>
-          </div>
+          {/* Controles: medidor + fases (as fases levam a cor da série) */}
+          <ControlesFases
+            sufixo="fp"
+            variante="card"
+            className={apenasGrafico ? 'mb-2' : 'mb-4'}
+            medidores={equipamentosM160}
+            medidorSelecionado={m160Selecionado}
+            onMedidor={setM160Selecionado}
+            fases={fasesFP}
+            onFases={setFasesFP}
+          />
 
           {/* Gráfico */}
           {isInitialLoadingM160 ? (
-            <div className={`flex flex-col items-center justify-center space-y-3 ${apenasGrafico ? 'h-[150px] xl:h-auto xl:flex-1 xl:min-h-0' : 'h-[300px]'}`}>
+            <div className={`flex flex-col items-center justify-center space-y-3 ${alturaM160}`}>
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
               <p className="text-sm text-muted-foreground">Carregando dados...</p>
             </div>
           ) : !m160Selecionado ? (
-            <div className={`flex flex-col items-center justify-center space-y-3 ${apenasGrafico ? 'h-[150px] xl:h-auto xl:flex-1 xl:min-h-0' : 'h-[300px]'}`}>
-              <TrendingUp className="h-12 w-12 text-muted-foreground/50" />
+            <div className={`flex flex-col items-center justify-center space-y-3 ${alturaM160}`}>
+              <TrendingUp className="h-12 w-12 text-muted-foreground opacity-50" />
               <div className="text-center space-y-1">
                 <p className="text-sm font-medium text-muted-foreground">
                   Nenhum M160 disponível
@@ -1217,9 +729,9 @@ export function SinopticoGraficosV2({
                 </p>
               </div>
             </div>
-          ) : dadosFormatadosFP.length === 0 ? (
-            <div className={`flex flex-col items-center justify-center space-y-3 ${apenasGrafico ? 'h-[150px] xl:h-auto xl:flex-1 xl:min-h-0' : 'h-[300px]'}`}>
-              <TrendingUp className="h-12 w-12 text-muted-foreground/50" />
+          ) : fp.pontos.length === 0 ? (
+            <div className={`flex flex-col items-center justify-center space-y-3 ${alturaM160}`}>
+              <TrendingUp className="h-12 w-12 text-muted-foreground opacity-50" />
               <div className="text-center space-y-1">
                 <p className="text-sm font-medium text-muted-foreground">
                   Sem dados de fator de potência
@@ -1230,84 +742,14 @@ export function SinopticoGraficosV2({
               </div>
             </div>
           ) : (
-            <div className={`bg-card p-4 rounded-lg border ${apenasGrafico ? 'xl:flex-1 xl:min-h-0' : ''}`}>
-              <ResponsiveContainer width="100%" height={apenasGrafico ? (isMobile ? 150 : '100%') : 300}>
-                <LineChart data={dadosFormatadosFP}>
-                  <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                  <XAxis dataKey="hora" fontSize={isMobile ? 10 : 12} interval="preserveStartEnd" minTickGap={isMobile ? 28 : 12} />
-                <YAxis
-                  fontSize={12}
-                  domain={[-1.0, 1.0]}
-                  label={{
-                    value: "FP",
-                    angle: -90,
-                    position: "insideLeft",
-                  }}
-                />
-                <Tooltip content={<CustomTooltip />} />
-                <Legend wrapperStyle={{ fontSize: isMobile ? '10px' : '12px' }} iconType="line" />
-
-                {fasesFP.A && (
-                  <Line
-                    type="monotone"
-                    dataKey="fatorPotenciaA"
-                    name="FP Fase A"
-                    stroke="#ef4444"
-                    strokeWidth={2}
-                    dot={false}
-                    activeDot={{ r: 5 }}
-                    connectNulls={true}
-                  />
-                )}
-                {fasesFP.B && (
-                  <Line
-                    type="monotone"
-                    dataKey="fatorPotenciaB"
-                    name="FP Fase B"
-                    stroke="#ffffff"
-                    strokeWidth={2}
-                    dot={false}
-                    activeDot={{ r: 5 }}
-                    connectNulls={true}
-                  />
-                )}
-                {fasesFP.C && (
-                  <Line
-                    type="monotone"
-                    dataKey="fatorPotenciaC"
-                    name="FP Fase C"
-                    stroke="#3b82f6"
-                    strokeWidth={2}
-                    dot={false}
-                    activeDot={{ r: 5 }}
-                    connectNulls={true}
-                  />
-                )}
-
-                {/* Linha de limite superior +0.92 */}
-                <Line
-                  type="monotone"
-                  dataKey={() => 0.92}
-                  name="Limite Superior (+0.92)"
-                  stroke="#f97316"
-                  strokeWidth={2}
-                  strokeDasharray="5 5"
-                  dot={false}
-                />
-
-                {/* Linha de limite inferior -0.92 */}
-                <Line
-                  type="monotone"
-                  dataKey={() => -0.92}
-                  name="Limite Inferior (-0.92)"
-                  stroke="#f97316"
-                  strokeWidth={2}
-                  strokeDasharray="5 5"
-                  dot={false}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-            </div>
+            <GraficoFases
+              pontos={fp.pontos}
+              dominio={fp.dominio}
+              grandeza="fp"
+              fases={fasesFP}
+              chaveZoom={m160Selecionado}
+              className={`rounded-lg border bg-card p-2 ${alturaM160}`}
+            />
           )}
         </CardContent>
       </Card>
@@ -1370,7 +812,7 @@ export function SinopticoGraficosV2({
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 <p className="text-sm text-muted-foreground">Carregando dados do gráfico...</p>
               </div>
-            ) : dadosFormatadosPotencia.length === 0 ? (
+            ) : !temDadosDemanda ? (
               <div className="flex flex-col items-center justify-center h-full space-y-3">
                 <AlertTriangle className="h-8 w-8 text-muted-foreground" />
                 <div className="text-center space-y-2">
@@ -1385,65 +827,15 @@ export function SinopticoGraficosV2({
                 </div>
               </div>
             ) : ehSeriesPotencia ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={dadosFormatadosPotencia}>
-                  <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                  <XAxis dataKey="hora" fontSize={isMobile ? 10 : 12} interval="preserveStartEnd" minTickGap={isMobile ? 28 : 12} />
-                  <YAxis fontSize={10} label={{ value: unidadeGrafico, angle: -90, position: 'insideLeft' }} />
-                  <Tooltip content={<CustomTooltip unidade={unidadeGrafico} />} />
-                  <Legend wrapperStyle={{ fontSize: isMobile ? '10px' : '12px' }} iconType="line" />
-                  <Brush
-                    dataKey="hora"
-                    height={isMobile ? 40 : 30}
-                    stroke="hsl(var(--muted-foreground) / 0.3)"
-                    fill="hsl(var(--muted))"
-                    travellerWidth={isMobile ? 18 : 10}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="potencia"
-                    name="Demanda"
-                    stroke={corLinhaDemanda}
-                    strokeWidth={2}
-                    dot={false}
-                    activeDot={{ r: 4 }}
-                    connectNulls={true}
-                  />
-                  {periodo.tipo === 'dia' && (
-                    <>
-                      <Line
-                        type="monotone"
-                        dataKey="valorContratado"
-                        name="Valor Contratado"
-                        stroke="#9ca3af"
-                        strokeWidth={1.5}
-                        strokeDasharray="5 5"
-                        dot={false}
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="valorAdicional"
-                        name={`Contratado + ${percentualAdicional}%`}
-                        stroke="#6b7280"
-                        strokeWidth={1.5}
-                        strokeDasharray="5 5"
-                        dot={false}
-                      />
-                    </>
-                  )}
-                </LineChart>
-              </ResponsiveContainer>
+              <GraficoDemanda
+                expandido
+                pontos={demanda.pontos}
+                dominio={demanda.dominio}
+                referencias={referencias}
+                chaveZoom={chaveZoomDemanda}
+              />
             ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={dadosFormatadosPotencia}>
-                  <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                  <XAxis dataKey="label" fontSize={isMobile ? 10 : 12} interval="preserveStartEnd" minTickGap={isMobile ? 28 : 12} />
-                  <YAxis fontSize={10} label={{ value: unidadeGrafico, angle: -90, position: 'insideLeft' }} />
-                  <Tooltip content={<CustomTooltip unidade={unidadeGrafico} />} />
-                  <Legend wrapperStyle={{ fontSize: isMobile ? '10px' : '12px' }} iconType="rect" />
-                  <Bar dataKey="energia" name="Energia" fill={corLinhaDemanda} radius={[2, 2, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+              <GraficoEnergia pontos={energia} tipo={tipoEnergia} className="h-full" />
             )}
           </div>
         </DialogContent>
@@ -1460,70 +852,15 @@ export function SinopticoGraficosV2({
           </DialogHeader>
 
           <div className="w-full flex flex-col gap-4 flex-1 min-h-0 md:flex-none md:h-[70vh]">
-            {/* Controles */}
-            <div className="space-y-3 flex-shrink-0">
-              {/* Select M160 */}
-              <div className="flex items-center gap-2">
-                <Label htmlFor="m160-tensao-modal" className="text-sm min-w-[80px]">
-                  Medidor:
-                </Label>
-                <Select value={m160Selecionado} onValueChange={setM160Selecionado}>
-                  <SelectTrigger id="m160-tensao-modal" className="w-full sm:w-[250px]">
-                    <SelectValue placeholder="Selecione um M160" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {equipamentosM160.map((eq) => (
-                      <SelectItem key={eq.id} value={eq.id}>
-                        {eq.tag || eq.nome}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Checkboxes Fases */}
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                <Label className="text-sm min-w-[80px]">Fases:</Label>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      id="fase-a-tensao-modal"
-                      checked={fasesTensao.A}
-                      onCheckedChange={(checked) =>
-                        setFasesTensao((prev) => ({ ...prev, A: !!checked }))
-                      }
-                    />
-                    <Label htmlFor="fase-a-tensao-modal" className="text-sm cursor-pointer">
-                      Fase A
-                    </Label>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      id="fase-b-tensao-modal"
-                      checked={fasesTensao.B}
-                      onCheckedChange={(checked) =>
-                        setFasesTensao((prev) => ({ ...prev, B: !!checked }))
-                      }
-                    />
-                    <Label htmlFor="fase-b-tensao-modal" className="text-sm cursor-pointer">
-                      Fase B
-                    </Label>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      id="fase-c-tensao-modal"
-                      checked={fasesTensao.C}
-                      onCheckedChange={(checked) =>
-                        setFasesTensao((prev) => ({ ...prev, C: !!checked }))
-                      }
-                    />
-                    <Label htmlFor="fase-c-tensao-modal" className="text-sm cursor-pointer">
-                      Fase C
-                    </Label>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <ControlesFases
+              sufixo="tensao-modal"
+              variante="dialogo"
+              medidores={equipamentosM160}
+              medidorSelecionado={m160Selecionado}
+              onMedidor={setM160Selecionado}
+              fases={fasesTensao}
+              onFases={setFasesTensao}
+            />
 
             {/* Gráfico */}
             <div className="flex-1 min-h-0">
@@ -1532,74 +869,20 @@ export function SinopticoGraficosV2({
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 <p className="text-sm text-muted-foreground">Carregando dados...</p>
               </div>
-            ) : dadosFormatadosTensao.length === 0 ? (
+            ) : tensao.pontos.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full space-y-3">
-                <Activity className="h-12 w-12 text-muted-foreground/50" />
+                <Activity className="h-12 w-12 text-muted-foreground opacity-50" />
                 <p className="text-sm text-muted-foreground">Sem dados de tensão</p>
               </div>
             ) : (
-              <div className="bg-card p-4 rounded-lg border h-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={dadosFormatadosTensao}>
-                    <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                    <XAxis dataKey="hora" fontSize={isMobile ? 10 : 12} interval="preserveStartEnd" minTickGap={isMobile ? 28 : 12} />
-                  <YAxis
-                    fontSize={12}
-                    domain={["dataMin - 5", "dataMax + 5"]}
-                    label={{
-                      value: "V",
-                      angle: -90,
-                      position: "insideLeft",
-                    }}
-                  />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Legend wrapperStyle={{ fontSize: isMobile ? '10px' : '12px' }} iconType="line" />
-
-                  {/* Brush para zoom - apenas no modal expandido */}
-                  <Brush
-                    dataKey="hora"
-                    height={isMobile ? 40 : 30}
-                    stroke="hsl(var(--muted-foreground) / 0.3)"
-                    fill="hsl(var(--muted))"
-                    travellerWidth={isMobile ? 18 : 10}
-                  />
-
-                  {fasesTensao.A && (
-                    <Line
-                      type="monotone"
-                      dataKey="tensaoA"
-                      name="Tensão Fase A"
-                      stroke="#ef4444"
-                      strokeWidth={2}
-                      dot={false}
-                      activeDot={{ r: 4 }}
-                    />
-                  )}
-                  {fasesTensao.B && (
-                    <Line
-                      type="monotone"
-                      dataKey="tensaoB"
-                      name="Tensão Fase B"
-                      stroke="#ffffff"
-                      strokeWidth={2}
-                      dot={false}
-                      activeDot={{ r: 4 }}
-                    />
-                  )}
-                  {fasesTensao.C && (
-                    <Line
-                      type="monotone"
-                      dataKey="tensaoC"
-                      name="Tensão Fase C"
-                      stroke="#3b82f6"
-                      strokeWidth={2}
-                      dot={false}
-                      activeDot={{ r: 4 }}
-                    />
-                  )}
-                </LineChart>
-              </ResponsiveContainer>
-              </div>
+              <GraficoFases
+                expandido
+                pontos={tensao.pontos}
+                dominio={tensao.dominio}
+                grandeza="tensao"
+                fases={fasesTensao}
+                chaveZoom={m160Selecionado}
+              />
             )}
             </div>
           </div>
@@ -1617,70 +900,15 @@ export function SinopticoGraficosV2({
           </DialogHeader>
 
           <div className="w-full flex flex-col gap-4 flex-1 min-h-0 md:flex-none md:h-[70vh]">
-            {/* Controles */}
-            <div className="space-y-3 flex-shrink-0">
-              {/* Select M160 */}
-              <div className="flex items-center gap-2">
-                <Label htmlFor="m160-fp-modal" className="text-sm min-w-[80px]">
-                  Medidor:
-                </Label>
-                <Select value={m160Selecionado} onValueChange={setM160Selecionado}>
-                  <SelectTrigger id="m160-fp-modal" className="w-full sm:w-[250px]">
-                    <SelectValue placeholder="Selecione um M160" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {equipamentosM160.map((eq) => (
-                      <SelectItem key={eq.id} value={eq.id}>
-                        {eq.tag || eq.nome}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Checkboxes Fases */}
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                <Label className="text-sm min-w-[80px]">Fases:</Label>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      id="fase-a-fp-modal"
-                      checked={fasesFP.A}
-                      onCheckedChange={(checked) =>
-                        setFasesFP((prev) => ({ ...prev, A: !!checked }))
-                      }
-                    />
-                    <Label htmlFor="fase-a-fp-modal" className="text-sm cursor-pointer">
-                      Fase A
-                    </Label>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      id="fase-b-fp-modal"
-                      checked={fasesFP.B}
-                      onCheckedChange={(checked) =>
-                        setFasesFP((prev) => ({ ...prev, B: !!checked }))
-                      }
-                    />
-                    <Label htmlFor="fase-b-fp-modal" className="text-sm cursor-pointer">
-                      Fase B
-                    </Label>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      id="fase-c-fp-modal"
-                      checked={fasesFP.C}
-                      onCheckedChange={(checked) =>
-                        setFasesFP((prev) => ({ ...prev, C: !!checked }))
-                      }
-                    />
-                    <Label htmlFor="fase-c-fp-modal" className="text-sm cursor-pointer">
-                      Fase C
-                    </Label>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <ControlesFases
+              sufixo="fp-modal"
+              variante="dialogo"
+              medidores={equipamentosM160}
+              medidorSelecionado={m160Selecionado}
+              onMedidor={setM160Selecionado}
+              fases={fasesFP}
+              onFases={setFasesFP}
+            />
 
             {/* Gráfico */}
             <div className="flex-1 min-h-0">
@@ -1689,96 +917,20 @@ export function SinopticoGraficosV2({
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 <p className="text-sm text-muted-foreground">Carregando dados...</p>
               </div>
-            ) : dadosFormatadosFP.length === 0 ? (
+            ) : fp.pontos.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full space-y-3">
-                <TrendingUp className="h-12 w-12 text-muted-foreground/50" />
+                <TrendingUp className="h-12 w-12 text-muted-foreground opacity-50" />
                 <p className="text-sm text-muted-foreground">Sem dados de fator de potência</p>
               </div>
             ) : (
-              <div className="bg-card p-4 rounded-lg border h-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={dadosFormatadosFP}>
-                    <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                    <XAxis dataKey="hora" fontSize={isMobile ? 10 : 12} interval="preserveStartEnd" minTickGap={isMobile ? 28 : 12} />
-                  <YAxis
-                    fontSize={12}
-                    domain={[-1.0, 1.0]}
-                    label={{
-                      value: "FP",
-                      angle: -90,
-                      position: "insideLeft",
-                    }}
-                  />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Legend wrapperStyle={{ fontSize: isMobile ? '10px' : '12px' }} iconType="line" />
-
-                  {/* Brush para zoom - apenas no modal expandido */}
-                  <Brush
-                    dataKey="hora"
-                    height={isMobile ? 40 : 30}
-                    stroke="hsl(var(--muted-foreground) / 0.3)"
-                    fill="hsl(var(--muted))"
-                    travellerWidth={isMobile ? 18 : 10}
-                  />
-
-                  {fasesFP.A && (
-                    <Line
-                      type="monotone"
-                      dataKey="fatorPotenciaA"
-                      name="FP Fase A"
-                      stroke="#ef4444"
-                      strokeWidth={2}
-                      dot={false}
-                      activeDot={{ r: 5 }}
-                    />
-                  )}
-                  {fasesFP.B && (
-                    <Line
-                      type="monotone"
-                      dataKey="fatorPotenciaB"
-                      name="FP Fase B"
-                      stroke="#ffffff"
-                      strokeWidth={2}
-                      dot={false}
-                      activeDot={{ r: 5 }}
-                    />
-                  )}
-                  {fasesFP.C && (
-                    <Line
-                      type="monotone"
-                      dataKey="fatorPotenciaC"
-                      name="FP Fase C"
-                      stroke="#3b82f6"
-                      strokeWidth={2}
-                      dot={false}
-                      activeDot={{ r: 5 }}
-                    />
-                  )}
-
-                  {/* Linha de limite superior +0.92 */}
-                  <Line
-                    type="monotone"
-                    dataKey={() => 0.92}
-                    name="Limite Superior (+0.92)"
-                    stroke="#f97316"
-                    strokeWidth={2}
-                    strokeDasharray="5 5"
-                    dot={false}
-                  />
-
-                  {/* Linha de limite inferior -0.92 */}
-                  <Line
-                    type="monotone"
-                    dataKey={() => -0.92}
-                    name="Limite Inferior (-0.92)"
-                    stroke="#f97316"
-                    strokeWidth={2}
-                    strokeDasharray="5 5"
-                    dot={false}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-              </div>
+              <GraficoFases
+                expandido
+                pontos={fp.pontos}
+                dominio={fp.dominio}
+                grandeza="fp"
+                fases={fasesFP}
+                chaveZoom={m160Selecionado}
+              />
             )}
             </div>
           </div>

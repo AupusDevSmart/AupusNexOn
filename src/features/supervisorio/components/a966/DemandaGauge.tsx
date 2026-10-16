@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react";
+import { Gauge } from "@/components/charts/gauge";
+import type { ChartStatFlowFormat } from "@/components/charts/chart-stat-flow";
 
 interface DemandaGaugeProps {
   /** Valor atual (kW), modo "Atual" */
@@ -7,7 +9,7 @@ interface DemandaGaugeProps {
   picoMes: { kw: number; timestamp: string } | null;
   /** Demanda contratada (kW). Se null/0, gauge fica vazio. */
   contratada: number | null;
-  /** Cor do arco preenchido em hex. */
+  /** Cor do arco preenchido (quem chama passa; de preferência token `var(--chart-N)`). */
   cor: string;
   /** Label da contratada (ex: "Demanda Carga", "Demanda Geração") */
   labelContratada: string;
@@ -16,29 +18,11 @@ interface DemandaGaugeProps {
 }
 
 const SIZE = 160;
-const STROKE = 14;
-const CX = SIZE / 2;
-const CY = SIZE / 2;
-const R = (SIZE - STROKE) / 2;
-const ANG_START = 225; // 7h30 em math convention (0 = direita, anti-horario)
-const ANG_END = 315; // 4h30
-const ARC_LEN = (270 / 360) * 2 * Math.PI * R;
+// O arco de 270° do Gauge deixa o pé vazio: corta como o SVG antigo (0,85 × 160).
+const ALTURA_VISIVEL = 140;
+const FORMATO_KW: ChartStatFlowFormat = { minimumFractionDigits: 1, maximumFractionDigits: 1 };
 
 const TZ = "America/Sao_Paulo";
-
-function pointAt(angleDeg: number) {
-  const rad = (angleDeg * Math.PI) / 180;
-  return {
-    x: CX + R * Math.cos(rad),
-    // Y do SVG cresce pra baixo — inverter sinal pra usar convencao math standard.
-    y: CY - R * Math.sin(rad),
-  };
-}
-
-const START_POINT = pointAt(ANG_START);
-const END_POINT = pointAt(ANG_END);
-// largeArc=1 (270 > 180), sweep=1 (clockwise visualmente em SVG, passa pelo topo).
-const ARC_PATH = `M ${START_POINT.x} ${START_POINT.y} A ${R} ${R} 0 1 1 ${END_POINT.x} ${END_POINT.y}`;
 
 function formatDataHoraBRT(ts: string): string {
   const d = new Date(ts);
@@ -71,11 +55,9 @@ export function DemandaGauge({
     () => (contratada && contratada > 0 ? valorMostrado / contratada : 0),
     [valorMostrado, contratada],
   );
-  const ratioClamp = Math.max(0, Math.min(ratio, 1.2));
+  // Arco cheio = 120% da contratada, como no gauge antigo (sobra para mostrar estouro).
+  const preenchimento = (Math.max(0, Math.min(ratio, 1.2)) / 1.2) * 100;
   const percentLabel = contratada && contratada > 0 ? Math.round(ratio * 100) : null;
-  const filledLen = (ratioClamp / 1.2) * ARC_LEN;
-  // Evita renderizar a "bolinha" do stroke-linecap=round quando ratio=0.
-  const showFilled = filledLen > 0.5;
 
   const labelInferior =
     modo === "mes"
@@ -83,6 +65,8 @@ export function DemandaGauge({
         ? `Pico do Mês — ${formatDataHoraBRT(picoMes.timestamp)}`
         : "Pico do Mês — sem dado"
       : labelAtual;
+
+  const rotuloCentro = percentLabel !== null ? `${percentLabel}% da contratada` : "sem contratada";
 
   return (
     <div className="flex flex-col items-center gap-1">
@@ -95,42 +79,25 @@ export function DemandaGauge({
         </ToggleButton>
       </div>
 
-      <div className="relative" style={{ width: SIZE, height: SIZE * 0.85 }}>
-        <svg
+      <div className="relative overflow-hidden" style={{ width: SIZE, height: ALTURA_VISIVEL }}>
+        <Gauge
+          value={semDadoMes ? 0 : preenchimento}
           width={SIZE}
-          height={SIZE * 0.85}
-          viewBox={`0 0 ${SIZE} ${SIZE * 0.85}`}
-        >
-          <path
-            d={ARC_PATH}
-            fill="none"
-            stroke="#e5e7eb"
-            strokeOpacity="0.25"
-            strokeWidth={STROKE}
-            strokeLinecap="round"
-          />
-          {showFilled && (
-            <path
-              d={ARC_PATH}
-              fill="none"
-              stroke={cor}
-              strokeWidth={STROKE}
-              strokeLinecap="round"
-              strokeDasharray={`${filledLen} ${ARC_LEN}`}
-            />
-          )}
-        </svg>
-        <div className="absolute inset-0 flex flex-col items-center justify-center pb-2">
-          <div className="text-2xl font-semibold tabular-nums" style={{ color: cor }}>
-            {semDadoMes ? "—" : percentLabel !== null ? `${percentLabel}%` : "—"}
+          height={SIZE}
+          activeFill={cor}
+          centerValue={semDadoMes ? undefined : valorMostrado}
+          suffix=" kW"
+          formatOptions={FORMATO_KW}
+          defaultLabel={rotuloCentro}
+        />
+        {semDadoMes && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center pb-2 text-2xl font-semibold text-muted-foreground">
+            —
           </div>
-          <div className="text-sm font-medium tabular-nums text-foreground">
-            {semDadoMes ? "—" : `${valorMostrado.toFixed(1)} kW`}
-          </div>
-          <div className="text-[10px] text-muted-foreground uppercase tracking-wide text-center px-2 leading-tight">
-            {labelInferior}
-          </div>
-        </div>
+        )}
+      </div>
+      <div className="text-[10px] text-muted-foreground uppercase tracking-wide text-center px-2 leading-tight">
+        {labelInferior}
       </div>
       <div className="text-xs text-muted-foreground">
         {labelContratada}:{" "}

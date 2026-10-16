@@ -18,6 +18,12 @@ import {
   TrendingUp,
   Zap,
 } from "lucide-react";
+import { BarChart } from "@/components/charts/bar-chart";
+import { Bar } from "@/components/charts/bar";
+import { BarXAxis } from "@/components/charts/bar-x-axis";
+import { ChartTooltip } from "@/components/charts/tooltip";
+import { COR } from "@/components/graficos/cores";
+import { TooltipDestaque } from "@/components/graficos/tooltip-destaque";
 
 interface InversorModalProps {
   open: boolean;
@@ -201,27 +207,31 @@ export function InversorModal({
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="h-32 flex items-end justify-between gap-1 bg-muted rounded p-4">
-                {dados.curvaGeracao.slice(-12).map((ponto, index) => {
-                  const altura =
-                    (ponto.potencia /
-                      Math.max(...dados.curvaGeracao.map((p) => p.potencia))) *
-                    100;
-                  return (
-                    <div
-                      key={index}
-                      className="flex flex-col items-center gap-1"
-                    >
-                      <div
-                        className="bg-yellow-500 rounded-t min-w-[8px]"
-                        style={{ height: `${altura}%` }}
+              <div className="h-32 rounded bg-muted p-2">
+                <BarChart
+                  data={dados.curvaGeracao.slice(-12).map((p) => ({ hora: p.hora.slice(0, 5), potencia: p.potencia }))}
+                  xDataKey="hora"
+                  aspectRatio="auto"
+                  className="h-full"
+                  margin={{ top: 8, right: 8, bottom: 22, left: 8 }}
+                  animationDuration={0}
+                >
+                  <Bar dataKey="potencia" fill={COR.geracao} lineCap={3} animate={false} />
+                  <BarXAxis showAllLabels />
+                  <ChartTooltip
+                    showDatePill={false}
+                    showCrosshair={false}
+                    showDots={false}
+                    content={({ point }) => (
+                      <TooltipDestaque
+                        titulo={String(point.hora)}
+                        valor={Number(point.potencia).toFixed(1)}
+                        unidade="kW"
+                        rotulo="Potência"
                       />
-                      <span className="text-xs text-muted-foreground">
-                        {ponto.hora.slice(0, 2)}h
-                      </span>
-                    </div>
-                  );
-                })}
+                    )}
+                  />
+                </BarChart>
               </div>
               <div className="mt-4 grid grid-cols-3 gap-4 text-center">
                 <div>

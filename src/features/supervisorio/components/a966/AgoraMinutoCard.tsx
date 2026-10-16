@@ -4,24 +4,81 @@
  * demanda continuam vindo dos blocos de fim de intervalo (sincronizados com o medidor da
  * concessionária). Gateway A-966 não tem parcial → o card não aparece.
  */
+import { useMemo } from "react";
+import { curveMonotoneX } from "@visx/curve";
+import { LineChart } from "@/components/charts/line-chart";
+import { Line } from "@/components/charts/line";
+import { ChartTooltip } from "@/components/charts/tooltip";
+import { formatHoraMinuto } from "@/components/charts/chart-formatters";
+import { TooltipDestaque } from "@/components/graficos/tooltip-destaque";
 import type { GatewayMinuto } from "@/hooks/useGatewayDashboard";
 
 const fmt = (v: number) => v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const hora = (iso: string) => new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 
+interface PontoMinuto extends Record<string, unknown> {
+  date: Date;
+  consumo: number;
+  injecao: number;
+}
+
+/** Sparkline da última hora: sem eixos nem grade, as duas séries na mesma escala. */
 function Curva({ serie, corConsumo, corGeracao }: { serie: GatewayMinuto[]; corConsumo: string; corGeracao: string }) {
-  if (serie.length < 2) return null;
-  const W = 600, H = 70, P = 4;
-  const max = Math.max(0.01, ...serie.map((s) => Math.max(s.kW_consumo, s.kW_injecao)));
-  const x = (i: number) => P + (i * (W - 2 * P)) / (serie.length - 1);
-  const y = (v: number) => H - P - (v / max) * (H - 2 * P);
-  const linha = (k: "kW_consumo" | "kW_injecao") => serie.map((s, i) => `${i ? "L" : "M"}${x(i).toFixed(1)} ${y(s[k]).toFixed(1)}`).join(" ");
+  const pontos = useMemo<PontoMinuto[]>(
+    () =>
+      serie
+        .map((s) => ({ date: new Date(s.timestamp), consumo: s.kW_consumo, injecao: s.kW_injecao }))
+        .sort((a, b) => a.date.getTime() - b.date.getTime()),
+    [serie],
+  );
   const temInjecao = serie.some((s) => s.kW_injecao > 0);
+  if (pontos.length < 2) return null;
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-16" preserveAspectRatio="none" role="img" aria-label="Potência minuto a minuto na última hora">
-      <path d={linha("kW_consumo")} fill="none" stroke={corConsumo} strokeWidth={2} vectorEffect="non-scaling-stroke" />
-      {temInjecao && <path d={linha("kW_injecao")} fill="none" stroke={corGeracao} strokeWidth={2} vectorEffect="non-scaling-stroke" />}
-    </svg>
+    <div className="h-16 w-full">
+      <LineChart
+        data={pontos}
+        aspectRatio="auto"
+        className="h-full"
+        margin={{ top: 4, right: 4, bottom: 4, left: 4 }}
+        animationDuration={0}
+      >
+        <Line
+          dataKey="consumo"
+          stroke={corConsumo}
+          strokeWidth={2}
+          curve={curveMonotoneX}
+          fadeEdges={false}
+          animate={false}
+          showHighlight={false}
+        />
+        {temInjecao && (
+          <Line
+            dataKey="injecao"
+            stroke={corGeracao}
+            strokeWidth={2}
+            curve={curveMonotoneX}
+            fadeEdges={false}
+            animate={false}
+            showHighlight={false}
+          />
+        )}
+        <ChartTooltip
+          showDatePill={false}
+          content={({ point }) => {
+            const p = point as PontoMinuto;
+            return (
+              <TooltipDestaque
+                titulo={formatHoraMinuto(p.date)}
+                linhas={[
+                  { label: "Consumo", value: `${fmt(p.consumo)} kW`, cor: corConsumo },
+                  ...(temInjecao ? [{ label: "Injeção", value: `${fmt(p.injecao)} kW`, cor: corGeracao }] : []),
+                ]}
+              />
+            );
+          }}
+        />
+      </LineChart>
+    </div>
   );
 }
 

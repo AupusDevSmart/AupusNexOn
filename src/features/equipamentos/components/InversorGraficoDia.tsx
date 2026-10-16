@@ -1,18 +1,18 @@
 import { useMemo, useCallback, useRef, useState, useEffect } from 'react';
-import {
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-  Area,
-  ComposedChart,
-  Brush,
-} from 'recharts';
-import { format } from 'date-fns';
+import { curveMonotoneX } from '@visx/curve';
+import { AreaChart, Area } from '@/components/charts/area-chart';
+import { ComposedChart } from '@/components/charts/composed-chart';
+import { Line } from '@/components/charts/line';
+import { Grid } from '@/components/charts/grid';
+import { XAxis } from '@/components/charts/x-axis';
+import { YAxis } from '@/components/charts/y-axis';
+import { ChartTooltip } from '@/components/charts/tooltip';
+import { BrushOverlay } from '@/components/graficos/brush-overlay';
+import { COR } from '@/components/graficos/cores';
+import { Estatisticas } from '@/components/graficos/estatisticas';
+import { TooltipDestaque } from '@/components/graficos/tooltip-destaque';
 import { formatEnergy, formatPower, getPowerValue } from '@/utils/formatEnergy';
+import { formatHoraMinuto } from '@/components/charts/chart-formatters';
 import { useGraficoDia } from '@/hooks/useInversorGraficos';
 
 interface GraficoDiaData {
@@ -41,6 +41,16 @@ interface InversorGraficoDiaProps {
   geracaoDiariaKwh?: number;
 }
 
+interface PontoDia extends Record<string, unknown> {
+  date: Date;
+  potencia: number;
+  potencia_min?: number;
+  potencia_max?: number;
+}
+
+const MARGEM_OVERVIEW = { top: 4, right: 8, bottom: 4, left: 8 };
+const UM_DIA_MS = 24 * 60 * 60 * 1000;
+
 // Determina intervalo ideal pelo tamanho da janela visível (em minutos)
 function intervaloParaJanela(minutos: number): string {
   if (minutos <= 30) return '1';
@@ -49,22 +59,14 @@ function intervaloParaJanela(minutos: number): string {
   return '30';
 }
 
+const paraPonto = (point: GraficoDiaData['dados'][number]): PontoDia => ({
+  date: new Date(point.timestamp),
+  potencia: point.potencia_kw,
+  potencia_min: point.potencia_min,
+  potencia_max: point.potencia_max,
+});
+
 export function InversorGraficoDia({ data, loading, height = 400, equipamentoId, geracaoDiariaKwh }: InversorGraficoDiaProps) {
-  // Detecta dark mode observando a classe no <html>
-  const [isDark, setIsDark] = useState(() => document.documentElement.classList.contains('dark'));
-  useEffect(() => {
-    const obs = new MutationObserver(() =>
-      setIsDark(document.documentElement.classList.contains('dark'))
-    );
-    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
-    return () => obs.disconnect();
-  }, []);
-
-  // Cores fixas por tema — sem CSS variables (que não funcionam corretamente no SVG aqui)
-  const C = isDark
-    ? { main: '#e2e8f0', secondary: '#94a3b8', fill: '#e2e8f0', grid: '#334155', axis: '#94a3b8' }
-    : { main: '#1e293b', secondary: '#64748b', fill: '#1e293b', grid: '#e2e8f0', axis: '#64748b' };
-
   // Range do brush sobre o overview (índices no array overviewChartData)
   const [brushRange, setBrushRange] = useState<{ start: number; end: number }>({ start: 0, end: 0 });
   // Janela de zoom em timestamps ISO — null = mostrando overview completo
@@ -73,35 +75,25 @@ export function InversorGraficoDia({ data, loading, height = 400, equipamentoId,
   const contextContainerRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Dados do overview: dia inteiro em 30min (recebidos via prop)
-  // Padeia com pontos nulos de 00:00 até o primeiro dado para forçar o eixo X a iniciar na meia-noite
-  const overviewChartData = useMemo(() => {
+  // Dados do overview: dia inteiro em 30min (recebidos via prop), ordenados no tempo.
+  const overviewChartData = useMemo<PontoDia[]>(() => {
     if (!data?.dados || data.dados.length === 0) return [];
-
-    const pontos = data.dados.map((point) => ({
-      timestamp: new Date(point.timestamp).getTime(),
-      hora: format(new Date(point.timestamp), 'HH:mm'),
-      potencia: point.potencia_kw,
-      potencia_min: point.potencia_min,
-      potencia_max: point.potencia_max,
-    }));
-
-    // Garante que o primeiro ponto seja 00:00 do dia
-    const primeiroTs = pontos[0].timestamp;
-    const meiaNoit = new Date(primeiroTs);
-    meiaNoit.setHours(0, 0, 0, 0);
-    if (primeiroTs > meiaNoit.getTime()) {
-      pontos.unshift({
-        timestamp: meiaNoit.getTime(),
-        hora: '00:00',
-        potencia: null as any,
-        potencia_min: undefined,
-        potencia_max: undefined,
-      });
-    }
-
-    return pontos;
+    return data.dados.map(paraPonto).sort((a, b) => a.date.getTime() - b.date.getTime());
   }, [data]);
+
+  // Eixo do overview vai de 00:00 a 24:00 do dia, mesmo que a leitura comece depois.
+  const diaDomain = useMemo<[Date, Date] | null>(() => {
+    if (overviewChartData.length === 0) return null;
+    const inicio = new Date(overviewChartData[0].date);
+    inicio.setHours(0, 0, 0, 0);
+    return [inicio, new Date(inicio.getTime() + UM_DIA_MS)];
+  }, [overviewChartData]);
+
+  const fracoes = useMemo(() => {
+    if (!diaDomain) return [];
+    const [inicio] = diaDomain;
+    return overviewChartData.map((p) => (p.date.getTime() - inicio.getTime()) / UM_DIA_MS);
+  }, [overviewChartData, diaDomain]);
 
   // Inicializa brush ao carregar overview
   useEffect(() => {
@@ -120,23 +112,22 @@ export function InversorGraficoDia({ data, loading, height = 400, equipamentoId,
   );
 
   // Dados do gráfico de foco: detalhe se disponível, senão slice do overview
-  const focusChartData = useMemo(() => {
+  const focusChartData = useMemo<PontoDia[]>(() => {
     if (detail.data?.dados && detail.data.dados.length > 0) {
-      return detail.data.dados.map((point) => ({
-        timestamp: new Date(point.timestamp).getTime(),
-        hora: format(new Date(point.timestamp), 'HH:mm'),
-        potencia: point.potencia_kw,
-        potencia_min: point.potencia_min,
-        potencia_max: point.potencia_max,
-      }));
+      return detail.data.dados.map(paraPonto).sort((a, b) => a.date.getTime() - b.date.getTime());
     }
     // Enquanto detalhe carrega (ou se não há zoom), mostra slice do overview
     if (overviewChartData.length === 0) return [];
     return overviewChartData.slice(brushRange.start, brushRange.end + 1);
   }, [detail.data, overviewChartData, brushRange]);
 
+  const temFaixa = useMemo(
+    () => focusChartData.some((d) => typeof d.potencia_max === 'number' && typeof d.potencia_min === 'number'),
+    [focusChartData],
+  );
+
   const stats = useMemo(() => {
-    const pts = focusChartData.map(d => d.potencia).filter((p): p is number => p != null);
+    const pts = focusChartData.map((d) => d.potencia).filter((p): p is number => typeof p === 'number');
     if (!pts.length) return { max: 0, avg: 0, energia: 0 };
     const intervaloH = ((detail.data?.intervalo_minutos ?? data?.intervalo_minutos ?? 30)) / 60;
     const energiaIntegrada = pts.reduce((a, b) => a + b, 0) * intervaloH;
@@ -157,8 +148,8 @@ export function InversorGraficoDia({ data, loading, height = 400, equipamentoId,
   const aplicarZoom = useCallback((startIdx: number, endIdx: number) => {
     if (!overviewChartData.length) return;
 
-    const startTs = overviewChartData[startIdx]?.timestamp;
-    const endTs = overviewChartData[endIdx]?.timestamp;
+    const startTs = overviewChartData[startIdx]?.date.getTime();
+    const endTs = overviewChartData[endIdx]?.date.getTime();
     if (!startTs || !endTs) return;
 
     const totalPontos = overviewChartData.length;
@@ -181,16 +172,19 @@ export function InversorGraficoDia({ data, loading, height = 400, equipamentoId,
     });
   }, [overviewChartData]);
 
-  // Callback do brush (drag manual)
-  const handleBrushChange = useCallback((range: { startIndex?: number; endIndex?: number }) => {
-    if (range.startIndex === undefined || range.endIndex === undefined) return;
-    setBrushRange({ start: range.startIndex, end: range.endIndex });
-
+  const agendarZoom = useCallback((start: number, end: number) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      aplicarZoom(range.startIndex!, range.endIndex!);
-    }, 500);
+    debounceRef.current = setTimeout(() => aplicarZoom(start, end), 500);
   }, [aplicarZoom]);
+
+  // Arraste do brush: a janela muda na hora, o detalhe é buscado ao soltar.
+  const handleBrushChange = useCallback((start: number, end: number) => {
+    setBrushRange({ start, end });
+  }, []);
+
+  const handleBrushCommit = useCallback((start: number, end: number) => {
+    agendarZoom(start, end);
+  }, [agendarZoom]);
 
   // Scroll sobre o gráfico de contexto ajusta o brush (zoom)
   const handleWheel = useCallback((e: WheelEvent) => {
@@ -210,12 +204,8 @@ export function InversorGraficoDia({ data, loading, height = 400, equipamentoId,
     const novoEnd = Math.min(total - 1, novoStart + novoVisivel - 1);
 
     setBrushRange({ start: novoStart, end: novoEnd });
-
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      aplicarZoom(novoStart, novoEnd);
-    }, 500);
-  }, [brushRange, overviewChartData.length, aplicarZoom]);
+    agendarZoom(novoStart, novoEnd);
+  }, [brushRange, overviewChartData.length, agendarZoom]);
 
   useEffect(() => {
     const el = contextContainerRef.current;
@@ -224,70 +214,47 @@ export function InversorGraficoDia({ data, loading, height = 400, equipamentoId,
     return () => el.removeEventListener('wheel', handleWheel);
   }, [handleWheel]);
 
+  useEffect(() => () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+  }, []);
+
   const isZoomed = !!zoomWindow;
   const intervaloExibido = isZoomed
     ? (detail.data?.intervalo_minutos ?? zoomWindow?.intervalo ?? '?')
     : (data?.intervalo_minutos ?? 30);
 
   const handleResetZoom = () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
     setZoomWindow(null);
     setBrushRange({ start: 0, end: overviewChartData.length - 1 });
   };
 
   if (loading) {
-    return <div className="flex items-center justify-center h-full text-muted-foreground">Carregando dados do dia...</div>;
+    return <div className="flex h-full items-center justify-center text-muted-foreground">Carregando dados do dia...</div>;
   }
 
-  if (!data || overviewChartData.length === 0) {
-    return <div className="flex items-center justify-center h-full text-muted-foreground">Nenhum dado disponível para este dia</div>;
+  if (!data || overviewChartData.length === 0 || !diaDomain) {
+    return <div className="flex h-full items-center justify-center text-muted-foreground">Nenhum dado disponível para este dia</div>;
   }
 
-  const focusHeight = height - 110;
-
-  const tooltipContent = (value: number, name: string) => {
-    const powerData = getPowerValue(value);
-    if (name === 'potencia' || name === 'Potência') {
-      return [<div className="space-y-1"><div className="flex items-baseline gap-2"><span className="text-3xl font-black">{powerData.value}</span><span className="text-xl font-bold text-muted-foreground">{powerData.unit}</span></div><div className="text-sm text-muted-foreground">Potência</div></div>, ''];
-    }
-    if (name === 'potencia_max' || name === 'Máxima') return [<div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Máxima:</span><span className="font-bold">{formatPower(value)}</span></div>, ''];
-    if (name === 'potencia_min' || name === 'Mínima') return [<div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Mínima:</span><span className="font-bold">{formatPower(value)}</span></div>, ''];
-    return [formatPower(value), name];
-  };
-
-  const tooltipStyle = {
-    backgroundColor: 'hsl(var(--card))',
-    border: '2px solid hsl(var(--border))',
-    borderRadius: '12px',
-    boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
-    padding: '12px',
-    minWidth: '200px',
-    opacity: 1,
-  };
+  const focusHeight = Math.max(180, height - 120);
 
   return (
     <div className="space-y-3">
-      {/* Estatísticas */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="text-center p-3 border rounded-lg">
-          <div className="text-xs text-muted-foreground mb-1">Energia</div>
-          <div className="text-lg font-semibold">{formatEnergy(stats.energia)}</div>
-        </div>
-        <div className="text-center p-3 border rounded-lg">
-          <div className="text-xs text-muted-foreground mb-1">Potência Média</div>
-          <div className="text-lg font-semibold">{formatPower(stats.avg)}</div>
-        </div>
-        <div className="text-center p-3 border rounded-lg">
-          <div className="text-xs text-muted-foreground mb-1">Pico</div>
-          <div className="text-lg font-semibold">{formatPower(stats.max)}</div>
-        </div>
-      </div>
+      <Estatisticas
+        itens={[
+          { rotulo: isZoomed ? 'Energia na janela' : 'Energia do dia', valor: formatEnergy(stats.energia), cor: COR.geracao },
+          { rotulo: 'Potência média', valor: formatPower(stats.avg), cor: COR.potencia },
+          { rotulo: 'Pico', valor: formatPower(stats.max) },
+        ]}
+      />
 
       {/* Gráfico de foco — exibe a janela selecionada */}
-      <div className="relative">
+      <div className="relative" style={{ height: focusHeight }}>
         {detail.loading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-background/70 z-10 rounded-lg">
-            <div className="flex items-center gap-2 bg-card border rounded-lg px-3 py-2 text-xs font-medium shadow-md">
-              <svg className="animate-spin h-3 w-3 text-primary" viewBox="0 0 24 24" fill="none">
+          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-background/70">
+            <div className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2 text-xs font-medium shadow-md">
+              <svg className="h-3 w-3 animate-spin text-primary" viewBox="0 0 24 24" fill="none">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
               </svg>
@@ -295,48 +262,76 @@ export function InversorGraficoDia({ data, loading, height = 400, equipamentoId,
             </div>
           </div>
         )}
-        <ResponsiveContainer width="100%" height={focusHeight}>
-          <ComposedChart data={focusChartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
-            <XAxis dataKey="hora" tick={{ fill: C.axis, fontSize: 11 }} />
-            <YAxis tick={{ fill: C.axis, fontSize: 11 }}
-              label={{ value: 'kW', angle: -90, position: 'insideLeft', fill: C.axis, fontSize: 11 }}
-              domain={[0, 'auto']} />
-            <Tooltip
-              contentStyle={tooltipStyle}
-              labelStyle={{ color: C.main, fontSize: '13px', fontWeight: '700', marginBottom: '6px' }}
-              formatter={tooltipContent}
+        <ComposedChart
+          data={focusChartData}
+          aspectRatio="auto"
+          className="h-full"
+          margin={{ top: 12, right: 16, bottom: 28, left: 56 }}
+          animationDuration={0}
+        >
+          <Grid horizontal numTicksRows={4} />
+          {temFaixa && (
+            <Area
+              dataKey="potencia_max"
+              fill={COR.potencia}
+              fillOpacity={0.1}
+              gradientToOpacity={0.02}
+              showLine={false}
+              showHighlight={false}
+              curve={curveMonotoneX}
+              animate={false}
             />
-            <Legend wrapperStyle={{ fontSize: '12px' }} />
-            {focusChartData.some(d => d.potencia_max !== undefined) && (
-              <Area type="monotone" dataKey="potencia_max" stroke="none" fill={C.fill} fillOpacity={0.06} name="Faixa" legendType="none" />
-            )}
-            <Line type="monotone" dataKey="potencia" stroke={C.main} strokeWidth={2} dot={false} name="Potência" isAnimationActive={false} connectNulls={false} />
-            {focusChartData.some(d => d.potencia_max !== undefined) && (
-              <Line type="monotone" dataKey="potencia_max" stroke={C.secondary} strokeWidth={1} strokeDasharray="4 4" dot={false} name="Máxima" isAnimationActive={false} />
-            )}
-            {focusChartData.some(d => d.potencia_min !== undefined) && (
-              <Line type="monotone" dataKey="potencia_min" stroke={C.secondary} strokeWidth={1} strokeDasharray="4 4" dot={false} name="Mínima" isAnimationActive={false} />
-            )}
-          </ComposedChart>
-        </ResponsiveContainer>
+          )}
+          <Line dataKey="potencia" stroke={COR.potencia} strokeWidth={2} curve={curveMonotoneX} fadeEdges={false} animate={false} />
+          {temFaixa && (
+            <Line dataKey="potencia_max" stroke={COR.neutro} strokeWidth={1} dashFromIndex={0} dashArray="4,4" curve={curveMonotoneX} fadeEdges={false} animate={false} showHighlight={false} />
+          )}
+          {temFaixa && (
+            <Line dataKey="potencia_min" stroke={COR.neutro} strokeWidth={1} dashFromIndex={0} dashArray="4,4" curve={curveMonotoneX} fadeEdges={false} animate={false} showHighlight={false} />
+          )}
+          <XAxis numTicks={6} />
+          <YAxis numTicks={4} formatValue={(v) => `${v} kW`} />
+          <ChartTooltip
+            showDots
+            content={({ point }) => {
+              const p = point as PontoDia;
+              const potencia = getPowerValue(p.potencia);
+              const linhas = temFaixa && typeof p.potencia_max === 'number' && typeof p.potencia_min === 'number'
+                ? [
+                    { label: 'Máxima', value: formatPower(p.potencia_max), cor: COR.neutro },
+                    { label: 'Mínima', value: formatPower(p.potencia_min), cor: COR.neutro },
+                  ]
+                : undefined;
+              return (
+                <TooltipDestaque
+                  titulo={formatHoraMinuto(p.date)}
+                  valor={potencia.value}
+                  unidade={potencia.unit}
+                  rotulo="Potência"
+                  linhas={linhas}
+                />
+              );
+            }}
+          />
+        </ComposedChart>
       </div>
 
       {/* Gráfico de contexto — miniatura do dia com brush */}
-      <div className="border rounded-lg p-2 bg-muted/20">
-        <div className="flex items-center justify-between mb-1 px-1">
+      <div className="rounded-lg border bg-card/60 p-2">
+        <div className="mb-1 flex items-center justify-between px-1">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M21 3H3v7h18V3z"/><path d="M21 14H3v7h18v-7z"/><path d="M12 10v4"/><path d="M8 10v4"/><path d="M16 10v4"/>
             </svg>
             {isZoomed
-              ? <><span className="text-foreground font-medium">Zoom {intervaloExibido}min/ponto</span> · Scroll ou arraste para ajustar</>
+              ? <><span className="font-medium text-foreground">Zoom {intervaloExibido}min/ponto</span> · Scroll ou arraste para ajustar</>
               : <>Visão geral · {intervaloExibido}min/ponto · <span className="font-medium">Arraste ou scroll para zoom</span></>}
           </div>
           {isZoomed && (
             <button
+              type="button"
               onClick={handleResetZoom}
-              className="text-xs font-medium flex items-center gap-1 text-foreground transition-colors hover:opacity-60"
+              className="flex items-center gap-1 text-xs font-medium text-foreground transition-colors hover:opacity-60"
             >
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>
@@ -345,31 +340,36 @@ export function InversorGraficoDia({ data, loading, height = 400, equipamentoId,
             </button>
           )}
         </div>
-        <div ref={contextContainerRef} style={{ touchAction: 'none', cursor: 'col-resize' }}>
-          <ResponsiveContainer width="100%" height={65}>
-            <ComposedChart data={overviewChartData} margin={{ top: 2, right: 30, left: 20, bottom: 0 }}>
-              <Area
-                type="monotone"
-                dataKey="potencia"
-                stroke={C.secondary}
-                strokeWidth={1}
-                fill={C.fill}
-                fillOpacity={0.12}
-                dot={false}
-                isAnimationActive={false}
-              />
-              <Brush
-                dataKey="hora"
-                height={24}
-                stroke={C.secondary}
-                fill={isDark ? '#1e293b' : '#f1f5f9'}
-                travellerWidth={8}
-                startIndex={brushRange.start}
-                endIndex={brushRange.end}
-                onChange={handleBrushChange}
-              />
-            </ComposedChart>
-          </ResponsiveContainer>
+        <div ref={contextContainerRef} className="relative h-[68px]" style={{ touchAction: 'none' }}>
+          <AreaChart
+            data={overviewChartData}
+            xDomain={diaDomain}
+            aspectRatio="auto"
+            className="h-full"
+            margin={MARGEM_OVERVIEW}
+            animationDuration={0}
+          >
+            <Area
+              dataKey="potencia"
+              fill={COR.potencia}
+              fillOpacity={0.3}
+              gradientToOpacity={0.05}
+              strokeWidth={1}
+              curve={curveMonotoneX}
+              showHighlight={false}
+              animate={false}
+            />
+          </AreaChart>
+          <BrushOverlay
+            fracoes={fracoes}
+            start={brushRange.start}
+            end={brushRange.end}
+            onChange={handleBrushChange}
+            onCommit={handleBrushCommit}
+            margemEsq={MARGEM_OVERVIEW.left}
+            margemDir={MARGEM_OVERVIEW.right}
+            cor={COR.potencia}
+          />
         </div>
       </div>
     </div>

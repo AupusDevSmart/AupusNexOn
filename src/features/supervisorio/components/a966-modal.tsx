@@ -7,6 +7,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useGatewayDashboard } from "@/hooks/useGatewayDashboard";
+import { COR } from "@/components/graficos/cores";
 import { AgoraMinutoCard } from "./a966/AgoraMinutoCard";
 import { Radio, RefreshCw, Wifi, WifiOff } from "lucide-react";
 import { useMemo } from "react";
@@ -20,14 +21,14 @@ import { UltimasLeiturasTable } from "./a966/UltimasLeiturasTable";
 interface A966ModalProps {
   open: boolean;
   onClose: () => void;
-  componenteData?: any;
+  componenteData?: { id?: string; nome?: string; dados?: { equipamento_id?: string } };
   nomeComponente?: string;
 }
 
-// Cores das demandas (gauges). Slate-500 pra consumo e yellow-700 pra geracao
 // — combina com as series do grafico (TendenciaPotencia).
-const COR_CONSUMO = "#64748b";
-const COR_GERACAO = "#a16207";
+// Cores por token do tema (mesma paleta dos gráficos bklit).
+const COR_CONSUMO = COR.consumo;
+const COR_GERACAO = COR.geracao;
 
 const STALE_THRESHOLD_MS = 30 * 60 * 1000;
 

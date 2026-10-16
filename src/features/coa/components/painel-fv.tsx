@@ -1,64 +1,120 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import {
-  ComposedChart, Area, Line, BarChart, Bar, Cell, XAxis, YAxis, Tooltip, Legend, CartesianGrid, ResponsiveContainer,
-} from 'recharts';
 import { ChevronDown, Sun } from 'lucide-react';
+import { curveMonotoneX } from '@visx/curve';
+import { ComposedChart } from '@/components/charts/composed-chart';
+import { Area } from '@/components/charts/area-chart';
+import { Line } from '@/components/charts/line';
+import { BarChart } from '@/components/charts/bar-chart';
+import { Bar } from '@/components/charts/bar';
+import { BarXAxis } from '@/components/charts/bar-x-axis';
+import { BarYAxis } from '@/components/charts/bar-y-axis';
+import { Grid } from '@/components/charts/grid';
+import { XAxis } from '@/components/charts/x-axis';
+import { YAxis } from '@/components/charts/y-axis';
+import { ChartTooltip } from '@/components/charts/tooltip';
+import { Legend, LegendItem, LegendLabel, LegendMarker } from '@/components/charts/legend';
+import { COR } from '@/components/graficos/cores';
+import { Estatisticas } from '@/components/graficos/estatisticas';
+import { TooltipDestaque } from '@/components/graficos/tooltip-destaque';
 import { useRegistrosFv } from '../hooks/use-registros-fv';
 
 // ── formatação ──────────────────────────────────────────────────────────────
 const MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-function fmtEnergia(kwh: number): string {
+function partesEnergia(kwh: number): { valor: string; unidade: string } {
   const v = Number.isFinite(kwh) ? kwh : 0;
   const a = Math.abs(v);
-  if (a >= 1e6) return `${(v / 1e6).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} GWh`;
-  if (a >= 1000) return `${(v / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} MWh`;
-  return `${Math.round(v).toLocaleString('pt-BR')} kWh`;
+  if (a >= 1e6) return { valor: (v / 1e6).toLocaleString('pt-BR', { maximumFractionDigits: 2 }), unidade: 'GWh' };
+  if (a >= 1000) return { valor: (v / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 }), unidade: 'MWh' };
+  return { valor: Math.round(v).toLocaleString('pt-BR'), unidade: 'kWh' };
+}
+function fmtEnergia(kwh: number): string {
+  const p = partesEnergia(kwh);
+  return `${p.valor} ${p.unidade}`;
 }
 const ddmm = (iso: string) => (iso?.length >= 10 ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : iso);
 const mesLabel = (ym: string) => `${MESES[Number(ym.slice(5, 7)) - 1] ?? '?'}/${ym.slice(2, 4)}`;
+/** Dia "YYYY-MM-DD" em Date local (nunca por string ISO, que cai em UTC). */
+const dataLocal = (iso: string) => {
+  const [y, m, d] = iso.slice(0, 10).split('-').map(Number);
+  return new Date(y, m - 1, d);
+};
+const pctMeta = (realizado: number, previsto: number) => (previsto > 0 ? Math.round((realizado / previsto) * 100) : null);
+
+const COR_REALIZADO = COR.geracao;
+const COR_META = COR.neutro;
+const COR_CRITICO = 'var(--destructive)';
+/** Faixa de eficiência: verde ≥ 95 %, âmbar ≥ 85 %, vermelho abaixo; sem meta = neutro. */
 const corPct = (pct: number | null): string =>
-  pct == null ? '#94a3b8' : pct >= 95 ? '#22c55e' : pct >= 85 ? '#f59e0b' : '#ef4444';
+  pct == null ? COR.neutro : pct >= 95 ? COR.geracao : pct >= 85 ? COR.consumo : COR_CRITICO;
 
-const VERDE = '#22c55e'; // realizado
-const CINZA = '#94a3b8'; // meta
+const yTickK = (v: number) =>
+  Math.abs(v) >= 1e6 ? `${Math.round(v / 1e6)}G` : Math.abs(v) >= 1000 ? `${Math.round(v / 1000)}k` : `${v}`;
 
-function KpiTile({ rotulo, valor, cor }: { rotulo: string; valor: string; cor?: string }) {
+interface PontoDiario extends Record<string, unknown> {
+  data: string;
+  label: string;
+  date: Date;
+  realizado: number;
+  previsto: number;
+}
+interface PontoMensal extends Record<string, unknown> {
+  ym: string;
+  label: string;
+  realizado: number;
+  previsto: number;
+}
+/** Linha do ranking: o % vai numa só das chaves ok/atencao/critico (barras empilhadas). */
+interface LinhaRanking extends Record<string, unknown> {
+  id: string;
+  categoria: string;
+  nome: string;
+  realizado: number;
+  pct: number | null;
+  ok: number;
+  atencao: number;
+  critico: number;
+}
+
+const LEGENDA_REAL_META = [
+  { label: 'Realizado', value: 0, color: COR_REALIZADO },
+  { label: 'Meta', value: 0, color: COR_META },
+];
+const LEGENDA_FAIXAS = [
+  { label: '≥ 95%', value: 0, color: COR.geracao },
+  { label: '85–94%', value: 0, color: COR.consumo },
+  { label: '< 85%', value: 0, color: COR_CRITICO },
+];
+
+function LegendaSeries({ itens }: { itens: Array<{ label: string; value: number; color: string }> }) {
   return (
-    <div className="rounded-lg border border-border bg-muted/30 px-3 py-2">
-      <div className="text-[11px] text-muted-foreground">{rotulo}</div>
-      <div className="text-base sm:text-lg font-semibold tabular-nums" style={cor ? { color: cor } : undefined}>{valor}</div>
-    </div>
+    <Legend items={itens} className="flex-row flex-wrap gap-x-3 gap-y-1">
+      <LegendItem>
+        <LegendMarker className="h-2 w-2" />
+        <LegendLabel className="text-[11px] font-medium" />
+      </LegendItem>
+    </Legend>
   );
 }
 
-function TrendTooltip({ active, payload, label }: any) {
-  if (!active || !payload?.length) return null;
-  const real = payload.find((p: any) => p.dataKey === 'realizado')?.value ?? 0;
-  const meta = payload.find((p: any) => p.dataKey === 'previsto')?.value ?? 0;
-  const pct = meta > 0 ? Math.round((real / meta) * 100) : null;
+function TooltipRealizadoMeta({ titulo, realizado, previsto }: { titulo: string; realizado: number; previsto: number }) {
+  const pct = pctMeta(realizado, previsto);
+  const e = partesEnergia(realizado);
   return (
-    <div className="rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs shadow-md">
-      <div className="font-medium mb-0.5">{label}</div>
-      <div className="flex items-center gap-1.5"><span className="inline-block w-2 h-2 rounded-sm" style={{ background: VERDE }} />Realizado: <span className="font-medium tabular-nums">{fmtEnergia(real)}</span></div>
-      <div className="flex items-center gap-1.5"><span className="inline-block w-2 h-2 rounded-sm" style={{ background: CINZA }} />Meta: <span className="font-medium tabular-nums">{fmtEnergia(meta)}</span></div>
-      {pct != null && <div className="mt-0.5" style={{ color: corPct(pct) }}>{pct}% da meta</div>}
-    </div>
+    <TooltipDestaque
+      titulo={titulo}
+      valor={e.valor}
+      unidade={e.unidade}
+      rotulo="Realizado"
+      linhas={[
+        { label: 'Meta', value: fmtEnergia(previsto), cor: COR_META },
+        ...(pct != null ? [{ label: 'Da meta', value: `${pct}%`, cor: corPct(pct) }] : []),
+      ]}
+    />
   );
 }
 
-const yTickK = (v: number) => (v >= 1e6 ? `${Math.round(v / 1e6)}G` : v >= 1000 ? `${Math.round(v / 1000)}k` : `${v}`);
-
-function RankTooltip({ active, payload }: any) {
-  if (!active || !payload?.length) return null;
-  const d = payload[0].payload;
-  const cor = corPct(d.pct);
-  return (
-    <div className="rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs shadow-md">
-      <div className="font-medium mb-0.5">{d.nome}</div>
-      <div style={{ color: cor }}>{d.pct != null ? `${d.pct}% da meta` : 'sem meta'}</div>
-      <div className="text-muted-foreground">Geração: {fmtEnergia(d.realizado)}</div>
-    </div>
-  );
+function SemDados() {
+  return <div className="flex h-full items-center justify-center text-xs text-muted-foreground">Sem dados no período.</div>;
 }
 
 function Chip({ ativo, onClick, children }: { ativo: boolean; onClick: () => void; children: ReactNode }) {
@@ -120,17 +176,17 @@ export function PainelFv() {
     return { realizado, previsto, efic: previsto > 0 ? Math.round((realizado / previsto) * 100) : null, desvio: realizado - previsto, usinas: us.size, dias: dias.size };
   }, [filtrados]);
 
-  const diaria = useMemo(() => {
+  const diaria = useMemo<PontoDiario[]>(() => {
     const m = new Map<string, { realizado: number; previsto: number }>();
     for (const r of filtrados) {
       const a = m.get(r.data) ?? { realizado: 0, previsto: 0 };
       a.realizado += r.kwh_realizado || 0; a.previsto += r.kwh_previsto || 0;
       m.set(r.data, a);
     }
-    return Array.from(m, ([data, v]) => ({ data, label: ddmm(data), ...v })).sort((a, b) => a.data.localeCompare(b.data));
+    return Array.from(m, ([data, v]) => ({ data, label: ddmm(data), date: dataLocal(data), ...v })).sort((a, b) => a.data.localeCompare(b.data));
   }, [filtrados]);
 
-  const mensal = useMemo(() => {
+  const mensal = useMemo<PontoMensal[]>(() => {
     const m = new Map<string, { realizado: number; previsto: number }>();
     for (const r of filtrados) {
       const ym = r.data.slice(0, 7);
@@ -182,6 +238,30 @@ export function PainelFv() {
   // Ranking por eficiência: 'periodo' usa o filtro; 'ontem' usa o último dia. Mesmo formato.
   const rankData = rankModo === 'ontem' ? fcDia.itens : ranking;
 
+  // O bklit não colore barra a barra: cada linha leva o % numa chave (ok/atencao/critico) e
+  // 0 nas outras, empilhadas. Barras horizontais com "% · nome" como categoria, porque o
+  // BarChart horizontal não tem eixo numérico nem rótulo de valor.
+  const rankLinhas = useMemo<LinhaRanking[]>(() => {
+    const vistos = new Set<string>();
+    return rankData.map((r) => {
+      let categoria = `${r.pct != null ? `${r.pct}%` : 's/ meta'} · ${r.nomeCurto}`;
+      while (vistos.has(categoria)) categoria += ' ';
+      vistos.add(categoria);
+      const pct = r.pct ?? 0;
+      return {
+        id: r.id,
+        categoria,
+        nome: r.nome,
+        realizado: r.realizado,
+        pct: r.pct,
+        ok: r.pct != null && r.pct >= 95 ? pct : 0,
+        atencao: r.pct != null && r.pct >= 85 && r.pct < 95 ? pct : 0,
+        critico: r.pct != null && r.pct < 85 ? pct : 0,
+      };
+    });
+  }, [rankData]);
+  const alturaRanking = Math.min(440, Math.max(200, 32 + rankLinhas.length * 24));
+
   useEffect(() => {
     if (!filtroAberto) return;
     const h = (e: MouseEvent) => { if (filtroRef.current && !filtroRef.current.contains(e.target as Node)) setFiltroAberto(false); };
@@ -200,7 +280,7 @@ export function PainelFv() {
   if (!registros.length) return null;
 
   const toggleUsina = (id: string) =>
-    setSelUsinas((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    setSelUsinas((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
   return (
     <div className="space-y-4 lg:space-y-6 2xl:space-y-8">
@@ -253,30 +333,71 @@ export function PainelFv() {
       </div>
 
         {/* ── KPIs do período ── */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2">
-          <KpiTile rotulo="Realizado" valor={fmtEnergia(kpi.realizado)} />
-          <KpiTile rotulo="Meta" valor={fmtEnergia(kpi.previsto)} />
-          <KpiTile rotulo="Eficiência" valor={kpi.efic != null ? `${kpi.efic}%` : '--'} cor={corPct(kpi.efic)} />
-          <KpiTile rotulo="Desvio" valor={`${kpi.desvio >= 0 ? '+' : ''}${fmtEnergia(kpi.desvio)}`} cor={kpi.desvio >= 0 ? '#22c55e' : '#ef4444'} />
-          <KpiTile rotulo="Usinas" valor={String(kpi.usinas)} />
-          <KpiTile rotulo="Dias c/ dados" valor={String(kpi.dias)} />
-        </div>
+        <Estatisticas
+          itens={[
+            { rotulo: 'Realizado', valor: fmtEnergia(kpi.realizado), cor: COR_REALIZADO },
+            { rotulo: 'Meta', valor: fmtEnergia(kpi.previsto), cor: COR_META },
+            { rotulo: 'Eficiência', valor: <span style={{ color: corPct(kpi.efic) }}>{kpi.efic != null ? `${kpi.efic}%` : '--'}</span> },
+            {
+              rotulo: 'Desvio',
+              valor: (
+                <span style={{ color: kpi.desvio >= 0 ? COR.geracao : COR_CRITICO }}>
+                  {`${kpi.desvio >= 0 ? '+' : ''}${fmtEnergia(kpi.desvio)}`}
+                </span>
+              ),
+            },
+            { rotulo: 'Usinas', valor: String(kpi.usinas) },
+            { rotulo: 'Dias c/ dados', valor: String(kpi.dias) },
+          ]}
+        />
 
         {/* ── Geração diária (metade) + Disponibilidade/FC em abas (metade) ── */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 lg:gap-6 2xl:gap-8">
           <div className="min-w-0">
-            <h4 className="text-xs font-medium text-muted-foreground mb-1">Geração diária — realizado × meta</h4>
-            <ResponsiveContainer width="100%" height={220}>
-              <ComposedChart data={diaria} margin={{ top: 6, right: 8, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" className="opacity-20" />
-                <XAxis dataKey="label" fontSize={10} interval="preserveStartEnd" minTickGap={28} />
-                <YAxis fontSize={10} width={44} tickFormatter={yTickK} />
-                <Tooltip content={<TrendTooltip />} />
-                <Legend wrapperStyle={{ fontSize: 11 }} iconType="plainline" />
-                <Area type="monotone" dataKey="realizado" name="Realizado" stroke={VERDE} strokeWidth={2} fill={VERDE} fillOpacity={0.18} dot={false} />
-                <Line type="monotone" dataKey="previsto" name="Meta" stroke={CINZA} strokeWidth={2} strokeDasharray="5 4" dot={false} />
-              </ComposedChart>
-            </ResponsiveContainer>
+            <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+              <h4 className="text-xs font-medium text-muted-foreground">Geração diária — realizado × meta</h4>
+              <LegendaSeries itens={LEGENDA_REAL_META} />
+            </div>
+            <div style={{ height: 220 }}>
+              {diaria.length === 0 ? <SemDados /> : (
+                <ComposedChart
+                  data={diaria}
+                  aspectRatio="auto"
+                  className="h-full"
+                  margin={{ top: 8, right: 12, bottom: 28, left: 48 }}
+                  animationDuration={600}
+                >
+                  <Grid horizontal numTicksRows={4} />
+                  <Area
+                    dataKey="realizado"
+                    fill={COR_REALIZADO}
+                    fillOpacity={0.2}
+                    gradientToOpacity={0.02}
+                    strokeWidth={2}
+                    curve={curveMonotoneX}
+                  />
+                  <Line
+                    dataKey="previsto"
+                    stroke={COR_META}
+                    strokeWidth={2}
+                    dashFromIndex={0}
+                    dashArray="5,4"
+                    curve={curveMonotoneX}
+                    fadeEdges={false}
+                    showHighlight={false}
+                  />
+                  <XAxis numTicks={6} />
+                  <YAxis numTicks={4} formatValue={yTickK} />
+                  <ChartTooltip
+                    showDots
+                    content={({ point }) => {
+                      const p = point as PontoDiario;
+                      return <TooltipRealizadoMeta titulo={p.label} realizado={p.realizado} previsto={p.previsto} />;
+                    }}
+                  />
+                </ComposedChart>
+              )}
+            </div>
           </div>
 
           {/* ── Disponibilidade — % de dias ativos por usina ── */}
@@ -289,7 +410,7 @@ export function PainelFv() {
                     <span className="font-medium truncate" title={a.nome}>{a.nome}</span>
                     <span className="font-mono text-muted-foreground">{Math.round(a.pct)}% <span className="opacity-60">({a.active}/{a.total})</span></span>
                   </div>
-                  <div className="h-1.5 w-full rounded-full bg-muted/50 overflow-hidden">
+                  <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
                     <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, a.pct)}%`, background: corPct(a.pct) }} />
                   </div>
                 </li>
@@ -302,18 +423,38 @@ export function PainelFv() {
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 lg:gap-6 2xl:gap-8 !mt-8 lg:!mt-12 2xl:!mt-16">
           {/* ── Geração mensal ── */}
           <div className="min-w-0">
-            <h4 className="text-xs font-medium text-muted-foreground mb-1">Geração mensal — realizado × meta</h4>
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={mensal} margin={{ top: 6, right: 8, left: 0, bottom: 0 }} barGap={2}>
-                <CartesianGrid strokeDasharray="3 3" className="opacity-20" vertical={false} />
-                <XAxis dataKey="label" fontSize={10} />
-                <YAxis fontSize={10} width={44} tickFormatter={yTickK} />
-                <Tooltip content={<TrendTooltip />} cursor={{ fillOpacity: 0.08 }} />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Bar dataKey="realizado" name="Realizado" fill={VERDE} radius={[3, 3, 0, 0]} />
-                <Bar dataKey="previsto" name="Meta" fill={CINZA} radius={[3, 3, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+              <h4 className="text-xs font-medium text-muted-foreground">Geração mensal — realizado × meta</h4>
+              <LegendaSeries itens={LEGENDA_REAL_META} />
+            </div>
+            <div style={{ height: 200 }}>
+              {mensal.length === 0 ? <SemDados /> : (
+                <BarChart
+                  data={mensal}
+                  xDataKey="label"
+                  aspectRatio="auto"
+                  className="h-full"
+                  margin={{ top: 8, right: 12, bottom: 28, left: 48 }}
+                  barGap={0.3}
+                  animationDuration={600}
+                >
+                  <Grid horizontal numTicksRows={4} />
+                  <Bar dataKey="realizado" fill={COR_REALIZADO} lineCap={3} />
+                  <Bar dataKey="previsto" fill={COR_META} lineCap={3} />
+                  <BarXAxis maxLabels={12} />
+                  <YAxis numTicks={4} formatValue={yTickK} />
+                  <ChartTooltip
+                    showDatePill={false}
+                    showCrosshair={false}
+                    showDots={false}
+                    content={({ point }) => {
+                      const p = point as PontoMensal;
+                      return <TooltipRealizadoMeta titulo={p.label} realizado={p.realizado} previsto={p.previsto} />;
+                    }}
+                  />
+                </BarChart>
+              )}
+            </div>
           </div>
 
           {/* ── Ranking de usinas ── */}
@@ -322,22 +463,52 @@ export function PainelFv() {
               <h4 className="text-xs font-medium text-muted-foreground">
                 Ranking por eficiência {rankModo === 'ontem' ? `— ontem ${fcDia.data ? ddmm(fcDia.data) : ''}` : '— período'}
               </h4>
-              <div className="flex items-center gap-1.5">
-                <Chip ativo={rankModo === 'periodo'} onClick={() => setRankModo('periodo')}>Período</Chip>
-                <Chip ativo={rankModo === 'ontem'} onClick={() => setRankModo('ontem')}>Ontem</Chip>
+              <div className="flex items-center gap-2">
+                <LegendaSeries itens={LEGENDA_FAIXAS} />
+                <div className="flex items-center gap-1.5">
+                  <Chip ativo={rankModo === 'periodo'} onClick={() => setRankModo('periodo')}>Período</Chip>
+                  <Chip ativo={rankModo === 'ontem'} onClick={() => setRankModo('ontem')}>Ontem</Chip>
+                </div>
               </div>
             </div>
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={rankData} margin={{ top: 6, right: 8, left: 0, bottom: 4 }}>
-                <CartesianGrid strokeDasharray="3 3" className="opacity-20" vertical={false} />
-                <XAxis dataKey="nomeCurto" fontSize={9} interval={0} angle={-35} textAnchor="end" height={54} />
-                <YAxis fontSize={10} width={40} tickFormatter={(v) => `${v}%`} />
-                <Tooltip content={<RankTooltip />} cursor={{ fillOpacity: 0.08 }} />
-                <Bar dataKey="pct" name="Eficiência" radius={[3, 3, 0, 0]}>
-                  {rankData.map((r) => <Cell key={r.id} fill={corPct(r.pct)} />)}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+            <div style={{ height: alturaRanking }}>
+              {rankLinhas.length === 0 ? <SemDados /> : (
+                <BarChart
+                  data={rankLinhas}
+                  xDataKey="categoria"
+                  orientation="horizontal"
+                  stacked
+                  aspectRatio="auto"
+                  className="h-full"
+                  margin={{ top: 8, right: 16, bottom: 8, left: 132 }}
+                  barGap={0.3}
+                  animationDuration={600}
+                >
+                  <Grid horizontal={false} vertical numTicksColumns={5} />
+                  <Bar dataKey="ok" fill={COR.geracao} lineCap={3} />
+                  <Bar dataKey="atencao" fill={COR.consumo} lineCap={3} />
+                  <Bar dataKey="critico" fill={COR_CRITICO} lineCap={3} />
+                  <BarYAxis />
+                  <ChartTooltip
+                    showDatePill={false}
+                    showCrosshair={false}
+                    showDots={false}
+                    content={({ point }) => {
+                      const r = point as LinhaRanking;
+                      return (
+                        <TooltipDestaque
+                          titulo={r.nome}
+                          valor={r.pct != null ? String(r.pct) : '—'}
+                          unidade={r.pct != null ? '%' : undefined}
+                          rotulo={r.pct != null ? 'da meta' : 'sem meta'}
+                          linhas={[{ label: 'Geração', value: fmtEnergia(r.realizado) }]}
+                        />
+                      );
+                    }}
+                  />
+                </BarChart>
+              )}
+            </div>
           </div>
         </div>
     </div>

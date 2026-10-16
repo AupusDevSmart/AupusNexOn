@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Gauge } from "@/components/charts/gauge";
+import { COR } from "@/components/graficos/cores";
 import { ConfiguracaoDemandaModal } from "@/features/supervisorio/components/ConfiguracaoDemandaModal";
 import { PanelCard } from "./PanelCard";
 import { useDemandaFluxo } from "../hooks/useDemandaFluxo";
@@ -21,27 +23,24 @@ function pctDe(v: number | null, ref: number | null): number | undefined {
 }
 
 /**
- * Medidor circular (ring) minimalista: a demanda atual no centro e o anel
- * preenchido pela % em relacao a demanda contratada. Monocromatico (token do
- * tema); quando passa de 100% (acima da contratada) o anel fica ambar.
+ * Medidor circular (Gauge do bklit): a demanda atual no centro e o arco
+ * preenchido pela % em relacao a demanda contratada. Cor da grandeza (carga
+ * azul, geracao verde); quando passa de 100% (acima da contratada) fica ambar.
  */
 function GaugeDemanda({
   rotulo,
   valor,
-  unidade,
   pct,
+  cor,
   contratada,
 }: {
   rotulo: string;
-  valor?: string;
-  unidade?: string;
+  valor?: number | null;
   pct?: number;
+  cor: string;
   contratada?: string;
 }) {
   const p = Math.min(100, Math.max(0, pct ?? 0));
-  const R = 42;
-  const C = 2 * Math.PI * R;
-  const dash = (p / 100) * C;
   const acimaDaContratada = (pct ?? 0) > 100;
 
   return (
@@ -50,44 +49,25 @@ function GaugeDemanda({
         {rotulo}
       </span>
 
-      <div className="relative aspect-square w-full max-w-[100px]">
-        <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90">
-          {/* trilho */}
-          <circle
-            cx="50"
-            cy="50"
-            r={R}
-            fill="none"
-            strokeWidth="7"
-            stroke="currentColor"
-            className="text-muted"
-          />
-          {/* progresso */}
-          <circle
-            cx="50"
-            cy="50"
-            r={R}
-            fill="none"
-            strokeWidth="7"
-            strokeLinecap="round"
-            stroke="currentColor"
-            strokeDasharray={`${dash} ${C}`}
-            className={`transition-all ${acimaDaContratada ? "text-amber-500" : "text-foreground"}`}
-          />
-        </svg>
-
-        <div className="absolute inset-0 flex flex-col items-center justify-center leading-none">
-          <span className="text-sm font-semibold tabular-nums text-foreground">{valor ?? "--"}</span>
-          <span className="text-[9px] text-muted-foreground">{unidade}</span>
-          {pct != null && (
-            <span className="mt-0.5 text-[11px] font-medium tabular-nums text-foreground/70">
-              {Math.round(pct)}%
-            </span>
-          )}
-        </div>
+      <div className="relative" style={{ width: 100, height: 100 }}>
+        <Gauge
+          width={100}
+          height={100}
+          value={p}
+          totalNotches={32}
+          activeFill={acimaDaContratada ? COR.consumo : cor}
+          {...(valor != null
+            ? { centerValue: valor, defaultLabel: pct != null ? `${Math.round(pct)}% · kW` : "kW" }
+            : {})}
+        />
+        {valor == null && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm font-semibold text-muted-foreground">
+            --
+          </div>
+        )}
       </div>
 
-      <span className="text-center text-[10px] leading-tight text-muted-foreground/70">
+      <span className="text-center text-[10px] leading-tight text-muted-foreground opacity-70">
         {contratada ? `de ${contratada} kW contratada` : "contratada —"}
       </span>
     </div>
@@ -123,16 +103,16 @@ export function DemandaFluxoPanel({ unidadeId }: DemandaFluxoPanelProps) {
         <div className="grid grid-cols-2 gap-3">
           <GaugeDemanda
             rotulo="Carga"
-            valor={fmt(cargaKw)}
-            unidade="kW"
+            valor={cargaKw}
             pct={pctDe(cargaKw, demandaCarga)}
+            cor={COR.potencia}
             contratada={fmt(demandaCarga)}
           />
           <GaugeDemanda
             rotulo="Geração"
-            valor={fmt(geracaoKw)}
-            unidade="kW"
+            valor={geracaoKw}
             pct={pctDe(geracaoKw, demandaGeracao)}
+            cor={COR.geracao}
             contratada={fmt(demandaGeracao)}
           />
         </div>

@@ -416,13 +416,16 @@ export function DisjuntorSheet({ equipamentoId, onClose }: { equipamentoId: stri
             {medOk ? (
               <FasesNx rows={fases} ff={mostraFF} onFF={setFf} temToggle={temFF && temFN}
                 nota={temPm ? `PM: ${bundle.pm?.nome ?? bundle.pm?.equipamento_id}` : `IED: ${bundle.status_fonte?.rele_nome ?? bundle.status_fonte?.rele_equipamento_id}`} />
-            ) : <div />}
+            ) : null}
+            {/* Sem medição a coluna das fases some: o cadastro ocupa a largura toda em vez de deixar metade vazia. */}
+            <div className={medOk ? 'min-w-0' : 'min-w-0 min-[760px]:col-span-2'}>
             <LinhasNx titulo="Cadastro" rows={[
               { k: 'Corrente nominal', v: bundle.cadastro?.corrente_nominal_a ? `${fmt(bundle.cadastro.corrente_nominal_a, 0)} A` : '—' },
               { k: 'Tensão nominal', v: bundle.cadastro?.tensao_nominal_v ? `${fmt(bundle.cadastro.tensao_nominal_v, 0)} V` : '—', opcional: true },
               { k: 'Alimentado por', v: bundle.cadastro?.alimentado_por?.length ? bundle.cadastro.alimentado_por.join(', ') : '—' },
               { k: 'Alimenta', v: alimenta.length ? alimenta.join(', ') : '—' },
             ]} />
+            </div>
           </Duas>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
