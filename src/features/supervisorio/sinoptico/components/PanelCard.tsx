@@ -15,7 +15,7 @@ interface PanelCardProps {
  */
 export function PanelCard({ titulo, action, children, className }: PanelCardProps) {
   return (
-    <Card className={`flex flex-col gap-2 rounded-sm p-3 min-w-0 ${className ?? ""}`}>
+    <Card className={`flex h-full flex-col gap-2 rounded-sm p-3 min-w-0 ${className ?? ""}`}>
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
           {titulo}

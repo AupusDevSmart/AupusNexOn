@@ -2,6 +2,9 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Expandir } from '@/components/ui/expandir';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { api } from '@/config/api';
+import { curveMonotoneX } from '@visx/curve';
+import { AreaChart, Area } from '@/components/charts/area-chart';
+import { COR } from '@/components/graficos/cores';
 
 /**
  * Primitivos compartilhados dos sheets de equipamento do unifilar (Fase 6 —
@@ -264,24 +267,19 @@ export function Expandable({ title, right, children }: { title: string; right?: 
   );
 }
 
-/** Mini gráfico de área (curva do dia). Aceita série de números. */
+/** Mini gráfico de área (curva do dia) no bklit, sem eixos nem grade. Aceita série de números. */
 export function MiniChart({ serie, unit }: { serie: number[]; unit?: string }) {
-  const path = useMemo(() => {
-    const d = serie.filter((v) => Number.isFinite(v));
-    if (d.length < 2) return null;
-    const w = 380, h = 96, pad = 6, mn = Math.min(0, ...d), mx = Math.max(...d, 1);
-    const pts = d.map((v, i) => [pad + (i * (w - 2 * pad)) / (d.length - 1), h - pad - ((v - mn) / (mx - mn || 1)) * (h - 2 * pad)]);
-    const line = pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(' ');
-    const area = `${line} L${pts[pts.length - 1][0].toFixed(1)} ${h} L${pts[0][0].toFixed(1)} ${h} Z`;
-    return { line, area, w, h };
-  }, [serie]);
-  if (!path) return <div className="h-16 grid place-items-center text-xs text-muted-foreground rounded-lg border">Sem dados de curva {unit ? `(${unit})` : ''}</div>;
+  // Sem carimbo de tempo na série: o eixo X é só a ordem dos pontos (1 min por ponto).
+  const dados = useMemo(
+    () => serie.filter((v) => Number.isFinite(v)).map((v, i) => ({ date: new Date(i * 60_000), v })),
+    [serie],
+  );
+  if (dados.length < 2) return <div className="h-16 grid place-items-center text-xs text-muted-foreground rounded-lg border">Sem dados de curva {unit ? `(${unit})` : ''}</div>;
   return (
     <div className="rounded-lg border p-3">
-      <svg width="100%" viewBox={`0 0 ${path.w} ${path.h}`} preserveAspectRatio="none" style={{ display: 'block' }}>
-        <path d={path.area} fill="currentColor" className="text-primary/15" />
-        <path d={path.line} fill="none" stroke="currentColor" strokeWidth={2} strokeLinejoin="round" className="text-primary" />
-      </svg>
+      <AreaChart data={dados} aspectRatio="380 / 96" margin={{ top: 4, right: 2, bottom: 4, left: 2 }} animationDuration={0}>
+        <Area dataKey="v" fill={COR.potencia} fillOpacity={0.25} gradientToOpacity={0.03} strokeWidth={2} curve={curveMonotoneX} showHighlight={false} animate={false} />
+      </AreaChart>
     </div>
   );
 }

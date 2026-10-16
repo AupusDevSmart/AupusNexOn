@@ -5,6 +5,15 @@ import { acionarPontoApi } from '@/services/acionar-ponto.services';
 import { useDados, getPath, fmt, tsInfo } from './sheetParts';
 import { NX, s, COR, NxShell, NxDialog, NxDialogButtons, NxReview, NxSeg, IcoChevron, type NxTone } from './nxMock';
 import { Registros, useHistorico, bucketize, type Periodo } from './equipUi';
+import { curveMonotoneX } from '@visx/curve';
+import { LineChart } from '@/components/charts/line-chart';
+import { Line } from '@/components/charts/line';
+import { Grid } from '@/components/charts/grid';
+import { YAxis } from '@/components/charts/y-axis';
+import { ChartTooltip } from '@/components/charts/tooltip';
+import { COR as COR_GRAF, corSerie } from '@/components/graficos/cores';
+import { linhasDeBuckets } from '@/components/graficos/linhas-de-buckets';
+import { EixoTempo } from '@/components/graficos/eixo-tempo';
 
 /**
  * Modal do Inversor no web — tela "Equipamento · Inversor Solar 2" do app (NEXON-5)
@@ -115,11 +124,16 @@ export function FasesNx({ rows, ff, onFF, temToggle, nota }: {
 }
 
 /** Grade de 2 colunas do modal web que vira 1 coluna abaixo de ~760 px. */
+/** Duas colunas que terminam na mesma linha: o último cartão de cada `Coluna` cresce (sem buraco embaixo). */
 export function Duas({ children }: { children: ReactNode }) {
-  return <div className="grid grid-cols-1 min-[760px]:grid-cols-2 gap-4 items-start">{children}</div>;
+  return <div className="grid grid-cols-1 min-[760px]:grid-cols-2 gap-4 items-stretch">{children}</div>;
 }
 export function Coluna({ children }: { children: ReactNode }) {
-  return <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>{children}</div>;
+  return (
+    <div className="[&>*:last-child]:flex-1" style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0, minHeight: 0 }}>
+      {children}
+    </div>
+  );
 }
 
 // ------------------------------------------------------------------ gráfico recolhível
@@ -127,12 +141,15 @@ export function Coluna({ children }: { children: ReactNode }) {
 export interface GrandezaNx { id: string; label: string; short: string; pick: (d: Telemetria) => number | null }
 export interface GrupoGrandezaNx { label: string; unit: string; items: GrandezaNx[] }
 
-const PALETA = ['#1F7A43', '#1F5FBF', '#B7791F', '#C2417F', '#1A9BB5', '#7B5CD6', '#D9822B', '#3A3D58', '#5E9E3A', '#3B6FD6'];
+/** Unidades cujo eixo começa em zero; as outras (V, Hz, FP) ganham "zoom" no trecho lido. */
+const UNIDADES_DO_ZERO = ['kW', 'kvar', 'A'];
 
 /**
  * "Gráfico" recolhível (fechado por padrão, valor atual no cabeçalho, chevron).
  * Aberto: Hoje/Semana/Mês, legenda, escolha de grandezas (até 2 unidades; a 2ª
- * tracejada) e leitura do ponto sob o cursor. Histórico só é buscado ao abrir.
+ * tracejada, no eixo da direita), última leitura e gráfico bklit com crosshair e
+ * tooltip. Histórico só é buscado ao abrir. Cores pela sequência `corSerie`, na
+ * ordem em que as grandezas foram escolhidas.
  */
 export function GraficoNx({ equipamentoId, titulo = 'Gráfico', resumo, catalogo, padrao }: {
   equipamentoId: string | null | undefined; titulo?: string; resumo?: ReactNode; catalogo: GrupoGrandezaNx[]; padrao: string[];
@@ -142,7 +159,6 @@ export function GraficoNx({ equipamentoId, titulo = 'Gráfico', resumo, catalogo
   const [sel, setSel] = useState<string[]>(padrao);
   const [escolher, setEscolher] = useState(false);
   const [agora, setAgora] = useState(() => Date.now());
-  const [cur, setCur] = useState<number | null>(null);
 
   const byId = useMemo(() => {
     const m = new Map<string, GrandezaNx & { unit: string }>();
@@ -162,42 +178,39 @@ export function GraficoNx({ equipamentoId, titulo = 'Gráfico', resumo, catalogo
   }, [per, agora]);
   const { pts, loading } = useHistorico(equipamentoId, ini, fimBusca, open && !!equipamentoId);
 
-  const W = 700, TOP = 24, BOT = 140, N = per === 'hoje' ? 96 : per === 'semana' ? 168 : 180;
+  const N = per === 'hoje' ? 96 : per === 'semana' ? 168 : 180;
   const dados = useMemo(() => {
     if (!pts) return null;
     const vals = ativos.map((id) => bucketize(pts, ini.getTime(), fimEixo.getTime(), N, byId.get(id)!.pick));
-    const rng: Record<string, { lo: number; hi: number }> = {};
+    // Base por unidade: o bklit começa o eixo em 0 quando tudo é ≥ 0. Para V/Hz/FP o
+    // traço é plotado como (valor − base) e eixo/tooltip somam a base de volta — é o
+    // "zoom" no trecho lido que o SVG antigo fazia. kW/kvar/A (e qualquer unidade com
+    // valor negativo) ficam com base 0.
+    const base: Record<string, number> = {};
     units.forEach((u) => {
       let lo = Infinity, hi = -Infinity;
       ativos.forEach((id, k) => { if (byId.get(id)!.unit !== u) return; vals[k].forEach((v) => { if (v == null) return; lo = Math.min(lo, v); hi = Math.max(hi, v); }); });
       if (!Number.isFinite(lo)) { lo = 0; hi = 1; }
-      if (['kW', 'kvar', 'A'].includes(u)) lo = Math.min(0, lo);
-      const pad = (hi - lo) * 0.08 || 1;
-      rng[u] = { lo: lo < 0 ? lo - pad : lo, hi: hi + pad };
+      base[u] = UNIDADES_DO_ZERO.includes(u) || lo < 0 ? 0 : Math.max(0, lo - ((hi - lo) * 0.08 || 1));
     });
-    const Y = (u: string, v: number) => BOT - ((v - rng[u].lo) / (rng[u].hi - rng[u].lo)) * (BOT - TOP);
-    const paths = vals.map((arr, k) => {
-      const u = byId.get(ativos[k])!.unit;
-      let d = '', pen = false;
-      arr.forEach((v, i) => {
-        if (v == null) { pen = false; return; }
-        d += `${pen ? 'L' : 'M'}${(((i + 0.5) / N) * W).toFixed(1)} ${Y(u, v).toFixed(1)} `; pen = true;
-      });
-      return d;
-    });
-    let ultimo = -1;
-    vals.forEach((arr) => arr.forEach((v, i) => { if (v != null && i > ultimo) ultimo = i; }));
-    return { vals, rng, Y, paths, ultimo, vazio: paths.every((p) => !p) };
+    const series: Record<string, Array<number | null>> = {};
+    ativos.forEach((id, k) => { const b = base[byId.get(id)!.unit]; series[id] = vals[k].map((v) => (v == null ? null : v - b)); });
+    const linhas = linhasDeBuckets(ini.getTime(), fimEixo.getTime(), series);
+    return { linhas, base, vazio: linhas.length === 0 };
   }, [pts, ativos.join(','), units.join(','), ini, fimEixo, N, byId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const dec = (u: string) => (u === 'FP' || u === 'Hz' ? 2 : u === 'V' ? 0 : 1);
   const uTxt = (u: string) => (u === 'FP' ? '' : ` ${u}`);
-  const cor = (id: string) => PALETA[sel.indexOf(id) % PALETA.length];
-  const idx = cur ?? (dados && dados.ultimo >= 0 ? dados.ultimo : null);
-  const tIdx = idx != null ? new Date(ini.getTime() + ((idx + 0.5) / N) * (fimEixo.getTime() - ini.getTime())) : null;
-  const eixo = per === 'hoje'
-    ? [0, 6, 12, 18, 24].map((h) => ({ f: h / 24, label: `${String(h).padStart(2, '0')}h` }))
-    : [0, 1, 2, 3, 4].map((i) => ({ f: i / 4, label: new Date(ini.getTime() + ((fimEixo.getTime() - ini.getTime()) * i) / 4).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) }));
+  const cor = (id: string) => corSerie(sel.indexOf(id));
+  const eixoDe = (id: string) => (units.indexOf(byId.get(id)!.unit) === 1 ? 'right' : 'left');
+  /** Valor real (base somada de volta) de uma grandeza numa linha; null sem leitura. */
+  const valorEm = (linha: Record<string, unknown> | null, id: string) => {
+    const b = linha?.[`${id}Bruto`];
+    return typeof b === 'number' && dados ? b + dados.base[byId.get(id)!.unit] : null;
+  };
+  const valorTxt = (v: number | null, u: string) => (v == null ? '—' : `${fmt(v, dec(u))}${uTxt(u)}`);
+  const rotuloEixo = (u: string) => (v: number) => { const x = v + (dados?.base[u] ?? 0); return `${fmt(x, Number.isInteger(x) ? 0 : dec(u))}${uTxt(u)}`; };
+  const ultima = dados && !dados.vazio ? dados.linhas[dados.linhas.length - 1] : null;
 
   const toggle = (id: string) => setSel((s0) => {
     if (s0.includes(id)) return s0.length > 1 ? s0.filter((x) => x !== id) : s0;
@@ -206,7 +219,7 @@ export function GraficoNx({ equipamentoId, titulo = 'Gráfico', resumo, catalogo
 
   return (
     <Bloco style={{ padding: '0 16px' }}>
-      <button type="button" aria-expanded={open} onClick={() => { if (!open) { setAgora(Date.now()); setCur(null); } setOpen((v) => !v); }}
+      <button type="button" aria-expanded={open} onClick={() => { if (!open) setAgora(Date.now()); setOpen((v) => !v); }}
         style={{ width: '100%', minHeight: 52, display: 'flex', alignItems: 'center', gap: 12 }}>
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={NX.acao} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 17l5-6 4 3 5-7 4 4" /><path d="M3 21h18" /></svg>
         <span style={{ flex: 1, fontSize: 15, fontWeight: 800 }}>{titulo}</span>
@@ -216,11 +229,11 @@ export function GraficoNx({ equipamentoId, titulo = 'Gráfico', resumo, catalogo
       {open && (
         <div style={{ borderTop: `1px solid ${NX.linha2}`, padding: '12px 0 16px 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <NxSeg<Periodo> value={per} onChange={(v) => { setPer(v); setCur(null); setAgora(Date.now()); }} options={[{ v: 'hoje', label: 'Hoje' }, { v: 'semana', label: 'Semana' }, { v: 'mes', label: 'Mês' }]} />
+            <NxSeg<Periodo> value={per} onChange={(v) => { setPer(v); setAgora(Date.now()); }} options={[{ v: 'hoje', label: 'Hoje' }, { v: 'semana', label: 'Semana' }, { v: 'mes', label: 'Mês' }]} />
             <span style={{ display: 'flex', alignItems: 'center', gap: 14, fontSize: 13, color: NX.mudo, flexWrap: 'wrap' }}>
               {ativos.map((id) => (
                 <span key={id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ width: 10, height: 3, borderRadius: 2, background: cor(id), ...(units.indexOf(byId.get(id)!.unit) === 1 ? { opacity: 0.7 } : {}) }} />
+                  <span style={{ width: 12, height: 0, borderTop: `3px ${eixoDe(id) === 'right' ? 'dashed' : 'solid'} ${cor(id)}`, borderRadius: 2 }} />
                   {byId.get(id)!.short}
                 </span>
               ))}
@@ -256,64 +269,46 @@ export function GraficoNx({ equipamentoId, titulo = 'Gráfico', resumo, catalogo
               ))}
             </div>
           )}
-          {tIdx && dados && !dados.vazio && (
+          {ultima && (
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, minHeight: 22 }}>
               <span style={{ fontSize: 13, color: NX.mudo, fontVariantNumeric: 'tabular-nums' }}>
-                {tIdx.toLocaleString('pt-BR', per === 'hoje' ? { hour: '2-digit', minute: '2-digit' } : { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                Última leitura · {ultima.date.toLocaleString('pt-BR', per === 'hoje' ? { hour: '2-digit', minute: '2-digit' } : { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
               </span>
               <span style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: '2px 14px' }}>
-                {ativos.map((id, k) => {
-                  const u = byId.get(id)!.unit; const v = idx != null ? dados.vals[k][idx] : null;
-                  return (
-                    <span key={id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
-                      <span style={{ width: 8, height: 8, borderRadius: 4, background: cor(id) }} />
-                      <span style={{ color: NX.mudo }}>{byId.get(id)!.short}</span>
-                      <span style={{ fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{v == null ? '—' : `${fmt(v, dec(u))}${uTxt(u)}`}</span>
-                    </span>
-                  );
-                })}
+                {ativos.map((id) => (
+                  <span key={id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: 4, background: cor(id) }} />
+                    <span style={{ color: NX.mudo }}>{byId.get(id)!.short}</span>
+                    <span style={{ fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{valorTxt(valorEm(ultima, id), byId.get(id)!.unit)}</span>
+                  </span>
+                ))}
               </span>
             </div>
           )}
-          {loading || !dados ? (
-            <div style={{ height: 170, display: 'grid', placeItems: 'center', fontSize: 12, color: NX.mudo }}>Carregando…</div>
-          ) : dados.vazio ? (
+          {dados?.vazio && !loading ? (
             <div style={{ height: 170, display: 'grid', placeItems: 'center', fontSize: 12, color: NX.mudo }}>Sem leituras no período</div>
           ) : (
-            <svg viewBox={`0 0 ${W} 170`} width="100%" height="170" role="img" aria-label={titulo} style={{ display: 'block', touchAction: 'none', cursor: 'crosshair' }}
-              onPointerMove={(e) => { const r = e.currentTarget.getBoundingClientRect(); setCur(Math.max(0, Math.min(N - 1, Math.floor(((e.clientX - r.left) / r.width) * N)))); }}
-              onPointerDown={(e) => { const r = e.currentTarget.getBoundingClientRect(); setCur(Math.max(0, Math.min(N - 1, Math.floor(((e.clientX - r.left) / r.width) * N)))); }}>
-              <line x1="0" x2={W} y1={TOP} y2={TOP} stroke={NX.linha} />
-              <line x1="0" x2={W} y1={BOT} y2={BOT} stroke={NX.borda} />
-              {units[0] && dados.rng[units[0]].lo < 0 && (
-                <line x1="0" x2={W} y1={dados.Y(units[0], 0)} y2={dados.Y(units[0], 0)} stroke={NX.off} strokeDasharray="3 4" />
-              )}
-              <text x="0" y="14" fontSize="11" fill={NX.mudo}>{units[0] ? `${fmt(dados.rng[units[0]].hi, dec(units[0]) === 2 ? 2 : 0)}${uTxt(units[0])}` : ''}</text>
-              <text x={W} y="14" fontSize="11" fill={NX.mudo} textAnchor="end">{units[1] ? `${fmt(dados.rng[units[1]].hi, dec(units[1]) === 2 ? 2 : 0)}${uTxt(units[1])} (tracejado)` : ''}</text>
-              {dados.paths.map((d, k) => d && (
-                <path key={ativos[k]} d={d} fill="none" stroke={cor(ativos[k])} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round"
-                  strokeDasharray={units.indexOf(byId.get(ativos[k])!.unit) === 1 ? '5 4' : undefined} />
-              ))}
-              {idx != null && (
-                <>
-                  <line x1={((idx + 0.5) / N) * W} x2={((idx + 0.5) / N) * W} y1={TOP} y2={BOT} stroke={NX.texto} strokeOpacity={0.35} />
-                  {ativos.map((id, k) => {
-                    const v = dados.vals[k][idx];
-                    return v == null ? null : <circle key={id} cx={((idx + 0.5) / N) * W} cy={dados.Y(byId.get(id)!.unit, v)} r={4.5} fill={cor(id)} stroke={NX.card} strokeWidth={2} />;
-                  })}
-                </>
-              )}
-              {eixo.map((t, i) => (
-                <text key={i} x={t.f * W} y="160" fontSize="11" fill={NX.mudo} textAnchor={i === 0 ? 'start' : i === eixo.length - 1 ? 'end' : 'middle'}>{t.label}</text>
-              ))}
-            </svg>
+            <div style={{ height: 170, display: 'flex', flexDirection: 'column' }} role="img" aria-label={titulo}>
+              <LineChart data={dados?.linhas ?? []} xDomain={[ini, fimEixo]} aspectRatio="auto" className="min-h-0 flex-1"
+                margin={{ top: 8, right: units[1] ? 56 : 12, bottom: 6, left: 56 }} animationDuration={0}
+                status={loading || !dados ? 'loading' : 'ready'} loadingLabel="Carregando…">
+                <Grid horizontal numTicksRows={4} highlightRowValues={[0]} highlightRowStroke={COR_GRAF.neutro} highlightRowStrokeOpacity={0.6} />
+                {ativos.map((id) => (
+                  <Line key={id} dataKey={id} yAxisId={eixoDe(id)} stroke={cor(id)} strokeWidth={2} curve={curveMonotoneX} fadeEdges={false} animate={false}
+                    {...(eixoDe(id) === 'right' ? { dashFromIndex: 0, dashArray: '4,4' } : {})} />
+                ))}
+                <YAxis numTicks={4} formatValue={rotuloEixo(units[0] ?? '')} />
+                {units[1] ? <YAxis yAxisId="right" orientation="right" numTicks={4} formatValue={rotuloEixo(units[1])} /> : null}
+                <ChartTooltip showDots rows={(p) => ativos.map((id) => ({ color: cor(id), label: byId.get(id)!.short, value: valorTxt(valorEm(p, id), byId.get(id)!.unit) }))} />
+              </LineChart>
+              <EixoTempo ini={ini} fim={fimEixo} margemEsq={56} margemDir={units[1] ? 56 : 12} formato={per === 'hoje' ? 'hora' : 'dia'} />
+            </div>
           )}
         </div>
       )}
     </Bloco>
   );
 }
-
 // ------------------------------------------------------------------ configuração
 
 interface SetpointDef { id: string; label: string; unidade?: string; escala?: number; min?: number; max?: number; faixas?: Array<[number, number]>; padrao?: number; obs?: string; avancado?: boolean }
@@ -674,8 +669,6 @@ export function InversorSheet({ equipamentoId, nome, onClose }: { equipamentoId:
                   <span style={{ fontSize: 12, color: NX.mudo, textAlign: 'center' }}>Sem ponto Ligar/Desligar vinculado a este inversor (editor IoT → Configurar I/O).</span>
                 </>
               )}
-            </Coluna>
-            <Coluna>
               <Bloco style={{ padding: '14px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                 <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                   <span style={{ fontSize: 13, color: NX.mudo }}>Energia total · hoje</span>
@@ -685,6 +678,8 @@ export function InversorSheet({ equipamentoId, nome, onClose }: { equipamentoId:
                 </span>
                 {tone === 'warn' && <Exclama title={stText} />}
               </Bloco>
+            </Coluna>
+            <Coluna>
               <LinhasNx titulo="Potência" rows={[
                 { k: 'Ativa', v: pativa != null ? `${fmt(pativa, 1)} kW` : '—' },
                 { k: 'Reativa', v: qkvar != null ? `${fmt(qkvar, 1)} kvar` : '—' },

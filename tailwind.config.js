@@ -24,6 +24,19 @@ const config = {
         'safe-bottom': 'env(safe-area-inset-bottom)',
       },
 			colors: {
+				// Tokens dos gráficos bklit (classes text-chart-label, bg-chart-tooltip-background, legend-*).
+				chart: {
+					label: 'var(--chart-label)',
+					'tooltip-background': 'var(--chart-tooltip-background)',
+					'tooltip-foreground': 'var(--chart-tooltip-foreground)',
+					'tooltip-muted': 'var(--chart-tooltip-muted)',
+				},
+				legend: {
+					DEFAULT: 'var(--legend)',
+					foreground: 'var(--legend-foreground)',
+					muted: { DEFAULT: 'var(--legend-muted)', foreground: 'var(--legend-muted-foreground)' },
+					track: 'var(--legend-track)',
+				},
 				// Paleta oficial do NexON (kit de identidade visual).
 				nexon: {
 					azul: 'var(--nx-azul)',

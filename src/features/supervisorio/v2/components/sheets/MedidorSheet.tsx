@@ -11,6 +11,20 @@ import {
   type HistPoint, type Horarios,
 } from './equipUi';
 import { NX, s, NxShell, type NxTone } from './nxMock';
+import { ComposedChart } from '@/components/charts/composed-chart';
+import { BarChart } from '@/components/charts/bar-chart';
+import { Bar } from '@/components/charts/bar';
+import { BarXAxis } from '@/components/charts/bar-x-axis';
+import { SeriesBar } from '@/components/charts/series-bar';
+import { Line } from '@/components/charts/line';
+import { Grid } from '@/components/charts/grid';
+import { XAxis } from '@/components/charts/x-axis';
+import { YAxis } from '@/components/charts/y-axis';
+import { ChartTooltip } from '@/components/charts/tooltip';
+import { ReferenceArea } from '@/components/charts/reference-area';
+import { COR } from '@/components/graficos/cores';
+import { TooltipDestaque } from '@/components/graficos/tooltip-destaque';
+import { LINHA_SO_DOMINIO } from '@/components/graficos/linhas-de-buckets';
 
 /**
  * Modal do Medidor da concessionária — mockup "Web — Modal do Medidor" (NEXON-5),
@@ -143,11 +157,14 @@ export function SsuOperacao({ equipamentoId }: { equipamentoId: string }) {
 
 // ============================================================ modal (layout do mockup)
 
-const INJ = '#1A9BB5';
-const VERDE = '#2E8B47';
-const AMBAR = '#B7791F';
-const VERM = '#C53030';
-const VERDE_CLARO = '#9CC9A8';
+// Cores por token do tema (claro/escuro): verde = dentro do contratado (chart-1), ciano = injeção
+// (chart-5), âmbar = atenção (chart-3), vermelho = acima da tolerância (destructive); verde claro =
+// meses passados no gráfico mensal.
+const INJ = COR.corrente;
+const VERDE = COR.geracao;
+const AMBAR = COR.consumo;
+const VERM = 'var(--destructive)';
+const VERDE_CLARO = 'color-mix(in srgb, var(--chart-1) 45%, transparent)';
 const Q15 = 15 * 60_000;
 const DIA = 86_400_000;
 const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
@@ -186,6 +203,9 @@ interface FpRow { k: string; s: string; v: string; w: boolean }
 interface PostoE { c: number | null; i: number | null }
 type Postos = Record<'Ponta' | 'Fora de ponta' | 'Reservado', PostoE> & { Total: PostoE };
 
+/** Linha do gráfico mensal (BarChart categórico): o mês em `k`, a demanda em `v` e uma cor por barra. */
+interface LinhaMes extends Record<string, unknown> { k: string; v: number | null; passado: number; atual: number; acima: number; teto: number }
+
 /** Tudo o que a tela mostra; as duas fontes (SSU e PM) preenchem este modelo. */
 interface Vista {
   tone: NxTone; stLabel: string; stText: string;
@@ -207,60 +227,82 @@ interface Vista {
   equipamentoId: string;
 }
 
+/** Linha do gráfico de fluxo (uma por intervalo/dia): consumo e injeção em kW, sempre ≥ 0 (barra do bklit não desce do zero); `lido` = teve leitura. */
+interface LinhaFluxo extends Record<string, unknown> { date: Date; consumo: number; injecao: number; teto: number; acima: boolean; lido: boolean }
+
 function Fluxo({ v }: { v: Vista }) {
   const { per, gen, contr, tol, hoje, ciclo, horarios } = v;
-  const W = 720, PH = 138;
-  const pos: number[] = [], neg: number[] = [];
-  if (per === 'hoje') (hoje ?? []).forEach((x) => { if (x != null) (x >= 0 ? pos : neg).push(Math.abs(x)); });
-  else (ciclo ?? []).forEach((d) => { if (d.c != null) pos.push(d.c); if (d.i != null) neg.push(d.i); });
-  const TOP = Math.max((contr ?? 0) * 1.2, Math.max(0, ...pos) * 1.05, 1);
-  const BOT = gen ? Math.max(TOP / 2, Math.max(0, ...neg) * 1.1) : 0;
-  const H = (x: number) => (x / (TOP + BOT)) * PH;
-  const zY = Math.round((10 + H(TOP)) * 10) / 10;
-  const cY = contr != null ? Math.round((zY - H(contr)) * 10) / 10 : null;
-  const cor = (x: number) => (x < 0 ? INJ : tol != null && x > tol ? VERM : VERDE);
+  const dia0 = inicioDoDia();
+  const mes0 = inicioDoMes();
+  const nDias = diasNoMes();
+  // Todos os intervalos do dia / dias do mês entram (o ComposedChart não tem xDomain): o eixo cobre o
+  // período inteiro e a largura da barra sai certa; intervalo sem leitura fica com zero e `lido: false`.
+  const linhas: LinhaFluxo[] = [];
+  if (per === 'hoje') {
+    for (let i = 0; i < 96; i++) {
+      const x = hoje?.[i] ?? null;
+      linhas.push({ date: new Date(dia0 + i * Q15), consumo: Math.max(0, x ?? 0), injecao: Math.max(0, -(x ?? 0)), teto: 0, acima: tol != null && x != null && x > tol, lido: x != null });
+    }
+  } else {
+    const m = new Date(mes0);
+    for (let i = 0; i < nDias; i++) {
+      const d = ciclo?.[i];
+      linhas.push({ date: new Date(m.getFullYear(), m.getMonth(), i + 1), consumo: d?.c ?? 0, injecao: gen ? d?.i ?? 0 : 0, teto: 0, acima: tol != null && d?.c != null && d.c > tol, lido: d != null && (d.c != null || d.i != null) });
+    }
+  }
+  const maior = Math.max(0, ...linhas.map((l) => Math.max(l.consumo, l.injecao)));
+  // Teto do eixo acima da contratada e do maior valor: o bklit não tem yDomain, a série `teto` é invisível.
+  const teto = Math.max((contr ?? 0) * 1.05, maior, 1);
+  linhas.forEach((l) => { l.teto = teto; });
   const util = new Date().getDay() !== 0 && new Date().getDay() !== 6;
   const [p0, p1] = horarios.ponta;
-  const X = (i: number) => Math.round(i * 7.5 * 10) / 10;
-  const nDias = diasNoMes();
-  const sw = W / nDias;
-  const vazio = per === 'hoje' ? hoje != null && !hoje.some((x) => x != null) : ciclo != null && !ciclo.some((d) => d.c != null || d.i != null);
-  const ticks = per === 'hoje'
-    ? [0, 6, 12, 18, 24].map((h) => ({ x: (h / 24) * W, l: `${String(h).padStart(2, '0')}h` }))
-    : [1, 8, 15, 22, nDias].map((d, i, a) => ({ x: i === 0 ? 0 : i === a.length - 1 ? W : (d - 0.5) * sw, l: String(d).padStart(2, '0') }));
+  const ponta = per === 'hoje' && util && p1 > p0;
+  const vazio = (per === 'hoje' ? hoje : ciclo) != null && !linhas.some((l) => l.lido);
+  const item: CSSProperties = { display: 'flex', alignItems: 'center', gap: 6 };
   return (
-    <svg viewBox="0 0 720 180" width="100%" height="180" style={{ display: 'block', marginTop: 8 }} role="img"
-      aria-label={per === 'hoje' ? 'Fluxo na rede por intervalo de 15 minutos hoje' : 'Demanda máxima de 15 minutos por dia do ciclo'}>
-      {per === 'hoje' && util && p1 > p0 && (
-        <>
-          <rect x={X(p0 * 4)} y="10" width={X(p1 * 4) - X(p0 * 4)} height="138" fill="rgba(197,48,48,0.07)" />
-          <text x={(X(p0 * 4) + X(p1 * 4)) / 2} y="142" fontSize="11" fill={VERM} textAnchor="middle">Ponta</text>
-        </>
+    <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {vazio ? (
+        <div style={{ height: 160, display: 'grid', placeItems: 'center', fontSize: 12, color: NX.mudo }}>Sem leituras no período</div>
+      ) : (
+        <div style={{ height: 160 }} role="img" aria-label={per === 'hoje' ? 'Fluxo na rede por intervalo de 15 minutos hoje' : 'Demanda máxima de 15 minutos por dia do ciclo'}>
+          <ComposedChart data={linhas} stacked={per === 'hoje'} aspectRatio="auto" className="h-full"
+            margin={{ top: 8, right: 12, bottom: 24, left: 56 }} animationDuration={0}>
+            <Grid horizontal numTicksRows={4} highlightRowValues={contr != null ? [contr] : []} highlightRowStroke={COR.neutro} highlightRowStrokeDasharray="5,5" />
+            <SeriesBar dataKey="consumo" fill={VERDE} radius={1} animate={false} />
+            {gen ? <SeriesBar dataKey="injecao" fill={INJ} radius={1} animate={false} /> : null}
+            <Line dataKey="teto" {...LINHA_SO_DOMINIO} />
+            <XAxis numTicks={5} />
+            <YAxis numTicks={4} formatValue={(x) => `${n0(x)} kW`} />
+            {ponta ? <ReferenceArea x1={new Date(dia0 + p0 * 3_600_000 - Q15 / 2)} x2={new Date(dia0 + p1 * 3_600_000 - Q15 / 2)} fill={VERM} fillOpacity={0.07} strokeWidth={0} fadeEdges={false} /> : null}
+            {tol != null ? <ReferenceArea y1={tol} y2={teto * 2} fill={VERM} fillOpacity={0.05} stroke={VERM} strokeDasharray="2,4" fadeEdges={false} /> : null}
+            <ChartTooltip showCrosshair={false} showDots={false} content={({ point }) => {
+              const l = point as LinhaFluxo;
+              const t = l.date.getTime();
+              const titulo = per === 'hoje' ? `${hhmm(t)}–${hhmm(t + Q15)}` : ddmm(t);
+              if (!l.lido) return <TooltipDestaque titulo={titulo} valor="—" rotulo="Sem leitura" />;
+              const injecao = gen && l.injecao > 0;
+              const principal = per === 'hoje' && injecao ? { v: l.injecao, r: 'Injeção' } : { v: l.consumo, r: per === 'hoje' ? 'Consumo' : 'Demanda máxima' };
+              return (
+                <TooltipDestaque
+                  titulo={titulo}
+                  valor={kwTxt(principal.v)} unidade="kW" rotulo={principal.r}
+                  linhas={[
+                    ...(per === 'ciclo' && injecao ? [{ label: 'Injeção máxima', value: `${kwTxt(l.injecao)} kW`, cor: INJ }] : []),
+                    ...(contr != null ? [{ label: 'Contratada', value: `${n0(contr)} kW` }] : []),
+                    ...(l.acima && tol != null ? [{ label: 'Acima da tolerância', value: `+${kwTxt(l.consumo - tol)} kW`, cor: VERM }] : []),
+                  ]}
+                />
+              );
+            }} />
+          </ComposedChart>
+        </div>
       )}
-      {per === 'hoje'
-        ? (hoje ?? []).map((x, i) => {
-          if (x == null) return null;
-          const a = Math.max(0.5, Math.round(H(Math.abs(x)) * 10) / 10);
-          return <rect key={i} x={X(i) + 0.9} y={x >= 0 ? Math.round((zY - a) * 10) / 10 : zY} width="5.6" height={a} rx="1" fill={cor(x)} />;
-        })
-        : (ciclo ?? []).map((d, i) => (
-          <g key={i}>
-            {d.c != null && d.c > 0 && <rect x={i * sw + sw * 0.125} y={zY - Math.max(0.5, H(d.c))} width={sw * 0.75} height={Math.max(0.5, H(d.c))} rx="1" fill={cor(d.c)} />}
-            {gen && d.i != null && d.i > 0 && <rect x={i * sw + sw * 0.125} y={zY} width={sw * 0.75} height={Math.max(0.5, H(d.i))} rx="1" fill={INJ} />}
-          </g>
-        ))}
-      {cY != null && (
-        <>
-          <line x1="0" x2="720" y1={cY} y2={cY} stroke={NX.texto} strokeOpacity="0.55" strokeDasharray="5 5" />
-          <text x="720" y={cY - 6} fontSize="11" fill={NX.caixaTx} textAnchor="end">Contratada {n0(contr)} kW</text>
-        </>
-      )}
-      <line x1="0" x2="720" y1={zY} y2={zY} stroke={NX.off} />
-      {vazio && <text x="360" y="80" fontSize="12" fill={NX.mudo} textAnchor="middle">Sem leituras no período</text>}
-      {ticks.map((t, i) => (
-        <text key={i} x={t.x} y="168" fontSize="11" fill={NX.mudo} textAnchor={i === 0 ? undefined : i === ticks.length - 1 ? 'end' : 'middle'}>{t.l}</text>
-      ))}
-    </svg>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 14px', fontSize: 12, color: NX.mudo }}>
+        {contr != null && <span style={item}><span style={{ width: 14, borderTop: `1.5px dashed ${NX.texto}` }} />Contratada {n0(contr)} kW</span>}
+        {tol != null && <span style={item}><span style={{ width: 10, height: 10, borderRadius: 2, background: VERM, opacity: 0.3 }} />Acima da tolerância ({n0(tol)} kW)</span>}
+        {ponta && <span style={item}><span style={{ width: 10, height: 10, borderRadius: 2, background: VERM, opacity: 0.15 }} />Ponta {p0}h–{p1}h</span>}
+      </div>
+    </div>
   );
 }
 
@@ -328,7 +370,11 @@ function MedidorVista({ v }: { v: Vista }) {
   const folga = tol != null && v.maxMes ? tol - v.maxMes.kw : null;
   const mVals = v.meses.map((m) => m.v ?? 0);
   const MS = Math.max((contr ?? 0) * 1.2, Math.max(0, ...mVals) * 1.1, 1);
-  const MH = (x: number) => (x / MS) * 112;
+  /** Linhas do gráfico mensal: uma cor por barra (3 séries exclusivas empilhadas) e `teto` transparente para o eixo ir até MS. */
+  const meses: LinhaMes[] = v.meses.map((m, i) => {
+    const atual = i === v.meses.length - 1, ov = tol != null && m.v != null && m.v > tol, x = m.v ?? 0;
+    return { k: m.k, v: m.v, passado: !ov && !atual ? x : 0, atual: !ov && atual ? x : 0, acima: ov ? x : 0, teto: Math.max(0, MS - x) };
+  });
   const ultrap = v.meses.filter((m) => tol != null && m.v != null && m.v > tol);
   const cicloTxt = `desde ${desde()}`;
   const injMax = v.injMaxMes ?? (res?.injecao_max ? { kw: res.injecao_max.kw, t: new Date(res.injecao_max.timestamp).getTime() } : null);
@@ -344,7 +390,7 @@ function MedidorVista({ v }: { v: Vista }) {
   const fps = fpsDoResumo(res, cicloTxt);
   const reativa = res ? `${n0(res.energia_reativa_kvarh)} kvarh` : v.reativa;
   const excedente = res ? `${n0(res.reativo_excedente_kvarh)} kvarh` : v.excedente;
-  const C = { P: VERM, FP: '#3B6FD6', HR: VERDE } as const;
+  const C = { P: VERM, FP: COR.potencia, HR: VERDE } as const;
   const dot = (c: keyof typeof C | ''): CSSProperties => ({ width: 8, height: 8, borderRadius: 3, flex: 'none', background: c ? C[c] : 'transparent' });
   const p = v.postos;
   const e = (x: number | null | undefined) => (p == null || x == null ? '—' : n0(x));
@@ -439,22 +485,29 @@ function MedidorVista({ v }: { v: Vista }) {
                 : <span style={{ fontSize: 12, color: NX.mudo }}>folga até tolerância {folga != null ? `${n0(folga)} kW` : '—'}</span>}
             </span>
           </div>
-          <svg viewBox="0 0 334 150" width="100%" height="150" role="img" aria-label="Demanda máxima por mês comparada à contratada">
-            {v.meses.map((m, i) => {
-              const h = Math.round(MH(m.v ?? 0) * 10) / 10, x = 12 + i * 54, cur = i === v.meses.length - 1;
-              const ov = tol != null && m.v != null && m.v > tol;
-              return (
-                <g key={m.k + i}>
-                  {m.v != null && <rect x={x} y={Math.round((128 - h) * 10) / 10} width="32" height={h} rx="4" fill={ov ? VERM : cur ? VERDE : VERDE_CLARO} />}
-                  {m.v != null && <text x={x + 16} y={Math.round((128 - h - 5) * 10) / 10} fontSize="11" fill={ov ? VERM : NX.caixaTx} textAnchor="middle" fontWeight="700">{n0(m.v)}</text>}
-                  <text x={x + 16} y="146" fontSize="11" fill={NX.mudo} textAnchor="middle">{m.k}</text>
-                </g>
-              );
-            })}
-            {contr != null && <line x1="0" x2="334" y1={Math.round((128 - MH(contr)) * 10) / 10} y2={Math.round((128 - MH(contr)) * 10) / 10} stroke={NX.texto} strokeOpacity="0.55" strokeDasharray="5 5" />}
-            {tol != null && <line x1="0" x2="334" y1={Math.round((128 - MH(tol)) * 10) / 10} y2={Math.round((128 - MH(tol)) * 10) / 10} stroke={VERM} strokeOpacity="0.6" strokeDasharray="2 4" />}
-            <line x1="0" x2="334" y1="128" y2="128" stroke={NX.borda} />
-          </svg>
+          <div style={{ height: 150 }} role="img" aria-label="Demanda máxima por mês comparada à contratada">
+            <BarChart data={meses} xDataKey="k" stacked aspectRatio="auto" className="h-full" margin={{ top: 8, right: 8, bottom: 24, left: 44 }} barGap={0.35} animationDuration={0}>
+              <Grid horizontal numTicksRows={4} highlightRowValues={contr != null ? [contr] : []} highlightRowStroke={COR.neutro} highlightRowStrokeDasharray="5,5" />
+              {tol != null ? <Grid horizontal numTicksRows={0} highlightRowValues={[tol]} highlightRowStroke={VERM} highlightRowStrokeOpacity={0.6} highlightRowStrokeDasharray="2,4" /> : null}
+              <Bar dataKey="passado" fill={VERDE_CLARO} lineCap="butt" animate={false} />
+              <Bar dataKey="atual" fill={VERDE} lineCap="butt" animate={false} />
+              <Bar dataKey="acima" fill={VERM} lineCap="butt" animate={false} />
+              <Bar dataKey="teto" fill="transparent" lineCap="butt" animate={false} />
+              <BarXAxis showAllLabels />
+              <YAxis numTicks={4} formatValue={(x) => n0(x)} />
+              <ChartTooltip showDatePill={false} showCrosshair={false} showDots={false} content={({ point }) => {
+                const m = point as LinhaMes;
+                return m.v == null
+                  ? <TooltipDestaque titulo={m.k} valor="—" rotulo="Sem medição" />
+                  : (
+                    <TooltipDestaque titulo={m.k} valor={kwTxt(m.v)} unidade="kW" rotulo="Demanda máxima" linhas={[
+                      ...(contr != null ? [{ label: 'Contratada', value: `${n0(contr)} kW` }] : []),
+                      ...(tol != null ? [{ label: m.v > tol ? 'Acima da tolerância' : 'Tolerância', value: m.v > tol ? `+${n0(m.v - tol)} kW` : `${n0(tol)} kW`, cor: m.v > tol ? VERM : undefined }] : []),
+                    ]} />
+                  );
+              }} />
+            </BarChart>
+          </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, color: NX.mudo, gap: 8 }}>
             <span style={{ display: 'flex', gap: 14 }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ width: 14, borderTop: `1.5px dashed ${NX.texto}` }} />Contratada {n0(contr)}</span>

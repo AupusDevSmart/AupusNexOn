@@ -5,6 +5,15 @@ import { api } from '@/config/api';
 import { useUserStore } from '@/store/useUserStore';
 import { useDados, getPath, fmt, tsInfo } from './sheetParts';
 import { useCustos, linhasPosto, brl, unwrap, useHistorico, janela, bucketize, type Periodo } from './equipUi';
+import { curveMonotoneX } from '@visx/curve';
+import { LineChart } from '@/components/charts/line-chart';
+import { Line } from '@/components/charts/line';
+import { Grid } from '@/components/charts/grid';
+import { YAxis } from '@/components/charts/y-axis';
+import { ChartTooltip } from '@/components/charts/tooltip';
+import { corSerie } from '@/components/graficos/cores';
+import { linhasDeBuckets } from '@/components/graficos/linhas-de-buckets';
+import { EixoTempo } from '@/components/graficos/eixo-tempo';
 import {
   NX, s, NxShell, NxDialog, NxDialogButtons, NxSwitchRow, NxSeg, IcoChevron, IcoLixo, IcoCheck2, type NxTone,
 } from './nxMock';
@@ -160,40 +169,31 @@ function MapaPivo({ angulo, girando, falha, sentido, direcao, faixas }: {
 
 // ------------------------------------------------------------- gráfico
 const kw = (v: unknown) => { const n = Number(v); return v == null || v === '' || !Number.isFinite(n) ? null : Math.abs(n) > 1000 ? n / 1000 : n; };
+/** Séries do gráfico (total do pivô e bomba), cores da sequência do tema. */
 const SERIES = [
-  { label: 'Total', color: VERDE, pick: (d: Record<string, unknown>) => kw(d?.Pt ?? d?.['power.active_total']) },
-  { label: 'Bomba', color: '#3B6FD6', pick: (d: Record<string, unknown>) => kw(getPath(d, 'bomba.Pt') ?? d?.bomba_Pt ?? getPath(d, 'bomba.potencia') ?? d?.bomba_potencia) },
+  { id: 'total', label: 'Total', color: corSerie(0), pick: (d: Record<string, unknown>) => kw(d?.Pt ?? d?.['power.active_total']) },
+  { id: 'bomba', label: 'Bomba', color: corSerie(1), pick: (d: Record<string, unknown>) => kw(getPath(d, 'bomba.Pt') ?? d?.bomba_Pt ?? getPath(d, 'bomba.potencia') ?? d?.bomba_potencia) },
 ];
-function eixoX(p: Periodo, ini: Date, fim: Date) {
-  if (p === 'hoje') return [0, 6, 12, 18, 24].map((h) => ({ f: h / 24, label: `${String(h).padStart(2, '0')}h` }));
-  const span = fim.getTime() - ini.getTime();
-  return Array.from({ length: 5 }, (_, i) => ({ f: i / 4, label: new Date(ini.getTime() + (span * i) / 4).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) }));
-}
 
 function GraficoPotencia({ equipamentoId, resumo }: { equipamentoId: string; resumo: string }) {
   const [open, setOpen] = useState(false);
   const [per, setPer] = useState<Periodo>('hoje');
-  const [ini, fim] = useMemo(() => {
+  // `fimBusca` entra no memo: um `new Date()` solto no render mudava a cada render e refazia a busca em loop.
+  const [ini, fim, fimBusca] = useMemo(() => {
     const [a, b] = janela(per);
-    if (per === 'hoje') { const e = new Date(a); e.setDate(e.getDate() + 1); return [a, e]; }
-    return [a, b];
+    if (per === 'hoje') { const e = new Date(a); e.setDate(e.getDate() + 1); return [a, e, new Date()]; }
+    return [a, b, b];
   }, [per, open]); // eslint-disable-line react-hooks/exhaustive-deps
-  const { pts, loading } = useHistorico(equipamentoId, ini, per === 'hoje' ? new Date() : fim, open);
+  const { pts, loading } = useHistorico(equipamentoId, ini, fimBusca, open);
   const N = per === 'hoje' ? 96 : per === 'semana' ? 168 : 180;
   const linhas = useMemo(() => {
     if (!pts) return null;
-    const vals = SERIES.map((x) => bucketize(pts, ini.getTime(), fim.getTime(), N, x.pick));
-    const max = Math.max(1, ...vals.flat().filter((v): v is number => v != null));
-    const paths = vals.map((arr) => {
-      let d = ''; let pen = false;
-      arr.forEach((v, i) => {
-        if (v == null) { pen = false; return; }
-        d += `${pen ? 'L' : 'M'}${(((i + 0.5) / N) * 700).toFixed(1)} ${Math.round(140 - (v / max) * 130)} `; pen = true;
-      });
-      return d;
-    });
-    return { paths, max, vazio: paths.every((p) => !p) };
+    const series: Record<string, Array<number | null>> = {};
+    SERIES.forEach((x) => { series[x.id] = bucketize(pts, ini.getTime(), fim.getTime(), N, x.pick); });
+    const rows = linhasDeBuckets(ini.getTime(), fim.getTime(), series);
+    return { rows, vazio: rows.length === 0 };
   }, [pts, ini, fim, N]);
+  const valorTxt = (p: Record<string, unknown>, id: string) => { const b = p[`${id}Bruto`]; return typeof b === 'number' ? `${fmt(b, 1)} kW` : '—'; };
   const aba = (sel: boolean): CSSProperties => ({ height: 30, padding: '0 12px', borderRadius: 9, fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', ...(sel ? { background: NX.card } : { color: NX.mudo }) });
 
   return (
@@ -221,27 +221,25 @@ function GraficoPotencia({ equipamentoId, resumo }: { equipamentoId: string; res
               </button>
             </span>
           </div>
-          {loading || !linhas ? (
-            <div style={{ height: 170, display: 'grid', placeItems: 'center', fontSize: 13, color: NX.mudo }}>Carregando…</div>
-          ) : linhas.vazio ? (
+          {linhas?.vazio && !loading ? (
             <div style={{ height: 170, display: 'grid', placeItems: 'center', fontSize: 13, color: NX.mudo }}>Sem leituras no período</div>
           ) : (
-            <svg viewBox="0 0 700 170" width="100%" height="170" role="img" aria-label="Potência do pivô e da bomba">
-              <line x1="0" x2="700" y1="10" y2="10" stroke={NX.linha} />
-              <line x1="0" x2="700" y1="140" y2="140" stroke={NX.borda} />
-              <text x="0" y="24" fontSize="11" fill={NX.mudo}>{fmt(linhas.max, 0)} kW</text>
-              {linhas.paths.map((d, i) => d && <path key={i} d={d} fill="none" stroke={SERIES[i].color} strokeWidth={i ? 2 : 2.2} strokeLinejoin="round" />)}
-              {eixoX(per, ini, fim).map((t, i, a) => (
-                <text key={i} x={t.f * 700} y="160" fontSize="11" fill={NX.mudo} textAnchor={i === 0 ? undefined : i === a.length - 1 ? 'end' : 'middle'}>{t.label}</text>
-              ))}
-            </svg>
+            <div style={{ height: 170, display: 'flex', flexDirection: 'column' }} role="img" aria-label="Potência do pivô e da bomba">
+              <LineChart data={linhas?.rows ?? []} xDomain={[ini, fim]} aspectRatio="auto" className="min-h-0 flex-1" margin={{ top: 8, right: 12, bottom: 6, left: 56 }} animationDuration={0}
+                status={loading || !linhas ? 'loading' : 'ready'} loadingLabel="Carregando…">
+                <Grid horizontal numTicksRows={4} />
+                {SERIES.map((x, i) => <Line key={x.id} dataKey={x.id} stroke={x.color} strokeWidth={i ? 2 : 2.2} curve={curveMonotoneX} fadeEdges={false} animate={false} />)}
+                <YAxis numTicks={4} formatValue={(v) => `${fmt(v, Number.isInteger(v) ? 0 : 1)} kW`} />
+                <ChartTooltip showDots rows={(p) => SERIES.map((x) => ({ color: x.color, label: x.label, value: valorTxt(p, x.id) }))} />
+              </LineChart>
+              <EixoTempo ini={ini} fim={fim} margemEsq={56} margemDir={12} formato={per === 'hoje' ? 'hora' : 'dia'} />
+            </div>
           )}
         </div>
       )}
     </div>
   );
 }
-
 // ------------------------------------------------------------- registros
 interface LogMqtt { id: string; mensagem?: string | null; severidade?: string | null; created_at?: string; regra?: { nome?: string | null } | null }
 interface Reg { t: number; txt: string; quem: string; ok?: boolean; ruim?: boolean }
