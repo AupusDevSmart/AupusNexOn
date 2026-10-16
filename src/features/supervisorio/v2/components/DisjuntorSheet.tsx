@@ -66,6 +66,7 @@ const fmt = (n: unknown, d = 1) =>
 
 function useDados(equipamentoId?: string | null) {
   const [dados, setDados] = useState<Telemetria | null>(null);
+  const [ts, setTs] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   // `reload` força uma leitura fora do polling de 15 s (usado logo após um comando).
   const reload = useCallback(() => setTick((t) => t + 1), []);
@@ -74,13 +75,18 @@ function useDados(equipamentoId?: string | null) {
     let vivo = true;
     const load = () =>
       api.get(`/equipamentos/${equipamentoId.trim()}/dados/atual`)
-        .then((r) => { if (vivo) setDados((r?.data?.dado?.dados ?? r?.data?.data?.dado?.dados ?? null) as Telemetria | null); })
-        .catch(() => { if (vivo) setDados(null); });
+        .then((r) => {
+          if (!vivo) return;
+          const dado = r?.data?.dado ?? r?.data?.data?.dado ?? null;
+          setDados((dado?.dados ?? null) as Telemetria | null);
+          setTs((dado?.timestamp_dados ?? dado?.created_at ?? dado?.timestamp ?? null) as string | null);
+        })
+        .catch(() => { if (vivo) { setDados(null); setTs(null); } });
     load();
     const t = setInterval(load, 15000);
     return () => { vivo = false; clearInterval(t); };
   }, [equipamentoId, tick]);
-  return { dados, reload };
+  return { dados, reload, ts };
 }
 
 /** Parâmetros de proteção do mockup (sem leitura/gravação pelo NexON ainda). */
@@ -111,7 +117,7 @@ export function DisjuntorSheet({ equipamentoId, onClose }: { equipamentoId: stri
 
   const temPm = bundle?.scs.medicao === 'pm';
   const temIed = bundle?.scs.medicao === 'ied';
-  const { dados: pmDados } = useDados(temPm ? bundle?.pm?.equipamento_id : null);
+  const { dados: pmDados, ts: pmTs } = useDados(temPm ? bundle?.pm?.equipamento_id : null);
   const custosHoje = useCustosHoje(temPm ? bundle?.pm?.equipamento_id : null);
   // Relé: fonte do status (aberto/fechado) e, na medição 'ied', das grandezas.
   const { dados: releDados, reload: reloadRele } = useDados(
@@ -196,6 +202,20 @@ export function DisjuntorSheet({ equipamentoId, onClose }: { equipamentoId: stri
   const modoTxt = local === true ? 'Local' : remoto === true || local === false ? 'Remoto' : '—';
   const porComando = posicao === 'Aberto' && /abr/i.test(bundle?.manobras?.ultima_msg ?? (ultimo?.ok ? ultimo.acao : ''));
 
+  // Leitura do PM com mais de 30 min = parada (TON/PM fora do ar): não pode aparecer "Normal".
+  const velha = (() => {
+    if (!pmTs) return null;
+    const d = new Date(pmTs);
+    const ms = Date.now() - d.getTime();
+    if (Number.isNaN(d.getTime()) || ms < 30 * 60_000) return null;
+    const min = Math.floor(ms / 60_000);
+    const ha = min < 120 ? `${min} min` : min < 48 * 60 ? `${Math.floor(min / 60)} h` : `${Math.floor(min / 1440)} dias`;
+    return { quando: d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }), ha };
+  })();
+  const medVelha = velha?.quando ?? null;
+  // DJ só com medição (sem posição nem comando): a coluna da esquerda ficaria só com o status.
+  const soMedicao = !temStatus && !temComando;
+
   // Status (vocabulário do mockup: Normal / Alerta / Falha / Sem comunicação).
   let tone: NxTone; let stLabel: string; let stText: string;
   if (temStatus && !releDados) { tone = 'off'; stLabel = 'Sem comunicação'; stText = bundle?.status_fonte ? 'Sem leitura do relé' : 'Nenhum relé de status vinculado'; }
@@ -203,6 +223,7 @@ export function DisjuntorSheet({ equipamentoId, onClose }: { equipamentoId: stri
   else if (temStatus && mola === false && posicao === 'Aberto') { tone = 'warn'; stLabel = 'Alerta'; stText = 'Mola descarregada'; }
   else if (temStatus) { tone = 'ok'; stLabel = 'Normal'; stText = posicao === 'Fechado' ? 'Fechado' : porComando ? 'Aberto por comando' : 'Aberto'; }
   else if ((temPm || temIed) && !medDados && !pmEhSsu) { tone = 'off'; stLabel = 'Sem comunicação'; stText = 'Sem leitura da medição'; }
+  else if (temPm && !pmEhSsu && medVelha) { tone = 'off'; stLabel = 'Sem comunicação'; stText = `Última leitura ${medVelha}`; }
   else { tone = 'ok'; stLabel = 'Normal'; stText = 'Posição não monitorada'; }
 
   const fechado = posicao === 'Fechado';
@@ -270,6 +291,49 @@ export function DisjuntorSheet({ equipamentoId, onClose }: { equipamentoId: stri
       ? 'Medição declarada como IED, mas nenhum relé vinculado a este disjuntor no IoT.'
       : !temPm && !temIed ? 'Sem medição declarada neste disjuntor.' : null;
 
+  // Cartão "Consumida / Injetada hoje" (PM) — na coluna da medição ou, num DJ só com
+  // medição, embaixo do status (equilibra as duas colunas).
+  const blocoEnergia = (
+                    <Bloco style={{ padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 16 }}>
+                      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
+                        {[['Consumida', consumo?.energia_total_kwh], ['Injetada', null]].map(([k, v]) => (
+                          <span key={String(k)} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            <span style={{ fontSize: 13, color: NX.mudo }}>{k} · hoje</span>
+                            <span style={{ fontSize: 24, lineHeight: '30px', fontWeight: 800, fontVariantNumeric: 'tabular-nums', color: v == null ? NX.mudo : NX.texto }}>
+                              {fmt(v, 1)}<span style={{ fontSize: 14, fontWeight: 700, color: NX.mudo, marginLeft: 4 }}>kWh</span>
+                            </span>
+                          </span>
+                        ))}
+                      </div>
+                      {custosHoje?.aviso && <Exclama title={custosHoje.aviso} />}
+                    </Bloco>
+  );
+  const colunaMedicao = (
+    <>
+      {velha && temPm && !pmEhSsu && (
+        <Bloco style={{ padding: '12px 16px', display: 'flex', gap: 10, alignItems: 'flex-start', background: 'rgba(214,138,0,0.10)', borderColor: 'rgba(214,138,0,0.45)' }}>
+          <Exclama title="Medição sem dados recentes" />
+          <span style={{ fontSize: 13, lineHeight: '18px' }}>
+            <b>Sem dados novos há {velha.ha}.</b> Os valores abaixo são da <b>última leitura ({velha.quando})</b>, não de agora —
+            verifique a TON/medidor desta instalação.
+          </span>
+        </Bloco>
+      )}
+              {pmEhSsu && bundle.pm ? (
+                <Bloco style={{ padding: '4px 16px 12px 16px' }}><SsuOperacao equipamentoId={bundle.pm.equipamento_id} /></Bloco>
+              ) : notaMed || !medOk ? (
+                <Bloco style={{ padding: '14px 16px', fontSize: 13, color: NX.mudo }}>{notaMed ?? 'Sem medição.'}</Bloco>
+              ) : (
+                <>
+                  {temPm && !soMedicao && blocoEnergia}
+                  <LinhasNx titulo="Potência" rows={potRows} />
+                </>
+              )}
+    </>
+  );
+  // DJ só com medição e sem o par energia/potência (nota, SSU, sem leitura): status em cima, conteúdo embaixo.
+  const umaColuna = soMedicao && !(medOk && !notaMed && temPm && !pmEhSsu);
+
   return (
     <NxShell
       title={nome}
@@ -311,6 +375,12 @@ export function DisjuntorSheet({ equipamentoId, onClose }: { equipamentoId: stri
         </div>
       ) : (
         <div style={{ padding: '20px 24px 28px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {umaColuna ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <StatusNx tone={tone} label={stLabel} text={stText} />
+              {colunaMedicao}
+            </div>
+          ) : (
           <Duas>
             <Coluna>
               <StatusNx tone={tone} label={stLabel} text={stText} />
@@ -360,34 +430,13 @@ export function DisjuntorSheet({ equipamentoId, onClose }: { equipamentoId: stri
                   {ultimo && <span style={{ fontSize: 12, fontWeight: 700, color: ultimo.ok ? NX.ok : NX.bad }}>{ultimo.texto}</span>}
                 </>
               )}
+              {soMedicao && temPm && blocoEnergia}
             </Coluna>
             <Coluna>
-              {pmEhSsu && bundle.pm ? (
-                <Bloco style={{ padding: '4px 16px 12px 16px' }}><SsuOperacao equipamentoId={bundle.pm.equipamento_id} /></Bloco>
-              ) : notaMed || !medOk ? (
-                <Bloco style={{ padding: '14px 16px', fontSize: 13, color: NX.mudo }}>{notaMed ?? 'Sem medição.'}</Bloco>
-              ) : (
-                <>
-                  {temPm && (
-                    <Bloco style={{ padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 16 }}>
-                      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
-                        {[['Consumida', consumo?.energia_total_kwh], ['Injetada', null]].map(([k, v]) => (
-                          <span key={String(k)} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                            <span style={{ fontSize: 13, color: NX.mudo }}>{k} · hoje</span>
-                            <span style={{ fontSize: 24, lineHeight: '30px', fontWeight: 800, fontVariantNumeric: 'tabular-nums', color: v == null ? NX.mudo : NX.texto }}>
-                              {fmt(v, 1)}<span style={{ fontSize: 14, fontWeight: 700, color: NX.mudo, marginLeft: 4 }}>kWh</span>
-                            </span>
-                          </span>
-                        ))}
-                      </div>
-                      {custosHoje?.aviso && <Exclama title={custosHoje.aviso} />}
-                    </Bloco>
-                  )}
-                  <LinhasNx titulo="Potência" rows={potRows} />
-                </>
-              )}
+              {colunaMedicao}
             </Coluna>
           </Duas>
+          )}
 
           {medOk && temPm && (
             <button type="button" onClick={() => setCustosAberto(true)}
@@ -409,13 +458,13 @@ export function DisjuntorSheet({ equipamentoId, onClose }: { equipamentoId: stri
 
           {medOk && (
             <GraficoNx equipamentoId={medId} catalogo={catalogo} padrao={['pAt']}
-              resumo={pt != null ? `${fmt(pt, 1)} kW agora` : undefined} />
+              resumo={pt != null ? (velha && temPm ? `${fmt(pt, 1)} kW em ${velha.quando}` : `${fmt(pt, 1)} kW agora`) : undefined} />
           )}
 
           <Duas>
             {medOk ? (
               <FasesNx rows={fases} ff={mostraFF} onFF={setFf} temToggle={temFF && temFN}
-                nota={temPm ? `PM: ${bundle.pm?.nome ?? bundle.pm?.equipamento_id}` : `IED: ${bundle.status_fonte?.rele_nome ?? bundle.status_fonte?.rele_equipamento_id}`} />
+                nota={(temPm ? `PM: ${bundle.pm?.nome ?? bundle.pm?.equipamento_id}` : `IED: ${bundle.status_fonte?.rele_nome ?? bundle.status_fonte?.rele_equipamento_id}`) + (velha && temPm ? ` · última leitura ${velha.quando}` : '')} />
             ) : null}
             {/* Sem medição a coluna das fases some: o cadastro ocupa a largura toda em vez de deixar metade vazia. */}
             <div className={medOk ? 'min-w-0' : 'min-w-0 min-[760px]:col-span-2'}>
