@@ -277,7 +277,7 @@ const ICON_BODY = new Map<IconComponent, IconBody>([
   [MedidorIcon, B(13, 67, 16, 64)],
   [QGBTIcon, B(16, 66, 18, 62)],
   [CarregadorEletricoIcon, B(16, 64, 26, 54)],
-  [PivoIcon, B(9, 71, 9, 71)],
+  [PivoIcon, B(4, 76, 4, 76)],
   [TONIcon, B(14.6, 60, 15, 65)],
   [BancoCapacitorIcon, B(34, 43, 25, 55)],
   [ModulosPVIcon, B(16, 50, 14, 66)],

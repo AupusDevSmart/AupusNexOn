@@ -73,9 +73,10 @@ export const getPortPoint = (
     const sy = size.height / body.vbH;
     const px = (v: number) => centerX + (baseX + v * sx - centerX) * ICON_SCALE;
     const py = (v: number) => centerY + (baseY + v * sy - centerY) * ICON_SCALE;
-    // nunca fora do nó (ícone que encosta na borda)
-    const clampY = (y: number) => Math.min(baseY + size.height, Math.max(baseY, y));
-    const clampX = (x: number) => Math.min(baseX + size.width, Math.max(baseX, x));
+    // até 12 px além da borda do nó: símbolo maior que o nó (ex.: pivô) encosta a linha no desenho
+    const FOLGA = 12;
+    const clampY = (y: number) => Math.min(baseY + size.height + FOLGA, Math.max(baseY - FOLGA, y));
+    const clampX = (x: number) => Math.min(baseX + size.width + FOLGA, Math.max(baseX - FOLGA, x));
     switch (port) {
       case 'top': return { point: { x: centerX, y: clampY(py(body.top)) }, direction: 'up' };
       case 'bottom': return { point: { x: centerX, y: clampY(py(body.bottom)) }, direction: 'down' };

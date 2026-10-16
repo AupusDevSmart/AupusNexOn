@@ -36,8 +36,8 @@ export const PivoIcon: React.FC<PivoIconProps> = ({
       strokeLinejoin="round"
     >
       {/* área irrigada (tracejada) ocupando o símbolo inteiro + lança do pivô a partir do centro */}
-      <circle cx="40" cy="40" r="31" strokeWidth={strokeWidth * 0.85} strokeDasharray="5 4" />
-      <line x1="40" y1="40" x2="71" y2="40" />
+      <circle cx="40" cy="40" r="36" strokeWidth={strokeWidth * 0.85} strokeDasharray="5 4" />
+      <line x1="40" y1="40" x2="76" y2="40" />
       <circle cx="40" cy="40" r="3.5" fill="currentColor" stroke="none" />
     </svg>
   );
