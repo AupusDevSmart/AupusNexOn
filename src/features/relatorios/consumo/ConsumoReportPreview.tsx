@@ -91,7 +91,7 @@ export function ConsumoReportPreview() {
       <div className="flex items-center gap-3 flex-wrap">
         <span className="text-sm font-medium">Unidade:</span>
         <Select value={unidadeId} onValueChange={setUnidadeId}>
-          <SelectTrigger className="w-[320px]">
+          <SelectTrigger className="w-full sm:w-[320px]">
             <SelectValue
               placeholder={unidades.length ? 'Selecione uma unidade medida…' : 'Nenhuma unidade medida disponível'}
             />

@@ -138,7 +138,7 @@ export function ConcessionariaSelect({
           {renderSelectedValue()}
         </SelectValue>
       </SelectTrigger>
-      <SelectContent className="w-[450px]">
+      <SelectContent className="w-[min(450px,calc(100vw-2rem))]">
         {concessionarias.length === 0 ? (
           <div className="p-4 text-center text-sm text-muted-foreground">
             Nenhuma concessionária encontrada

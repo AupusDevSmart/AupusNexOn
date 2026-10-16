@@ -63,7 +63,7 @@ function PaginationBar({ page, totalPages, total, pageSize, onPageChange }: Pagi
   );
 
   return (
-    <div className="flex items-center justify-between px-4 py-3 border-t">
+    <div className="flex flex-col sm:flex-row items-center justify-between gap-2 px-2 sm:px-4 py-3 border-t">
       <div className="text-sm text-muted-foreground">
         Mostrando <span className="font-medium">{from}</span> a{' '}
         <span className="font-medium">{to}</span> de{' '}
@@ -290,7 +290,7 @@ export function IotCatalogPage() {
                   />
                 </div>
                 <Select value={modeloTipoFilter} onValueChange={setModeloTipoFilter}>
-                  <SelectTrigger className="w-[220px]">
+                  <SelectTrigger className="w-full sm:w-[220px]">
                     <SelectValue placeholder="Filtrar por tipo" />
                   </SelectTrigger>
                   <SelectContent>
@@ -393,7 +393,7 @@ export function IotCatalogPage() {
         <TabsContent value="tipos" className="mt-4">
           <Card>
             <CardContent className="pt-4 space-y-3">
-              <div className="flex justify-between items-center">
+              <div className="flex flex-wrap justify-between items-center gap-2">
                 <p className="text-sm text-muted-foreground">
                   Tipo abstrato (ex: inversor_solar) define o contrato de pontos AI/BI/BO.
                 </p>

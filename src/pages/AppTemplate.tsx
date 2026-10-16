@@ -23,7 +23,7 @@ export function AppTemplate() {
   return (
     <QueryClientProvider client={queryClient}>
       <SidebarProvider defaultOpen={false}>
-        <div className="flex h-[100dvh] w-screen overflow-hidden bg-secondary">
+        <div className="flex h-[100dvh] w-full overflow-hidden bg-secondary">
           <AppSidebar />
             {/* `SidebarInset` ja e `flex-1`. O `w-full` que estava aqui pedia
                 100% da LINHA — que tambem contem a sidebar. Aberta a sidebar, o
@@ -37,17 +37,21 @@ export function AppTemplate() {
                 cede sozinha. Com `min-w-0`, a area util acompanha a sidebar e o
                 scroll horizontal da propria tabela passa a funcionar. */}
           <SidebarInset className="flex flex-col min-w-0 h-full bg-secondary">
-            <header className="flex-none flex items-center justify-between gap-2 bg-secondary">
-              <div className="flex h-12 items-center gap-2 px-4 bg-secondary shrink-0">
+            {/* No celular o header quebra em duas linhas: breadcrumb + notificacoes em
+                cima e o slot da pagina (abas do sinoptico) embaixo, rolando na
+                horizontal. Antes tudo ficava numa linha de ~800px e empurrava o
+                app inteiro para o lado. */}
+            <header className="flex-none flex flex-wrap sm:flex-nowrap items-center justify-between gap-x-2 min-w-0 overflow-hidden bg-secondary">
+              <div className="flex h-12 min-w-0 flex-1 sm:flex-none items-center gap-2 px-3 sm:px-4 bg-secondary overflow-hidden">
                 <SidebarTrigger className="w-4 h-4 mr-2" />
-                <CustomBreadcrumbs />
+                <CustomBreadcrumbs className="min-w-0" />
               </div>
               {/* Slot pra acoes da pagina na linha dos breadcrumbs (preenchido via
                   portal — ex.: toggle Unifilar/IoT do sinoptico). Vazio nas demais telas. */}
-              <div id="app-header-slot" className="flex flex-1 items-center justify-end gap-2 min-w-0 px-2" />
+              <div id="app-header-slot" className="flex empty:hidden max-sm:order-last max-sm:basis-full max-sm:justify-start max-sm:pb-2 flex-1 items-center justify-end gap-2 min-w-0 px-2 overflow-x-auto scrollbar-none" />
               <NotificacoesSheet />
             </header>
-            <main className="flex-1 min-w-0 min-h-0 overflow-auto bg-secondary">
+            <main className="flex-1 min-w-0 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain bg-secondary">
               <Outlet />
             </main>
             <CommandPallete />

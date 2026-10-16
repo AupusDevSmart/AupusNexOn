@@ -282,7 +282,7 @@ export function DisjuntorModal({
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-3 gap-4 text-center">
+              <div className="grid grid-cols-3 gap-2 sm:gap-4 text-center">
                 <div className="p-3 bg-muted rounded-lg">
                   <div className="text-lg font-bold text-blue-600">
                     {dados.corrente.toFixed(0)}A

@@ -346,8 +346,26 @@
     @apply border-border;
   }
 
+  /* iOS so respeita o overflow do body quando o html tambem tem. Sem isso a
+     pagina inteira "dancava" para os lados no celular. */
+  html,
+  body {
+    @apply h-full overflow-x-hidden;
+    overscroll-behavior: none;
+  }
+
   body {
     @apply flex overflow-hidden bg-background text-foreground;
+  }
+
+  /* Campo com fonte < 16px faz o iOS dar zoom ao focar e nao voltar — dai a
+     tela passa a rolar em todas as direcoes. No celular os campos ficam em 16px. */
+  @media (max-width: 767px) {
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+    select,
+    textarea {
+      font-size: 16px !important;
+    }
   }
 
   #root {
@@ -449,6 +467,14 @@
 
   .breadcrumb-scrollable > * {
     flex-shrink: 0;
+  }
+
+  .breadcrumb-scrollable {
+    scrollbar-width: none;
+  }
+
+  .breadcrumb-scrollable::-webkit-scrollbar {
+    display: none;
   }
 
   /* Fullscreen — preserva o tema NexON.
@@ -621,3 +647,13 @@
 /* Basemap OSM em dark tunado pro COA (keyless): escuro, cores suavizadas — sem manchas
    verdes berrantes (invert cru) nem cinza chapado. Ajustar saturate/brightness ao gosto. */
 .coa-tiles-dark { filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9) saturate(0.5); }
+@layer utilities {
+  /* Faixa que rola na horizontal sem mostrar barra (abas no header do celular). */
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+}

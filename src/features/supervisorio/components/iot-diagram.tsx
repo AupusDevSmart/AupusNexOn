@@ -2342,7 +2342,7 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
 
       {/* Serial Monitor Sheet */}
       <Sheet open={serialOpen} onOpenChange={(open: boolean) => { if (!open) { setSerialOpen(false); } }}>
-        <SheetContent side="right" className={`${serialPanelCount === 2 ? 'w-[850px] sm:max-w-[850px]' : 'w-[430px] sm:max-w-[430px]'} p-0 flex flex-col [&>button.absolute]:text-gray-400 [&>button.absolute]:hover:text-white [&>button.absolute]:bg-gray-800 [&>button.absolute]:rounded [&>button.absolute]:p-1 [&>button.absolute]:top-2.5 [&>button.absolute]:right-2.5 [&>button.absolute]:z-10`}>
+        <SheetContent side="right" className={`${serialPanelCount === 2 ? 'w-full md:w-[850px] sm:max-w-[850px]' : 'w-full sm:w-[430px] sm:max-w-[430px]'} p-0 flex flex-col [&>button.absolute]:text-gray-400 [&>button.absolute]:hover:text-white [&>button.absolute]:bg-gray-800 [&>button.absolute]:rounded [&>button.absolute]:p-1 [&>button.absolute]:top-2.5 [&>button.absolute]:right-2.5 [&>button.absolute]:z-10`}>
           {/* Top bar */}
           <div className="flex items-center justify-between px-3 py-2 border-b bg-gray-900 shrink-0 pr-12">
             <div className="flex items-center gap-2">

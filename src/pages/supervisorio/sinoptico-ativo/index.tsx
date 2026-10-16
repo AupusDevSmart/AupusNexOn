@@ -3803,7 +3803,7 @@ if (import.meta.env.PROD) {
               breadcrumbs (shell) via portal. O nome da unidade aparece no titulo
               do proprio diagrama (toolbar do DiagramV2). */}
           {headerSlot && unidadeId && createPortal(
-            <div className="flex shrink-0 gap-1" style={{ zIndex: 10 }}>
+            <div className="flex shrink-0 gap-1 whitespace-nowrap" style={{ zIndex: 10 }}>
               <button
                 onClick={() => setSinopticoTab('visao')}
                 className={`px-3 py-1 text-sm font-medium rounded-[2px] transition-colors ${

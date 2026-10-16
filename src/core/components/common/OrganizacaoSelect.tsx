@@ -143,7 +143,7 @@ export function OrganizacaoSelect({
           )}
         </SelectValue>
       </SelectTrigger>
-      <SelectContent className="w-[500px]">
+      <SelectContent className="w-[min(500px,calc(100vw-2rem))]">
         {organizacoesAtivas.length === 0 ? (
           <div className="p-4 text-center text-sm text-muted-foreground">
             {organizacoes.length === 0 

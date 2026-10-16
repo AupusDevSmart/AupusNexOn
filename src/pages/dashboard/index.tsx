@@ -249,8 +249,8 @@ export function DashboardPage() {
   return (
     <Layout>
       <Layout.Main>
-        <div className="h-full w-full overflow-hidden">
-          <div className="h-full overflow-y-auto">
+        <div className="w-full min-w-0">
+          <div className="min-w-0">
             <div className="flex flex-col gap-3 p-2">
               {/* Header com Status */}
               <div className="w-full">
@@ -401,9 +401,9 @@ export function DashboardPage() {
 
               {/* Layout: Mapa + Tabelas Laterais - Alinhado com os cards de cima */}
               {data && (
-                <div className="grid grid-cols-1 lg:grid-cols-6 gap-4">
+                <div className="grid grid-cols-[minmax(0,1fr)] lg:grid-cols-6 gap-4">
                   {/* Mapa - 4/6 da largura (alinha com os 4 primeiros cards) */}
-                  <div className="lg:col-span-4 h-full">
+                  <div className="lg:col-span-4 h-full min-w-0">
                     <MapaCoa
                       unidades={data.plantas.flatMap(planta =>
                         planta.unidades.map(unidade => ({
@@ -478,7 +478,7 @@ export function DashboardPage() {
                   </div> */}
 
                   {/* Painel Lateral - Tabelas de UFVs e Cargas - 2/6 da largura (alinha com os 2 últimos cards) */}
-                  <div className="lg:col-span-2 flex flex-col gap-4">
+                  <div className="lg:col-span-2 flex flex-col gap-4 min-w-0">
                     {/* Tabela: USINAS FOTOVOLTAICAS */}
                     <Card className="flex flex-col h-[calc(50vh-8rem)]">
                     <CardHeader className="flex-shrink-0">

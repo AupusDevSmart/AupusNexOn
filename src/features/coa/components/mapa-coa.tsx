@@ -159,6 +159,9 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
       // Criar mapa
       const map = L.map(mapRef.current, {
         zoomControl: false,
+        // No celular o arraste de um dedo fica com a pagina (senao o mapa, que
+        // ocupa a largura toda, prende a rolagem). Pinça continua dando zoom.
+        dragging: !L.Browser.mobile,
         scrollWheelZoom: true,
         doubleClickZoom: true,
         touchZoom: true,

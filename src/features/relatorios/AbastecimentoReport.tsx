@@ -90,7 +90,7 @@ export function AbastecimentoReport() {
       <div className="flex items-center gap-3 flex-wrap">
         <span className="text-sm font-medium">Unidade:</span>
         <Select value={unidadeId} onValueChange={setUnidadeId}>
-          <SelectTrigger className="w-[300px]"><SelectValue placeholder="Todas as unidades" /></SelectTrigger>
+          <SelectTrigger className="w-full sm:w-[300px]"><SelectValue placeholder="Todas as unidades" /></SelectTrigger>
           <SelectContent>
             {unidades.map((u) => <SelectItem key={u.id} value={u.id}>{u.nome}</SelectItem>)}
           </SelectContent>

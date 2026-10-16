@@ -291,7 +291,7 @@ export function TransformadorModal({
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="text-center p-4 bg-green-50 rounded-lg">
                   <div className="text-xl font-bold text-green-600 mb-1">
                     {(dados.potencias.ativa / 1000).toFixed(1)} MW
