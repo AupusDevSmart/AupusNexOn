@@ -485,7 +485,7 @@ export function BaseTable<T extends BaseEntity>({
 
       {/* Paginação */}
       {pagination.totalPages > 1 && (
-        <div className="flex items-center justify-between px-4 py-3 border-t">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-2 px-2 sm:px-4 py-3 border-t">
           <div className="text-sm text-muted-foreground">
             Mostrando <span className="font-medium">{(pagination.page - 1) * pagination.limit + 1}</span> a{' '}
             <span className="font-medium">

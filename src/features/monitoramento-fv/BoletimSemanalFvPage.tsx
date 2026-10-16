@@ -153,7 +153,7 @@ export function BoletimSemanalFvPage() {
             </div>
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground">Data de referência (opcional)</label>
-              <Input type="date" value={data} onChange={(e) => setData(e.target.value)} className="w-[170px]" />
+              <Input type="date" value={data} onChange={(e) => setData(e.target.value)} className="w-full sm:w-[170px]" />
             </div>
             <Button variant="outline" onClick={() => abrir('pdf')} disabled={!!carregando || !unidadeId}>
               {carregando === 'pdf' ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <FileText className="mr-1 h-4 w-4" />}Abrir PDF

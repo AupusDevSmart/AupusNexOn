@@ -96,8 +96,8 @@ export function ReleEventosPage() {
                 Hora carimbada pelo <b>próprio relé</b> (ms). Ordenado pela hora da fonte, não a de chegada.
               </p>
             </div>
-            <div className="flex items-center gap-2">
-              <Input value={device} onChange={(e) => setDevice(e.target.value)} placeholder="Filtrar por relé…" className="h-8 w-[180px]" />
+            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+              <Input value={device} onChange={(e) => setDevice(e.target.value)} placeholder="Filtrar por relé…" className="h-8 w-full sm:w-[180px]" />
               <Button size="sm" variant={auto ? 'default' : 'outline'} className="h-8" onClick={() => setAuto((a) => !a)}>
                 {auto ? 'Auto 10s' : 'Auto off'}
               </Button>
@@ -130,7 +130,7 @@ export function ReleEventosPage() {
                       value={nomeando[key] ?? ''}
                       onChange={(e) => setNomeando((p) => ({ ...p, [key]: e.target.value }))}
                       onKeyDown={(e) => e.key === 'Enter' && void salvarCodigo(c)}
-                      placeholder="ex: Trip 51 Fase A" className="h-7 w-[200px]"
+                      placeholder="ex: Trip 51 Fase A" className="h-7 w-full sm:w-[200px]"
                     />
                     <Button size="sm" className="h-7" onClick={() => void salvarCodigo(c)}>
                       <Plus className="h-3.5 w-3.5 mr-1" />Nomear

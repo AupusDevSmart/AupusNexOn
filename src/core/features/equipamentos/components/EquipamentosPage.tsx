@@ -593,8 +593,8 @@ export function EquipamentosPage({ renderSecaoExtraUC, renderCampoDadosBasicosUC
               </div>
 
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 dark:bg-blue-950 dark:border-blue-800">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
                     <Wrench className="h-5 w-5 text-blue-600" />
                     <div>
                       <h2 className="font-semibold text-blue-900 dark:text-blue-100">

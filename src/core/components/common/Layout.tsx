@@ -9,7 +9,7 @@ export function Layout({ children, className = '', asidePosition = 'left' }: { c
   return (
     <ErrorBoundary>
       <div
-        className={`bg-secondary h-full w-full lg:rounded-sm clearfix lg:overflow-hidden overflow-auto flex ${hasAside ? 'lg:flex-row' : 'flex-col'} ${className} ${asidePosition === 'right' ? 'lg:flex-row-reverse' : ''}`}
+        className={`bg-secondary h-full w-full lg:rounded-sm clearfix lg:overflow-hidden overflow-y-auto overflow-x-hidden min-w-0 flex ${hasAside ? 'lg:flex-row' : 'flex-col'} ${className} ${asidePosition === 'right' ? 'lg:flex-row-reverse' : ''}`}
       >
         {children}
       </div>
@@ -46,7 +46,7 @@ Layout.Main = function Main({ children, className = '', withSidebar = false }: {
   return (
     <ErrorBoundary>
       <main
-        className={`bg-secondary h-full ${withSidebar ? 'w-full lg:w-5/6' : 'w-full'} flex flex-col items-start justify-start overflow-auto p-6 lg:p-6 gap-6 pt-2 lg:pt-2 ${className}`}
+        className={`bg-secondary h-full ${withSidebar ? 'w-full lg:w-5/6' : 'w-full'} min-w-0 flex flex-col items-start justify-start overflow-y-auto overflow-x-hidden [&>*]:max-w-full p-3 sm:p-6 gap-4 sm:gap-6 pt-2 lg:pt-2 ${className}`}
       >
         {children}
       </main>

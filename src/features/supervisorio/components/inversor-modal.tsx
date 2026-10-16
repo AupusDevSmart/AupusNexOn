@@ -233,7 +233,7 @@ export function InversorModal({
                   />
                 </BarChart>
               </div>
-              <div className="mt-4 grid grid-cols-3 gap-4 text-center">
+              <div className="mt-4 grid grid-cols-3 gap-2 sm:gap-4 text-center">
                 <div>
                   <div className="text-lg font-bold text-yellow-600">
                     {dados.curvaGeracao

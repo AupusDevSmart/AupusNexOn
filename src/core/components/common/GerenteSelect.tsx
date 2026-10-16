@@ -143,7 +143,7 @@ export function GerenteSelect({
           )}
         </SelectValue>
       </SelectTrigger>
-      <SelectContent className="w-[400px]">
+      <SelectContent className="w-[min(400px,calc(100vw-2rem))]">
         {gerentes.length === 0 ? (
           <div className="p-4 text-center text-sm text-muted-foreground">
             Nenhum gerente encontrado
