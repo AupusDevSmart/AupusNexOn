@@ -368,8 +368,10 @@
     }
   }
 
+  /* #root e item flex do body: sem largura propria ele encolhe ao tamanho do
+     conteudo e todas as telas ficam estreitas no desktop. */
   #root {
-    @apply flex h-full overflow-hidden;
+    @apply flex h-full w-full min-w-0 overflow-hidden;
   }
 
   *::-webkit-scrollbar {
