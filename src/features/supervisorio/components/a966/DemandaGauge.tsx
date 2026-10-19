@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
-import { Gauge } from "@/components/charts/gauge";
-import type { ChartStatFlowFormat } from "@/components/charts/chart-stat-flow";
+import { Velocimetro } from "@/components/graficos/velocimetro";
 
 interface DemandaGaugeProps {
   /** Valor atual (kW), modo "Atual" */
@@ -20,7 +19,6 @@ interface DemandaGaugeProps {
 const SIZE = 160;
 // O arco de 270° do Gauge deixa o pé vazio: corta como o SVG antigo (0,85 × 160).
 const ALTURA_VISIVEL = 140;
-const FORMATO_KW: ChartStatFlowFormat = { minimumFractionDigits: 1, maximumFractionDigits: 1 };
 
 const TZ = "America/Sao_Paulo";
 
@@ -80,21 +78,15 @@ export function DemandaGauge({
       </div>
 
       <div className="relative overflow-hidden" style={{ width: SIZE, height: ALTURA_VISIVEL }}>
-        <Gauge
+        <Velocimetro
+          size={SIZE}
           value={semDadoMes ? 0 : preenchimento}
-          width={SIZE}
-          height={SIZE}
           activeFill={cor}
-          centerValue={semDadoMes ? undefined : valorMostrado}
-          suffix=" kW"
-          formatOptions={FORMATO_KW}
-          defaultLabel={rotuloCentro}
+          valor={semDadoMes ? null : valorMostrado}
+          unidade="kW"
+          casas={1}
+          rotulo={semDadoMes ? undefined : rotuloCentro}
         />
-        {semDadoMes && (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center pb-2 text-2xl font-semibold text-muted-foreground">
-            —
-          </div>
-        )}
       </div>
       <div className="text-[10px] text-muted-foreground uppercase tracking-wide text-center px-2 leading-tight">
         {labelInferior}
