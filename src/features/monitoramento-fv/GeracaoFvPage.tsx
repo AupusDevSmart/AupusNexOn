@@ -299,7 +299,7 @@ export function GeracaoFvPage() {
       </div>
 
       <Card><CardContent className="p-0 overflow-x-auto">
-        <Table>
+        <Table className="table-minimal min-w-full">
           <TableHeader>
             <TableRow>
               <TableHead>Usina</TableHead>

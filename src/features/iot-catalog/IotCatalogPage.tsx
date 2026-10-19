@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Card, CardContent } from '@/components/ui/card';
+import { Layout } from '@/components/common/Layout';
+import { TitleCard } from '@/components/common/title-card';
 import {
   Select,
   SelectContent,
@@ -239,72 +240,39 @@ export function IotCatalogPage() {
   };
 
   return (
-    <div className="p-4 md:p-6 space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold text-foreground">Catalogo IoT</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Tipos de dispositivo e modelos (Modbus mapping) consumidos pelo editor de
-          diagrama IoT e pelo gerador de firmware.
-        </p>
-      </div>
+    <Layout>
+      <Layout.Main>
+        <Tabs value={aba} onValueChange={setAba} className="w-full">
+          <TitleCard
+            title="Catálogo IoT"
+            description="Tipos de dispositivo e modelos (Modbus mapping) consumidos pelo editor de diagrama IoT e pelo gerador de firmware."
+            actions={
+              <TabsList>
+                <TabsTrigger value="modelos" className="gap-2">
+                  <Cpu className="h-4 w-4" /> Modelos ({modelos.length})
+                </TabsTrigger>
+                <TabsTrigger value="tipos" className="gap-2">
+                  <Tag className="h-4 w-4" /> Tipos ({tipos.length})
+                </TabsTrigger>
+              </TabsList>
+            }
+          />
 
-      <Tabs value={aba} onValueChange={setAba} className="w-full">
-        <TabsList className="gap-2 rounded-sm bg-transparent p-0">
-          <TabsTrigger
-            value="modelos"
-            className="gap-2 rounded-sm data-[state=active]:bg-accent"
-          >
-            <Cpu className="h-4 w-4" /> Modelos ({modelos.length})
-          </TabsTrigger>
-          <TabsTrigger
-            value="tipos"
-            className="gap-2 rounded-sm data-[state=active]:bg-accent"
-          >
-            <Tag className="h-4 w-4" /> Tipos ({tipos.length})
-          </TabsTrigger>
-        </TabsList>
-
-        {/* MODELOS */}
-        <TabsContent value="modelos" className="mt-4">
-          <Card>
-            <CardContent className="pt-4 space-y-3">
-              <div className="flex justify-between items-center gap-3 flex-wrap">
-                <p className="text-sm text-muted-foreground">
-                  Cada modelo aponta pra um tipo e contem o mapeamento Modbus
-                  (ai_blocks, ai_map, etc.).
-                </p>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Button size="sm" variant="outline" onClick={() => setTemplateDialog(true)} disabled={tipos.length === 0}>
-                    <Download className="h-4 w-4 mr-1" /> Template
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => fileImportRef.current?.click()} disabled={tipos.length === 0}>
-                    <Upload className="h-4 w-4 mr-1" /> Importar
-                  </Button>
-                  <input ref={fileImportRef} type="file" accept=".xlsx" className="hidden"
-                    onChange={(e) => { const f = e.target.files?.[0]; if (f) onImportPlanilha(f); e.currentTarget.value = ''; }} />
-                  <Button
-                    size="sm"
-                    onClick={() => setModeloModal({ open: true, modelo: null })}
-                    disabled={tipos.length === 0}
-                    title={tipos.length === 0 ? 'Crie um tipo antes' : undefined}
-                  >
-                    <Plus className="h-4 w-4 mr-1" /> Novo modelo
-                  </Button>
-                </div>
-              </div>
-
-              <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+          {/* MODELOS */}
+          <TabsContent value="modelos" className="mt-0">
+            <div className="flex flex-col lg:flex-row gap-3 mb-6 lg:items-start">
+              <div className="grid flex-1 gap-3 grid-cols-[repeat(auto-fit,minmax(14rem,1fr))]">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     placeholder="Buscar por fabricante ou modelo..."
                     value={modeloSearch}
                     onChange={(e) => setModeloSearch(e.target.value)}
-                    className="pl-8"
+                    className="pl-9"
                   />
                 </div>
                 <Select value={modeloTipoFilter} onValueChange={setModeloTipoFilter}>
-                  <SelectTrigger className="w-full sm:w-[220px]">
+                  <SelectTrigger className="w-full">
                     <SelectValue placeholder="Filtrar por tipo" />
                   </SelectTrigger>
                   <SelectContent>
@@ -317,226 +285,240 @@ export function IotCatalogPage() {
                   </SelectContent>
                 </Select>
               </div>
-
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Fabricante</TableHead>
-                    <TableHead>Modelo</TableHead>
-                    <TableHead>Tipo</TableHead>
-                    <TableHead>Protocolo</TableHead>
-                    <TableHead className="text-right">Acoes</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {modelosQuery.isLoading ? (
-                    <TableRow>
-                      <TableCell colSpan={5} className="text-center text-muted-foreground py-6">
-                        Carregando...
-                      </TableCell>
-                    </TableRow>
-                  ) : modelos.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={5} className="text-center text-muted-foreground py-6">
-                        Nenhum modelo cadastrado
-                      </TableCell>
-                    </TableRow>
-                  ) : modelosFiltrados.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={5} className="text-center text-muted-foreground py-6">
-                        Nenhum modelo corresponde aos filtros
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    modelosPagina.map((m) => {
-                      const tipo = tipoById.get(m.tipo_id);
-                      return (
-                        <TableRow key={m.id} className="hover:bg-muted/50">
-                          <TableCell className="font-medium">{m.fabricante}</TableCell>
-                          <TableCell>{m.modelo}</TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {tipo ? `${tipo.nome} (${tipo.codigo})` : <span className="text-destructive">tipo orfao</span>}
-                          </TableCell>
-                          <TableCell className="text-muted-foreground uppercase text-xs">{m.protocolo}</TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex justify-end gap-1">
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => setModeloModal({ open: true, modelo: m })}
-                                title="Editar"
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => handleDuplicate(m)}
-                                title="Duplicar"
-                              >
-                                <Copy className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => handleDeleteModelo(m)}
-                                title="Deletar"
-                              >
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })
-                  )}
-                </TableBody>
-              </Table>
-              <PaginationBar
-                page={paginaModelo}
-                totalPages={modelosTotalPages}
-                total={modelosFiltrados.length}
-                pageSize={PAGE_SIZE}
-                onPageChange={setModeloPage}
-              />
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* TIPOS */}
-        <TabsContent value="tipos" className="mt-4">
-          <Card>
-            <CardContent className="pt-4 space-y-3">
-              <div className="flex flex-wrap justify-between items-center gap-2">
-                <p className="text-sm text-muted-foreground">
-                  Tipo abstrato (ex: inversor_solar) define o contrato de pontos AI/BI/BO.
-                </p>
-                <Button size="sm" onClick={() => setTipoModal({ open: true, tipo: null })}>
-                  <Plus className="h-4 w-4 mr-1" /> Novo tipo
-                </Button>
+              <div className="flex flex-row gap-2 w-full lg:w-auto">
+                <button className="btn-minimal-outline flex-1 lg:flex-none whitespace-nowrap" onClick={() => setTemplateDialog(true)} disabled={tipos.length === 0}>
+                  <Download className="h-4 w-4 lg:mr-2" /><span className="hidden lg:inline">Template</span>
+                </button>
+                <button className="btn-minimal-outline flex-1 lg:flex-none whitespace-nowrap" onClick={() => fileImportRef.current?.click()} disabled={tipos.length === 0}>
+                  <Upload className="h-4 w-4 lg:mr-2" /><span className="hidden lg:inline">Importar</span>
+                </button>
+                <input ref={fileImportRef} type="file" accept=".xlsx" className="hidden"
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) onImportPlanilha(f); e.currentTarget.value = ''; }} />
+                <button
+                  className="btn-minimal-primary flex-1 lg:flex-none whitespace-nowrap"
+                  onClick={() => setModeloModal({ open: true, modelo: null })}
+                  disabled={tipos.length === 0}
+                  title={tipos.length === 0 ? 'Crie um tipo antes' : undefined}
+                >
+                  <Plus className="h-4 w-4 lg:mr-2" /><span className="hidden lg:inline">Novo modelo</span>
+                </button>
               </div>
+            </div>
 
-              <div className="relative">
-                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+            <div className="border rounded-md bg-card overflow-x-auto">
+                <Table className="table-minimal min-w-full">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Fabricante</TableHead>
+                      <TableHead>Modelo</TableHead>
+                      <TableHead>Tipo</TableHead>
+                      <TableHead>Protocolo</TableHead>
+                      <TableHead className="text-right">Acoes</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {modelosQuery.isLoading ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center text-muted-foreground py-6">
+                          Carregando...
+                        </TableCell>
+                      </TableRow>
+                    ) : modelos.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center text-muted-foreground py-6">
+                          Nenhum modelo cadastrado
+                        </TableCell>
+                      </TableRow>
+                    ) : modelosFiltrados.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center text-muted-foreground py-6">
+                          Nenhum modelo corresponde aos filtros
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      modelosPagina.map((m) => {
+                        const tipo = tipoById.get(m.tipo_id);
+                        return (
+                          <TableRow key={m.id} className="hover:bg-muted/50">
+                            <TableCell className="font-medium">{m.fabricante}</TableCell>
+                            <TableCell>{m.modelo}</TableCell>
+                            <TableCell className="text-muted-foreground">
+                              {tipo ? `${tipo.nome} (${tipo.codigo})` : <span className="text-destructive">tipo orfao</span>}
+                            </TableCell>
+                            <TableCell className="text-muted-foreground uppercase text-xs">{m.protocolo}</TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex justify-end gap-1">
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => setModeloModal({ open: true, modelo: m })}
+                                  title="Editar"
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => handleDuplicate(m)}
+                                  title="Duplicar"
+                                >
+                                  <Copy className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => handleDeleteModelo(m)}
+                                  title="Deletar"
+                                >
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+                <PaginationBar
+                  page={paginaModelo}
+                  totalPages={modelosTotalPages}
+                  total={modelosFiltrados.length}
+                  pageSize={PAGE_SIZE}
+                  onPageChange={setModeloPage}
+                />
+            </div>
+          </TabsContent>
+
+          {/* TIPOS */}
+          <TabsContent value="tipos" className="mt-0">
+            <div className="flex flex-col lg:flex-row gap-3 mb-6 lg:items-start">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Buscar por nome ou codigo..."
                   value={tipoSearch}
                   onChange={(e) => setTipoSearch(e.target.value)}
-                  className="pl-8"
+                  className="pl-9"
                 />
               </div>
-
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Codigo</TableHead>
-                    <TableHead>Nome</TableHead>
-                    <TableHead className="text-right">Modelos</TableHead>
-                    <TableHead className="text-right">Acoes</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {tiposQuery.isLoading ? (
-                    <TableRow>
-                      <TableCell colSpan={4} className="text-center text-muted-foreground py-6">
-                        Carregando...
-                      </TableCell>
-                    </TableRow>
-                  ) : tipos.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={4} className="text-center text-muted-foreground py-6">
-                        Nenhum tipo cadastrado
-                      </TableCell>
-                    </TableRow>
-                  ) : tiposFiltrados.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={4} className="text-center text-muted-foreground py-6">
-                        Nenhum tipo corresponde ao filtro
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    tiposPagina.map((t) => {
-                      const count = modelos.filter((m) => m.tipo_id === t.id).length;
-                      return (
-                        <TableRow key={t.id} className="hover:bg-muted/50">
-                          <TableCell className="font-mono text-xs">{t.codigo}</TableCell>
-                          <TableCell>{t.nome}</TableCell>
-                          <TableCell className="text-right text-muted-foreground">{count}</TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex justify-end gap-1">
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => setTipoModal({ open: true, tipo: t })}
-                                title="Editar"
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => handleDeleteTipo(t)}
-                                title="Deletar"
-                              >
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })
-                  )}
-                </TableBody>
-              </Table>
-              <PaginationBar
-                page={paginaTipo}
-                totalPages={tiposTotalPages}
-                total={tiposFiltrados.length}
-                pageSize={PAGE_SIZE}
-                onPageChange={setTipoPage}
-              />
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-
-      {tipoModal.open && (
-        <TipoFormModal
-          tipo={tipoModal.tipo}
-          onClose={() => setTipoModal({ open: false })}
-        />
-      )}
-
-      {modeloModal.open && (
-        <ModeloFormModal
-          modelo={modeloModal.modelo}
-          importData={modeloModal.importData}
-          tipos={tipos}
-          onClose={() => setModeloModal({ open: false })}
-        />
-      )}
-
-      <Dialog open={templateDialog} onOpenChange={setTemplateDialog}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Baixar template — escolha o tipo</DialogTitle>
-          </DialogHeader>
-          <div className="flex flex-col gap-1 py-1 max-h-[60dvh] overflow-y-auto">
-            {tipos.map((t) => (
-              <button
-                key={t.id}
-                onClick={() => baixarTemplate(t)}
-                className="text-left text-sm rounded border border-input px-3 py-2 hover:bg-accent flex items-center gap-2"
-              >
-                <Download className="h-4 w-4 text-muted-foreground shrink-0" />
-                <span>{t.nome}</span>
-                <span className="text-xs text-muted-foreground">({t.codigo})</span>
+              <button className="btn-minimal-primary w-full lg:w-auto whitespace-nowrap" onClick={() => setTipoModal({ open: true, tipo: null })}>
+                <Plus className="mr-2 h-4 w-4" /><span>Novo tipo</span>
               </button>
-            ))}
-            {tipos.length === 0 && <p className="text-xs text-muted-foreground">Nenhum tipo cadastrado.</p>}
-          </div>
-        </DialogContent>
-      </Dialog>
-    </div>
+            </div>
+
+            <div className="border rounded-md bg-card overflow-x-auto">
+                <Table className="table-minimal min-w-full">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Codigo</TableHead>
+                      <TableHead>Nome</TableHead>
+                      <TableHead className="text-right">Modelos</TableHead>
+                      <TableHead className="text-right">Acoes</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {tiposQuery.isLoading ? (
+                      <TableRow>
+                        <TableCell colSpan={4} className="text-center text-muted-foreground py-6">
+                          Carregando...
+                        </TableCell>
+                      </TableRow>
+                    ) : tipos.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={4} className="text-center text-muted-foreground py-6">
+                          Nenhum tipo cadastrado
+                        </TableCell>
+                      </TableRow>
+                    ) : tiposFiltrados.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={4} className="text-center text-muted-foreground py-6">
+                          Nenhum tipo corresponde ao filtro
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      tiposPagina.map((t) => {
+                        const count = modelos.filter((m) => m.tipo_id === t.id).length;
+                        return (
+                          <TableRow key={t.id} className="hover:bg-muted/50">
+                            <TableCell className="font-mono text-xs">{t.codigo}</TableCell>
+                            <TableCell>{t.nome}</TableCell>
+                            <TableCell className="text-right text-muted-foreground">{count}</TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex justify-end gap-1">
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => setTipoModal({ open: true, tipo: t })}
+                                  title="Editar"
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => handleDeleteTipo(t)}
+                                  title="Deletar"
+                                >
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+                <PaginationBar
+                  page={paginaTipo}
+                  totalPages={tiposTotalPages}
+                  total={tiposFiltrados.length}
+                  pageSize={PAGE_SIZE}
+                  onPageChange={setTipoPage}
+                />
+            </div>
+          </TabsContent>
+        </Tabs>
+
+        {tipoModal.open && (
+          <TipoFormModal
+            tipo={tipoModal.tipo}
+            onClose={() => setTipoModal({ open: false })}
+          />
+        )}
+
+        {modeloModal.open && (
+          <ModeloFormModal
+            modelo={modeloModal.modelo}
+            importData={modeloModal.importData}
+            tipos={tipos}
+            onClose={() => setModeloModal({ open: false })}
+          />
+        )}
+
+        <Dialog open={templateDialog} onOpenChange={setTemplateDialog}>
+          <DialogContent className="sm:max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Baixar template — escolha o tipo</DialogTitle>
+            </DialogHeader>
+            <div className="flex flex-col gap-1 py-1 max-h-[60dvh] overflow-y-auto">
+              {tipos.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => baixarTemplate(t)}
+                  className="text-left text-sm rounded border border-input px-3 py-2 hover:bg-accent flex items-center gap-2"
+                >
+                  <Download className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <span>{t.nome}</span>
+                  <span className="text-xs text-muted-foreground">({t.codigo})</span>
+                </button>
+              ))}
+              {tipos.length === 0 && <p className="text-xs text-muted-foreground">Nenhum tipo cadastrado.</p>}
+            </div>
+          </DialogContent>
+        </Dialog>
+      </Layout.Main>
+    </Layout>
   );
 }

@@ -110,7 +110,7 @@ export function InversorNuvemConfig({ fusionUnidades }: { fusionUnidades: Fusion
       {loading && <div className="text-xs text-muted-foreground">Carregando dispositivos…</div>}
 
       {data && data.huawei.length > 0 && (
-        <Table>
+        <Table className="table-minimal min-w-full">
           <TableHeader>
             <TableRow>
               <TableHead>Inversor (Huawei)</TableHead>

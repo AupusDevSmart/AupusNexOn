@@ -1,4 +1,5 @@
-import { Card, CardContent } from '@/components/ui/card';
+import { Layout } from '@/components/common/Layout';
+import { TitleCard } from '@/components/common/title-card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { BoletimSemanalFvPage } from '@/features/monitoramento-fv/BoletimSemanalFvPage';
 import { ConsumoReportPreview } from './consumo/ConsumoReportPreview';
@@ -15,30 +16,30 @@ export function RelatoriosPage() {
   // Aba aberta na URL (?aba=) e lembrada para a próxima visita.
   const [tela, setTela] = useFiltrosNaUrl('relatorios', { aba: 'geracao' });
   return (
-    <div className="p-4 md:p-6">
-      <Card>
-        <CardContent className="p-3 sm:p-4">
-          <Tabs value={tela.aba} onValueChange={(aba) => setTela({ aba })}>
-            <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
-              <h1 className="text-base font-semibold">Relatórios</h1>
+    <Layout>
+      <Layout.Main>
+        <Tabs className="w-full" value={tela.aba} onValueChange={(aba) => setTela({ aba })}>
+          <TitleCard
+            title="Relatórios"
+            actions={
               <TabsList>
                 <TabsTrigger value="geracao">Geração</TabsTrigger>
                 <TabsTrigger value="consumo">Consumo</TabsTrigger>
                 <TabsTrigger value="abastecimento">Abastecimento</TabsTrigger>
               </TabsList>
+            }
+          />
+          <TabsContent value="geracao"><BoletimSemanalFvPage /></TabsContent>
+          <TabsContent value="consumo">
+            <div className="space-y-4">
+              <ConsumoReportPreview />
+              <ConsumoEnvioConfig />
             </div>
-            <TabsContent value="geracao"><BoletimSemanalFvPage /></TabsContent>
-            <TabsContent value="consumo">
-              <div className="space-y-4">
-                <ConsumoReportPreview />
-                <ConsumoEnvioConfig />
-              </div>
-            </TabsContent>
-            <TabsContent value="abastecimento"><AbastecimentoReport /></TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
-    </div>
+          </TabsContent>
+          <TabsContent value="abastecimento"><AbastecimentoReport /></TabsContent>
+        </Tabs>
+      </Layout.Main>
+    </Layout>
   );
 }
 

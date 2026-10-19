@@ -76,7 +76,7 @@ export function UsuariosPage() {
           />
 
           {/* Filtros e Botão de Cadastrar */}
-          <div className="flex flex-col lg:flex-row gap-3 md:gap-4 mb-4 md:mb-6 lg:items-start">
+          <div className="flex flex-col lg:flex-row gap-3 mb-6 lg:items-start">
             <div className="flex-1">
               <UsuariosFilters
                 filters={filters}

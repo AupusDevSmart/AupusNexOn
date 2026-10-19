@@ -55,7 +55,7 @@ export function LogsMqttPage() {
             description="Logs gerados pelas regras de monitoramento MQTT"
           />
 
-          <div className="flex flex-col lg:flex-row gap-3 md:gap-4 mb-4 md:mb-6 lg:items-start">
+          <div className="flex flex-col lg:flex-row gap-3 mb-6 lg:items-start">
             <div className="flex-1">
               <BaseFilters
                 filters={filters}
@@ -66,7 +66,7 @@ export function LogsMqttPage() {
             <button
               onClick={refresh}
               disabled={loading}
-              className="btn-minimal-primary w-full lg:w-auto lg:mt-0 whitespace-nowrap"
+              className="btn-minimal-outline w-full lg:w-auto whitespace-nowrap"
             >
               <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
               <span>Atualizar</span>
@@ -74,7 +74,7 @@ export function LogsMqttPage() {
           </div>
 
           {unidadeFiltrada && (
-            <div className="mb-3 flex items-center gap-2">
+            <div className="mb-4 flex items-center gap-2">
               <span className="inline-flex items-center gap-1.5 rounded-sm border border-border bg-muted px-2 py-1 text-xs text-muted-foreground">
                 Unidade: {unidadeNome ?? 'filtrada'}
                 <button

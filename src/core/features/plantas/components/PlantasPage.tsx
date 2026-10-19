@@ -319,7 +319,7 @@ export function PlantasPage({ mostrarTarifacao = false }: PlantasPageProps = {})
           />
           
           {/* ✅ Filtros e Ações */}
-          <div className="flex flex-col lg:flex-row gap-3 mb-4 lg:items-start">
+          <div className="flex flex-col lg:flex-row gap-3 mb-6 lg:items-start">
             {/* Filtros */}
             <div className="flex-1">
               <BaseFilters
