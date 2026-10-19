@@ -3,6 +3,7 @@ import { env } from '@/config/env';
 import { useUserStore } from '@/store/useUserStore';
 import { AuthService } from '@/services/auth.service';
 import qs from 'qs';
+import { lunaLogout } from '@/features/luna-pedidos/luna-api';
 
 /**
  * Instância configurada do Axios para comunicação com a API
@@ -144,6 +145,8 @@ api.interceptors.response.use(
           const { clearUser } = useUserStore.getState();
           clearUser();
           AuthService.clearTokens();
+          // NEXON-8: sessão do NexON expirada encerra também a do pedido ao Luna.
+          lunaLogout();
 
           const currentPath = window.location.pathname;
           if (currentPath !== '/login') {
