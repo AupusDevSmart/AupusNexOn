@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/config/api";
-import { SinopticoGraficosV2 } from "@/features/supervisorio/components/sinoptico-graficos-v2";
+import { SinopticoGraficosV2, PERCENTUAL_LIMITE_GERACAO } from "@/features/supervisorio/components/sinoptico-graficos-v2";
 
 interface GraficoConfiguravelPanelProps {
   unidadeId: string;
@@ -68,7 +68,7 @@ export function GraficoConfiguravelPanel({ unidadeId }: GraficoConfiguravelPanel
     <SinopticoGraficosV2
       unidadeId={unidadeId}
       valorContratado={valorContratado}
-      percentualAdicional={5}
+      percentualAdicional={PERCENTUAL_LIMITE_GERACAO}
       apenasGrafico={variavel}
       controleVariavel={toggles}
     />

@@ -58,7 +58,7 @@ import { CarregadorModal } from "@/features/carregador-eletrico/CarregadorModal"
 import { isPowerMeter } from "@/features/supervisorio/components/power-meter/helpers";
 import { iotApiService } from "@/services/iot.services";
 import { SinopticoDiagrama } from "@/features/supervisorio/components/sinoptico-diagrama";
-import { SinopticoGraficosV2 } from "@/features/supervisorio/components/sinoptico-graficos-v2";
+import { SinopticoGraficosV2, PERCENTUAL_LIMITE_GERACAO } from "@/features/supervisorio/components/sinoptico-graficos-v2";
 import { TransformadorModal } from "@/features/supervisorio/components/transformador-modal";
 // TEMPORÁRIO: MQTT comentado - implementar depois
 // import { useMqttWebSocket } from "@/hooks/useMqttWebSocket";
@@ -4428,7 +4428,7 @@ if (import.meta.env.PROD) {
                   <SinopticoGraficosV2
                     unidadeId={unidadeId}
                     valorContratado={valorContratadoReal}
-                    percentualAdicional={5}
+                    percentualAdicional={PERCENTUAL_LIMITE_GERACAO}
                     onConfigSaved={reloadUnidade}
                   />
                 </div>
