@@ -32,6 +32,7 @@ import { useNavigate } from "react-router-dom"
 import clsx from "clsx" // Para manipulação condicional de classes
 import { AuthService } from "@/services/auth.service"
 import { toast } from "sonner"
+import { lunaLogout } from "@/features/luna-pedidos/luna-api";
 
 export function NavUser() {
   const { isMobile } = useSidebar()
@@ -68,6 +69,8 @@ export function NavUser() {
   // }, [user, avatarUrl])
 
   const logout = async () => {
+    // NEXON-8: sair do NexON encerra também a sessão do pedido ao Luna.
+    lunaLogout();
     try {
       // Chama o serviço de logout
       await AuthService.logout();
