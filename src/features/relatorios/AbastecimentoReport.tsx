@@ -3,6 +3,7 @@ import { Fuel } from 'lucide-react';
 import { api } from '@/config/api';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { useEstadoLembrado } from '@/hooks/useEstadoLembrado';
 
 const unwrap = (r: any) => r?.data?.data ?? r?.data;
 
@@ -22,7 +23,7 @@ const motivo = (m?: string) => (m ? (MOTIVOS[m] ?? m) : '—');
  */
 export function AbastecimentoReport() {
   const [bombas, setBombas] = useState<Bomba[]>([]);
-  const [unidadeId, setUnidadeId] = useState('');
+  const [unidadeId, setUnidadeId] = useEstadoLembrado('relatorios:abastecimento:unidade', '');
   const [linhas, setLinhas] = useState<any[]>([]);
 
   useEffect(() => { api.get('/bomba-combustivel/bombas').then((r) => setBombas(unwrap(r) ?? [])).catch(() => setBombas([])); }, []);

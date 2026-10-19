@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { useEstadoLembrado } from '@/hooks/useEstadoLembrado';
 
 const unwrap = (r: any) => r?.data?.data?.data ?? r?.data?.data ?? r?.data;
 
@@ -35,7 +36,7 @@ export function ReleEventosPage() {
   const [eventos, setEventos] = useState<Evento[]>([]);
   const [desconhecidos, setDesconhecidos] = useState<CodigoDesconhecido[]>([]);
   const [loading, setLoading] = useState(true);
-  const [device, setDevice] = useState('');
+  const [device, setDevice] = useEstadoLembrado('rele-eventos:device', '');
   const [status, setStatus] = useState<{ tipo: 'ok' | 'erro'; msg: string } | null>(null);
   const [nomeando, setNomeando] = useState<Record<string, string>>({});
   const [auto, setAuto] = useState(true);

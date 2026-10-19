@@ -1,5 +1,6 @@
 import React from 'react';
 import ErrorBoundary from './ErrorBoundary';
+import { useRolagemLembrada } from '@/hooks/useEstadoLembrado';
 
 export function Layout({ children, className = '', asidePosition = 'left' }: { children: React.ReactNode, className?: string, asidePosition?: 'left' | 'right' }) {
   const hasAside = React.Children.toArray(children).some(
@@ -43,9 +44,12 @@ Layout.Aside = function Aside({ children, className = '' }: { children: React.Re
 };
 
 Layout.Main = function Main({ children, className = '', withSidebar = false }: { children: React.ReactNode, className?: string, withSidebar?: boolean }) {
+  const ref = React.useRef<HTMLElement>(null);
+  useRolagemLembrada(ref);
   return (
     <ErrorBoundary>
       <main
+        ref={ref}
         className={`bg-secondary h-full ${withSidebar ? 'w-full lg:w-5/6' : 'w-full'} min-w-0 flex flex-col items-start justify-start overflow-y-auto overflow-x-hidden [&>*]:max-w-full p-3 sm:p-6 gap-4 sm:gap-6 pt-2 lg:pt-2 ${className}`}
       >
         {children}

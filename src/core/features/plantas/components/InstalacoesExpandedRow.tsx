@@ -1,4 +1,5 @@
 // src/features/plantas/components/InstalacoesExpandedRow.tsx
+import { Link } from 'react-router-dom';
 import { Button } from '@/core/components/ui/button';
 import { Eye, Pencil } from 'lucide-react';
 import type { Unidade } from '@/core/features/unidades/types';
@@ -110,13 +111,13 @@ export function InstalacoesExpandedRow({
                   "Novo Equipamento", clicado de dentro deste filtro, nasca com
                   a localizacao inteira preenchida — sem eles so o id da
                   instalacao chegava, e faltava por onde derivar o resto. */}
-              <a
-                href={`/cadastros/equipamentos?unidadeId=${unidade.id?.trim()}&unidadeNome=${encodeURIComponent(unidade.nome)}${plantaId ? `&plantaId=${plantaId}` : ''}${proprietarioId ? `&proprietarioId=${proprietarioId}` : ''}`}
+              <Link
+                to={`/cadastros/equipamentos?unidadeId=${unidade.id?.trim()}&unidadeNome=${encodeURIComponent(unidade.nome)}${plantaId ? `&plantaId=${plantaId}` : ''}${proprietarioId ? `&proprietarioId=${proprietarioId}` : ''}`}
                 className="text-sm text-foreground truncate block hover:underline"
                 title={`Ver equipamentos de ${unidade.nome}`}
               >
                 {unidade.nome}
-              </a>
+              </Link>
             </div>
 
             <div className="hidden md:block w-28 flex-shrink-0 text-xs text-muted-foreground truncate">

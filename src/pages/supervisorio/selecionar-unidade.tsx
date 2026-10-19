@@ -17,12 +17,28 @@ import { useNavigate } from "react-router-dom";
 import { PlantasService, type PlantaResponse } from "@/services/plantas.services";
 import { type Unidade } from "@/services/unidades.services";
 import { api } from "@/config/api";
+import { useFiltrosNaUrl } from "@/hooks/useEstadoLembrado";
 
 export function SelecionarUnidadePage() {
   const navigate = useNavigate();
   const [plantas, setPlantas] = useState<PlantaResponse[]>([]);
   const [unidadesByPlanta, setUnidadesByPlanta] = useState<Record<string, Unidade[]>>({});
-  const [expandedPlantaId, setExpandedPlantaId] = useState<string | null>(null);
+  // Busca e planta aberta ficam na URL (?busca=&planta=) e são lembradas:
+  // ao voltar do sinóptico de uma unidade, a lista está como foi deixada.
+  const [tela, setTela] = useFiltrosNaUrl("sinoptico:unidades", { busca: "", planta: "" });
+  const expandedPlantaId = tela.planta || null;
+  const setExpandedPlantaId = useCallback(
+    (id: string | null) => setTela((t) => ({ ...t, planta: id ?? "" })),
+    [setTela],
+  );
+  const search = tela.busca;
+  const setSearch = useCallback(
+    (busca: string) => setTela((t) => ({ ...t, busca })),
+    [setTela],
+  );
+  // Planta restaurada não pode ser trocada pela auto-expansão da busca
+  // enquanto a pessoa não mexer na busca.
+  const buscaRestauradaRef = useRef<string | null>(tela.planta ? tela.busca : null);
   // Planta que acabou de fechar: as linhas dela ficam montadas o tempo da
   // animação de saída antes de sumir.
   const [fechandoId, setFechandoId] = useState<string | null>(null);
@@ -39,7 +55,6 @@ export function SelecionarUnidadePage() {
     return () => window.clearTimeout(t);
   }, [expandedPlantaId]);
   const [loadingPlantas, setLoadingPlantas] = useState(true);
-  const [search, setSearch] = useState("");
 
   const loadPlantas = useCallback(async () => {
     try {
@@ -74,6 +89,10 @@ export function SelecionarUnidadePage() {
 
   // Auto-expand plantas that match search by unidade name
   useEffect(() => {
+    if (buscaRestauradaRef.current !== null) {
+      if (buscaRestauradaRef.current === search) return;
+      buscaRestauradaRef.current = null;
+    }
     if (!search.trim()) return;
     const s = search.toLowerCase();
     for (const p of plantas) {

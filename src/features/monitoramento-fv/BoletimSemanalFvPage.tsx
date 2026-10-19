@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useEstadoLembrado } from '@/hooks/useEstadoLembrado';
 
 const unwrap = (r: any) => r?.data?.data ?? r?.data;
 
@@ -23,7 +24,7 @@ const DIAS = [
 
 export function BoletimSemanalFvPage() {
   const [unidades, setUnidades] = useState<Unidade[]>([]);
-  const [unidadeId, setUnidadeId] = useState('');
+  const [unidadeId, setUnidadeId] = useEstadoLembrado('relatorios:boletim-fv:unidade', '');
   const [data, setData] = useState('');
   const [carregando, setCarregando] = useState<'pdf' | 'html' | null>(null);
   const [erro, setErro] = useState<string | null>(null);

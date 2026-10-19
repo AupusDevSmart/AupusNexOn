@@ -36,6 +36,7 @@ import type {
 import { formatApiError } from '@/utils/api-error';
 import { TipoFormModal } from './TipoFormModal';
 import { ModeloFormModal } from './ModeloFormModal';
+import { useEstadoLembrado } from '@/hooks/useEstadoLembrado';
 
 type TipoModalState = { open: false } | { open: true; tipo: IotDeviceTipo | null };
 type ModeloModalState =
@@ -135,13 +136,15 @@ export function IotCatalogPage() {
   };
 
   // Filtros
-  const [modeloSearch, setModeloSearch] = useState('');
-  const [modeloTipoFilter, setModeloTipoFilter] = useState<string>('all');
-  const [tipoSearch, setTipoSearch] = useState('');
+  // Busca, filtro, página e aba lembrados para a próxima visita.
+  const [modeloSearch, setModeloSearch] = useEstadoLembrado('iot:modelos:busca', '');
+  const [modeloTipoFilter, setModeloTipoFilter] = useEstadoLembrado<string>('iot:modelos:tipo', 'all');
+  const [tipoSearch, setTipoSearch] = useEstadoLembrado('iot:tipos:busca', '');
 
   // Paginação
-  const [modeloPage, setModeloPage] = useState(1);
-  const [tipoPage, setTipoPage] = useState(1);
+  const [modeloPage, setModeloPage] = useEstadoLembrado('iot:modelos:pagina', 1);
+  const [tipoPage, setTipoPage] = useEstadoLembrado('iot:tipos:pagina', 1);
+  const [aba, setAba] = useEstadoLembrado('iot:aba', 'modelos');
 
   const tipos = tiposQuery.data ?? [];
   const modelos = modelosQuery.data ?? [];
@@ -171,23 +174,34 @@ export function IotCatalogPage() {
     );
   }, [tipos, tipoSearch]);
 
-  // Resetar para página 1 quando filtros mudam ou lista encolhe
+  // Resetar para página 1 quando filtros mudam ou lista encolhe. Pula o
+  // mount: a página lembrada da última visita tem que sobreviver.
+  const filtroModeloRef = useRef(`${modeloSearch}|${modeloTipoFilter}`);
   useEffect(() => {
+    const atual = `${modeloSearch}|${modeloTipoFilter}`;
+    if (filtroModeloRef.current === atual) return;
+    filtroModeloRef.current = atual;
     setModeloPage(1);
-  }, [modeloSearch, modeloTipoFilter]);
+  }, [modeloSearch, modeloTipoFilter, setModeloPage]);
+  const filtroTipoRef = useRef(tipoSearch);
   useEffect(() => {
+    if (filtroTipoRef.current === tipoSearch) return;
+    filtroTipoRef.current = tipoSearch;
     setTipoPage(1);
-  }, [tipoSearch]);
+  }, [tipoSearch, setTipoPage]);
 
   const modelosTotalPages = Math.max(1, Math.ceil(modelosFiltrados.length / PAGE_SIZE));
   const tiposTotalPages = Math.max(1, Math.ceil(tiposFiltrados.length / PAGE_SIZE));
+  // A página lembrada pode passar do fim se a lista encolheu desde a última visita.
+  const paginaModelo = Math.min(modeloPage, modelosTotalPages);
+  const paginaTipo = Math.min(tipoPage, tiposTotalPages);
   const modelosPagina = modelosFiltrados.slice(
-    (modeloPage - 1) * PAGE_SIZE,
-    modeloPage * PAGE_SIZE,
+    (paginaModelo - 1) * PAGE_SIZE,
+    paginaModelo * PAGE_SIZE,
   );
   const tiposPagina = tiposFiltrados.slice(
-    (tipoPage - 1) * PAGE_SIZE,
-    tipoPage * PAGE_SIZE,
+    (paginaTipo - 1) * PAGE_SIZE,
+    paginaTipo * PAGE_SIZE,
   );
 
   const handleDeleteTipo = async (t: IotDeviceTipo) => {
@@ -234,7 +248,7 @@ export function IotCatalogPage() {
         </p>
       </div>
 
-      <Tabs defaultValue="modelos" className="w-full">
+      <Tabs value={aba} onValueChange={setAba} className="w-full">
         <TabsList className="gap-2 rounded-sm bg-transparent p-0">
           <TabsTrigger
             value="modelos"
@@ -379,7 +393,7 @@ export function IotCatalogPage() {
                 </TableBody>
               </Table>
               <PaginationBar
-                page={modeloPage}
+                page={paginaModelo}
                 totalPages={modelosTotalPages}
                 total={modelosFiltrados.length}
                 pageSize={PAGE_SIZE}
@@ -475,7 +489,7 @@ export function IotCatalogPage() {
                 </TableBody>
               </Table>
               <PaginationBar
-                page={tipoPage}
+                page={paginaTipo}
                 totalPages={tiposTotalPages}
                 total={tiposFiltrados.length}
                 pageSize={PAGE_SIZE}

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
+import { useFiltrosNaUrl } from '@/hooks/useEstadoLembrado';
 import { LogsMqttService } from '@/services/logs-mqtt.services';
 import { LogMqtt, LogsMqttFilters } from '../types';
 
@@ -22,7 +23,8 @@ export function useLogsMqtt() {
   const [logs, setLogs] = useState<LogMqtt[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState<LogsMqttFilters>({ ...initialFilters, ...filtrosIniciais });
+  // Filtros na URL e lembrados; o pré-filtro da navegação vence os dois.
+  const [filters, setFilters] = useFiltrosNaUrl('logs:mqtt', initialFilters, { sobrepor: filtrosIniciais });
 
   const fetchLogs = useCallback(async (currentFilters = filters) => {
     try {

@@ -12,6 +12,7 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
+import { useEstadoLembrado } from '@/hooks/useEstadoLembrado';
 
 interface Unidade { unidade_id: string; nome: string; provedor: string | null; predicao: number | null }
 interface Linha { unidade_id: string; nome: string; data: string; kwh_realizado: number; kwh_previsto: number; origem: string }
@@ -39,7 +40,7 @@ const badgeOrigem: Record<string, string> = {
 export function GeracaoFvPage() {
   const [unidades, setUnidades] = useState<Unidade[]>([]);
   const [linhas, setLinhas] = useState<Linha[]>([]);
-  const [filtroUnidade, setFiltroUnidade] = useState<string>('todas');
+  const [filtroUnidade, setFiltroUnidade] = useEstadoLembrado<string>('monitoramento-fv:ajuste:unidade', 'todas');
   const [de, setDe] = useState(diasAtras(30));
   const [ate, setAte] = useState(hoje());
   const [loading, setLoading] = useState(false);

@@ -4,6 +4,7 @@ import {
   AuthResponseDto,
   RefreshTokenResponseDto,
 } from '@/types/dtos/auth-dto';
+import { esquecerEstadosDeTela } from '@/hooks/useEstadoLembrado';
 import { UsuarioDTO } from '@/types/dtos/usuarios-dto';
 
 /**
@@ -110,6 +111,8 @@ export const AuthService = {
     } finally {
       // Sempre limpa os tokens localmente
       this.clearTokens();
+      // Filtros e telas lembradas são da pessoa que saiu
+      esquecerEstadosDeTela();
     }
   },
 
