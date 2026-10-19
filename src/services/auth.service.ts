@@ -4,7 +4,7 @@ import {
   AuthResponseDto,
   RefreshTokenResponseDto,
 } from '@/types/dtos/auth-dto';
-import { esquecerEstadosDeTela } from '@/hooks/useEstadoLembrado';
+import { definirDonoDosEstados, esquecerEstadosDeTela } from '@/hooks/useEstadoLembrado';
 import { UsuarioDTO } from '@/types/dtos/usuarios-dto';
 
 /**
@@ -36,6 +36,7 @@ export const AuthService = {
 
       // Salva tokens no localStorage
       this.setTokens(authData.access_token, authData.refresh_token);
+      definirDonoDosEstados(authData.user?.id);
 
       return authData;
     } catch (error: any) {

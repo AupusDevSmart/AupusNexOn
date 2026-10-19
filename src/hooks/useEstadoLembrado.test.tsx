@@ -2,7 +2,7 @@ import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { esquecerEstadosDeTela, useEstadoLembrado, useFiltrosNaUrl } from './useEstadoLembrado';
+import { definirDonoDosEstados, esquecerEstadosDeTela, useEstadoLembrado, useFiltrosNaUrl } from './useEstadoLembrado';
 
 // O Node 22+ expõe um localStorage global vazio que esconde o do happy-dom.
 function armazenamento(): Storage {
@@ -70,5 +70,16 @@ describe('useFiltrosNaUrl', () => {
     esquecerEstadosDeTela();
     const volta = renderHook(() => useEstadoLembrado('aberta', null as string | null));
     expect(volta.result.current[0]).toBeNull();
+  });
+
+  it('login de outra pessoa esquece o estado da anterior', () => {
+    definirDonoDosEstados('u1');
+    const { result, unmount } = renderHook(() => useEstadoLembrado('aberta', null as string | null));
+    act(() => result.current[1]('p9'));
+    unmount();
+    definirDonoDosEstados('u1');
+    expect(renderHook(() => useEstadoLembrado('aberta', null as string | null)).result.current[0]).toBe('p9');
+    definirDonoDosEstados('u2');
+    expect(renderHook(() => useEstadoLembrado('aberta', null as string | null)).result.current[0]).toBeNull();
   });
 });

@@ -32,6 +32,24 @@ function gravar(chave: string, valor: unknown) {
   }
 }
 
+/**
+ * Amarra o que as telas lembram a quem entrou: se outra pessoa faz login no
+ * mesmo navegador (sessão expirada, sem logout), o estado anterior some.
+ */
+export function definirDonoDosEstados(usuarioId: string | undefined | null) {
+  if (!usuarioId) return;
+  const chave = `${PREFIXO}dono`;
+  try {
+    const anterior = window.localStorage.getItem(chave);
+    if (anterior !== usuarioId) {
+      esquecerEstadosDeTela();
+      window.localStorage.setItem(chave, usuarioId);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
 /** Limpa tudo que as telas lembraram (usado no logout). */
 export function esquecerEstadosDeTela() {
   try {
