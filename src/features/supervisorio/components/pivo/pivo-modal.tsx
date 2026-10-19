@@ -32,7 +32,7 @@ import {
   Wind,
   RotateCw,
 } from "lucide-react";
-import { Gauge as GaugeArco } from "@/components/charts/gauge";
+import { Velocimetro } from "@/components/graficos/velocimetro";
 import { useState, useEffect } from "react";
 import { ProgramacaoPivoModal, ProgramacaoPivo } from "./programacao-pivo-modal";
 
@@ -89,15 +89,7 @@ function GaugeDisplay({ value, max, label, unit, icon: Icon }: {
   return (
     <div className="flex flex-col items-center justify-center p-4">
       <div className="w-32 h-32">
-        <GaugeArco
-          width={128}
-          height={128}
-          value={percentage}
-          centerValue={value}
-          defaultLabel={unit}
-          totalNotches={32}
-          formatOptions={{ maximumFractionDigits: 1 }}
-        />
+        <Velocimetro size={128} value={percentage} totalNotches={32} valor={value} unidade={unit} casas={1} />
       </div>
       <p className="text-sm font-medium mt-2 text-center flex items-center gap-1.5">
         <Icon className="h-4 w-4 text-muted-foreground" />

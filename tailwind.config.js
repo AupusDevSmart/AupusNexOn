@@ -1,4 +1,6 @@
 import tailwindcssAnimate from 'tailwindcss-animate';
+// Container queries (@container, cqw) que o bklit usa para escalar o número do centro dos gráficos.
+import containerQueries from '@tailwindcss/container-queries';
 
 const config = {
 	darkMode: ['class'],
@@ -263,7 +265,7 @@ const config = {
 			}
 		}
 	},
-	plugins: [tailwindcssAnimate],
+	plugins: [tailwindcssAnimate, containerQueries],
 };
 
 export default config;

@@ -55,14 +55,14 @@ export function GaugeLabelShell({
         label={defaultLabel}
         labelClassName={cn(
           chartCenterLabelClassName,
-          "text-[length:var(--chart-foreground-muted)]"
+          "text-[color:var(--chart-foreground-muted)]"
         )}
         prefix={prefix}
         suffix={suffix}
         value={centerValue}
         valueClassName={cn(
           chartCenterValueClassName,
-          "text-[length:var(--chart-foreground)]"
+          "text-[color:var(--chart-foreground)]"
         )}
       />
     </div>

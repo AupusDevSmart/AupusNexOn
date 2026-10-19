@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Gauge } from "@/components/charts/gauge";
+import { Velocimetro } from "@/components/graficos/velocimetro";
 import { COR } from "@/components/graficos/cores";
 import { ConfiguracaoDemandaModal } from "@/features/supervisorio/components/ConfiguracaoDemandaModal";
 import { PanelCard } from "./PanelCard";
@@ -49,23 +49,15 @@ function GaugeDemanda({
         {rotulo}
       </span>
 
-      <div className="relative" style={{ width: 100, height: 100 }}>
-        <Gauge
-          width={100}
-          height={100}
-          value={p}
-          totalNotches={32}
-          activeFill={acimaDaContratada ? COR.consumo : cor}
-          {...(valor != null
-            ? { centerValue: valor, defaultLabel: pct != null ? `${Math.round(pct)}% · kW` : "kW" }
-            : {})}
-        />
-        {valor == null && (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm font-semibold text-muted-foreground">
-            --
-          </div>
-        )}
-      </div>
+      <Velocimetro
+        size={100}
+        value={p}
+        totalNotches={32}
+        activeFill={acimaDaContratada ? COR.consumo : cor}
+        valor={valor}
+        unidade="kW"
+        rotulo={valor != null && pct != null ? `${Math.round(pct)}%` : undefined}
+      />
 
       <span className="text-center text-[10px] leading-tight text-muted-foreground opacity-70">
         {contratada ? `de ${contratada} kW contratada` : "contratada —"}
