@@ -60,7 +60,7 @@ export function DemoMqttPage() {
       <div className="space-y-6">
         <TitleCard
           title="🔌 Demonstração MQTT WebSocket"
-          subtitle="Clique em cada equipamento para ver os dados MQTT em tempo real"
+          description="Clique em cada equipamento para ver os dados MQTT em tempo real"
         />
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

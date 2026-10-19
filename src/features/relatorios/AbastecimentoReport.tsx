@@ -73,7 +73,7 @@ export function AbastecimentoReport() {
   const Agregado = ({ titulo, dados, col }: { titulo: string; dados: typeof porMaquina; col: string }) => (
     <div>
       <div className="mb-1 flex items-center gap-2 text-sm font-medium"><Fuel className="h-4 w-4" />{titulo}</div>
-      <Table>
+      <Table className="table-minimal min-w-full">
         <TableHeader><TableRow><TableHead>{col}</TableHead><TableHead>Abastecimentos</TableHead><TableHead>Litros</TableHead></TableRow></TableHeader>
         <TableBody>
           {dados.map((x) => (
@@ -109,7 +109,7 @@ export function AbastecimentoReport() {
 
       <div>
         <div className="mb-1 text-sm font-medium">Transações</div>
-        <Table>
+        <Table className="table-minimal min-w-full">
           <TableHeader><TableRow><TableHead>Início</TableHead><TableHead>Fim</TableHead><TableHead>Bomba</TableHead><TableHead>Máquina</TableHead><TableHead>Operador</TableHead><TableHead>Litros</TableHead><TableHead>Nível</TableHead><TableHead>Encerrado por</TableHead><TableHead>Validação</TableHead></TableRow></TableHeader>
           <TableBody>
             {linhasUnidade.map((a) => (

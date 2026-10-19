@@ -3,6 +3,7 @@
 
 import React, { useMemo } from "react";
 import { Layout } from "@/components/common/Layout";
+import { TitleCard } from "@/components/common/title-card";
 import { formatEnergy } from "@/utils/formatEnergy";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -180,14 +181,12 @@ export function DashboardPage() {
       <Layout>
         <Layout.Main>
           <div className="min-h-screen w-full">
-            <div className="flex flex-col gap-3 p-2">
-              {/* Título */}
-              <div className="w-full">
-                <h1 className="text-2xl font-bold text-foreground">
-                  Centro de Operação de Ativos (COA)
-                </h1>
-                <p className="text-muted-foreground mt-1">Carregando dados...</p>
-              </div>
+            <div className="flex flex-col gap-4">
+              <TitleCard
+                className="!mb-2"
+                title="Centro de Operação de Ativos (COA)"
+                description="Carregando dados..."
+              />
 
               {/* Skeletons para os cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
@@ -221,12 +220,8 @@ export function DashboardPage() {
       <Layout>
         <Layout.Main>
           <div className="min-h-screen w-full">
-            <div className="flex flex-col gap-3 p-2">
-              <div className="w-full">
-                <h1 className="text-2xl font-bold text-foreground">
-                  Centro de Operação de Ativos (COA)
-                </h1>
-              </div>
+            <div className="flex flex-col gap-4">
+              <TitleCard className="!mb-2" title="Centro de Operação de Ativos (COA)" />
 
               <Alert variant="destructive">
                 <AlertTriangle className="h-4 w-4" />
@@ -251,51 +246,22 @@ export function DashboardPage() {
       <Layout.Main>
         <div className="w-full min-w-0">
           <div className="min-w-0">
-            <div className="flex flex-col gap-3 p-2">
-              {/* Header com Status */}
-              <div className="w-full">
-                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                  <div>
-                    <h1 className="text-2xl font-bold text-foreground">
-                      Centro de Operação de Ativos (COA)
-                    </h1>
-                    {/* COMENTADO: Status de conexão e última atualização */}
-                    {/* <div className="flex items-center gap-4 mt-2">
-                      <div className="flex items-center gap-2">
-                        <div className={`h-2 w-2 rounded-full ${isStale ? 'bg-yellow-500' : 'bg-green-500'} animate-pulse`} />
-                        <span className="text-sm text-muted-foreground">
-                          {isStale ? 'Dados desatualizados' : 'Dados em tempo real'}
-                        </span>
-                      </div>
-
-                      {lastUpdate && (
-                        <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                          <Clock className="h-3 w-3" />
-                          <span>
-                            Atualizado {formatDistanceToNow(lastUpdate, {
-                              addSuffix: true,
-                              locale: ptBR
-                            })}
-                          </span>
-                        </div>
-                      )}
-                    </div> */}
-                  </div>
-
-                  {/* Botões de Ação */}
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => refresh()}
-                      disabled={isLoading}
-                    >
-                      <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-                      Atualizar
-                    </Button>
-                  </div>
-                </div>
-              </div>
+            <div className="flex flex-col gap-4">
+              <TitleCard
+                className="!mb-2"
+                title="Centro de Operação de Ativos (COA)"
+                actions={
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => refresh()}
+                    disabled={isLoading}
+                  >
+                    <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+                    Atualizar
+                  </Button>
+                }
+              />
 
               {/* Cards de Indicadores Principais */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">

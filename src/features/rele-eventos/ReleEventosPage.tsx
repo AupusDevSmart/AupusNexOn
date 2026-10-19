@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { RefreshCw, AlertTriangle, Clock, Zap, CheckCircle2, AlertCircle, Plus } from 'lucide-react';
+import { RefreshCw, AlertTriangle, Clock, CheckCircle2, AlertCircle, Plus, Search } from 'lucide-react';
 import { api } from '@/config/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent } from '@/components/ui/card';
+import { Layout } from '@/components/common/Layout';
+import { TitleCard } from '@/components/common/title-card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useEstadoLembrado } from '@/hooks/useEstadoLembrado';
 
@@ -85,38 +86,41 @@ export function ReleEventosPage() {
   };
 
   return (
-    <div className="p-4 md:p-6">
-      <Card>
-        <CardContent className="p-3 sm:p-4 space-y-4">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div>
-              <h1 className="text-base font-semibold flex items-center gap-2">
-                <Zap className="h-4 w-4 text-amber-500" /> Eventos de Proteção (SOE)
-              </h1>
-              <p className="text-xs text-muted-foreground">
-                Hora carimbada pelo <b>próprio relé</b> (ms). Ordenado pela hora da fonte, não a de chegada.
-              </p>
+    <Layout>
+      <Layout.Main>
+        <div className="flex flex-col w-full">
+          <TitleCard
+            title="Eventos de Proteção (SOE)"
+            description="Hora carimbada pelo próprio relé (ms). Ordenado pela hora da fonte, não a de chegada."
+          />
+
+          <div className="flex flex-col lg:flex-row gap-3 mb-6 lg:items-start">
+            <div className="relative flex-1 lg:max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input value={device} onChange={(e) => setDevice(e.target.value)} placeholder="Filtrar por relé…" className="pl-9" />
             </div>
-            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-              <Input value={device} onChange={(e) => setDevice(e.target.value)} placeholder="Filtrar por relé…" className="h-8 w-full sm:w-[180px]" />
-              <Button size="sm" variant={auto ? 'default' : 'outline'} className="h-8" onClick={() => setAuto((a) => !a)}>
+            <div className="flex flex-row gap-2 w-full lg:w-auto lg:ml-auto">
+              <button
+                className={`${auto ? 'btn-minimal-primary' : 'btn-minimal-outline'} flex-1 lg:flex-none whitespace-nowrap`}
+                onClick={() => setAuto((a) => !a)}
+              >
                 {auto ? 'Auto 10s' : 'Auto off'}
-              </Button>
-              <Button size="sm" variant="outline" className="h-8" onClick={() => void carregar()}>
-                <RefreshCw className="h-3.5 w-3.5 mr-1" />Atualizar
-              </Button>
+              </button>
+              <button className="btn-minimal-outline flex-1 lg:flex-none whitespace-nowrap" onClick={() => void carregar()}>
+                <RefreshCw className="h-4 w-4 mr-2" />Atualizar
+              </button>
             </div>
           </div>
 
           {status && (
-            <div className={`flex items-start gap-2 rounded-md border p-2 text-sm ${status.tipo === 'ok' ? 'border-emerald-500/40 text-emerald-600 dark:text-emerald-400' : 'border-red-500/40 text-red-600 dark:text-red-400'}`}>
+            <div className={`mb-4 flex items-start gap-2 rounded-md border p-2 text-sm ${status.tipo === 'ok' ? 'border-emerald-500/40 text-emerald-600 dark:text-emerald-400' : 'border-red-500/40 text-red-600 dark:text-red-400'}`}>
               {status.tipo === 'ok' ? <CheckCircle2 className="h-4 w-4 mt-0.5" /> : <AlertCircle className="h-4 w-4 mt-0.5" />}<span>{status.msg}</span>
             </div>
           )}
 
           {/* Fila de curadoria: códigos vistos em campo sem tradução */}
           {desconhecidos.length > 0 && (
-            <div className="rounded-md border border-amber-500/40 p-3 space-y-2">
+            <div className="mb-4 rounded-md border border-amber-500/40 bg-card p-3 space-y-2">
               <p className="text-xs text-amber-600 dark:text-amber-500 flex items-center gap-1.5">
                 <AlertTriangle className="h-3.5 w-3.5" />
                 <span><b>{desconhecidos.length} código(s) sem tradução.</b> Nomeie e o histórico é reprocessado — nada se perde.</span>
@@ -145,7 +149,8 @@ export function ReleEventosPage() {
           {loading ? (
             <p className="text-sm text-muted-foreground">Carregando…</p>
           ) : (
-            <Table>
+            <div className="border rounded-md bg-card overflow-x-auto">
+            <Table className="table-minimal min-w-full">
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[150px]">Hora (relé)</TableHead>
@@ -200,10 +205,11 @@ export function ReleEventosPage() {
                 ))}
               </TableBody>
             </Table>
+            </div>
           )}
-        </CardContent>
-      </Card>
-    </div>
+        </div>
+      </Layout.Main>
+    </Layout>
   );
 }
 

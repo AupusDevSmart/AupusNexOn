@@ -184,7 +184,7 @@ export function ControleSyncFvPage() {
       </div>
 
       <Card><CardContent className="p-0 overflow-x-auto">
-        <Table>
+        <Table className="table-minimal min-w-full">
           <TableHeader><TableRow>
             <TableHead>Usina</TableHead><TableHead>Provedor</TableHead><TableHead>ID planta</TableHead>
             <TableHead>Periodicidade</TableHead><TableHead className="text-right">req/h</TableHead>

@@ -6,12 +6,13 @@ export function Settings() {
   return (
     <Layout>
       <Layout.Main>
-        <TitleCard
-          title={'Perfil'}
-          description={'Gerencie seu perfil e suas informações pessoais.'}
-          hiddenSelect
-        />
-        <AccountForm />
+        <div className="flex flex-col w-full">
+          <TitleCard
+            title={'Perfil'}
+            description={'Gerencie seu perfil e suas informações pessoais.'}
+          />
+          <AccountForm />
+        </div>
       </Layout.Main>
     </Layout>
   )

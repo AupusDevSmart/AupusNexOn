@@ -65,7 +65,7 @@ export function RegrasLogsPage() {
             description="Gerencie as regras de monitoramento MQTT"
           />
 
-          <div className="flex flex-col lg:flex-row gap-3 md:gap-4 mb-4 md:mb-6 lg:items-start">
+          <div className="flex flex-col lg:flex-row gap-3 mb-6 lg:items-start">
             <div className="flex-1">
               <BaseFilters
                 filters={filters}
@@ -76,7 +76,7 @@ export function RegrasLogsPage() {
             {selecionadas.length > 0 && (
               <button
                 onClick={() => setParaExcluir(selecionadas)}
-                className="w-full lg:w-auto inline-flex items-center justify-center rounded-md border border-destructive/50 px-4 py-2 text-sm font-medium text-destructive hover:bg-destructive/10 whitespace-nowrap"
+                className="btn-minimal-outline w-full lg:w-auto whitespace-nowrap text-destructive border-destructive/50 hover:bg-destructive/10"
               >
                 <Trash2 className="mr-2 h-4 w-4" />
                 <span>Excluir selecionadas ({selecionadas.length})</span>

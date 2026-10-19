@@ -211,7 +211,7 @@ export function EnvioFvPage() {
             Cada usina envia só para os números listados. <b>Usina sem número não recebe.</b> Pode adicionar
             mais de um por usina. Só aparecem as usinas cadastradas no sync — o que não está em nenhuma API não tem geração pra enviar.
           </p>
-          <Table>
+          <Table className="table-minimal min-w-full">
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[240px]">Usina</TableHead>

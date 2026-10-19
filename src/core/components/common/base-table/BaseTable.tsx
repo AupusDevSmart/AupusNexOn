@@ -10,6 +10,7 @@ import {
   TableRow 
 } from '@/core/components/ui/table';
 import { Button } from '@/core/components/ui/button';
+import { Checkbox } from '@/core/components/ui/checkbox';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,6 +20,7 @@ import {
 import {
   Eye,
   Edit3,
+  Trash2,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
@@ -68,6 +70,9 @@ interface BaseTableProps<T extends BaseEntity> {
   expandedRowId?: string | number | null;
   onRowToggle?: (entity: T) => void;
   isRowExpandable?: (entity: T) => boolean;
+  /** Seleção múltipla (checkbox por linha + "todos da página"). Só aparece se informado. */
+  selectedIds?: string[];
+  onSelectionChange?: (ids: string[]) => void;
 }
 
 export function BaseTable<T extends BaseEntity>({
@@ -85,8 +90,26 @@ export function BaseTable<T extends BaseEntity>({
   renderExpandedRow,
   expandedRowId = null,
   onRowToggle,
-  isRowExpandable
+  isRowExpandable,
+  selectedIds,
+  onSelectionChange,
 }: BaseTableProps<T>) {
+  const selecionavel = !!onSelectionChange;
+  const selecionados = new Set((selectedIds ?? []).map((id) => String(id)));
+  const idsPagina = data.map((e) => String(e.id));
+  const todosPagina = idsPagina.length > 0 && idsPagina.every((id) => selecionados.has(id));
+  const algunsPagina = idsPagina.some((id) => selecionados.has(id));
+  const alternarTodos = () => {
+    const proximo = new Set(selecionados);
+    if (todosPagina) idsPagina.forEach((id) => proximo.delete(id));
+    else idsPagina.forEach((id) => proximo.add(id));
+    onSelectionChange?.([...proximo]);
+  };
+  const alternar = (id: string) => {
+    const proximo = new Set(selecionados);
+    if (proximo.has(id)) proximo.delete(id); else proximo.add(id);
+    onSelectionChange?.([...proximo]);
+  };
   const hasDefaultActions = onView || onEdit || onDelete;
   const hasCustomActions = customActions.length > 0;
   const hasActions = hasDefaultActions || hasCustomActions;
@@ -107,7 +130,8 @@ export function BaseTable<T extends BaseEntity>({
     normalizeId(entity.id) === normalizeId(expandedRowId);
 
   // Total de colunas renderizadas, usado no colSpan da linha expandida e do vazio.
-  const totalColumns = columns.length + (isExpandableTable ? 1 : 0) + (hasActions ? 1 : 0);
+  const totalColumns =
+    columns.length + (selecionavel ? 1 : 0) + (isExpandableTable ? 1 : 0) + (hasActions ? 1 : 0);
 
   // NOVA: Função para executar ação customizada
   const handleCustomAction = (actionKey: string, entity: T) => {
@@ -173,6 +197,16 @@ export function BaseTable<T extends BaseEntity>({
         titulo: action.label,
         icone: renderarIcone(action.icon),
         executar: () => (action.handler || action.onClick)?.(entity),
+      });
+    }
+
+    // Excluir fica por último: é a ação menos comum e a que mais custa errar.
+    if (onDelete) {
+      todas.push({
+        chave: '__delete',
+        titulo: 'Excluir',
+        icone: <Trash2 className="h-4 w-4 text-destructive" />,
+        executar: () => onDelete(entity),
       });
     }
 
@@ -253,9 +287,10 @@ export function BaseTable<T extends BaseEntity>({
         </div>
 
         <div className="hidden flex-1 overflow-auto sm:block">
-          <Table>
+          <Table className="table-minimal min-w-full">
             <TableHeader>
               <TableRow>
+                {selecionavel && <TableHead className="w-10" />}
                 {isExpandableTable && <TableHead className="w-10" />}
                 {columns.map((column, index) => (
                   <TableHead key={index} className={column.className}>
@@ -268,6 +303,11 @@ export function BaseTable<T extends BaseEntity>({
             <TableBody>
               {Array.from({ length: 5 }).map((_, index) => (
                 <TableRow key={index}>
+                  {selecionavel && (
+                    <TableCell>
+                      <Skeleton className="h-4 w-4" />
+                    </TableCell>
+                  )}
                   {isExpandableTable && (
                     <TableCell>
                       <Skeleton className="h-4 w-4" />
@@ -352,6 +392,15 @@ export function BaseTable<T extends BaseEntity>({
                     onClick={expandable ? () => onRowToggle?.(entity) : undefined}
                   >
                     <div className="flex items-start gap-2">
+                      {selecionavel && (
+                        <span onClick={(event) => event.stopPropagation()}>
+                          <Checkbox
+                            checked={selecionados.has(String(entity.id))}
+                            onCheckedChange={() => alternar(String(entity.id))}
+                            aria-label="Selecionar linha"
+                          />
+                        </span>
+                      )}
                       {expandable && (
                         <ChevronDown
                           className={`mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform ${
@@ -406,6 +455,15 @@ export function BaseTable<T extends BaseEntity>({
         <Table className="table-minimal min-w-full">
           <TableHeader>
             <TableRow>
+              {selecionavel && (
+                <TableHead className="w-10">
+                  <Checkbox
+                    checked={todosPagina ? true : algunsPagina ? 'indeterminate' : false}
+                    onCheckedChange={alternarTodos}
+                    aria-label="Selecionar todos desta página"
+                  />
+                </TableHead>
+              )}
               {isExpandableTable && <TableHead className="w-10" />}
               {columns.map((column, index) => (
                 <TableHead
@@ -442,7 +500,17 @@ export function BaseTable<T extends BaseEntity>({
                     expanded ? 'bg-muted/30' : ''
                   }`}
                   onClick={expandable ? () => onRowToggle?.(entity) : undefined}
+                  data-state={selecionados.has(String(entity.id)) ? 'selected' : undefined}
                 >
+                  {selecionavel && (
+                    <TableCell className="w-10" onClick={(event) => event.stopPropagation()}>
+                      <Checkbox
+                        checked={selecionados.has(String(entity.id))}
+                        onCheckedChange={() => alternar(String(entity.id))}
+                        aria-label="Selecionar linha"
+                      />
+                    </TableCell>
+                  )}
                   {isExpandableTable && (
                     <TableCell className="w-10 align-middle">
                       {expandable && (

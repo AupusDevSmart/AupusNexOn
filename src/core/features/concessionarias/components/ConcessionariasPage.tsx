@@ -311,49 +311,35 @@ export function ConcessionariasPage() {
           />
 
           {/* Filtros e Ações */}
-          <div className="flex flex-col gap-3 mb-4">
-            {/* Linha 1: Busca por Nome */}
+          <div className="flex flex-col lg:flex-row gap-3 mb-6 lg:items-start">
             <div className="flex-1">
               <BaseFilters
                 filters={filters}
-                config={[filterConfig[0]]} // Campo de busca
+                config={filterConfig}
                 onFilterChange={handleFilterChange}
               />
             </div>
 
-            {/* Linha 2: Select de Estado + Botões */}
-            <div className="flex flex-col sm:flex-row sm:gap-1.5 gap-2 w-full items-start sm:items-center">
-              {/* Select de Estado */}
-              <div className="w-full sm:w-[250px]">
-                <BaseFilters
-                  filters={filters}
-                  config={[filterConfig[1]]} // Select de estados
-                  onFilterChange={handleFilterChange}
-                />
-              </div>
+            <div className="flex flex-row gap-2 w-full lg:w-auto">
+              <button
+                onClick={handleRefresh}
+                disabled={loading}
+                className="btn-minimal-outline flex-1 lg:flex-none whitespace-nowrap"
+              >
+                <RefreshCw className={`h-4 w-4 lg:mr-2 ${loading ? 'animate-spin' : ''}`} />
+                <span className="hidden lg:inline">Atualizar</span>
+              </button>
 
-              {/* Botões de Ação */}
-              <div className="flex flex-row gap-2 w-full sm:w-auto sm:ml-auto">
+              {isAdmin() && (
                 <button
-                  onClick={handleRefresh}
-                  disabled={loading}
-                  className="btn-minimal-outline flex-1 sm:flex-none"
+                  onClick={() => openModal('create')}
+                  disabled={isSubmitting}
+                  className="btn-minimal-primary flex-1 lg:flex-none whitespace-nowrap"
                 >
-                  <RefreshCw className={`h-4 w-4 sm:mr-2 ${loading ? 'animate-spin' : ''}`} />
-                  <span className="hidden sm:inline">Atualizar</span>
+                  <Plus className="h-4 w-4 lg:mr-2" />
+                  <span className="hidden lg:inline">Nova Concessionária</span>
                 </button>
-
-                {isAdmin() && (
-                  <button
-                    onClick={() => openModal('create')}
-                    disabled={isSubmitting}
-                    className="btn-minimal-primary flex-1 sm:flex-none"
-                  >
-                    <Plus className="h-4 w-4 sm:mr-2" />
-                    <span className="hidden sm:inline">Nova Concessionária</span>
-                  </button>
-                )}
-              </div>
+              )}
             </div>
           </div>
 

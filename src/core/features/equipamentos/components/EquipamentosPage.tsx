@@ -556,7 +556,7 @@ export function EquipamentosPage({ renderSecaoExtraUC, renderCampoDadosBasicosUC
   return (
     <Layout>
       <Layout.Main>
-        <div className="flex flex-col h-97 w-full mb-8">
+        <div className="flex flex-col h-full w-full">
           {/* Alerta de erro */}
           {error && (
             <Alert variant="destructive" className="mb-4 rounded-md">
