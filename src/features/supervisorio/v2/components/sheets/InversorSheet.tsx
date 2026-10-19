@@ -8,6 +8,7 @@ import { Registros, useHistorico, bucketize, type Periodo } from './equipUi';
 import { curveMonotoneX } from '@visx/curve';
 import { LineChart } from '@/components/charts/line-chart';
 import { Line } from '@/components/charts/line';
+import { Area } from '@/components/charts/area';
 import { Grid } from '@/components/charts/grid';
 import { YAxis } from '@/components/charts/y-axis';
 import { ChartTooltip } from '@/components/charts/tooltip';
@@ -293,6 +294,9 @@ export function GraficoNx({ equipamentoId, titulo = 'Gráfico', resumo, catalogo
                 margin={{ top: 8, right: units[1] ? 56 : 12, bottom: 6, left: 56 }} animationDuration={0}
                 status={loading || !dados ? 'loading' : 'ready'} loadingLabel="Carregando…">
                 <Grid horizontal numTicksRows={4} highlightRowValues={[0]} highlightRowStroke={COR_GRAF.neutro} highlightRowStrokeOpacity={0.6} />
+                {ativos.filter((id) => eixoDe(id) !== 'right').map((id) => (
+                  <Area key={`a-${id}`} dataKey={id} yAxisId={eixoDe(id)} fill={cor(id)} fillOpacity={0.25} showLine={false} showHighlight={false} curve={curveMonotoneX} animate={false} />
+                ))}
                 {ativos.map((id) => (
                   <Line key={id} dataKey={id} yAxisId={eixoDe(id)} stroke={cor(id)} strokeWidth={2} curve={curveMonotoneX} fadeEdges={false} animate={false}
                     {...(eixoDe(id) === 'right' ? { dashFromIndex: 0, dashArray: '4,4' } : {})} />
@@ -648,8 +652,6 @@ export function InversorSheet({ equipamentoId, nome, onClose }: { equipamentoId:
         <div style={{ padding: '20px 24px 28px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
           <Duas>
             <Coluna>
-              <StatusNx tone={tone} label={stLabel} text={stText}
-                extra={online && gerando && pct != null ? `${fmt(pativa, 1)} kW · ${Math.round(pct)}% da potência nominal` : undefined} />
               {temCmd ? (
                 <div style={{ display: 'grid', gridTemplateColumns: `repeat(${botoes.length}, minmax(0, 1fr))`, gap: 8 }}>
                   {botoes.map((b) => {
@@ -680,8 +682,13 @@ export function InversorSheet({ equipamentoId, nome, onClose }: { equipamentoId:
               </Bloco>
             </Coluna>
             <Coluna>
-              <LinhasNx titulo="Potência" rows={[
-                { k: 'Ativa', v: pativa != null ? `${fmt(pativa, 1)} kW` : '—' },
+              <LinhasNx titulo="Grandezas" rows={[
+                { k: 'Ativa', v: pativa != null && pct != null ? (
+                  <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                    <span>{fmt(pativa, 1)} kW</span>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: NX.mudo }}>{Math.round(pct)}% da potência nominal</span>
+                  </span>
+                ) : pativa != null ? `${fmt(pativa, 1)} kW` : '—' },
                 { k: 'Reativa', v: qkvar != null ? `${fmt(qkvar, 1)} kvar` : '—' },
                 { k: 'Entrada CC', v: dcMed != null ? `${fmt(dcMed, 1)} kW` : dcCalc != null ? `${fmt(dcCalc, 1)} kW (calc.)` : '—' },
                 { k: 'Energia acumulada', v: acumulada },
