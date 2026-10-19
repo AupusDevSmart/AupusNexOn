@@ -82,6 +82,11 @@ class RegrasLogsServiceClass {
     return unwrap(data);
   }
 
+  async removeMany(ids: string[]): Promise<{ removidas: number; falhas: string[] }> {
+    const { data } = await api.post('/regras-logs-mqtt/excluir-lote', { ids: ids.map((i) => i.trim()) });
+    return (data?.data ?? data) as { removidas: number; falhas: string[] };
+  }
+
   async remove(id: string) {
     await api.delete(`/regras-logs-mqtt/${id.trim()}`);
   }

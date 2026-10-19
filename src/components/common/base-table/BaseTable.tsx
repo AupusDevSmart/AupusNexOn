@@ -9,11 +9,13 @@ import {
   TableRow 
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 
 
 import { 
   Eye, 
   Edit3, 
+  Trash2,
   ChevronLeft,
   ChevronRight
 } from 'lucide-react';
@@ -42,6 +44,9 @@ interface BaseTableProps<T extends BaseEntity> {
   customActions?: CustomAction<T>[]; // NOVA: Ações customizadas
   emptyMessage?: string;
   emptyIcon?: React.ReactNode;
+  /** Seleção múltipla (checkbox por linha + "todos da página"). Só aparece se informado. */
+  selectedIds?: string[];
+  onSelectionChange?: (ids: string[]) => void;
 }
 
 export function BaseTable<T extends BaseEntity>({
@@ -55,8 +60,26 @@ export function BaseTable<T extends BaseEntity>({
   onDelete,
   customActions = [], // NOVA: Array de ações customizadas
   emptyMessage = "Nenhum registro encontrado.",
-  emptyIcon
+  emptyIcon,
+  selectedIds,
+  onSelectionChange,
 }: BaseTableProps<T>) {
+  const selecionavel = !!onSelectionChange;
+  const selecionados = new Set((selectedIds ?? []).map((id) => String(id)));
+  const idsPagina = data.map((e) => String(e.id));
+  const todosPagina = idsPagina.length > 0 && idsPagina.every((id) => selecionados.has(id));
+  const algunsPagina = idsPagina.some((id) => selecionados.has(id));
+  const alternarTodos = () => {
+    const proximo = new Set(selecionados);
+    if (todosPagina) idsPagina.forEach((id) => proximo.delete(id));
+    else idsPagina.forEach((id) => proximo.add(id));
+    onSelectionChange?.([...proximo]);
+  };
+  const alternar = (id: string) => {
+    const proximo = new Set(selecionados);
+    if (proximo.has(id)) proximo.delete(id); else proximo.add(id);
+    onSelectionChange?.([...proximo]);
+  };
   const hasDefaultActions = onView || onEdit || onDelete;
   const hasCustomActions = customActions.length > 0;
   const hasActions = hasDefaultActions || hasCustomActions;
@@ -128,6 +151,15 @@ export function BaseTable<T extends BaseEntity>({
         <Table className="table-minimal min-w-full">
           <TableHeader>
             <TableRow>
+              {selecionavel && (
+                <TableHead className="w-10">
+                  <Checkbox
+                    checked={todosPagina ? true : algunsPagina ? 'indeterminate' : false}
+                    onCheckedChange={alternarTodos}
+                    aria-label="Selecionar todos desta página"
+                  />
+                </TableHead>
+              )}
               {columns.map((column, index) => (
                 <TableHead
                   key={index}
@@ -144,7 +176,7 @@ export function BaseTable<T extends BaseEntity>({
           <TableBody>
           {data.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={columns.length + (hasActions ? 1 : 0)} className="text-center py-8 text-muted-foreground">
+              <TableCell colSpan={columns.length + (hasActions ? 1 : 0) + (selecionavel ? 1 : 0)} className="text-center py-8 text-muted-foreground">
                 <div className="flex flex-col items-center gap-2">
                   {emptyIcon}
                   <p>{emptyMessage}</p>
@@ -156,7 +188,16 @@ export function BaseTable<T extends BaseEntity>({
               const visibleCustomActions = getVisibleCustomActions(entity);
               
               return (
-                <TableRow key={entity.id} className="hover:bg-muted/50">
+                <TableRow key={entity.id} className="hover:bg-muted/50" data-state={selecionados.has(String(entity.id)) ? 'selected' : undefined}>
+                  {selecionavel && (
+                    <TableCell className="w-10">
+                      <Checkbox
+                        checked={selecionados.has(String(entity.id))}
+                        onCheckedChange={() => alternar(String(entity.id))}
+                        aria-label="Selecionar linha"
+                      />
+                    </TableCell>
+                  )}
                   {columns.map((column, index) => (
                     <TableCell 
                       key={index}
@@ -194,6 +235,17 @@ export function BaseTable<T extends BaseEntity>({
                             title="Editar"
                           >
                             <Edit3 className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {onDelete && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-destructive hover:text-destructive"
+                            onClick={() => onDelete(entity)}
+                            title="Excluir"
+                          >
+                            <Trash2 className="h-4 w-4" />
                           </Button>
                         )}
 
