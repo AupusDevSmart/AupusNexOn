@@ -1,6 +1,6 @@
 // src/features/plantas/components/PlantasPage.tsx - VERSÃO ATUALIZADA
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { Layout } from '@/core/components/common/Layout';
 import { TitleCard } from '@/core/components/common/title-card';
 import { BaseTable } from '@/core/components/common/base-table/BaseTable';
@@ -21,6 +21,7 @@ import { plantasTableColumns } from '../config/table-config';
 import { useProprietarios } from '../config/filter-config';
 import { useUserStore, usePlantasFeature, useHttpClient } from '@/core/context/hooks';
 import { unwrapApiResponse } from '@/core/lib/utils';
+import { useEstadoLembrado, useFiltrosNaUrl } from '@/hooks/useEstadoLembrado';
 
 const initialFilters: PlantasFilters = {
   search: '',
@@ -40,7 +41,6 @@ interface PlantasPageProps {
 
 export function PlantasPage({ mostrarTarifacao = false }: PlantasPageProps = {}) {
   const location = useLocation();
-  const navigate = useNavigate();
   const { isAdmin } = useUserStore();
   const httpClient = useHttpClient();
   const plantasFeature = usePlantasFeature();
@@ -52,7 +52,8 @@ export function PlantasPage({ mostrarTarifacao = false }: PlantasPageProps = {})
   const sincronizacao = useSincronizacao('plantas', plantas.map(p => p?.id).filter(Boolean));
   const [totalPlantas, setTotalPlantas] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState<PlantasFilters>(initialFilters);
+  // Busca, página e proprietário na URL e lembrados para a próxima visita.
+  const [filters, setFilters] = useFiltrosNaUrl('cadastros:plantas', initialFilters);
 
   // Só para resolver o nome do proprietário quando a página é aberta com
   // ?proprietarioId= vindo da tela de usuários — não existe mais combobox.
@@ -82,7 +83,8 @@ export function PlantasPage({ mostrarTarifacao = false }: PlantasPageProps = {})
 
   // Linha expandida: as instalacoes da planta. Substitui a pagina
   // /cadastros/unidades, que deixou de existir.
-  const [plantaExpandidaId, setPlantaExpandidaId] = useState<string | null>(null);
+  // Lembrada: ao voltar dos equipamentos, a planta continua aberta.
+  const [plantaExpandidaId, setPlantaExpandidaId] = useEstadoLembrado<string | null>('cadastros:plantas:aberta', null);
   /**
    * Instalacoes da planta expandida, e o sheet delas.
    *
@@ -187,26 +189,12 @@ export function PlantasPage({ mostrarTarifacao = false }: PlantasPageProps = {})
     }
   };
 
-  // ✅ EFEITO: Aplicar filtros da URL quando a página carrega OU quando a URL muda
+  // Os filtros já nascem da URL (?proprietarioId= vindo de usuários) ou da
+  // última visita; aqui só a primeira busca.
   useEffect(() => {
-    const urlParams = new URLSearchParams(location.search);
-    const proprietarioId = urlParams.get('proprietarioId');
-
-
-    if (proprietarioId) {
-
-      const newFilters = {
-        ...initialFilters,
-        proprietarioId: proprietarioId,
-      };
-
-      setFilters(newFilters);
-      fetchPlantas(newFilters);
-    } else {
-      setFilters(initialFilters);
-      fetchPlantas(initialFilters);
-    }
-  }, [location.search]);
+    fetchPlantas(filters);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ✅ HANDLER: Mudança de filtros
   const handleFilterChange = (newFilters: Partial<PlantasFilters>) => {
@@ -307,11 +295,9 @@ export function PlantasPage({ mostrarTarifacao = false }: PlantasPageProps = {})
     closeModal();
   };
 
-  // Tirar o proprietarioId da URL basta: o efeito que observa location.search
-  // recarrega a lista sem filtro. Navegar para um caminho fixo aqui era bug —
-  // a rota é /cadastros/plantas, não /plantas.
+  // Volta o proprietário para "todos"; useFiltrosNaUrl tira o parâmetro da URL.
   const handleClearProprietarioFilter = () => {
-    navigate(location.pathname, { replace: true });
+    handleFilterChange({ proprietarioId: 'all' });
   };
 
 

@@ -4,6 +4,7 @@ import { BoletimSemanalFvPage } from '@/features/monitoramento-fv/BoletimSemanal
 import { ConsumoReportPreview } from './consumo/ConsumoReportPreview';
 import { ConsumoEnvioConfig } from './consumo/ConsumoEnvioConfig';
 import { AbastecimentoReport } from './AbastecimentoReport';
+import { useFiltrosNaUrl } from '@/hooks/useEstadoLembrado';
 
 /**
  * Área de Relatórios (top-level): Geração (usinas) e Consumo (unidades medidas).
@@ -11,11 +12,13 @@ import { AbastecimentoReport } from './AbastecimentoReport';
  * de gestão de energia.
  */
 export function RelatoriosPage() {
+  // Aba aberta na URL (?aba=) e lembrada para a próxima visita.
+  const [tela, setTela] = useFiltrosNaUrl('relatorios', { aba: 'geracao' });
   return (
     <div className="p-4 md:p-6">
       <Card>
         <CardContent className="p-3 sm:p-4">
-          <Tabs defaultValue="geracao">
+          <Tabs value={tela.aba} onValueChange={(aba) => setTela({ aba })}>
             <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
               <h1 className="text-base font-semibold">Relatórios</h1>
               <TabsList>

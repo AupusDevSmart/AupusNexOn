@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { RegrasLogsService } from '@/services/regras-logs.services';
 import { RegraLog, RegrasLogsFilters } from '../types';
+import { useFiltrosNaUrl } from '@/hooks/useEstadoLembrado';
 
 const initialFilters: RegrasLogsFilters = {
   search: '',
@@ -15,7 +16,7 @@ export function useRegrasLogs() {
   const [regras, setRegras] = useState<RegraLog[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState<RegrasLogsFilters>(initialFilters);
+  const [filters, setFilters] = useFiltrosNaUrl('logs:regras', initialFilters);
 
   const fetchRegras = useCallback(async (currentFilters = filters) => {
     try {

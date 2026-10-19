@@ -23,6 +23,7 @@ import { Equipamento, EquipamentosFilters } from '../types';
 import { getEquipamentosTableColumns } from '../config/table-config';
 import { createEquipamentosFilterConfig } from '../config/filter-config';
 import { useEquipamentos, useEquipamentoFilters, useUserStore } from '@/core/context/hooks';
+import { useFiltrosNaUrl } from '@/hooks/useEstadoLembrado';
 
 // Modais separados
 import { EquipamentoUCModal, type ContextoSlot } from './modals/EquipamentoUCModal';
@@ -37,29 +38,6 @@ const initialFilters: EquipamentosFilters = {
   criticidade: 'all',
   page: 1,
   limit: 10
-};
-
-/**
- * Filtros iniciais ja com o que veio na URL.
- *
- * Aplicar a URL depois do mount, por efeito, disparava DUAS buscas: a primeira
- * sem filtro (initialFilters) e a segunda com ele. Sem cancelamento, vencia a
- * que respondesse por ultimo — e a sem filtro traz mais dados, entao costumava
- * chegar depois. Dai o sintoma de "o filtro aparece preenchido mas a lista
- * mostra tudo", intermitente.
- */
-const filtrosDaUrl = (search: string): EquipamentosFilters => {
-  const params = new URLSearchParams(search);
-  const proprietarioId = params.get('proprietarioId');
-  const plantaId = params.get('plantaId');
-  const unidadeId = params.get('unidadeId');
-
-  return {
-    ...initialFilters,
-    ...(proprietarioId ? { proprietarioId } : {}),
-    ...(plantaId ? { plantaId } : {}),
-    ...(unidadeId ? { unidadeId } : {}),
-  };
 };
 
 interface EquipamentosPageProps {
@@ -127,9 +105,10 @@ export function EquipamentosPage({ renderSecaoExtraUC, renderCampoDadosBasicosUC
   } = useEquipamentoFilters();
 
   // Estados locais
-  const [filters, setFilters] = useState<EquipamentosFilters>(() =>
-    filtrosDaUrl(window.location.search),
-  );
+  // Filtros na URL e lembrados (useFiltrosNaUrl): link com ?plantaId= abre
+  // filtrado já no primeiro render, sem busca dupla; sem nada na URL, volta
+  // como a pessoa deixou.
+  const [filters, setFilters] = useFiltrosNaUrl('cadastros:equipamentos', initialFilters);
   const [plantaInfo, setPlantaInfo] = useState<{
     id: string;
     nome: string;
@@ -309,6 +288,18 @@ export function EquipamentosPage({ renderSecaoExtraUC, renderCampoDadosBasicosUC
       }));
     }
   }, [filters.proprietarioId, filters.plantaId, filtersError, clearFiltersError, loadPlantasByProprietario, loadUnidadesByPlanta, loadUnidadesByProprietario]);
+
+  // Filtros restaurados (URL ou última visita): carrega as opções dos selects
+  // dependentes uma vez, como se a pessoa tivesse escolhido de novo.
+  useEffect(() => {
+    if (filters.proprietarioId && filters.proprietarioId !== 'all') {
+      loadPlantasByProprietario(filters.proprietarioId);
+      loadUnidadesByProprietario(filters.proprietarioId);
+    } else if (filters.plantaId && filters.plantaId !== 'all') {
+      loadUnidadesByPlanta(filters.plantaId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handlePageChange = (page: number) => {
     setFilters(prev => ({ ...prev, page }));
@@ -532,11 +523,10 @@ export function EquipamentosPage({ renderSecaoExtraUC, renderCampoDadosBasicosUC
   // NAVEGAÇÃO
   // ============================================================================
   const handleBackToPlantas = () => {
-    navigate('/plantas');
+    navigate('/cadastros/plantas');
   };
 
   const handleClearPlantaFilter = () => {
-    navigate('/equipamentos');
     setFilters(initialFilters);
   };
 

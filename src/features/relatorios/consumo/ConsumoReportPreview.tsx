@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import RelatorioConsumo from './RelatorioConsumo.jsx';
 import './relatorio-consumo.css';
+import { useEstadoLembrado } from '@/hooks/useEstadoLembrado';
 
 const unwrap = (r: any) => r?.data?.data ?? r?.data;
 
@@ -32,7 +33,7 @@ function fmtUltima(ultima: string | null): string {
  */
 export function ConsumoReportPreview() {
   const [unidades, setUnidades] = useState<UnidadeElegivel[]>([]);
-  const [unidadeId, setUnidadeId] = useState<string>('');
+  const [unidadeId, setUnidadeId] = useEstadoLembrado<string>('relatorios:consumo:unidade', '');
   const [dados, setDados] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [carregandoPdf, setCarregandoPdf] = useState(false);

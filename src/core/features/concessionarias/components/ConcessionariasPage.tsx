@@ -1,5 +1,6 @@
 // src/features/concessionarias/components/ConcessionariasPage.tsx
 import { useEffect, useState } from 'react';
+import { useFiltrosNaUrl } from '@/hooks/useEstadoLembrado';
 import { Layout } from '@/core/components/common/Layout';
 import { TitleCard } from '@/core/components/common/title-card';
 import { BaseTable } from '@/core/components/common/base-table/BaseTable';
@@ -74,7 +75,8 @@ export function ConcessionariasPage() {
   const [concessionarias, setConcessionarias] = useState<any[]>([]);
   const [totalConcessionarias, setTotalConcessionarias] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState<ConcessionariasFilters>(initialFilters);
+  // Filtros na URL e lembrados para a próxima visita.
+  const [filters, setFilters] = useFiltrosNaUrl('cadastros:concessionarias', initialFilters);
 
   // Configuração de filtros dinâmicos com estados do IBGE
   const { filterConfig } = useConcessionariasFilters();
@@ -133,7 +135,8 @@ export function ConcessionariasPage() {
 
   // ✅ EFEITO: Carregar concessionárias quando a página carrega
   useEffect(() => {
-    fetchConcessionarias(initialFilters);
+    fetchConcessionarias(filters);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ✅ HANDLER: Mudança de filtros

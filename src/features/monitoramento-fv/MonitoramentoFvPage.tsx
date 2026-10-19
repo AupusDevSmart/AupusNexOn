@@ -4,6 +4,7 @@ import { PainelFv } from '@/features/coa/components/painel-fv';
 import { ControleSyncFvPage } from './ControleSyncFvPage';
 import { GeracaoFvPage } from './GeracaoFvPage';
 import { EnvioFvPage } from './EnvioFvPage';
+import { useFiltrosNaUrl } from '@/hooks/useEstadoLembrado';
 
 /**
  * Monitoramento FV — tela do BDO no NexON: Painel + Controle de sync + Curadoria, em abas
@@ -11,11 +12,13 @@ import { EnvioFvPage } from './EnvioFvPage';
  * Acesso gateado pela ROTA (RequirePermission="Monitoramento") + BACKEND (assertEditor).
  */
 export function MonitoramentoFvPage() {
+  // Aba aberta na URL (?aba=) e lembrada para a próxima visita.
+  const [tela, setTela] = useFiltrosNaUrl('monitoramento-fv', { aba: 'painel' });
   return (
     <div className="p-4 md:p-6">
       <Card>
         <CardContent className="p-3 sm:p-4">
-          <Tabs defaultValue="painel">
+          <Tabs value={tela.aba} onValueChange={(aba) => setTela({ aba })}>
             <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
               <h1 className="text-base font-semibold">Monitoramento FV</h1>
               <TabsList>
