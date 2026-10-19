@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Check, ChevronRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
+import { cn } from "@/lib/utils";
 import { PanelCard } from "./PanelCard";
 import { useAlarmesUnidade } from "../hooks/useAlarmesUnidade";
 import { formatarHoraLocal } from "../utils/tempo";
@@ -11,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 interface AlarmesAtivosPanelProps {
   unidadeId: string;
   unidadeNome?: string;
+  className?: string;
 }
 
 const SEV_DOT: Record<string, string> = {
@@ -25,7 +27,7 @@ const SEV_DOT: Record<string, string> = {
  * "Ver todas" leva a /logs/logs-mqtt com o filtro da unidade ja aplicado
  * (via location.state).
  */
-export function AlarmesAtivosPanel({ unidadeId, unidadeNome }: AlarmesAtivosPanelProps) {
+export function AlarmesAtivosPanel({ unidadeId, unidadeNome, className }: AlarmesAtivosPanelProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -56,7 +58,7 @@ export function AlarmesAtivosPanel({ unidadeId, unidadeNome }: AlarmesAtivosPane
   };
 
   return (
-    <PanelCard titulo="Alarmes ativos" className="xl:min-h-0">
+    <PanelCard titulo="Alarmes ativos" className={cn("xl:min-h-0", className)}>
       {isLoading ? (
         <div className="flex min-h-[3rem] items-center justify-center text-xs text-muted-foreground">
           Carregando...
