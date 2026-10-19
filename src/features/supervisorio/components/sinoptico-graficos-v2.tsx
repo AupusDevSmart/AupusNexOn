@@ -83,10 +83,14 @@ const FASES_TODAS: FasesAtivas = { A: true, B: true, C: true };
 const ALTURA_COMPACTA = 'h-[150px] xl:h-auto xl:flex-1 xl:min-h-0';
 const SEM_DEMANDA = { pontos: [] as PontoDemanda[], dominio: undefined as Dominio | undefined };
 
+/** Limite acima do contratado: geração 1% da demanda de geração; carga 5% (NEXON-14). */
+export const PERCENTUAL_LIMITE_GERACAO = 1;
+export const PERCENTUAL_LIMITE_CARGA = 5;
+
 export function SinopticoGraficosV2({
   unidadeId,
   valorContratado = 2500,
-  percentualAdicional = 5,
+  percentualAdicional = PERCENTUAL_LIMITE_CARGA,
   onConfigSaved,
   apenasGrafico,
   controleVariavel,
@@ -132,7 +136,8 @@ export function SinopticoGraficosV2({
             aplicarPerdas: apiData.aplicar_perdas !== false,
             fatorPerdas: Number(apiData.fator_perdas) || 3,
             valorContratado: Number(apiData.valor_contratado) || valorContratado,
-            percentualAdicional: Number(apiData.percentual_adicional) || percentualAdicional,
+            // Regra (NEXON-14): o limite vem de quem chama (geração 1%, carga 5%), não do valor antigo salvo.
+            percentualAdicional,
             // Guardar os IDs selecionados para processar depois
             equipamentosIds: Array.isArray(apiData.equipamentos_ids) ? apiData.equipamentos_ids : [],
             fluxoManual: apiData.fluxo_manual ?? apiData.fluxoManual ?? {},

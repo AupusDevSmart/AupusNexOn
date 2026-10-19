@@ -17,7 +17,8 @@ import { FaixaBrush } from './FaixaBrush';
 import { LegendaSeries, type ItemLegenda } from './Legenda';
 import { useJanelaZoom, useRodaZoom } from './use-janela-zoom';
 
-const MARGEM = { top: 12, right: 16, bottom: 28, left: 64 };
+// bottom com folga: o "0 kW" do eixo Y não pode encostar no primeiro rótulo do eixo X (NEXON-14).
+const MARGEM = { top: 12, right: 16, bottom: 44, left: 64 };
 /** Séries de referência: sem bolinha no hover (só a demanda tem). */
 const CHAVES_REFERENCIA = new Set(['valorContratado', 'valorAdicional']);
 
