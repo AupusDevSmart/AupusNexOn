@@ -1,4 +1,5 @@
 import { Card } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
 
 interface PanelCardProps {
@@ -15,7 +16,7 @@ interface PanelCardProps {
  */
 export function PanelCard({ titulo, action, children, className }: PanelCardProps) {
   return (
-    <Card className={`flex h-full flex-col gap-2 rounded-sm p-3 min-w-0 ${className ?? ""}`}>
+    <Card className={cn("flex h-full min-w-0 flex-col gap-2 rounded-sm p-3", className)}>
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
           {titulo}

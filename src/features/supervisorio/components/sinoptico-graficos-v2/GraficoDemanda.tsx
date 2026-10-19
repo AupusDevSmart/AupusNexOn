@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { curveLinear, curveMonotoneX } from '@visx/curve';
 import { LineChart } from '@/components/charts/line-chart';
 import { Line } from '@/components/charts/line';
+import { Area } from '@/components/charts/area';
 import { Grid } from '@/components/charts/grid';
 import { XAxis } from '@/components/charts/x-axis';
 import { YAxis } from '@/components/charts/y-axis';
@@ -70,6 +71,18 @@ export function GraficoDemanda({
       animationDuration={0}
     >
       <Grid horizontal numTicksRows={4} />
+      {/* Área verde sob a curva de demanda (NEXON-11). Sem linha própria: o
+          traço continua sendo o `Line` abaixo, que define o domínio do eixo. */}
+      <Area
+        dataKey="potencia"
+        fill={COR.geracao}
+        fillOpacity={0.3}
+        gradientToOpacity={0.04}
+        showLine={false}
+        showHighlight={false}
+        curve={curveMonotoneX}
+        animate={false}
+      />
       <Line
         dataKey="potencia"
         stroke={COR.potencia}

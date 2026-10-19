@@ -45,14 +45,19 @@ export function SinopticoOverview({ unidadeId, unidadeNome, children }: Sinoptic
             <DemandaFluxoPanel unidadeId={unidadeId} />
           </div>
 
-          {/* Grafico — entre Demanda e Alarmes; preenche o que sobra mas nunca
-              abaixo de uma altura util (evita espremer no notebook). */}
-          <div className="flex min-h-[230px] flex-1 flex-col">
+          {/* Grafico — entre Demanda e Alarmes; fica com tudo o que sobra (via de
+              regra o maior bloco da coluna), nunca abaixo de uma altura util. */}
+          <div className="flex min-h-[230px] flex-1 flex-col xl:min-h-[320px]">
             <GraficoConfiguravelPanel unidadeId={unidadeId} />
           </div>
 
-          {/* Alarmes — compacto, no rodape da coluna */}
-          <AlarmesAtivosPanel unidadeId={unidadeId} unidadeNome={unidadeNome} />
+          {/* Alarmes — altura do conteudo: vazio fica minimo; com alarmes cresce
+              ate 35% da coluna e rola por dentro, tirando espaco do grafico. */}
+          <AlarmesAtivosPanel
+            unidadeId={unidadeId}
+            unidadeNome={unidadeNome}
+            className="h-auto shrink-0 xl:max-h-[35%]"
+          />
         </div>
       </div>
     </div>
