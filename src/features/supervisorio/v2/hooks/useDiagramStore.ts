@@ -27,7 +27,7 @@ import {
 } from '../types/diagram.types';
 import { convertToVisualConnections } from '../utils/barramentoDetector';
 import { CANVAS, VIEWPORT } from '../utils/diagramConstants';
-import { caixaDe, centroDe, CORES_GRUPO, grupoIdDoNo, gruposDaConfiguracao, membroMaisProximo, montarVisao, novoIdGrupo, type Caixa } from '../utils/grupos';
+import { caixaDe, centroDe, CORES_GRUPO, deslocarGrupo, grupoIdDoNo, gruposDaConfiguracao, levarMembrosAteOBloco, membroMaisProximo, montarVisao, novoIdGrupo, posicaoDoCard, type Caixa } from '../utils/grupos';
 
 /** Duração do foco animado (abrir/fechar grupo). Bate com a transição do DiagramViewport. */
 export const FOCO_ANIMADO_MS = 650;
@@ -321,7 +321,9 @@ interface DiagramActions {
   abrirTodosGrupos: () => void;
   recolherTodosGrupos: () => void;
   /** Centraliza e dá zoom numa caixa (grid), com animação opcional. */
-  focarCaixa: (caixa: Caixa, animar?: boolean, margem?: number) => void;
+  focarCaixa: (caixa: Caixa, animar?: boolean, margem?: number, escalaMaxima?: number) => void;
+  /** Parte do diagrama que está na tela agora (grid). */
+  caixaVisivel: () => Caixa | null;
 }
 
 type DiagramStore = DiagramState & DiagramActions;
@@ -935,14 +937,20 @@ export const useDiagramStore = create<DiagramStore>()(
 
           // Construir objeto diagrama completo COM junction points
           const diagramaRawExtra = diagramaRaw as unknown as { unidadeId?: string; configuracoes?: unknown };
+          // Grupos (NEXON-31): bloco salvo fora do centro (versão antiga) leva os membros até ele
+          const ajusteGrupos = levarMembrosAteOBloco(
+            [...equipamentosEspalhados, ...jpsLimpos],
+            conexoesLimpas,
+            gruposDaConfiguracao(diagramaRawExtra.configuracoes),
+          );
           const diagrama: Diagrama = {
             id: diagramaRaw.id.trim(),
             unidadeId: diagramaRawExtra.unidadeId || diagramaRaw.unidade_id,
             nome: diagramaRaw.nome,
             descricao: diagramaRaw.descricao,
-            equipamentos: [...equipamentosEspalhados, ...jpsLimpos], // ✅ INCLUIR junction points
+            equipamentos: ajusteGrupos.equipamentos, // ✅ INCLUIR junction points
             conexoes: conexoesLimpas,
-            grupos: gruposDaConfiguracao(diagramaRawExtra.configuracoes),
+            grupos: ajusteGrupos.grupos,
             createdAt: new Date(diagramaRaw.created_at),
             updatedAt: new Date(diagramaRaw.updated_at),
             deletedAt: null,
@@ -950,7 +958,7 @@ export const useDiagramStore = create<DiagramStore>()(
 
           // Calcular conexões visuais e barramentos
           // ⚡ IMPORTANTE: Passar TODOS os equipamentos, incluindo junction points
-          const todosEquipamentos = [...equipamentosEspalhados, ...jpsLimpos];
+          const todosEquipamentos = ajusteGrupos.equipamentos;
           console.log('[loadDiagrama] 🔍 Passando para convertToVisualConnections:', {
             totalEquipamentos: todosEquipamentos.length,
             junctionPoints: todosEquipamentos.filter(eq => eq.tipo === 'JUNCTION_POINT').length,
@@ -1503,7 +1511,7 @@ if (import.meta.env.PROD) {
         get().focarCaixa(caixa, animar === true);
       },
 
-      focarCaixa: (caixa: Caixa, animar = false, margem = 0.9) => {
+      focarCaixa: (caixa: Caixa, animar = false, margem = 0.9, escalaMaxima?: number) => {
         const GRID_SIZE = 40;
         // Bbox em pixels SVG (coords do viewBox, NÃO pixels CSS).
         const minX = caixa.minX * GRID_SIZE;
@@ -1532,7 +1540,7 @@ if (import.meta.env.PROD) {
 
         const clampedScale = Math.max(
           VIEWPORT.MIN_SCALE,
-          Math.min(VIEWPORT.MAX_SCALE, fitScale),
+          Math.min(VIEWPORT.MAX_SCALE, escalaMaxima ?? Infinity, fitScale),
         );
 
         // Pan: transform aplicado eh
@@ -2132,10 +2140,21 @@ if (import.meta.env.PROD) {
       },
 
       moverCardGrupo: (grupoId: string, x: number, y: number) => {
-        set(state => ({
-          grupos: state.grupos.map(g => (g.id === grupoId ? { ...g, posicaoX: x, posicaoY: y } : g)),
+        // O bloco é sempre o centro dos membros: arrastar o bloco leva o grupo inteiro
+        const { equipamentos, conexoes, grupos } = get();
+        const grupo = grupos.find(g => g.id === grupoId);
+        if (!grupo) return;
+        const membros = equipamentos.filter(e => grupo.equipamentoIds.includes(e.id) && e.tipo !== 'JUNCTION_POINT');
+        if (membros.length === 0) return;
+        const atual = posicaoDoCard({ ...grupo, posicaoX: null, posicaoY: null }, membros);
+        const dx = Math.round(x - atual.x);
+        const dy = Math.round(y - atual.y);
+        if (dx === 0 && dy === 0) return;
+        set({
+          equipamentos: deslocarGrupo(equipamentos, conexoes, grupos, grupoId, dx, dy),
           isDirty: true,
-        }));
+        });
+        get().recalcularRotas();
       },
 
       alternarGrupo: (grupoId: string) => {
@@ -2144,14 +2163,29 @@ if (import.meta.env.PROD) {
         if (!grupo) return;
         const abrindo = !gruposAbertos.includes(grupoId);
         set({ gruposAbertos: abrindo ? [...gruposAbertos, grupoId] : gruposAbertos.filter(id => id !== grupoId) });
-        if (abrindo) {
-          // Zoom nos membros: o grupo "abre" na frente de quem clicou
-          const membros = equipamentos.filter(e => grupo.equipamentoIds.includes(e.id));
-          const caixa = caixaDe(membros);
-          if (caixa) get().focarCaixa({ minX: caixa.minX - 1, minY: caixa.minY - 2, maxX: caixa.maxX + 1, maxY: caixa.maxY + 1 }, true, 0.85);
-        } else {
-          get().fitToContent(true);
-        }
+        // Recolher não mexe na câmera. Abrir abre ali mesmo (o bloco é o centro dos
+        // membros); a câmera só se ajusta se o grupo aberto não couber na tela, e
+        // nunca aproxima mais do que já está.
+        if (!abrindo) return;
+        const membros = equipamentos.filter(e => grupo.equipamentoIds.includes(e.id));
+        const caixa = caixaDe(membros);
+        if (!caixa) return;
+        const alvo = { minX: caixa.minX - 1, minY: caixa.minY - 2, maxX: caixa.maxX + 1, maxY: caixa.maxY + 1 };
+        const tela = get().caixaVisivel();
+        const cabe = tela && alvo.minX >= tela.minX && alvo.maxX <= tela.maxX && alvo.minY >= tela.minY && alvo.maxY <= tela.maxY;
+        if (!cabe) get().focarCaixa(alvo, true, 0.9, get().viewport.scale);
+      },
+
+      caixaVisivel: () => {
+        const el = document.querySelector('.diagram-viewport-container');
+        if (!el) return null;
+        const { x, y, scale } = get().viewport;
+        const k = scale / 3; // 1 px SVG = scale/3 px CSS (viewBox 3x o canvas)
+        const cx = -x / k;
+        const cy = -y / k;
+        const meiaL = el.clientWidth / 2 / k;
+        const meiaA = el.clientHeight / 2 / k;
+        return { minX: (cx - meiaL) / 40, maxX: (cx + meiaL) / 40, minY: (cy - meiaA) / 40, maxY: (cy + meiaA) / 40 };
       },
 
       abrirTodosGrupos: () => {

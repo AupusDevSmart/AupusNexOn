@@ -195,7 +195,7 @@ export const GruposLista: React.FC = () => {
       <PopoverContent align="end" className="w-80 p-3">
         <div className="text-xs font-semibold text-foreground mb-1">Grupos</div>
         <p className="text-[11px] text-muted-foreground mb-2">
-          Recolhido vira um bloco só; arraste o bloco para organizar. Clique no bloco para abrir.
+          Recolhido vira um bloco só, no centro dos equipamentos. Arrastar o bloco move o grupo inteiro; clicar abre ali mesmo.
         </p>
         <div className="flex max-h-72 flex-col gap-2 overflow-y-auto">
           {grupos.map(g => (

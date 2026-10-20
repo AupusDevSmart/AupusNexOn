@@ -117,6 +117,8 @@ export interface VisaoUnifilar {
   abertos: GrupoAberto[];
   /** id do equipamento → id do grupo (só membros válidos). */
   grupoDoEquipamento: Map<string, string>;
+  /** grupo recolhido → ids escondidos nele (membros + JPs que são galho dele). */
+  escondidosPorGrupo: Map<string, string[]>;
   temGrupos: boolean;
 }
 
@@ -147,7 +149,7 @@ export function montarVisao(
 
   const gruposValidos = grupos.filter(g => membrosPorGrupo.has(g.id));
   if (gruposValidos.length === 0) {
-    return { equipamentos, conexoes, cards: [], abertos: [], grupoDoEquipamento, temGrupos: false };
+    return { equipamentos, conexoes, cards: [], abertos: [], grupoDoEquipamento, escondidosPorGrupo: new Map(), temGrupos: false };
   }
 
   // Quem some da tela: membro de grupo recolhido → nó sintético do grupo
@@ -225,6 +227,12 @@ export function montarVisao(
   }
 
   const visiveis = equipamentos.filter(e => !destinoDe.has(e.id));
+  const escondidosPorGrupo = new Map<string, string[]>();
+  for (const [eqId, no] of destinoDe) {
+    const gid = grupoIdDoNo(no)!;
+    if (!escondidosPorGrupo.has(gid)) escondidosPorGrupo.set(gid, []);
+    escondidosPorGrupo.get(gid)!.push(eqId);
+  }
 
   // Religa as conexões: ponta em membro recolhido passa a ser o bloco; descarta as internas e repetidas
   const vistas = new Set<string>();
@@ -264,6 +272,7 @@ export function montarVisao(
     cards,
     abertos: abertosOut,
     grupoDoEquipamento,
+    escondidosPorGrupo,
     temGrupos: true,
   };
 }
@@ -291,6 +300,54 @@ export function membroMaisProximo(membros: Equipment[], alvo: { x: number; y: nu
     }
   }
   return melhor;
+}
+
+/**
+ * Desloca o grupo inteiro (membros + JPs que são galho dele) — é assim que o
+ * bloco recolhido "anda": ele fica sempre no centro dos membros, então abrir o
+ * grupo mostra os equipamentos ali mesmo, sem a tela pular para outro lugar.
+ */
+export function deslocarGrupo(
+  equipamentos: Equipment[],
+  conexoes: Connection[],
+  grupos: GrupoUnifilar[],
+  grupoId: string,
+  dx: number,
+  dy: number,
+): Equipment[] {
+  if (dx === 0 && dy === 0) return equipamentos;
+  // Todos recolhidos: assim os JPs internos do grupo entram no deslocamento
+  const ids = new Set(montarVisao(equipamentos, conexoes, grupos, new Set()).escondidosPorGrupo.get(grupoId) ?? []);
+  if (ids.size === 0) return equipamentos;
+  return equipamentos.map(e => (ids.has(e.id) ? { ...e, posicaoX: e.posicaoX + dx, posicaoY: e.posicaoY + dy } : e));
+}
+
+/**
+ * Grupo gravado com bloco fora do centro (versão anterior, em que o bloco andava
+ * sozinho): leva os membros até o bloco e limpa a posição. Depois disso o bloco
+ * é sempre o centro dos membros.
+ */
+export function levarMembrosAteOBloco(
+  equipamentos: Equipment[],
+  conexoes: Connection[],
+  grupos: GrupoUnifilar[],
+): { equipamentos: Equipment[]; grupos: GrupoUnifilar[]; mudou: boolean } {
+  let eqs = equipamentos;
+  let mudou = false;
+  const saida = grupos.map(g => {
+    if (!Number.isFinite(g.posicaoX) || !Number.isFinite(g.posicaoY)) return g;
+    const membros = eqs.filter(e => g.equipamentoIds.includes(e.id) && e.tipo !== 'JUNCTION_POINT');
+    const limpo = { ...g, posicaoX: null, posicaoY: null };
+    if (membros.length) {
+      const centro = posicaoDoCard(limpo, membros);
+      const dx = (g.posicaoX as number) - centro.x;
+      const dy = (g.posicaoY as number) - centro.y;
+      eqs = deslocarGrupo(eqs, conexoes, grupos, g.id, dx, dy);
+    }
+    mudou = true;
+    return limpo;
+  });
+  return { equipamentos: eqs, grupos: saida, mudou };
 }
 
 /** Lê os grupos de `configuracoes` tolerando lixo. */
