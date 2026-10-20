@@ -301,11 +301,14 @@ export function AnaliseGeracao({ unidadeId, fallback }: { unidadeId: string; fal
       </div>
 
       {a && a.tem_dados !== false && (
-        <div className="grid gap-3 lg:grid-cols-2">
-          <div className="lg:col-span-2"><CardResumo a={a} /></div>
-          {comFonte && <div className="lg:col-span-2"><CardPerdas a={a} /></div>}
+        // Cards dividem a largura (flex-wrap): os que existirem ocupam a linha juntos, sem
+        // um cartão sozinho na largura toda e outro pela metade embaixo. Perdas (barra de
+        // categorias) quebra para a linha dela.
+        <div className="flex flex-wrap gap-3 [&>*]:min-w-[280px] [&>*]:flex-1 [&>*]:basis-[320px]">
+          <CardResumo a={a} />
           <CardFechamento a={a} />
           <CardPrevisao a={a} />
+          {comFonte && <div className="!basis-full"><CardPerdas a={a} /></div>}
         </div>
       )}
 

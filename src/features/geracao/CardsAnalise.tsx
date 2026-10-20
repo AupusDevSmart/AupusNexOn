@@ -39,6 +39,9 @@ function Metrica({ rotulo, valor, detalhe }: { rotulo: string; valor: ReactNode;
 
 const ROTULO_PERIODO: Record<AnaliseGeracao['periodo'], string> = { dia: 'no dia', semana: 'na semana', mes: 'no mês', ano: 'no ano' };
 
+// Colunas do Resumo = nº de métricas visíveis (sem fonte/R$ são só 2 — não reservar 4).
+const COLS_RESUMO: Record<number, string> = { 2: 'sm:grid-cols-2', 3: 'sm:grid-cols-3', 4: 'sm:grid-cols-4' };
+
 /** 5.2 — substitui "Energia total". */
 export function CardResumo({ a }: { a: AnaliseGeracao }) {
   const r = a.resumo;
@@ -46,7 +49,7 @@ export function CardResumo({ a }: { a: AnaliseGeracao }) {
   const comFonte = a.config.fonte !== 'nenhuma';
   return (
     <Card icone={<Gauge className="h-3.5 w-3.5" />} titulo={`Geração ${ROTULO_PERIODO[a.periodo]}`}>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className={`grid grid-cols-2 gap-3 ${COLS_RESUMO[2 + (comFonte ? 1 : 0) + (a.config.exibir_rs && r.valor_rs != null ? 1 : 0)]}`}>
         <Metrica
           rotulo="Energia gerada"
           valor={kwh(r.energia_kwh)}
