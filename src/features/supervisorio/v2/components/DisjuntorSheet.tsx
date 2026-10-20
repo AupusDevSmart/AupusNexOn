@@ -288,7 +288,7 @@ export function DisjuntorSheet({ equipamentoId, onClose }: { equipamentoId: stri
   const notaMed = temPm && !bundle?.pm
     ? 'Medição declarada como PM, mas nenhum Power Meter associado — associe em "Configurações SCS" da TON.'
     : temIed && !bundle?.status_fonte
-      ? 'Medição declarada como IED, mas nenhum relé vinculado a este disjuntor no IoT.'
+      ? 'Medição declarada como IED, mas nenhum relé vinculado a este disjuntor na Topologia.'
       : !temPm && !temIed ? 'Sem medição declarada neste disjuntor.' : null;
 
   // Cartão "Consumida / Injetada hoje" (PM) — na coluna da medição ou, num DJ só com

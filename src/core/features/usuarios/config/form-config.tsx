@@ -70,7 +70,7 @@ const RESOURCE_LABELS: Record<string, string> = {
   tarefas: 'tarefa',
   manutencao: 'manutenção',
   diagramas: 'diagrama',
-  iot: 'IoT',
+  iot: 'Topologia',
   ota: 'OTA',
   mqtt: 'MQTT',
   logs: 'log',

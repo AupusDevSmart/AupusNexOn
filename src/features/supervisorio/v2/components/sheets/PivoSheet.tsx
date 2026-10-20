@@ -982,7 +982,7 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
       )}
       {roProp && <span style={{ textAlign: 'center', fontSize: 13, color: NX.mudo, marginTop: 6 }}>Somente leitura para este perfil</span>}
       <span style={{ fontSize: 12, color: NX.mudo, marginTop: 6 }}>
-        Os comandos do pivô (ligar, desligar, direção, sem água, canhão) e os status vêm dos pontos ligados às BO/BI da TON do pivô (editor IoT → TON → Configurar BOs/BIs).
+        Os comandos do pivô (ligar, desligar, direção, sem água, canhão) e os status vêm dos pontos ligados às BO/BI da TON do pivô (Topologia → TON → Configurar BOs/BIs).
       </span>
 
       <NxDialog open={revisar} onClose={() => { if (!gravando) setRevisar(false); }} label="Confirmar alterações" width={440}>

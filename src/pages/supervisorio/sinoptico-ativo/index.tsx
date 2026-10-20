@@ -3847,7 +3847,7 @@ if (import.meta.env.PROD) {
                       : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                   }`}
                 >
-                  IoT
+                  Topologia
                 </button>
               )}
               {podeVerIot && (
@@ -4467,7 +4467,7 @@ if (import.meta.env.PROD) {
                             }`}
                           >
                             <Cpu className="h-4 w-4" />
-                            IoT
+                            Topologia
                           </button>
                         )}
                         {diagramaFullscreen && <span className="text-sm text-muted-foreground ml-2">Tela Cheia</span>}

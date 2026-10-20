@@ -190,7 +190,7 @@ export const navigationLinks: Array<NavigationLink> = [
         path: "/cadastros/iot-catalog",
         icon: Cpu,
         label: "Drivers de Equipamento",
-        hint: "Tipos e modelos de dispositivos IoT (mapa Modbus)",
+        hint: "Tipos e modelos de dispositivos de campo (mapa Modbus)",
       },
       {
         key: "cadastros-regras-logs",
