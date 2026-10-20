@@ -332,7 +332,7 @@ export function SinopticoGraficosV2({
   } = useDadosM160(unidadeId, m160Selecionado, m160Visivel);
   // Entre a lista chegar e o efeito abaixo escolher o 1º medidor também é carga.
   const isInitialLoadingM160 =
-    isInitialLoadingCurvaM160 || (equipamentosM160.length > 0 && !m160Selecionado);
+    isInitialLoadingCurvaM160 || (equipamentosM160.some((e) => !!e.id) && !m160Selecionado);
 
   // Selecionar automaticamente o primeiro M160 disponível
   useEffect(() => {

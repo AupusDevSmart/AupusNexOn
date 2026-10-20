@@ -3743,12 +3743,20 @@ if (import.meta.env.PROD) {
   // Simulação de giro do pivô (modal legado): guarda o timer para parar no
   // "Parar irrigação", ao reiniciar e ao sair da tela (antes ficava rodando e
   // re-renderizava a página inteira a cada segundo).
-  const pivoSimRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const pararSimulacaoPivo = useCallback(() => {
-    if (pivoSimRef.current) clearInterval(pivoSimRef.current);
-    pivoSimRef.current = null;
+  // Um timer por pivô (um pivô girando não para o outro).
+  const pivoSimRef = useRef(new Map<string, ReturnType<typeof setInterval>>());
+  const pararSimulacaoPivo = useCallback((pivoId: string) => {
+    const timer = pivoSimRef.current.get(pivoId);
+    if (timer) clearInterval(timer);
+    pivoSimRef.current.delete(pivoId);
   }, []);
-  useEffect(() => pararSimulacaoPivo, [pararSimulacaoPivo]);
+  useEffect(() => {
+    const timers = pivoSimRef.current;
+    return () => {
+      timers.forEach((t) => clearInterval(t));
+      timers.clear();
+    };
+  }, []);
 
   // Clique no equipamento do unifilar V2. Corpo sempre atual via ref e função estável
   // por fora: o DiagramV2Wrapper é memo e não re-renderiza a cada estado da página.
@@ -4238,11 +4246,12 @@ if (import.meta.env.PROD) {
 
               // Simular rotação gradual do pivô
               let angle = 0;
-              pararSimulacaoPivo();
-              pivoSimRef.current = setInterval(() => {
+              const pivoId = selectedPivoId;
+              pararSimulacaoPivo(pivoId);
+              pivoSimRef.current.set(pivoId, setInterval(() => {
                 angle += 5;
                 if (angle >= 360) {
-                  pararSimulacaoPivo();
+                  pararSimulacaoPivo(pivoId);
                   angle = 0;
                 }
                 setPivoStates(prev => ({
@@ -4252,10 +4261,10 @@ if (import.meta.env.PROD) {
                     setorAtual: angle
                   }
                 }));
-              }, 1000); // Atualiza a cada 1 segundo
+              }, 1000)); // Atualiza a cada 1 segundo
             }}
             onPararIrrigacao={() => {
-              pararSimulacaoPivo();
+              pararSimulacaoPivo(selectedPivoId);
               // Atualizar apenas o estado local do PIVO
               setPivoStates(prev => ({
                 ...prev,
