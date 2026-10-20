@@ -13,7 +13,7 @@ function fmt(v: number | null | undefined, dec = 0): string | undefined {
 
 /**
  * Faixa de KPIs agregados dos Power Meters (R2).
- * Campos reais do M160: Pt (kW), Va/Vb/Vc (L-N), Ia/Ib/Ic, FP = Pt/St.
+ * Campos reais do M160: Pt (W → exibido em kW), Va/Vb/Vc (L-N), Ia/Ib/Ic, FP = Pt/St.
  * Frequência e L-L não existem no M160 (decisão: removidos).
  */
 export function KpiRow({ unidadeId }: KpiRowProps) {

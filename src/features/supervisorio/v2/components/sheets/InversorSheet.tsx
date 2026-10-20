@@ -354,7 +354,88 @@ interface LinhaCfg { key: string; label: string; faixa: string; unit: string; pa
  * revisão "Confirmar alterações" → POST /equipamentos/:id/setpoints/:sp (TON confere
  * a faixa). As demais são só leitura do registrador ("—" enquanto a TON não lê).
  */
-function ConfigInversor({ equipamentoId, dados }: { equipamentoId: string; dados: Telemetria | null }) {
+// ---------------------------------------------------------------------------
+// Strings: perfil aprendido do histórico (14 dias) + ajuste manual por entrada
+// ---------------------------------------------------------------------------
+interface PerfilStrings {
+  strings: Array<{ n: number; presenca: number; razao: number | null; amostras: number }>;
+  leituras: number;
+  modos: Record<string, 'usada' | 'nao_usada'>;
+  janela_dias: number;
+}
+function useStringsPerfil(equipamentoId: string) {
+  const [perfil, setPerfil] = useState<PerfilStrings | null>(null);
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    let vivo = true;
+    api.get(`/equipamentos/${equipamentoId.trim()}/strings`)
+      .then((r) => { if (vivo) setPerfil((r?.data?.data?.data ?? r?.data?.data ?? r?.data) as PerfilStrings); })
+      .catch(() => { if (vivo) setPerfil(null); });
+    return () => { vivo = false; };
+  }, [equipamentoId, tick]);
+  return { perfil, recarregar: () => setTick((t) => t + 1) };
+}
+/** Entrada sem string pelo projeto: ajuste manual "não usada", ou nunca teve corrente no histórico. */
+function stringNaoConectada(perfil: PerfilStrings | null, n: number): 'manual' | 'auto' | null {
+  const m = perfil?.modos?.[String(n)];
+  if (m === 'nao_usada') return 'manual';
+  if (m === 'usada') return null;
+  const p = perfil?.strings.find((x) => x.n === n);
+  return perfil && perfil.leituras >= 100 && p && p.presenca < 0.02 ? 'auto' : null;
+}
+
+/** Aba Configuração → quais entradas de string estão em uso (sobrepõe a detecção automática). */
+function ConfigStrings({ equipamentoId, perfil, onSalvo, total }: { equipamentoId: string; perfil: PerfilStrings | null; onSalvo: () => void; total: number }) {
+  const n = Math.max(total, perfil?.strings.length ?? 0);
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const [salvando, setSalvando] = useState(false);
+  useEffect(() => { setDraft({ ...(perfil?.modos ?? {}) }); }, [perfil]);
+  if (n === 0) return null;
+  const mudou = JSON.stringify(Object.entries(draft).filter(([, v]) => v !== 'auto').sort()) !== JSON.stringify(Object.entries(perfil?.modos ?? {}).sort());
+  const salvar = async () => {
+    setSalvando(true);
+    try {
+      await api.put(`/equipamentos/${equipamentoId.trim()}/strings`, { modos: Object.fromEntries(Object.entries(draft).filter(([, v]) => v !== 'auto')) });
+      toast.success('Strings em uso salvas');
+      onSalvo();
+    } catch (e) {
+      toast.error('Não salvou', { description: erroDe(e).msg });
+    } finally { setSalvando(false); }
+  };
+  return (
+    <>
+      <Rotulo style={{ marginTop: 10 }}>Strings em uso</Rotulo>
+      <Bloco style={{ padding: '6px 16px' }}>
+        {Array.from({ length: n }, (_, i) => i + 1).map((k) => {
+          const p = perfil?.strings.find((x) => x.n === k);
+          const auto = perfil && perfil.leituras >= 100 && p ? (p.presenca < 0.02 ? 'não conectada' : `em uso · ${Math.round(p.presenca * 100)}% com corrente${p.razao != null ? ` · ${Math.round(p.razao * 100)}% da mediana` : ''}`) : 'sem histórico suficiente';
+          return (
+            <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', borderTop: k > 1 ? `1px solid ${NX.linha}` : undefined }}>
+              <span style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <span style={{ fontSize: 14, fontWeight: 700 }}>String {k}</span>
+                <span style={{ fontSize: 12, color: NX.mudo }}>Automático: {auto}</span>
+              </span>
+              <select value={draft[String(k)] ?? 'auto'} onChange={(e) => setDraft((d) => ({ ...d, [String(k)]: e.target.value }))}
+                style={{ fontSize: 13, padding: '4px 6px', borderRadius: 8, border: `1px solid ${NX.linha}`, background: 'transparent', color: NX.texto }}>
+                <option value="auto">Automático</option>
+                <option value="usada">Em uso</option>
+                <option value="nao_usada">Não usada</option>
+              </select>
+            </div>
+          );
+        })}
+      </Bloco>
+      <button type="button" disabled={!mudou || salvando} onClick={salvar} style={s.save(!mudou || salvando)}>
+        {salvando ? 'Salvando…' : mudou ? 'Salvar strings em uso' : 'Sem alterações'}
+      </button>
+      <span style={{ fontSize: 12, color: NX.mudo }}>
+        Automático = aprendido dos últimos {perfil?.janela_dias ?? 14} dias gerando: entrada que nunca tem corrente é tratada como não conectada (sem alerta), e cada string é comparada com a sua participação típica.
+      </span>
+    </>
+  );
+}
+
+function ConfigInversor({ equipamentoId, dados, perfilStr, onPerfil, totalStrings }: { equipamentoId: string; dados: Telemetria | null; perfilStr: PerfilStrings | null; onPerfil: () => void; totalStrings: number }) {
   const g = (p: string) => getPath(dados, p);
   const pv = (p: string) => { const x = g(p); return x == null || x === '' ? '' : String(x).replace('.', ','); };
   const [lista, setLista] = useState<SetpointDef[]>([]);
@@ -483,6 +564,8 @@ function ConfigInversor({ equipamentoId, dados }: { equipamentoId: string; dados
         </>
       )}
 
+      <ConfigStrings equipamentoId={equipamentoId} perfil={perfilStr} onSalvo={onPerfil} total={totalStrings} />
+
       <NxReview open={review} onClose={() => { if (!writing) setReview(false); }} writing={writing} onWrite={gravar}
         changes={changed.map((sp) => ({ label: sp.label, de: `${base(sp) || '—'}${uni(sp)}`, para: `${valorDe(sp).trim()}${uni(sp)}` }))}
         nota={changed.some((sp) => sp.avancado)
@@ -498,6 +581,7 @@ function ConfigInversor({ equipamentoId, dados }: { equipamentoId: string; dados
  * Sheet do Inversor Fotovoltaico. Data-driven pela telemetria do próprio equipamento.
  */
 export function InversorSheet({ equipamentoId, nome, onClose }: { equipamentoId: string; nome?: string; onClose: () => void }) {
+  const { perfil: perfilStr, recarregar: recarregarPerfil } = useStringsPerfil(equipamentoId);
   const { dados, ts } = useDados(equipamentoId);
   const [aba, setAba] = useState('op');
   const [ff, setFf] = useState(true);
@@ -600,17 +684,29 @@ export function InversorSheet({ equipamentoId, nome, onClose }: { equipamentoId:
   const dcCalc = dcMed == null && mppts.length > 0 && mppts.length === strings.length
     ? mppts.reduce((acc, m, i) => acc + m.v * strings[i].v, 0) / 1000 : undefined;
 
-  // String abaixo da média (regra do mockup): < 0,2 A com média > 2 A = falha; < 70% da média = alerta.
-  const ord = strings.map((x) => x.v).sort((a, b) => a - b);
+  // Strings: entradas sem string pelo projeto saem da conta (não conectadas); as demais são
+  // comparadas com o ESPERADO = participação típica dela (histórico) × mediana das ativas agora.
+  // < 0,2 A com esperado > 2 A = falha; < 70% do esperado = alerta.
+  const emUso = strings.filter((x) => !stringNaoConectada(perfilStr, x.n));
+  const naoConectadas = strings.length - emUso.length;
+  const ord = emUso.map((x) => x.v).filter((v) => v > 0.5).sort((a, b) => a - b);
   const med = ord.length ? (ord.length % 2 ? ord[(ord.length - 1) / 2] : (ord[ord.length / 2 - 1] + ord[ord.length / 2]) / 2) : 0;
-  const corString = (a: number) => (med > 2 && a < 0.2 ? NX.bad : med > 1 && a < 0.7 * med ? NX.warn : NX.texto);
-  const baixas = online && gerando ? strings.filter((x) => corString(x.v) !== NX.texto) : [];
+  const esperado = (n: number) => {
+    const p = perfilStr?.strings.find((x) => x.n === n);
+    return p && p.amostras >= 100 && p.razao != null && p.razao > 0.05 ? p.razao * med : med;
+  };
+  const corString = (n: number, a: number) => {
+    if (stringNaoConectada(perfilStr, n)) return NX.mudo;
+    const e = esperado(n);
+    return e > 2 && a < 0.2 ? NX.bad : e > 1 && a < 0.7 * e ? NX.warn : NX.texto;
+  };
+  const baixas = online && gerando ? emUso.filter((x) => corString(x.n, x.v) !== NX.texto) : [];
   const porMppt = mppts.length && strings.length ? Math.max(1, Math.ceil(strings.length / mppts.length)) : 0;
 
   let tone: NxTone; let stLabel: string; let stText: string;
   if (!online) { tone = 'off'; stLabel = 'Sem comunicação'; stText = info.hasTs ? `Última leitura ${info.idade}` : 'Sem leitura'; }
   else if (ativas.length) { tone = 'bad'; stLabel = 'Falha'; stText = falhasTxt; }
-  else if (baixas.length) { tone = 'warn'; stLabel = 'Alerta'; stText = baixas.length === 1 ? `String ${baixas[0].n} abaixo da média` : `${baixas.length} strings abaixo da média`; }
+  else if (baixas.length) { tone = 'warn'; stLabel = 'Alerta'; stText = baixas.length === 1 ? `String ${baixas[0].n} abaixo do esperado` : `${baixas.length} strings abaixo do esperado`; }
   else { tone = 'ok'; stLabel = 'Normal'; stText = estadoTexto || (gerando ? 'Gerando' : 'Sem geração agora'); }
 
   const totalYield = num('energy.total_yield');
@@ -647,7 +743,7 @@ export function InversorSheet({ equipamentoId, nome, onClose }: { equipamentoId:
       onClose={onClose}
     >
       {aba === 'cfg' ? (
-        <ConfigInversor equipamentoId={equipamentoId} dados={dados} />
+        <ConfigInversor equipamentoId={equipamentoId} dados={dados} perfilStr={perfilStr} onPerfil={recarregarPerfil} totalStrings={strings.length} />
       ) : (
         <div style={{ padding: '20px 24px 28px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
           <Duas>
@@ -711,7 +807,7 @@ export function InversorSheet({ equipamentoId, nome, onClose }: { equipamentoId:
                   style={{ width: '100%', minHeight: 56, display: 'flex', alignItems: 'center', gap: 12, padding: '0 16px', boxSizing: 'border-box' }}>
                   <span style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
                     <span style={{ fontSize: 15, fontWeight: 700 }}>MPPT e strings</span>
-                    <span style={{ fontSize: 12, color: NX.mudo }}>{mppts.length || strings.length ? `${mppts.length} MPPT · ${strings.length} strings` : '—'}</span>
+                    <span style={{ fontSize: 12, color: NX.mudo }}>{mppts.length || strings.length ? `${mppts.length} MPPT · ${emUso.length} strings em uso${naoConectadas ? ` · ${naoConectadas} não conectada${naoConectadas > 1 ? 's' : ''}` : ''}` : '—'}</span>
                   </span>
                   {baixas.length > 0 && (
                     <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 800, color: NX.warn }}>
@@ -739,7 +835,11 @@ export function InversorSheet({ equipamentoId, nome, onClose }: { equipamentoId:
                             {sts.map((x) => (
                               <span key={x.n} style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, fontSize: 13 }}>
                                 <span style={{ color: NX.mudo }}>String {x.n}</span>
-                                <span style={{ fontWeight: 800, fontVariantNumeric: 'tabular-nums', minWidth: 52, textAlign: 'right', color: corString(x.v) }}>{fmt(x.v, 1)} A</span>
+                                {stringNaoConectada(perfilStr, x.n) ? (
+                                  <span style={{ fontSize: 12, color: NX.mudo, minWidth: 52, textAlign: 'right' }} title="Entrada sem string (projeto) — fora dos alertas">não conectada</span>
+                                ) : (
+                                  <span style={{ fontWeight: 800, fontVariantNumeric: 'tabular-nums', minWidth: 52, textAlign: 'right', color: corString(x.n, x.v) }}>{fmt(x.v, 1)} A</span>
+                                )}
                               </span>
                             ))}
                           </span>
