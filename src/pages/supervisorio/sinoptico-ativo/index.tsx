@@ -1,38 +1,18 @@
 import { Layout } from "@/components/common/Layout";
-import { IoTDiagram } from "@/features/supervisorio/components/iot-diagram";
-import { ComissionamentoTab } from "@/features/supervisorio/components/ComissionamentoTab";
-import { VisaoGeralUsina } from "@/features/supervisorio/components/visao-geral/VisaoGeralUsina";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   Activity,
-  ArrowLeft,
-  BarChart3,
   Building,
   Circle,
-  Copy,
-  Cpu,
-  Edit3,
   Gauge,
   HardDrive,
-  Link,
-  Maximize,
-  Minimize,
-  Move,
-  Network,
-  Redo,
   Router,
-  Save,
   Square,
-  Trash2,
   Triangle,
-  Undo,
-  X,
   Zap,
 } from "lucide-react";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 
@@ -42,9 +22,8 @@ import type { LandisGyrE750Reading } from "@/components/equipment/LandisGyr/Land
 import type { M300Reading } from "@/components/equipment/M300/M300.types"; // Hook para histórico undo/redo - REMOVIDO
 import type { M160Reading } from "@/components/equipment/M160/M160.types";
 import { A966Modal } from "@/features/supervisorio/components/a966-modal";
-import { DomAnchoredConnectionsOverlay } from "@/features/supervisorio/components/DomAnchoredConnectionsOverlay";
 import "@/features/supervisorio/components/DomAnchoredConnectionsOverlay.css";
-import { DiagramGrid, useGridSettings } from "@/features/supervisorio/components/DiagramGrid";
+import { useGridSettings } from "@/features/supervisorio/components/DiagramGrid";
 import { DisjuntorModal } from "@/features/supervisorio/components/disjuntor-modal";
 import { InversorModal } from "@/features/supervisorio/components/inversor-modal";
 import { InversorMqttDataModal } from "@/features/equipamentos/components/InversorMqttDataModal";
@@ -57,8 +36,6 @@ import { BombaModal } from "@/features/bomba-combustivel/BombaModal";
 import { CarregadorModal } from "@/features/carregador-eletrico/CarregadorModal";
 import { isPowerMeter } from "@/features/supervisorio/components/power-meter/helpers";
 import { iotApiService } from "@/services/iot.services";
-import { SinopticoDiagrama } from "@/features/supervisorio/components/sinoptico-diagrama";
-import { SinopticoGraficosV2, PERCENTUAL_LIMITE_GERACAO } from "@/features/supervisorio/components/sinoptico-graficos-v2";
 import { TransformadorModal } from "@/features/supervisorio/components/transformador-modal";
 // TEMPORÁRIO: MQTT comentado - implementar depois
 // import { useMqttWebSocket } from "@/hooks/useMqttWebSocket";
@@ -84,14 +61,30 @@ import { useUserStore } from '@/store/useUserStore';
 
 // 🆕 V2: Imports do diagrama refatorado
 import { DiagramV2Wrapper } from '@/features/supervisorio/v2/DiagramV2Wrapper';
+type V2ComponenteClick = NonNullable<React.ComponentProps<typeof DiagramV2Wrapper>["onComponenteClick"]>;
+type V2ConfigurarPontos = NonNullable<React.ComponentProps<typeof DiagramV2Wrapper>["onConfigurarPontos"]>;
 
 // Overview do sinoptico (KPIs, grandezas, demanda, alarmes, grafico) ao redor do diagrama
-import { AlarmesAtivosPanel } from '@/features/supervisorio/sinoptico/components/AlarmesAtivosPanel';
 import { SinopticoOverview } from '@/features/supervisorio/sinoptico/components/SinopticoOverview';
 import { ConfigPontosModal } from '@/features/supervisorio/sinoptico/components/ConfigPontosModal';
 
 // Tipos - CORRIGIDOS com interfaces locais caso os imports falhem
 import type { ComponenteDU } from "@/types/dtos/sinoptico-ativo";
+import { AbaSkeleton, PainelSkeleton } from '@/features/supervisorio/sinoptico/components/SinopticoSkeleton';
+
+// Abas fora do unifilar: código só baixa quando a aba abre (o IoT sozinho tem ~3 mil linhas).
+const IoTDiagram = lazy(() =>
+  import("@/features/supervisorio/components/iot-diagram").then((m) => ({ default: m.IoTDiagram })),
+);
+const ComissionamentoTab = lazy(() =>
+  import("@/features/supervisorio/components/ComissionamentoTab").then((m) => ({ default: m.ComissionamentoTab })),
+);
+const VisaoGeralUsina = lazy(() =>
+  import("@/features/supervisorio/components/visao-geral/VisaoGeralUsina").then((m) => ({ default: m.VisaoGeralUsina })),
+);
+const AlarmesAtivosPanel = lazy(() =>
+  import("@/features/supervisorio/sinoptico/components/AlarmesAtivosPanel").then((m) => ({ default: m.AlarmesAtivosPanel })),
+);
 
 // Interfaces de backup caso os imports não funcionem
 interface ComponenteDUBackup {
@@ -1883,6 +1876,7 @@ export function SinopticoAtivoPage() {
   const [errorDiagrama, setErrorDiagrama] = useState<string | null>(null);
   const [equipamentos, setEquipamentos] = useState<any[]>([]);
   const [diagramaIdAtual, setDiagramaIdAtual] = useState<string | null>(null);
+  const [modoEdicao, setModoEdicao] = useState(false);
   const [isSavingDiagrama, setIsSavingDiagrama] = useState(false);
 
   // Atualizar título da página quando unidade carrega
@@ -2001,7 +1995,12 @@ export function SinopticoAtivoPage() {
         setDiagramaIdAtual(diagramaAtivo.id.trim());
 
         // Buscar diagrama completo com equipamentos e conexões
-        try {
+        // O diagrama na tela é o V2 (DiagramV2Wrapper carrega o seu). Os componentes V1
+        // só servem ao editor legado, que saiu da tela: não baixa o diagrama inteiro de novo.
+        if (!modoEdicao) {
+          setComponentes([]);
+          setConnections([]);
+        } else try {
           const diagramaCompleto = await DiagramasService.getDiagrama(diagramaAtivo.id);
 
           // Converter equipamentos do backend para componentes do frontend
@@ -2096,7 +2095,7 @@ export function SinopticoAtivoPage() {
     } finally {
       setLoadingDiagrama(false);
     }
-  }, [unidadeId]);
+  }, [unidadeId, modoEdicao]);
 
   // Carregar diagrama quando selecionar uma unidade
   useEffect(() => {
@@ -2143,7 +2142,6 @@ export function SinopticoAtivoPage() {
   // A seleção de equipamentos para o gráfico de demanda é feita via modal de configuração
 
   // Estados para o modo de edição
-  const [modoEdicao, setModoEdicao] = useState(false);
   // CORRIGIDO: Tipo ajustado para "selecionar" | "conectar"
   const [modoFerramenta, setModoFerramenta] = useState<
     "selecionar" | "conectar"
@@ -3742,6 +3740,152 @@ if (import.meta.env.PROD) {
     
   // LOADING STATE - Apenas mostrar se não houver unidade selecionada
   // O DiagramV2 gerencia seu próprio loading interno
+  // Simulação de giro do pivô (modal legado): guarda o timer para parar no
+  // "Parar irrigação", ao reiniciar e ao sair da tela (antes ficava rodando e
+  // re-renderizava a página inteira a cada segundo).
+  const pivoSimRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pararSimulacaoPivo = useCallback(() => {
+    if (pivoSimRef.current) clearInterval(pivoSimRef.current);
+    pivoSimRef.current = null;
+  }, []);
+  useEffect(() => pararSimulacaoPivo, [pararSimulacaoPivo]);
+
+  // Clique no equipamento do unifilar V2. Corpo sempre atual via ref e função estável
+  // por fora: o DiagramV2Wrapper é memo e não re-renderiza a cada estado da página.
+  const v2ClickRef = useRef<V2ComponenteClick>(() => {});
+  v2ClickRef.current = (comp) => {
+                  // ✅ Modo visualizar: apenas abre modal, sem seleção visual
+
+                  const tag = comp.tag || '';
+                  const tipo = comp.tipo || '';
+                  const nome = comp.nome || '';
+
+                  // R8: guarda o alvo do clique para a config de pontos (modais Inversor/PM)
+                  const categoriaComp =
+                    comp.dados?.tipoEquipamento?.categoria?.nome ||
+                    comp.dados?.tipo_equipamento_rel?.categoria?.nome ||
+                    comp.categoria ||
+                    '';
+                  setPontosAlvo({ id: comp.id, nome: comp.nome, categoria: categoriaComp });
+
+                  console.log('[DiagramV2] Equipment clicked:', {
+                    id: comp.id,
+                    nome: comp.nome,
+                    tag,
+                    tipo,
+                    categoria: comp.categoria,
+                    tipoEquipamento: comp.dados?.tipo_equipamento,
+                    tipoEquipamentoCodigo: comp.dados?.tipoEquipamento?.codigo,
+                    dados: comp.dados
+                  });
+
+                  // Power Meter (M160, PD666, M300, Landis, etc) — modal unificado.
+                  if (isPowerMeter(comp as any)) {
+                    const componenteV1: ComponenteDU = {
+                      id: comp.id,
+                      tipo: comp.tipo,
+                      nome: comp.nome,
+                      tag: comp.tag,
+                      posicao: { x: comp.posicaoX, y: comp.posicaoY },
+                      status: comp.status?.toUpperCase() as any || 'NORMAL',
+                      dados: comp.dados || {},
+                    };
+                    setComponenteSelecionado(componenteV1);
+                    setModalAberto('POWER_METER');
+                  } else if (tipo === 'INVERSOR' || tipo.includes('INVERSOR')) {
+                    // InversorMqttDataModal usa apenas o ID
+                    setSelectedInversorMqttId(comp.id);
+                    setInversorMqttModalOpen(true);
+                  } else if (tipo === 'PIVO' || tipo.includes('PIVO') || nome.includes('Pivô') || nome.includes('Pivo')) {
+                    // Abrir modal de pivô
+                    setSelectedPivoId(comp.id);
+                    setPivoModalOpen(true);
+                  } else if (tipo.toUpperCase().includes('BOMBA') || nome.toUpperCase().includes('BOMBA')) {
+                    // Bomba de Combustível — abre o BombaModal (estado/RFID/config)
+                    const componenteV1: ComponenteDU = {
+                      id: comp.id,
+                      tipo: comp.tipo,
+                      nome: comp.nome,
+                      tag: comp.tag,
+                      posicao: { x: comp.posicaoX, y: comp.posicaoY },
+                      status: comp.status?.toUpperCase() as any || 'NORMAL',
+                      dados: { ...(comp.dados || {}), equipamento_id: comp.dados?.equipamento_id || comp.id },
+                    };
+                    setComponenteSelecionado(componenteV1);
+                    setModalAberto('BOMBA_COMBUSTIVEL');
+                  } else if (tipo.toUpperCase().includes('CARREGADOR') || nome.toUpperCase().includes('CARREGADOR')) {
+                    // Carregador Elétrico — abre o CarregadorModal (recarga/sessões/moradores/export)
+                    const componenteV1: ComponenteDU = {
+                      id: comp.id,
+                      tipo: comp.tipo,
+                      nome: comp.nome,
+                      tag: comp.tag,
+                      posicao: { x: comp.posicaoX, y: comp.posicaoY },
+                      status: comp.status?.toUpperCase() as any || 'NORMAL',
+                      dados: { ...(comp.dados || {}), equipamento_id: comp.dados?.equipamento_id || comp.id },
+                    };
+                    setComponenteSelecionado(componenteV1);
+                    setModalAberto('CARREGADOR_ELETRICO');
+                  } else if (
+                    (comp.dados?.tipoEquipamento?.categoria?.nome ||
+                      comp.dados?.tipo_equipamento_rel?.categoria?.nome) === 'Gateway'
+                  ) {
+                    console.log('[DiagramV2] Opening A966 modal');
+                    const componenteV1: ComponenteDU = {
+                      id: comp.id,
+                      tipo: comp.tipo,
+                      nome: comp.nome,
+                      tag: comp.tag,
+                      posicao: { x: comp.posicaoX, y: comp.posicaoY },
+                      status: comp.status?.toUpperCase() as any || 'NORMAL',
+                      dados: comp.dados || {},
+                    };
+                    setComponenteSelecionado(componenteV1);
+                    setModalAberto('A966');
+                  } else {
+                    // Transformador / Disjuntor (sem telemetria propria): abre o
+                    // modal de pontos do diagrama (R8).
+                    const categoria =
+                      comp.dados?.tipoEquipamento?.categoria?.nome ||
+                      comp.dados?.tipo_equipamento_rel?.categoria?.nome ||
+                      comp.categoria ||
+                      '';
+                    const ehDisjuntor =
+                      categoria.includes('Disjuntor') || tipo.includes('DISJUNTOR');
+                    const ehTrafo =
+                      categoria.includes('Transformador') || tipo.includes('TRANSFORMADOR');
+                    if (ehDisjuntor) {
+                      // Disjuntor pode ter um Power Meter (só-IoT) associado. Se tiver,
+                      // clicar no disjuntor abre o modal do PM (dados do medidor). Senão,
+                      // cai no modal de config de pontos (R8) como antes.
+                      const disjEquipId = String(comp.dados?.equipamento_id || comp.id || '').trim();
+                      iotApiService
+                        .powerMeterByDisjuntor(disjEquipId)
+                        .then((pm) => {
+                          if (pm?.equipamento_id) {
+                            setComponenteSelecionado({
+                              id: pm.equipamento_id,
+                              tipo: comp.tipo,
+                              nome: pm.nome || comp.nome,
+                              tag: comp.tag,
+                              posicao: { x: comp.posicaoX, y: comp.posicaoY },
+                              status: (comp.status?.toUpperCase() as any) || 'NORMAL',
+                              dados: { equipamento_id: pm.equipamento_id },
+                            } as ComponenteDU);
+                            setModalAberto('POWER_METER');
+                          } else {
+                            setConfigPontos({ id: comp.id, nome: comp.nome, categoria });
+                          }
+                        })
+                        .catch(() => setConfigPontos({ id: comp.id, nome: comp.nome, categoria }));
+                    } else if (ehTrafo) {
+                      setConfigPontos({ id: comp.id, nome: comp.nome, categoria });
+                    }
+                  }
+                };
+  const handleV2ComponenteClick = useCallback<V2ComponenteClick>((comp) => v2ClickRef.current(comp), []);
+  const handleConfigurarPontos = useCallback<V2ConfigurarPontos>((eq) => setConfigPontos(eq), []);
+
   if (!unidadeId) {
     return (
       <Layout>
@@ -3876,7 +4020,9 @@ if (import.meta.env.PROD) {
           {/* Visão Geral da usina: números gerais + histórico de geração (com ou sem TON). */}
           {unidadeId && sinopticoTab === 'visao' && (
             <div className="flex-1 min-h-0 overflow-hidden">
-              <VisaoGeralUsina unidadeId={unidadeId} unidadeNome={unidadeAtual?.nome} />
+              <Suspense fallback={<AbaSkeleton />}>
+                <VisaoGeralUsina unidadeId={unidadeId} unidadeNome={unidadeAtual?.nome} />
+              </Suspense>
             </div>
           )}
 
@@ -3895,139 +4041,8 @@ if (import.meta.env.PROD) {
                 unidadeNome={unidadeAtual?.nome}
                 modoEdicao={false}
                 availableEquipments={equipamentos}
-                onConfigurarPontos={
-                  podeCadastroTecnico ? (eq) => setConfigPontos(eq) : undefined
-                }
-                onComponenteClick={(comp) => {
-                  // ✅ Modo visualizar: apenas abre modal, sem seleção visual
-
-                  const tag = comp.tag || '';
-                  const tipo = comp.tipo || '';
-                  const nome = comp.nome || '';
-
-                  // R8: guarda o alvo do clique para a config de pontos (modais Inversor/PM)
-                  const categoriaComp =
-                    comp.dados?.tipoEquipamento?.categoria?.nome ||
-                    comp.dados?.tipo_equipamento_rel?.categoria?.nome ||
-                    comp.categoria ||
-                    '';
-                  setPontosAlvo({ id: comp.id, nome: comp.nome, categoria: categoriaComp });
-
-                  console.log('[DiagramV2] Equipment clicked:', {
-                    id: comp.id,
-                    nome: comp.nome,
-                    tag,
-                    tipo,
-                    categoria: comp.categoria,
-                    tipoEquipamento: comp.dados?.tipo_equipamento,
-                    tipoEquipamentoCodigo: comp.dados?.tipoEquipamento?.codigo,
-                    dados: comp.dados
-                  });
-
-                  // Power Meter (M160, PD666, M300, Landis, etc) — modal unificado.
-                  if (isPowerMeter(comp as any)) {
-                    const componenteV1: ComponenteDU = {
-                      id: comp.id,
-                      tipo: comp.tipo,
-                      nome: comp.nome,
-                      tag: comp.tag,
-                      posicao: { x: comp.posicaoX, y: comp.posicaoY },
-                      status: comp.status?.toUpperCase() as any || 'NORMAL',
-                      dados: comp.dados || {},
-                    };
-                    setComponenteSelecionado(componenteV1);
-                    setModalAberto('POWER_METER');
-                  } else if (tipo === 'INVERSOR' || tipo.includes('INVERSOR')) {
-                    // InversorMqttDataModal usa apenas o ID
-                    setSelectedInversorMqttId(comp.id);
-                    setInversorMqttModalOpen(true);
-                  } else if (tipo === 'PIVO' || tipo.includes('PIVO') || nome.includes('Pivô') || nome.includes('Pivo')) {
-                    // Abrir modal de pivô
-                    setSelectedPivoId(comp.id);
-                    setPivoModalOpen(true);
-                  } else if (tipo.toUpperCase().includes('BOMBA') || nome.toUpperCase().includes('BOMBA')) {
-                    // Bomba de Combustível — abre o BombaModal (estado/RFID/config)
-                    const componenteV1: ComponenteDU = {
-                      id: comp.id,
-                      tipo: comp.tipo,
-                      nome: comp.nome,
-                      tag: comp.tag,
-                      posicao: { x: comp.posicaoX, y: comp.posicaoY },
-                      status: comp.status?.toUpperCase() as any || 'NORMAL',
-                      dados: { ...(comp.dados || {}), equipamento_id: comp.dados?.equipamento_id || comp.id },
-                    };
-                    setComponenteSelecionado(componenteV1);
-                    setModalAberto('BOMBA_COMBUSTIVEL');
-                  } else if (tipo.toUpperCase().includes('CARREGADOR') || nome.toUpperCase().includes('CARREGADOR')) {
-                    // Carregador Elétrico — abre o CarregadorModal (recarga/sessões/moradores/export)
-                    const componenteV1: ComponenteDU = {
-                      id: comp.id,
-                      tipo: comp.tipo,
-                      nome: comp.nome,
-                      tag: comp.tag,
-                      posicao: { x: comp.posicaoX, y: comp.posicaoY },
-                      status: comp.status?.toUpperCase() as any || 'NORMAL',
-                      dados: { ...(comp.dados || {}), equipamento_id: comp.dados?.equipamento_id || comp.id },
-                    };
-                    setComponenteSelecionado(componenteV1);
-                    setModalAberto('CARREGADOR_ELETRICO');
-                  } else if (
-                    (comp.dados?.tipoEquipamento?.categoria?.nome ||
-                      comp.dados?.tipo_equipamento_rel?.categoria?.nome) === 'Gateway'
-                  ) {
-                    console.log('[DiagramV2] Opening A966 modal');
-                    const componenteV1: ComponenteDU = {
-                      id: comp.id,
-                      tipo: comp.tipo,
-                      nome: comp.nome,
-                      tag: comp.tag,
-                      posicao: { x: comp.posicaoX, y: comp.posicaoY },
-                      status: comp.status?.toUpperCase() as any || 'NORMAL',
-                      dados: comp.dados || {},
-                    };
-                    setComponenteSelecionado(componenteV1);
-                    setModalAberto('A966');
-                  } else {
-                    // Transformador / Disjuntor (sem telemetria propria): abre o
-                    // modal de pontos do diagrama (R8).
-                    const categoria =
-                      comp.dados?.tipoEquipamento?.categoria?.nome ||
-                      comp.dados?.tipo_equipamento_rel?.categoria?.nome ||
-                      comp.categoria ||
-                      '';
-                    const ehDisjuntor =
-                      categoria.includes('Disjuntor') || tipo.includes('DISJUNTOR');
-                    const ehTrafo =
-                      categoria.includes('Transformador') || tipo.includes('TRANSFORMADOR');
-                    if (ehDisjuntor) {
-                      // Disjuntor pode ter um Power Meter (só-IoT) associado. Se tiver,
-                      // clicar no disjuntor abre o modal do PM (dados do medidor). Senão,
-                      // cai no modal de config de pontos (R8) como antes.
-                      const disjEquipId = String(comp.dados?.equipamento_id || comp.id || '').trim();
-                      iotApiService
-                        .powerMeterByDisjuntor(disjEquipId)
-                        .then((pm) => {
-                          if (pm?.equipamento_id) {
-                            setComponenteSelecionado({
-                              id: pm.equipamento_id,
-                              tipo: comp.tipo,
-                              nome: pm.nome || comp.nome,
-                              tag: comp.tag,
-                              posicao: { x: comp.posicaoX, y: comp.posicaoY },
-                              status: (comp.status?.toUpperCase() as any) || 'NORMAL',
-                              dados: { equipamento_id: pm.equipamento_id },
-                            } as ComponenteDU);
-                            setModalAberto('POWER_METER');
-                          } else {
-                            setConfigPontos({ id: comp.id, nome: comp.nome, categoria });
-                          }
-                        })
-                        .catch(() => setConfigPontos({ id: comp.id, nome: comp.nome, categoria }));
-                    } else if (ehTrafo) {
-                      setConfigPontos({ id: comp.id, nome: comp.nome, categoria });
-                    }
-                  }
-                }}
+                onConfigurarPontos={podeCadastroTecnico ? handleConfigurarPontos : undefined}
+                onComponenteClick={handleV2ComponenteClick}
               />
               </SinopticoOverview>
             </div>
@@ -4038,7 +4053,9 @@ if (import.meta.env.PROD) {
           {unidadeId && sinopticoTab === 'alarmes' && podeVerAlarmes && (
             <div className="flex-1 min-h-0 overflow-auto p-3">
               <div className="mx-auto max-w-2xl">
-                <AlarmesAtivosPanel unidadeId={unidadeId} unidadeNome={unidadeAtual?.nome} />
+                <Suspense fallback={<PainelSkeleton linhas={4} />}>
+                  <AlarmesAtivosPanel unidadeId={unidadeId} unidadeNome={unidadeAtual?.nome} />
+                </Suspense>
               </div>
             </div>
           )}
@@ -4046,931 +4063,21 @@ if (import.meta.env.PROD) {
           {/* IoT: Diagrama IoT nativo (restrito a admin/super_admin via permission) */}
           {unidadeId && sinopticoTab === 'iot' && podeVerIot && (
             <div className="flex-1 min-h-0 border-x border-b border-border rounded-b-lg overflow-hidden flex flex-col">
-              <IoTDiagram unidadeId={unidadeId} unidadeNome={unidadeAtual?.nome} />
+              <Suspense fallback={<AbaSkeleton />}>
+                <IoTDiagram unidadeId={unidadeId} unidadeNome={unidadeAtual?.nome} />
+              </Suspense>
             </div>
           )}
 
           {/* Comissionamento: checks de coerência de dado por ponto + aceite (admin) */}
           {unidadeId && sinopticoTab === 'comissionamento' && podeVerIot && (
             <div className="flex-1 min-h-0 border-x border-b border-border rounded-b-lg overflow-hidden flex flex-col">
-              <ComissionamentoTab unidadeId={unidadeId} unidadeNome={unidadeAtual?.nome} isAdmin={podeCadastroTecnico} />
+              <Suspense fallback={<AbaSkeleton />}>
+                <ComissionamentoTab unidadeId={unidadeId} unidadeNome={unidadeAtual?.nome} isAdmin={podeCadastroTecnico} />
+              </Suspense>
             </div>
           )}
 
-          {/* V1: Diagrama legado (desativado - usando apenas V2) */}
-          <div style={{ display: 'none' }}>
-            {/* Indicadores - Comentados temporariamente (não podem ser calculados corretamente ainda) */}
-            {/* <SinopticoIndicadores indicadores={indicadores} /> */}
-
-            {/* Barra de Ferramentas - SÓ APARECE NO MODO EDIÇÃO */}
-            {modoEdicao && (
-            <div className="mb-6 relative z-50">
-              <Card className="p-4 bg-white dark:bg-gray-900 shadow-lg">
-                <div className="flex flex-wrap items-center gap-4">
-                  {/* Modos de Ferramentas - CORRIGIDO: BOTÃO ÚNICO */}
-                  <div className="flex items-center gap-2 border-r pr-4">
-                    <span className="text-sm font-medium">Modo:</span>
-                    <div className="flex gap-1">
-                      <Button
-                        variant={
-                          modoFerramenta === "selecionar"
-                            ? "default"
-                            : "outline"
-                        }
-                        size="sm"
-                        onClick={() => {
-                          setModoFerramenta("selecionar");
-                          setConnecting(null);
-                          setIsDragging(false);
-                          setComponenteDragId(null);
-                        }}
-                        className="flex items-center gap-1"
-                      >
-                        <Move className="h-4 w-4" />
-                        Selecionar
-                      </Button>
-                      <Button
-                        variant={
-                          modoFerramenta === "conectar" ? "default" : "outline"
-                        }
-                        size="sm"
-                        onClick={() => {
-                          setModoFerramenta("conectar");
-                          setIsDragging(false);
-                          setComponenteDragId(null);
-                        }}
-                        className="flex items-center gap-1"
-                      >
-                        <Link className="h-4 w-4" />
-                        Conectar
-                      </Button>
-                    </div>
-                  </div>
-
-                  {/* Grid removido - aparece automaticamente no modo de edição (25px fixo) */}
-
-                  {/* Botão Criar Equipamento Rápido */}
-                  <div className="flex items-center gap-2 border-r pr-4">
-                    <Button
-                      size="sm"
-                      variant="default"
-                      className="h-8 bg-green-600 hover:bg-green-700 text-white"
-                      onClick={() => setModalCriarRapido(true)}
-                    >
-                      <Zap className="h-4 w-4 mr-2" />
-                      Novo Equipamento
-                    </Button>
-                  </div>
-
-                  {/* Adicionar Componentes */}
-                  <div className="flex items-center gap-2 border-r pr-4">
-                    <span className="text-sm font-medium">Adicionar:</span>
-                    <select
-                      className="h-8 px-3 py-1 text-sm border border-input bg-background rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 min-w-[280px]"
-                      onChange={(e) => {
-                        if (e.target.value) {
-                          adicionarComponente(e.target.value);
-                          e.target.value = "";
-                        }
-                      }}
-                      defaultValue=""
-                    >
-                      <option value="" disabled>
-                        Selecione um equipamento
-                      </option>
-
-                      {/* Equipamentos UC da Unidade (apenas equipamentos principais) */}
-                      {Array.isArray(equipamentos) && equipamentos.filter(eq => eq.classificacao === 'UC').length > 0 ? (
-                        <optgroup label="📦 Equipamentos da Unidade (UC)">
-                          {(() => {
-                            // Filtrar equipamentos UC que não estão no diagrama
-                            const equipamentosFiltrados = equipamentos.filter(eq => {
-                              const isUC = eq.classificacao === 'UC';
-                              const jaNoDiagrama = componentes.some(comp => {
-                                // Usar trim() para comparar IDs (remover espaços em branco)
-                                const match = comp.dados?.equipamento_id?.trim() === eq.id?.trim();
-                                return match;
-                              });
-
-                              return isUC && !jaNoDiagrama;
-                            });
-
-                            return equipamentosFiltrados.map(equipamento => (
-                              <option key={equipamento.id} value={`EQUIPAMENTO:${equipamento.id}`}>
-                                {equipamento.nome}
-                                {equipamento.tag && ` [${equipamento.tag}]`}
-                                {equipamento.fabricante && ` - ${equipamento.fabricante}`}
-                              </option>
-                            ));
-                          })()}
-                          {Array.isArray(equipamentos) && equipamentos.filter(eq => eq.classificacao === 'UC' && !componentes.some(comp => comp.dados?.equipamento_id?.trim() === eq.id?.trim())).length === 0 && (
-                            <option value="" disabled>Todos equipamentos já adicionados</option>
-                          )}
-                        </optgroup>
-                      ) : (
-                        <optgroup label="📦 Equipamentos da Unidade">
-                          <option value="" disabled>Nenhum equipamento UC cadastrado</option>
-                        </optgroup>
-                      )}
-
-                      {/* Componentes auxiliares para o diagrama */}
-                      <optgroup label="⚡ Componentes Auxiliares">
-                        <option value="PONTO">• Ponto de Junção</option>
-                        <option value="BARRAMENTO">• Barramento</option>
-                      </optgroup>
-                    </select>
-                  </div>
-
-                  {/* Ações - BOTÕES UNDO/REDO FUNCIONAIS */}
-                  <div className="flex items-center gap-2 border-r pr-4">
-                    <span className="text-sm font-medium">Ações:</span>
-                    <div className="flex gap-1">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={undo}
-                        disabled={!canUndo}
-                        title={
-                          canUndo
-                            ? "Desfazer última ação (Ctrl+Z)"
-                            : "Nenhuma ação para desfazer"
-                        }
-                      >
-                        <Undo className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={redo}
-                        disabled={!canRedo}
-                        title={
-                          canRedo
-                            ? "Refazer ação (Ctrl+Y)"
-                            : "Nenhuma ação para refazer"
-                        }
-                      >
-                        <Redo className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={limparConexoes}
-                        disabled={connections.length === 0}
-                        title="Limpar conexões"
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                      {componenteEditando && (
-                        <>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() =>
-                              duplicarComponente(componenteEditando)
-                            }
-                            title="Duplicar componente"
-                          >
-                            <Copy className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() =>
-                              removerComponente(componenteEditando)
-                            }
-                            className="text-red-600 hover:text-red-700"
-                            title="Remover componente"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Info do Componente Selecionado */}
-                {(() => {
-                  // Log removido
-                  return null;
-                })()}
-                {componenteEditando && (() => {
-                  const componenteSelecionado = componentes.find(c => c.id === componenteEditando);
-                  if (!componenteSelecionado) return null;
-
-                  return (
-                    <div className="mt-4 pt-4 border-t relative z-50 bg-white dark:bg-gray-900">
-                      {/* Cabeçalho com estados e conexões */}
-                      <div className="flex items-center justify-end gap-2 mb-3">
-                        {connecting && connecting.from === componenteEditando && (
-                          <Badge variant="secondary" className="animate-pulse">
-                            Conectando...
-                          </Badge>
-                        )}
-                        {isDragging && componenteDragId === componenteEditando && (
-                          <Badge variant="secondary" className="animate-pulse">
-                            Arrastando...
-                          </Badge>
-                        )}
-                        <span className="text-xs text-muted-foreground">
-                          Conexões: {connections.filter(c => c.from === componenteEditando || c.to === componenteEditando).length}
-                        </span>
-                      </div>
-
-                      {/* Painel de Propriedades Editáveis - Layout Reorganizado */}
-                      <div className="flex gap-3 items-start">
-                        {/* Coluna 1: Nome, Tag e Tipo */}
-                        <div className="flex flex-col gap-2">
-                          <div>
-                            <label className="text-xs text-muted-foreground block mb-1 flex items-center gap-1">
-                              Nome
-                              <Edit3 className="h-3 w-3 text-blue-500" />
-                            </label>
-                            <input
-                              type="text"
-                              value={componenteSelecionado.nome}
-                              onChange={(e) => {
-                                setComponentes(componentes.map(c =>
-                                  c.id === componenteEditando
-                                    ? { ...c, nome: e.target.value }
-                                    : c
-                                ));
-                                // Marcar equipamento como modificado
-                                if (componenteSelecionado.dados?.equipamento_id) {
-                                  setEquipamentosModificados(prev => new Set(prev).add(componenteSelecionado.dados.equipamento_id));
-                                }
-                              }}
-                              placeholder="Nome do equipamento"
-                              className="w-40 px-2 py-1 text-sm border rounded bg-background focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                              title="Digite o nome do equipamento"
-                            />
-                          </div>
-                          <div>
-                            <label className="text-xs text-muted-foreground block mb-1 flex items-center gap-1">
-                              Tag
-                              <Edit3 className="h-3 w-3 text-blue-500" />
-                            </label>
-                            <input
-                              type="text"
-                              value={componenteSelecionado.tag || ''}
-                              onChange={(e) => {
-                                setComponentes(componentes.map(c =>
-                                  c.id === componenteEditando
-                                    ? { ...c, tag: e.target.value }
-                                    : c
-                                ));
-                                // Marcar equipamento como modificado
-                                if (componenteSelecionado.dados?.equipamento_id) {
-                                  setEquipamentosModificados(prev => new Set(prev).add(componenteSelecionado.dados.equipamento_id));
-                                }
-                              }}
-                              placeholder="Tag do equipamento"
-                              className="w-40 px-2 py-1 text-sm border rounded bg-background focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                              title="A tag será exibida no diagrama (se preenchida, substitui o nome)"
-                            />
-                          </div>
-                          <div>
-                            <label className="text-xs text-muted-foreground block mb-1">Tipo</label>
-                            <Badge variant="outline" className="w-40 justify-center">
-                              {componenteSelecionado.tipo}
-                            </Badge>
-                          </div>
-                          {/* Nota informativa */}
-                          <div className="text-[10px] text-muted-foreground bg-blue-50 dark:bg-blue-950 px-2 py-1 rounded border border-blue-200 dark:border-blue-800">
-                            {componenteSelecionado.tag
-                              ? `Exibindo: "${componenteSelecionado.tag}"`
-                              : `Exibindo: "${componenteSelecionado.nome}"`
-                            }
-                          </div>
-                        </div>
-                        {/* Posições X e Y em coluna */}
-                        <div className="flex flex-col gap-2">
-                          <div>
-                            <label className="text-xs text-muted-foreground block mb-1">Posição X (%)</label>
-                            <input
-                              type="number"
-                              step="0.1"
-                              value={componenteSelecionado.posicao?.x || 0}
-                              onChange={(e) => {
-                                setComponentes(componentes.map(c =>
-                                  c.id === componenteEditando
-                                    ? { ...c, posicao: { ...c.posicao, x: parseFloat(e.target.value) || 0 } }
-                                    : c
-                                ));
-                              }}
-                              className="w-24 px-2 py-1 text-sm border rounded bg-background"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="text-xs text-muted-foreground block mb-1">Posição Y (%)</label>
-                            <input
-                              type="number"
-                              step="0.1"
-                              value={componenteSelecionado.posicao?.y || 0}
-                              onChange={(e) => {
-                                setComponentes(componentes.map(c =>
-                                  c.id === componenteEditando
-                                    ? { ...c, posicao: { ...c.posicao, y: parseFloat(e.target.value) || 0 } }
-                                    : c
-                                ));
-                              }}
-                              className="w-24 px-2 py-1 text-sm border rounded bg-background"
-                            />
-                          </div>
-                        </div>
-
-                        {/* Posição do Label - Drag and Drop */}
-                        <div className="flex-1">
-                          <label className="text-xs text-muted-foreground block mb-1">Posição do Nome</label>
-                          <div className="flex items-center gap-2">
-                            <div className="flex-1 text-xs text-muted-foreground bg-blue-50 dark:bg-blue-950 px-3 py-2 rounded border border-blue-200 dark:border-blue-800">
-                              <Move className="inline h-3 w-3 mr-1 text-blue-600 dark:text-blue-400" />
-                              Clique e arraste o nome no diagrama para reposicioná-lo
-                            </div>
-                            {componenteSelecionado.label_offset && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                  setComponentes(componentes.map(c =>
-                                    c.id === componenteEditando
-                                      ? { ...c, label_offset: undefined }
-                                      : c
-                                  ));
-                                }}
-                                className="text-xs"
-                                title="Resetar posição do label"
-                              >
-                                Resetar
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })()}
-              </Card>
-            </div>
-          )}
-
-          {/* Layout Principal - OTIMIZADO COM 100VH */}
-          <div className="w-full h-[calc(100vh-120px)] flex flex-col">
-            {!modoEdicao && (() => {
-              const valorContratadoReal = unidadeAtual?.demandaGeracao || 2300;
-              // Log removido
-
-              // Verificar se há pelo menos um gráfico visível para adaptar layout
-              const temGraficosVisiveis = unidadeAtual && (
-                equipamentos.some(e => e.mqtt_habilitado) || // Tem equipamentos para demanda
-                equipamentos.some(e => e.tipo_equipamento?.includes('M160')) // Tem M160 para tensão/FP
-              );
-
-              return (
-              <div className={`grid grid-cols-1 ${temGraficosVisiveis ? 'xl:grid-cols-3' : ''} gap-4 h-full overflow-hidden`}>
-                {/* Gráficos - Painel Lateral (1/3 da largura em telas grandes) - Scrollável internamente */}
-                {temGraficosVisiveis && (
-                <div className="xl:col-span-1 flex flex-col gap-4 h-full overflow-y-auto overflow-x-hidden pr-2">
-                  <SinopticoGraficosV2
-                    unidadeId={unidadeId}
-                    valorContratado={valorContratadoReal}
-                    percentualAdicional={PERCENTUAL_LIMITE_GERACAO}
-                    onConfigSaved={reloadUnidade}
-                  />
-                </div>
-                )}
-
-                {/* Diagrama Unifilar - MODO VISUALIZAÇÃO - Ocupa altura total disponível */}
-                <div className={`${temGraficosVisiveis ? "xl:col-span-2" : ""} flex h-full`}>
-                  <Card
-                    ref={diagramCardRef}
-                    className={`flex flex-col w-full overflow-hidden ${
-                      diagramaFullscreen
-                        ? 'fixed inset-0 z-50 m-0 rounded-none border-0 !bg-slate-50 dark:!bg-slate-900'
-                        : 'bg-slate-50 dark:bg-slate-900 h-full'
-                    }`}
-                  >
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 pb-2 border-b flex-shrink-0 bg-slate-50 dark:bg-black gap-3">
-                      <div className="flex items-center gap-0 bg-muted dark:bg-slate-800 rounded-lg p-0.5">
-                        <button
-                          onClick={() => setSinopticoTab('unifilar')}
-                          className={`px-4 py-2 text-sm font-semibold rounded-md transition-all flex items-center gap-2 ${
-                            sinopticoTab === 'unifilar'
-                              ? 'bg-white dark:bg-slate-950 text-foreground shadow-sm border border-border'
-                              : 'text-muted-foreground hover:text-foreground'
-                          }`}
-                        >
-                          <Network className="h-4 w-4" />
-                          Unifilar
-                        </button>
-                        {podeVerIot && (
-                          <button
-                            onClick={() => setSinopticoTab('iot')}
-                            className={`px-4 py-2 text-sm font-semibold rounded-md transition-all flex items-center gap-2 ${
-                              sinopticoTab === 'iot'
-                                ? 'bg-white dark:bg-slate-950 text-foreground shadow-sm border border-border'
-                                : 'text-muted-foreground hover:text-foreground'
-                            }`}
-                          >
-                            <Cpu className="h-4 w-4" />
-                            Topologia
-                          </button>
-                        )}
-                        {diagramaFullscreen && <span className="text-sm text-muted-foreground ml-2">Tela Cheia</span>}
-                      </div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {/* Grid removido - aparece automaticamente no modo de edição (25px fixo) */}
-
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={toggleFullscreen}
-                          className="flex items-center gap-1 sm:gap-2"
-                        >
-                          {diagramaFullscreen ? (
-                            <>
-                              <Minimize className="h-4 w-4" />
-                              <span className="hidden sm:inline">Sair</span>
-                            </>
-                          ) : (
-                            <>
-                              <Maximize className="h-4 w-4" />
-                              <span className="hidden sm:inline">Tela Cheia</span>
-                            </>
-                          )}
-                        </Button>
-                        {!diagramaFullscreen && podeCadastroTecnico && sinopticoTab === 'unifilar' && (
-                          <>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={toggleModoEdicao}
-                              className="flex items-center gap-1 sm:gap-2"
-                            >
-                              <Edit3 className="h-4 w-4" />
-                              <span className="hidden sm:inline">Editar</span>
-                            </Button>
-
-                          </>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Tab: Unifilar */}
-                    {sinopticoTab === 'unifilar' && (
-                    <div
-                      className={`flex-1 relative w-full overflow-auto !bg-slate-50 dark:!bg-black ${
-                        diagramaFullscreen ? 'h-[calc(100vh-73px)]' : ''
-                      }`}
-                      ref={canvasRef}
-                    >
-                      {/* Grid removido do modo visualização - aparece apenas no modo de edição */}
-
-                      {/* COMPONENTE DE CONEXÕES PARA MODO VISUALIZAÇÃO */}
-                      <DomAnchoredConnectionsOverlay
-                        connections={connections}
-                        componentes={componentes}
-                        containerRef={canvasRef}
-                        modoEdicao={false}
-                        onEdgeClick={handleEdgeClick}
-                        isFullscreen={diagramaFullscreen}
-                      />
-
-                      <SinopticoDiagrama
-                        componentes={componentes}
-                        onComponenteClick={handleComponenteClick}
-                        modoEdicao={modoEdicao}
-                        componenteEditando={componenteEditando}
-                        connecting={connecting}
-                      />
-                    </div>
-                    )}
-
-                    {/* Tab: IoT (edit mode) - restrito a admin/super_admin via permission */}
-                    {sinopticoTab === 'iot' && podeVerIot && (
-                    <div className="flex-1 min-h-0 flex flex-col">
-                      <IoTDiagram unidadeId={unidadeId} unidadeNome={unidadeAtual?.nome} />
-                    </div>
-                    )}
-
-                    {/* Container para modais em fullscreen */}
-                    {diagramaFullscreen && <div id="fullscreen-modal-container" />}
-                  </Card>
-                </div>
-              </div>
-              );
-            })()}
-
-            {/* Modo Edição - Tela Cheia */}
-            {modoEdicao && (
-              <Card
-                ref={editDiagramCardRef}
-                className={`flex flex-col overflow-hidden bg-slate-50 dark:bg-slate-900 ${
-                  diagramaFullscreen
-                    ? "fixed inset-0 z-50 m-0 rounded-none border-0 !bg-slate-50 dark:!bg-slate-900"
-                    : "min-h-[900px]"
-                }`}
-              >
-                <div className="flex items-center justify-between p-4 pb-2 border-b flex-shrink-0 bg-slate-50 dark:bg-black">
-                  <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                    <Network className="h-5 w-5" />
-                    Diagrama Unifilar
-                  </h3>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={toggleFullscreen}
-                      className="flex items-center gap-1 sm:gap-2"
-                      title={diagramaFullscreen ? "Sair da tela cheia" : "Expandir diagrama"}
-                    >
-                      {diagramaFullscreen ? (
-                        <>
-                          <Minimize className="h-4 w-4" />
-                          <span className="hidden sm:inline">Sair</span>
-                        </>
-                      ) : (
-                        <>
-                          <Maximize className="h-4 w-4" />
-                          <span className="hidden sm:inline">Tela Cheia</span>
-                        </>
-                      )}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={salvarDiagrama}
-                      disabled={isSavingDiagrama}
-                      className="flex items-center gap-2"
-                    >
-                      {isSavingDiagrama ? (
-                        <>
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current" />
-                          Salvando...
-                        </>
-                      ) : (
-                        <>
-                          <Save className="h-4 w-4" />
-                          Salvar
-                        </>
-                      )}
-                    </Button>
-                    <div className="text-xs text-muted-foreground flex items-center gap-3">
-                      <span>Componentes: {componentes.length}</span>
-                      <span>Conexões: {connections.length}</span>
-                      <span>Histórico: {canUndo ? "Disponível" : "Vazio"}</span>
-                    </div>
-                    <Button
-                      variant="default"
-                      size="sm"
-                      onClick={toggleModoEdicao}
-                      disabled={isSavingDiagrama}
-                      className="flex items-center gap-2"
-                    >
-                      <X className="h-4 w-4" />
-                      Sair da Edição
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="relative flex-1 min-h-[580px] bg-slate-50 dark:bg-black overflow-visible" ref={canvasRef}>
-                  {/* GRID DE FUNDO - MODO EDIÇÃO (25px fixo, opacidade 100%) */}
-                  {canvasRef.current && (
-                    <DiagramGrid
-                      width={canvasRef.current.offsetWidth || 1920}
-                      height={canvasRef.current.offsetHeight || 1080}
-                      visible={true}
-                      gridSize={25}
-                      subdivisions={5}
-                      opacity={1.0}
-                      // Cores adaptativas: escuro no tema claro, claro no tema escuro
-                      gridColor={document.documentElement.classList.contains('dark') ? "#94a3b8" : "#64748b"}
-                      subGridColor={document.documentElement.classList.contains('dark') ? "#475569" : "#cbd5e1"}
-                    />
-                  )}
-
-                  {/* COMPONENTE DE CONEXÕES PARA MODO EDIÇÃO */}
-                  <DomAnchoredConnectionsOverlay
-                    connections={connections}
-                    componentes={componentes}
-                    containerRef={canvasRef}
-                    modoEdicao={true}
-                    connecting={connecting}
-                    onRemoverConexao={removerConexao}
-                    onEdgeClick={handleEdgeClick}
-                  />
-
-                  <SinopticoDiagrama
-                    componentes={componentes}
-                    onComponenteClick={handleComponenteClick}
-                    modoEdicao={modoEdicao}
-                    componenteEditando={componenteEditando}
-                    connecting={connecting}
-                  />
-
-                  {/* Componentes no Modo Edição */}
-                  <div className="absolute inset-0" style={{ zIndex: 40 }}>
-                    {componentes
-                      .filter(comp => comp.tipo !== "PONTO" && comp.tipo !== "JUNCTION")
-                      .filter(comp => comp.posicao && typeof comp.posicao.x === 'number' && typeof comp.posicao.y === 'number')
-                      .map((componente) => (
-                        <div
-                          key={componente.id}
-                          data-node-id={componente.id}
-                          className="absolute"
-                          style={{
-                            left: `${getNodeRenderPos(componente).x}%`,
-                            top: `${getNodeRenderPos(componente).y}%`,
-                            transform: "translate(-50%, -50%)",
-                          }}
-                        >
-                          <ElectricalSymbol
-                            tipo={componente.tipo}
-                            status={componente.status}
-                            dados={componente.dados}
-                            onClick={() => handleComponenteClick(componente)}
-                          />
-                          {/* Não mostrar nome para junction nodes e pontos */}
-                          {componente.tipo !== "JUNCTION" && componente.tipo !== "PONTO" && (
-                            <div
-                              className={`${getLabelPositionClasses(componente.label_position)} text-xs font-medium text-muted-foreground bg-background/90 px-2 py-1 rounded whitespace-nowrap border ${modoEdicao ? 'cursor-move hover:ring-2 hover:ring-blue-400' : ''}`}
-                              style={componente.label_offset ? {
-                                transform: `translate(calc(-50% + ${componente.label_offset.x}px), calc(-50% + ${componente.label_offset.y}px))`
-                              } : undefined}
-                              onMouseDown={(e) => modoEdicao && handleLabelMouseDown(e, componente.id)}
-                              title={modoEdicao ? "Arraste para reposicionar o label" : undefined}
-                            >
-                              {componente.tag || componente.nome}
-                            </div>
-                          )}
-                        </div>
-                      ))
-                    }
-                  </div>
-
-                  {/* Overlay de Edição - Junction Points e Pontos */}
-                  <div className="absolute inset-0 z-40 pointer-events-none">
-                    {componentes
-                      .filter(comp => comp.tipo === "PONTO" || comp.tipo === "JUNCTION")
-                      .filter(comp => comp.posicao && typeof comp.posicao.x === 'number' && typeof comp.posicao.y === 'number')
-                      .map((componente) => (
-                        <div
-                          key={`overlay-junction-${componente.id}`}
-                          data-node-id={componente.id}
-                          className="absolute"
-                          style={{
-                            left: `${getNodeRenderPos(componente).x}%`,
-                            top: `${getNodeRenderPos(componente).y}%`,
-                            transform: "translate(-50%, -50%)",
-                            width: "30px",
-                            height: "30px",
-                          }}
-                        >
-                          {/* Símbolo do Junction Point - CENTRALIZADO */}
-                          <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none">
-                            <ElectricalSymbol
-                              tipo={componente.tipo}
-                              status={componente.status}
-                            />
-                          </div>
-
-                          {/* Highlight quando selecionado */}
-                          {componenteEditando === componente.id && (
-                            <div className="absolute inset-0 ring-2 ring-blue-500 ring-offset-2 rounded-lg pointer-events-none" />
-                          )}
-
-                          {/* Indicador de Conexão Ativa */}
-                          {connecting && connecting.from === componente.id && (
-                            <div className="absolute inset-0 ring-2 ring-amber-400 ring-offset-2 rounded-lg pointer-events-none animate-pulse">
-                              <div className="absolute -top-10 left-1/2 transform -translate-x-1/2 bg-amber-400 text-amber-900 text-xs px-3 py-1 rounded-full whitespace-nowrap font-medium">
-                                Clique em outro componente
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Ponto de conexao UNICO da juncao — recebe ligacao das 4 direcoes.
-                              A porta e escolhida pela direcao do outro componente (so afeta o roteamento). */}
-                          {modoFerramenta === "conectar" && (
-                            <button
-                              className="absolute left-1/2 top-1/2 w-4 h-4 -translate-x-1/2 -translate-y-1/2 bg-blue-500 hover:bg-blue-600 border-2 border-white rounded-full pointer-events-auto transition-all hover:scale-125 shadow-md z-50"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                startConnection(componente.id, portaParaJuncao(componente, connecting));
-                              }}
-                              title={connecting ? "Finalizar conexao" : "Iniciar conexao"}
-                            />
-                          )}
-
-                          {/* Área de Interação */}
-                          <div
-                            className={`absolute inset-0 ${
-                              modoFerramenta === "conectar"
-                                ? "pointer-events-none"
-                                : "pointer-events-auto"
-                            }`}
-                            style={{
-                              cursor:
-                                modoFerramenta === "selecionar"
-                                  ? isDragging &&
-                                    componenteDragId === componente.id
-                                    ? "grabbing"
-                                    : "grab"
-                                  : modoFerramenta === "conectar"
-                                  ? "crosshair"
-                                  : "pointer",
-                            }}
-                            onMouseDown={(e) => {
-                              if (modoFerramenta === "selecionar") {
-                                handleMouseDown(e, componente.id);
-                              }
-                            }}
-                            onClick={(e) => {
-                              if (modoFerramenta !== "selecionar") {
-                                e.stopPropagation();
-                                handleComponenteClick(componente, e);
-                              }
-                            }}
-                          />
-                        </div>
-                      ))
-                    }
-                  </div>
-
-                  {/* Overlay de Edição - Componentes Normais */}
-                  <div className="absolute inset-0 z-40 pointer-events-none">
-                    {componentes
-                      .filter(comp => comp.tipo !== "PONTO" && comp.tipo !== "JUNCTION")
-                      .filter(comp => comp.posicao && typeof comp.posicao.x === 'number' && typeof comp.posicao.y === 'number')
-                      .map((componente) => (
-                        <div
-                          key={`overlay-${componente.id}`}
-                          data-drag-follow={componente.id}
-                          className="absolute"
-                          style={{
-                            left: `${getNodeRenderPos(componente).x}%`,
-                            top: `${getNodeRenderPos(componente).y}%`,
-                            transform: "translate(-50%, -50%)",
-                            width: "60px",
-                            height: "60px",
-                          }}
-                        >
-                        {/* Portas de Conexão */}
-                        {modoFerramenta === "conectar" && (
-                          <>
-                            {[
-                              {
-                                port: "top",
-                                style: {
-                                  left: "50%",
-                                  top: "-10px",
-                                  transform: "translateX(-50%)",
-                                },
-                              },
-                              {
-                                port: "bottom",
-                                style: {
-                                  left: "50%",
-                                  bottom: "-10px",
-                                  transform: "translateX(-50%)",
-                                },
-                              },
-                              {
-                                port: "left",
-                                style: {
-                                  left: "-10px",
-                                  top: "50%",
-                                  transform: "translateY(-50%)",
-                                },
-                              },
-                              {
-                                port: "right",
-                                style: {
-                                  right: "-10px",
-                                  top: "50%",
-                                  transform: "translateY(-50%)",
-                                },
-                              },
-                            ].map(({ port, style }) => (
-                              <div
-                                key={port}
-                                className={`absolute w-6 h-6 rounded-full border-2 border-background cursor-pointer transition-all duration-200 pointer-events-auto z-50 hover:scale-110 shadow-lg ${
-                                  connecting &&
-                                  connecting.from === componente.id &&
-                                  connecting.port === port
-                                    ? "bg-amber-500 animate-pulse"
-                                    : connecting &&
-                                      connecting.from === componente.id
-                                    ? "bg-blue-300"
-                                    : connecting &&
-                                      connecting.from !== componente.id
-                                    ? "bg-green-500 hover:bg-green-600"
-                                    : "bg-blue-500 hover:bg-blue-600"
-                                }`}
-                                style={style as React.CSSProperties}
-                                onClick={(e) => {
-                                  // Log removido
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  startConnection(
-                                    componente.id,
-                                    port as "top" | "bottom" | "left" | "right"
-                                  );
-                                }}
-                                onMouseDown={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                }}
-                                title={`${
-                                  connecting ? "Finalizar" : "Iniciar"
-                                } conexão`}
-                              >
-                                <div className="absolute inset-1 rounded-full bg-background/40" />
-                              </div>
-                            ))}
-                          </>
-                        )}
-
-                        {/* Indicadores de Seleção */}
-                        {componenteEditando === componente.id && (
-                          <div className="absolute inset-0 ring-2 ring-blue-500 ring-offset-2 rounded-lg pointer-events-none" />
-                        )}
-
-                        {/* Indicador de Conexão Ativa */}
-                        {connecting && connecting.from === componente.id && (
-                          <div className="absolute inset-0 ring-2 ring-amber-400 ring-offset-2 rounded-lg pointer-events-none animate-pulse">
-                            <div className="absolute -top-10 left-1/2 transform -translate-x-1/2 bg-amber-400 text-amber-900 text-xs px-3 py-1 rounded-full whitespace-nowrap font-medium">
-                              Clique em outro componente
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Área de Interação - CORRIGIDO */}
-                        <div
-                          className={`absolute inset-0 ${
-                            modoFerramenta === "conectar"
-                              ? "pointer-events-none"
-                              : "pointer-events-auto"
-                          }`}
-                          style={{
-                            cursor:
-                              modoFerramenta === "selecionar"
-                                ? isDragging &&
-                                  componenteDragId === componente.id
-                                  ? "grabbing"
-                                  : "grab"
-                                : modoFerramenta === "conectar"
-                                ? "crosshair"
-                                : "pointer",
-                          }}
-                          onMouseDown={(e) => {
-                            if (modoFerramenta === "selecionar") {
-                              handleMouseDown(e, componente.id);
-                            }
-                          }}
-                          onClick={(e) => {
-                            if (modoFerramenta !== "selecionar") {
-                              e.stopPropagation();
-                              handleComponenteClick(componente, e);
-                            }
-                          }}
-                        />
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Indicador de Status - CORRIGIDO */}
-                  <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 text-xs text-muted-foreground bg-background/90 px-3 py-2 rounded-full border">
-                    <div className="flex items-center gap-2">
-                      <div
-                        className={`w-2 h-2 rounded-full ${
-                          modoFerramenta === "selecionar"
-                            ? "bg-blue-500"
-                            : "bg-purple-500"
-                        }`}
-                      />
-                      <span>
-                        {modoFerramenta === "selecionar" &&
-                          "Clique para selecionar, arraste para mover"}
-                        {modoFerramenta === "conectar" && "Modo Conectar"}
-                      </span>
-                      {/* ADICIONAR INFO DE CONEXÕES */}
-                      <span className="text-muted-foreground">
-                        • {connections.length} conexões
-                      </span>
-                      {connecting && (
-                        <span className="text-amber-600">• Conectando...</span>
-                      )}
-                      {isDragging && (
-                        <span className="text-green-600">• Arrastando...</span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </Card>
-            )}
-          </div>
-        </div>
 
         {/* Modals */}
         <PowerMeterModal
@@ -5131,10 +4238,11 @@ if (import.meta.env.PROD) {
 
               // Simular rotação gradual do pivô
               let angle = 0;
-              const interval = setInterval(() => {
+              pararSimulacaoPivo();
+              pivoSimRef.current = setInterval(() => {
                 angle += 5;
                 if (angle >= 360) {
-                  clearInterval(interval);
+                  pararSimulacaoPivo();
                   angle = 0;
                 }
                 setPivoStates(prev => ({
@@ -5147,6 +4255,7 @@ if (import.meta.env.PROD) {
               }, 1000); // Atualiza a cada 1 segundo
             }}
             onPararIrrigacao={() => {
+              pararSimulacaoPivo();
               // Atualizar apenas o estado local do PIVO
               setPivoStates(prev => ({
                 ...prev,

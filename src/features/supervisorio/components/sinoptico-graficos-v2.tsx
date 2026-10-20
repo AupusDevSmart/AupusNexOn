@@ -5,8 +5,8 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
-import { Activity, Settings, TrendingUp, Zap, AlertTriangle, Loader2, Expand, ChevronLeft, ChevronRight } from "lucide-react";
-import { useState, useEffect, useMemo } from "react";
+import { Activity, Settings, TrendingUp, Zap, AlertTriangle, Expand, ChevronLeft, ChevronRight } from "lucide-react";
+import { memo, useState, useEffect, useMemo } from "react";
 import type { ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/config/api";
@@ -34,10 +34,17 @@ import {
   type FasesAtivas,
   type PontoDemanda,
 } from "./sinoptico-graficos-v2/dados";
-import { GraficoDemanda, type ReferenciasDemanda } from "./sinoptico-graficos-v2/GraficoDemanda";
-import { GraficoEnergia } from "./sinoptico-graficos-v2/GraficoEnergia";
-import { GraficoFases } from "./sinoptico-graficos-v2/GraficoFases";
+import { GraficoDemanda as GraficoDemandaBase, type ReferenciasDemanda } from "./sinoptico-graficos-v2/GraficoDemanda";
+import { GraficoEnergia as GraficoEnergiaBase } from "./sinoptico-graficos-v2/GraficoEnergia";
+import { GraficoFases as GraficoFasesBase } from "./sinoptico-graficos-v2/GraficoFases";
+import { GraficoSkeleton } from "@/components/graficos/grafico-skeleton";
 import { ControlesFases } from "./sinoptico-graficos-v2/ControlesFases";
+
+// memo: os gráficos só redesenham quando os pontos/props mudam — abrir um modal,
+// trocar a pílula ou o poll de outro gráfico não refaz o SVG inteiro.
+const GraficoDemanda = memo(GraficoDemandaBase);
+const GraficoEnergia = memo(GraficoEnergiaBase);
+const GraficoFases = memo(GraficoFasesBase);
 
 // Desabilitar logs de debug em produção
 const noop = () => {};
@@ -293,17 +300,23 @@ export function SinopticoGraficosV2({
   );
   const temConsumo = equipamentosConsumo.some((e) => e.selecionado);
   const temGeracao = equipamentosGeracao.some((e) => e.selecionado && e.fluxoEnergia !== 'NEUTRO');
+  // Só busca/polla o que está na tela: no painel do sinóptico (apenasGrafico) um
+  // gráfico por vez; os modais de Tensão/FP e o expandido também contam.
+  const demandaVisivel = !apenasGrafico || apenasGrafico === 'demanda' || modalExpandidoOpen;
+  const m160Visivel = !apenasGrafico || apenasGrafico !== 'demanda' || modalTensaoOpen || modalFPOpen;
   const ger = useDemandaAgregada({
     equipamentos: equipamentosGeracao,
     periodo,
     fatorPerdas: configuracao.aplicarPerdas ? configuracao.fatorPerdas : 0,
     intervaloAtualizacao: configuracao.intervaloAtualizacao,
+    ativo: demandaVisivel,
   });
   const con = useDemandaAgregada({
     equipamentos: equipamentosConsumo,
     periodo,
     fatorPerdas: 0,
     intervaloAtualizacao: configuracao.intervaloAtualizacao,
+    ativo: demandaVisivel,
   });
   const dados = temGeracao || !temConsumo ? ger.dados : con.dados;
   const energiaPeriodo = ger.energiaPeriodo;
@@ -311,7 +324,15 @@ export function SinopticoGraficosV2({
   const isInitialLoading = ger.isInitialLoading || con.isInitialLoading;
 
   // Usar hook de dados M160 para tensão e FP
-  const { dados: dadosM160, equipamentosM160, isInitialLoading: isInitialLoadingM160 } = useDadosM160(unidadeId, m160Selecionado);
+  const {
+    dados: dadosM160,
+    equipamentosM160,
+    carregandoLista: carregandoListaM160,
+    isInitialLoading: isInitialLoadingCurvaM160,
+  } = useDadosM160(unidadeId, m160Selecionado, m160Visivel);
+  // Entre a lista chegar e o efeito abaixo escolher o 1º medidor também é carga.
+  const isInitialLoadingM160 =
+    isInitialLoadingCurvaM160 || (equipamentosM160.length > 0 && !m160Selecionado);
 
   // Selecionar automaticamente o primeiro M160 disponível
   useEffect(() => {
@@ -603,10 +624,7 @@ export function SinopticoGraficosV2({
           )}
 
           {isInitialLoading ? (
-            <div className={`flex flex-col items-center justify-center space-y-3 ${alturaVazioDemanda}`}>
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">Carregando dados do gráfico...</p>
-            </div>
+            <GraficoSkeleton className={alturaVazioDemanda} />
           ) : !temDadosDemanda ? (
             <div className={`flex flex-col items-center justify-center space-y-3 ${alturaVazioDemanda}`}>
               <AlertTriangle className="h-8 w-8 text-muted-foreground" />
@@ -675,10 +693,7 @@ export function SinopticoGraficosV2({
 
           {/* Gráfico */}
           {isInitialLoadingM160 ? (
-            <div className={`flex flex-col items-center justify-center space-y-3 ${alturaM160}`}>
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">Carregando dados...</p>
-            </div>
+            <GraficoSkeleton className={alturaM160} />
           ) : !m160Selecionado ? (
             <div className={`flex flex-col items-center justify-center space-y-3 ${alturaM160}`}>
               <Activity className="h-12 w-12 text-muted-foreground opacity-50" />
@@ -755,10 +770,7 @@ export function SinopticoGraficosV2({
 
           {/* Gráfico */}
           {isInitialLoadingM160 ? (
-            <div className={`flex flex-col items-center justify-center space-y-3 ${alturaM160}`}>
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">Carregando dados...</p>
-            </div>
+            <GraficoSkeleton className={alturaM160} />
           ) : !m160Selecionado ? (
             <div className={`flex flex-col items-center justify-center space-y-3 ${alturaM160}`}>
               <TrendingUp className="h-12 w-12 text-muted-foreground opacity-50" />
@@ -819,6 +831,10 @@ export function SinopticoGraficosV2({
             </div>
           </CardHeader>
           <CardContent className="flex flex-1 items-center justify-center p-2">
+            {/* Lista de equipamentos ainda chegando: silhueta, não "nenhum equipamento". */}
+            {(apenasGrafico === 'demanda' ? equipamentosData === undefined : carregandoListaM160) ? (
+            <GraficoSkeleton className="h-full min-h-[150px] self-stretch" />
+            ) : (
             <div className="text-center text-sm text-muted-foreground">
               {apenasGrafico === 'demanda'
                 ? 'Nenhum equipamento disponível nesta unidade.'
@@ -829,6 +845,7 @@ export function SinopticoGraficosV2({
                   : 'Tensão e fator de potência precisam de um Power Meter com MQTT.'}
               </div>
             </div>
+            )}
           </CardContent>
         </Card>
       )}
@@ -855,10 +872,7 @@ export function SinopticoGraficosV2({
 
           <div className="w-full flex-1 min-h-0 md:flex-none md:h-[75vh]">
             {isInitialLoading ? (
-              <div className="flex flex-col items-center justify-center h-full space-y-3">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">Carregando dados do gráfico...</p>
-              </div>
+              <GraficoSkeleton className="h-full" />
             ) : !temDadosDemanda ? (
               <div className="flex flex-col items-center justify-center h-full space-y-3">
                 <AlertTriangle className="h-8 w-8 text-muted-foreground" />
@@ -913,10 +927,7 @@ export function SinopticoGraficosV2({
             {/* Gráfico */}
             <div className="flex-1 min-h-0">
             {isInitialLoadingM160 ? (
-              <div className="flex flex-col items-center justify-center h-full space-y-3">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">Carregando dados...</p>
-              </div>
+              <GraficoSkeleton className="h-full" />
             ) : tensao.pontos.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full space-y-3">
                 <Activity className="h-12 w-12 text-muted-foreground opacity-50" />
@@ -961,10 +972,7 @@ export function SinopticoGraficosV2({
             {/* Gráfico */}
             <div className="flex-1 min-h-0">
             {isInitialLoadingM160 ? (
-              <div className="flex flex-col items-center justify-center h-full space-y-3">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">Carregando dados...</p>
-              </div>
+              <GraficoSkeleton className="h-full" />
             ) : fp.pontos.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full space-y-3">
                 <TrendingUp className="h-12 w-12 text-muted-foreground opacity-50" />

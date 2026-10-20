@@ -27,7 +27,7 @@
  * @date 2026-02-02
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { DiagramV2 } from './DiagramV2';
 import { useDiagramStore } from './hooks/useDiagramStore';
 import type { Equipment } from './types/diagram.types';
@@ -141,7 +141,7 @@ interface DiagramV2WrapperProps {
 // COMPONENTE WRAPPER
 // ============================================================================
 
-export const DiagramV2Wrapper: React.FC<DiagramV2WrapperProps> = ({
+const DiagramV2WrapperBase: React.FC<DiagramV2WrapperProps> = ({
   diagramaId,
   unidadeIdFromUrl,
   unidadeNome,
@@ -284,8 +284,14 @@ export const DiagramV2Wrapper: React.FC<DiagramV2WrapperProps> = ({
   // CALLBACK: onComponenteClick (compatibilidade legado)
   // =========================================================================
 
+  // Callback em ref: a página passa uma arrow nova a cada render e, como dependência
+  // do efeito, isso desfazia e refazia a assinatura do store toda vez.
+  const onComponenteClickRef = useRef(onComponenteClick);
+  onComponenteClickRef.current = onComponenteClick;
+  const temOnComponenteClick = !!onComponenteClick;
+
   useEffect(() => {
-    if (!onComponenteClick) return;
+    if (!temOnComponenteClick) return;
 
     let previousSelectedIds: string[] = [];
 
@@ -294,7 +300,11 @@ export const DiagramV2Wrapper: React.FC<DiagramV2WrapperProps> = ({
       const selectedIds = state.editor.selectedEquipmentIds;
 
       // Verificar se houve mudança na seleção
-      if (JSON.stringify(selectedIds) !== JSON.stringify(previousSelectedIds)) {
+      const mudou =
+        selectedIds !== previousSelectedIds &&
+        (selectedIds.length !== previousSelectedIds.length ||
+          selectedIds.some((id, i) => id !== previousSelectedIds[i]));
+      if (mudou) {
         previousSelectedIds = [...selectedIds];
 
         // Quando um equipamento é selecionado em modo VIEW, chamar callback
@@ -316,14 +326,14 @@ export const DiagramV2Wrapper: React.FC<DiagramV2WrapperProps> = ({
               status: equipment.status,
             };
 
-            onComponenteClick(legacyComponente);
+            onComponenteClickRef.current?.(legacyComponente);
           }
         }
       }
     });
 
     return () => unsubscribe();
-  }, [onComponenteClick]);
+  }, [temOnComponenteClick]);
 
   // =========================================================================
   // LIMPAR AO DESMONTAR
@@ -528,5 +538,9 @@ export const DiagramV2Wrapper: React.FC<DiagramV2WrapperProps> = ({
 // ============================================================================
 // EXPORTS
 // ============================================================================
+
+// memo: a página do sinóptico tem dezenas de estados; sem isso cada mudança
+// dela re-renderizava o diagrama inteiro.
+export const DiagramV2Wrapper = React.memo(DiagramV2WrapperBase);
 
 export default DiagramV2Wrapper;

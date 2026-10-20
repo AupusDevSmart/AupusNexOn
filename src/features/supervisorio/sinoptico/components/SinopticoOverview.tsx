@@ -1,3 +1,4 @@
+import { memo } from "react";
 import type { ReactNode } from "react";
 import { KpiRow } from "./KpiRow";
 import { GrandezasEletricasPanel } from "./GrandezasEletricasPanel";
@@ -34,32 +35,49 @@ export function SinopticoOverview({ unidadeId, unidadeNome, children }: Sinoptic
           {children}
         </div>
 
-        {/* Coluna direita — rola quando nao couber (telas baixas / notebook);
-            em telas altas o grafico (flex-1) preenche e nao aparece scroll. */}
-        <div className="order-2 flex flex-col gap-1.5 xl:min-h-0 xl:overflow-y-auto">
-          <KpiRow unidadeId={unidadeId} />
-
-          {/* Grandezas e Demanda lado a lado */}
-          <div className="grid gap-1.5 sm:grid-cols-2">
-            <GrandezasEletricasPanel unidadeId={unidadeId} />
-            <DemandaFluxoPanel unidadeId={unidadeId} />
-          </div>
-
-          {/* Grafico — entre Demanda e Alarmes; fica com tudo o que sobra (via de
-              regra o maior bloco da coluna), nunca abaixo de uma altura util. */}
-          <div className="flex min-h-[230px] flex-1 flex-col xl:min-h-[320px]">
-            <GraficoConfiguravelPanel unidadeId={unidadeId} />
-          </div>
-
-          {/* Alarmes — altura do conteudo: vazio fica minimo; com alarmes cresce
-              ate 35% da coluna e rola por dentro, tirando espaco do grafico. */}
-          <AlarmesAtivosPanel
-            unidadeId={unidadeId}
-            unidadeNome={unidadeNome}
-            className="h-auto shrink-0 xl:max-h-[35%]"
-          />
-        </div>
+        <ColunaPaineis unidadeId={unidadeId} unidadeNome={unidadeNome} />
       </div>
     </div>
   );
 }
+
+/**
+ * Coluna direita (KPIs, grandezas, demanda, gráfico, alarmes). memo: o diagrama
+ * chega como `children` novo a cada render da página, o que re-renderizava os
+ * painéis e o gráfico junto; isolados, só re-renderizam com os próprios dados.
+ */
+const ColunaPaineis = memo(function ColunaPaineis({
+  unidadeId,
+  unidadeNome,
+}: {
+  unidadeId: string;
+  unidadeNome?: string;
+}) {
+  // Rola quando nao couber (telas baixas / notebook); em telas altas o grafico
+  // (flex-1) preenche e nao aparece scroll.
+  return (
+    <div className="order-2 flex flex-col gap-1.5 xl:min-h-0 xl:overflow-y-auto">
+      <KpiRow unidadeId={unidadeId} />
+
+      {/* Grandezas e Demanda lado a lado */}
+      <div className="grid gap-1.5 sm:grid-cols-2">
+        <GrandezasEletricasPanel unidadeId={unidadeId} />
+        <DemandaFluxoPanel unidadeId={unidadeId} />
+      </div>
+
+      {/* Grafico — entre Demanda e Alarmes; fica com tudo o que sobra (via de
+          regra o maior bloco da coluna), nunca abaixo de uma altura util. */}
+      <div className="flex min-h-[230px] flex-1 flex-col xl:min-h-[320px]">
+        <GraficoConfiguravelPanel unidadeId={unidadeId} />
+      </div>
+
+      {/* Alarmes — altura do conteudo: vazio fica minimo; com alarmes cresce
+          ate 35% da coluna e rola por dentro, tirando espaco do grafico. */}
+      <AlarmesAtivosPanel
+        unidadeId={unidadeId}
+        unidadeNome={unidadeNome}
+        className="h-auto shrink-0 xl:max-h-[35%]"
+      />
+    </div>
+  );
+});

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Velocimetro } from "@/components/graficos/velocimetro";
@@ -71,7 +72,7 @@ function GaugeDemanda({
  * circulares (% da contratada), lado a lado. Sem saldo.
  */
 export function DemandaFluxoPanel({ unidadeId }: DemandaFluxoPanelProps) {
-  const { cargaKw, geracaoKw, demandaCarga, demandaGeracao } = useDemandaFluxo(unidadeId);
+  const { cargaKw, geracaoKw, demandaCarga, demandaGeracao, loading } = useDemandaFluxo(unidadeId);
   const { configuracao, equipamentosDisponiveis, salvar } = useConfiguracaoDemanda(unidadeId);
   const [configOpen, setConfigOpen] = useState(false);
 
@@ -92,6 +93,17 @@ export function DemandaFluxoPanel({ unidadeId }: DemandaFluxoPanelProps) {
           </Button>
         }
       >
+        {loading ? (
+        <div className="grid grid-cols-2 gap-3" role="status" aria-label="Carregando demanda">
+          {[0, 1].map((i) => (
+            <div key={i} className="flex flex-col items-center gap-1">
+              <Skeleton className="h-2.5 w-12 rounded-sm" />
+              <Skeleton className="h-[100px] w-[100px] rounded-full" />
+              <Skeleton className="h-2 w-16 rounded-sm" />
+            </div>
+          ))}
+        </div>
+        ) : (
         <div className="grid grid-cols-2 gap-3">
           <GaugeDemanda
             rotulo="Carga"
@@ -108,6 +120,7 @@ export function DemandaFluxoPanel({ unidadeId }: DemandaFluxoPanelProps) {
             contratada={fmt(demandaGeracao)}
           />
         </div>
+        )}
       </PanelCard>
 
       <ConfiguracaoDemandaModal
