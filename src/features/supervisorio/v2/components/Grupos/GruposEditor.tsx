@@ -210,7 +210,7 @@ export const GruposLista: React.FC = () => {
           <LayoutGrid className="h-3.5 w-3.5" />Organizar grupos
         </Button>
         <p className="text-[11px] text-muted-foreground mb-2">
-          Recolhido vira um bloco só, no centro dos equipamentos. Arrastar o bloco move o grupo inteiro; clicar abre ali mesmo. Grupo nenhum fica por cima de outro.
+          Recolhido vira um bloco só, no centro dos equipamentos. Arraste o bloco para onde quiser (o grupo vai junto); clicar abre ali mesmo. Abertos se afastam na tela; "Organizar grupos" grava essa separação.
         </p>
         <div className="flex max-h-72 flex-col gap-2 overflow-y-auto">
           {grupos.map(g => (

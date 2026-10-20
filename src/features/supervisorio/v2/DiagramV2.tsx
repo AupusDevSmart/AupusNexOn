@@ -19,7 +19,7 @@ import { DiagramViewport } from './components/DiagramViewer/DiagramViewport';
 import { DiagramConnections } from './components/DiagramViewer/DiagramConnections';
 import { EquipmentNode } from './components/Equipment/EquipmentNode';
 import { GrupoCard, GrupoMoldura } from './components/Grupos/GrupoNode';
-import { caixaDaMoldura, montarVisao, TAMANHO_CARD, TIPO_GRUPO } from './utils/grupos';
+import { caixaDaMoldura, centroDe, grupoIdDoNo, montarVisao, TAMANHO_CARD, TIPO_GRUPO, type Deslocamento } from './utils/grupos';
 import { convertToVisualConnections } from './utils/barramentoDetector';
 import { exportDiagram, type ExportFormat } from './utils/exportDiagram';
 import { EditorToolbar } from './components/EditorToolbar';
@@ -95,10 +95,26 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
   const gruposAbertos = useDiagramStore(state => state.gruposAbertos);
 
   // Grupos (NEXON-31): recolhido vira um bloco e as linhas dos membros chegam nele
-  const visao = useMemo(
-    () => montarVisao(equipamentos, conexoes, grupos, new Set(gruposAbertos)),
-    [equipamentos, conexoes, grupos, gruposAbertos],
-  );
+  // Durante o arraste de um membro de grupo aberto o afastamento na tela fica
+  // congelado (senão a moldura muda de tamanho e o grupo pula embaixo do mouse)
+  const arrastandoId = useDiagramStore(state => state.editor.draggingEquipmentId);
+  const deslocamentosCongelados = useRef<Map<string, Deslocamento> | null>(null);
+  const visao = useMemo(() => {
+    const congelar = !!arrastandoId && !grupoIdDoNo(arrastandoId);
+    const v = montarVisao(
+      equipamentos,
+      conexoes,
+      grupos,
+      new Set(gruposAbertos),
+      congelar && deslocamentosCongelados.current ? { deslocamentos: deslocamentosCongelados.current } : {},
+    );
+    if (!congelar) deslocamentosCongelados.current = v.deslocamentos;
+    return v;
+  }, [equipamentos, conexoes, grupos, gruposAbertos, arrastandoId]);
+  // O arraste e a caixa de seleção precisam saber quem está deslocado só na tela
+  useEffect(() => {
+    useDiagramStore.setState({ deslocamentoVisual: visao.deslocamentoDoEquipamento });
+  }, [visao]);
   const rotasDaVisao = useMemo(
     () => (visao.temGrupos ? convertToVisualConnections(visao.conexoes, visao.equipamentos) : null),
     [visao],
@@ -822,19 +838,12 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
           </AnimatePresence>
 
           {/* Camada 1: Conexões (atrás dos equipamentos). Com grupos, as rotas são da
-              visão (membros recolhidos religados ao bloco) e esmaecem ao abrir/fechar. */}
+              visão (membros recolhidos religados ao bloco). Sem animar: piscava tudo. */}
           {rotasDaVisao ? (
-            <motion.g
-              key={`rotas-${gruposAbertos.join('|')}`}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.35, delay: 0.1 }}
-            >
-              <DiagramConnections
-                visualConnections={rotasDaVisao.visualConnections}
-                barramentos={rotasDaVisao.barramentos}
-              />
-            </motion.g>
+            <DiagramConnections
+              visualConnections={rotasDaVisao.visualConnections}
+              barramentos={rotasDaVisao.barramentos}
+            />
           ) : (
             <DiagramConnections
               visualConnections={visualConnections}
@@ -854,29 +863,40 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
                   onDoubleClick={handleNodeDoubleClick}
                 />
               ))}
-            {/* Membros de grupo aberto: "saem" do bloco com uma mola */}
-            {visao.abertos.map(a => {
-              const cx = ((a.caixa.minX + a.caixa.maxX) / 2) * 40;
-              const cy = ((a.caixa.minY + a.caixa.maxY) / 2) * 40;
-              return (
-                <motion.g
-                  key={`membros-${a.grupo.id}`}
-                  initial={{ opacity: 0, scale: 0.4 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ type: 'spring', stiffness: 260, damping: 24 }}
-                  style={{ transformBox: 'view-box', transformOrigin: `${cx}px ${cy}px` }}
-                >
-                  {a.membros.map(equipment => (
-                    <EquipmentNode
-                      key={equipment.id}
-                      equipment={equipment}
-                      onClick={handleNodeClick}
-                      onDoubleClick={handleNodeDoubleClick}
-                    />
-                  ))}
-                </motion.g>
-              );
-            })}
+            {/* Membros de grupo aberto: cada um sai do centro do bloco até o lugar dele */}
+            <AnimatePresence>
+              {visao.abertos.map(a => {
+                const d = visao.deslocamentos.get(a.grupo.id) ?? { dx: 0, dy: 0 };
+                // centro do bloco recolhido = centro dos membros na posição real
+                const origemX = ((a.caixa.minX + a.caixa.maxX) / 2 - d.dx) * 40;
+                const origemY = ((a.caixa.minY + a.caixa.maxY) / 2 - d.dy) * 40;
+                return (
+                  <motion.g
+                    key={`membros-${a.grupo.id}`}
+                    exit={{ opacity: 0, transition: { duration: 0.15 } }}
+                  >
+                    {a.membros.map((equipment, i) => {
+                      const c = centroDe(equipment);
+                      return (
+                        <motion.g
+                          key={equipment.id}
+                          initial={{ x: origemX - c.x * 40, y: origemY - c.y * 40, scale: 0.3, opacity: 0 }}
+                          animate={{ x: 0, y: 0, scale: 1, opacity: 1 }}
+                          transition={{ type: 'spring', stiffness: 420, damping: 32, delay: Math.min(i * 0.012, 0.18) }}
+                          style={{ transformBox: 'fill-box', transformOrigin: 'center' }}
+                        >
+                          <EquipmentNode
+                            equipment={equipment}
+                            onClick={handleNodeClick}
+                            onDoubleClick={handleNodeDoubleClick}
+                          />
+                        </motion.g>
+                      );
+                    })}
+                  </motion.g>
+                );
+              })}
+            </AnimatePresence>
           </g>
 
           {/* Camada 3: blocos dos grupos recolhidos */}

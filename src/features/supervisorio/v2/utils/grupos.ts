@@ -119,7 +119,24 @@ export interface VisaoUnifilar {
   grupoDoEquipamento: Map<string, string>;
   /** grupo recolhido → ids escondidos nele (membros + JPs que são galho dele). */
   escondidosPorGrupo: Map<string, string[]>;
+  /**
+   * Grupos abertos se afastam SÓ NA TELA para não ficarem um por cima do outro:
+   * quanto cada um andou (grid). O desenho salvo não muda.
+   */
+  deslocamentos: Map<string, Deslocamento>;
+  /** id do equipamento → quanto ele está deslocado na tela (membros e JPs de grupo aberto). */
+  deslocamentoDoEquipamento: Map<string, Deslocamento>;
   temGrupos: boolean;
+}
+
+export interface Deslocamento {
+  dx: number;
+  dy: number;
+}
+
+export interface OpcoesVisao {
+  /** Reusa deslocamentos já calculados (durante um arraste, para nada pular). */
+  deslocamentos?: ReadonlyMap<string, Deslocamento>;
 }
 
 /**
@@ -131,6 +148,7 @@ export function montarVisao(
   conexoes: Connection[],
   grupos: GrupoUnifilar[],
   abertos: ReadonlySet<string>,
+  opcoes: OpcoesVisao = {},
 ): VisaoUnifilar {
   const porId = new Map(equipamentos.map(e => [e.id, e]));
   const grupoDoEquipamento = new Map<string, string>();
@@ -149,17 +167,25 @@ export function montarVisao(
 
   const gruposValidos = grupos.filter(g => membrosPorGrupo.has(g.id));
   if (gruposValidos.length === 0) {
-    return { equipamentos, conexoes, cards: [], abertos: [], grupoDoEquipamento, escondidosPorGrupo: new Map(), temGrupos: false };
+    return {
+      equipamentos,
+      conexoes,
+      cards: [],
+      abertos: [],
+      grupoDoEquipamento,
+      escondidosPorGrupo: new Map(),
+      deslocamentos: new Map(),
+      deslocamentoDoEquipamento: new Map(),
+      temGrupos: false,
+    };
   }
 
-  // Quem some da tela: membro de grupo recolhido → nó sintético do grupo
-  const destinoDe = new Map<string, string>();
+  // Dono de cada equipamento (aberto ou recolhido): membros + JPs que são galho do grupo
+  const dono = new Map<string, string>();
   for (const g of gruposValidos) {
-    if (abertos.has(g.id)) continue;
-    for (const m of membrosPorGrupo.get(g.id)!) destinoDe.set(m.id, idNoGrupo(g.id));
+    for (const m of membrosPorGrupo.get(g.id)!) dono.set(m.id, g.id);
   }
 
-  // JP que só liga coisas do mesmo grupo recolhido (ou outros JPs assim) some junto
   const vizinhos = new Map<string, Set<string>>();
   for (const c of conexoes) {
     const o = c.equipamentoOrigemId?.trim();
@@ -170,30 +196,51 @@ export function montarVisao(
     vizinhos.get(o)!.add(d);
     vizinhos.get(d)!.add(o);
   }
-  // JP que é "galho" do grupo some junto: todos os vizinhos já caem no mesmo grupo
-  // recolhido, exceto no máximo um JP (o barramento de onde o galho sai). Repete até
-  // estabilizar, então uma cadeia de JPs internos some das pontas para dentro.
+  // JP que é "galho" do grupo pertence a ele: todos os vizinhos já caem no mesmo
+  // grupo, exceto no máximo um JP (o barramento de onde o galho sai). Repete até
+  // estabilizar, então uma cadeia de JPs internos entra das pontas para dentro.
   let mudou = true;
   while (mudou) {
     mudou = false;
     for (const eq of equipamentos) {
-      if (!ehJunction(eq) || destinoDe.has(eq.id)) continue;
+      if (!ehJunction(eq) || dono.has(eq.id)) continue;
       const grupoAlvo = new Set<string>();
       let soltos = 0;
       let soltoNaoJp = false;
       for (const v of vizinhos.get(eq.id) ?? []) {
-        const alvo = destinoDe.get(v);
+        const alvo = dono.get(v);
         if (alvo) { grupoAlvo.add(alvo); continue; }
         soltos++;
         const viz = porId.get(v);
         if (!viz || !ehJunction(viz)) soltoNaoJp = true;
       }
       if (grupoAlvo.size === 1 && !soltoNaoJp && soltos <= 1) {
-        destinoDe.set(eq.id, [...grupoAlvo][0]);
+        dono.set(eq.id, [...grupoAlvo][0]);
         mudou = true;
       }
     }
   }
+
+  // Quem some da tela: tudo de grupo recolhido → nó sintético do grupo
+  const destinoDe = new Map<string, string>();
+  for (const [eqId, gid] of dono) if (!abertos.has(gid)) destinoDe.set(eqId, idNoGrupo(gid));
+
+  // Grupos abertos: molduras não se sobrepõem na tela
+  const abertosValidos = gruposValidos.filter(g => abertos.has(g.id));
+  const deslocamentos = new Map<string, Deslocamento>(
+    opcoes.deslocamentos
+      ? abertosValidos.map(g => [g.id, opcoes.deslocamentos!.get(g.id) ?? { dx: 0, dy: 0 }])
+      : separarCaixas(abertosValidos.map(g => ({ id: g.id, caixa: caixaDaMoldura(caixaDe(membrosPorGrupo.get(g.id)!)!) }))),
+  );
+  const deslocamentoDoEquipamento = new Map<string, Deslocamento>();
+  for (const [eqId, gid] of dono) {
+    const d = deslocamentos.get(gid);
+    if (d && (d.dx || d.dy)) deslocamentoDoEquipamento.set(eqId, d);
+  }
+  const naTela = (e: Equipment): Equipment => {
+    const d = deslocamentoDoEquipamento.get(e.id);
+    return d ? { ...e, posicaoX: e.posicaoX + d.dx, posicaoY: e.posicaoY + d.dy } : e;
+  };
 
   const cards: CardDeGrupo[] = [];
   const abertosOut: GrupoAberto[] = [];
@@ -201,7 +248,8 @@ export function montarVisao(
   for (const g of gruposValidos) {
     const membros = membrosPorGrupo.get(g.id)!;
     if (abertos.has(g.id)) {
-      abertosOut.push({ grupo: g, membros, caixa: caixaDe(membros)! });
+      const membrosNaTela = membros.map(naTela);
+      abertosOut.push({ grupo: g, membros: membrosNaTela, caixa: caixaDe(membrosNaTela)! });
       continue;
     }
     const pos = posicaoDoCard(g, membros);
@@ -227,6 +275,7 @@ export function montarVisao(
   }
 
   const visiveis = equipamentos.filter(e => !destinoDe.has(e.id));
+  const visiveisNaTela = deslocamentoDoEquipamento.size ? visiveis.map(naTela) : visiveis;
   const escondidosPorGrupo = new Map<string, string[]>();
   for (const [eqId, no] of destinoDe) {
     const gid = grupoIdDoNo(no)!;
@@ -267,12 +316,14 @@ export function montarVisao(
   }
 
   return {
-    equipamentos: [...visiveis, ...nosSinteticos],
+    equipamentos: [...visiveisNaTela, ...nosSinteticos],
     conexoes: conexoesVisao,
     cards,
     abertos: abertosOut,
     grupoDoEquipamento,
     escondidosPorGrupo,
+    deslocamentos,
+    deslocamentoDoEquipamento,
     temGrupos: true,
   };
 }
@@ -363,11 +414,44 @@ const encostam = (a: Caixa, b: Caixa, folga: number) =>
   a.minX < b.maxX + folga && a.maxX + folga > b.minX && a.minY < b.maxY + folga && a.maxY + folga > b.minY;
 
 /**
- * Grupos não se sobrepõem: percorre de cima para baixo (e da esquerda para a
- * direita) e o grupo cuja moldura invade a de outro já posicionado anda o mínimo
- * para baixo ou para a direita até sair. Anda o grupo inteiro (`deslocarGrupo`),
- * então abrir vários continua organizado. `porUltimo` = o grupo que acabou de ser
- * solto/criado: os outros ficam e ele é que se ajeita.
+ * Tira caixas de cima umas das outras: de cima para baixo (e da esquerda para a
+ * direita), a que invade outra já posicionada anda o mínimo para baixo ou para a
+ * direita até sair. `porUltimo` = quem se ajeita (as outras ficam).
+ */
+export function separarCaixas(
+  itens: { id: string; caixa: Caixa }[],
+  porUltimo?: string | null,
+  folga = 1,
+): Map<string, Deslocamento> {
+  const saida = new Map<string, Deslocamento>();
+  const ordem = [...itens].sort((a, b) => {
+    if (a.id === porUltimo) return 1;
+    if (b.id === porUltimo) return -1;
+    return a.caixa.minY - b.caixa.minY || a.caixa.minX - b.caixa.minX;
+  });
+  const postas: Caixa[] = [];
+  for (const { id, caixa } of ordem) {
+    let dx = 0, dy = 0;
+    for (let i = 0; i < 200; i++) {
+      const atual = deslocarCaixa(caixa, dx, dy);
+      const batidas = postas.filter(p => encostam(atual, p, folga));
+      if (batidas.length === 0) break;
+      const baixo = Math.max(...batidas.map(p => p.maxY)) + folga - atual.minY;
+      const direita = Math.max(...batidas.map(p => p.maxX)) + folga - atual.minX;
+      if (baixo <= direita) dy += baixo;
+      else dx += direita;
+    }
+    dx = Math.ceil(dx - 1e-9) || 0; // || 0 tira o -0
+    dy = Math.ceil(dy - 1e-9) || 0;
+    saida.set(id, { dx, dy });
+    postas.push(deslocarCaixa(caixa, dx, dy));
+  }
+  return saida;
+}
+
+/**
+ * Versão que GRAVA (botão "Organizar grupos"): anda o grupo inteiro de verdade
+ * (`deslocarGrupo`) para nenhum ficar por cima de outro.
  */
 export function separarGrupos(
   equipamentos: Equipment[],
@@ -378,39 +462,17 @@ export function separarGrupos(
 ): { equipamentos: Equipment[]; movidos: string[] } {
   const cards = montarVisao(equipamentos, conexoes, grupos, new Set()).cards;
   if (cards.length < 2) return { equipamentos, movidos: [] };
-
-  const caixas = new Map(cards.map(c => [c.grupo.id, caixaDaMoldura(caixaDe(c.membros)!)]));
-  const ordem = [...cards]
-    .sort((a, b) => {
-      if (a.grupo.id === porUltimo) return 1;
-      if (b.grupo.id === porUltimo) return -1;
-      const ca = caixas.get(a.grupo.id)!, cb = caixas.get(b.grupo.id)!;
-      return ca.minY - cb.minY || ca.minX - cb.minX;
-    })
-    .map(c => c.grupo.id);
-
+  const desl = separarCaixas(
+    cards.map(c => ({ id: c.grupo.id, caixa: caixaDaMoldura(caixaDe(c.membros)!) })),
+    porUltimo,
+    folga,
+  );
   let eqs = equipamentos;
   const movidos: string[] = [];
-  const postas: Caixa[] = [];
-  for (const id of ordem) {
-    const base = caixas.get(id)!;
-    let dx = 0, dy = 0;
-    for (let i = 0; i < 200; i++) {
-      const atual = deslocarCaixa(base, dx, dy);
-      const batidas = postas.filter(p => encostam(atual, p, folga));
-      if (batidas.length === 0) break;
-      const baixo = Math.max(...batidas.map(p => p.maxY)) + folga - atual.minY;
-      const direita = Math.max(...batidas.map(p => p.maxX)) + folga - atual.minX;
-      if (baixo <= direita) dy += baixo;
-      else dx += direita;
-    }
-    dx = Math.ceil(dx - 1e-9);
-    dy = Math.ceil(dy - 1e-9);
-    if (dx || dy) {
-      eqs = deslocarGrupo(eqs, conexoes, grupos, id, dx, dy);
-      movidos.push(id);
-    }
-    postas.push(deslocarCaixa(base, dx, dy));
+  for (const [id, { dx, dy }] of desl) {
+    if (!dx && !dy) continue;
+    eqs = deslocarGrupo(eqs, conexoes, grupos, id, dx, dy);
+    movidos.push(id);
   }
   return { equipamentos: eqs, movidos };
 }
