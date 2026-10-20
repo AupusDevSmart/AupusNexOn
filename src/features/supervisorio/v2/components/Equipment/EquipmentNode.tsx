@@ -385,6 +385,7 @@ const EquipmentNodeImpl: React.FC<EquipmentNodeProps> = ({ equipment, onClick, o
           width={size.width}
           height={size.height}
           color={ehDisjuntor && corEstadoDisjuntor ? corEstadoDisjuntor : themeColors.iconColor}
+          estado={estadoDisjuntor === 'aberto' || estadoDisjuntor === 'fechado' ? estadoDisjuntor : null}
         />
       </g>
     );

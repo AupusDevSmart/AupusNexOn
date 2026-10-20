@@ -35,6 +35,8 @@ interface EquipmentIconProps {
   color?: string;
   strokeWidth?: number;
   className?: string;
+  /** Só o DisjuntorIcon usa: desenha o contato fechado/aberto. */
+  estado?: 'aberto' | 'fechado' | null;
 }
 
 type IconComponent = React.FC<EquipmentIconProps>;
