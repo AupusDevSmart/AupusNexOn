@@ -263,6 +263,8 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
       createdAt: new Date(equipamento.created_at || new Date()),
       updatedAt: new Date(equipamento.updated_at || new Date()),
       deletedAt: null,
+      // Registro completo (inclui tipo_equipamento_id): copiar/colar e modais dependem dele.
+      dados: equipamento,
     } as Equipment;
 
     addEquipamento(newEquipment);
@@ -324,6 +326,7 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
       createdAt: new Date(),
       updatedAt: new Date(),
       deletedAt: null,
+      dados: equipamento,
     } as Equipment;
 
     addEquipamento(newEquipment);
@@ -360,8 +363,16 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
         const n = st.clipboard.equipamentos.length;
         toast({ title: 'Colando…', description: `Criando ${n} equipamento(s) novo(s)…` });
         void pasteClipboard()
-          .then(() => toast({ title: 'Colado', description: `${n} equipamento(s) criado(s) e adicionado(s) ao diagrama` }))
-          .catch(() => toast({ title: 'Erro ao colar', description: 'Não foi possível criar os equipamentos. Veja o console.' }));
+          .then(({ criados, ignorados }) => {
+            if (criados === 0) {
+              toast({ title: 'Nada colado', description: `Não foi possível criar: ${ignorados.join(', ') || 'equipamentos copiados'}.`, variant: 'destructive' });
+            } else if (ignorados.length) {
+              toast({ title: 'Colado em parte', description: `${criados} criado(s); ficaram de fora: ${ignorados.join(', ')}.` });
+            } else {
+              toast({ title: 'Colado', description: `${criados} equipamento(s) criado(s) e adicionado(s) ao diagrama` });
+            }
+          })
+          .catch(() => toast({ title: 'Erro ao colar', description: 'Não foi possível criar os equipamentos. Veja o console.', variant: 'destructive' }));
       }
       return;
     }

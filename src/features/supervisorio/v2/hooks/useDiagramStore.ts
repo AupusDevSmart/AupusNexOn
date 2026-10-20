@@ -241,7 +241,7 @@ interface DiagramActions {
   copySelection: () => void;
 
   /** Cola o clipboard: CRIA equipamentos novos no backend (/rapido), posiciona, reconecta e seleciona */
-  pasteClipboard: () => Promise<void>;
+  pasteClipboard: () => Promise<{ criados: number; ignorados: string[] }>;
 
   /** Apaga equipamentos DE VERDADE (backend + diagrama) e registra no undo (Ctrl+Z) */
   deleteEquipamentos: (ids: string[]) => Promise<void>;
@@ -314,37 +314,13 @@ type DiagramStore = DiagramState & DiagramActions;
 // ESTADO INICIAL
 // ============================================================================
 
-// Gera o nome de uma cópia: incrementa o PRIMEIRO número do nome (1→2, 1.1→2.1),
-// repetindo até achar um nome livre; se não houver número, adiciona "(Cópia)".
-function incrementFirstNumber(nome: string): string | null {
-  const m = /\d+/.exec(nome);
-  if (!m) return null;
-  const digits = m[0];
-  const inc = String(parseInt(digits, 10) + 1);
-  // preserva zeros à esquerda (ex "01" → "02")
-  const rep = digits.length > inc.length && digits.startsWith('0')
-    ? inc.padStart(digits.length, '0')
-    : inc;
-  return nome.slice(0, m.index) + rep + nome.slice(m.index + digits.length);
-}
-
-function nextCopyName(nome: string, taken: Set<string>): string {
-  if (/\d/.test(nome)) {
-    let candidate = nome;
-    for (let i = 0; i < 9999; i++) {
-      const next = incrementFirstNumber(candidate);
-      if (next == null) break;
-      candidate = next;
-      if (!taken.has(candidate)) return candidate;
-    }
-  }
-  const base = `${nome} (Cópia)`;
-  if (!taken.has(base)) return base;
-  for (let i = 2; i < 9999; i++) {
-    const c = `${nome} (Cópia ${i})`;
-    if (!taken.has(c)) return c;
-  }
-  return base;
+// tipo_equipamento_id de um equipamento do store. Vem em `dados` (carga do diagrama
+// guarda o registro completo), mas o criado/adicionado na sessão pode trazer só a
+// relação — sem isto o Ctrl+V pulava o item em silêncio até recarregar a página.
+function tipoEquipamentoIdDe(eq: Equipment): string | undefined {
+  const d = (eq as unknown as { dados?: Record<string, any> }).dados ?? {};
+  const id = d.tipo_equipamento_id ?? d.tipoEquipamento?.id ?? d.tipo_equipamento_rel?.id;
+  return id ? String(id).trim() : undefined;
 }
 
 const initialState: DiagramState = {
@@ -1650,29 +1626,27 @@ if (import.meta.env.PROD) {
 
       pasteClipboard: async () => {
         const { clipboard, diagrama } = get();
-        if (!clipboard || clipboard.equipamentos.length === 0 || !diagrama) return;
+        if (!clipboard || clipboard.equipamentos.length === 0 || !diagrama) return { criados: 0, ignorados: [] };
 
         const { equipamentosApi } = await import('@/services/equipamentos.services');
         const OFFSET = 3; // deslocamento em células de grid (visível, sem sobrepor)
         const idMap: Record<string, string> = {};
         const novosIds: string[] = [];
-        // Nomes já em uso (evita nome duplicado ao incrementar número / gerar "(Cópia)")
-        const taken = new Set(get().equipamentos.map(e => (e.nome ?? '').trim()));
+        const ignorados: string[] = [];
 
         for (const eq of clipboard.equipamentos) {
-          const tipoEqId = (eq as unknown as { dados?: { tipo_equipamento_id?: string } })
-            .dados?.tipo_equipamento_id;
+          const tipoEqId = tipoEquipamentoIdDe(eq);
           if (!tipoEqId) {
             console.warn('[pasteClipboard] sem tipo_equipamento_id, ignorado:', eq.nome);
+            ignorados.push(eq.tag || eq.nome);
             continue;
           }
           try {
-            const nomeCopia = nextCopyName((eq.nome ?? '').trim(), taken);
-            taken.add(nomeCopia);
+            // Sem nome: o backend gera a próxima TAG livre do tipo (ex.: DJ-07) e usa a
+            // mesma como nome (nome = tag). Mandar "X (Cópia)" deixava nome ≠ tag.
             const resp = await equipamentosApi.criarEquipamentoRapido(
               diagrama.unidadeId,
               tipoEqId,
-              nomeCopia
             );
             const novo = resp.data as unknown as {
               id: string; nome: string; tag?: string; numero_serie?: string;
@@ -1709,6 +1683,7 @@ if (import.meta.env.PROD) {
             novosIds.push(novoId);
           } catch (err) {
             console.error('[pasteClipboard] erro ao criar equipamento:', eq.nome, err);
+            ignorados.push(eq.tag || eq.nome);
           }
         }
 
@@ -1759,6 +1734,7 @@ if (import.meta.env.PROD) {
             undoStack: [...state.undoStack.slice(-49), { kind: 'paste', ids: [...novosIds] }],
           }));
         }
+        return { criados: novosIds.length, ignorados };
       },
 
       deleteEquipamentos: async (ids) => {
@@ -1835,7 +1811,7 @@ if (import.meta.env.PROD) {
 
           for (const eq of action.equipamentos) {
             if (eq.tipo === 'JUNCTION_POINT') continue; // virtual — volta via reconexão
-            const tipoEqId = (eq as unknown as { dados?: { tipo_equipamento_id?: string } }).dados?.tipo_equipamento_id;
+            const tipoEqId = tipoEquipamentoIdDe(eq);
             if (!tipoEqId) continue;
             try {
               const resp = await equipamentosApi.criarEquipamentoRapido(diagrama.unidadeId, tipoEqId, (eq.nome ?? '').trim());
