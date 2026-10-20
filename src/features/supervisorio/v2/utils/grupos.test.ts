@@ -151,3 +151,34 @@ describe('grupos não se sobrepõem', () => {
     expect(separarGrupos(todos, [], [grupos[0]]).equipamentos).toBe(todos);
   });
 });
+
+describe('grupos abertos se afastam só na tela', () => {
+  const linha = (pref: string, y: number, n: number) => Array.from({ length: n }, (_, i) => eq(`${pref}${i}`, i * 3, y));
+  const a = linha('A', 2, 4);
+  const b = linha('B', 4, 4);
+  const todos = [...a, ...b];
+  const grupos: GrupoUnifilar[] = [
+    { id: 'ga', nome: 'A', equipamentoIds: a.map(e => e.id) },
+    { id: 'gb', nome: 'B', equipamentoIds: b.map(e => e.id) },
+  ];
+
+  it('dois abertos sobrepostos: o de baixo desce na tela, o salvo não muda', () => {
+    const v = montarVisao(todos, [], grupos, new Set(['ga', 'gb']));
+    const [ma, mb] = v.abertos.map(x => caixaDaMoldura(x.caixa));
+    expect(mb.minY).toBeGreaterThanOrEqual(ma.maxY + 1);
+    expect(v.deslocamentos.get('ga')).toEqual({ dx: 0, dy: 0 });
+    expect(v.deslocamentos.get('gb')!.dy).toBeGreaterThan(0);
+    expect(v.deslocamentoDoEquipamento.get('B0')).toEqual(v.deslocamentos.get('gb'));
+    expect(todos.find(e => e.id === 'B0')!.posicaoY).toBe(4); // original intacto
+  });
+
+  it('um aberto e outro recolhido: ninguém anda', () => {
+    const v = montarVisao(todos, [], grupos, new Set(['gb']));
+    expect(v.deslocamentoDoEquipamento.size).toBe(0);
+  });
+
+  it('deslocamento congelado é respeitado (arraste não pula)', () => {
+    const v = montarVisao(todos, [], grupos, new Set(['ga', 'gb']), { deslocamentos: new Map([['gb', { dx: 5, dy: 0 }]]) });
+    expect(v.abertos.find(x => x.grupo.id === 'gb')!.membros[0].posicaoX).toBe(5);
+  });
+});

@@ -356,9 +356,11 @@ export const DiagramViewport: React.FC<DiagramViewportProps> = ({ children, onBa
         const equipmentX = svgP.x - editor.dragOffset.x;
         const equipmentY = svgP.y - editor.dragOffset.y;
 
-        // Converter de pixels para grid
-        const gridX = pixelsToGrid(equipmentX, editor.snapToGrid);
-        const gridY = pixelsToGrid(equipmentY, editor.snapToGrid);
+        // Converter de pixels para grid. Membro de grupo aberto pode estar deslocado
+        // só na tela (grupos abertos se afastam): volta para a posição real.
+        const desl = useDiagramStore.getState().deslocamentoVisual.get(editor.draggingEquipmentId);
+        const gridX = pixelsToGrid(equipmentX, editor.snapToGrid) - (desl?.dx ?? 0);
+        const gridY = pixelsToGrid(equipmentY, editor.snapToGrid) - (desl?.dy ?? 0);
 
         // Bloco de grupo recolhido (NEXON-31): move só o bloco
         const dragId = editor.draggingEquipmentId;
@@ -620,7 +622,11 @@ export const DiagramViewport: React.FC<DiagramViewportProps> = ({ children, onBa
                     const st = useDiagramStore.getState();
                     return montarVisao(st.equipamentos, st.conexoes, st.grupos, new Set(st.gruposAbertos)).equipamentos.find(e => e.id === fromId);
                   })()
-                : equipamentos.find(eq => eq.id === fromId);
+                : (() => {
+                    const eq = equipamentos.find(e => e.id === fromId);
+                    const d = eq && useDiagramStore.getState().deslocamentoVisual.get(fromId);
+                    return eq && d ? { ...eq, posicaoX: eq.posicaoX + d.dx, posicaoY: eq.posicaoY + d.dy } : eq;
+                  })();
               if (!fromEq) return null;
               const start = getPortPoint(fromEq, editor.connectingFrom!.porta).point;
               return (

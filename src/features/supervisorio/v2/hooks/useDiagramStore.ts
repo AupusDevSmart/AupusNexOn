@@ -27,7 +27,7 @@ import {
 } from '../types/diagram.types';
 import { convertToVisualConnections } from '../utils/barramentoDetector';
 import { CANVAS, VIEWPORT } from '../utils/diagramConstants';
-import { caixaDe, centroDe, CORES_GRUPO, deslocarGrupo, grupoIdDoNo, gruposDaConfiguracao, levarMembrosAteOBloco, membroMaisProximo, montarVisao, novoIdGrupo, posicaoDoCard, separarGrupos, type Caixa } from '../utils/grupos';
+import { caixaDe, centroDe, CORES_GRUPO, deslocarGrupo, grupoIdDoNo, gruposDaConfiguracao, levarMembrosAteOBloco, membroMaisProximo, montarVisao, novoIdGrupo, posicaoDoCard, separarGrupos, type Caixa, type Deslocamento } from '../utils/grupos';
 
 /** Duração do foco animado (abrir/fechar grupo). Bate com a transição do DiagramViewport. */
 export const FOCO_ANIMADO_MS = 650;
@@ -50,6 +50,8 @@ interface DiagramState {
   grupos: Grupo[];
   /** Grupos abertos agora (estado de tela; o padrão vem de `recolhido`). */
   gruposAbertos: string[];
+  /** Quanto cada equipamento de grupo aberto está deslocado SÓ NA TELA (montado pelo DiagramV2). */
+  deslocamentoVisual: Map<string, Deslocamento>;
 
   // Dados calculados (frontend only)
   visualConnections: VisualConnection[];
@@ -349,6 +351,7 @@ const initialState: DiagramState = {
   conexoes: [],
   grupos: [],
   gruposAbertos: [],
+  deslocamentoVisual: new Map(),
   visualConnections: [],
   barramentos: [],
 
@@ -945,10 +948,6 @@ export const useDiagramStore = create<DiagramStore>()(
             conexoesLimpas,
             gruposDaConfiguracao(diagramaRawExtra.configuracoes),
           );
-          // ...e grupo nenhum fica por cima de outro (abrir vários continua legível)
-          const separacao = separarGrupos(ajusteGrupos.equipamentos, conexoesLimpas, ajusteGrupos.grupos);
-          ajusteGrupos.equipamentos = separacao.equipamentos;
-          ajusteGrupos.mudou = ajusteGrupos.mudou || separacao.movidos.length > 0;
           const diagrama: Diagrama = {
             id: diagramaRaw.id.trim(),
             unidadeId: diagramaRawExtra.unidadeId || diagramaRaw.unidade_id,
@@ -1630,13 +1629,16 @@ if (import.meta.env.PROD) {
           const escondidos = new Set(
             state.grupos.filter(g => !abertos.has(g.id)).flatMap(g => g.equipamentoIds),
           );
+          const naTela = (eq: Equipment) => {
+            const d = state.deslocamentoVisual.get(eq.id);
+            return d ? { x: eq.posicaoX + d.dx, y: eq.posicaoY + d.dy } : { x: eq.posicaoX, y: eq.posicaoY };
+          };
           const dentro = state.equipamentos
-            .filter(eq =>
-              eq.tipo !== 'JUNCTION_POINT' &&
-              !escondidos.has(eq.id) &&
-              eq.posicaoX >= minX && eq.posicaoX <= maxX &&
-              eq.posicaoY >= minY && eq.posicaoY <= maxY
-            )
+            .filter(eq => {
+              if (eq.tipo === 'JUNCTION_POINT' || escondidos.has(eq.id)) return false;
+              const p = naTela(eq);
+              return p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY;
+            })
             .map(eq => eq.id);
           const base = additive ? state.editor.selectedEquipmentIds : [];
           const next = Array.from(new Set([...base, ...dentro]));
@@ -2021,10 +2023,6 @@ if (import.meta.env.PROD) {
       },
 
       endDraggingEquipamento: () => {
-        // Bloco de grupo solto em cima de outro: ele é quem se ajeita (NEXON-31)
-        const soltoGrupo = grupoIdDoNo(get().editor.draggingEquipmentId ?? '');
-        if (soltoGrupo) get().organizarGrupos(soltoGrupo);
-
         // Se o arraste mudou alguma posição, registra 1 entrada de undo (posições antigas)
         const { _dragStartPos, equipamentos } = get();
         if (_dragStartPos) {
@@ -2096,7 +2094,6 @@ if (import.meta.env.PROD) {
             isDirty: true,
           };
         });
-        get().organizarGrupos(id);
         return id;
       },
 
@@ -2115,7 +2112,6 @@ if (import.meta.env.PROD) {
             .filter(g => g.equipamentoIds.length > 0),
           isDirty: true,
         }));
-        get().organizarGrupos(grupoId);
       },
 
       renomearGrupo: (grupoId: string, nome: string) => {
@@ -2150,7 +2146,6 @@ if (import.meta.env.PROD) {
             .filter(g => g.equipamentoIds.length > 0),
           isDirty: true,
         }));
-        get().organizarGrupos();
       },
 
       moverCardGrupo: (grupoId: string, x: number, y: number) => {
@@ -2181,8 +2176,10 @@ if (import.meta.env.PROD) {
         // membros); a câmera só se ajusta se o grupo aberto não couber na tela, e
         // nunca aproxima mais do que já está.
         if (!abrindo) return;
-        const membros = equipamentos.filter(e => grupo.equipamentoIds.includes(e.id));
-        const caixa = caixaDe(membros);
+        // Caixa como vai aparecer (grupos abertos se afastam na tela)
+        const st = get();
+        const aberto = montarVisao(equipamentos, st.conexoes, grupos, new Set(st.gruposAbertos)).abertos.find(a => a.grupo.id === grupoId);
+        const caixa = aberto?.caixa ?? caixaDe(equipamentos.filter(e => grupo.equipamentoIds.includes(e.id)));
         if (!caixa) return;
         const alvo = { minX: caixa.minX - 1, minY: caixa.minY - 2, maxX: caixa.maxX + 1, maxY: caixa.maxY + 1 };
         const tela = get().caixaVisivel();
