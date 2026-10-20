@@ -95,6 +95,8 @@ interface EquipamentoApi {
 const FASES_TODAS: FasesAtivas = { A: true, B: true, C: true };
 /** Altura dos gráficos no modo compacto (toggle Demanda/Tensão/FP do sinóptico). */
 const ALTURA_COMPACTA = 'h-[150px] xl:h-auto xl:flex-1 xl:min-h-0';
+// Abas do gráfico de demanda pré-carregadas em segundo plano (a aba aberta é pulada).
+const PERIODOS_PREFETCH: PeriodoFiltro[] = [{ tipo: 'dia' }, { tipo: 'mes' }, { tipo: 'ano' }];
 const SEM_DEMANDA = { pontos: [] as PontoDemanda[], dominio: undefined as Dominio | undefined };
 
 /** Limite acima do contratado: geração 1% da demanda de geração; carga 5% (NEXON-14). */
@@ -310,6 +312,7 @@ export function SinopticoGraficosV2({
     fatorPerdas: configuracao.aplicarPerdas ? configuracao.fatorPerdas : 0,
     intervaloAtualizacao: configuracao.intervaloAtualizacao,
     ativo: demandaVisivel,
+    prefetch: PERIODOS_PREFETCH,
   });
   const con = useDemandaAgregada({
     equipamentos: equipamentosConsumo,
@@ -317,6 +320,7 @@ export function SinopticoGraficosV2({
     fatorPerdas: 0,
     intervaloAtualizacao: configuracao.intervaloAtualizacao,
     ativo: demandaVisivel,
+    prefetch: PERIODOS_PREFETCH,
   });
   const dados = temGeracao || !temConsumo ? ger.dados : con.dados;
   const energiaPeriodo = ger.energiaPeriodo;
