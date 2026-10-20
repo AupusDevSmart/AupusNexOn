@@ -10,9 +10,9 @@
 import React, { useRef, type MouseEvent } from 'react';
 import { motion } from 'motion/react';
 import { useDiagramStore } from '../../hooks/useDiagramStore';
-import { GRID, LABEL, getThemeColors } from '../../utils/diagramConstants';
+import { GRID, LABEL, PORT, getThemeColors } from '../../utils/diagramConstants';
 import { TAMANHO_CARD, resumoDoGrupo, type CardDeGrupo, type GrupoAberto } from '../../utils/grupos';
-import type { Equipment } from '../../types/diagram.types';
+import type { Equipment, PortPosition } from '../../types/diagram.types';
 
 /** Verde da marca: cor do grupo quando ele não tem uma própria. */
 export const COR_GRUPO_PADRAO = '#70C04B';
@@ -46,6 +46,7 @@ interface GrupoCardProps {
 const GrupoCardImpl: React.FC<GrupoCardProps> = ({ card }) => {
   const theme = useDiagramStore(st => st.theme);
   const modo = useDiagramStore(st => st.editor.mode);
+  const conectando = modo === 'connecting';
   const arrastando = useDiagramStore(st => st.editor.draggingEquipmentId === card.no.id);
   const cores = getThemeColors(theme);
   const escuro = theme === 'dark';
@@ -86,6 +87,7 @@ const GrupoCardImpl: React.FC<GrupoCardProps> = ({ card }) => {
     const d = descida.current;
     descida.current = null;
     if (d && Math.hypot(e.clientX - d.x, e.clientY - d.y) > 4) return; // foi arraste
+    if (useDiagramStore.getState().editor.mode === 'connecting') return;
     useDiagramStore.getState().alternarGrupo(grupo.id);
   };
 
@@ -128,6 +130,33 @@ const GrupoCardImpl: React.FC<GrupoCardProps> = ({ card }) => {
       <rect x={x} y={y} width={6} height={h} rx={3} fill={cor} />
 
       {/* Status (pior entre os membros) */}
+      {/* Portas para interligar o grupo (modo edição): a linha vai para o membro mais perto */}
+      {(modo === 'edit' || conectando) &&
+        (['top', 'bottom', 'left', 'right'] as PortPosition[]).map(porta => {
+          const pos = PORT.POSITIONS[porta];
+          return (
+            <circle
+              key={porta}
+              cx={x + pos.x * w}
+              cy={y + pos.y * h}
+              r={7}
+              fill={conectando ? PORT.COLOR_ACTIVE : PORT.COLOR}
+              stroke="white"
+              strokeWidth={2}
+              style={{ cursor: 'crosshair' }}
+              onMouseDown={e => e.stopPropagation()}
+              onClick={e => {
+                e.stopPropagation();
+                const st = useDiagramStore.getState();
+                if (st.editor.mode === 'connecting' && st.editor.connectingFrom) st.finishConnecting(no.id, porta);
+                else st.startConnecting(no.id, porta);
+              }}
+            >
+              <title>Ligar este grupo a outro equipamento ou grupo</title>
+            </circle>
+          );
+        })}
+
       <circle cx={x + w - 16} cy={y + 16} r={6} fill={COR_STATUS[status]}>
         {status === 'falha' && (
           <animate attributeName="opacity" values="1;0.35;1" dur="1.4s" repeatCount="indefinite" />

@@ -13,7 +13,7 @@ import React, { useRef, useCallback, useEffect, useState, MouseEvent } from 'rea
 import { useDiagramStore } from '../../hooks/useDiagramStore';
 import { CANVAS, GRID, VIEWPORT, getThemeColors, pixelsToGrid, gridToPixels, PORT } from '../../utils/diagramConstants';
 import { getPortPoint } from '../../utils/orthogonalRouting';
-import { grupoIdDoNo } from '../../utils/grupos';
+import { grupoIdDoNo, montarVisao } from '../../utils/grupos';
 import './DiagramViewport.css';
 
 interface DiagramViewportProps {
@@ -54,29 +54,108 @@ export const DiagramViewport: React.FC<DiagramViewportProps> = ({ children, onBa
   const themeColors = getThemeColors(theme);
 
   // ==========================================================================
-  // ZOOM (MOUSE WHEEL) - Usar listener nativo para evitar passive event error
+  // SCROLL (NEXON-31) — listener nativo ({passive:false} permite preventDefault)
+  //   Ctrl/⌘+scroll ou pinça do trackpad → zoom no cursor
+  //   scroll lateral (deltaX) ou Shift+scroll → move para os lados
+  //   scroll vertical do mouse → zoom no cursor (como sempre foi)
+  // Lê o estado FRESCO do store (o listener é registrado uma vez).
   // ==========================================================================
 
   useEffect(() => {
     const svg = svgRef.current;
     if (!svg) return;
 
-    const handleWheel = (e: globalThis.WheelEvent) => {
-      e.preventDefault();
-
-      const delta = e.deltaY > 0 ? -VIEWPORT.ZOOM_STEP : VIEWPORT.ZOOM_STEP;
-      const newScale = viewport.scale + delta;
-
-      setZoom(newScale);
+    const zoomNoCursor = (e: globalThis.WheelEvent, fator: number) => {
+      const st = useDiagramStore.getState();
+      const { x, y, scale } = st.viewport;
+      const novo = Math.max(VIEWPORT.MIN_SCALE, Math.min(VIEWPORT.MAX_SCALE, scale * fator));
+      if (novo === scale) return;
+      // Ponto sob o cursor fica parado: o svg está centrado no wrapper e escala pelo centro
+      const wrap = svg.parentElement?.getBoundingClientRect();
+      const cx = wrap ? e.clientX - (wrap.left + wrap.width / 2) : 0;
+      const cy = wrap ? e.clientY - (wrap.top + wrap.height / 2) : 0;
+      const k = novo / scale;
+      useDiagramStore.setState({
+        viewport: { ...st.viewport, scale: novo, x: cx - (cx - x) * k, y: cy - (cy - y) * k, animando: false },
+      });
     };
 
-    // Adicionar listener com { passive: false } para permitir preventDefault
+    const handleWheel = (e: globalThis.WheelEvent) => {
+      e.preventDefault();
+      // deltaMode 1 = linhas (mouse antigo): converte para pixels
+      const px = e.deltaMode === 1 ? 16 : 1;
+      const dx = e.deltaX * px;
+      const dy = e.deltaY * px;
+
+      if (e.ctrlKey || e.metaKey) {
+        // pinça do trackpad chega como ctrl+wheel com deltas pequenos
+        zoomNoCursor(e, Math.exp(-dy * 0.01));
+        return;
+      }
+      const st = useDiagramStore.getState();
+      if (e.shiftKey) {
+        st.setPan(st.viewport.x - (dx || dy), st.viewport.y);
+        return;
+      }
+      if (dx !== 0) {
+        st.setPan(st.viewport.x - dx, st.viewport.y - dy);
+        return;
+      }
+      zoomNoCursor(e, Math.exp(-dy * 0.0015));
+    };
+
     svg.addEventListener('wheel', handleWheel, { passive: false });
 
     return () => {
       svg.removeEventListener('wheel', handleWheel);
     };
-  }, [viewport.scale, setZoom]);
+  }, []);
+
+  // ==========================================================================
+  // ESPAÇO SEGURADO = mão (move a tela em qualquer ferramenta, até sobre equipamento)
+  // ==========================================================================
+  const espacoRef = useRef(false);
+  const [espaco, setEspaco] = useState(false);
+  // Só vale com o mouse sobre o diagrama: fora dele o espaço segue normal (botões, página)
+  const sobreRef = useRef(false);
+  useEffect(() => {
+    const emCampo = (t: EventTarget | null) => {
+      const el = t as HTMLElement | null;
+      return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable);
+    };
+    const down = (e: KeyboardEvent) => {
+      if (e.code !== 'Space' || emCampo(e.target) || !sobreRef.current) return;
+      e.preventDefault(); // não rola a página
+      if (!espacoRef.current) { espacoRef.current = true; setEspaco(true); }
+    };
+    const up = (e: KeyboardEvent) => {
+      if (e.code !== 'Space') return;
+      espacoRef.current = false;
+      setEspaco(false);
+    };
+    const blur = () => { espacoRef.current = false; setEspaco(false); };
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    window.addEventListener('blur', blur);
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+      window.removeEventListener('blur', blur);
+    };
+  }, []);
+
+  /** Botão do meio ou espaço+arraste: pan antes de qualquer filho (equipamento, bloco) pegar o clique. */
+  const handleMouseDownCapture = useCallback(
+    (e: MouseEvent<SVGSVGElement>) => {
+      if (e.button !== 1 && !(e.button === 0 && espacoRef.current)) return;
+      e.preventDefault(); // evita o autoscroll do botão do meio
+      e.stopPropagation();
+      isDraggingRef.current = true;
+      lastMousePosRef.current = { x: e.clientX, y: e.clientY };
+      startViewportDrag();
+    },
+    [startViewportDrag]
+  );
 
   // ==========================================================================
   // TOUCH (MOBILE) - 1 dedo = pan, 2 dedos = pinch-zoom. Listener nativo com
@@ -207,9 +286,9 @@ export const DiagramViewport: React.FC<DiagramViewportProps> = ({ children, onBa
         return;
       }
 
-      // MODO EDIT + ferramenta SELEÇÃO: arrastar em área vazia = caixa de seleção (marquee).
-      // Com a ferramenta MOVER (default), o arrastar em vazio faz PAN (cai no fluxo abaixo).
-      if (editor.mode === 'edit' && editor.toolMode === 'select') {
+      // MODO EDIT: arrastar no vazio com a ferramenta SELEÇÃO, ou Shift+arrastar com
+      // qualquer ferramenta = caixa de seleção. Senão o arrastar em vazio faz PAN.
+      if (editor.mode === 'edit' && (editor.toolMode === 'select' || e.shiftKey)) {
         const svg = svgRef.current;
         if (svg) {
           const pt = svg.createSVGPoint();
@@ -219,7 +298,8 @@ export const DiagramViewport: React.FC<DiagramViewportProps> = ({ children, onBa
           const gy = pixelsToGrid(p.y, false);
           marqueeRef.current = true;
           setMarquee({ x1: gx, y1: gy, x2: gx, y2: gy });
-          if (!e.shiftKey) useDiagramStore.getState().clearSelection();
+          // Shift com a ferramenta Seleção soma à seleção; com Mover, Shift é o próprio atalho
+          if (!(e.shiftKey && editor.toolMode === 'select')) useDiagramStore.getState().clearSelection();
         }
         e.preventDefault();
         return;
@@ -435,7 +515,12 @@ export const DiagramViewport: React.FC<DiagramViewportProps> = ({ children, onBa
   const viewBox = calculateViewBox();
 
   return (
-    <div className="diagram-viewport-container" style={{ position: 'relative', width: '100%', height: '100%' }}>
+    <div
+      className="diagram-viewport-container"
+      style={{ position: 'relative', width: '100%', height: '100%' }}
+      onMouseEnter={() => { sobreRef.current = true; }}
+      onMouseLeave={() => { sobreRef.current = false; }}
+    >
       {/* Container com overflow hidden */}
       <div
         className="viewport-wrapper"
@@ -467,8 +552,14 @@ export const DiagramViewport: React.FC<DiagramViewportProps> = ({ children, onBa
                 ? 'transform 0.65s cubic-bezier(0.22, 1, 0.36, 1)'
                 : 'transform 0.1s ease-out',
             touchAction: 'none',
-            cursor: editor.draggingEquipmentId ? 'grabbing' : undefined,
+            cursor: editor.draggingEquipmentId || (espaco && viewport.isDragging)
+              ? 'grabbing'
+              : espaco
+                ? 'grab'
+                : undefined,
           }}
+          onMouseDownCapture={handleMouseDownCapture}
+          onAuxClick={e => e.preventDefault()}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
@@ -522,7 +613,14 @@ export const DiagramViewport: React.FC<DiagramViewportProps> = ({ children, onBa
 
             {/* Linha "elastica" (rubber-band): da porta de origem ate o cursor */}
             {editor.mode === 'connecting' && editor.connectingFrom && connMouse && (() => {
-              const fromEq = equipamentos.find(eq => eq.id === editor.connectingFrom!.equipamentoId);
+              const fromId = editor.connectingFrom!.equipamentoId;
+              // Bloco de grupo recolhido não está em `equipamentos`: monta o nó dele
+              const fromEq = grupoIdDoNo(fromId)
+                ? (() => {
+                    const st = useDiagramStore.getState();
+                    return montarVisao(st.equipamentos, st.conexoes, st.grupos, new Set(st.gruposAbertos)).equipamentos.find(e => e.id === fromId);
+                  })()
+                : equipamentos.find(eq => eq.id === fromId);
               if (!fromEq) return null;
               const start = getPortPoint(fromEq, editor.connectingFrom!.porta).point;
               return (

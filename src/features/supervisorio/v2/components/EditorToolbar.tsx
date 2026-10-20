@@ -43,18 +43,22 @@ interface EditorToolbarProps {
 }
 
 const ATALHOS: Array<[string, string]> = [
+  ['Arraste no vazio', 'Mover a tela'],
+  ['Shift+arraste no vazio', 'Caixa de seleção (sem trocar de ferramenta)'],
+  ['Espaço+arraste / botão do meio', 'Mover a tela, mesmo sobre equipamento'],
+  ['Scroll', 'Zoom no ponto do mouse'],
+  ['Scroll lateral / Shift+scroll', 'Mover para os lados'],
+  ['Ctrl+scroll / pinça', 'Zoom no ponto do mouse'],
   ['V / S', 'Ferramenta Mover / Selecionar'],
   ['Shift+clique', 'Selecionar vários'],
-  ['Arraste (Selecionar)', 'Caixa de seleção'],
   ['Duplo-clique', 'Editar equipamento'],
   ['Del', 'Apagar seleção'],
   ['Ctrl+C / Ctrl+V', 'Copiar / colar (cria novos)'],
   ['Ctrl+Z', 'Desfazer última ação'],
   ['Ctrl+G', 'Agrupar seleção'],
   ['Clique no bloco', 'Abrir / recolher grupo'],
+  ['Bolinha azul do bloco', 'Ligar o grupo a outro'],
   ['Ctrl+S', 'Salvar layout'],
-  ['Scroll', 'Zoom'],
-  ['Arraste (Mover)', 'Deslocar a tela'],
   ['Duplo-clique na linha', 'Apagar conexão'],
   ['Esc', 'Limpar seleção'],
 ];
@@ -127,7 +131,7 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
             size="sm"
             onClick={() => setToolMode('move')}
             className="flex items-center gap-1"
-            title="Mover / navegar — arraste a tela pra deslocar (atalho: V)"
+            title="Mover — arraste no vazio move a tela; Shift+arraste faz caixa de seleção (atalho: V)"
           >
             <Move className="h-4 w-4" />Mover
           </Button>
@@ -136,11 +140,14 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
             size="sm"
             onClick={() => setToolMode('select')}
             className="flex items-center gap-1"
-            title="Selecionar — arraste uma caixa pra pegar vários (atalho: S)"
+            title="Selecionar — arraste uma caixa pra pegar vários; espaço+arraste move a tela (atalho: S)"
           >
             <MousePointer2 className="h-4 w-4" />Selecionar
           </Button>
         </div>
+        <span className="hidden xl:inline text-xs text-muted-foreground">
+          Shift+arraste seleciona · espaço+arraste move
+        </span>
       </div>
 
       {/* Adicionar (select agrupado, como no IoT) */}

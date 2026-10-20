@@ -27,7 +27,7 @@ import {
 } from '../types/diagram.types';
 import { convertToVisualConnections } from '../utils/barramentoDetector';
 import { CANVAS, VIEWPORT } from '../utils/diagramConstants';
-import { caixaDe, gruposDaConfiguracao, montarVisao, novoIdGrupo, type Caixa } from '../utils/grupos';
+import { caixaDe, centroDe, CORES_GRUPO, grupoIdDoNo, gruposDaConfiguracao, membroMaisProximo, montarVisao, novoIdGrupo, type Caixa } from '../utils/grupos';
 
 /** Duração do foco animado (abrir/fechar grupo). Bate com a transição do DiagramViewport. */
 export const FOCO_ANIMADO_MS = 650;
@@ -305,10 +305,11 @@ interface DiagramActions {
 
   // ===== GRUPOS (NEXON-31) =====
   /** Junta os equipamentos num grupo novo (tira de grupo anterior). Devolve o id. */
-  criarGrupo: (nome: string, equipamentoIds: string[]) => string | null;
+  criarGrupo: (nome: string, equipamentoIds: string[], cor?: string) => string | null;
   /** Põe os equipamentos num grupo que já existe. */
   adicionarAoGrupo: (grupoId: string, equipamentoIds: string[]) => void;
   renomearGrupo: (grupoId: string, nome: string) => void;
+  colorirGrupo: (grupoId: string, cor: string) => void;
   /** Desfaz o grupo (os equipamentos continuam no diagrama). */
   desfazerGrupo: (grupoId: string) => void;
   /** Tira os equipamentos do grupo deles; grupo que fica vazio some. */
@@ -1934,11 +1935,39 @@ if (import.meta.env.PROD) {
           return;
         }
 
+        // Ponta num bloco de grupo recolhido (NEXON-31) vira o membro mais perto da outra ponta
+        let origemId = editor.connectingFrom.equipamentoId;
+        let destinoId = equipamentoId;
+        const grupoOrigem = grupoIdDoNo(origemId);
+        const grupoDestino = grupoIdDoNo(destinoId);
+        if (grupoOrigem || grupoDestino) {
+          const st = get();
+          const visao = montarVisao(st.equipamentos, st.conexoes, st.grupos, new Set(st.gruposAbertos));
+          const noDe = (id: string) => visao.equipamentos.find(e => e.id === id) ?? st.equipamentos.find(e => e.id === id);
+          const membrosDe = (gid: string) => visao.cards.find(c => c.grupo.id === gid)?.membros ?? [];
+          if (grupoOrigem && grupoOrigem === grupoDestino) {
+            get().cancelConnecting();
+            return;
+          }
+          if (grupoOrigem) {
+            const alvo = noDe(destinoId);
+            const m = alvo ? membroMaisProximo(membrosDe(grupoOrigem), centroDe(alvo)) : null;
+            if (!m) { get().cancelConnecting(); return; }
+            origemId = m.id;
+          }
+          if (grupoDestino) {
+            const de = st.equipamentos.find(e => e.id === origemId);
+            const m = de ? membroMaisProximo(membrosDe(grupoDestino), centroDe(de)) : null;
+            if (!m) { get().cancelConnecting(); return; }
+            destinoId = m.id;
+          }
+        }
+
         // Criar a conexão
         get().addConexao(
-          editor.connectingFrom.equipamentoId,
+          origemId,
           editor.connectingFrom.porta,
-          equipamentoId,
+          destinoId,
           porta
         );
 
@@ -2023,7 +2052,7 @@ if (import.meta.env.PROD) {
       // GRUPOS (NEXON-31)
       // ========================================================================
 
-      criarGrupo: (nome: string, equipamentoIds: string[]) => {
+      criarGrupo: (nome: string, equipamentoIds: string[], cor?: string) => {
         const { equipamentos } = get();
         const validos = new Set(equipamentos.filter(e => e.tipo !== 'JUNCTION_POINT').map(e => e.id));
         const membros = [...new Set(equipamentoIds.map(id => id.trim()))].filter(id => validos.has(id));
@@ -2034,7 +2063,17 @@ if (import.meta.env.PROD) {
             .map(g => ({ ...g, equipamentoIds: g.equipamentoIds.filter(e => !membros.includes(e)) }))
             .filter(g => g.equipamentoIds.length > 0);
           return {
-            grupos: [...restantes, { id, nome: nome.trim() || `Grupo ${restantes.length + 1}`, equipamentoIds: membros, recolhido: true }],
+            grupos: [
+              ...restantes,
+              {
+                id,
+                nome: nome.trim() || `Grupo ${restantes.length + 1}`,
+                equipamentoIds: membros,
+                recolhido: true,
+                // sem cor escolhida: a próxima da paleta, para grupos vizinhos não ficarem iguais
+                cor: cor ?? CORES_GRUPO[state.grupos.length % CORES_GRUPO.length],
+              },
+            ],
             isDirty: true,
           };
         });
@@ -2063,6 +2102,13 @@ if (import.meta.env.PROD) {
         if (!limpo) return;
         set(state => ({
           grupos: state.grupos.map(g => (g.id === grupoId ? { ...g, nome: limpo } : g)),
+          isDirty: true,
+        }));
+      },
+
+      colorirGrupo: (grupoId: string, cor: string) => {
+        set(state => ({
+          grupos: state.grupos.map(g => (g.id === grupoId ? { ...g, cor } : g)),
           isDirty: true,
         }));
       },

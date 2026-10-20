@@ -16,6 +16,9 @@ import { getEquipmentSizeInPixels, GRID } from './diagramConstants';
 export type GrupoUnifilar = Grupo;
 
 export const TIPO_GRUPO = 'GRUPO_UNIFILAR';
+
+/** Paleta dos grupos: verde da marca primeiro, depois tons que se distinguem no claro e no escuro. */
+export const CORES_GRUPO = ['#70C04B', '#3B82F6', '#F59E0B', '#A855F7', '#EF4444', '#14B8A6', '#EC4899', '#64748B'] as const;
 export const PREFIXO_GRUPO = 'grupo:';
 /** Bloco recolhido em unidades de grid (precisa bater com EQUIPMENT_SIZES.GRUPO_UNIFILAR). */
 export const TAMANHO_CARD = { width: 4, height: 2 } as const;
@@ -263,6 +266,31 @@ export function montarVisao(
     grupoDoEquipamento,
     temGrupos: true,
   };
+}
+
+/** Centro (grid) de um equipamento, pelo tamanho real do tipo. */
+export function centroDe(eq: Equipment): { x: number; y: number } {
+  const size = getEquipmentSizeInPixels(eq.tipo);
+  return { x: eq.posicaoX + size.width / GRID.SIZE / 2, y: eq.posicaoY + size.height / GRID.SIZE / 2 };
+}
+
+/**
+ * Linha ligada no bloco de um grupo recolhido vira linha de um equipamento de
+ * verdade (a API só guarda equipamento ou junção): o membro mais perto da outra
+ * ponta. Recolhido, a linha continua chegando no bloco; aberto, no membro.
+ */
+export function membroMaisProximo(membros: Equipment[], alvo: { x: number; y: number }): Equipment | null {
+  let melhor: Equipment | null = null;
+  let menor = Infinity;
+  for (const m of membros) {
+    const c = centroDe(m);
+    const d = Math.hypot(c.x - alvo.x, c.y - alvo.y);
+    if (d < menor) {
+      menor = d;
+      melhor = m;
+    }
+  }
+  return melhor;
 }
 
 /** Lê os grupos de `configuracoes` tolerando lixo. */

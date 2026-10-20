@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Connection, Equipment } from '../types/diagram.types';
-import { caixaDe, gruposDaConfiguracao, idNoGrupo, montarVisao, posicaoDoCard, resumoDoGrupo, statusDoGrupo, type GrupoUnifilar } from './grupos';
+import { caixaDe, membroMaisProximo, gruposDaConfiguracao, idNoGrupo, montarVisao, posicaoDoCard, resumoDoGrupo, statusDoGrupo, type GrupoUnifilar } from './grupos';
 
 const eq = (id: string, x: number, y: number, tipo = 'INVERSOR', extra: Partial<Equipment> = {}): Equipment => ({
   id, nome: id, tag: id, tipo, unidadeId: 'u', diagramaId: 'd', posicaoX: x, posicaoY: y, rotacao: 0,
@@ -79,5 +79,14 @@ describe('bloco do grupo', () => {
     expect(gruposDaConfiguracao({ grupos: [{ id: 'g', nome: 'a', equipamentoIds: [' e1 '] }, null] })).toEqual([
       { id: 'g', nome: 'a', equipamentoIds: ['e1'] },
     ]);
+  });
+});
+
+describe('interligar grupo', () => {
+  it('linha do bloco vai para o membro mais perto da outra ponta', () => {
+    const membros = [eq('a', 0, 0), eq('b', 10, 0), eq('c', 20, 0)];
+    expect(membroMaisProximo(membros, { x: 19, y: 5 })?.id).toBe('c');
+    expect(membroMaisProximo(membros, { x: 0, y: -5 })?.id).toBe('a');
+    expect(membroMaisProximo([], { x: 0, y: 0 })).toBeNull();
   });
 });
