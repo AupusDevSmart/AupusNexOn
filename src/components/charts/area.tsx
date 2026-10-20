@@ -226,6 +226,12 @@ export function Area({
     [dataKey, yScale]
   );
 
+  // Com valores negativos no eixo (ex.: geração para cima, consumo para baixo) a área
+  // fecha no ZERO, não no pé do gráfico. Eixo só positivo: igual ao padrão do visx.
+  const [dominioMin, dominioMax] = yScale.domain() as [number, number];
+  const baseZero =
+    dominioMin < 0 ? yScale(Math.min(Math.max(0, dominioMin), dominioMax)) : undefined;
+
   const hasDashTail = resolveDashTailBounds(dashFromIndex, data.length);
   // The stroke gradient is only emitted when at least one edge fades, so fall
   // back to the resolved solid color otherwise — avoids an invalid url(#...).
@@ -253,6 +259,7 @@ export function Area({
           fill={areaFill}
           x={(d) => xScale(xAccessor(d)) ?? 0}
           y={getY}
+          y0={baseZero}
           yScale={yScale}
         />
       ) : null}

@@ -19,7 +19,10 @@ import { useJanelaZoom, useRodaZoom } from './use-janela-zoom';
 
 const MARGEM = { top: 12, right: 16, bottom: 28, left: 64 };
 /** Séries de referência: sem bolinha no hover (só a demanda tem). */
-const CHAVES_REFERENCIA = new Set(['valorContratado', 'valorAdicional']);
+const CHAVES_REFERENCIA = new Set(['valorContratado', 'valorAdicional', 'valorContratadoCarga', 'valorAdicionalCarga']);
+const COR_CONSUMO = COR.potencia;
+/** Eixo do fluxo: consumo fica abaixo do zero, mas o rótulo mostra o módulo. */
+const eixoFluxo = (kw: number) => potenciaEixo(Math.abs(kw));
 
 export interface ReferenciasDemanda {
   contratado: number;
@@ -39,6 +42,8 @@ interface GraficoDemandaProps {
   expandido?: boolean;
   /** Classes do wrapper no card (altura). */
   className?: string;
+  /** Pontos com `geracao`/`consumo` (mesclarFluxo): geração para cima, consumo para baixo. */
+  fluxo?: boolean;
 }
 
 /**
@@ -53,6 +58,7 @@ export function GraficoDemanda({
   chaveZoom,
   expandido = false,
   className,
+  fluxo = false,
 }: GraficoDemandaProps) {
   const isMobile = useIsMobile();
   const janela = useJanelaZoom(pontos, dominio, chaveZoom);
@@ -60,6 +66,47 @@ export function GraficoDemanda({
   useRodaZoom(expandido ? null : areaEl, janela.rolar, true);
 
   const rotuloAdicional = `Contratado +${referencias?.percentualAdicional ?? 0}%`;
+  const temGeracao = fluxo && pontos.some((p) => p.geracao != null);
+  const temConsumo = fluxo && pontos.some((p) => (p.consumo ?? 0) !== 0);
+  const temRefCarga = fluxo && pontos.some((p) => p.valorContratadoCarga != null);
+  const temRefGeracao = !!referencias && (!fluxo || temGeracao);
+  const linhaRef = (dataKey: string, cor: string, dash: string) => (
+    <Line
+      key={dataKey}
+      dataKey={dataKey}
+      stroke={cor}
+      strokeWidth={1.5}
+      dashFromIndex={0}
+      dashArray={dash}
+      curve={curveLinear}
+      fadeEdges={false}
+      animate={false}
+      showHighlight={false}
+    />
+  );
+
+  const seriesFluxo = (
+    <>
+      {temGeracao && (
+        <Area dataKey="geracao" fill={COR.geracao} fillOpacity={0.3} gradientToOpacity={0.04}
+          showLine={false} showHighlight={false} curve={curveMonotoneX} animate={false} />
+      )}
+      {temConsumo && (
+        <Area dataKey="consumo" fill={COR_CONSUMO} fillOpacity={0.18} gradientToOpacity={0.18}
+          showLine={false} showHighlight={false} curve={curveMonotoneX} animate={false} />
+      )}
+      {temGeracao && (
+        <Line dataKey="geracao" stroke={COR.geracao} strokeWidth={2} curve={curveMonotoneX} fadeEdges={false} animate={false} />
+      )}
+      {temConsumo && (
+        <Line dataKey="consumo" stroke={COR_CONSUMO} strokeWidth={2} curve={curveMonotoneX} fadeEdges={false} animate={false} />
+      )}
+      {temRefGeracao && linhaRef('valorContratado', COR.neutro, '6,4')}
+      {temRefGeracao && linhaRef('valorAdicional', COR.consumo, '3,3')}
+      {temRefCarga && linhaRef('valorContratadoCarga', COR.neutro, '6,4')}
+      {temRefCarga && linhaRef('valorAdicionalCarga', COR.consumo, '3,3')}
+    </>
+  );
 
   const grafico = (
     <LineChart
@@ -71,6 +118,7 @@ export function GraficoDemanda({
       animationDuration={0}
     >
       <Grid horizontal numTicksRows={4} />
+      {fluxo ? seriesFluxo : (<>
       {/* Área verde sob a curva de demanda (NEXON-11). Sem linha própria: o
           traço continua sendo o `Line` abaixo, que define o domínio do eixo. */}
       <Area
@@ -117,13 +165,31 @@ export function GraficoDemanda({
           showHighlight={false}
         />
       )}
+      </>)}
       <XAxis numTicks={isMobile ? 4 : 6} tickMode={janela.xDomain ? 'domain' : 'data'} />
-      <YAxis numTicks={4} formatValue={potenciaEixo} />
+      <YAxis numTicks={fluxo ? 6 : 4} formatValue={fluxo ? eixoFluxo : potenciaEixo} />
       <ChartTooltip
         showDots
         dotColor={(_ponto, linha) => (CHAVES_REFERENCIA.has(linha.dataKey) ? 'transparent' : linha.stroke)}
         content={({ point }) => {
           const p = point as PontoDemanda;
+          if (fluxo) {
+            const refs = [
+              ...(temRefGeracao && referencias ? [{ label: 'Contratado (geração)', value: `${formatarKw(referencias.contratado)} kW`, cor: COR.neutro }] : []),
+              ...(temRefCarga && p.valorContratadoCarga != null ? [{ label: 'Contratado (carga)', value: `${formatarKw(Math.abs(p.valorContratadoCarga))} kW`, cor: COR.neutro }] : []),
+            ];
+            return (
+              <TooltipDestaque
+                titulo={weekdayDateFmt.format(p.date)}
+                linhas={[
+                  ...(temGeracao ? [{ label: 'Geração', value: `${formatarKw(p.geracao ?? 0)} kW`, cor: COR.geracao }] : []),
+                  ...(temConsumo ? [{ label: 'Consumo', value: `${formatarKw(Math.abs(p.consumo ?? 0))} kW`, cor: COR_CONSUMO }] : []),
+                  ...(temGeracao && temConsumo ? [{ label: 'Saldo', value: `${formatarKw(p.potencia)} kW` }] : []),
+                  ...refs,
+                ]}
+              />
+            );
+          }
           return (
             <TooltipDestaque
               titulo={weekdayDateFmt.format(p.date)}
@@ -145,7 +211,18 @@ export function GraficoDemanda({
     </LineChart>
   );
 
-  const itensLegenda: ItemLegenda[] = referencias
+  const itensLegenda: ItemLegenda[] = fluxo
+    ? [
+        ...(temGeracao ? [{ rotulo: 'Geração', cor: COR.geracao }] : []),
+        ...(temConsumo ? [{ rotulo: 'Consumo', cor: COR_CONSUMO }] : []),
+        ...(temRefGeracao || temRefCarga
+          ? [
+              { rotulo: 'Contratado', cor: COR.neutro, tracejada: true },
+              { rotulo: rotuloAdicional, cor: COR.consumo, tracejada: true },
+            ]
+          : []),
+      ]
+    : referencias
     ? [
         { rotulo: 'Demanda', cor: COR.potencia },
         { rotulo: 'Contratado', cor: COR.neutro, tracejada: true },

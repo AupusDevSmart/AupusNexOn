@@ -16,12 +16,20 @@ export interface PontoDemanda extends Record<string, unknown> {
   /** Linhas de referência — só no período "dia". */
   valorContratado?: number;
   valorAdicional?: number;
+  /** Fluxo separado: geração para cima (≥ 0), consumo para baixo (≤ 0). */
+  geracao?: number;
+  consumo?: number;
+  /** Contratado da carga, desenhado no lado negativo (consumo). */
+  valorContratadoCarga?: number;
+  valorAdicionalCarga?: number;
 }
 
 /** Barra de energia: por dia no mês, por mês no ano. */
 export interface PontoEnergia extends Record<string, unknown> {
   label: string;
   energia: number;
+  /** Energia consumida (kWh, positiva) — só quando há equipamento de consumo. */
+  consumo?: number;
 }
 
 export type Fase = 'A' | 'B' | 'C';
@@ -117,6 +125,41 @@ export function montarPontosDemanda(
   return { pontos };
 }
 
+/**
+ * Junta as séries de geração e de consumo (cada uma montada por montarPontosDemanda)
+ * num eixo só: geração positiva, consumo negativo. As consultas são separadas, então
+ * os instantes nem sempre coincidem — cada série repete o último valor até o próximo
+ * ponto dela (0 antes do primeiro). `potencia` = saldo (geração − consumo), usado
+ * pelo zoom/brush.
+ */
+export function mesclarFluxo(
+  ger: PontoDemanda[],
+  con: PontoDemanda[],
+  carga?: { contratado: number; adicional: number },
+): PontoDemanda[] {
+  const tempos = Array.from(new Set([...ger, ...con].map((p) => p.date.getTime()))).sort((a, b) => a - b);
+  const refGer = ger[0];
+  let ig = 0;
+  let ic = 0;
+  let g = 0;
+  let c = 0;
+  return tempos.map((t) => {
+    while (ig < ger.length && ger[ig].date.getTime() <= t) g = ger[ig++].potencia;
+    while (ic < con.length && con[ic].date.getTime() <= t) c = -Math.abs(con[ic++].potencia);
+    const ponto: PontoDemanda = { date: new Date(t), potencia: g + c, consumo: c };
+    if (ger.length) ponto.geracao = g;
+    if (refGer?.valorContratado != null) {
+      ponto.valorContratado = refGer.valorContratado;
+      ponto.valorAdicional = refGer.valorAdicional;
+    }
+    if (carga && con.length) {
+      ponto.valorContratadoCarga = -carga.contratado;
+      ponto.valorAdicionalCarga = -carga.adicional;
+    }
+    return ponto;
+  });
+}
+
 /** Barras de energia (kWh): por dia no mês, por mês no ano. */
 export function montarPontosEnergia(dados: PontoDemandaApi[], tipo: 'mes' | 'ano'): PontoEnergia[] {
   return dados.map((item) => ({
@@ -154,4 +197,16 @@ export function montarPontosFases(dados: LeituraM160[], grandeza: Grandeza): { p
     }),
   );
   return { pontos, dominio: dominioDoDia(hoje, true, pontos[pontos.length - 1]?.date) };
+}
+
+/** Barras de geração e consumo lado a lado (mês/ano). `energia` = gerada, `consumo` = consumida. */
+export function mesclarEnergia(ger: PontoEnergia[], con: PontoEnergia[]): PontoEnergia[] {
+  const porLabel = new Map<string, PontoEnergia>();
+  for (const p of ger) porLabel.set(p.label, { label: p.label, energia: p.energia });
+  for (const p of con) {
+    const atual = porLabel.get(p.label) ?? { label: p.label, energia: 0 };
+    atual.consumo = Math.abs(p.energia);
+    porLabel.set(p.label, atual);
+  }
+  return [...porLabel.values()];
 }

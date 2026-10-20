@@ -68,6 +68,7 @@ export function GraficoConfiguravelPanel({ unidadeId }: GraficoConfiguravelPanel
     <SinopticoGraficosV2
       unidadeId={unidadeId}
       valorContratado={valorContratado}
+      valorContratadoCarga={(unidade?.demandaCarga ?? unidade?.demanda_carga) != null ? parseFloat(String(unidade?.demandaCarga ?? unidade?.demanda_carga)) : null}
       percentualAdicional={5}
       apenasGrafico={variavel}
       controleVariavel={toggles}
