@@ -115,6 +115,9 @@ const ReleEventosPage = lazy(() =>
 );
 
 const RelatoriosPage = lazy(() => import("@/features/relatorios/RelatoriosPage"));
+// NEXON-21: Ativos › Proprietários e Ativos › Instalações
+const ProprietariosPage = lazy(() => import("@/features/ativos/ProprietariosPage"));
+const InstalacoesPage = lazy(() => import("@/features/ativos/InstalacoesPage"));
 
 
 // Paginas do nucleo, importadas no topo do arquivo
@@ -330,6 +333,30 @@ export const appRoutes = createBrowserRouter([
             <FeatureWrapper feature="Usuarios">
             <UsuariosPage />
           </FeatureWrapper>
+          </RequireNotCliente>
+        ),
+      },
+      {
+        path: "ativos/proprietarios",
+        element: (
+          <RequireNotCliente>
+            <RequirePermission permission="plantas.view">
+              <Suspense fallback={<div>Carregando...</div>}>
+                <ProprietariosPage />
+              </Suspense>
+            </RequirePermission>
+          </RequireNotCliente>
+        ),
+      },
+      {
+        path: "ativos/instalacoes",
+        element: (
+          <RequireNotCliente>
+            <RequirePermission permission="unidades.view">
+              <Suspense fallback={<div>Carregando...</div>}>
+                <InstalacoesPage />
+              </Suspense>
+            </RequirePermission>
           </RequireNotCliente>
         ),
       },

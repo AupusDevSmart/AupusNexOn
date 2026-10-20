@@ -244,7 +244,7 @@ export function IotCatalogPage() {
       <Layout.Main>
         <Tabs value={aba} onValueChange={setAba} className="w-full">
           <TitleCard
-            title="Catálogo IoT"
+            title="Drivers de Equipamento"
             description="Tipos de dispositivo e modelos (Modbus mapping) consumidos pelo editor de diagrama IoT e pelo gerador de firmware."
             actions={
               <TabsList>
