@@ -14,8 +14,8 @@ import {
 } from 'lucide-react';
 import { Usuario, ModalMode, UsuarioFormData } from '../types';
 import { usuariosFormFields } from '../config/form-config';
-import { useUsuarios } from '@/core/context/hooks';
-import { UsuarioPlantasTab } from './UsuarioPlantasTab';
+import { useUsuarios, useUserStore } from '@/core/context/hooks';
+import { AbasUsuario } from './acesso-operador/AcessoOperadorSheet';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,6 +34,11 @@ interface UsuarioModalProps {
   onClose: () => void;
   onSuccess: () => void;
   onGerenciarPlantas?: (usuario: Usuario) => void;
+  /**
+   * Abre a aba "Acesso" do operador (NEXON-20). `novo` = acabou de ser
+   * cadastrado (passo 2 do cadastro).
+   */
+  onAbrirAcesso?: (usuario: Usuario, novo?: boolean) => void;
 }
 
 /** Identifica se o usuario tem role "operador" considerando os varios formatos do backend. */
@@ -55,6 +60,7 @@ export function UsuarioModal({
   usuario,
   onClose,
   onSuccess,
+  onAbrirAcesso,
 }: UsuarioModalProps) {
   const isViewMode = mode === 'view';
   const isEditMode = mode === 'edit';
@@ -72,6 +78,12 @@ export function UsuarioModal({
     clearError
   } = useUsuarios();
 
+  // NEXON-20: papel de quem está logado decide o que aparece.
+  const { papel, capacidades, acessivel } = useUserStore();
+  const mostrarPermissoes = !!capacidades?.global;
+  const podeGerirAcesso = !!capacidades?.gerirAcessoOperador && !!onAbrirAcesso;
+  const ehOperador = isOperador(usuario);
+
   // Estado local
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -80,21 +92,51 @@ export function UsuarioModal({
   const [entityWithIds, setEntityWithIds] = useState<UsuarioFormData | Usuario | null>(null);
   const [loadingIds, setLoadingIds] = useState(false);
 
-  const handleSubmit = async (data: any) => {
+  const handleSubmit = async (dataBruta: any) => {
     // Limpar erros anteriores
     clearError();
+
+    // PER-3: ninguém concede permissão que não tem. Sem o seletor (proprietário)
+    // não manda nada; não-admin manda só as que ele mesmo tem.
+    const data = { ...dataBruta };
+    if (!mostrarPermissoes) {
+      delete data.permissions;
+      delete data.permissao;
+    } else if (papel !== 'admin') {
+      const minhas = new Set<string>(Array.isArray(acessivel) ? acessivel : []);
+      const filtra = (v: unknown) =>
+        Array.isArray(v) ? v.filter((p: any) => minhas.has(typeof p === 'string' ? p : p?.name)) : v;
+      data.permissions = filtra(data.permissions);
+      data.permissao = filtra(data.permissao);
+    }
 
     try {
       let resultado;
 
       if (isCreateMode) {
         resultado = await createUsuario(data as UsuarioFormData);
+        const papelCriado = Array.isArray(data.roleNames) ? data.roleNames[0] : data.roleNames;
+        const criouOperador = String(papelCriado ?? '').toLowerCase() === 'operador';
 
-        // ✅ Toast de sucesso
-        toast.success('Usuário criado com sucesso!', {
-          description: `${resultado.nome} foi criado. Senha padrão: ${resultado.senhaTemporaria || 'Aupus123!'}`,
-          duration: 5000,
-        });
+        if ((resultado as any)?.existente) {
+          // Operador é um usuário só com vários vínculos (PER-12): o e-mail já
+          // existia, então o próximo passo é dar o acesso deste proprietário.
+          toast.info('Operador já cadastrado', {
+            description: `${resultado.nome} já tinha cadastro. Defina agora o acesso dele.`,
+            duration: 6000,
+          });
+        } else {
+          toast.success('Usuário criado com sucesso!', {
+            description: `${resultado.nome} foi criado. Senha padrão: ${resultado.senhaTemporaria || 'Aupus123!'}`,
+            duration: 5000,
+          });
+        }
+
+        // Passo 2 do cadastro de operador: aba Acesso (PER-21a).
+        if (criouOperador && podeGerirAcesso && resultado?.id) {
+          onAbrirAcesso?.(resultado, true);
+          return;
+        }
       } else if (isEditMode && usuario) {
         resultado = await updateUsuario(usuario.id, data as Partial<UsuarioFormData>);
 
@@ -199,11 +241,10 @@ export function UsuarioModal({
       title: 'Configurações do Sistema',
       fields: ['roleNames', 'status']
     },
-    {
-      key: 'permissoes',
-      title: 'Permissões',
-      fields: ['permissions']
-    }
+    // Permissões diretas só para papéis globais (PER-3); o proprietário não vê.
+    ...(mostrarPermissoes
+      ? [{ key: 'permissoes', title: 'Permissões', fields: ['permissions'] }]
+      : []),
   ];
 
   // Carrega dados completos do usuario ao editar/visualizar.
@@ -249,11 +290,23 @@ export function UsuarioModal({
       onClose={onClose}
       onSubmit={handleSubmit}
       width="w-[95vw] sm:w-[600px] lg:w-[700px] xl:w-[800px]"
+      headerExtra={
+        !isCreateMode && usuario?.id && ehOperador && podeGerirAcesso ? (
+          <AbasUsuario ativa="dados" onAcesso={() => onAbrirAcesso?.(usuario)} />
+        ) : undefined
+      }
     >
-      {/* PLANTAS ATRIBUIDAS - so para operador, em edit/view */}
-      {!isCreateMode && usuario?.id && isOperador(usuario) && (
-        <div className="mt-6 pt-4 border-t border-border">
-          <UsuarioPlantasTab usuarioId={usuario.id} />
+      {/* ACESSO DO OPERADOR - o que ele vê fica na aba Acesso (NEXON-20, PER-21) */}
+      {!isCreateMode && usuario?.id && ehOperador && podeGerirAcesso && (
+        <div className="mt-6 pt-4 border-t border-border space-y-2">
+          <h3 className="text-sm font-semibold">Acesso</h3>
+          <p className="text-xs text-muted-foreground">
+            Quais equipamentos {usuario.nome} vê e comanda, por proprietário, com "Ver R$", "Ver geração" e validade.
+          </p>
+          <Button type="button" variant="outline" size="sm" onClick={() => onAbrirAcesso?.(usuario)}>
+            <Shield className="h-4 w-4 mr-2" />
+            Abrir acesso
+          </Button>
         </div>
       )}
 

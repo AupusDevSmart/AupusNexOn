@@ -23,6 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useNavigate } from "react-router-dom";
+import { useUserStore } from "@/store/useUserStore";
 
 
 /**
@@ -49,6 +50,8 @@ const ehUnidadeCarga = (tipo?: string | null): boolean => {
  */
 export function DashboardPage() {
   const navigate = useNavigate();
+  // Contador de falhas (painel "Alertas Ativos"): só equipe Aupus (NEXON-20).
+  const verContadorFalhas = useUserStore((s) => s.capacidades.contadorFalhas);
   const {
     data,
     isLoading,
@@ -754,8 +757,8 @@ export function DashboardPage() {
                 </CardContent>
               </Card> */}
 
-              {/* Painel de Alertas */}
-              {data && data.alertas.length > 0 && (
+              {/* Painel de Alertas (contador de falhas — só papéis com contadorFalhas) */}
+              {verContadorFalhas && data && data.alertas.length > 0 && (
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">

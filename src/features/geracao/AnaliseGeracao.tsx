@@ -35,7 +35,6 @@ const PERIODOS: Array<{ k: PeriodoAnalise; rotulo: string }> = [
   { k: 'mes', rotulo: 'Mês' },
   { k: 'ano', rotulo: 'Ano' },
 ];
-const PAPEIS_EDITORES = ['super_admin', 'admin', 'analista'];
 const MARGEM = { top: 12, right: 16, bottom: 28, left: 56 };
 
 const hojeSP = () =>
@@ -78,8 +77,10 @@ interface LinhaBarra extends Record<string, unknown> {
 export function AnaliseGeracao({ unidadeId, fallback }: { unidadeId: string; fallback?: ReactNode }) {
   // Recalculado a cada render: a tela aberta passando da meia-noite não pode ficar no dia velho.
   const hoje = hojeSP();
-  const papel = useUserStore((s) => s.getUserRole());
-  const podeConfigurar = PAPEIS_EDITORES.includes(papel);
+  // Grupo "Usina" da configuração: só papéis globais (NEXON-20, capacidades.configUsina).
+  const podeConfigurar = useUserStore((s) => s.capacidades.configUsina);
+  // Operador sem "Ver geração" recebe 403: a seção some, sem aviso (PER-40).
+  const [semAcesso, setSemAcesso] = useState(false);
   const [periodo, setPeriodo] = useState<PeriodoAnalise>('dia');
   const [ref, setRef] = useState(hoje);
   const [a, setA] = useState<Analise | null>(null);
@@ -96,10 +97,11 @@ export function AnaliseGeracao({ unidadeId, fallback }: { unidadeId: string; fal
     setErro(null);
     try {
       const r = await geracaoApi.analise(unidadeId, periodo, ref);
-      if (meu === pedido.current) setA(r);
+      if (meu === pedido.current) { setA(r); setSemAcesso(false); }
     } catch (e: unknown) {
       if (meu !== pedido.current) return;
       setA(null);
+      setSemAcesso((e as { response?: { status?: number } } | null)?.response?.status === 403);
       setErro(mensagemErro(e));
     } finally {
       if (meu === pedido.current) setLoading(false);
@@ -151,6 +153,7 @@ export function AnaliseGeracao({ unidadeId, fallback }: { unidadeId: string; fal
     setRef(p.data);
   };
 
+  if (semAcesso) return null;
   if (a && (!a.tem_inversor || a.tem_dados === false)) return <>{fallback ?? null}</>;
   // API fora (ou ainda não publicada): com gráfico antigo disponível, ele fica no lugar.
   if (erro && !a && fallback) return <>{fallback}</>;

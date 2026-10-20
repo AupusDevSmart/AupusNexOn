@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { api } from '@/config/api';
 import { useUserStore } from '@/store/useUserStore';
+import { MSG_SOMENTE_LEITURA } from '@/store/papeis';
 import { useDados, getPath, fmt, tsInfo } from './sheetParts';
 import { useCustos, linhasPosto, brl, unwrap, useHistorico, janela, bucketize, type Periodo } from './equipUi';
 import { curveMonotoneX } from '@visx/curve';
@@ -294,15 +295,20 @@ const kpiCel = (i: number): CSSProperties => ({ display: 'flex', flexDirection: 
 const chaveParada = (id: string) => `nexon:pivo:ultima-parada:${id}`;
 
 /**
- * Perfis do mockup: Admin/Analista mexem em tudo; Proprietário só no horário de ponta e
- * na programação; Operador (e demais) só leem a Configuração. A API confere de novo.
+ * Perfis (spec NEXON-20, PER-33/34/36): configuração TÉCNICA (bombeamento,
+ * pressão, tempo de volta, ângulo zero, direcionamento/válvula, sequência) só
+ * Admin e analistas; OPERACIONAL (lâmina, ponta, programação) também o
+ * proprietário e o operador; comandar: todos esses (operador só nos liberados —
+ * a API confere de novo).
  */
 function usePerfilPivo() {
-  const { getUserRole, hasPermission } = useUserStore();
-  const role = getUserRole();
-  const tecnico = ['super_admin', 'admin', 'analista', 'gerente'].includes(role) || hasPermission('equipamentos.manage');
-  const prop = tecnico || role === 'proprietario' || hasPermission('equipamentos.acionar_ponto');
-  return { tecnico, prop };
+  const capacidades = useUserStore((st) => st.capacidades);
+  return {
+    tecnico: capacidades.configTecnica,
+    operacional: capacidades.configOperacional,
+    comandar: capacidades.comandar,
+    verNomeProprietario: capacidades.verNomeProprietario,
+  };
 }
 
 export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: string; nome?: string; onClose: () => void }) {
@@ -508,7 +514,7 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   return (
     <NxShell
       title={titulo}
-      subtitle={[cfgPivo?.unidade_nome ?? custoDia?.unidade?.nome, cfgPivo?.planta_nome, cfgPivo?.proprietario_nome].filter(Boolean).join(' · ') || (info.hasTs ? info.label : 'Sem leitura de energia')}
+      subtitle={[cfgPivo?.unidade_nome ?? custoDia?.unidade?.nome, cfgPivo?.planta_nome, perfil.verNomeProprietario ? cfgPivo?.proprietario_nome : null].filter(Boolean).join(' · ') || (info.hasTs ? info.label : 'Sem leitura de energia')}
       right={<span style={s.pill(tone)}><span style={s.pillDot(tone)} />{label}</span>}
       tabs={[{ key: 'op', label: 'Operação' }, { key: 'cfg', label: 'Configuração' }]}
       tab={aba}
@@ -530,13 +536,17 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
                 {agendadaTxt && <span style={{ fontSize: 13, color: NX.mudo }}>{agendadaTxt}</span>}
                 {erro && <span style={{ fontSize: 13, color: NX.warn }}>{erro}</span>}
               </div>
+              {perfil.comandar && (
               <button type="button" disabled={busy || cmdBloq} style={cmdStyle}
                 onClick={() => { setConfirmKind(on || desligaAgenda ? 'stop' : 'quick'); setConfirmOpen(true); }}>{cmdLabel}</button>
+              )}
+              {perfil.comandar && (
               <button type="button" onClick={() => abrirIrr('simples')}
                 style={{ alignSelf: 'center', height: 36, padding: '0 10px', display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 700, color: NX.mudo }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={NX.mudo} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12" /><circle cx="16" cy="6" r="2" /><circle cx="10" cy="12" r="2" /><circle cx="18" cy="18" r="2" /></svg>
                 Irrigação avançada
               </button>
+              )}
             </div>
             <div style={col(12)}>
               <div style={{ ...s.card, padding: '14px 0', display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', rowGap: 14 }}>
@@ -727,7 +737,7 @@ const PARAMS = [
 ] as const;
 
 function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg, onAdicionarHorario }: {
-  pivoId: string; estado: Estado | null; cfg: PivoConfig | null; perfil: { tecnico: boolean; prop: boolean }; onSalvo: () => void;
+  pivoId: string; estado: Estado | null; cfg: PivoConfig | null; perfil: { tecnico: boolean; operacional: boolean }; onSalvo: () => void;
   progs: Programacao[] | null; onRemoverProg: (id: string) => void; onAdicionarHorario: () => void;
 }) {
   const [op, setOp] = useState<Opcoes | null>(null);
@@ -870,7 +880,9 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
   const nProg = progs?.length ?? 0;
   const agFull = nProg >= 5;
   const roTec = !perfil.tecnico;
-  const roProp = !perfil.prop;
+  // Operacional: lâmina, ponta e programação (PER-33b).
+  const roOp = !perfil.operacional;
+  const somenteLeitura = roTec && roOp;
 
   return (
     <div style={{ padding: '20px 24px 28px 24px', ...col(10) }}>
@@ -918,6 +930,7 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
           </>
         )}
       </div>
+      {roTec && !roOp && <span style={{ fontSize: 12, color: NX.mudo }}>{MSG_SOMENTE_LEITURA}</span>}
 
       {secao('PARTIDA E IRRIGAÇÃO', 10)}
       {PARAMS.map((p) => {
@@ -925,13 +938,15 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
         const val = ehSeq ? seq[p.key as 'pressurizacao_s' | 'confirma_giro_s'] : (par[p.key] ?? '');
         const nv = Number(String(val).replace(',', '.'));
         const ruim = ehSeq ? !numOk(val, p.min, p.max) : val !== '' && (Number.isNaN(nv) || nv < p.min || nv > p.max);
+        // Lâmina é operacional; o resto da partida é técnico.
+        const ro = p.key === 'lamina_100' ? roOp : roTec;
         return (
           <div key={p.key} style={{ ...s.card, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
             <label htmlFor={`w-${p.key}`} style={{ flex: 1, ...col(2) }}>
               <span style={{ fontSize: 15, fontWeight: 700 }}>{p.label}</span>
-              <span style={{ fontSize: 12, color: ruim ? NX.bad : NX.mudo }}>{p.hint}</span>
+              <span style={{ fontSize: 12, color: ruim ? NX.bad : NX.mudo }}>{ro && !somenteLeitura ? MSG_SOMENTE_LEITURA : p.hint}</span>
             </label>
-            <input id={`w-${p.key}`} inputMode="decimal" value={val} disabled={roTec} style={s.campo(roTec, ruim)}
+            <input id={`w-${p.key}`} inputMode="decimal" value={val} disabled={ro} style={s.campo(ro, ruim)}
               onChange={(e) => { if (ehSeq) setSeq((x) => ({ ...x, [p.key]: e.target.value })); else setPar((x) => ({ ...x, [p.key]: e.target.value })); }} />
             <span style={{ fontSize: 14, color: NX.mudo, width: 28 }}>{p.unit}</span>
           </div>
@@ -940,13 +955,13 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
 
       {secao('HORÁRIO DE PONTA', 10)}
       <div style={{ ...s.card, padding: '0 16px' }}>
-        <NxSwitchRow first title="Bloquear no horário de ponta" sub="Pausa a irrigação e retoma ao fim da ponta" on={!!ponta?.ativo} disabled={!ponta || roProp}
+        <NxSwitchRow first title="Bloquear no horário de ponta" sub="Pausa a irrigação e retoma ao fim da ponta" on={!!ponta?.ativo} disabled={!ponta || roOp}
           onToggle={() => setPonta((p) => (p ? { ...p, ativo: !p.ativo } : p))} />
         <div style={{ borderTop: `1px solid ${NX.linha}`, padding: '12px 0', display: 'flex', gap: 12 }}>
           {(['inicio', 'fim'] as const).map((k) => (
             <label key={k} style={{ flex: 1, ...col(4) }}>
               <span style={{ fontSize: 12, color: NX.mudo }}>{k === 'inicio' ? 'Início' : 'Fim'}</span>
-              <input type="time" disabled={!ponta || roProp} value={ponta?.[k] ?? ''} onChange={(e) => setPonta((p) => (p ? { ...p, [k]: e.target.value } : p))} style={timeStyle} />
+              <input type="time" disabled={!ponta || roOp} value={ponta?.[k] ?? ''} onChange={(e) => setPonta((p) => (p ? { ...p, [k]: e.target.value } : p))} style={timeStyle} />
             </label>
           ))}
         </div>
@@ -963,24 +978,24 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
                 <span style={{ fontSize: 15, fontWeight: 700 }}>{t.quando}</span>
                 <span style={{ fontSize: 12, color: NX.mudo }}>{t.det}</span>
               </span>
-              <button type="button" aria-label="Remover horário" disabled={roProp} onClick={() => onRemoverProg(p.id)} style={{ width: 36, height: 36, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <button type="button" aria-label="Remover horário" disabled={roOp} onClick={() => onRemoverProg(p.id)} style={{ width: 36, height: 36, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <IcoLixo />
               </button>
             </div>
           );
         })}
-        <button type="button" disabled={agFull || progs == null || roProp} onClick={onAdicionarHorario}
-          style={{ width: '100%', height: 46, ...(nProg > 0 || progs == null ? { borderTop: `1px solid ${NX.linha}` } : {}), fontSize: 14, fontWeight: 800, textAlign: 'center', color: agFull || roProp ? NX.desab : VERDE }}>
+        <button type="button" disabled={agFull || progs == null || roOp} onClick={onAdicionarHorario}
+          style={{ width: '100%', height: 46, ...(nProg > 0 || progs == null ? { borderTop: `1px solid ${NX.linha}` } : {}), fontSize: 14, fontWeight: 800, textAlign: 'center', color: agFull || roOp ? NX.desab : VERDE }}>
           {agFull ? 'Limite de 5 horários' : '+ Adicionar horário'}
         </button>
       </div>
 
-      {!roProp && (
+      {!somenteLeitura && (
         <button type="button" disabled={saveOff} onClick={() => setRevisar(true)} style={s.save(saveOff)}>
           {invalido ? 'Valor fora da faixa' : n === 0 ? 'Salvar' : `Revisar ${n} ${n > 1 ? 'alterações' : 'alteração'}`}
         </button>
       )}
-      {roProp && <span style={{ textAlign: 'center', fontSize: 13, color: NX.mudo, marginTop: 6 }}>Somente leitura para este perfil</span>}
+      {somenteLeitura && <span style={{ textAlign: 'center', fontSize: 13, color: NX.mudo, marginTop: 6 }}>{MSG_SOMENTE_LEITURA}</span>}
       <span style={{ fontSize: 12, color: NX.mudo, marginTop: 6 }}>
         Os comandos do pivô (ligar, desligar, direção, sem água, canhão) e os status vêm dos pontos ligados às BO/BI da TON do pivô (Topologia → TON → Configurar BOs/BIs).
       </span>

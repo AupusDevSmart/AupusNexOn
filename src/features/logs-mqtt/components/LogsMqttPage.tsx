@@ -8,6 +8,7 @@ import { useLocation } from 'react-router-dom';
 import { useGenericModal } from '@/hooks/useGenericModal';
 import { toast } from '@/hooks/use-toast';
 import { LogMqttDetailModal } from './log-mqtt-detail-modal';
+import { useCapacidades } from '@/store/useUserStore';
 import { useLogsMqtt } from '../hooks/useLogsMqtt';
 import { logsMqttTableColumns } from '../config/table-config';
 import { logsMqttFilterConfig } from '../config/filter-config';
@@ -28,6 +29,7 @@ export function LogsMqttPage() {
   const { logs, total, loading, filters, setFilters, refresh } = useLogsMqtt();
   const { modalState, openModal, closeModal } = useGenericModal<LogMqtt>();
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const capacidades = useCapacidades();
 
   const location = useLocation();
   const unidadeNome = (location.state as { unidadeNome?: string } | null)?.unidadeNome;
@@ -102,7 +104,14 @@ export function LogsMqttPage() {
               }}
               onPageChange={(page) => setFilters({ page })}
               onView={(log: any) => openModal('view', log)}
-              onDelete={(log: any) => setDeleteId(log.id)}
+              // Log não se apaga (spec NEXON-20, PER-44): comando nunca; alarme só equipe Aupus.
+              onDelete={capacidades.global ? (log: any) => {
+                if (log.tipo === 'comando') {
+                  toast({ title: 'Registro de comando não pode ser excluído', variant: 'destructive' });
+                  return;
+                }
+                setDeleteId(log.id);
+              } : undefined}
               emptyMessage="Nenhum log registrado"
             />
           </div>

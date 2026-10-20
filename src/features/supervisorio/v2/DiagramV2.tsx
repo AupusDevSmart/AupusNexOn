@@ -87,7 +87,8 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
   const removeConexao = useDiagramStore(state => state.removeConexao);
 
   // Verificação de permissões
-  const { isAdmin } = useUserStore();
+  // Criar/editar diagrama é cadastro técnico (NEXON-20).
+  const podeEditarDiagrama = useUserStore((st) => st.capacidades.cadastroTecnico);
 
   // Tema global da aplicação
   const { theme: appTheme } = useTheme();
@@ -470,13 +471,13 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
             </div>
             <h3 className="text-lg font-semibold mb-2">Diagrama não encontrado</h3>
             <p className="text-muted-foreground mb-1">Esta unidade ainda não possui um diagrama unifilar.</p>
-            {isAdmin() ? (
+            {podeEditarDiagrama ? (
               <p className="text-sm text-muted-foreground mb-6">Crie um novo diagrama para começar a adicionar equipamentos e conexões.</p>
             ) : (
               <p className="text-sm text-muted-foreground mb-6">Entre em contato com um administrador para criar o diagrama.</p>
             )}
 
-            {isAdmin() && (
+            {podeEditarDiagrama && (
               <Button
                 onClick={() => setShowCreateModal(true)}
                 size="lg"
@@ -680,7 +681,7 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
           </div>
 
           {/* Toggle Edit/View Mode - Apenas para admin ou super_admin */}
-          {isAdmin() && (
+          {podeEditarDiagrama && (
             <Button
               onClick={() => setCurrentMode(currentMode === 'edit' ? 'view' : 'edit')}
               variant={currentMode === 'edit' ? 'secondary' : 'ghost'}

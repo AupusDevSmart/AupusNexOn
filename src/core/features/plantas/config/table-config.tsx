@@ -128,3 +128,13 @@ export const plantasTableConfig = {
     }
   }
 } as const;
+
+/**
+ * Colunas conforme o papel (NEXON-20): o proprietário não vê o próprio nome na
+ * lista (`capacidades.verNomeProprietario`), então a coluna some.
+ */
+export function plantasTableColumnsPara(verNomeProprietario: boolean): TableColumn<PlantaApiResponse>[] {
+  return verNomeProprietario
+    ? plantasTableColumns
+    : plantasTableColumns.filter((c) => c.key !== 'proprietario');
+}

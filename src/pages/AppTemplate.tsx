@@ -8,6 +8,7 @@ import {
 import { CommandPallete } from "@/features/navigation/components/CommandPallete";
 import { AppSidebar } from "@/features/navigation/components/Sidebar/app-sidebar";
 import { useUserStore } from "@/store/useUserStore";
+import { useSincronizarSessao } from "@/hooks/useSincronizarSessao";
 import { QueryClient, QueryClientProvider } from "react-query";
 import { Outlet, useNavigate } from "react-router-dom";
 const queryClient = new QueryClient();
@@ -15,6 +16,8 @@ const queryClient = new QueryClient();
 export function AppTemplate() {
   const { user } = useUserStore();
   const navigate = useNavigate();
+  // Papel e permissões salvos podem estar velhos: relê /auth/me ao abrir (PER-21f).
+  useSincronizarSessao();
 
   // useEffect(() => {
   //   if (!user) navigate('/login');

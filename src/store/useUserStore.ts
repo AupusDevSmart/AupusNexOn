@@ -1,10 +1,15 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import type { UsuarioDTO } from '@/types/dtos/usuarios-dto';
+import { type Capacidades, type Papel, capacidadesDoPapel, papelECapacidades } from './papeis';
 
 type UserStoreState = {
   user: UsuarioDTO | null;
   acessivel: string[];
+  /** Papel canônico (NEXON-20). Vem do login / `/auth/me`; fallback pela role. */
+  papel: Papel;
+  /** O que o papel pode (para esconder botão; quem protege é o backend). */
+  capacidades: Capacidades;
   setUser: (newUser: UsuarioDTO) => void;
   updateUser: (partialUser: Partial<UsuarioDTO>) => void;
   clearUser: () => void;
@@ -39,10 +44,13 @@ export const useUserStore = create(
     (set, get) => ({
       user: null,
       acessivel: [],
+      papel: 'outro',
+      capacidades: capacidadesDoPapel('outro'),
 
       setUser: (newUser: UsuarioDTO) =>
         set((state) => ({
           user: newUser,
+          ...papelECapacidades(newUser),
           // Campo ausente NAO zera o que ja havia. Nem toda resposta que passa
           // por aqui e uma sessao: a de atualizar perfil traz o cadastro, sem
           // permissao nenhuma, e zerar deixaria o usuario preso na tela.
@@ -57,14 +65,24 @@ export const useUserStore = create(
         set((state) => {
           if (!state.user) return { user: null, acessivel: [] };
           const updatedUser = { ...state.user, ...partialUser };
+          const papelMudou =
+            (partialUser as any).papel !== undefined ||
+            (partialUser as any).capacidades !== undefined ||
+            partialUser.roles !== undefined ||
+            partialUser.role_details !== undefined;
           const newAcessivel =
             partialUser.all_permissions !== undefined
               ? nomesDePermissao(partialUser.all_permissions)
               : state.acessivel;
-          return { user: updatedUser, acessivel: newAcessivel };
+          return {
+            user: updatedUser,
+            acessivel: newAcessivel,
+            ...(papelMudou ? papelECapacidades(updatedUser) : {}),
+          };
         }),
 
-      clearUser: () => set({ user: null, acessivel: [] }),
+      clearUser: () =>
+        set({ user: null, acessivel: [], papel: 'outro', capacidades: capacidadesDoPapel('outro') }),
 
       getUserRole: () => {
         const roles = get().user?.roles;
@@ -95,8 +113,25 @@ export const useUserStore = create(
     }),
     {
       name: 'user-storage',
-      version: 4, // ✅ Incrementado para forçar recriação do cache
+      // v5 (NEXON-20): papel + capacidades. A migração deriva da sessão salva em
+      // vez de descartá-la — sem migrate o zustand jogaria fora o usuário.
+      version: 5,
       storage: createJSONStorage(() => localStorage),
+      migrate: (persisted: any) => {
+        const st = (persisted ?? {}) as Partial<UserStoreState>;
+        return {
+          ...st,
+          ...papelECapacidades(st.user ?? null),
+        } as UserStoreState;
+      },
     },
   ),
 );
+
+/** Papel canônico do usuário logado (NEXON-20). */
+export const usePapel = (): Papel => useUserStore((s) => s.papel);
+
+/** Capacidades do usuário logado (NEXON-20). */
+export const useCapacidades = (): Capacidades => useUserStore((s) => s.capacidades);
+
+export type { Papel, Capacidades };

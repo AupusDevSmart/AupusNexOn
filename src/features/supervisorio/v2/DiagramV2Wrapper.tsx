@@ -42,6 +42,7 @@ import { PivoSheet } from './components/sheets/PivoSheet';
 import { sheetKindFor } from './components/sheets/sheetKind';
 import { isPowerMeter } from '@/features/supervisorio/components/power-meter/helpers';
 import { getCommandsForCategoria } from './utils/commandRegistry';
+import { useCapacidades } from '@/store/useUserStore';
 
 // ============================================================================
 // TIPOS LEGADOS (Compatibilidade)
@@ -153,6 +154,7 @@ export const DiagramV2Wrapper: React.FC<DiagramV2WrapperProps> = ({
   availableEquipments = [],
 }) => {
   // Zustand store actions and state
+  const capacidades = useCapacidades();
   const clearDiagrama = useDiagramStore(state => state.clearDiagrama);
   const diagrama = useDiagramStore(state => state.diagrama);
   const equipamentos = useDiagramStore(state => state.equipamentos);
@@ -416,9 +418,12 @@ export const DiagramV2Wrapper: React.FC<DiagramV2WrapperProps> = ({
               // Categorias com comandos registrados (ex: TON) abrem o modal
               // de comando MQTT em vez do callback legado. Isso evita
               // sobreposicao com o modal de detalhes/CRUD do equipamento.
+              // Comando bruto (relé/PWM da TON) é técnico: só Admin e analistas
+              // (NEXON-20); o proprietário comanda pelos sheets/pontos.
               if (
                 !_isBomba &&
                 !modoEdicao &&
+                capacidades.configTecnica &&
                 getCommandsForCategoria(equipment.categoria, equipment.tipo) !== null
               ) {
                 setCommandModalEquipment(equipment);

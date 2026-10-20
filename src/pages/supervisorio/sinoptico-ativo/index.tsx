@@ -1791,10 +1791,17 @@ export function SinopticoAtivoPage() {
   const { ativoId: ativoIdRaw } = useParams<{ ativoId?: string }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const { isAdmin, hasPermission } = useUserStore();
-  // Aba/diagrama IoT restrito a quem tem a permission Spatie (por padrao apenas
-  // admin e super_admin). O diagrama unifilar continua visivel para todos.
-  const podeVerIot = hasPermission('supervisorio.iot_view');
+  const { hasPermission, capacidades } = useUserStore();
+  // NEXON-20: unifilar e alarmes para Aupus + proprietário (operador não vê);
+  // comunicação/IoT só para quem vê comunicação E tem a permission Spatie;
+  // configurar pontos e editar diagrama é cadastro técnico (Admin, automação).
+  const podeVerUnifilar = capacidades.verUnifilar;
+  // Alarmes: todos os papéis; o operador recebe só os dos equipamentos liberados (API).
+  const podeVerAlarmes = capacidades.comandar;
+  const podeVerIot = hasPermission('supervisorio.iot_view') && capacidades.verComunicacao;
+  const podeCadastroTecnico = capacidades.cadastroTecnico;
+  // Aupus abre no unifilar; proprietário e operador na Visão Geral.
+  const abaInicial: 'unifilar' | 'visao' = capacidades.global && podeVerUnifilar ? 'unifilar' : 'visao';
 
   // Limpar espaços em branco do ID da URL
   const ativoId = ativoIdRaw?.trim();
@@ -1813,7 +1820,7 @@ export function SinopticoAtivoPage() {
   // Cliente (não-admin) não vê o unifilar por enquanto — abre na Visão Geral da usina,
   // que funciona com ou sem TON (cai para a integração de nuvem do fabricante).
   const [sinopticoTab, setSinopticoTab] = useState<'visao' | 'unifilar' | 'alarmes' | 'iot' | 'comissionamento'>(
-    () => (isAdmin() ? 'unifilar' : 'visao'),
+    () => abaInicial,
   );
 
   // Slot no header do shell (linha dos breadcrumbs) onde o toggle + nome da unidade
@@ -1828,11 +1835,12 @@ export function SinopticoAtivoPage() {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail as 'unifilar' | 'iot';
       // Ignora pedido de troca para a aba IoT se o usuario nao tem permissao.
-      if (detail === 'iot' && !useUserStore.getState().hasPermission('supervisorio.iot_view')) {
+      const st = useUserStore.getState();
+      if (detail === 'iot' && !(st.hasPermission('supervisorio.iot_view') && st.capacidades.verComunicacao)) {
         return;
       }
-      // Cliente não acessa o unifilar (por enquanto) — fica na Visão Geral.
-      if (detail === 'unifilar' && !useUserStore.getState().isAdmin()) {
+      // Operador não acessa o unifilar — fica na Visão Geral.
+      if (detail === 'unifilar' && !st.capacidades.verUnifilar) {
         return;
       }
       setSinopticoTab(detail);
@@ -1844,13 +1852,12 @@ export function SinopticoAtivoPage() {
   // Defensivo: se por qualquer motivo a aba IoT ficar ativa sem permissao,
   // volta para o diagrama unifilar.
   useEffect(() => {
-    const abaPadrao = isAdmin() ? 'unifilar' : 'visao';
     if ((sinopticoTab === 'iot' || sinopticoTab === 'comissionamento') && !podeVerIot) {
-      setSinopticoTab(abaPadrao);
-    } else if ((sinopticoTab === 'unifilar' || sinopticoTab === 'alarmes') && !isAdmin()) {
+      setSinopticoTab(abaInicial);
+    } else if ((sinopticoTab === 'unifilar' && !podeVerUnifilar) || (sinopticoTab === 'alarmes' && !podeVerAlarmes)) {
       setSinopticoTab('visao');
     }
-  }, [sinopticoTab, podeVerIot, isAdmin]);
+  }, [sinopticoTab, podeVerIot, podeVerUnifilar, podeVerAlarmes, abaInicial]);
 
   // ✅ IMPORTANTE: Atualizar título IMEDIATAMENTE quando recebe dados via state
   useEffect(() => {
@@ -3814,7 +3821,7 @@ if (import.meta.env.PROD) {
               >
                 Visão Geral
               </button>
-              {isAdmin() && (
+              {podeVerUnifilar && (
                 <button
                   onClick={() => setSinopticoTab('unifilar')}
                   className={`px-3 py-1 text-sm font-medium rounded-[2px] transition-colors ${
@@ -3826,7 +3833,7 @@ if (import.meta.env.PROD) {
                   Unifilar
                 </button>
               )}
-              {isAdmin() && (
+              {podeVerAlarmes && (
                 <button
                   onClick={() => setSinopticoTab('alarmes')}
                   className={`px-3 py-1 text-sm font-medium rounded-[2px] transition-colors ${
@@ -3876,7 +3883,7 @@ if (import.meta.env.PROD) {
           {/* V2: Diagrama Unifilar + Overview (KPIs, grandezas, demanda, alarmes, gráfico).
               TEMPORÁRIO p/ a reunião: restaurado o entorno completo em volta do diagrama —
               duplica o que a Visão Geral já mostra (aceito por ora). */}
-          {unidadeId && sinopticoTab === 'unifilar' && (
+          {unidadeId && sinopticoTab === 'unifilar' && podeVerUnifilar && (
             <div className="flex-1 min-h-0 overflow-hidden">
               <SinopticoOverview
                 unidadeId={unidadeId}
@@ -3889,7 +3896,7 @@ if (import.meta.env.PROD) {
                 modoEdicao={false}
                 availableEquipments={equipamentos}
                 onConfigurarPontos={
-                  isAdmin() ? (eq) => setConfigPontos(eq) : undefined
+                  podeCadastroTecnico ? (eq) => setConfigPontos(eq) : undefined
                 }
                 onComponenteClick={(comp) => {
                   // ✅ Modo visualizar: apenas abre modal, sem seleção visual
@@ -4028,7 +4035,7 @@ if (import.meta.env.PROD) {
 
           {/* Alarmes: ocorrências ativas da unidade (antes era um card no entorno do
               unifilar; agora aba própria). Mesmo gate do unifilar (admin). */}
-          {unidadeId && sinopticoTab === 'alarmes' && isAdmin() && (
+          {unidadeId && sinopticoTab === 'alarmes' && podeVerAlarmes && (
             <div className="flex-1 min-h-0 overflow-auto p-3">
               <div className="mx-auto max-w-2xl">
                 <AlarmesAtivosPanel unidadeId={unidadeId} unidadeNome={unidadeAtual?.nome} />
@@ -4046,7 +4053,7 @@ if (import.meta.env.PROD) {
           {/* Comissionamento: checks de coerência de dado por ponto + aceite (admin) */}
           {unidadeId && sinopticoTab === 'comissionamento' && podeVerIot && (
             <div className="flex-1 min-h-0 border-x border-b border-border rounded-b-lg overflow-hidden flex flex-col">
-              <ComissionamentoTab unidadeId={unidadeId} unidadeNome={unidadeAtual?.nome} isAdmin={isAdmin()} />
+              <ComissionamentoTab unidadeId={unidadeId} unidadeNome={unidadeAtual?.nome} isAdmin={podeCadastroTecnico} />
             </div>
           )}
 
@@ -4493,7 +4500,7 @@ if (import.meta.env.PROD) {
                             </>
                           )}
                         </Button>
-                        {!diagramaFullscreen && isAdmin() && sinopticoTab === 'unifilar' && (
+                        {!diagramaFullscreen && podeCadastroTecnico && sinopticoTab === 'unifilar' && (
                           <>
                             <Button
                               variant="outline"
@@ -4972,7 +4979,7 @@ if (import.meta.env.PROD) {
           componenteData={componenteSelecionado}
           nomeComponente={componenteSelecionado?.nome || "Power Meter"}
           onConfigurarPontos={
-            isAdmin() && pontosAlvo ? () => setConfigPontos(pontosAlvo) : undefined
+            podeCadastroTecnico && pontosAlvo ? () => setConfigPontos(pontosAlvo) : undefined
           }
         />
 
@@ -5009,7 +5016,7 @@ if (import.meta.env.PROD) {
           open={inversorMqttModalOpen}
           onOpenChange={setInversorMqttModalOpen}
           onConfigurarPontos={
-            isAdmin() && pontosAlvo ? () => setConfigPontos(pontosAlvo) : undefined
+            podeCadastroTecnico && pontosAlvo ? () => setConfigPontos(pontosAlvo) : undefined
           }
         />
 
@@ -5200,7 +5207,7 @@ if (import.meta.env.PROD) {
           nomeComponente={componenteSelecionado?.nome || ""}
         />
         <A966Modal
-          open={modalAberto === "A966"}
+          open={modalAberto === "A966" && capacidades.verComunicacao}
           onClose={fecharModal}
           componenteData={componenteSelecionado}
           nomeComponente={componenteSelecionado?.nome || "Gateway A966"}

@@ -66,7 +66,14 @@ export function ConfigUsinaDialog({ unidadeId, open, onOpenChange, onSalvo }: {
         azimute_graus: txt(r.config.azimute_graus ?? r.sugestoes.azimute_graus),
         fator_desempenho: txt(r.config.fator_desempenho ?? 0.8),
       });
-    }).catch(() => setErro('Não foi possível carregar a configuração.'));
+    }).catch((e: { response?: { status?: number } }) => {
+      // 403: perfil sem acesso à configuração da usina — fecha sem alarde (NEXON-20).
+      if (e?.response?.status === 403) {
+        onOpenChange(false);
+        return;
+      }
+      setErro('Não foi possível carregar a configuração.');
+    });
   }, [open, unidadeId]);
 
   const valores = useMemo(() => {

@@ -11,6 +11,7 @@ import { UsuariosFilters } from './usuarios-filters';
 import { UsuarioModal } from './usuario-modal';
 import { useUsuarios } from '@/core/context/hooks';
 import { Usuario, ModalState } from '../types';
+import { AcessoOperadorSheet } from './acesso-operador/AcessoOperadorSheet';
 
 export function UsuariosPage() {
   const navigate = useNavigate();
@@ -53,6 +54,23 @@ export function UsuariosPage() {
   const handleSuccess = (): void => {
     refetch();
     handleCloseModal();
+  };
+
+  // Aba "Acesso" do operador (NEXON-20): tela irmã do cadastro. Guarda o
+  // usuário para a aba "Dados" voltar para ele.
+  const [acesso, setAcesso] = useState<{ usuario: Usuario; novo: boolean } | null>(null);
+
+  const handleAbrirAcesso = (usuario: Usuario, novo = false): void => {
+    if (novo) refetch();
+    setModalState({ isOpen: false, mode: 'create', usuario: null });
+    setAcesso({ usuario, novo });
+  };
+
+  const handleVerDados = (): void => {
+    if (!acesso) return;
+    const { usuario } = acesso;
+    setAcesso(null);
+    setModalState({ isOpen: true, mode: 'edit', usuario });
   };
 
   // Handler para gerenciar plantas (só para proprietários)
@@ -114,6 +132,15 @@ export function UsuariosPage() {
           onClose={handleCloseModal}
           onSuccess={handleSuccess}
           onGerenciarPlantas={handleGerenciarPlantas}
+          onAbrirAcesso={handleAbrirAcesso}
+        />
+
+        <AcessoOperadorSheet
+          isOpen={!!acesso}
+          operador={acesso ? { id: acesso.usuario.id, nome: acesso.usuario.nome, email: acesso.usuario.email } : null}
+          novo={acesso?.novo}
+          onClose={() => setAcesso(null)}
+          onVerDados={handleVerDados}
         />
       </Layout.Main>
     </Layout>

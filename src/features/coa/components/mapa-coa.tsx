@@ -42,10 +42,11 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
 
   const { theme: appTheme } = useTheme();
   // Comissionamento é info interna (técnica) — só quem tem supervisorio.iot_view vê no COA.
-  const { acessivel, isAdmin } = useUserStore();
+  const { acessivel, capacidades } = useUserStore();
   const podeVerComiss = Array.isArray(acessivel) && acessivel.includes("supervisorio.iot_view");
   // Diagnóstico técnico (TON, broker, Modbus, fallback de nuvem) é interno — o cliente vê texto neutro.
-  const ehAdmin = isAdmin();
+  // NEXON-20: equipe Aupus (papéis globais), não só admin.
+  const ehAdmin = capacidades.global;
   const isDark =
     appTheme === 'dark' ||
     (appTheme === 'system' &&

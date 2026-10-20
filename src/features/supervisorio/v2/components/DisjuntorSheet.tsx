@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { api } from '@/config/api';
 import { acionarPontoApi } from '@/services/acionar-ponto.services';
+import { useUserStore } from '@/store/useUserStore';
 import type { CustosEnergiaResponseDto } from '@/types/dtos/custos-energia-dto';
 import { SsuOperacao } from './sheets/MedidorSheet';
 import { NX, s, NxShell, NxDialog, NxDialogHead, NxDialogButtons, type NxTone } from './sheets/nxMock';
@@ -104,6 +105,8 @@ export function DisjuntorSheet({ equipamentoId, onClose }: { equipamentoId: stri
   const [aba, setAba] = useState('op');
   const [ff, setFf] = useState(true);
   const [custosAberto, setCustosAberto] = useState(false);
+  // PER-36: sem capacidade de comandar, os botões Abrir/Fechar nem aparecem.
+  const podeComandar = useUserStore((st) => st.capacidades.comandar);
 
   useEffect(() => {
     let vivo = true;
@@ -405,7 +408,7 @@ export function DisjuntorSheet({ equipamentoId, onClose }: { equipamentoId: stri
                   </div>
                 </Bloco>
               )}
-              {temComando && (
+              {temComando && podeComandar && (
                 <>
                   {local === true ? (
                     <button type="button" disabled style={s.cmd('busy')}>Modo local</button>

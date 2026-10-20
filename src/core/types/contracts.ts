@@ -20,6 +20,10 @@ export interface UserStoreContract {
   getUserRole: () => string;
   isSuperAdmin: () => boolean;
   isAdmin: () => boolean;
+  /** Papel canônico (NEXON-20): admin, analista_automacao, analista_operacao, proprietario, operador, outro. */
+  papel?: string;
+  /** Capacidades do papel (NEXON-20); mesma forma de `@/store/papeis` Capacidades. */
+  capacidades?: import('@/store/papeis').Capacidades;
 }
 
 export interface ConcessionariaBasic {

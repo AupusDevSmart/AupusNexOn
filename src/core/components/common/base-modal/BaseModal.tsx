@@ -18,7 +18,9 @@ interface BaseModalProps<T extends BaseEntity> {
   width?: string;
   children?: React.ReactNode;
   groups?: { key: string; title: string; fields?: string[] }[];
-  
+  /** Conteúdo extra no cabeçalho fixo, abaixo do título (ex.: abas "Dados | Acesso"). */
+  headerExtra?: React.ReactNode;
+
   loading?: boolean;
   loadingText?: string;
   closeOnBackdropClick?: boolean;
@@ -52,6 +54,7 @@ export function BaseModal<T extends BaseEntity>({
   width = "w-[500px]",
   children,
   groups,
+  headerExtra,
   loading = false,
   loadingText = "Salvando...",
   closeOnBackdropClick = true,
@@ -483,6 +486,7 @@ export function BaseModal<T extends BaseEntity>({
                 <X className="h-4 w-4" />
               </Button>
             </div>
+            {headerExtra && <div className="mt-3">{headerExtra}</div>}
           </div>
 
           <div className="flex-1 overflow-y-auto">

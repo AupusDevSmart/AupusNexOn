@@ -39,6 +39,8 @@ export type NavigationLink = {
   featureFlag?: keyof FeatureFlags;
   /** Oculto para o CLIENTE (proprietário) — que por ora vê só monitoramento. */
   hideForClient?: boolean;
+  /** Só aparece para quem cadastra algum papel (NEXON-20: `capacidades.cadastra`). */
+  requerCadastrarUsuario?: boolean;
   icon: LucideIcon | React.FC<React.SVGProps<SVGSVGElement>>;
   label: string;
   /** Selo curto à direita do nome (ex.: "COA", "Admin"). */
@@ -180,7 +182,8 @@ export const navigationLinks: Array<NavigationLink> = [
   // Configurações - grupo do admin, visivel se pelo menos um filho for visivel
   {
     key: "configuracoes",
-    hideForClient: true,
+    // Cliente (proprietário) só vê Usuários aqui (cadastra os operadores dele,
+    // PER-10); os demais itens seguem escondidos um a um.
     path: "/configuracoes",
     icon: Settings,
     label: "Configurações",
@@ -190,6 +193,7 @@ export const navigationLinks: Array<NavigationLink> = [
       {
         key: "cadastros-usuarios",
         featureKey: "usuarios.view",
+        requerCadastrarUsuario: true,
         path: "/cadastros/usuarios",
         icon: Users,
         label: "Usuários e Permissões",
@@ -197,6 +201,7 @@ export const navigationLinks: Array<NavigationLink> = [
       },
       {
         key: "cadastros-concessionarias",
+        hideForClient: true,
         featureKey: "equipamentos.manage",
         path: "/cadastros/concessionarias",
         icon: Zap,
@@ -205,6 +210,7 @@ export const navigationLinks: Array<NavigationLink> = [
       },
       {
         key: "cadastros-iot-catalog",
+        hideForClient: true,
         featureKey: "equipamentos.iot_catalog",
         path: "/cadastros/iot-catalog",
         icon: Cpu,
@@ -213,6 +219,7 @@ export const navigationLinks: Array<NavigationLink> = [
       },
       {
         key: "cadastros-regras-logs",
+        hideForClient: true,
         featureKey: "supervisorio.iot_view",
         path: "/cadastros/regras-logs",
         icon: ListFilter,
@@ -221,6 +228,7 @@ export const navigationLinks: Array<NavigationLink> = [
       },
       {
         key: "supervisorio-logs-mqtt",
+        hideForClient: true,
         featureKey: "supervisorio.iot_view",
         path: "/logs/logs-mqtt",
         icon: SquareTerminal,

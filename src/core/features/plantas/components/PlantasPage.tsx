@@ -17,7 +17,7 @@ import { Plus, Factory, RefreshCw, Filter } from 'lucide-react';
 import { useGenericModal } from '@/core/hooks/useGenericModal';
 import { toast } from '@/core/hooks/use-toast';
 import { PlantasFilters } from '../types';
-import { plantasTableColumns } from '../config/table-config';
+import { plantasTableColumnsPara } from '../config/table-config';
 import { useProprietarios } from '../config/filter-config';
 import { useUserStore, usePlantasFeature, useHttpClient } from '@/core/context/hooks';
 import { unwrapApiResponse } from '@/core/lib/utils';
@@ -41,7 +41,12 @@ interface PlantasPageProps {
 
 export function PlantasPage({ mostrarTarifacao = false }: PlantasPageProps = {}) {
   const location = useLocation();
-  const { isAdmin } = useUserStore();
+  const { capacidades, isAdmin } = useUserStore();
+  // NEXON-20: criar/editar planta e instalação é cadastro técnico (Admin,
+  // Analista de automação); o proprietário não vê o próprio nome na lista.
+  // Sem capacidades (host antigo do pacote) vale o isAdmin de antes.
+  const podeCadastrar = capacidades ? capacidades.cadastroTecnico : isAdmin();
+  const verNomeProprietario = capacidades?.verNomeProprietario ?? true;
   const httpClient = useHttpClient();
   const plantasFeature = usePlantasFeature();
 
@@ -340,7 +345,7 @@ export function PlantasPage({ mostrarTarifacao = false }: PlantasPageProps = {})
                 <span className="hidden lg:inline">Atualizar</span>
               </button>
 
-              {isAdmin() && (
+              {podeCadastrar && (
                 <button
                   onClick={() => openModal('create')}
                   className="btn-minimal-primary flex-1 lg:flex-none whitespace-nowrap"
@@ -358,7 +363,11 @@ export function PlantasPage({ mostrarTarifacao = false }: PlantasPageProps = {})
           {filters.proprietarioId !== 'all' && proprietarioInfo && (
             <div className="flex items-center gap-2 mb-4 text-sm text-muted-foreground">
               <Filter className="h-4 w-4" />
-              <span>Mostrando apenas plantas de "{proprietarioInfo.nome}"</span>
+              <span>
+                {verNomeProprietario
+                  ? `Mostrando apenas plantas de "${proprietarioInfo.nome}"`
+                  : 'Mostrando apenas as suas plantas'}
+              </span>
               <button
                 onClick={handleClearProprietarioFilter}
                 className="text-foreground underline underline-offset-2 hover:no-underline"
@@ -372,14 +381,14 @@ export function PlantasPage({ mostrarTarifacao = false }: PlantasPageProps = {})
           <div className="flex-1 min-h-0">
             <BaseTable
               data={plantas}
-              columns={plantasTableColumns}
+              columns={plantasTableColumnsPara(verNomeProprietario)}
               pagination={pagination}
               loading={loading}
               onPageChange={handlePageChange}
               onView={handleView}
-              onEdit={isAdmin() ? handleEdit : undefined}
+              onEdit={podeCadastrar ? handleEdit : undefined}
               customActions={
-                isAdmin()
+                podeCadastrar
                   ? [
                       {
                         key: 'nova_instalacao',
@@ -420,7 +429,7 @@ export function PlantasPage({ mostrarTarifacao = false }: PlantasPageProps = {})
                 <InstalacoesExpandedRow
                   unidades={(instalacoes ?? []) as Unidade[]}
                   carregando={carregandoInstalacoes}
-                  somenteLeitura={!isAdmin()}
+                  somenteLeitura={!podeCadastrar}
                   onVisualizar={(unidade) => abrirInstalacao('view', unidade)}
                   onEditar={(unidade) => abrirInstalacao('edit', unidade)}
                   plantaId={planta?.id?.trim()}

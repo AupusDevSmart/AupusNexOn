@@ -62,8 +62,21 @@ function RequirePermission({
  * Esconder o menu não basta — a URL precisa redirecionar. Ajuste part-by-part.
  */
 function RequireNotCliente({ children }: { children: React.ReactNode }) {
-  const isCliente = useUserStore((state) => state.isCliente());
+  // NEXON-20: proprietário e operador (papéis não globais) só monitoram.
+  const isCliente = useUserStore((state) => !state.capacidades?.global);
   if (isCliente) {
+    return <Navigate to="/dashboard" replace />;
+  }
+  return <>{children}</>;
+}
+
+/**
+ * Tela de usuários: quem cadastra alguém (NEXON-20, seção 3). O proprietário
+ * entra para cadastrar e dar acesso aos operadores dele (PER-10); o operador não.
+ */
+function RequireCadastraUsuario({ children }: { children: React.ReactNode }) {
+  const podeCadastrar = useUserStore((state) => state.capacidades?.cadastra?.length > 0);
+  if (!podeCadastrar) {
     return <Navigate to="/dashboard" replace />;
   }
   return <>{children}</>;
@@ -330,11 +343,11 @@ export const appRoutes = createBrowserRouter([
       {
         path: "cadastros/usuarios",
         element: (
-          <RequireNotCliente>
+          <RequireCadastraUsuario>
             <FeatureWrapper feature="Usuarios">
             <UsuariosPage />
           </FeatureWrapper>
-          </RequireNotCliente>
+          </RequireCadastraUsuario>
         ),
       },
       {

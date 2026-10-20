@@ -1,5 +1,6 @@
 // src/features/usuarios/types/index.ts - CORRIGIDO PARA BACKEND HÍBRIDO
 import { BaseEntity, type BaseFilters as BaseFiltersType, ModalMode } from '@/core/types/base';
+import { papelCanonico, rotuloDaRole } from '@/store/papeis';
 // Permission type - inlined (was @/types/permissions)
 type Permission = string;
 
@@ -403,10 +404,12 @@ export const getUserPrimaryRole = (usuario: Usuario): Role | undefined => {
   
   // Senão, usar primeiro role do array roles
   if (usuario.roles && usuario.roles.length > 0) {
+    const r: any = usuario.roles[0];
+    const name = typeof r === 'string' ? r : r?.name ?? '';
     return {
       id: '0',
-      name: usuario.roles[0],
-      description: usuario.roles[0],
+      name,
+      description: name,
       created_at: new Date(),
       updated_at: new Date()
     };
@@ -418,7 +421,10 @@ export const getUserPrimaryRole = (usuario: Usuario): Role | undefined => {
 export const getUserRoleDisplay = (usuario: Usuario): string => {
   const primaryRole = getUserPrimaryRole(usuario);
   if (!primaryRole) return 'Sem role';
-  
+  // NEXON-20: os 5 papéis com rótulo da spec; legados (analista, gerente,
+  // super_admin) aparecem com o nome do papel que valem hoje.
+  if (papelCanonico(primaryRole.name) !== 'outro') return rotuloDaRole(primaryRole.name);
+
   return ROLE_TO_TIPO_MAPPING[primaryRole.name as keyof typeof ROLE_TO_TIPO_MAPPING] || primaryRole.name;
 };
 

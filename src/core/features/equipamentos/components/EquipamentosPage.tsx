@@ -70,7 +70,12 @@ interface EquipamentosPageProps {
 export function EquipamentosPage({ renderSecaoExtraUC, renderCampoDadosBasicosUC, renderHistoricoUC, mostrarSupervisorio }: EquipamentosPageProps = {}) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { isAdmin } = useUserStore();
+  const { isAdmin, capacidades } = useUserStore();
+  // NEXON-20: cadastrar/editar equipamento é cadastro técnico (Admin, Analista de
+  // automação); filtro de proprietário é para quem vê todas as plantas.
+  // Sem capacidades (host antigo do pacote) vale o isAdmin de antes.
+  const podeCadastrar = capacidades ? capacidades.cadastroTecnico : isAdmin();
+  const vePorProprietario = capacidades ? capacidades.global && capacidades.verNomeProprietario : isAdmin();
 
   // Hook da API
   const {
@@ -645,14 +650,14 @@ export function EquipamentosPage({ renderSecaoExtraUC, renderCampoDadosBasicosUC
                     loadingPlantas,
                     unidades,
                     loadingUnidades,
-                    isAdmin() // Mostrar filtro de proprietário apenas para admins
+                    vePorProprietario // filtro de proprietário só para papéis globais
                   )}
                   onFilterChange={handleFilterChange}
                 />
               </div>
 
               {/* Botões de Ação */}
-              {isAdmin() && (
+              {podeCadastrar && (
                 <button
                   onClick={() => openUCModal('create')}
                   className="btn-minimal-primary w-full lg:w-auto whitespace-nowrap"
@@ -673,10 +678,10 @@ export function EquipamentosPage({ renderSecaoExtraUC, renderCampoDadosBasicosUC
               loading={loading}
               onPageChange={handlePageChange}
               onView={handleView}
-              onEdit={isAdmin() ? handleEdit : undefined}
-              onDelete={isAdmin() ? handleDelete : undefined}
+              onEdit={podeCadastrar ? handleEdit : undefined}
+              onDelete={podeCadastrar ? handleDelete : undefined}
               customActions={
-                isAdmin()
+                podeCadastrar
                   ? [
                       {
                         key: 'duplicar',

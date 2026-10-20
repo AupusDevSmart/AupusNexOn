@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { PanelCard } from "./PanelCard";
 import { ConfigGrandezasModal } from "./ConfigGrandezasModal";
 import { useGrandezasAgregadas } from "../hooks/useGrandezasAgregadas";
+import { useUserStore } from "@/store/useUserStore";
 
 interface GrandezasEletricasPanelProps {
   unidadeId: string;
@@ -47,6 +48,8 @@ function Bloco({ titulo, children }: { titulo: string; children: ReactNode }) {
 export function GrandezasEletricasPanel({ unidadeId }: GrandezasEletricasPanelProps) {
   const { grandezas } = useGrandezasAgregadas(unidadeId);
   const [configOpen, setConfigOpen] = useState(false);
+  // Escolher os medidores grava no diagrama (PATCH /diagramas/:id): cadastro técnico (NEXON-20).
+  const podeConfigurar = useUserStore((s) => s.capacidades.cadastroTecnico);
   const t = grandezas?.tensoes;
   const c = grandezas?.correntes;
 
@@ -56,6 +59,7 @@ export function GrandezasEletricasPanel({ unidadeId }: GrandezasEletricasPanelPr
         titulo="Grandezas elétricas"
         className="xl:min-h-0"
         action={
+          podeConfigurar ? (
           <Button
             variant="ghost"
             size="icon"
@@ -65,6 +69,7 @@ export function GrandezasEletricasPanel({ unidadeId }: GrandezasEletricasPanelPr
           >
             <Settings2 className="h-4 w-4" />
           </Button>
+          ) : undefined
         }
       >
       <div className="grid grid-cols-2 gap-x-4 gap-y-2">
@@ -85,7 +90,7 @@ export function GrandezasEletricasPanel({ unidadeId }: GrandezasEletricasPanelPr
         </div>
       </div>
       </PanelCard>
-      <ConfigGrandezasModal open={configOpen} onOpenChange={setConfigOpen} unidadeId={unidadeId} />
+      {podeConfigurar && <ConfigGrandezasModal open={configOpen} onOpenChange={setConfigOpen} unidadeId={unidadeId} />}
     </>
   );
 }
