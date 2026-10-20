@@ -350,6 +350,71 @@ export function levarMembrosAteOBloco(
   return { equipamentos: eqs, grupos: saida, mudou };
 }
 
+/** Moldura do grupo aberto em grid (mesma folga do desenho: nome em cima, rótulos embaixo). */
+export function caixaDaMoldura(c: Caixa): Caixa {
+  return { minX: c.minX - 0.6, minY: c.minY - 1.4, maxX: c.maxX + 0.6, maxY: c.maxY + 0.8 };
+}
+
+const deslocarCaixa = (c: Caixa, dx: number, dy: number): Caixa => ({
+  minX: c.minX + dx, maxX: c.maxX + dx, minY: c.minY + dy, maxY: c.maxY + dy,
+});
+
+const encostam = (a: Caixa, b: Caixa, folga: number) =>
+  a.minX < b.maxX + folga && a.maxX + folga > b.minX && a.minY < b.maxY + folga && a.maxY + folga > b.minY;
+
+/**
+ * Grupos não se sobrepõem: percorre de cima para baixo (e da esquerda para a
+ * direita) e o grupo cuja moldura invade a de outro já posicionado anda o mínimo
+ * para baixo ou para a direita até sair. Anda o grupo inteiro (`deslocarGrupo`),
+ * então abrir vários continua organizado. `porUltimo` = o grupo que acabou de ser
+ * solto/criado: os outros ficam e ele é que se ajeita.
+ */
+export function separarGrupos(
+  equipamentos: Equipment[],
+  conexoes: Connection[],
+  grupos: GrupoUnifilar[],
+  porUltimo?: string | null,
+  folga = 1,
+): { equipamentos: Equipment[]; movidos: string[] } {
+  const cards = montarVisao(equipamentos, conexoes, grupos, new Set()).cards;
+  if (cards.length < 2) return { equipamentos, movidos: [] };
+
+  const caixas = new Map(cards.map(c => [c.grupo.id, caixaDaMoldura(caixaDe(c.membros)!)]));
+  const ordem = [...cards]
+    .sort((a, b) => {
+      if (a.grupo.id === porUltimo) return 1;
+      if (b.grupo.id === porUltimo) return -1;
+      const ca = caixas.get(a.grupo.id)!, cb = caixas.get(b.grupo.id)!;
+      return ca.minY - cb.minY || ca.minX - cb.minX;
+    })
+    .map(c => c.grupo.id);
+
+  let eqs = equipamentos;
+  const movidos: string[] = [];
+  const postas: Caixa[] = [];
+  for (const id of ordem) {
+    const base = caixas.get(id)!;
+    let dx = 0, dy = 0;
+    for (let i = 0; i < 200; i++) {
+      const atual = deslocarCaixa(base, dx, dy);
+      const batidas = postas.filter(p => encostam(atual, p, folga));
+      if (batidas.length === 0) break;
+      const baixo = Math.max(...batidas.map(p => p.maxY)) + folga - atual.minY;
+      const direita = Math.max(...batidas.map(p => p.maxX)) + folga - atual.minX;
+      if (baixo <= direita) dy += baixo;
+      else dx += direita;
+    }
+    dx = Math.ceil(dx - 1e-9);
+    dy = Math.ceil(dy - 1e-9);
+    if (dx || dy) {
+      eqs = deslocarGrupo(eqs, conexoes, grupos, id, dx, dy);
+      movidos.push(id);
+    }
+    postas.push(deslocarCaixa(base, dx, dy));
+  }
+  return { equipamentos: eqs, movidos };
+}
+
 /** Lê os grupos de `configuracoes` tolerando lixo. */
 export function gruposDaConfiguracao(configuracoes: unknown): GrupoUnifilar[] {
   const grupos = (configuracoes as { grupos?: unknown } | null | undefined)?.grupos;

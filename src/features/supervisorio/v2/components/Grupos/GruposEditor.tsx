@@ -7,7 +7,7 @@
  */
 
 import React, { useMemo, useState } from 'react';
-import { Group, Layers, Trash2, Ungroup, Eye } from 'lucide-react';
+import { Group, Layers, Trash2, Ungroup, Eye, LayoutGrid } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -194,8 +194,23 @@ export const GruposLista: React.FC = () => {
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80 p-3">
         <div className="text-xs font-semibold text-foreground mb-1">Grupos</div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="mb-2 h-7 w-full gap-1.5"
+          title="Tira os grupos de cima uns dos outros (cada um anda o mínimo, inteiro)"
+          onClick={() => {
+            const n = useDiagramStore.getState().organizarGrupos();
+            toast({
+              title: n ? 'Grupos organizados' : 'Nada a organizar',
+              description: n ? `${n} grupo(s) saíram de cima de outro. Salve para manter.` : 'Nenhum grupo está por cima de outro.',
+            });
+          }}
+        >
+          <LayoutGrid className="h-3.5 w-3.5" />Organizar grupos
+        </Button>
         <p className="text-[11px] text-muted-foreground mb-2">
-          Recolhido vira um bloco só, no centro dos equipamentos. Arrastar o bloco move o grupo inteiro; clicar abre ali mesmo.
+          Recolhido vira um bloco só, no centro dos equipamentos. Arrastar o bloco move o grupo inteiro; clicar abre ali mesmo. Grupo nenhum fica por cima de outro.
         </p>
         <div className="flex max-h-72 flex-col gap-2 overflow-y-auto">
           {grupos.map(g => (

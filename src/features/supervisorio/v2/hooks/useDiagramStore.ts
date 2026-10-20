@@ -27,7 +27,7 @@ import {
 } from '../types/diagram.types';
 import { convertToVisualConnections } from '../utils/barramentoDetector';
 import { CANVAS, VIEWPORT } from '../utils/diagramConstants';
-import { caixaDe, centroDe, CORES_GRUPO, deslocarGrupo, grupoIdDoNo, gruposDaConfiguracao, levarMembrosAteOBloco, membroMaisProximo, montarVisao, novoIdGrupo, posicaoDoCard, type Caixa } from '../utils/grupos';
+import { caixaDe, centroDe, CORES_GRUPO, deslocarGrupo, grupoIdDoNo, gruposDaConfiguracao, levarMembrosAteOBloco, membroMaisProximo, montarVisao, novoIdGrupo, posicaoDoCard, separarGrupos, type Caixa } from '../utils/grupos';
 
 /** Duração do foco animado (abrir/fechar grupo). Bate com a transição do DiagramViewport. */
 export const FOCO_ANIMADO_MS = 650;
@@ -319,6 +319,8 @@ interface DiagramActions {
   /** Abre ou recolhe com foco animado no que ficou visível. */
   alternarGrupo: (grupoId: string) => void;
   abrirTodosGrupos: () => void;
+  /** Tira grupos de cima uns dos outros. `porUltimo` = o que se ajeita. Devolve quantos andaram. */
+  organizarGrupos: (porUltimo?: string | null) => number;
   recolherTodosGrupos: () => void;
   /** Centraliza e dá zoom numa caixa (grid), com animação opcional. */
   focarCaixa: (caixa: Caixa, animar?: boolean, margem?: number, escalaMaxima?: number) => void;
@@ -943,6 +945,10 @@ export const useDiagramStore = create<DiagramStore>()(
             conexoesLimpas,
             gruposDaConfiguracao(diagramaRawExtra.configuracoes),
           );
+          // ...e grupo nenhum fica por cima de outro (abrir vários continua legível)
+          const separacao = separarGrupos(ajusteGrupos.equipamentos, conexoesLimpas, ajusteGrupos.grupos);
+          ajusteGrupos.equipamentos = separacao.equipamentos;
+          ajusteGrupos.mudou = ajusteGrupos.mudou || separacao.movidos.length > 0;
           const diagrama: Diagrama = {
             id: diagramaRaw.id.trim(),
             unidadeId: diagramaRawExtra.unidadeId || diagramaRaw.unidade_id,
@@ -980,7 +986,8 @@ export const useDiagramStore = create<DiagramStore>()(
             barramentos,
             isLoading: false,
             errorType: null,
-            isDirty: false,
+            // Grupos ajustados na carga: o editor vê "não salvo" e o Salvar grava
+            isDirty: ajusteGrupos.mudou,
           });
 
           // Auto-fit ao carregar diagrama (após 300ms para garantir que o SVG renderizou)
@@ -2014,6 +2021,10 @@ if (import.meta.env.PROD) {
       },
 
       endDraggingEquipamento: () => {
+        // Bloco de grupo solto em cima de outro: ele é quem se ajeita (NEXON-31)
+        const soltoGrupo = grupoIdDoNo(get().editor.draggingEquipmentId ?? '');
+        if (soltoGrupo) get().organizarGrupos(soltoGrupo);
+
         // Se o arraste mudou alguma posição, registra 1 entrada de undo (posições antigas)
         const { _dragStartPos, equipamentos } = get();
         if (_dragStartPos) {
@@ -2085,6 +2096,7 @@ if (import.meta.env.PROD) {
             isDirty: true,
           };
         });
+        get().organizarGrupos(id);
         return id;
       },
 
@@ -2103,6 +2115,7 @@ if (import.meta.env.PROD) {
             .filter(g => g.equipamentoIds.length > 0),
           isDirty: true,
         }));
+        get().organizarGrupos(grupoId);
       },
 
       renomearGrupo: (grupoId: string, nome: string) => {
@@ -2137,6 +2150,7 @@ if (import.meta.env.PROD) {
             .filter(g => g.equipamentoIds.length > 0),
           isDirty: true,
         }));
+        get().organizarGrupos();
       },
 
       moverCardGrupo: (grupoId: string, x: number, y: number) => {
@@ -2186,6 +2200,15 @@ if (import.meta.env.PROD) {
         const meiaL = el.clientWidth / 2 / k;
         const meiaA = el.clientHeight / 2 / k;
         return { minX: (cx - meiaL) / 40, maxX: (cx + meiaL) / 40, minY: (cy - meiaA) / 40, maxY: (cy + meiaA) / 40 };
+      },
+
+      organizarGrupos: (porUltimo?: string | null) => {
+        const { equipamentos, conexoes, grupos } = get();
+        const r = separarGrupos(equipamentos, conexoes, grupos, porUltimo);
+        if (r.movidos.length === 0) return 0;
+        set({ equipamentos: r.equipamentos, isDirty: true });
+        get().recalcularRotas();
+        return r.movidos.length;
       },
 
       abrirTodosGrupos: () => {

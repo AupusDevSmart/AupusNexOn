@@ -14,11 +14,6 @@ import { GRID, LABEL, PORT, getThemeColors } from '../../utils/diagramConstants'
 import { TAMANHO_CARD, resumoDoGrupo, type CardDeGrupo, type GrupoAberto } from '../../utils/grupos';
 import type { Equipment, PortPosition } from '../../types/diagram.types';
 
-/** Moldura do grupo aberto em grid (mesma folga do desenho), para saber o que fica embaixo. */
-export function caixaDaMoldura(c: { minX: number; minY: number; maxX: number; maxY: number }) {
-  return { minX: c.minX - 0.6, minY: c.minY - 1.4, maxX: c.maxX + 0.6, maxY: c.maxY + 0.8 };
-}
-
 /** Verde da marca: cor do grupo quando ele não tem uma própria. */
 export const COR_GRUPO_PADRAO = '#70C04B';
 

@@ -18,8 +18,8 @@ import { useDiagramStore } from './hooks/useDiagramStore';
 import { DiagramViewport } from './components/DiagramViewer/DiagramViewport';
 import { DiagramConnections } from './components/DiagramViewer/DiagramConnections';
 import { EquipmentNode } from './components/Equipment/EquipmentNode';
-import { caixaDaMoldura, GrupoCard, GrupoMoldura } from './components/Grupos/GrupoNode';
-import { montarVisao, TAMANHO_CARD, TIPO_GRUPO } from './utils/grupos';
+import { GrupoCard, GrupoMoldura } from './components/Grupos/GrupoNode';
+import { caixaDaMoldura, montarVisao, TAMANHO_CARD, TIPO_GRUPO } from './utils/grupos';
 import { convertToVisualConnections } from './utils/barramentoDetector';
 import { exportDiagram, type ExportFormat } from './utils/exportDiagram';
 import { EditorToolbar } from './components/EditorToolbar';
@@ -767,7 +767,7 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
           )}
 
           {/* Indicador de alterações não salvas */}
-          {isDirty && (
+          {isDirty && currentMode === 'edit' && (
             <div className="w-2 h-2 rounded-full bg-orange-500" title="Alterações não salvas" />
           )}
 
