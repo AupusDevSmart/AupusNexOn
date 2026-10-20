@@ -4,6 +4,43 @@ import { useUserStore } from '@/store/useUserStore';
 import { AuthService } from '@/services/auth.service';
 import qs from 'qs';
 import { lunaLogout } from '@/features/luna-pedidos/luna-api';
+import { toast } from 'sonner';
+
+/**
+ * 403 no detalhe de planta / instalação / equipamento (NEXON-20): o usuário
+ * perdeu o acesso com o app aberto. Avisa uma vez, relê a sessão e volta para a
+ * Home. Só o detalhe — 403 de lista ou endpoint auxiliar segue para a tela tratar.
+ */
+const RE_DETALHE_PROTEGIDO = /^\/?(plantas|unidades|equipamentos)\/(?=[^/?]*\d)[A-Za-z0-9_-]{16,}\/?(\?.*)?$/;
+let ultimoAviso403 = 0;
+
+export function ehDetalheProtegido(url?: string): boolean {
+  if (!url) return false;
+  const caminho = url.replace(/^https?:\/\/[^/]+/, '').replace(/^\/api\/v1/, '');
+  return RE_DETALHE_PROTEGIDO.test(caminho);
+}
+
+function tratarSemAcesso(error: any) {
+  const cfg = error?.config;
+  const metodo = String(cfg?.method ?? 'get').toLowerCase();
+  if (metodo !== 'get' || !ehDetalheProtegido(cfg?.url)) return;
+  const agora = Date.now();
+  if (agora - ultimoAviso403 < 5000) return;
+  ultimoAviso403 = agora;
+  toast.error('Você não tem acesso a este recurso');
+
+  const caminho = window.location.pathname;
+  if (caminho === '/dashboard' || caminho === '/login' || caminho.startsWith('/cadastros')) return;
+  // Relê a sessão (papel / plantas podem ter mudado) e volta para a Home.
+  AuthService.getCurrentUser()
+    .then((me) => me && useUserStore.getState().setUser(me))
+    .catch(() => undefined);
+  import('@/AppRoutes')
+    .then((m) => m.appRoutes.navigate('/dashboard', { replace: true }))
+    .catch(() => {
+      window.location.href = '/dashboard';
+    });
+}
 
 /**
  * Instância configurada do Axios para comunicação com a API
@@ -159,6 +196,8 @@ api.interceptors.response.use(
         isRefreshing = false;
       }
     }
+
+    if (error.response?.status === 403) tratarSemAcesso(error);
 
     // Outros erros, apenas rejeita
     return Promise.reject(error);

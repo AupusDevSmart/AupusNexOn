@@ -31,6 +31,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { env } from '@/config/env';
+import { AuthService } from '@/services/auth.service';
 import { equipamentosApi } from '@/services/equipamentos.services';
 import {
   equipamentoPontosApi,
@@ -167,6 +168,8 @@ export const TonBiConfigModal: React.FC<TonBiConfigModalProps> = ({
     const socket = io(fullUrl, {
       path: '/socket.io',
       transports: ['websocket', 'polling'],
+      // O gateway exige o JWT (NEXON-20); função = token atual a cada reconexão.
+      auth: (cb) => cb({ token: AuthService.getToken() }),
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,

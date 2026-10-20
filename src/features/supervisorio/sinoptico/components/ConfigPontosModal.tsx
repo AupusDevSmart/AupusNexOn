@@ -30,8 +30,8 @@ export function ConfigPontosModal({
   nome,
   categoria,
 }: ConfigPontosModalProps) {
-  const { isAdmin } = useUserStore();
-  const podeEditar = isAdmin();
+  // Configurar pontos é cadastro técnico (Admin, Analista de automação) — NEXON-20.
+  const podeEditar = useUserStore((s) => s.capacidades.cadastroTecnico);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

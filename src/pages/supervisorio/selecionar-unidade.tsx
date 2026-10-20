@@ -18,8 +18,12 @@ import { PlantasService, type PlantaResponse } from "@/services/plantas.services
 import { type Unidade } from "@/services/unidades.services";
 import { api } from "@/config/api";
 import { useFiltrosNaUrl } from "@/hooks/useEstadoLembrado";
+import { useUserStore } from "@/store/useUserStore";
 
 export function SelecionarUnidadePage() {
+  // NEXON-20: o proprietário não vê o próprio nome na lista — a coluna some.
+  const verNomeProprietario = useUserStore((s) => s.capacidades.verNomeProprietario);
+  const colunas = verNomeProprietario ? 6 : 5;
   const navigate = useNavigate();
   const [plantas, setPlantas] = useState<PlantaResponse[]>([]);
   const [unidadesByPlanta, setUnidadesByPlanta] = useState<Record<string, Unidade[]>>({});
@@ -182,7 +186,7 @@ export function SelecionarUnidadePage() {
                   <TableRow>
                     <TableHead className="w-10"></TableHead>
                     <TableHead>Planta</TableHead>
-                    <TableHead>Proprietário</TableHead>
+                    {verNomeProprietario && <TableHead>Proprietário</TableHead>}
                     <TableHead>Localização</TableHead>
                     <TableHead className="w-28 text-center">Unidades</TableHead>
                     <TableHead className="w-16"></TableHead>
@@ -191,7 +195,7 @@ export function SelecionarUnidadePage() {
                 <TableBody>
                   {loadingPlantas && (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-16">
+                      <TableCell colSpan={colunas} className="text-center py-16">
                         <div className="flex items-center justify-center gap-3">
                           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                           <span className="text-muted-foreground">Carregando plantas...</span>
@@ -202,7 +206,7 @@ export function SelecionarUnidadePage() {
 
                   {!loadingPlantas && filteredPlantas.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-16">
+                      <TableCell colSpan={colunas} className="text-center py-16">
                         <div className="flex flex-col items-center gap-2 text-muted-foreground">
                           <Factory className="h-8 w-8 opacity-30" />
                           <p>{search ? "Nenhuma planta encontrada" : "Nenhuma planta cadastrada"}</p>
@@ -245,6 +249,7 @@ export function SelecionarUnidadePage() {
                               )}
                             </div>
                           </TableCell>
+                          {verNomeProprietario && (
                           <TableCell>
                             <div className="flex items-center gap-2">
                               <Building2 className="h-4 w-4 text-gray-500" />
@@ -258,6 +263,7 @@ export function SelecionarUnidadePage() {
                               </div>
                             </div>
                           </TableCell>
+                          )}
                           <TableCell>
                             <div className="space-y-1">
                               <div className="flex items-center gap-1.5">
@@ -281,7 +287,7 @@ export function SelecionarUnidadePage() {
                         {mostrarFilhas && (
                           !unidadesByPlanta[planta.id] ? (
                             <TableRow key={`${planta.id}-loading`} className={classeFilha}>
-                              <TableCell colSpan={6} className="py-4">
+                              <TableCell colSpan={colunas} className="py-4">
                                 <div className="flex items-center gap-2 pl-12 text-sm text-muted-foreground">
                                   <Loader2 className="h-4 w-4 animate-spin" />
                                   Carregando unidades...
@@ -290,7 +296,7 @@ export function SelecionarUnidadePage() {
                             </TableRow>
                           ) : unidades.length === 0 ? (
                             <TableRow key={`${planta.id}-empty`} className={classeFilha}>
-                              <TableCell colSpan={6} className="py-4">
+                              <TableCell colSpan={colunas} className="py-4">
                                 <div className="pl-12 text-sm text-muted-foreground">
                                   Nenhuma unidade cadastrada nesta planta
                                 </div>

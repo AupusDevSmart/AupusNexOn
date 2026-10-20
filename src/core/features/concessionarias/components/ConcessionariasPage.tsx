@@ -67,7 +67,10 @@ const transformAPIToFormData = (concessionaria: any): any => {
 };
 
 export function ConcessionariasPage() {
-  const { isAdmin } = useUserStore();
+  const { isAdmin, capacidades } = useUserStore();
+  // NEXON-20: concessionária e tarifas são da equipe Aupus (backend exige
+  // concessionarias.manage). Sem capacidades (host antigo) vale o isAdmin.
+  const podeEditar = capacidades ? capacidades.tarifas : isAdmin();
   const concessionariasFeature = useConcessionariasFeature();
 
   // Estados locais
@@ -330,7 +333,7 @@ export function ConcessionariasPage() {
                 <span className="hidden lg:inline">Atualizar</span>
               </button>
 
-              {isAdmin() && (
+              {podeEditar && (
                 <button
                   onClick={() => openModal('create')}
                   disabled={isSubmitting}
@@ -365,7 +368,7 @@ export function ConcessionariasPage() {
               loading={loading}
               onPageChange={handlePageChange}
               onView={handleView}
-              onEdit={isAdmin() ? handleEdit : undefined}
+              onEdit={podeEditar ? handleEdit : undefined}
               emptyMessage={
                 filters.search
                   ? `Nenhuma concessionária encontrada para "${filters.search}".`

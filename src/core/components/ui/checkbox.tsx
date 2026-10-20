@@ -1,6 +1,6 @@
 import * as React from "react"
 import * as CheckboxPrimitive from "@radix-ui/react-checkbox"
-import { CheckIcon } from "lucide-react"
+import { CheckIcon, MinusIcon } from "lucide-react"
 
 import { cn } from "@/core/lib/utils"
 
@@ -22,6 +22,10 @@ const Checkbox = React.forwardRef<
       "data-[state=checked]:bg-black dark:data-[state=checked]:bg-white",
       "data-[state=checked]:border-black dark:data-[state=checked]:border-white",
       "data-[state=checked]:text-white dark:data-[state=checked]:text-black",
+      // Indeterminado (parte marcada): mesmo preenchimento, com traço
+      "data-[state=indeterminate]:bg-black dark:data-[state=indeterminate]:bg-white",
+      "data-[state=indeterminate]:border-black dark:data-[state=indeterminate]:border-white",
+      "data-[state=indeterminate]:text-white dark:data-[state=indeterminate]:text-black",
       // Hover state
       "hover:border-gray-600 dark:hover:border-gray-300",
       "hover:shadow-md",
@@ -34,7 +38,11 @@ const Checkbox = React.forwardRef<
         "flex items-center justify-center text-current"
       )}
     >
-      <CheckIcon className="h-4 w-4 stroke-[3px]" />
+      {props.checked === "indeterminate" ? (
+        <MinusIcon className="h-4 w-4 stroke-[3px]" />
+      ) : (
+        <CheckIcon className="h-4 w-4 stroke-[3px]" />
+      )}
     </CheckboxPrimitive.Indicator>
   </CheckboxPrimitive.Root>
 ))

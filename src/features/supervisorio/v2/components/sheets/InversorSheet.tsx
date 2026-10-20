@@ -15,6 +15,8 @@ import { ChartTooltip } from '@/components/charts/tooltip';
 import { COR as COR_GRAF, corSerie } from '@/components/graficos/cores';
 import { linhasDeBuckets } from '@/components/graficos/linhas-de-buckets';
 import { EixoTempo } from '@/components/graficos/eixo-tempo';
+import { useUserStore } from '@/store/useUserStore';
+import { MSG_SOMENTE_LEITURA } from '@/store/papeis';
 
 /**
  * Modal do Inversor no web — tela "Equipamento · Inversor Solar 2" do app (NEXON-5)
@@ -445,6 +447,8 @@ function ConfigInversor({ equipamentoId, dados, perfilStr, onPerfil, totalString
   const [review, setReview] = useState(false);
   const [writing, setWriting] = useState(false);
   const [verAvancado, setVerAvancado] = useState(false);
+  // Setpoint do inversor é configuração técnica (PER-34): sem configTecnica, só leitura.
+  const roPerfil = !useUserStore((st) => st.capacidades.configTecnica);
 
   useEffect(() => {
     let vivo = true;
@@ -504,7 +508,7 @@ function ConfigInversor({ equipamentoId, dados, perfilStr, onPerfil, totalString
 
   const linhaSp = (sp: SetpointDef, label?: string) => (
     <ParamNx key={sp.id} id={`cfg-${sp.id}`} label={label ?? sp.label} hint={`Faixa ${faixaTxt(sp)}${uni(sp)}`} bad={ruim(sp)}
-      valor={valorDe(sp)} unit={sp.unidade} ro={writing} placeholder={sp.padrao != null ? String(sp.padrao).replace('.', ',') : '—'}
+      valor={valorDe(sp)} unit={sp.unidade} ro={writing || roPerfil} placeholder={sp.padrao != null ? String(sp.padrao).replace('.', ',') : '—'}
       onChange={(v) => setDraft((x) => ({ ...x, [sp.id]: v }))}
       nota={sp.obs}
       extraNota={ultimo[sp.id] && <span style={{ fontSize: 12, fontWeight: 700, color: ultimo[sp.id].ok ? NX.ok : NX.bad }}>{ultimo[sp.id].txt}</span>} />
@@ -547,9 +551,13 @@ function ConfigInversor({ equipamentoId, dados, perfilStr, onPerfil, totalString
           )}
         </>
       )}
+      {roPerfil ? (
+        <span style={{ textAlign: 'center', fontSize: 13, color: NX.mudo, marginTop: 6 }}>{MSG_SOMENTE_LEITURA}</span>
+      ) : (
       <button type="button" disabled={saveOff} onClick={() => setReview(true)} style={s.save(saveOff)}>
         {anyBad ? 'Valor fora da faixa' : changed.length === 0 ? 'Sem alterações' : `Revisar ${changed.length} ${changed.length > 1 ? 'alterações' : 'alteração'}`}
       </button>
+      )}
       {soLeitura.length > 0 && (
         <span style={{ fontSize: 12, color: NX.mudo, marginTop: 6 }}>
           {soLeitura.map((l) => l.label).join(', ')}: só leitura — este modelo ainda não tem comando de ajuste pelo NexON ("—" enquanto a TON não lê o registrador).
@@ -715,6 +723,8 @@ export function InversorSheet({ equipamentoId, nome, onClose }: { equipamentoId:
 
   // Comando principal (mockup: um botão — Desligar quando gera, Ligar quando parado).
   const temCmd = !!(cmdLigar || cmdDesligar);
+  // PER-36: sem capacidade de comandar, o botão nem aparece.
+  const podeComandar = useUserStore((st) => st.capacidades.comandar);
   const botoes: Array<'Ligar' | 'Desligar'> = gerando ? ['Desligar'] : cmdLigar && cmdDesligar ? ['Desligar', 'Ligar'] : cmdDesligar ? ['Desligar'] : ['Ligar'];
   const consequencia = confirmar === 'Desligar'
     ? `O inversor para de gerar${pativa != null && gerando ? ` (${fmt(pativa, 1)} kW agora)` : ''} e deixa de injetar na rede.`
@@ -748,7 +758,7 @@ export function InversorSheet({ equipamentoId, nome, onClose }: { equipamentoId:
         <div style={{ padding: '20px 24px 28px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
           <Duas>
             <Coluna>
-              {temCmd ? (
+              {!podeComandar ? null : temCmd ? (
                 <div style={{ display: 'grid', gridTemplateColumns: `repeat(${botoes.length}, minmax(0, 1fr))`, gap: 8 }}>
                   {botoes.map((b) => {
                     const c = b === 'Ligar' ? cmdLigar : cmdDesligar;

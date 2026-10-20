@@ -221,12 +221,15 @@ export const PlantaOperadoresTab = forwardRef<
       <div>
         <h3 className="text-sm font-semibold mb-2">Operadores vinculados</h3>
         <p className="text-xs text-muted-foreground">
-          Usuarios com role &quot;operador&quot; vinculados a esta planta. Apenas plantas vinculadas aparecem para o operador no app.
+          Operadores com acesso a esta planta. Vincular aqui libera todos os equipamentos da planta.
           {hasPendingChanges() && !readOnly && (
             <span className="ml-1 text-amber-700 dark:text-amber-400 font-medium">
               · alteracoes pendentes (salvas no &quot;Salvar Alteracoes&quot;)
             </span>
           )}
+        </p>
+        <p className="text-xs text-muted-foreground mt-1">
+          Para liberar só alguns equipamentos, &quot;Ver R$&quot;, &quot;Ver geração&quot; ou validade, use Usuários → operador → Acesso.
         </p>
       </div>
 

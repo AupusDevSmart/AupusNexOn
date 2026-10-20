@@ -19,6 +19,7 @@ import {
   UserPermissionsResponse,
   UserPermissionsSummary 
 } from '@/services/user-permissions.service';
+import { papelCanonico, rotuloDaRole } from '@/store/papeis';
 
 // ✅ SERVICE PARA COMUNICAÇÃO COM API
 class UsuariosApiService {
@@ -170,6 +171,9 @@ class UsuariosApiService {
       // ✅ CAMPOS EXTRAS SE PRESENTES
       senhaTemporaria: apiResponse.senhaTemporaria,
       primeiroAcesso: apiResponse.primeiroAcesso,
+      // NEXON-20: cadastrar operador com e-mail que já existe devolve o mesmo
+      // usuário com `existente: true` — o próximo passo é dar o acesso.
+      existente: apiResponse.existente === true,
       plantas: apiResponse.plantas || 0,
     };
 
@@ -177,7 +181,10 @@ class UsuariosApiService {
   }
 
   // ✅ MAPEAR ROLE PARA TIPO (COMPATIBILIDADE) - BASEADO NO CONSTRAINT DB
-  private mapRoleToTipo(role: string): string {
+  private mapRoleToTipo(roleBruta: any): string {
+    const role: string = typeof roleBruta === 'string' ? roleBruta : roleBruta?.name ?? '';
+    // NEXON-20: os 5 papéis (e os nomes legados gerente/analista/super_admin).
+    if (papelCanonico(role) !== 'outro') return rotuloDaRole(role);
     const mapping = {
       'admin': 'Administrador',
       'consultor': 'Consultor', 
@@ -282,6 +289,16 @@ class UsuariosApiService {
 // ✅ INSTÂNCIA DO SERVICE
 const usuariosService = new UsuariosApiService();
 
+/** Mensagem do backend (403 da matriz de papéis, 409 de e-mail…) em vez do texto do axios. */
+function mensagemDaApi(err: unknown): string | undefined {
+  const e = err as { response?: { data?: any }; message?: string } | undefined;
+  const d = e?.response?.data;
+  const msg = d?.error?.message ?? d?.message;
+  if (Array.isArray(msg)) return msg.join(', ');
+  if (typeof msg === 'string' && msg) return msg;
+  return e?.message || undefined;
+}
+
 // ✅ FILTROS INICIAIS
 const initialFilters: UsuariosFilters = {
   search: '',
@@ -357,7 +374,7 @@ export function useUsuarios() {
       
       return novoUsuario;
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Erro ao criar usuário';
+      const errorMessage = mensagemDaApi(err) ?? 'Erro ao criar usuário';
       setError(errorMessage);
       throw new Error(errorMessage);
     }
@@ -373,7 +390,7 @@ export function useUsuarios() {
       
       return usuarioAtualizado;
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Erro ao atualizar usuário';
+      const errorMessage = mensagemDaApi(err) ?? 'Erro ao atualizar usuário';
       setError(errorMessage);
       throw new Error(errorMessage);
     }

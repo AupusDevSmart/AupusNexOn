@@ -23,7 +23,7 @@ import { LINHA_SO_DOMINIO, linhasDeBuckets } from '@/components/graficos/linhas-
  * pedido de vaga (POST :id/pedir-vaga), recargas de todos os moradores e exportação.
  * Configuração: valor do kWh (analista edita: PUT :id/config, vale para recargas novas),
  * dados do carregador e moradores autorizados com validade (vence sozinho; aviso 1 dia antes).
- * Perfis vêm da API (estado.papel): analista, proprietário e morador (só as próprias recargas).
+ * Perfis vêm da API (estado.papel): analista, proprietário, operador (sem moradores nem exportação) e morador (só as próprias recargas).
  */
 
 interface Carregador { id: string; nome: string; unidade_nome?: string; planta_id?: string }
@@ -37,7 +37,7 @@ interface Sessao {
   kwh_total?: number | string | null; inicio?: string | null; fim?: string | null; inicio_iso?: string | null; fim_iso?: string | null;
   tarifa_kwh?: number | string | null; ocioso_inicio?: string | null; ocioso_por_nome?: string | null;
 }
-type Papel = 'analista' | 'proprietario' | 'morador';
+type Papel = 'analista' | 'proprietario' | 'operador' | 'morador';
 interface Estado {
   estado?: string; fonte_kwh?: string; tarifa_kwh?: number | string | null; soc?: number | string | null;
   potencia_kw?: number | string | null; capacidade_bateria_kwh?: number | string | null;
@@ -183,6 +183,9 @@ export function CarregadorModal({ carregador, open, onOpenChange }: { carregador
   const info = carregadores.find((c) => String(c.id).trim() === String(carregador.id).trim()) ?? null;
   const papel: Papel = estado?.papel ?? 'analista';
   const ehMorador = papel === 'morador';
+  // NEXON-20 (PER-38): moradores (aba Configuração) e exportação só analista e
+  // proprietário; operador e morador ficam na operação.
+  const podeGerir = papel === 'analista' || papel === 'proprietario';
   const tarifaCfg = estado?.tarifa_kwh != null ? Number(estado.tarifa_kwh) : info?.tarifa_kwh != null ? Number(info.tarifa_kwh) : null;
   // A recarga em andamento usa o valor do kWh gravado quando começou.
   const tarifa = sa?.tarifa_kwh != null ? Number(sa.tarifa_kwh) : tarifaCfg;
@@ -371,14 +374,14 @@ export function CarregadorModal({ carregador, open, onOpenChange }: { carregador
       title={carregador.nome || 'Carregador'}
       subtitle={[unidade, potencia != null ? `${fmt(potencia, 0)} kW` : null].filter(Boolean).join(' · ') || undefined}
       right={<span style={s.pill('ok')}><span style={s.pillDot('ok')} />{pillText}</span>}
-      tabs={ehMorador ? undefined : [{ key: 'op', label: 'Operação' }, { key: 'cfg', label: 'Configuração' }]}
-      tab={ehMorador ? 'op' : aba}
+      tabs={!podeGerir ? undefined : [{ key: 'op', label: 'Operação' }, { key: 'cfg', label: 'Configuração' }]}
+      tab={!podeGerir ? 'op' : aba}
       onTab={setAba}
       onClose={() => onOpenChange(false)}
     >
       <style>{CSS}</style>
 
-      {aba === 'op' || ehMorador ? (
+      {aba === 'op' || !podeGerir ? (
         <div style={{ padding: '20px 24px 28px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div className="nxc-grid">
             <div style={{ ...CARD, borderRadius: 16, padding: 20, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
@@ -462,7 +465,7 @@ export function CarregadorModal({ carregador, open, onOpenChange }: { carregador
                 <span style={{ fontSize: 15, fontWeight: 800 }}>{ehMorador ? 'Minhas recargas' : 'Recargas de todos os moradores'}</span>
                 <span style={{ fontSize: 13, color: NX.mudo }}>{histTotal}</span>
               </span>
-              {!ehMorador && <button type="button" onClick={() => { setErro(''); setModal('export'); }} style={{ height: 38, padding: '0 14px', borderRadius: 10, background: NX.acao, color: '#FFFFFF', fontSize: 14, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8, flex: 'none' }}>
+              {podeGerir && <button type="button" onClick={() => { setErro(''); setModal('export'); }} style={{ height: 38, padding: '0 14px', borderRadius: 10, background: NX.acao, color: '#FFFFFF', fontSize: 14, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8, flex: 'none' }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3v12" /><path d="M7 10l5 5 5-5" /><path d="M4 21h16" /></svg>
                 Exportar planilha
               </button>}

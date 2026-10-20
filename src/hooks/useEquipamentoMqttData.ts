@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { env } from '@/config/env';
+import { AuthService } from '@/services/auth.service';
 import { io, Socket } from 'socket.io-client';
 import equipamentosDadosService, {
   type EquipamentoDadoLatest,
@@ -79,6 +80,8 @@ export function useEquipamentoMqttData(equipamentoId: string | null) {
     const socket = io(fullUrl, {
       path: '/socket.io', // Path padrão do Socket.IO (NestJS usa este)
       transports: ['websocket', 'polling'], // Tentar ambos os transportes
+      // O gateway exige o JWT (NEXON-20); função = token atual a cada reconexão.
+      auth: (cb) => cb({ token: AuthService.getToken() }),
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,

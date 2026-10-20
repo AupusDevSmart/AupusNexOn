@@ -19,6 +19,7 @@ import { GerenteSelect } from '@/core/components/common/GerenteSelect';
 import { ConcessionariaSelect } from '@/core/components/common/ConcessionariaSelect';
 import { OrganizacaoSelect } from '@/core/components/common/OrganizacaoSelect';
 import { useRoles, usePermissoesGrouped, useUserStore } from '@/core/context/hooks';
+import { PAPEIS, ROTULO_PAPEL, papelCanonico, rotuloDaRole } from '@/store/papeis';
 
 // Normaliza o valor recebido pelo selector de permissoes para sempre ser string[]
 const normalizePermissionValue = (value: unknown): string[] => {
@@ -118,28 +119,35 @@ const getPermissionLabel = (permissao: { value: string; label?: string }): strin
   return humanizePermissionName(permissao.value);
 };
 
-// ✅ COMPONENTE PARA SELEÇÃO DE ROLES DINÂMICO - USANDO DADOS DA TABELA
-const RoleSelector = ({ value, onChange, disabled }: any) => {
+// SELETOR DE PAPEL (NEXON-20, seção 3 "quem cadastra quem").
+// Mostra só os 5 papéis da spec, limitados ao que o usuário logado pode
+// cadastrar (`capacidades.cadastra`, do /auth/me). Os nomes legados (gerente,
+// analista, super_admin) não aparecem para criação, mas um usuário antigo com
+// esses papéis continua exibido com o rótulo do papel que vale hoje.
+const RoleSelector = ({ value, onChange, disabled, mode }: any) => {
   const { roles, loading, error } = useRoles();
+  const { capacidades } = useUserStore();
+  const cadastra: string[] = capacidades?.cadastra ?? [];
 
-  // ✅ IMPORTAR useUserStore para verificar role do usuário logado
-  const { user, getUserRole } = useUserStore();
-  const currentUserRole = getUserRole();
+  const opcoes = useMemo(() => {
+    const nomesNoBanco = new Set(roles.map((r: any) => String(r.value).toLowerCase()));
+    return PAPEIS.filter((p) => cadastra.includes(p))
+      // Papel que ainda não existe na tabela `roles` (migração não rodou) fica de fora.
+      .filter((p) => roles.length === 0 || nomesNoBanco.has(p))
+      .map((p) => ({ value: p as string, label: ROTULO_PAPEL[p] }));
+  }, [roles, cadastra]);
 
-  // Roles permitidas no sistema
-  const allowedRoles = ['super_admin', 'admin', 'gerente', 'analista', 'proprietario', 'operador'];
+  const valorAtual = value && String(value).trim() !== '' ? String(value) : undefined;
+  const papelAtual = valorAtual ? papelCanonico(valorAtual) : undefined;
+  // Legado (gerente → analista_operacao) aponta para a opção do papel equivalente.
+  const opcaoAtual = papelAtual ? opcoes.find((o) => o.value === papelAtual) : undefined;
 
-  // Filtrar apenas roles permitidas
-  let availableRoles = roles.filter(role =>
-    allowedRoles.includes(role.value.toLowerCase())
-  );
-
-  // Se usuário logado é proprietário, mostrar apenas "operador"
-  if (currentUserRole === 'propietario' || currentUserRole === 'proprietario') {
-    availableRoles = availableRoles.filter(role =>
-      role.value.toLowerCase() === 'operador'
-    );
-  }
+  // Quem só cadastra um papel (proprietário → operador) já sai com ele marcado.
+  useEffect(() => {
+    if (mode === 'create' && !disabled && !valorAtual && opcoes.length === 1) {
+      onChange(opcoes[0].value);
+    }
+  }, [mode, disabled, valorAtual, opcoes, onChange]);
 
   if (loading) {
     return (
@@ -151,44 +159,39 @@ const RoleSelector = ({ value, onChange, disabled }: any) => {
     );
   }
 
-  if (error && roles.length === 0) {
+  if (error && roles.length === 0 && opcoes.length === 0) {
     return (
-      <div className="flex items-center p-3 border border-red-200 rounded-md bg-red-50">
-        <div className="text-sm text-red-600">
-          ❌ Erro ao carregar tipos de usuário: {error}
+      <div className="flex items-center p-3 border border-red-200 rounded-md bg-red-50 dark:bg-red-950 dark:border-red-800">
+        <div className="text-sm text-red-600 dark:text-red-300">
+          Erro ao carregar tipos de usuário: {error}
         </div>
       </div>
     );
   }
 
-  // ✅ Verificar se proprietário não tem roles disponíveis (quando operador não existe)
-  if ((currentUserRole === 'propietario' || currentUserRole === 'proprietario') && availableRoles.length === 0) {
-    return (
-      <div className="flex items-center p-3 border border-amber-200 rounded-md bg-amber-50 dark:bg-amber-950 dark:border-amber-800">
-        <div className="text-sm text-amber-700 dark:text-amber-300">
-          ⚠️ Você só pode cadastrar usuários com o tipo "Operador". Entre em contato com o administrador para configurar este tipo de usuário no sistema.
-        </div>
-      </div>
-    );
-  }
-
-  // Encontrar o role atual para mostrar o label correto
-  const currentRole = roles.find(role => role.value === value);
-
-  // ✅ MODO VIEW (DISABLED): Mostrar como texto estilizado ao invés de Select desabilitado
-  if (disabled) {
+  // Visualização, ou papel do usuário editado fora do que quem edita pode dar:
+  // texto, não select (o backend recusaria a troca de qualquer jeito).
+  if (disabled || (mode !== 'create' && valorAtual && !opcaoAtual)) {
     return (
       <div className="flex items-center p-3 border rounded-md bg-muted/30">
         <span className="font-medium text-sm">
-          {currentRole ? currentRole.label : value || 'Não definido'}
+          {valorAtual ? rotuloDaRole(valorAtual) : 'Não definido'}
         </span>
       </div>
     );
   }
 
-  // ✅ MODO EDIT: Select normal para edição
-  // Garantir que value seja uma string válida ou undefined (NUNCA string vazia para Select controlado)
-  const selectValue = value && String(value).trim() !== '' ? String(value) : undefined;
+  if (opcoes.length === 0) {
+    return (
+      <div className="flex items-center p-3 border border-amber-200 rounded-md bg-amber-50 dark:bg-amber-950 dark:border-amber-800">
+        <div className="text-sm text-amber-700 dark:text-amber-300">
+          Seu perfil não cadastra usuários.
+        </div>
+      </div>
+    );
+  }
+
+  const selectValue = opcaoAtual?.value;
 
   return (
     <Select
@@ -201,7 +204,7 @@ const RoleSelector = ({ value, onChange, disabled }: any) => {
         <SelectValue placeholder="Selecione um tipo de usuário" />
       </SelectTrigger>
       <SelectContent>
-        {availableRoles.map(role => (
+        {opcoes.map((role) => (
           <SelectItem key={role.value} value={role.value}>
             <span className="font-medium">{role.label}</span>
           </SelectItem>
@@ -216,8 +219,23 @@ const RoleSelector = ({ value, onChange, disabled }: any) => {
 // - Em modo create, preenche permissoes padrao quando o usuario escolhe um tipo
 // - Permite marcar/desmarcar permissoes individuais alem das herdadas pela role
 const PermissoesSelector = ({ value, onChange, disabled, formData, mode }: any) => {
-  const { permissoesPorCategoria, loading, error } = usePermissoesGrouped();
+  const { permissoesPorCategoria: todasPorCategoria, loading, error } = usePermissoesGrouped();
   const { roles } = useRoles();
+  const { papel, acessivel } = useUserStore();
+
+  // PER-3: ninguém concede permissão que não tem. Admin vê todas; os demais só
+  // as próprias (o backend devolve 403 se mandar outra).
+  const minhas = useMemo(() => new Set<string>(Array.isArray(acessivel) ? acessivel : []), [acessivel]);
+  const soAsMinhas = papel !== 'admin';
+  const permissoesPorCategoria = useMemo(() => {
+    if (!soAsMinhas) return todasPorCategoria;
+    const out: Record<string, any[]> = {};
+    Object.entries(todasPorCategoria || {}).forEach(([cat, lista]) => {
+      const filtradas = (lista as any[]).filter((p) => minhas.has(p.value));
+      if (filtradas.length) out[cat] = filtradas;
+    });
+    return out;
+  }, [todasPorCategoria, soAsMinhas, minhas]);
 
   // Sempre trabalha com strings na UI; o pai recebe array de strings via onChange
   const permissoesSelecionadas = useMemo(() => normalizePermissionValue(value), [value]);
@@ -231,10 +249,10 @@ const PermissoesSelector = ({ value, onChange, disabled, formData, mode }: any) 
   })();
 
   const currentRole = roles.find((r: any) => r.value === currentRoleName);
-  const rolePermissions: string[] = useMemo(
-    () => (Array.isArray(currentRole?.permissions) ? currentRole.permissions : []),
-    [currentRole]
-  );
+  const rolePermissions: string[] = useMemo(() => {
+    const daRole: string[] = Array.isArray(currentRole?.permissions) ? currentRole.permissions : [];
+    return soAsMinhas ? daRole.filter((p) => minhas.has(p)) : daRole;
+  }, [currentRole, soAsMinhas, minhas]);
 
   // Auto-marcar permissoes padrao quando o usuario muda a role em modo CREATE.
   // Em edit/view, mantem o set existente para preservar overrides; o botao
@@ -301,7 +319,7 @@ const PermissoesSelector = ({ value, onChange, disabled, formData, mode }: any) 
             disabled={!currentRoleName || rolePermissions.length === 0}
             title={
               currentRoleName
-                ? `Marca as permissoes padrao da role ${currentRoleName}`
+                ? `Marca as permissões padrão do papel ${rotuloDaRole(currentRoleName)}`
                 : 'Selecione um tipo de usuario primeiro'
             }
           >
@@ -318,7 +336,7 @@ const PermissoesSelector = ({ value, onChange, disabled, formData, mode }: any) 
           </Button>
           {currentRoleName && rolePermissions.length > 0 && (
             <span className="text-muted-foreground">
-              Role <span className="font-medium">{currentRoleName}</span> traz {rolePermissions.length} permissoes padrao.
+              Papel <span className="font-medium">{rotuloDaRole(currentRoleName)}</span> traz {rolePermissions.length} permissões padrão.
             </span>
           )}
         </div>
@@ -593,7 +611,7 @@ export const usuariosFormFields: FormField[] = [
     required: true,
     render: RoleSelector,
     group: 'configuracoes',
-    help: 'Role atual do usuário no sistema'
+    help: 'O papel define o que o usuário pode fazer; o acesso do operador se define na aba Acesso'
   },
   {
     key: 'status',
