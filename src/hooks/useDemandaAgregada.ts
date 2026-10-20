@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { equipamentosDadosService, EquipamentoAgregacaoInput } from '@/services/equipamentos-dados.service';
 import type { EquipamentoConfig } from '@/features/supervisorio/components/ConfiguracaoDemandaModal';
 
@@ -54,6 +54,39 @@ interface UseDemandaAgregadaArgs {
   fatorPerdas?: number;
   intervaloAtualizacao?: number; // segundos, default 30
   ativo?: boolean; // false = gráfico fora da tela: não busca nem polla (default true)
+  /** Períodos para pré-carregar em segundo plano depois que o principal chegar. */
+  prefetch?: PeriodoFiltro[];
+}
+
+const SEM_PREFETCH: PeriodoFiltro[] = [];
+
+function buscarDemanda(
+  periodo: PeriodoFiltro,
+  equipamentosInput: EquipamentoAgregacaoInput[],
+  fatorPerdas: number,
+) {
+  if (periodo.tipo === 'dia') {
+    return equipamentosDadosService.getGraficoDiaMultiplosInversores(
+      equipamentosInput,
+      { data: periodo.data, fatorPerdas },
+    );
+  }
+  if (periodo.tipo === 'custom') {
+    return equipamentosDadosService.getGraficoDiaMultiplosInversores(
+      equipamentosInput,
+      { inicio: periodo.inicio, fim: periodo.fim, fatorPerdas },
+    );
+  }
+  if (periodo.tipo === 'mes') {
+    return equipamentosDadosService.getGraficoMesMultiplosInversores(
+      equipamentosInput,
+      { mes: periodo.mes, fatorPerdas },
+    );
+  }
+  return equipamentosDadosService.getGraficoAnoMultiplosInversores(
+    equipamentosInput,
+    { ano: periodo.ano, fatorPerdas },
+  );
 }
 
 export function useDemandaAgregada({
@@ -62,6 +95,7 @@ export function useDemandaAgregada({
   fatorPerdas = 0,
   intervaloAtualizacao = 30,
   ativo = true,
+  prefetch = SEM_PREFETCH,
 }: UseDemandaAgregadaArgs): ResultadoDemandaAgregada {
   const equipamentosInput = useMemo(
     () => equipamentos.map(paraInput).filter((e): e is EquipamentoAgregacaoInput => e !== null),
@@ -83,35 +117,31 @@ export function useDemandaAgregada({
 
   const { data, isLoading, isFetching } = useQuery({
     queryKey,
-    queryFn: async () => {
-      if (periodo.tipo === 'dia') {
-        return equipamentosDadosService.getGraficoDiaMultiplosInversores(
-          equipamentosInput,
-          { data: periodo.data, fatorPerdas },
-        );
-      }
-      if (periodo.tipo === 'custom') {
-        return equipamentosDadosService.getGraficoDiaMultiplosInversores(
-          equipamentosInput,
-          { inicio: periodo.inicio, fim: periodo.fim, fatorPerdas },
-        );
-      }
-      if (periodo.tipo === 'mes') {
-        return equipamentosDadosService.getGraficoMesMultiplosInversores(
-          equipamentosInput,
-          { mes: periodo.mes, fatorPerdas },
-        );
-      }
-      return equipamentosDadosService.getGraficoAnoMultiplosInversores(
-        equipamentosInput,
-        { ano: periodo.ano, fatorPerdas },
-      );
-    },
+    queryFn: () => buscarDemanda(periodo, equipamentosInput, fatorPerdas),
     enabled: habilitado,
     refetchInterval,
     staleTime: 5_000,
-    gcTime: 60_000,
+    // Mês/ano não pollam: ficam 10 min em cache para a troca de aba ser instantânea.
+    gcTime: periodo.tipo === 'dia' ? 60_000 : 10 * 60_000,
   });
+
+  // Pré-carrega as outras abas (mês e ano correntes) em segundo plano assim que a
+  // principal chega: ao clicar, o gráfico já está em cache. Barato no servidor desde
+  // o resumo diário da API (NEXON-28); uma vez por combinação de equipamentos.
+  const queryClient = useQueryClient();
+  const temDados = !!data;
+  useEffect(() => {
+    if (!habilitado || !temDados || !prefetch.length) return;
+    for (const p of prefetch) {
+      if (p.tipo === periodo.tipo && !p.data && !p.mes && !p.ano) continue;
+      queryClient.prefetchQuery({
+        queryKey: ['demanda-agregada', p, equipamentosInput, fatorPerdas],
+        queryFn: () => buscarDemanda(p, equipamentosInput, fatorPerdas),
+        staleTime: 5 * 60_000,
+        gcTime: 10 * 60_000,
+      });
+    }
+  }, [habilitado, temDados, prefetch, periodo.tipo, equipamentosInput, fatorPerdas, queryClient]);
 
   return useMemo(() => {
     if (!data) {
