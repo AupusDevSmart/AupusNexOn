@@ -1,5 +1,5 @@
 // Agregacao das grandezas eletricas dos Power Meters (R2/R3).
-// Campos reais do M160 (flat): Pt (kW), Qt, St, Va/Vb/Vc (L-N), Ia/Ib/Ic.
+// Campos reais do M160/PD666 (flat): Pt (W), Qt, St, Va/Vb/Vc (L-N), Ia/Ib/Ic.
 // FP total nao existe no payload -> calculado como Pt/St. Sem L-L e sem frequencia.
 
 export interface LeituraPM {
@@ -15,7 +15,7 @@ export interface LeituraPM {
 }
 
 export interface GrandezasAgregadas {
-  potenciaKw: number | null; // soma de Pt
+  potenciaKw: number | null; // soma de Pt (W) ÷ 1000
   tensaoMediaLN: number | null; // media de AN/BN/CN
   correnteMedia: number | null; // media de IA/IB/IC
   fatorPotencia: number | null; // sum(Pt)/sum(St)
@@ -75,7 +75,7 @@ export function agregarGrandezas(leituras: LeituraPM[]): GrandezasAgregadas {
   const somaSt = soma(leituras.map((l) => l.St));
 
   return {
-    potenciaKw: somaPt,
+    potenciaKw: somaPt != null ? somaPt / 1000 : null,
     tensaoMediaLN: media([AN, BN, CN]),
     correnteMedia: media([IA, IB, IC]),
     fatorPotencia: somaPt != null && somaSt != null && somaSt > 0 ? Math.abs(somaPt / somaSt) : null,

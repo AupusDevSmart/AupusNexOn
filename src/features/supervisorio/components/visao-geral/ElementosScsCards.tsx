@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Activity, CircleDot, Gauge, Square, Sun, Zap } from 'lucide-react';
 import { api } from '@/config/api';
+import { DisjuntorSheet } from '@/features/supervisorio/v2/components/DisjuntorSheet';
+import { InversorSheet } from '@/features/supervisorio/v2/components/sheets/InversorSheet';
+import { MedidorSheet } from '@/features/supervisorio/v2/components/sheets/MedidorSheet';
+import { MotorSheet } from '@/features/supervisorio/v2/components/sheets/MotorSheet';
+import { PivoSheet } from '@/features/supervisorio/v2/components/sheets/PivoSheet';
+import { sheetKindFor, type SheetKind } from '@/features/supervisorio/v2/components/sheets/sheetKind';
 
 /**
  * Cards-ícone dos equipamentos do unifilar com SCS habilitado, na Visão Geral.
@@ -8,6 +14,7 @@ import { api } from '@/config/api';
  * curtas conforme o tipo (inversor: Geração dia/Potência; medidor: Potência/FP; os
  * demais: capacidades SCS). Fonte: GET /iot/unidade/:id/elementos-scs (escopado por dono).
  * Auto-esconde quando a unidade não tem elemento com SCS.
+ * Clicar no card abre a mesma ficha do unifilar (DJ → DisjuntorSheet; demais por sheetKindFor).
  */
 interface ElementoScs {
   equipamento_id: string;
@@ -49,7 +56,8 @@ function metricas(el: ElementoScs): Array<{ k: string; v: string }> {
   if (t.includes('inversor')) {
     return [
       { k: 'Geração dia', v: `${nf(g('energy.daily_yield'))} kWh` },
-      { k: 'Potência', v: `${nf(g('power.active_total'), 1)} kW` },
+      // active_total vem em W (a ficha do inversor também divide por 1000).
+      { k: 'Potência', v: g('power.active_total') != null ? `${nf(Number(g('power.active_total')) / 1000, 1)} kW` : '—' },
     ];
   }
   if (t.includes('medidor') || t.includes('power meter') || t.includes('multimedidor') || t === 'pm') {
@@ -70,8 +78,18 @@ const online = (ts: string | null): boolean => {
   return ms >= 0 && ms < 30 * 60 * 1000;
 };
 
+type Ficha = { kind: SheetKind | 'disjuntor'; id: string; nome: string };
+
+function fichaDo(el: ElementoScs): Ficha | null {
+  const nome = el.rotulo;
+  if ((el.tipo ?? '').toLowerCase().includes('disjuntor')) return { kind: 'disjuntor', id: el.equipamento_id, nome };
+  const kind = sheetKindFor(el.tipo, null);
+  return kind ? { kind, id: el.equipamento_id, nome } : null;
+}
+
 export function ElementosScsCards({ unidadeId }: { unidadeId: string }) {
   const [els, setEls] = useState<ElementoScs[] | null>(null);
+  const [ficha, setFicha] = useState<Ficha | null>(null);
 
   useEffect(() => {
     let vivo = true;
@@ -94,8 +112,18 @@ export function ElementosScsCards({ unidadeId }: { unidadeId: string }) {
         {els.map((el) => {
           const Icone = IconeDoTipo(el.tipo);
           const on = online(el.ts);
+          const alvo = fichaDo(el);
+          const abrir = alvo ? () => setFicha(alvo) : undefined;
           return (
-            <div key={el.equipamento_id} className="rounded-lg border bg-card p-2.5">
+            <div
+              key={el.equipamento_id}
+              className={`rounded-lg border bg-card p-2.5 ${alvo ? 'cursor-pointer transition-colors hover:border-primary/50 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring' : ''}`}
+              role={alvo ? 'button' : undefined}
+              tabIndex={alvo ? 0 : undefined}
+              title={alvo ? `Abrir ${el.rotulo}` : undefined}
+              onClick={abrir}
+              onKeyDown={alvo ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setFicha(alvo); } } : undefined}
+            >
               <div className="flex items-center gap-1.5">
                 <Icone className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                 <span className="truncate text-xs font-semibold" title={el.rotulo}>{el.rotulo}</span>
@@ -116,6 +144,12 @@ export function ElementosScsCards({ unidadeId }: { unidadeId: string }) {
           );
         })}
       </div>
+
+      {ficha?.kind === 'disjuntor' && <DisjuntorSheet equipamentoId={ficha.id} onClose={() => setFicha(null)} />}
+      {ficha?.kind === 'inversor' && <InversorSheet equipamentoId={ficha.id} nome={ficha.nome} onClose={() => setFicha(null)} />}
+      {ficha?.kind === 'medidor' && <MedidorSheet equipamentoId={ficha.id} nome={ficha.nome} onClose={() => setFicha(null)} />}
+      {ficha?.kind === 'motor' && <MotorSheet equipamentoId={ficha.id} nome={ficha.nome} onClose={() => setFicha(null)} />}
+      {ficha?.kind === 'pivo' && <PivoSheet equipamentoId={ficha.id} nome={ficha.nome} onClose={() => setFicha(null)} />}
     </div>
   );
 }
