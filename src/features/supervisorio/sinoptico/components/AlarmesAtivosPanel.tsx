@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Check, ChevronRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
@@ -60,8 +61,9 @@ export function AlarmesAtivosPanel({ unidadeId, unidadeNome, className }: Alarme
   return (
     <PanelCard titulo="Alarmes ativos" className={cn("xl:min-h-0", className)}>
       {isLoading ? (
-        <div className="flex min-h-[3rem] items-center justify-center text-xs text-muted-foreground">
-          Carregando...
+        <div className="flex min-h-[3rem] flex-col justify-center gap-2" role="status" aria-label="Carregando alarmes">
+          <Skeleton className="h-3 w-3/4 rounded-sm" />
+          <Skeleton className="h-3 w-1/2 rounded-sm" />
         </div>
       ) : alarmes.length === 0 ? (
         <div className="flex min-h-[3rem] items-center justify-center text-xs text-muted-foreground">

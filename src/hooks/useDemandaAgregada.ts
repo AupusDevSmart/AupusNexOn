@@ -53,6 +53,7 @@ interface UseDemandaAgregadaArgs {
   periodo: PeriodoFiltro;
   fatorPerdas?: number;
   intervaloAtualizacao?: number; // segundos, default 30
+  ativo?: boolean; // false = gráfico fora da tela: não busca nem polla (default true)
 }
 
 export function useDemandaAgregada({
@@ -60,13 +61,14 @@ export function useDemandaAgregada({
   periodo,
   fatorPerdas = 0,
   intervaloAtualizacao = 30,
+  ativo = true,
 }: UseDemandaAgregadaArgs): ResultadoDemandaAgregada {
   const equipamentosInput = useMemo(
     () => equipamentos.map(paraInput).filter((e): e is EquipamentoAgregacaoInput => e !== null),
     [equipamentos],
   );
 
-  const habilitado = equipamentosInput.length > 0 && (
+  const habilitado = ativo && equipamentosInput.length > 0 && (
     periodo.tipo !== 'custom' || (!!periodo.inicio && !!periodo.fim)
   );
 

@@ -18,6 +18,7 @@ import {
 
 // Lazy load para evitar problemas de import
 import { lazy, Suspense } from "react";
+import { SinopticoSkeleton } from "@/features/supervisorio/sinoptico/components/SinopticoSkeleton";
 
 /**
  * Componente de rota protegida
@@ -313,7 +314,7 @@ export const appRoutes = createBrowserRouter([
         path: "supervisorio/sinoptico-ativo/:ativoId",
         element: (
           <FeatureWrapper feature="supervisorio">
-            <Suspense fallback={<div>Carregando...</div>}>
+            <Suspense fallback={<SinopticoSkeleton />}>
               <SinopticoPage />
             </Suspense>
           </FeatureWrapper>

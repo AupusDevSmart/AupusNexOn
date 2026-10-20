@@ -1,15 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/config/api';
 import { isPowerMeter } from '@/features/supervisorio/components/power-meter/helpers';
-
-// Desabilitar logs de debug em produção
-const noop = () => {};
-if (import.meta.env.PROD) {
-  console.log = noop;
-  console.info = noop;
-  console.debug = noop;
-}
 
 
 interface DadosM160 {
@@ -29,12 +21,14 @@ interface EquipamentoM160 {
   tipo: string;
 }
 
-export function useDadosM160(unidadeId?: string, equipamentoId?: string) {
-  const [dados, setDados] = useState<DadosM160[]>([]);
-  const [hasInitialLoad, setHasInitialLoad] = useState(false);
-
+/**
+ * Lista de Power Meters da unidade e a curva do dia do selecionado (tensão e FP).
+ * `ativo=false` mantém só a lista (barata, sem polling): a curva de 30 em 30 s
+ * só roda quando o gráfico de Tensão ou FP está na tela.
+ */
+export function useDadosM160(unidadeId?: string, equipamentoId?: string, ativo = true) {
   // Buscar lista de M160 da unidade
-  const { data: equipamentosM160 } = useQuery({
+  const { data: equipamentosM160, isLoading: carregandoLista } = useQuery({
     queryKey: ['m160-lista', unidadeId],
     queryFn: async () => {
       if (!unidadeId) return [];
@@ -108,67 +102,34 @@ export function useDadosM160(unidadeId?: string, equipamentoId?: string) {
       }
     },
     refetchInterval: 30000, // Atualizar a cada 30 segundos
-    enabled: !!equipamentoId
+    enabled: !!equipamentoId && ativo
   });
 
-  // Processar dados quando chegam
-  useEffect(() => {
-    if (!dadosM160 || dadosM160.length === 0) {
-      setDados([]);
-      return;
-    }
-
-    // 🔍 DEBUG: Log para ver estrutura dos dados
-    console.log('🔍 [useDadosM160] Dados recebidos:', dadosM160.length, 'pontos');
-    if (dadosM160.length > 0) {
-      console.log('🔍 [useDadosM160] Primeiro item:', JSON.stringify(dadosM160[0], null, 2));
-      console.log('🔍 [useDadosM160] Chaves do primeiro item:', Object.keys(dadosM160[0]));
-    }
-
-    const dadosProcessados: DadosM160[] = dadosM160.map((item: any) => {
-      // ✅ CORRIGIDO: O campo é 'dados' (minúsculo), não 'Dados'
-      const dados = item.dados || item.Dados || {};
-
-      // 🔍 DEBUG: Log para ver estrutura dos dados
-      if (!item.dados && !item.Dados) {
-        console.warn('⚠️ [useDadosM160] Item sem campo dados/Dados:', item);
-      } else {
-        // Log dos campos disponíveis no primeiro item
-        if (dadosM160.indexOf(item) === 0) {
-          console.log('🔍 [useDadosM160] Campos disponíveis em dados:', Object.keys(dados));
-        }
-      }
-
+  // Processa na renderização (memo): antes era useEffect + setState, um render
+  // a mais a cada poll e um JSON.stringify do primeiro ponto no console.
+  const dados = useMemo<DadosM160[]>(() => {
+    if (!dadosM160 || dadosM160.length === 0) return [];
+    return dadosM160.map((item: any) => {
+      // O campo é 'dados' (minúsculo); 'Dados' fica de fallback.
+      const d = item.dados || item.Dados || {};
       return {
         timestamp: item.timestamp || item.hora || item.timestamp_dados,
-        // ✅ CORRIGIDO: Tentar múltiplas variações de nomes de campo
-        tensaoA: dados.Va || dados.va || dados.VoltageA || dados.voltageA || 0,
-        tensaoB: dados.Vb || dados.vb || dados.VoltageB || dados.voltageB || 0,
-        tensaoC: dados.Vc || dados.vc || dados.VoltageC || dados.voltageC || 0,
-        // ✅ Suportar múltiplas variações para fator de potência
-        fatorPotenciaA: dados.FPa || dados.FPA || dados.fpa || dados.PowerFactorA || dados.powerFactorA || 0,
-        fatorPotenciaB: dados.FPb || dados.FPB || dados.fpb || dados.PowerFactorB || dados.powerFactorB || 0,
-        fatorPotenciaC: dados.FPc || dados.FPC || dados.fpc || dados.PowerFactorC || dados.powerFactorC || 0,
+        tensaoA: d.Va || d.va || d.VoltageA || d.voltageA || 0,
+        tensaoB: d.Vb || d.vb || d.VoltageB || d.voltageB || 0,
+        tensaoC: d.Vc || d.vc || d.VoltageC || d.voltageC || 0,
+        fatorPotenciaA: d.FPa || d.FPA || d.fpa || d.PowerFactorA || d.powerFactorA || 0,
+        fatorPotenciaB: d.FPb || d.FPB || d.fpb || d.PowerFactorB || d.powerFactorB || 0,
+        fatorPotenciaC: d.FPc || d.FPC || d.fpc || d.PowerFactorC || d.powerFactorC || 0,
       };
     });
-
-    console.log('🔍 [useDadosM160] Dados processados:', dadosProcessados.length, 'pontos');
-    if (dadosProcessados.length > 0) {
-      console.log('🔍 [useDadosM160] Primeiro ponto processado:', dadosProcessados[0]);
-    }
-
-    setDados(dadosProcessados);
-
-    // ✅ Marcar que já carregou pelo menos uma vez
-    if (!hasInitialLoad) {
-      setHasInitialLoad(true);
-    }
-  }, [dadosM160, hasInitialLoad]);
+  }, [dadosM160]);
 
   return {
     dados,
     equipamentosM160: equipamentosM160 || [],
+    carregandoLista,
     isLoading,
-    isInitialLoading: !hasInitialLoad && isLoading // ✅ NOVO: só true no PRIMEIRO load
+    // isLoading do react-query já é só o primeiro carregamento (sem dado em cache).
+    isInitialLoading: isLoading && !!equipamentoId && ativo,
   };
 }

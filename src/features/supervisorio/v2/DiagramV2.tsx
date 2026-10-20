@@ -11,6 +11,7 @@
  */
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { DiagramaSkeleton } from '@/features/supervisorio/sinoptico/components/SinopticoSkeleton';
 import { CircuitBoard, Maximize2, Minimize2, Download, ZoomIn, Edit3, X, Save } from 'lucide-react';
 import { useDiagramStore } from './hooks/useDiagramStore';
 import { DiagramViewport } from './components/DiagramViewer/DiagramViewport';
@@ -437,11 +438,8 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
 
   if (isLoading) {
     return (
-      <div className="w-full h-full flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin"></div>
-          <p className="text-sm text-muted-foreground">Carregando diagrama...</p>
-        </div>
+      <div className="relative w-full h-full">
+        <DiagramaSkeleton />
       </div>
     );
   }

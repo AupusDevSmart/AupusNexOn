@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { ReactNode } from "react";
 import { Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -17,14 +18,18 @@ function fmt(v: number | null | undefined, dec = 0): string | undefined {
 }
 
 /** Linha rotulo + valor para a grade de grandezas. */
-function Grandeza({ rotulo, valor, unidade }: { rotulo: string; valor?: string; unidade?: string }) {
+function Grandeza({ rotulo, valor, unidade, carregando }: { rotulo: string; valor?: string; unidade?: string; carregando?: boolean }) {
   return (
     <div className="flex items-baseline justify-between gap-2">
       <span className="text-xs text-muted-foreground">{rotulo}</span>
+      {carregando ? (
+        <Skeleton className="h-3.5 w-12 rounded-sm" />
+      ) : (
       <span className="text-sm font-medium text-foreground tabular-nums">
         {valor ?? "--"}
         {unidade && <span className="ml-1 text-xs font-normal text-muted-foreground">{unidade}</span>}
       </span>
+      )}
     </div>
   );
 }
@@ -46,7 +51,9 @@ function Bloco({ titulo, children }: { titulo: string; children: ReactNode }) {
  * desequilíbrio é calculado. Sem L-L e sem frequência (M160 não reporta).
  */
 export function GrandezasEletricasPanel({ unidadeId }: GrandezasEletricasPanelProps) {
-  const { grandezas } = useGrandezasAgregadas(unidadeId);
+  const { grandezas, loading } = useGrandezasAgregadas(unidadeId);
+  // Só a primeira carga: nos polls seguintes o valor antigo fica até o novo chegar.
+  const sk = loading && !grandezas;
   const [configOpen, setConfigOpen] = useState(false);
   // Escolher os medidores grava no diagrama (PATCH /diagramas/:id): cadastro técnico (NEXON-20).
   const podeConfigurar = useUserStore((s) => s.capacidades.cadastroTecnico);
@@ -74,19 +81,19 @@ export function GrandezasEletricasPanel({ unidadeId }: GrandezasEletricasPanelPr
       >
       <div className="grid grid-cols-2 gap-x-4 gap-y-2">
         <Bloco titulo="Tensões (L-N)">
-          <Grandeza rotulo="Van" valor={fmt(t?.AN, 0)} unidade="V" />
-          <Grandeza rotulo="Vbn" valor={fmt(t?.BN, 0)} unidade="V" />
-          <Grandeza rotulo="Vcn" valor={fmt(t?.CN, 0)} unidade="V" />
+          <Grandeza carregando={sk} rotulo="Van" valor={fmt(t?.AN, 0)} unidade="V" />
+          <Grandeza carregando={sk} rotulo="Vbn" valor={fmt(t?.BN, 0)} unidade="V" />
+          <Grandeza carregando={sk} rotulo="Vcn" valor={fmt(t?.CN, 0)} unidade="V" />
         </Bloco>
         <Bloco titulo="Correntes">
-          <Grandeza rotulo="IA" valor={fmt(c?.IA, 1)} unidade="A" />
-          <Grandeza rotulo="IB" valor={fmt(c?.IB, 1)} unidade="A" />
-          <Grandeza rotulo="IC" valor={fmt(c?.IC, 1)} unidade="A" />
+          <Grandeza carregando={sk} rotulo="IA" valor={fmt(c?.IA, 1)} unidade="A" />
+          <Grandeza carregando={sk} rotulo="IB" valor={fmt(c?.IB, 1)} unidade="A" />
+          <Grandeza carregando={sk} rotulo="IC" valor={fmt(c?.IC, 1)} unidade="A" />
         </Bloco>
         {/* Desequilibrio (sem titulo de bloco): Tensao a esquerda, Corrente a direita */}
         <div className="col-span-2 grid grid-cols-2 gap-x-4">
-          <Grandeza rotulo="Desequilíbrio Tensão" valor={fmt(grandezas?.desequilibrioTensao, 1)} unidade="%" />
-          <Grandeza rotulo="Desequilíbrio Corrente" valor={fmt(grandezas?.desequilibrioCorrente, 1)} unidade="%" />
+          <Grandeza carregando={sk} rotulo="Desequilíbrio Tensão" valor={fmt(grandezas?.desequilibrioTensao, 1)} unidade="%" />
+          <Grandeza carregando={sk} rotulo="Desequilíbrio Corrente" valor={fmt(grandezas?.desequilibrioCorrente, 1)} unidade="%" />
         </div>
       </div>
       </PanelCard>
