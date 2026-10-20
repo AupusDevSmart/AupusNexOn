@@ -21,7 +21,7 @@ const MARGEM = { top: 12, right: 16, bottom: 28, left: 64 };
 /** Séries de referência: sem bolinha no hover (só a demanda tem). */
 const CHAVES_REFERENCIA = new Set(['valorContratado', 'valorAdicional', 'valorContratadoCarga', 'valorAdicionalCarga']);
 const COR_CONSUMO = COR.potencia;
-/** Eixo do fluxo: consumo fica abaixo do zero, mas o rótulo mostra o módulo. */
+/** Eixo do fluxo: geração fica abaixo do zero, mas o rótulo mostra o módulo. */
 const eixoFluxo = (kw: number) => potenciaEixo(Math.abs(kw));
 
 export interface ReferenciasDemanda {
@@ -42,7 +42,7 @@ interface GraficoDemandaProps {
   expandido?: boolean;
   /** Classes do wrapper no card (altura). */
   className?: string;
-  /** Pontos com `geracao`/`consumo` (mesclarFluxo): geração para cima, consumo para baixo. */
+  /** Pontos com `geracao`/`consumo` (mesclarFluxo): consumo para cima, geração para baixo. */
   fluxo?: boolean;
 }
 
@@ -67,7 +67,7 @@ export function GraficoDemanda({
 
   const rotuloAdicional = `Contratado +${referencias?.percentualAdicional ?? 0}%`;
   const temGeracao = fluxo && pontos.some((p) => p.geracao != null);
-  const temConsumo = fluxo && pontos.some((p) => (p.consumo ?? 0) !== 0);
+  const temConsumo = fluxo && pontos.some((p) => p.consumo != null && p.consumo !== 0);
   const temRefCarga = fluxo && pontos.some((p) => p.valorContratadoCarga != null);
   const temRefGeracao = !!referencias && (!fluxo || temGeracao);
   const linhaRef = (dataKey: string, cor: string, dash: string) => (
@@ -88,11 +88,11 @@ export function GraficoDemanda({
   const seriesFluxo = (
     <>
       {temGeracao && (
-        <Area dataKey="geracao" fill={COR.geracao} fillOpacity={0.3} gradientToOpacity={0.04}
+        <Area dataKey="geracao" fill={COR.geracao} fillOpacity={0.18} gradientToOpacity={0.18}
           showLine={false} showHighlight={false} curve={curveMonotoneX} animate={false} />
       )}
       {temConsumo && (
-        <Area dataKey="consumo" fill={COR_CONSUMO} fillOpacity={0.18} gradientToOpacity={0.18}
+        <Area dataKey="consumo" fill={COR_CONSUMO} fillOpacity={0.3} gradientToOpacity={0.04}
           showLine={false} showHighlight={false} curve={curveMonotoneX} animate={false} />
       )}
       {temGeracao && (
@@ -175,16 +175,16 @@ export function GraficoDemanda({
           const p = point as PontoDemanda;
           if (fluxo) {
             const refs = [
-              ...(temRefGeracao && referencias ? [{ label: 'Contratado (geração)', value: `${formatarKw(referencias.contratado)} kW`, cor: COR.neutro }] : []),
               ...(temRefCarga && p.valorContratadoCarga != null ? [{ label: 'Contratado (carga)', value: `${formatarKw(Math.abs(p.valorContratadoCarga))} kW`, cor: COR.neutro }] : []),
+              ...(temRefGeracao && referencias ? [{ label: 'Contratado (geração)', value: `${formatarKw(referencias.contratado)} kW`, cor: COR.neutro }] : []),
             ];
             return (
               <TooltipDestaque
                 titulo={weekdayDateFmt.format(p.date)}
                 linhas={[
-                  ...(temGeracao ? [{ label: 'Geração', value: `${formatarKw(p.geracao ?? 0)} kW`, cor: COR.geracao }] : []),
                   ...(temConsumo ? [{ label: 'Consumo', value: `${formatarKw(Math.abs(p.consumo ?? 0))} kW`, cor: COR_CONSUMO }] : []),
-                  ...(temGeracao && temConsumo ? [{ label: 'Saldo', value: `${formatarKw(p.potencia)} kW` }] : []),
+                  ...(temGeracao ? [{ label: 'Geração', value: `${formatarKw(Math.abs(p.geracao ?? 0))} kW`, cor: COR.geracao }] : []),
+                  ...(temGeracao && temConsumo ? [{ label: 'Líquido (consumo − geração)', value: `${formatarKw(p.potencia)} kW` }] : []),
                   ...refs,
                 ]}
               />
@@ -213,8 +213,8 @@ export function GraficoDemanda({
 
   const itensLegenda: ItemLegenda[] = fluxo
     ? [
-        ...(temGeracao ? [{ rotulo: 'Geração', cor: COR.geracao }] : []),
         ...(temConsumo ? [{ rotulo: 'Consumo', cor: COR_CONSUMO }] : []),
+        ...(temGeracao ? [{ rotulo: 'Geração', cor: COR.geracao }] : []),
         ...(temRefGeracao || temRefCarga
           ? [
               { rotulo: 'Contratado', cor: COR.neutro, tracejada: true },

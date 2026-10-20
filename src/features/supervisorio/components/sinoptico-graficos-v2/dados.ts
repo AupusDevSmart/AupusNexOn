@@ -16,10 +16,10 @@ export interface PontoDemanda extends Record<string, unknown> {
   /** Linhas de referência — só no período "dia". */
   valorContratado?: number;
   valorAdicional?: number;
-  /** Fluxo separado: geração para cima (≥ 0), consumo para baixo (≤ 0). */
+  /** Fluxo separado: consumo para cima (≥ 0), geração para baixo (≤ 0). */
   geracao?: number;
   consumo?: number;
-  /** Contratado da carga, desenhado no lado negativo (consumo). */
+  /** Contratado da carga, desenhado no lado positivo (consumo). Os de geração ficam negativos. */
   valorContratadoCarga?: number;
   valorAdicionalCarga?: number;
 }
@@ -127,10 +127,10 @@ export function montarPontosDemanda(
 
 /**
  * Junta as séries de geração e de consumo (cada uma montada por montarPontosDemanda)
- * num eixo só: geração positiva, consumo negativo. As consultas são separadas, então
- * os instantes nem sempre coincidem — cada série repete o último valor até o próximo
- * ponto dela (0 antes do primeiro). `potencia` = saldo (geração − consumo), usado
- * pelo zoom/brush.
+ * num eixo só: consumo positivo (para cima), geração negativa (para baixo) — convenção
+ * do medidor da concessionária. As consultas são separadas, então os instantes nem
+ * sempre coincidem — cada série repete o último valor até o próximo ponto dela (0 antes
+ * do primeiro). `potencia` = líquido da rede (consumo − geração), usado pelo zoom/brush.
  */
 export function mesclarFluxo(
   ger: PontoDemanda[],
@@ -144,17 +144,17 @@ export function mesclarFluxo(
   let g = 0;
   let c = 0;
   return tempos.map((t) => {
-    while (ig < ger.length && ger[ig].date.getTime() <= t) g = ger[ig++].potencia;
-    while (ic < con.length && con[ic].date.getTime() <= t) c = -Math.abs(con[ic++].potencia);
-    const ponto: PontoDemanda = { date: new Date(t), potencia: g + c, consumo: c };
+    while (ig < ger.length && ger[ig].date.getTime() <= t) g = -Math.abs(ger[ig++].potencia);
+    while (ic < con.length && con[ic].date.getTime() <= t) c = Math.abs(con[ic++].potencia);
+    const ponto: PontoDemanda = { date: new Date(t), potencia: c + g, consumo: c };
     if (ger.length) ponto.geracao = g;
     if (refGer?.valorContratado != null) {
-      ponto.valorContratado = refGer.valorContratado;
-      ponto.valorAdicional = refGer.valorAdicional;
+      ponto.valorContratado = -refGer.valorContratado;
+      ponto.valorAdicional = refGer.valorAdicional != null ? -refGer.valorAdicional : undefined;
     }
     if (carga && con.length) {
-      ponto.valorContratadoCarga = -carga.contratado;
-      ponto.valorAdicionalCarga = -carga.adicional;
+      ponto.valorContratadoCarga = carga.contratado;
+      ponto.valorAdicionalCarga = carga.adicional;
     }
     return ponto;
   });
