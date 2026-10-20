@@ -14,6 +14,27 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { useToast } from '@/hooks/use-toast';
 import { useDiagramStore } from '../../hooks/useDiagramStore';
 import { COR_GRUPO_PADRAO } from './GrupoNode';
+import { CORES_GRUPO } from '../../utils/grupos';
+
+/** Bolinhas da paleta; a escolhida ganha anel. */
+const Paleta: React.FC<{ valor?: string | null; onEscolher: (cor: string) => void }> = ({ valor, onEscolher }) => (
+  <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Cor do grupo">
+    {CORES_GRUPO.map(cor => (
+      <button
+        key={cor}
+        type="button"
+        role="radio"
+        aria-checked={valor === cor}
+        title={cor}
+        onClick={() => onEscolher(cor)}
+        className={`h-5 w-5 rounded-full transition-transform hover:scale-110 ${
+          valor === cor ? 'ring-2 ring-offset-2 ring-offset-background ring-foreground' : ''
+        }`}
+        style={{ background: cor }}
+      />
+    ))}
+  </div>
+);
 
 export const AgruparSelecao: React.FC<{ selecionadosIds: string[] }> = ({ selecionadosIds }) => {
   const grupos = useDiagramStore(st => st.grupos);
@@ -21,6 +42,7 @@ export const AgruparSelecao: React.FC<{ selecionadosIds: string[] }> = ({ seleci
   const { toast } = useToast();
   const [aberto, setAberto] = useState(false);
   const [nome, setNome] = useState('');
+  const [cor, setCor] = useState<string>(CORES_GRUPO[0]);
 
   // JP não entra em grupo (some sozinho junto com o grupo)
   const ids = useMemo(() => {
@@ -38,7 +60,7 @@ export const AgruparSelecao: React.FC<{ selecionadosIds: string[] }> = ({ seleci
   const criar = () => {
     const st = useDiagramStore.getState();
     const nomeFinal = nome.trim() || `Grupo ${grupos.length + 1}`;
-    const id = st.criarGrupo(nomeFinal, ids);
+    const id = st.criarGrupo(nomeFinal, ids, cor);
     if (!id) return;
     st.clearSelection();
     setAberto(false);
@@ -55,7 +77,14 @@ export const AgruparSelecao: React.FC<{ selecionadosIds: string[] }> = ({ seleci
 
   return (
     <>
-      <Popover open={aberto} onOpenChange={setAberto}>
+      <Popover
+        open={aberto}
+        onOpenChange={v => {
+          setAberto(v);
+          // abre já com a próxima cor da paleta (grupos vizinhos diferentes)
+          if (v) setCor(CORES_GRUPO[grupos.length % CORES_GRUPO.length]);
+        }}
+      >
         <PopoverTrigger asChild>
           <Button
             variant="outline"
@@ -86,6 +115,9 @@ export const AgruparSelecao: React.FC<{ selecionadosIds: string[] }> = ({ seleci
             />
             <Button type="submit" size="sm" className="h-8">Criar</Button>
           </form>
+          <div className="mt-2.5">
+            <Paleta valor={cor} onEscolher={setCor} />
+          </div>
           {grupos.length > 0 && (
             <>
               <div className="text-xs text-muted-foreground mt-3 mb-1.5">ou colocar num grupo que já existe</div>
@@ -168,7 +200,19 @@ export const GruposLista: React.FC = () => {
         <div className="flex max-h-72 flex-col gap-2 overflow-y-auto">
           {grupos.map(g => (
             <div key={g.id} className="flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: g.cor || COR_GRUPO_PADRAO }} />
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    title="Trocar a cor"
+                    className="h-4 w-4 shrink-0 rounded-full ring-1 ring-border transition-transform hover:scale-110"
+                    style={{ background: g.cor || COR_GRUPO_PADRAO }}
+                  />
+                </PopoverTrigger>
+                <PopoverContent align="start" side="left" className="w-auto p-2.5">
+                  <Paleta valor={g.cor || COR_GRUPO_PADRAO} onEscolher={c => useDiagramStore.getState().colorirGrupo(g.id, c)} />
+                </PopoverContent>
+              </Popover>
               <Input
                 value={editando[g.id] ?? g.nome}
                 maxLength={80}
