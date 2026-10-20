@@ -19,6 +19,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { equipamentosApi } from '@/services/equipamentos.services';
 import { useDiagramStore } from '../hooks/useDiagramStore';
 import type { Equipment } from '../types/diagram.types';
+import { AgruparSelecao, GruposLista } from './Grupos/GruposEditor';
 
 export interface AvailableEquipment {
   id: string;
@@ -49,6 +50,8 @@ const ATALHOS: Array<[string, string]> = [
   ['Del', 'Apagar seleção'],
   ['Ctrl+C / Ctrl+V', 'Copiar / colar (cria novos)'],
   ['Ctrl+Z', 'Desfazer última ação'],
+  ['Ctrl+G', 'Agrupar seleção'],
+  ['Clique no bloco', 'Abrir / recolher grupo'],
   ['Ctrl+S', 'Salvar layout'],
   ['Scroll', 'Zoom'],
   ['Arraste (Mover)', 'Deslocar a tela'],
@@ -196,6 +199,7 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
           >
             <Trash2 className="h-4 w-4" />Excluir
           </Button>
+          <AgruparSelecao selecionadosIds={selectedIds} />
         </div>
       )}
 
@@ -205,6 +209,7 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
           <span>Equipamentos: {equipamentos.length}</span>
           <span>Conexões: {visualConnections.length}</span>
         </div>
+        <GruposLista />
         <Popover>
           <PopoverTrigger asChild>
             <Button variant="ghost" size="sm" className="flex items-center gap-1" title="Atalhos do teclado">

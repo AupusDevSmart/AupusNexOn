@@ -27,6 +27,10 @@ import {
 } from '../types/diagram.types';
 import { convertToVisualConnections } from '../utils/barramentoDetector';
 import { CANVAS, VIEWPORT } from '../utils/diagramConstants';
+import { caixaDe, gruposDaConfiguracao, montarVisao, novoIdGrupo, type Caixa } from '../utils/grupos';
+
+/** Duração do foco animado (abrir/fechar grupo). Bate com a transição do DiagramViewport. */
+export const FOCO_ANIMADO_MS = 650;
 
 // ============================================================================
 // TIPOS DA STORE
@@ -44,6 +48,8 @@ interface DiagramState {
   equipamentos: Equipment[];
   conexoes: Connection[];
   grupos: Grupo[];
+  /** Grupos abertos agora (estado de tela; o padrão vem de `recolhido`). */
+  gruposAbertos: string[];
 
   // Dados calculados (frontend only)
   visualConnections: VisualConnection[];
@@ -199,7 +205,7 @@ interface DiagramActions {
   /**
    * Ajusta viewport automaticamente para mostrar todos os equipamentos
    */
-  fitToContent: () => void;
+  fitToContent: (animar?: unknown) => void;
 
   // ============================================================================
   // EDITOR
@@ -297,15 +303,24 @@ interface DiagramActions {
   // GRUPOS
   // ============================================================================
 
-  /**
-   * Adiciona grupo (box tracejado)
-   */
-  addGrupo: (grupo: Grupo) => void;
-
-  /**
-   * Remove grupo
-   */
-  removeGrupo: (grupoId: string) => void;
+  // ===== GRUPOS (NEXON-31) =====
+  /** Junta os equipamentos num grupo novo (tira de grupo anterior). Devolve o id. */
+  criarGrupo: (nome: string, equipamentoIds: string[]) => string | null;
+  /** Põe os equipamentos num grupo que já existe. */
+  adicionarAoGrupo: (grupoId: string, equipamentoIds: string[]) => void;
+  renomearGrupo: (grupoId: string, nome: string) => void;
+  /** Desfaz o grupo (os equipamentos continuam no diagrama). */
+  desfazerGrupo: (grupoId: string) => void;
+  /** Tira os equipamentos do grupo deles; grupo que fica vazio some. */
+  tirarDoGrupo: (equipamentoIds: string[]) => void;
+  /** Arrasta o bloco recolhido (grid). */
+  moverCardGrupo: (grupoId: string, x: number, y: number) => void;
+  /** Abre ou recolhe com foco animado no que ficou visível. */
+  alternarGrupo: (grupoId: string) => void;
+  abrirTodosGrupos: () => void;
+  recolherTodosGrupos: () => void;
+  /** Centraliza e dá zoom numa caixa (grid), com animação opcional. */
+  focarCaixa: (caixa: Caixa, animar?: boolean, margem?: number) => void;
 }
 
 type DiagramStore = DiagramState & DiagramActions;
@@ -328,6 +343,7 @@ const initialState: DiagramState = {
   equipamentos: [],
   conexoes: [],
   grupos: [],
+  gruposAbertos: [],
   visualConnections: [],
   barramentos: [],
 
@@ -917,7 +933,7 @@ export const useDiagramStore = create<DiagramStore>()(
           console.log('[loadDiagrama] 🔍 Total equipamentos no diagrama:', [...equipamentosEspalhados, ...jpsLimpos].length);
 
           // Construir objeto diagrama completo COM junction points
-          const diagramaRawExtra = diagramaRaw as unknown as { unidadeId?: string; grupos?: Grupo[] };
+          const diagramaRawExtra = diagramaRaw as unknown as { unidadeId?: string; configuracoes?: unknown };
           const diagrama: Diagrama = {
             id: diagramaRaw.id.trim(),
             unidadeId: diagramaRawExtra.unidadeId || diagramaRaw.unidade_id,
@@ -925,7 +941,7 @@ export const useDiagramStore = create<DiagramStore>()(
             descricao: diagramaRaw.descricao,
             equipamentos: [...equipamentosEspalhados, ...jpsLimpos], // ✅ INCLUIR junction points
             conexoes: conexoesLimpas,
-            grupos: diagramaRawExtra.grupos || [],
+            grupos: gruposDaConfiguracao(diagramaRawExtra.configuracoes),
             createdAt: new Date(diagramaRaw.created_at),
             updatedAt: new Date(diagramaRaw.updated_at),
             deletedAt: null,
@@ -950,6 +966,7 @@ export const useDiagramStore = create<DiagramStore>()(
             equipamentos: diagrama.equipamentos,
             conexoes: diagrama.conexoes,
             grupos: diagrama.grupos || [],
+            gruposAbertos: (diagrama.grupos || []).filter(g => g.recolhido === false).map(g => g.id),
             visualConnections,
             barramentos,
             isLoading: false,
@@ -1175,6 +1192,18 @@ if (import.meta.env.PROD) {
               labelOffsetY: eq.labelOffsetY,
             })),
             conexoes: conexoesConvertidas,
+            // Grupos (NEXON-31): só membros que vão no layout; grupo vazio não vai
+            grupos: get().grupos
+              .map(g => ({
+                id: g.id,
+                nome: g.nome,
+                equipamentoIds: g.equipamentoIds.filter(id => equipamentosReais.some(eq => eq.id.trim() === id)),
+                cor: g.cor ?? undefined,
+                recolhido: g.recolhido ?? true,
+                posicaoX: Number.isFinite(g.posicaoX) ? g.posicaoX : undefined,
+                posicaoY: Number.isFinite(g.posicaoY) ? g.posicaoY : undefined,
+              }))
+              .filter(g => g.equipamentoIds.length > 0),
           };
 
           console.log('[saveLayout] 📤 PAYLOAD sendo enviado:', {
@@ -1457,32 +1486,29 @@ if (import.meta.env.PROD) {
         }));
       },
 
-      fitToContent: () => {
-        const { equipamentos } = get();
+      fitToContent: (animar?: unknown) => {
+        const { equipamentos, conexoes, grupos, gruposAbertos } = get();
+        // Grupo recolhido conta como o bloco, não como os membros espalhados
+        const visiveis = montarVisao(equipamentos, conexoes, grupos, new Set(gruposAbertos)).equipamentos;
+        const caixa = caixaDe(visiveis);
 
-        if (equipamentos.length === 0) {
+        if (!caixa) {
           set({
             viewport: { x: 0, y: 0, scale: VIEWPORT.DEFAULT_SCALE, isDragging: false },
           });
           return;
         }
+        // onClick passa o evento: só `true` liga a animação
+        get().focarCaixa(caixa, animar === true);
+      },
 
-        // Equipamentos em GRID UNITS (1 cell = 40px no espaço SVG, todos 2x2).
+      focarCaixa: (caixa: Caixa, animar = false, margem = 0.9) => {
         const GRID_SIZE = 40;
-        const EQUIPMENT_SIZE_GRID = 2;
-
         // Bbox em pixels SVG (coords do viewBox, NÃO pixels CSS).
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-        equipamentos.forEach(eq => {
-          const x = eq.posicaoX * GRID_SIZE;
-          const y = eq.posicaoY * GRID_SIZE;
-          if (x < minX) minX = x;
-          if (y < minY) minY = y;
-          const x2 = x + EQUIPMENT_SIZE_GRID * GRID_SIZE;
-          const y2 = y + EQUIPMENT_SIZE_GRID * GRID_SIZE;
-          if (x2 > maxX) maxX = x2;
-          if (y2 > maxY) maxY = y2;
-        });
+        const minX = caixa.minX * GRID_SIZE;
+        const minY = caixa.minY * GRID_SIZE;
+        const maxX = caixa.maxX * GRID_SIZE;
+        const maxY = caixa.maxY * GRID_SIZE;
 
         const contentWidth = Math.max(maxX - minX, 1);
         const contentHeight = Math.max(maxY - minY, 1);
@@ -1498,10 +1524,9 @@ if (import.meta.env.PROD) {
         // DiagramViewport.calculateViewBox). 1 px SVG → 1/3 px CSS.
         const SVG_TO_CSS = 1 / 3;
 
-        // Fit clássico: encolhe ate caber, com 10% de margem visual.
-        const PADDING = 0.9;
-        const fitScaleX = (viewportWidth * PADDING) / (contentWidth * SVG_TO_CSS);
-        const fitScaleY = (viewportHeight * PADDING) / (contentHeight * SVG_TO_CSS);
+        // Fit clássico: encolhe ate caber, com margem visual.
+        const fitScaleX = (viewportWidth * margem) / (contentWidth * SVG_TO_CSS);
+        const fitScaleY = (viewportHeight * margem) / (contentHeight * SVG_TO_CSS);
         const fitScale = Math.min(fitScaleX, fitScaleY);
 
         const clampedScale = Math.max(
@@ -1519,8 +1544,14 @@ if (import.meta.env.PROD) {
         const panY = -centerY * SVG_TO_CSS * clampedScale;
 
         set({
-          viewport: { x: panX, y: panY, scale: clampedScale, isDragging: false },
+          viewport: { x: panX, y: panY, scale: clampedScale, isDragging: false, animando: animar },
         });
+        if (animar) {
+          setTimeout(() => {
+            const v = get().viewport;
+            if (v.animando) set({ viewport: { ...v, animando: false } });
+          }, FOCO_ANIMADO_MS);
+        }
       },
 
       // ========================================================================
@@ -1578,9 +1609,15 @@ if (import.meta.env.PROD) {
         const minX = Math.min(x1, x2), maxX = Math.max(x1, x2);
         const minY = Math.min(y1, y2), maxY = Math.max(y1, y2);
         set(state => {
+          // Membro de grupo recolhido está escondido no bloco: não entra na caixa
+          const abertos = new Set(state.gruposAbertos);
+          const escondidos = new Set(
+            state.grupos.filter(g => !abertos.has(g.id)).flatMap(g => g.equipamentoIds),
+          );
           const dentro = state.equipamentos
             .filter(eq =>
               eq.tipo !== 'JUNCTION_POINT' &&
+              !escondidos.has(eq.id) &&
               eq.posicaoX >= minX && eq.posicaoX <= maxX &&
               eq.posicaoY >= minY && eq.posicaoY <= maxY
             )
@@ -1982,18 +2019,103 @@ if (import.meta.env.PROD) {
       // GRUPOS
       // ========================================================================
 
-      addGrupo: (grupo: Grupo) => {
+      // ========================================================================
+      // GRUPOS (NEXON-31)
+      // ========================================================================
+
+      criarGrupo: (nome: string, equipamentoIds: string[]) => {
+        const { equipamentos } = get();
+        const validos = new Set(equipamentos.filter(e => e.tipo !== 'JUNCTION_POINT').map(e => e.id));
+        const membros = [...new Set(equipamentoIds.map(id => id.trim()))].filter(id => validos.has(id));
+        if (membros.length === 0) return null;
+        const id = novoIdGrupo();
+        set(state => {
+          const restantes = state.grupos
+            .map(g => ({ ...g, equipamentoIds: g.equipamentoIds.filter(e => !membros.includes(e)) }))
+            .filter(g => g.equipamentoIds.length > 0);
+          return {
+            grupos: [...restantes, { id, nome: nome.trim() || `Grupo ${restantes.length + 1}`, equipamentoIds: membros, recolhido: true }],
+            isDirty: true,
+          };
+        });
+        return id;
+      },
+
+      adicionarAoGrupo: (grupoId: string, equipamentoIds: string[]) => {
+        const { equipamentos } = get();
+        const validos = new Set(equipamentos.filter(e => e.tipo !== 'JUNCTION_POINT').map(e => e.id));
+        const novos = [...new Set(equipamentoIds.map(id => id.trim()))].filter(id => validos.has(id));
+        if (novos.length === 0) return;
         set(state => ({
-          grupos: [...state.grupos, grupo],
+          grupos: state.grupos
+            .map(g =>
+              g.id === grupoId
+                ? { ...g, equipamentoIds: [...g.equipamentoIds.filter(e => !novos.includes(e)), ...novos] }
+                : { ...g, equipamentoIds: g.equipamentoIds.filter(e => !novos.includes(e)) },
+            )
+            .filter(g => g.equipamentoIds.length > 0),
           isDirty: true,
         }));
       },
 
-      removeGrupo: (grupoId: string) => {
+      renomearGrupo: (grupoId: string, nome: string) => {
+        const limpo = nome.trim();
+        if (!limpo) return;
         set(state => ({
-          grupos: state.grupos.filter(g => g.id !== grupoId),
+          grupos: state.grupos.map(g => (g.id === grupoId ? { ...g, nome: limpo } : g)),
           isDirty: true,
         }));
+      },
+
+      desfazerGrupo: (grupoId: string) => {
+        set(state => ({
+          grupos: state.grupos.filter(g => g.id !== grupoId),
+          gruposAbertos: state.gruposAbertos.filter(id => id !== grupoId),
+          isDirty: true,
+        }));
+      },
+
+      tirarDoGrupo: (equipamentoIds: string[]) => {
+        const sair = new Set(equipamentoIds.map(id => id.trim()));
+        set(state => ({
+          grupos: state.grupos
+            .map(g => ({ ...g, equipamentoIds: g.equipamentoIds.filter(e => !sair.has(e)) }))
+            .filter(g => g.equipamentoIds.length > 0),
+          isDirty: true,
+        }));
+      },
+
+      moverCardGrupo: (grupoId: string, x: number, y: number) => {
+        set(state => ({
+          grupos: state.grupos.map(g => (g.id === grupoId ? { ...g, posicaoX: x, posicaoY: y } : g)),
+          isDirty: true,
+        }));
+      },
+
+      alternarGrupo: (grupoId: string) => {
+        const { gruposAbertos, grupos, equipamentos } = get();
+        const grupo = grupos.find(g => g.id === grupoId);
+        if (!grupo) return;
+        const abrindo = !gruposAbertos.includes(grupoId);
+        set({ gruposAbertos: abrindo ? [...gruposAbertos, grupoId] : gruposAbertos.filter(id => id !== grupoId) });
+        if (abrindo) {
+          // Zoom nos membros: o grupo "abre" na frente de quem clicou
+          const membros = equipamentos.filter(e => grupo.equipamentoIds.includes(e.id));
+          const caixa = caixaDe(membros);
+          if (caixa) get().focarCaixa({ minX: caixa.minX - 1, minY: caixa.minY - 2, maxX: caixa.maxX + 1, maxY: caixa.maxY + 1 }, true, 0.85);
+        } else {
+          get().fitToContent(true);
+        }
+      },
+
+      abrirTodosGrupos: () => {
+        set(state => ({ gruposAbertos: state.grupos.map(g => g.id) }));
+        get().fitToContent(true);
+      },
+
+      recolherTodosGrupos: () => {
+        set({ gruposAbertos: [] });
+        get().fitToContent(true);
       },
     }),
     { name: 'DiagramStore' }

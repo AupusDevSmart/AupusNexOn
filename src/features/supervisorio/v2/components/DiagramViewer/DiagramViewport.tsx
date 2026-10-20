@@ -13,6 +13,7 @@ import React, { useRef, useCallback, useEffect, useState, MouseEvent } from 'rea
 import { useDiagramStore } from '../../hooks/useDiagramStore';
 import { CANVAS, GRID, VIEWPORT, getThemeColors, pixelsToGrid, gridToPixels, PORT } from '../../utils/diagramConstants';
 import { getPortPoint } from '../../utils/orthogonalRouting';
+import { grupoIdDoNo } from '../../utils/grupos';
 import './DiagramViewport.css';
 
 interface DiagramViewportProps {
@@ -279,8 +280,15 @@ export const DiagramViewport: React.FC<DiagramViewportProps> = ({ children, onBa
         const gridX = pixelsToGrid(equipmentX, editor.snapToGrid);
         const gridY = pixelsToGrid(equipmentY, editor.snapToGrid);
 
-        // Multi-seleção: se o item arrastado faz parte dela, move todos pelo mesmo delta
+        // Bloco de grupo recolhido (NEXON-31): move só o bloco
         const dragId = editor.draggingEquipmentId;
+        const grupoArrastado = grupoIdDoNo(dragId);
+        if (grupoArrastado) {
+          useDiagramStore.getState().moverCardGrupo(grupoArrastado, gridX, gridY);
+          return;
+        }
+
+        // Multi-seleção: se o item arrastado faz parte dela, move todos pelo mesmo delta
         if (editor.selectedEquipmentIds.length > 1 && editor.selectedEquipmentIds.includes(dragId)) {
           const eqAtual = equipamentos.find(eq2 => eq2.id === dragId);
           if (eqAtual) {
@@ -452,7 +460,12 @@ export const DiagramViewport: React.FC<DiagramViewportProps> = ({ children, onBa
             left: '50%',
             transform: `translate(-50%, -50%) translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.scale})`,
             transformOrigin: 'center center',
-            transition: viewport.isDragging ? 'none' : 'transform 0.1s ease-out',
+            // Foco animado (abrir/fechar grupo) usa transição longa; o resto continua ágil
+            transition: viewport.isDragging
+              ? 'none'
+              : viewport.animando
+                ? 'transform 0.65s cubic-bezier(0.22, 1, 0.36, 1)'
+                : 'transform 0.1s ease-out',
             touchAction: 'none',
             cursor: editor.draggingEquipmentId ? 'grabbing' : undefined,
           }}

@@ -140,24 +140,20 @@ export interface Barramento {
 // GRUPOS (BOXES TRACEJADOS)
 // ============================================================================
 
+/**
+ * Agrupamento do unifilar (NEXON-31): vários equipamentos sob um nome. Recolhido
+ * vira um bloco só; aberto mostra os membros. Gravado em configuracoes.grupos.
+ */
 export interface Grupo {
   id: string;
   nome: string;
-  diagramaId: string;
-
-  // Área delimitada (coordenadas de grid)
-  x: number;
-  y: number;
-  largura: number;
-  altura: number;
-
-  // Estilo
-  cor?: string; // Cor da borda (tema-aware)
-
-  // Metadados
-  createdAt: Date;
-  updatedAt: Date;
-  deletedAt: Date | null;
+  equipamentoIds: string[];
+  cor?: string | null;
+  /** Como abre para quem vê o diagrama (padrão: recolhido). */
+  recolhido?: boolean;
+  /** Bloco recolhido (grid, canto superior esquerdo). Vazio = centro dos membros. */
+  posicaoX?: number | null;
+  posicaoY?: number | null;
 }
 
 // ============================================================================
@@ -190,6 +186,8 @@ export interface ViewportState {
   y: number; // Pan vertical (pixels)
   scale: number; // Zoom (0.1 a 2.0)
   isDragging: boolean;
+  /** Transição longa (foco animado ao abrir/fechar grupo). */
+  animando?: boolean;
 }
 
 // ============================================================================
