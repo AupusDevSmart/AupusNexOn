@@ -26,6 +26,16 @@ export type LunaConfig = {
     kinds?: string[];
   };
   project?: { name?: string };
+  /** NEXON-34 (port do NEXUS-183): aba "Dúvidas" (conversa com a IA do Luna), ligada no quadro em Configurações › Widget. */
+  support?: LunaSuporte;
+};
+
+export type LunaSuporte = {
+  enabled?: boolean;
+  title?: string;
+  welcome?: string;
+  message_chars?: number;
+  conversation_messages?: number;
 };
 
 export type LunaResposta<T = Record<string, unknown>> = { ok: boolean; status: number; body: T };
@@ -83,6 +93,34 @@ export async function lunaMeus(token: string): Promise<{ status: number; meus: L
       open: Array.isArray(r.body.open) ? r.body.open : [],
     },
   };
+}
+
+// NEXON-34 (port do NEXUS-183): dúvidas com a IA do Luna (receita, "Dúvidas e suporte por IA", LUNA-773).
+// A resposta não vem na hora: a mensagem nasce `pending` e a conversa é relida até virar
+// `done`, `blocked` ou `failed` (nos três `answer` já é o texto para mostrar).
+export type LunaDuvidaMsg = { id: string | number; question: string; answer?: string | null; status: string };
+export type LunaDuvidaConversa = { id: string; status?: string; remaining?: number | null };
+export type LunaDuvidaResposta = {
+  conversation?: LunaDuvidaConversa;
+  messages?: LunaDuvidaMsg[];
+  message?: LunaDuvidaMsg | string;
+  error?: string;
+  code?: string;
+};
+
+export function lunaDuvidaEnviar(token: string, texto: string, conversa?: string) {
+  const fd = new FormData();
+  fd.append("session", token);
+  fd.append("message", texto);
+  if (conversa) fd.append("conversation", conversa);
+  return lunaPost<LunaDuvidaResposta>("/support/messages", fd);
+}
+
+export function lunaDuvidaLer(token: string, conversa: string) {
+  const fd = new FormData();
+  fd.append("session", token);
+  fd.append("conversation", conversa);
+  return lunaPost<LunaDuvidaResposta>("/support/conversation", fd);
 }
 
 /** "há 3 dias", "há 2 horas": o resumo fala como gente. */

@@ -29,7 +29,8 @@ import {
 import { cn } from "@/lib/utils";
 import { useUserStore } from "@/store/useUserStore";
 import { useMediaQuery } from "@/hooks/use-media-query";
-import { papeisDoUsuario, useLunaPedidos } from "./luna-store";
+import { papeisDoUsuario, useLunaPedidos, type LunaAba } from "./luna-store";
+import { LunaDuvidas } from "./luna-duvidas";
 import {
   LUNA_KEY,
   LUNA_WEB,
@@ -136,6 +137,7 @@ export function LunaPedidosPainel() {
   const [gravando, setGravando] = useState(0); // segundos; 0 = parado
   const [arrastando, setArrastando] = useState(false);
   const [teclado, setTeclado] = useState(0);
+  const [rascunhoDuvida, setRascunhoDuvida] = useState("");
   const [alturaVisivel, setAlturaVisivel] = useState(0); // px do viewport visual (encolhe com o teclado)
 
   const abertoEm = useRef(Date.now());
@@ -587,6 +589,17 @@ export function LunaPedidosPainel() {
   const pronto = qtd >= minimo || (temAudio && qtd === 0);
   const podeAnexar = tela === "pedido" && !!sessao;
   const portal = meus?.portal_url || `${LUNA_WEB}/portal`;
+  // NEXON-34 (port do NEXUS-183): "Dúvidas" só aparece com o suporte por IA ligado no quadro (Configurações › Widget).
+  const suporte = config?.support?.enabled ? config.support : null;
+  const abaAtual: LunaAba = aba === "meus" && meus ? "meus" : aba === "duvidas" && suporte ? "duvidas" : "novo";
+  const abas: [LunaAba, string, number][] = [["novo", "Novo pedido", 0]];
+  if (meus) abas.push(["meus", "Meus pedidos", meus.counts.ready]);
+  if (suporte) abas.push(["duvidas", "Dúvidas", 0]);
+  const sessaoVencida = () => {
+    trocarSessao(null);
+    setTela("entrar");
+    setErro("Sua sessão no Luna venceu. Entre de novo para continuar.");
+  };
 
   return createPortal(
     <div className="fixed inset-0 z-[60]" role="presentation" {...arraste} onPaste={aoColar}>
@@ -777,23 +790,22 @@ export function LunaPedidosPainel() {
             </form>
           )}
 
-          {tela === "pedido" && user && meus && (
-            <div className="mx-4 mt-4 grid grid-cols-2 gap-1 rounded-xl bg-muted p-1" role="tablist" aria-label="Pedidos">
-              {(
-                [
-                  ["novo", "Novo pedido", 0],
-                  ["meus", "Meus pedidos", meus.counts.ready],
-                ] as const
-              ).map(([id, rotulo, n]) => (
+          {tela === "pedido" && user && abas.length > 1 && (
+            <div
+              className={cn("mx-4 mt-4 grid gap-1 rounded-xl bg-muted p-1", abas.length === 3 ? "grid-cols-3" : "grid-cols-2")}
+              role="tablist"
+              aria-label="Pedidos"
+            >
+              {abas.map(([id, rotulo, n]) => (
                 <button
                   key={id}
                   type="button"
                   role="tab"
-                  aria-selected={aba === id}
+                  aria-selected={abaAtual === id}
                   onClick={() => setAba(id)}
                   className={cn(
                     "inline-flex min-h-10 min-w-0 items-center justify-center gap-1.5 rounded-lg px-2 text-sm font-medium transition",
-                    aba === id ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+                    abaAtual === id ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
                   )}
                 >
                   <span className="truncate">{rotulo}</span>
@@ -807,9 +819,24 @@ export function LunaPedidosPainel() {
             </div>
           )}
 
-          {tela === "pedido" && user && meus && aba === "meus" && <MeusPedidos meus={meus} portal={portal} />}
+          {tela === "pedido" && user && meus && abaAtual === "meus" && <MeusPedidos meus={meus} portal={portal} />}
 
-          {tela === "pedido" && user && (aba === "novo" || !meus) && (
+          {tela === "pedido" && sessao && suporte && abaAtual === "duvidas" && (
+            <LunaDuvidas
+              token={sessao.token}
+              suporte={suporte}
+              rascunho={rascunhoDuvida}
+              onRascunhoUsado={() => setRascunhoDuvida("")}
+              onSessaoVencida={sessaoVencida}
+              onAbrirPedido={(texto) => {
+                setTipo("Dúvida");
+                if (texto && !descricao.trim()) setDescricao(texto);
+                setAba("novo");
+              }}
+            />
+          )}
+
+          {tela === "pedido" && user && abaAtual === "novo" && (
             <form key="pedido" id="luna-pedido-form" className={cn("flex flex-col gap-5 p-4", ENTRADA)} onSubmit={enviar} noValidate>
               {!!meus?.counts.ready && (
                 <button
@@ -878,6 +905,20 @@ export function LunaPedidosPainel() {
                     window.setTimeout(() => campo.scrollIntoView({ block: "nearest" }), 350);
                   }}
                 />
+                {tipo === "Dúvida" && suporte && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRascunhoDuvida(descricao.trim());
+                      setAba("duvidas");
+                    }}
+                    className="flex min-h-11 w-full min-w-0 items-center gap-2.5 rounded-xl border border-sky-500/40 bg-sky-500/10 px-3 py-2 text-left text-sm transition hover:bg-sky-500/15"
+                  >
+                    <CircleHelp className="size-4 shrink-0 text-sky-500" />
+                    <span className="min-w-0 flex-1">Dúvida de como usar? Pergunte na aba Dúvidas e receba a resposta na hora.</span>
+                    <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+                  </button>
+                )}
                 {/* Medidor do mínimo: a pessoa sabe quanto falta sem tentar enviar. */}
                 <div className="flex items-center gap-3">
                   <div className="h-1 flex-1 overflow-hidden rounded-full bg-muted">
@@ -1049,7 +1090,7 @@ export function LunaPedidosPainel() {
           )}
         </div>
 
-        {tela === "pedido" && user && meus && aba === "meus" && (
+        {tela === "pedido" && user && meus && abaAtual === "meus" && (
           <div className="grid shrink-0 grid-cols-2 gap-2 border-t border-border p-4">
             <a href={portal} target="_blank" rel="noopener noreferrer" className={BOTAO_SECUNDARIO}>
               Abrir o Luna <ExternalLink className="size-4" />
@@ -1059,7 +1100,7 @@ export function LunaPedidosPainel() {
             </button>
           </div>
         )}
-        {tela === "pedido" && user && (aba === "novo" || !meus) && (
+        {tela === "pedido" && user && abaAtual === "novo" && (
           <div className="shrink-0 border-t border-border p-4">
             <button type="submit" form="luna-pedido-form" className={BOTAO_PRINCIPAL} disabled={ocupado || !!gravando}>
               {ocupado ? <Loader2 className="size-5 animate-spin" /> : <SendHorizontal className="size-5" />}

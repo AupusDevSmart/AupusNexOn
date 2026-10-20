@@ -20,7 +20,7 @@ export function temPapelLuna(user?: UsuarioDTO | null): boolean {
   return papeisDoUsuario(user).some((p) => PAPEIS_LUNA.includes(p));
 }
 
-export type LunaAba = "novo" | "meus";
+export type LunaAba = "novo" | "meus" | "duvidas";
 export type LunaAvisoPedido = { titulo: string; texto: string };
 
 // O botão mora no sidebar (que no celular é uma gaveta que se fecha) e o painel mora fora dele;
