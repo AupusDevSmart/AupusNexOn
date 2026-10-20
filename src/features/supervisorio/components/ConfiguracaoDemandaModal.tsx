@@ -64,6 +64,11 @@ export interface ConfiguracaoDemanda {
   demandaContratada?: number;
 }
 
+/** Só o que mede energia entra na lista: categoria NEUTRO (TON, disjuntor…) ou desconhecida fica de fora. */
+function medeEnergia(e: EquipamentoConfig): boolean {
+  return (CATEGORIA_FLUXO[e.categoria] ?? 'NEUTRO') !== 'NEUTRO';
+}
+
 interface ConfiguracaoDemandaModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -203,7 +208,7 @@ export function ConfiguracaoDemandaModal({
                     onClick={() => {
                       setConfig(prev => ({
                         ...prev,
-                        equipamentos: prev.equipamentos.map(e => ({ ...e, selecionado: true }))
+                        equipamentos: prev.equipamentos.map(e => ({ ...e, selecionado: medeEnergia(e) }))
                       }));
                     }}
                   >
@@ -226,14 +231,14 @@ export function ConfiguracaoDemandaModal({
 
               <ScrollArea className="h-[300px] rounded-[2px] border">
                 <div className="p-4 space-y-2">
-                  {config.equipamentos.length === 0 ? (
+                  {config.equipamentos.filter(medeEnergia).length === 0 ? (
                     <div className="text-center text-muted-foreground py-8">
                       <Activity className="h-12 w-12 mx-auto mb-4 opacity-50" />
                       <p className="font-medium">Nenhum equipamento disponível</p>
-                      <p className="text-sm mt-2">Verifique se há equipamentos com MQTT habilitado na unidade</p>
+                      <p className="text-sm mt-2">Verifique se há inversores ou medidores com MQTT habilitado na unidade</p>
                     </div>
                   ) : (
-                    config.equipamentos.map((equipamento) => {
+                    config.equipamentos.filter(medeEnergia).map((equipamento) => {
                       const fluxoPadrao = CATEGORIA_FLUXO[equipamento.categoria] ?? 'NEUTRO';
                       const ehAmbiguo = fluxoPadrao === 'AMBIGUO';
                       const escolhaManual = config.fluxoManual?.[equipamento.id];
@@ -315,7 +320,8 @@ export function ConfiguracaoDemandaModal({
               <div className="rounded-[2px] bg-muted p-3 text-xs space-y-1">
                 <p className="font-medium">Como o cálculo funciona:</p>
                 <p>Categorias inequívocas (Inversor PV, Motor, etc.) têm fluxo automático.</p>
-                <p>Power Meter e Medidor SSU dependem da instalação física — selecione manualmente acima.</p>
+                <p>Power Meter entra como consumo; Medidor SSU depende da instalação física — escolha o fluxo ao lado.</p>
+                <p>TON, disjuntores e demais equipamentos que não medem energia não aparecem aqui.</p>
                 <p>Não selecionados ou marcados como "Ignorar" não entram no agregado.</p>
               </div>
             </div>
