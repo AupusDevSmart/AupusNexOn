@@ -130,6 +130,8 @@ const ReleEventosPage = lazy(() =>
 );
 
 const RelatoriosPage = lazy(() => import("@/features/relatorios/RelatoriosPage"));
+// NEXON-33: folhas A4 do relatório de operação, sem o layout do app, para "Salvar como PDF".
+const ImprimirRelatorioOperacaoPage = lazy(() => import("@/features/relatorios/operacao/ImprimirRelatorioOperacaoPage"));
 const ChamadosPage = lazy(() => import("@/features/chamados/ChamadosPage"));
 // NEXON-21: Ativos › Proprietários e Ativos › Instalações
 const ProprietariosPage = lazy(() => import("@/features/ativos/ProprietariosPage"));
@@ -177,6 +179,19 @@ export const appRoutes = createBrowserRouter([
   {
     path: "/redefinir-senha",
     element: <RedefinirSenhaPage />,
+  },
+
+  {
+    path: "/relatorios/operacao/imprimir",
+    element: (
+      <ProtectedRoute>
+        <RequirePermission permission="Monitoramento">
+          <Suspense fallback={<PaginaSkeleton />}>
+            <ImprimirRelatorioOperacaoPage />
+          </Suspense>
+        </RequirePermission>
+      </ProtectedRoute>
+    ),
   },
 
   // ✅ Rotas protegidas
