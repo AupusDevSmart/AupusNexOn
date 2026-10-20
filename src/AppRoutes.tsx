@@ -139,6 +139,7 @@ const InstalacoesPage = lazy(() => import("@/features/ativos/InstalacoesPage"));
 const CadastroRegrasLogsPage = lazy(() =>
   import("@/pages/cadastros/regras-logs")
 );
+const ConfiguracoesNotificacoesPage = lazy(() => import("@/pages/configuracoes/notificacoes"));
 
 const CadastroIotCatalogPage = lazy(() =>
   import("@/pages/cadastros/iot-catalog")
@@ -404,6 +405,16 @@ export const appRoutes = createBrowserRouter([
             <ConcessionariasPage />
           </FeatureWrapper>
           </RequireNotCliente>
+        ),
+      },
+      {
+        path: "configuracoes/notificacoes",
+        element: (
+          <RequirePermission permission="usuarios.manage">
+            <Suspense fallback={<div>Carregando...</div>}>
+              <ConfiguracoesNotificacoesPage />
+            </Suspense>
+          </RequirePermission>
         ),
       },
       {

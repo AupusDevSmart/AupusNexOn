@@ -20,6 +20,7 @@ import {
   Users,
   Workflow,
   Zap,
+  BellRing,
 } from "lucide-react";
 
 /**
@@ -234,6 +235,14 @@ export const navigationLinks: Array<NavigationLink> = [
         icon: SquareTerminal,
         label: "Logs MQTT",
         hint: "Logs gerados pelas regras MQTT",
+      },
+      {
+        key: "configuracoes-notificacoes",
+        featureKey: "usuarios.manage",
+        path: "/configuracoes/notificacoes",
+        icon: BellRing,
+        label: "Notificações",
+        hint: "Quem é avisado, de quê e por qual canal",
       },
     ],
   },
