@@ -19,7 +19,7 @@ import { DiagramViewport } from './components/DiagramViewer/DiagramViewport';
 import { DiagramConnections } from './components/DiagramViewer/DiagramConnections';
 import { EquipmentNode } from './components/Equipment/EquipmentNode';
 import { GrupoCard, GrupoMoldura } from './components/Grupos/GrupoNode';
-import { caixaDaMoldura, centroDe, grupoIdDoNo, montarVisao, TAMANHO_CARD, TIPO_GRUPO, type Deslocamento } from './utils/grupos';
+import { centroDe, montarVisao, TIPO_GRUPO, type Deslocamento } from './utils/grupos';
 import { convertToVisualConnections } from './utils/barramentoDetector';
 import { exportDiagram, type ExportFormat } from './utils/exportDiagram';
 import { EditorToolbar } from './components/EditorToolbar';
@@ -100,13 +100,15 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
   const arrastandoId = useDiagramStore(state => state.editor.draggingEquipmentId);
   const deslocamentosCongelados = useRef<Map<string, Deslocamento> | null>(null);
   const visao = useMemo(() => {
-    const congelar = !!arrastandoId && !grupoIdDoNo(arrastandoId);
+    // Congela em qualquer arraste (membro, bloco ou grupo aberto pelo nome)
+    const congelar = !!arrastandoId;
+    const congelados = congelar ? deslocamentosCongelados.current : null;
     const v = montarVisao(
       equipamentos,
       conexoes,
       grupos,
       new Set(gruposAbertos),
-      congelar && deslocamentosCongelados.current ? { deslocamentos: deslocamentosCongelados.current } : {},
+      congelados ? { deslocamentos: congelados } : {},
     );
     if (!congelar) deslocamentosCongelados.current = v.deslocamentos;
     return v;
@@ -119,18 +121,6 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
     () => (visao.temGrupos ? convertToVisualConnections(visao.conexoes, visao.equipamentos) : null),
     [visao],
   );
-  // Bloco recolhido que ficou debaixo de um grupo aberto esmaece (o aberto manda)
-  const cardsApagados = useMemo(() => {
-    const molduras = visao.abertos.map(a => caixaDaMoldura(a.caixa));
-    const apagados = new Set<string>();
-    if (molduras.length === 0) return apagados;
-    for (const c of visao.cards) {
-      const x1 = c.no.posicaoX, y1 = c.no.posicaoY;
-      const x2 = x1 + TAMANHO_CARD.width, y2 = y1 + TAMANHO_CARD.height;
-      if (molduras.some(m => x1 < m.maxX && x2 > m.minX && y1 < m.maxY && y2 > m.minY)) apagados.add(c.grupo.id);
-    }
-    return apagados;
-  }, [visao]);
   const membrosAbertos = useMemo(
     () => new Set(visao.abertos.flatMap(a => a.membros.map(m => m.id))),
     [visao],
@@ -902,7 +892,7 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
           {/* Camada 3: blocos dos grupos recolhidos */}
           <AnimatePresence>
             {visao.cards.map(card => (
-              <GrupoCard key={`card-${card.grupo.id}`} card={card} apagado={cardsApagados.has(card.grupo.id)} />
+              <GrupoCard key={`card-${card.grupo.id}`} card={card} />
             ))}
           </AnimatePresence>
         </DiagramViewport>

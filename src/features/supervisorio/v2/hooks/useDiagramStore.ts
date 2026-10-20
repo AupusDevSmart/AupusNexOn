@@ -27,7 +27,7 @@ import {
 } from '../types/diagram.types';
 import { convertToVisualConnections } from '../utils/barramentoDetector';
 import { CANVAS, VIEWPORT } from '../utils/diagramConstants';
-import { caixaDe, centroDe, CORES_GRUPO, deslocarGrupo, grupoIdDoNo, gruposDaConfiguracao, levarMembrosAteOBloco, membroMaisProximo, montarVisao, novoIdGrupo, posicaoDoCard, separarGrupos, type Caixa, type Deslocamento } from '../utils/grupos';
+import { caixaDe, centroDe, CORES_GRUPO, deslocarGrupo, grupoIdDoNo, idNoGrupo, gruposDaConfiguracao, levarMembrosAteOBloco, membroMaisProximo, montarVisao, novoIdGrupo, posicaoDoCard, separarGrupos, type Caixa, type Deslocamento } from '../utils/grupos';
 
 /** Duração do foco animado (abrir/fechar grupo). Bate com a transição do DiagramViewport. */
 export const FOCO_ANIMADO_MS = 650;
@@ -2023,6 +2023,22 @@ if (import.meta.env.PROD) {
       },
 
       endDraggingEquipamento: () => {
+        // Bloco recolhido solto (NEXON-31): se ele aparecia afastado só na tela (saiu de
+        // baixo de uma moldura), a posição real vira a que aparece — sem pulo ao soltar.
+        {
+          const st = get();
+          const gid = grupoIdDoNo(st.editor.draggingEquipmentId ?? '');
+          const d = gid && !st.gruposAbertos.includes(gid) ? st.deslocamentoVisual.get(idNoGrupo(gid)) : undefined;
+          const moveu = !!st._dragStartPos && st._dragStartPos.some(p => {
+            const e = st.equipamentos.find(x => x.id === p.id);
+            return e && (e.posicaoX !== p.posicaoX || e.posicaoY !== p.posicaoY);
+          });
+          if (gid && d && moveu && (d.dx || d.dy)) {
+            set({ equipamentos: deslocarGrupo(st.equipamentos, st.conexoes, st.grupos, gid, d.dx, d.dy), isDirty: true });
+            get().recalcularRotas();
+          }
+        }
+
         // Se o arraste mudou alguma posição, registra 1 entrada de undo (posições antigas)
         const { _dragStartPos, equipamentos } = get();
         if (_dragStartPos) {

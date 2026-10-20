@@ -237,22 +237,35 @@ export function montarVisao(
     const d = deslocamentos.get(gid);
     if (d && (d.dx || d.dy)) deslocamentoDoEquipamento.set(eqId, d);
   }
+  // O grupo aberto é arrastado pelo nome como se fosse o bloco: o arraste desconta isto
+  for (const [gid, d] of deslocamentos) if (d.dx || d.dy) deslocamentoDoEquipamento.set(idNoGrupo(gid), d);
   const naTela = (e: Equipment): Equipment => {
     const d = deslocamentoDoEquipamento.get(e.id);
     return d ? { ...e, posicaoX: e.posicaoX + d.dx, posicaoY: e.posicaoY + d.dy } : e;
   };
 
-  const cards: CardDeGrupo[] = [];
   const abertosOut: GrupoAberto[] = [];
+  for (const g of abertosValidos) {
+    const membrosNaTela = membrosPorGrupo.get(g.id)!.map(naTela);
+    abertosOut.push({ grupo: g, membros: membrosNaTela, caixa: caixaDe(membrosNaTela)! });
+  }
+  const molduras = abertosOut.map(a => caixaDaMoldura(a.caixa));
+
+  const cards: CardDeGrupo[] = [];
   const nosSinteticos: Equipment[] = [];
   for (const g of gruposValidos) {
     const membros = membrosPorGrupo.get(g.id)!;
-    if (abertos.has(g.id)) {
-      const membrosNaTela = membros.map(naTela);
-      abertosOut.push({ grupo: g, membros: membrosNaTela, caixa: caixaDe(membrosNaTela)! });
-      continue;
+    if (abertos.has(g.id)) continue;
+    const real = posicaoDoCard(g, membros);
+    // Bloco que cairia debaixo de um grupo aberto desliza para fora da moldura (só na tela)
+    const d = opcoes.deslocamentos
+      ? opcoes.deslocamentos.get(g.id) ?? { dx: 0, dy: 0 }
+      : tirarDeBaixo({ minX: real.x, minY: real.y, maxX: real.x + TAMANHO_CARD.width, maxY: real.y + TAMANHO_CARD.height }, molduras);
+    if (d.dx || d.dy) {
+      deslocamentos.set(g.id, d);
+      deslocamentoDoEquipamento.set(idNoGrupo(g.id), d);
     }
-    const pos = posicaoDoCard(g, membros);
+    const pos = { x: real.x + d.dx, y: real.y + d.dy };
     const base = membros[0];
     const no: Equipment = {
       id: idNoGrupo(g.id),
@@ -414,6 +427,31 @@ const encostam = (a: Caixa, b: Caixa, folga: number) =>
   a.minX < b.maxX + folga && a.maxX + folga > b.minX && a.minY < b.maxY + folga && a.maxY + folga > b.minY;
 
 /**
+ * Bloco recolhido que cairia debaixo de moldura aberta: anda o mínimo para o lado
+ * mais perto até ficar fora de todas (fica clicável e arrastável).
+ */
+export function tirarDeBaixo(card: Caixa, molduras: Caixa[], folga = 0.5): Deslocamento {
+  let dx = 0, dy = 0;
+  for (let i = 0; i < 20; i++) {
+    const atual = deslocarCaixa(card, dx, dy);
+    const m = molduras.find(mm => encostam(atual, mm, folga));
+    if (!m) break;
+    const opcoes = [
+      { dx: m.minX - folga - atual.maxX, dy: 0 },
+      { dx: m.maxX + folga - atual.minX, dy: 0 },
+      { dx: 0, dy: m.minY - folga - atual.maxY },
+      { dx: 0, dy: m.maxY + folga - atual.minY },
+    ];
+    const melhor = opcoes.reduce((a, b) => (Math.abs(a.dx) + Math.abs(a.dy) <= Math.abs(b.dx) + Math.abs(b.dy) ? a : b));
+    dx += melhor.dx;
+    dy += melhor.dy;
+  }
+  // arredonda para longe da moldura (grid inteiro)
+  const r = (v: number) => (v > 0 ? Math.ceil(v - 1e-9) : Math.floor(v + 1e-9)) || 0;
+  return { dx: r(dx), dy: r(dy) };
+}
+
+/**
  * Tira caixas de cima umas das outras: de cima para baixo (e da esquerda para a
  * direita), a que invade outra já posicionada anda o mínimo para baixo ou para a
  * direita até sair. `porUltimo` = quem se ajeita (as outras ficam).
@@ -475,6 +513,22 @@ export function separarGrupos(
     movidos.push(id);
   }
   return { equipamentos: eqs, movidos };
+}
+
+/**
+ * Arraste: posição na tela (grid) → posição real, descontando o que só existe na
+ * tela (membro ou grupo afastado, bloco que saiu de baixo de moldura). O
+ * afastamento fica congelado durante o arraste; ao soltar um bloco, o store
+ * acerta a posição real para onde ele aparece (`endDraggingEquipamento`).
+ */
+export function posicaoRealDoArraste(
+  id: string,
+  x: number,
+  y: number,
+  deslocamentoVisual: ReadonlyMap<string, Deslocamento>,
+): { x: number; y: number } {
+  const d = deslocamentoVisual.get(id);
+  return d ? { x: x - d.dx, y: y - d.dy } : { x, y };
 }
 
 /** Lê os grupos de `configuracoes` tolerando lixo. */

@@ -13,7 +13,7 @@ import React, { useRef, useCallback, useEffect, useState, MouseEvent } from 'rea
 import { useDiagramStore } from '../../hooks/useDiagramStore';
 import { CANVAS, GRID, VIEWPORT, getThemeColors, pixelsToGrid, gridToPixels, PORT } from '../../utils/diagramConstants';
 import { getPortPoint } from '../../utils/orthogonalRouting';
-import { grupoIdDoNo, montarVisao } from '../../utils/grupos';
+import { grupoIdDoNo, montarVisao, posicaoRealDoArraste } from '../../utils/grupos';
 import './DiagramViewport.css';
 
 interface DiagramViewportProps {
@@ -358,9 +358,12 @@ export const DiagramViewport: React.FC<DiagramViewportProps> = ({ children, onBa
 
         // Converter de pixels para grid. Membro de grupo aberto pode estar deslocado
         // só na tela (grupos abertos se afastam): volta para a posição real.
-        const desl = useDiagramStore.getState().deslocamentoVisual.get(editor.draggingEquipmentId);
-        const gridX = pixelsToGrid(equipmentX, editor.snapToGrid) - (desl?.dx ?? 0);
-        const gridY = pixelsToGrid(equipmentY, editor.snapToGrid) - (desl?.dy ?? 0);
+        const { x: gridX, y: gridY } = posicaoRealDoArraste(
+          editor.draggingEquipmentId,
+          pixelsToGrid(equipmentX, editor.snapToGrid),
+          pixelsToGrid(equipmentY, editor.snapToGrid),
+          useDiagramStore.getState().deslocamentoVisual,
+        );
 
         // Bloco de grupo recolhido (NEXON-31): move só o bloco
         const dragId = editor.draggingEquipmentId;

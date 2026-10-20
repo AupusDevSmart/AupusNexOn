@@ -11,7 +11,7 @@ import React, { useRef, type MouseEvent } from 'react';
 import { motion } from 'motion/react';
 import { useDiagramStore } from '../../hooks/useDiagramStore';
 import { GRID, LABEL, PORT, getThemeColors } from '../../utils/diagramConstants';
-import { TAMANHO_CARD, resumoDoGrupo, type CardDeGrupo, type GrupoAberto } from '../../utils/grupos';
+import { TAMANHO_CARD, idNoGrupo, posicaoDoCard, resumoDoGrupo, type CardDeGrupo, type GrupoAberto } from '../../utils/grupos';
 import type { Equipment, PortPosition } from '../../types/diagram.types';
 
 /** Verde da marca: cor do grupo quando ele não tem uma própria. */
@@ -41,11 +41,9 @@ const plural = (rotulo: string, n: number) => {
 
 interface GrupoCardProps {
   card: CardDeGrupo;
-  /** Debaixo de um grupo aberto: esmaece e não pega clique. */
-  apagado?: boolean;
 }
 
-const GrupoCardImpl: React.FC<GrupoCardProps> = ({ card, apagado = false }) => {
+const GrupoCardImpl: React.FC<GrupoCardProps> = ({ card }) => {
   const theme = useDiagramStore(st => st.theme);
   const modo = useDiagramStore(st => st.editor.mode);
   const conectando = modo === 'connecting';
@@ -101,7 +99,7 @@ const GrupoCardImpl: React.FC<GrupoCardProps> = ({ card, apagado = false }) => {
       className="grupo-card"
       data-grupo-id={grupo.id}
       initial={{ opacity: 0, scale: 0.6 }}
-      animate={{ opacity: apagado ? 0.12 : 1, scale: 1 }}
+      animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.6 }}
       whileHover={modo === 'edit' ? undefined : { scale: 1.04 }}
       transition={MOLA}
@@ -109,7 +107,6 @@ const GrupoCardImpl: React.FC<GrupoCardProps> = ({ card, apagado = false }) => {
         transformBox: 'fill-box',
         transformOrigin: 'center',
         cursor: modo === 'edit' ? (arrastando ? 'grabbing' : 'grab') : 'pointer',
-        pointerEvents: apagado ? 'none' : undefined,
       }}
       onMouseDown={handleMouseDown}
       onClick={handleClick}
@@ -232,8 +229,33 @@ const GrupoMolduraImpl: React.FC<GrupoMolduraProps> = ({ aberto }) => {
   const titulo = `${encurtar(grupo.nome, 40)} · ${membros.length}`;
   const larguraTitulo = Math.max(120, titulo.length * 8 + 44);
 
+  const modo = useDiagramStore(st => st.editor.mode);
+  const arrastando = useDiagramStore(st => st.editor.draggingEquipmentId === idNoGrupo(grupo.id));
+  const descida = useRef<{ x: number; y: number } | null>(null);
+
+  // Em Editar, arrastar pelo nome move o grupo aberto inteiro (mesmo caminho do bloco)
+  const handleMouseDown = (e: MouseEvent<SVGGElement>) => {
+    e.stopPropagation();
+    descida.current = { x: e.clientX, y: e.clientY };
+    if (modo !== 'edit') return;
+    const svg = e.currentTarget.ownerSVGElement;
+    if (!svg) return;
+    const pt = svg.createSVGPoint();
+    pt.x = e.clientX;
+    pt.y = e.clientY;
+    const p = pt.matrixTransform(svg.getScreenCTM()?.inverse());
+    // posição do bloco como está na tela (membros já deslocados) → o arraste desconta
+    const bloco = posicaoDoCard({ ...grupo, posicaoX: null, posicaoY: null }, membros);
+    const st = useDiagramStore.getState();
+    st.clearSelection();
+    st.startDraggingEquipamento(idNoGrupo(grupo.id), { x: p.x - bloco.x * GRID.SIZE, y: p.y - bloco.y * GRID.SIZE });
+  };
+
   const recolher = (e: MouseEvent) => {
     e.stopPropagation();
+    const d = descida.current;
+    descida.current = null;
+    if (d && Math.hypot(e.clientX - d.x, e.clientY - d.y) > 4) return; // foi arraste
     useDiagramStore.getState().alternarGrupo(grupo.id);
   };
 
@@ -261,11 +283,11 @@ const GrupoMolduraImpl: React.FC<GrupoMolduraProps> = ({ aberto }) => {
         pointerEvents="none"
       />
       <g
-        style={{ cursor: 'pointer' }}
-        onMouseDown={e => e.stopPropagation()}
+        style={{ cursor: modo === 'edit' ? (arrastando ? 'grabbing' : 'grab') : 'pointer' }}
+        onMouseDown={handleMouseDown}
         onClick={recolher}
       >
-        <title>Recolher grupo</title>
+        <title>{modo === 'edit' ? 'Arraste para mover o grupo · clique para recolher' : 'Recolher grupo'}</title>
         <rect x={x + 12} y={y - 14} width={larguraTitulo} height={28} rx={14} fill={cor} />
         <text
           x={x + 28}
@@ -300,7 +322,7 @@ const GrupoMolduraImpl: React.FC<GrupoMolduraProps> = ({ aberto }) => {
         opacity={0.45}
         pointerEvents="none"
       >
-        clique no nome para recolher
+        {modo === 'edit' ? 'arraste o nome para mover · clique para recolher' : 'clique no nome para recolher'}
       </text>
     </motion.g>
   );
