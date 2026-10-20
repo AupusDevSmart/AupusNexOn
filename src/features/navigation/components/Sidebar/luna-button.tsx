@@ -17,7 +17,7 @@ export function LunaButton() {
 
   if (!veLuna) return null;
 
-  const dica = prontos ? `Pedido ao Luna · ${prontos} ${prontos === 1 ? "pronto" : "prontos"} para conferir` : "Pedido ao Luna";
+  const dica = prontos ? `Luna · ${prontos} ${prontos === 1 ? "pronto" : "prontos"} para conferir` : "Luna";
 
   return (
     <SidebarMenuButton
@@ -31,7 +31,7 @@ export function LunaButton() {
       className="relative h-10 rounded-lg border border-[#70C04B]/60 bg-[#70C04B]/5 font-medium text-nexon-link-claro dark:text-nexon-verde transition hover:bg-[#70C04B]/15 hover:text-nexon-link-claro dark:hover:text-nexon-verde active:scale-[0.98] group-data-[collapsible=icon]:rounded-xl"
     >
       <ClipboardPlus className="!size-5 shrink-0 group-data-[collapsible=icon]:!size-[22px]" />
-      <span className="flex min-w-0 flex-1 truncate group-data-[collapsible=icon]:hidden">Pedido ao Luna</span>
+      <span className="flex min-w-0 flex-1 truncate group-data-[collapsible=icon]:hidden">Luna</span>
       {prontos > 0 && (
         <>
           <span className="ml-auto inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-amber-500 px-1.5 text-[11px] font-bold leading-none text-white animate-in zoom-in-50 duration-300 group-data-[collapsible=icon]:hidden">

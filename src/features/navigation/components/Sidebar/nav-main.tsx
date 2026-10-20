@@ -1,4 +1,4 @@
-import { ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -198,6 +198,22 @@ function FlyoutSubItem({
 
 // ── Item do menu ──────────────────────────────────────────────────────────
 
+/** Selo à direita do nome: contorno verde no item ativo, cinza nos demais. */
+function SeloItem({ texto, destaque }: { texto: string; destaque: boolean }) {
+  return (
+    <span
+      className={cn(
+        "shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold leading-none tracking-wide",
+        destaque
+          ? "border border-nexon-verde/60 text-nexon-link-claro dark:text-nexon-verde"
+          : "bg-muted text-muted-foreground"
+      )}
+    >
+      {texto}
+    </span>
+  );
+}
+
 function NavMenuItem({ item }: { item: NavigationLink }) {
   const navigate = useNavigate();
   const { isMobile, state, setOpenMobile, setOpen } = useSidebar();
@@ -285,12 +301,13 @@ function NavMenuItem({ item }: { item: NavigationLink }) {
               )}
             >
               {item.icon && <item.icon className={cn("shrink-0", isCollapsed ? "!size-[22px]" : "!size-5")} />}
-              {!isCollapsed && <span className="text-sm flex-1">{item.label}</span>}
+              {!isCollapsed && <span className="text-sm flex-1 truncate">{item.label}</span>}
+              {!isCollapsed && item.badge && <SeloItem texto={item.badge} destaque={isSelected && !item.links} />}
               {!isCollapsed && item.links && (
-                <ChevronRight
+                <ChevronDown
                   className={cn(
                     "w-4 h-4 shrink-0 opacity-60 transition-transform duration-200",
-                    "group-data-[state=open]/collapsible:rotate-90"
+                    "group-data-[state=open]/collapsible:rotate-180"
                   )}
                 />
               )}

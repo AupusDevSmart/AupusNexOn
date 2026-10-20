@@ -1,19 +1,24 @@
-import { ChartNoAxesColumn } from "@/components/icons/ChartNoAxesColumn";
 import { featureFlags, type FeatureFlags } from "@/config/feature-flags";
 import {
   type LucideIcon,
   Activity,
-  Building2,
+  Bell,
+  Box,
+  Briefcase,
+  CalendarCheck,
   Cpu,
-  Monitor,
-  ScrollText,
-  Zap,
-  Users,
   Factory,
-  Database,
-  Boxes,
-  FileText,
-  Sun,
+  FileChartColumn,
+  Gauge,
+  Layers,
+  ListFilter,
+  MapPin,
+  Monitor,
+  Settings,
+  SquareTerminal,
+  Users,
+  Workflow,
+  Zap,
 } from "lucide-react";
 
 /**
@@ -32,6 +37,8 @@ export type NavigationLink = {
   hideForClient?: boolean;
   icon: LucideIcon | React.FC<React.SVGProps<SVGSVGElement>>;
   label: string;
+  /** Selo curto à direita do nome (ex.: "COA", "Admin"). */
+  badge?: string;
   hint?: string;
   /**
    * Outras rotas que contam como "estar nesta página" no menu, além do
@@ -42,15 +49,19 @@ export type NavigationLink = {
   links?: NavigationLink[];
 };
 
+// NEXON-21: menu em cinco blocos — Centro de Operação, Supervisório,
+// Relatórios, Ativos (o que é monitorado) e Configurações (o que é do admin).
+// Os endereços das telas antigas não mudaram; só o lugar e o nome no menu.
 export const navigationLinks: Array<NavigationLink> = [
   {
     key: "admin",
     featureKey: "dashboard.view",
     featureFlag: "enableCOA",
     path: "/dashboard",
-    icon: ChartNoAxesColumn,
-    label: "COA - Centro de Operações de Ativos",
-    hint: "COA - Centro de Operações de Ativos",
+    icon: Gauge,
+    label: "Centro de Operação",
+    badge: "COA",
+    hint: "Centro de Operação de Ativos (COA)",
   },
   // SCADA - sem permission Spatie correspondente; controlado so por feature flag
   {
@@ -70,53 +81,28 @@ export const navigationLinks: Array<NavigationLink> = [
     label: "Supervisório",
     hint: "Sistema de Supervisão NexON",
     links: [
-      // Cadastro de Unidades - OCULTO (usar Cadastros > Unidades)
-      // {
-      //   key: "supervisorio-cadastro-unidades",
-      //   featureKey: "supervisorio",
-      //   path: "/supervisorio/cadastro-unidades",
-      //   icon: Building2,
-      //   label: "Cadastro de Unidades",
-      //   hint: "Gerenciar unidades monitoradas",
-      // },
-      // {
-      //   key: "supervisorio-logs-eventos",
-      //   featureKey: "supervisorio",
-      //   path: "/supervisorio/logs-eventos",
-      //   icon: ScrollText,
-      //   label: "Logs de Eventos",
-      //   hint: "Histórico de eventos e alarmes",
-      // },
       {
         key: "supervisorio-sinoptico",
         path: "/supervisorio/sinoptico",
         ativoEm: ["/supervisorio/sinoptico-ativo"],
-        icon: Cpu,
+        icon: Workflow,
         label: "Sinóptico do Ativo",
         hint: "Visualização detalhada dos ativos",
-      },
-      {
-        key: "supervisorio-logs-mqtt",
-        featureKey: "supervisorio.iot_view",
-        path: "/logs/logs-mqtt",
-        icon: FileText,
-        label: "Logs MQTT",
-        hint: "Logs gerados pelas regras MQTT",
       },
       {
         key: "supervisorio-eventos-protecao",
         featureKey: "supervisorio.iot_view",
         path: "/supervisorio/eventos-protecao",
-        icon: Zap,
-        label: "Eventos de Proteção",
+        icon: Bell,
+        label: "Alarmes e Eventos",
         hint: "SOE — trips e atuações com a hora do próprio relé",
       },
       {
         key: "supervisorio-bdo-ufvs",
         featureKey: "Monitoramento",
         path: "/supervisorio/bdo-ufvs",
-        icon: Sun,
-        label: "BDO UFVs",
+        icon: CalendarCheck,
+        label: "Boletim Diário (BDO)",
         hint: "Painel BDO + sync de nuvem + curadoria de geração FV",
       },
     ],
@@ -125,71 +111,26 @@ export const navigationLinks: Array<NavigationLink> = [
     key: "relatorios",
     featureKey: "Monitoramento",
     path: "/relatorios",
-    icon: FileText,
+    icon: FileChartColumn,
     label: "Relatórios",
     hint: "Boletins de geração e consumo (PDF)",
   },
-  // Financeiro - OCULTO
-  // {
-  //   key: "financeiro",
-  //   featureKey: "Financeiro", // Corrigido para maiúscula
-  //   featureFlag: "enableFinanceiro",
-  //   path: "/financeiro",
-  //   icon: Zap,
-  //   label: "Financeiro",
-  //   hint: "Financeiro",
-  //   links: [
-  //     {
-  //       key: "financeiro-contas-a-pagar",
-  //       featureKey: "Financeiro",
-  //       path: "/financeiro/contas-a-pagar",
-  //       icon: ChartColumnBig,
-  //       label: "Contas a Pagar",
-  //       hint: "Contas a Pagar",
-  //     },
-  //     {
-  //       key: "financeiro-contas-a-receber",
-  //       featureKey: "Financeiro",
-  //       path: "/financeiro/contas-a-receber",
-  //       icon: SquareActivity,
-  //       label: "Contas a Receber",
-  //       hint: "Contas a Receber",
-  //     },
-  //     {
-  //       key: "financeiro-fluxo-caixa",
-  //       featureKey: "Financeiro",
-  //       path: "/financeiro/fluxo-caixa",
-  //       icon: BookUser,
-  //       label: "Fluxo de Caixa",
-  //       hint: "Fluxo de Caixa",
-  //     },
-  //     {
-  //       key: "financeiro-centros-custo",
-  //       featureKey: "Financeiro",
-  //       path: "/financeiro/centros-custo",
-  //       icon: Magnet,
-  //       label: "Centros de Custo",
-  //       hint: "Centros de Custo",
-  //     },
-  //   ],
-  // },
-  // Cadastros - grupo, visivel se pelo menos um filho for visivel
+  // Ativos - grupo, visivel se pelo menos um filho for visivel
   {
-    key: "cadastros",
-    featureFlag: "enableCadastros",
-    hideForClient: true, // cliente não vê Cadastros por enquanto (só monitoramento)
-    path: "/cadastros",
-    icon: Database,
-    label: "Cadastros",
-    hint: "Gestão de Cadastros",
+    key: "ativos",
+    hideForClient: true, // cliente não vê cadastros por enquanto (só monitoramento)
+    path: "/ativos",
+    icon: Layers,
+    label: "Ativos",
+    hint: "Proprietários, plantas, instalações e equipamentos",
     links: [
       {
-        key: "cadastros-usuarios",
-        featureKey: "usuarios.view",
-        path: "/cadastros/usuarios",
-        icon: Users,
-        label: "Usuários",
-        hint: "Gerenciar Usuários",
+        key: "ativos-proprietarios",
+        featureKey: "plantas.view",
+        path: "/ativos/proprietarios",
+        icon: Briefcase,
+        label: "Proprietários",
+        hint: "Donos das plantas",
       },
       {
         key: "cadastros-plantas",
@@ -200,12 +141,40 @@ export const navigationLinks: Array<NavigationLink> = [
         hint: "Gerenciar Plantas",
       },
       {
+        key: "ativos-instalacoes",
+        featureKey: "unidades.view",
+        path: "/ativos/instalacoes",
+        icon: MapPin,
+        label: "Instalações",
+        hint: "Instalações (unidades) de todas as plantas",
+      },
+      {
         key: "cadastros-equipamentos",
         featureKey: "equipamentos.view",
         path: "/cadastros/equipamentos",
-        icon: Boxes,
+        icon: Box,
         label: "Equipamentos",
         hint: "Gerenciar Equipamentos",
+      },
+    ],
+  },
+  // Configurações - grupo do admin, visivel se pelo menos um filho for visivel
+  {
+    key: "configuracoes",
+    hideForClient: true,
+    path: "/configuracoes",
+    icon: Settings,
+    label: "Configurações",
+    badge: "Admin",
+    hint: "Usuários, cadastros de apoio e logs",
+    links: [
+      {
+        key: "cadastros-usuarios",
+        featureKey: "usuarios.view",
+        path: "/cadastros/usuarios",
+        icon: Users,
+        label: "Usuários e Permissões",
+        hint: "Gerenciar Usuários",
       },
       {
         key: "cadastros-concessionarias",
@@ -216,20 +185,28 @@ export const navigationLinks: Array<NavigationLink> = [
         hint: "Gerenciar Concessionárias de Energia",
       },
       {
-        key: "cadastros-regras-logs",
-        featureKey: "supervisorio.iot_view",
-        path: "/cadastros/regras-logs",
-        icon: ScrollText,
-        label: "Regras de Logs",
-        hint: "Cadastrar regras de logs MQTT",
-      },
-      {
         key: "cadastros-iot-catalog",
         featureKey: "equipamentos.iot_catalog",
         path: "/cadastros/iot-catalog",
         icon: Cpu,
-        label: "Catálogo IoT",
-        hint: "Cadastrar tipos e modelos de dispositivos IoT (Modbus mapping)",
+        label: "Drivers de Equipamento",
+        hint: "Tipos e modelos de dispositivos IoT (mapa Modbus)",
+      },
+      {
+        key: "cadastros-regras-logs",
+        featureKey: "supervisorio.iot_view",
+        path: "/cadastros/regras-logs",
+        icon: ListFilter,
+        label: "Regras de Logs",
+        hint: "Cadastrar regras de logs MQTT",
+      },
+      {
+        key: "supervisorio-logs-mqtt",
+        featureKey: "supervisorio.iot_view",
+        path: "/logs/logs-mqtt",
+        icon: SquareTerminal,
+        label: "Logs MQTT",
+        hint: "Logs gerados pelas regras MQTT",
       },
     ],
   },

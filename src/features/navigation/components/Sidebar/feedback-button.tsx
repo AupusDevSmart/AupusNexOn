@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { MessageCircleWarning } from "lucide-react";
+import { MessageCircle } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -82,19 +82,19 @@ export function FeedbackButton() {
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
         <SidebarMenuButton
-          tooltip="Chame a Aupus!"
+          tooltip="Suporte"
           onClick={() => setIsOpen(true)}
           // Verde é a cor de ação da marca; texto sobre verde é sempre o azul NexON.
           className="h-10 rounded-lg bg-nexon-verde font-medium text-nexon-azul hover:bg-nexon-verde/90 hover:text-nexon-azul group-data-[collapsible=icon]:rounded-xl"
         >
-          <MessageCircleWarning className="!size-5 shrink-0 group-data-[collapsible=icon]:!size-[22px]" />
+          <MessageCircle className="!size-5 shrink-0 group-data-[collapsible=icon]:!size-[22px]" />
           {/* No trilho recolhido fica só o ícone, como nos demais itens. */}
-          <span className="flex group-data-[collapsible=icon]:hidden">Chame a Aupus!</span>
+          <span className="flex group-data-[collapsible=icon]:hidden">Suporte</span>
         </SidebarMenuButton>
       </DialogTrigger>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle>Chame a Aupus!</DialogTitle>
+          <DialogTitle>Suporte</DialogTitle>
           <DialogDescription>
             Relate uma falha, elogio, sugestão ou chame a Aupus.
           </DialogDescription>

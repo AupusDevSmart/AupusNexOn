@@ -107,7 +107,7 @@ export function NavUser() {
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
               {/* No trilho recolhido a foto ocupa o botão inteiro (44px), na
-                  mesma medida da marca e do "Chame a Aupus". */}
+                  mesma medida da marca e do "Suporte". */}
               <Avatar className="h-8 w-8 rounded-lg group-data-[collapsible=icon]:size-11 group-data-[collapsible=icon]:rounded-xl">
                 {avatarUrl && (
                   <AvatarImage

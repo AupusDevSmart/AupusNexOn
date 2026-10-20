@@ -90,7 +90,7 @@ export function ReleEventosPage() {
       <Layout.Main>
         <div className="flex flex-col w-full">
           <TitleCard
-            title="Eventos de Proteção (SOE)"
+            title="Alarmes e Eventos"
             description="Hora carimbada pelo próprio relé (ms). Ordenado pela hora da fonte, não a de chegada."
           />
 
