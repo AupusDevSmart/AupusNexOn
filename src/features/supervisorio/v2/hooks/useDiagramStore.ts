@@ -1609,9 +1609,15 @@ if (import.meta.env.PROD) {
         const minX = Math.min(x1, x2), maxX = Math.max(x1, x2);
         const minY = Math.min(y1, y2), maxY = Math.max(y1, y2);
         set(state => {
+          // Membro de grupo recolhido está escondido no bloco: não entra na caixa
+          const abertos = new Set(state.gruposAbertos);
+          const escondidos = new Set(
+            state.grupos.filter(g => !abertos.has(g.id)).flatMap(g => g.equipamentoIds),
+          );
           const dentro = state.equipamentos
             .filter(eq =>
               eq.tipo !== 'JUNCTION_POINT' &&
+              !escondidos.has(eq.id) &&
               eq.posicaoX >= minX && eq.posicaoX <= maxX &&
               eq.posicaoY >= minY && eq.posicaoY <= maxY
             )

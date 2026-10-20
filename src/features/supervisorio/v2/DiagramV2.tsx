@@ -10,13 +10,17 @@
  * - Salvamento atômico (PUT /layout)
  */
 
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import { DiagramaSkeleton } from '@/features/supervisorio/sinoptico/components/SinopticoSkeleton';
-import { CircuitBoard, Maximize2, Minimize2, Download, ZoomIn, Edit3, X, Save } from 'lucide-react';
+import { CircuitBoard, Maximize2, Minimize2, Download, ZoomIn, Edit3, X, Save, Layers } from 'lucide-react';
 import { useDiagramStore } from './hooks/useDiagramStore';
 import { DiagramViewport } from './components/DiagramViewer/DiagramViewport';
 import { DiagramConnections } from './components/DiagramViewer/DiagramConnections';
 import { EquipmentNode } from './components/Equipment/EquipmentNode';
+import { GrupoCard, GrupoMoldura } from './components/Grupos/GrupoNode';
+import { montarVisao, TIPO_GRUPO } from './utils/grupos';
+import { convertToVisualConnections } from './utils/barramentoDetector';
 import { exportDiagram, type ExportFormat } from './utils/exportDiagram';
 import { EditorToolbar } from './components/EditorToolbar';
 import { EquipamentoCadastroModal } from './components/EquipamentoCadastroModal';
@@ -86,6 +90,23 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
   const errorType = useDiagramStore(state => state.errorType);
   const isDirty = useDiagramStore(state => state.isDirty);
   const removeConexao = useDiagramStore(state => state.removeConexao);
+  const conexoes = useDiagramStore(state => state.conexoes);
+  const grupos = useDiagramStore(state => state.grupos);
+  const gruposAbertos = useDiagramStore(state => state.gruposAbertos);
+
+  // Grupos (NEXON-31): recolhido vira um bloco e as linhas dos membros chegam nele
+  const visao = useMemo(
+    () => montarVisao(equipamentos, conexoes, grupos, new Set(gruposAbertos)),
+    [equipamentos, conexoes, grupos, gruposAbertos],
+  );
+  const rotasDaVisao = useMemo(
+    () => (visao.temGrupos ? convertToVisualConnections(visao.conexoes, visao.equipamentos) : null),
+    [visao],
+  );
+  const membrosAbertos = useMemo(
+    () => new Set(visao.abertos.flatMap(a => a.membros.map(m => m.id))),
+    [visao],
+  );
 
   // Verificação de permissões
   // Criar/editar diagrama é cadastro técnico (NEXON-20).
@@ -379,6 +400,20 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
       return;
     }
 
+    // Ctrl+G — agrupa a seleção (nome padrão; renomeia em "Grupos")
+    if (!inField && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'g') {
+      const st = useDiagramStore.getState();
+      if (st.editor.mode === 'edit' && st.editor.selectedEquipmentIds.length > 0) {
+        e.preventDefault();
+        const nome = `Grupo ${st.grupos.length + 1}`;
+        if (st.criarGrupo(nome, st.editor.selectedEquipmentIds)) {
+          st.clearSelection();
+          toast({ title: 'Grupo criado', description: `"${nome}". Renomeie em Grupos e salve para manter.` });
+        }
+      }
+      return;
+    }
+
     // Ctrl+Z — desfaz última ação (colar/apagar/mover). Só no modo edição, fora de campos.
     if (!inField && (e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
       const st = useDiagramStore.getState();
@@ -626,9 +661,27 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
             <span className="hidden sm:inline">{isFullscreen ? 'Sair' : 'Expandir'}</span>
           </Button>
 
+          {/* Abrir / recolher todos os grupos (NEXON-31) */}
+          {grupos.length > 0 && (
+            <Button
+              onClick={() => {
+                const st = useDiagramStore.getState();
+                if (st.gruposAbertos.length > 0) st.recolherTodosGrupos();
+                else st.abrirTodosGrupos();
+              }}
+              variant="ghost"
+              size="sm"
+              className="h-6 gap-2"
+              title={gruposAbertos.length > 0 ? 'Recolher todos os grupos' : 'Abrir todos os grupos'}
+            >
+              <Layers className="h-4 w-4" />
+              <span className="hidden sm:inline">{gruposAbertos.length > 0 ? 'Recolher grupos' : 'Abrir grupos'}</span>
+            </Button>
+          )}
+
           {/* Botão de ajustar zoom */}
           <Button
-            onClick={fitToContent}
+            onClick={() => fitToContent(true)}
             variant="ghost"
             size="sm"
             className="h-6 gap-2"
@@ -749,23 +802,77 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
       <div className="flex-1 flex relative min-h-0" style={{ overflow: 'visible' }}>
         {/* Viewport com diagrama */}
         <DiagramViewport onBackgroundClick={onBackgroundClick}>
-          {/* Camada 1: Conexões (atrás dos equipamentos) */}
-          <DiagramConnections
-            visualConnections={visualConnections}
-            barramentos={barramentos}
-          />
-
-          {/* Camada 2: Equipamentos */}
-          <g className="equipment-layer">
-            {equipamentos.map(equipment => (
-              <EquipmentNode
-                key={equipment.id}
-                equipment={equipment}
-                onClick={handleNodeClick}
-                onDoubleClick={handleNodeDoubleClick}
-              />
+          {/* Camada 0: molduras dos grupos abertos (atrás de tudo) */}
+          <AnimatePresence>
+            {visao.abertos.map(a => (
+              <GrupoMoldura key={`moldura-${a.grupo.id}`} aberto={a} />
             ))}
+          </AnimatePresence>
+
+          {/* Camada 1: Conexões (atrás dos equipamentos). Com grupos, as rotas são da
+              visão (membros recolhidos religados ao bloco) e esmaecem ao abrir/fechar. */}
+          {rotasDaVisao ? (
+            <motion.g
+              key={`rotas-${gruposAbertos.join('|')}`}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.35, delay: 0.1 }}
+            >
+              <DiagramConnections
+                visualConnections={rotasDaVisao.visualConnections}
+                barramentos={rotasDaVisao.barramentos}
+              />
+            </motion.g>
+          ) : (
+            <DiagramConnections
+              visualConnections={visualConnections}
+              barramentos={barramentos}
+            />
+          )}
+
+          {/* Camada 2: Equipamentos (fora de grupo ou de grupo aberto) */}
+          <g className="equipment-layer">
+            {visao.equipamentos
+              .filter(eq => eq.tipo !== TIPO_GRUPO && !membrosAbertos.has(eq.id))
+              .map(equipment => (
+                <EquipmentNode
+                  key={equipment.id}
+                  equipment={equipment}
+                  onClick={handleNodeClick}
+                  onDoubleClick={handleNodeDoubleClick}
+                />
+              ))}
+            {/* Membros de grupo aberto: "saem" do bloco com uma mola */}
+            {visao.abertos.map(a => {
+              const cx = ((a.caixa.minX + a.caixa.maxX) / 2) * 40;
+              const cy = ((a.caixa.minY + a.caixa.maxY) / 2) * 40;
+              return (
+                <motion.g
+                  key={`membros-${a.grupo.id}`}
+                  initial={{ opacity: 0, scale: 0.4 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ type: 'spring', stiffness: 260, damping: 24 }}
+                  style={{ transformBox: 'view-box', transformOrigin: `${cx}px ${cy}px` }}
+                >
+                  {a.membros.map(equipment => (
+                    <EquipmentNode
+                      key={equipment.id}
+                      equipment={equipment}
+                      onClick={handleNodeClick}
+                      onDoubleClick={handleNodeDoubleClick}
+                    />
+                  ))}
+                </motion.g>
+              );
+            })}
           </g>
+
+          {/* Camada 3: blocos dos grupos recolhidos */}
+          <AnimatePresence>
+            {visao.cards.map(card => (
+              <GrupoCard key={`card-${card.grupo.id}`} card={card} />
+            ))}
+          </AnimatePresence>
         </DiagramViewport>
 
       </div>
