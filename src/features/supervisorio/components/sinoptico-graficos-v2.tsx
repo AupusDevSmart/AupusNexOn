@@ -28,6 +28,8 @@ import {
   montarPontosDemanda,
   montarPontosEnergia,
   montarPontosFases,
+  mesclarEnergia,
+  mesclarFluxo,
   type Dominio,
   type FasesAtivas,
   type PontoDemanda,
@@ -48,6 +50,8 @@ if (import.meta.env.PROD) {
 interface SinopticoGraficosV2Props {
   unidadeId?: string;
   valorContratado?: number;
+  /** Demanda contratada da CARGA (unidade.demanda_carga) — linha no lado do consumo. */
+  valorContratadoCarga?: number | null;
   percentualAdicional?: number;
   onConfigSaved?: () => void;
   /** Quando definido, renderiza apenas um dos graficos (controlado externamente). */
@@ -93,6 +97,7 @@ export const PERCENTUAL_LIMITE_CARGA = 5;
 export function SinopticoGraficosV2({
   unidadeId,
   valorContratado = 2500,
+  valorContratadoCarga,
   percentualAdicional = PERCENTUAL_LIMITE_CARGA,
   onConfigSaved,
   apenasGrafico,
@@ -275,16 +280,35 @@ export function SinopticoGraficosV2({
   }, [configuracao.equipamentos, configuracao.fluxoManual]);
 
   // Dados de demanda — período selecionável (dia/mes/ano/custom), agregados no backend.
-  const {
-    dados,
-    energiaPeriodo,
-    isInitialLoading,
-  } = useDemandaAgregada({
-    equipamentos: equipamentosResolvidos,
+  // Geração e consumo em consultas separadas: o gráfico mostra geração para cima e
+  // consumo para baixo (antes era um traço só = geração − consumo, que virava saldo
+  // negativo assim que um medidor de carga entrava na conta).
+  const equipamentosGeracao = useMemo(
+    () => equipamentosResolvidos.filter((e) => e.fluxoEnergia !== 'CONSUMO'),
+    [equipamentosResolvidos],
+  );
+  const equipamentosConsumo = useMemo(
+    () => equipamentosResolvidos.filter((e) => e.fluxoEnergia === 'CONSUMO'),
+    [equipamentosResolvidos],
+  );
+  const temConsumo = equipamentosConsumo.some((e) => e.selecionado);
+  const temGeracao = equipamentosGeracao.some((e) => e.selecionado && e.fluxoEnergia !== 'NEUTRO');
+  const ger = useDemandaAgregada({
+    equipamentos: equipamentosGeracao,
     periodo,
     fatorPerdas: configuracao.aplicarPerdas ? configuracao.fatorPerdas : 0,
     intervaloAtualizacao: configuracao.intervaloAtualizacao,
   });
+  const con = useDemandaAgregada({
+    equipamentos: equipamentosConsumo,
+    periodo,
+    fatorPerdas: 0,
+    intervaloAtualizacao: configuracao.intervaloAtualizacao,
+  });
+  const dados = temGeracao || !temConsumo ? ger.dados : con.dados;
+  const energiaPeriodo = ger.energiaPeriodo;
+  const energiaConsumida = Math.abs(con.energiaPeriodo);
+  const isInitialLoading = ger.isInitialLoading || con.isInitialLoading;
 
   // Usar hook de dados M160 para tensão e FP
   const { dados: dadosM160, equipamentosM160, isInitialLoading: isInitialLoadingM160 } = useDadosM160(unidadeId, m160Selecionado);
@@ -328,15 +352,30 @@ export function SinopticoGraficosV2({
   // - custom: potência com eixo = extensão dos dados
   // - mes/ano: barras de energia (kWh) por dia/mês
   const demanda = useMemo(() => {
-    if (!dados || dados.length === 0) return SEM_DEMANDA;
     if (periodo.tipo !== 'dia' && periodo.tipo !== 'custom') return SEM_DEMANDA;
-    return montarPontosDemanda(dados, periodo, valorContratado, percentualAdicional);
-  }, [dados, periodo, valorContratado, percentualAdicional]);
+    if (!temConsumo) {
+      if (!ger.dados || ger.dados.length === 0) return SEM_DEMANDA;
+      return montarPontosDemanda(ger.dados, periodo, valorContratado, percentualAdicional);
+    }
+    const g = montarPontosDemanda(ger.dados ?? [], periodo, valorContratado, percentualAdicional);
+    const c = montarPontosDemanda(con.dados ?? [], periodo, 0, 0);
+    const carga = periodo.tipo === 'dia' && valorContratadoCarga
+      ? { contratado: valorContratadoCarga, adicional: valorContratadoCarga * (1 + PERCENTUAL_LIMITE_CARGA / 100) }
+      : undefined;
+    const pontos = mesclarFluxo(g.pontos, c.pontos, carga);
+    // Eixo do dia: o que for mais longe entre as duas séries (dia corrente termina no último ponto).
+    const dominio = g.dominio && c.dominio
+      ? (g.dominio[1] >= c.dominio[1] ? g.dominio : c.dominio)
+      : g.dominio ?? c.dominio;
+    return { pontos, dominio };
+  }, [ger.dados, con.dados, temConsumo, periodo, valorContratado, valorContratadoCarga, percentualAdicional]);
 
-  const energia = useMemo(
-    () => (dados && (periodo.tipo === 'mes' || periodo.tipo === 'ano') ? montarPontosEnergia(dados, periodo.tipo) : []),
-    [dados, periodo.tipo],
-  );
+  const energia = useMemo(() => {
+    if (periodo.tipo !== 'mes' && periodo.tipo !== 'ano') return [];
+    const g = ger.dados ? montarPontosEnergia(ger.dados, periodo.tipo) : [];
+    if (!temConsumo) return g;
+    return mesclarEnergia(g, con.dados ? montarPontosEnergia(con.dados, periodo.tipo) : []);
+  }, [ger.dados, con.dados, temConsumo, periodo.tipo]);
 
   // Tensão e FP do M160 — sempre o dia corrente, eixo de 00:00 até agora
   const tensao = useMemo(() => montarPontosFases(dadosM160, 'tensao'), [dadosM160]);
@@ -524,7 +563,22 @@ export function SinopticoGraficosV2({
               )}
             </div>
 
-            {energiaPeriodo > 0 && (
+            {temConsumo ? (
+              (energiaPeriodo > 0 || energiaConsumida > 0) && (
+                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+                  {temGeracao && (
+                    <span className="flex items-baseline gap-1">
+                      <span className="text-sm font-semibold">{formatarEnergia(energiaPeriodo)}</span>
+                      <span className="text-xs text-muted-foreground">gerados</span>
+                    </span>
+                  )}
+                  <span className="flex items-baseline gap-1">
+                    <span className="text-sm font-semibold">{formatarEnergia(energiaConsumida)}</span>
+                    <span className="text-xs text-muted-foreground">consumidos no período</span>
+                  </span>
+                </div>
+              )
+            ) : energiaPeriodo > 0 && (
               <div className="flex items-baseline gap-1.5">
                 <TrendingUp className="h-4 w-4 text-muted-foreground self-center" />
                 <span className="text-sm font-semibold">{formatarEnergia(energiaPeriodo)}</span>
@@ -574,6 +628,7 @@ export function SinopticoGraficosV2({
               referencias={referencias}
               chaveZoom={chaveZoomDemanda}
               className={alturaDemanda}
+              fluxo={temConsumo}
             />
           ) : (
             <GraficoEnergia pontos={energia} tipo={tipoEnergia} className={alturaDemanda} />
@@ -787,7 +842,12 @@ export function SinopticoGraficosV2({
               Demanda — Expandido
               {energiaPeriodo > 0 && (
                 <span className="ml-3 text-sm font-normal text-muted-foreground">
-                  <span className="font-semibold text-foreground">{formatarEnergia(energiaPeriodo)}</span> no período
+                  <span className="font-semibold text-foreground">{formatarEnergia(energiaPeriodo)}</span> {temConsumo ? 'gerados' : 'no período'}
+                </span>
+              )}
+              {temConsumo && energiaConsumida > 0 && (
+                <span className="ml-3 text-sm font-normal text-muted-foreground">
+                  <span className="font-semibold text-foreground">{formatarEnergia(energiaConsumida)}</span> consumidos
                 </span>
               )}
             </DialogTitle>
@@ -820,6 +880,7 @@ export function SinopticoGraficosV2({
                 dominio={demanda.dominio}
                 referencias={referencias}
                 chaveZoom={chaveZoomDemanda}
+                fluxo={temConsumo}
               />
             ) : (
               <GraficoEnergia pontos={energia} tipo={tipoEnergia} className="h-full" />

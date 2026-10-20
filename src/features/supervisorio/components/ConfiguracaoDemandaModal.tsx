@@ -70,6 +70,11 @@ export interface ConfiguracaoDemanda {
   demandaCarga?: number | null;
 }
 
+/** Só o que mede energia entra na lista: categoria NEUTRO (TON, disjuntor…) ou desconhecida fica de fora. */
+function medeEnergia(e: EquipamentoConfig): boolean {
+  return (CATEGORIA_FLUXO[e.categoria] ?? 'NEUTRO') !== 'NEUTRO';
+}
+
 interface ConfiguracaoDemandaModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -102,7 +107,7 @@ export function ConfiguracaoDemandaModal({
     return ids;
   }, [configuracao, equipamentosDisponiveis]);
   const visivel = (eq: EquipamentoConfig) => equipamentoNaConfig(eq, selecionadosNaOrigem.has(eq.id));
-  const equipamentosVisiveis = config.equipamentos.filter(visivel);
+  const equipamentosVisiveis = config.equipamentos.filter((e) => medeEnergia(e) && visivel(e));
 
   // Mescla equipamentos disponíveis com seleção persistida na configuração.
   useEffect(() => {
@@ -227,7 +232,7 @@ export function ConfiguracaoDemandaModal({
                     onClick={() => {
                       setConfig(prev => ({
                         ...prev,
-                        equipamentos: prev.equipamentos.map(e => (visivel(e) ? { ...e, selecionado: true } : e))
+                        equipamentos: prev.equipamentos.map(e => (visivel(e) && medeEnergia(e) ? { ...e, selecionado: true } : e))
                       }));
                     }}
                   >
@@ -341,9 +346,10 @@ export function ConfiguracaoDemandaModal({
 
               <div className="rounded-[2px] bg-muted p-3 text-xs space-y-1">
                 <p className="font-medium">Como o cálculo funciona:</p>
-                <p>Aparecem só os equipamentos do diagrama unifilar (TON, gateway e medidores fora dele ficam de fora).</p>
+                <p>Aparecem só os equipamentos do diagrama unifilar (TON, gateway A966 e medidores fora dele ficam de fora).</p>
                 <p>Categorias inequívocas (Inversor PV, Motor, etc.) têm fluxo automático.</p>
-                <p>Power Meter e Medidor SSU dependem da instalação física — selecione manualmente acima.</p>
+                <p>Power Meter entra como consumo; Medidor SSU depende da instalação física — escolha o fluxo ao lado.</p>
+                <p>TON, disjuntores e demais equipamentos que não medem energia não aparecem aqui.</p>
                 <p>Não selecionados ou marcados como "Ignorar" não entram no agregado.</p>
               </div>
             </div>
