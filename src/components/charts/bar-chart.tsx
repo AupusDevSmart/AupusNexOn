@@ -299,19 +299,23 @@ const ChartCore = memo(function ChartCore({
       data,
       innerHeight,
       resolveDomain: (dataKeys) => {
+        // Ajuste local (NEXON-16): empilhado usa a SOMA da pilha, senão o topo da pilha
+        // (e marcadores acima dela) sai do eixo. Reaplicar após `shadcn add -o`.
         let max = 0;
         for (const d of data) {
+          let soma = 0;
           for (const key of dataKeys) {
             const value = d[key];
-            if (typeof value === "number" && value > max) {
-              max = value;
-            }
+            if (typeof value !== "number") continue;
+            if (stacked) soma += value;
+            else if (value > max) max = value;
           }
+          if (stacked && soma > max) max = soma;
         }
         return [0, (max || 100) * 1.1];
       },
     });
-  }, [data, innerHeight, isHorizontal, lines, valueScale]);
+  }, [data, innerHeight, isHorizontal, lines, valueScale, stacked]);
 
   const primaryYScale = getPrimaryYScale(yScales, valueScale);
 
