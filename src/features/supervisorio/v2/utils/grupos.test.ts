@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Connection, Equipment } from '../types/diagram.types';
-import { caixaDe, membroMaisProximo, gruposDaConfiguracao, idNoGrupo, montarVisao, posicaoDoCard, resumoDoGrupo, statusDoGrupo, type GrupoUnifilar } from './grupos';
+import { caixaDe, deslocarGrupo, levarMembrosAteOBloco, membroMaisProximo, gruposDaConfiguracao, idNoGrupo, montarVisao, posicaoDoCard, resumoDoGrupo, statusDoGrupo, type GrupoUnifilar } from './grupos';
 
 const eq = (id: string, x: number, y: number, tipo = 'INVERSOR', extra: Partial<Equipment> = {}): Equipment => ({
   id, nome: id, tag: id, tipo, unidadeId: 'u', diagramaId: 'd', posicaoX: x, posicaoY: y, rotacao: 0,
@@ -88,5 +88,27 @@ describe('interligar grupo', () => {
     expect(membroMaisProximo(membros, { x: 19, y: 5 })?.id).toBe('c');
     expect(membroMaisProximo(membros, { x: 0, y: -5 })?.id).toBe('a');
     expect(membroMaisProximo([], { x: 0, y: 0 })).toBeNull();
+  });
+});
+
+describe('grupo abre no lugar', () => {
+  it('deslocar leva membros e JP interno juntos; medidor e barramento ficam', () => {
+    const r = deslocarGrupo(equipamentos, conexoes, [grupo], 'g', 3, -2);
+    const pos = Object.fromEntries(r.map(e => [e.id, [e.posicaoX, e.posicaoY]]));
+    expect(pos.I1).toEqual([7, 6]);
+    expect(pos.jp2).toEqual([8, 4]);
+    expect(pos.M).toEqual([10, 0]);
+    expect(pos.jp1).toEqual([11, 4]);
+  });
+
+  it('bloco salvo fora do centro: membros vão até ele e a posição some', () => {
+    // centro de I1..I3 = (4..14, 8..10) → bloco padrão em (7, 8)
+    const r = levarMembrosAteOBloco(equipamentos, conexoes, [{ ...grupo, posicaoX: 17, posicaoY: 20 }]);
+    expect(r.mudou).toBe(true);
+    expect(r.grupos[0].posicaoX).toBeNull();
+    expect(r.equipamentos.find(e => e.id === 'I1')).toMatchObject({ posicaoX: 14, posicaoY: 20 });
+    const sem = levarMembrosAteOBloco(equipamentos, conexoes, [grupo]);
+    expect(sem.mudou).toBe(false);
+    expect(sem.equipamentos).toBe(equipamentos);
   });
 });

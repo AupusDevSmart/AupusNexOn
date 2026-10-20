@@ -14,6 +14,11 @@ import { GRID, LABEL, PORT, getThemeColors } from '../../utils/diagramConstants'
 import { TAMANHO_CARD, resumoDoGrupo, type CardDeGrupo, type GrupoAberto } from '../../utils/grupos';
 import type { Equipment, PortPosition } from '../../types/diagram.types';
 
+/** Moldura do grupo aberto em grid (mesma folga do desenho), para saber o que fica embaixo. */
+export function caixaDaMoldura(c: { minX: number; minY: number; maxX: number; maxY: number }) {
+  return { minX: c.minX - 0.6, minY: c.minY - 1.4, maxX: c.maxX + 0.6, maxY: c.maxY + 0.8 };
+}
+
 /** Verde da marca: cor do grupo quando ele não tem uma própria. */
 export const COR_GRUPO_PADRAO = '#70C04B';
 
@@ -41,9 +46,11 @@ const plural = (rotulo: string, n: number) => {
 
 interface GrupoCardProps {
   card: CardDeGrupo;
+  /** Debaixo de um grupo aberto: esmaece e não pega clique. */
+  apagado?: boolean;
 }
 
-const GrupoCardImpl: React.FC<GrupoCardProps> = ({ card }) => {
+const GrupoCardImpl: React.FC<GrupoCardProps> = ({ card, apagado = false }) => {
   const theme = useDiagramStore(st => st.theme);
   const modo = useDiagramStore(st => st.editor.mode);
   const conectando = modo === 'connecting';
@@ -99,7 +106,7 @@ const GrupoCardImpl: React.FC<GrupoCardProps> = ({ card }) => {
       className="grupo-card"
       data-grupo-id={grupo.id}
       initial={{ opacity: 0, scale: 0.6 }}
-      animate={{ opacity: 1, scale: 1 }}
+      animate={{ opacity: apagado ? 0.12 : 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.6 }}
       whileHover={modo === 'edit' ? undefined : { scale: 1.04 }}
       transition={MOLA}
@@ -107,6 +114,7 @@ const GrupoCardImpl: React.FC<GrupoCardProps> = ({ card }) => {
         transformBox: 'fill-box',
         transformOrigin: 'center',
         cursor: modo === 'edit' ? (arrastando ? 'grabbing' : 'grab') : 'pointer',
+        pointerEvents: apagado ? 'none' : undefined,
       }}
       onMouseDown={handleMouseDown}
       onClick={handleClick}
