@@ -241,7 +241,7 @@ function ensureIoTScripts(): Promise<void> {
           (window as any).__iotScriptsPromise = null;
           window.__iotScriptsReady = false;
           const err = new Error(
-            `Falha ao carregar catalogo IoT (${failed}). Editor IoT indisponivel.`,
+            `Falha ao carregar catálogo de dispositivos (${failed}). Editor de topologia indisponível.`,
           );
           (err as any).isCatalogLoadError = true;
           // Sonner toast pra UX imediata.
@@ -302,7 +302,7 @@ function hydrateIoConfigBo(editor: any, vinculosBo: VinculosBoPorEquip): any {
   return { ...editor, components };
 }
 
-export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramProps) {
+export function IoTDiagram({ unidadeId, unidadeNome }: IoTDiagramProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<any>(null);
   const saveTimerRef = useRef<any>(null);
@@ -413,6 +413,7 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
   // Project state
   const [projects, setProjects] = useState<IoTProject[]>([]);
   const [selectedProjectId, _setSelectedProjectId] = useState<string | null>(null);
+  const tituloTopologia = unidadeNome ? `Topologia de Comunicação: ${unidadeNome}` : 'Topologia de Comunicação';
   const setSelectedProjectId = (id: string | null) => { selectedProjectIdRef.current = id; _setSelectedProjectId(id); };
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [catalogLoadError, setCatalogLoadError] = useState<string | null>(null);
@@ -431,7 +432,7 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
         await ensureIoTScripts();
       } catch (e: any) {
         if (cancelled) return;
-        const msg = e?.message ?? 'Falha ao carregar scripts IoT.';
+        const msg = e?.message ?? 'Falha ao carregar scripts da topologia.';
         console.error('[IoT] Script load aborted:', e);
         setCatalogLoadError(msg);
         setLoadingProjects(false);
@@ -1602,20 +1603,20 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
     return (
       <div className="flex-1 flex flex-col min-h-0">
         <div className="flex items-center justify-between px-4 py-2 bg-muted/30">
-          <span className="text-sm font-medium">Projetos IoT</span>
+          <span className="text-sm font-medium">Projetos de Topologia</span>
           <Button variant="outline" size="sm" onClick={openCreateModal}>
             <Plus className="h-4 w-4 mr-1" /> Novo Projeto
           </Button>
         </div>
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
-            <p className="text-muted-foreground mb-3">Nenhum projeto IoT nesta unidade</p>
+            <p className="text-muted-foreground mb-3">Nenhuma topologia de comunicação nesta unidade</p>
             <Button onClick={openCreateModal}><Plus className="h-4 w-4 mr-2" /> Criar Primeiro Projeto</Button>
           </div>
         </div>
         <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
           <DialogContent className="sm:max-w-md overflow-y-auto">
-            <DialogHeader><DialogTitle className="flex items-center gap-2"><FolderPlus className="h-5 w-5" />Novo Projeto IoT</DialogTitle></DialogHeader>
+            <DialogHeader><DialogTitle className="flex items-center gap-2"><FolderPlus className="h-5 w-5" />Novo Projeto de Topologia</DialogTitle></DialogHeader>
             <div className="space-y-4 py-2"><div className="space-y-2"><Label htmlFor="pn">Nome do Projeto</Label><Input id="pn" placeholder="Ex: Monitoramento Usina" value={newProjectName} onChange={e => setNewProjectName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') createProject(); }} autoFocus /></div></div>
             <DialogFooter><Button variant="outline" onClick={() => setShowCreateModal(false)}>Cancelar</Button><Button onClick={createProject} disabled={!newProjectName.trim()}>Criar Projeto</Button></DialogFooter>
           </DialogContent>
@@ -1628,7 +1629,7 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
     return (
       <div className="flex-1 flex items-center justify-center p-6">
         <div className="max-w-md text-center space-y-3">
-          <div className="text-destructive font-medium">Editor IoT indisponivel</div>
+          <div className="text-destructive font-medium">Editor de topologia indisponível</div>
           <p className="text-sm text-muted-foreground">{catalogLoadError}</p>
           <p className="text-xs text-muted-foreground">
             Verifique se o backend esta no ar e que o endpoint /iot-catalog/device-catalog.js responde.
@@ -1653,13 +1654,13 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
       {!editMode && (
         <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-5 py-2 bg-muted/30 min-h-[48px]">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1 sm:flex-initial">
-            <h3 className="hidden sm:flex text-sm font-semibold text-foreground items-center gap-2 shrink-0">
-              <Network className="h-4 w-4" />
-              Diagrama IoT
+            <h3 className="flex text-sm font-semibold text-foreground items-center gap-2 min-w-0" title={tituloTopologia}>
+              <Network className="h-4 w-4 shrink-0" />
+              <span className="truncate">{tituloTopologia}</span>
             </h3>
-            {/* Project tabs */}
-            <div className="flex items-center gap-0.5 sm:ml-2 min-w-0 overflow-x-auto">
-              {projects.map(p => (
+            {/* Project tabs: com 1 projeto só o título basta (o nome do projeto virava o chip "IOT") */}
+            <div className="flex items-center gap-0.5 sm:ml-2 min-w-0 overflow-x-auto shrink-0">
+              {projects.length > 1 && projects.map(p => (
                 <div key={p.id} className="flex items-center">
                   {renamingId === p.id ? (
                     <input autoFocus className="px-2 py-0.5 text-xs bg-background border rounded w-32" value={renameValue}
@@ -1718,7 +1719,7 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
           <div className="flex flex-wrap items-center justify-between gap-2 p-3">
             <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
               <Network className="h-5 w-5" />
-              Diagrama IoT
+              {tituloTopologia}
             </h3>
             <div className="flex flex-wrap items-center gap-2">
               <Button variant="outline" size="sm" onClick={saveCurrentDiagram} disabled={saving} className="flex items-center gap-2">
@@ -1959,7 +1960,7 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
                         )}
                     </select>
                     <p className="text-[10px] text-muted-foreground">
-                      Vincula o ativo real desta unidade ao nó do IoT (TON, inversor ou medidor).
+                      Vincula o ativo real desta unidade ao nó da topologia (TON, inversor ou medidor).
                     </p>
                     {String(propsComp?.type || '').toLowerCase().startsWith('ton')
                       && !String(propsValues['equipamento_id'] || '').trim() && (
@@ -2334,7 +2335,7 @@ export function IoTDiagram({ unidadeId, unidadeNome: _unidadeNome }: IoTDiagramP
       {/* Create Project Modal */}
       <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
         <DialogContent className="sm:max-w-md overflow-y-auto">
-          <DialogHeader><DialogTitle className="flex items-center gap-2"><FolderPlus className="h-5 w-5" />Novo Projeto IoT</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><FolderPlus className="h-5 w-5" />Novo Projeto de Topologia</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2"><div className="space-y-2"><Label htmlFor="project-name">Nome do Projeto</Label><Input id="project-name" placeholder="Ex: Monitoramento Usina" value={newProjectName} onChange={e => setNewProjectName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') createProject(); }} autoFocus /></div></div>
           <DialogFooter><Button variant="outline" onClick={() => setShowCreateModal(false)}>Cancelar</Button><Button onClick={createProject} disabled={!newProjectName.trim()}>Criar Projeto</Button></DialogFooter>
         </DialogContent>

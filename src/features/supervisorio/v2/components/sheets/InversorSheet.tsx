@@ -764,7 +764,7 @@ export function InversorSheet({ equipamentoId, nome, onClose }: { equipamentoId:
               ) : (
                 <>
                   <button type="button" disabled style={s.cmd('busy')}>{gerando ? 'Desligar' : 'Ligar'}</button>
-                  <span style={{ fontSize: 12, color: NX.mudo, textAlign: 'center' }}>Sem ponto Ligar/Desligar vinculado a este inversor (editor IoT → Configurar I/O).</span>
+                  <span style={{ fontSize: 12, color: NX.mudo, textAlign: 'center' }}>Sem ponto Ligar/Desligar vinculado a este inversor (Topologia → Configurar I/O).</span>
                 </>
               )}
               <Bloco style={{ padding: '14px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>

@@ -252,7 +252,7 @@ export function EquipamentoCadastroModal({ open, onClose, unidadeId, mode, equip
                   <label className="flex items-center gap-2 py-1 cursor-pointer">
                     <Checkbox checked={possuiMedicao} onCheckedChange={(v) => setPossuiMedicao(!!v)} />
                     <span className="text-sm">Medição</span>
-                    <span className="text-[11px] text-muted-foreground">(monitoramento; PM/IED definido na associação no IoT)</span>
+                    <span className="text-[11px] text-muted-foreground">(monitoramento; PM/IED definido na associação na Topologia)</span>
                   </label>
                   <label className="flex items-center gap-2 py-1 cursor-pointer">
                     <Checkbox

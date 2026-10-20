@@ -145,7 +145,7 @@ export const EquipamentoAcionarModal: React.FC<EquipamentoAcionarModalProps> = (
             </div>
             <DialogDescription className="text-xs">
               Pontos de comando disponiveis. O acionamento dispara o pulso no TON
-              mapeado para o ponto (configurado no editor IoT).
+              mapeado para o ponto (configurado na Topologia).
             </DialogDescription>
           </DialogHeader>
 
