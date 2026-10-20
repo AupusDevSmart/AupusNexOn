@@ -9,6 +9,7 @@ import {
   Cpu,
   Factory,
   FileChartColumn,
+  Wrench,
   Gauge,
   Layers,
   ListFilter,
@@ -28,6 +29,9 @@ import {
  *
  * Items sem `featureKey` sao sempre mostrados (sujeitos so a feature flag).
  */
+/** Contadores vivos que um item do menu pode mostrar. */
+export type ContadorMenu = "chamados-abertos";
+
 export type NavigationLink = {
   key: string;
   path: string;
@@ -39,6 +43,11 @@ export type NavigationLink = {
   label: string;
   /** Selo curto à direita do nome (ex.: "COA", "Admin"). */
   badge?: string;
+  /**
+   * Número vivo à direita do nome, vindo da API (ex.: chamados abertos).
+   * Resolvido por `useContadorMenu` em nav-main; zero não aparece.
+   */
+  contador?: ContadorMenu;
   hint?: string;
   /**
    * Outras rotas que contam como "estar nesta página" no menu, além do
@@ -114,6 +123,16 @@ export const navigationLinks: Array<NavigationLink> = [
     icon: FileChartColumn,
     label: "Relatórios",
     hint: "Boletins de geração e consumo (PDF)",
+  },
+  // NEXON-24: pedido de reparo de equipamento, encaminhado ao Smart Service,
+  // WhatsApp ou e-mail. O número é o de chamados ainda não fechados.
+  {
+    key: "chamados",
+    path: "/chamados",
+    icon: Wrench,
+    label: "Chamados",
+    contador: "chamados-abertos",
+    hint: "Pedidos de reparo de equipamento",
   },
   // Ativos - grupo, visivel se pelo menos um filho for visivel
   {

@@ -115,6 +115,7 @@ const ReleEventosPage = lazy(() =>
 );
 
 const RelatoriosPage = lazy(() => import("@/features/relatorios/RelatoriosPage"));
+const ChamadosPage = lazy(() => import("@/features/chamados/ChamadosPage"));
 // NEXON-21: Ativos › Proprietários e Ativos › Instalações
 const ProprietariosPage = lazy(() => import("@/features/ativos/ProprietariosPage"));
 const InstalacoesPage = lazy(() => import("@/features/ativos/InstalacoesPage"));
@@ -440,6 +441,14 @@ export const appRoutes = createBrowserRouter([
               <RelatoriosPage />
             </Suspense>
           </RequirePermission>
+        ),
+      },
+      {
+        path: "chamados",
+        element: (
+          <Suspense fallback={<div>Carregando...</div>}>
+            <ChamadosPage />
+          </Suspense>
         ),
       },
       {
