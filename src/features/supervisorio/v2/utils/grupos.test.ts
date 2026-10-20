@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Connection, Equipment } from '../types/diagram.types';
-import { caixaDe, deslocarGrupo, levarMembrosAteOBloco, membroMaisProximo, gruposDaConfiguracao, idNoGrupo, montarVisao, posicaoDoCard, resumoDoGrupo, statusDoGrupo, type GrupoUnifilar } from './grupos';
+import { caixaDaMoldura, caixaDe, deslocarGrupo, separarGrupos, levarMembrosAteOBloco, membroMaisProximo, gruposDaConfiguracao, idNoGrupo, montarVisao, posicaoDoCard, resumoDoGrupo, statusDoGrupo, type GrupoUnifilar } from './grupos';
 
 const eq = (id: string, x: number, y: number, tipo = 'INVERSOR', extra: Partial<Equipment> = {}): Equipment => ({
   id, nome: id, tag: id, tipo, unidadeId: 'u', diagramaId: 'd', posicaoX: x, posicaoY: y, rotacao: 0,
@@ -110,5 +110,44 @@ describe('grupo abre no lugar', () => {
     const sem = levarMembrosAteOBloco(equipamentos, conexoes, [grupo]);
     expect(sem.mudou).toBe(false);
     expect(sem.equipamentos).toBe(equipamentos);
+  });
+});
+
+describe('grupos não se sobrepõem', () => {
+  // Como na Pontal: disjuntores e pivôs intercalados com a fileira de inversores
+  const linha = (pref: string, y: number, n: number) => Array.from({ length: n }, (_, i) => eq(`${pref}${i}`, i * 3, y));
+  const djs = linha('DJ', 2, 5);
+  const piv = linha('PIV', 5, 5);
+  const inv = linha('INV', 7, 5);
+  const todos = [...djs, ...piv, ...inv];
+  const grupos: GrupoUnifilar[] = [
+    { id: 'g3', nome: 'Grupo 3', equipamentoIds: [...djs, ...piv].map(e => e.id) },
+    { id: 'gi', nome: 'Inversores', equipamentoIds: inv.map(e => e.id) },
+  ];
+  const molduras = (eqs: Equipment[]) =>
+    grupos.map(g => caixaDaMoldura(caixaDe(eqs.filter(e => g.equipamentoIds.includes(e.id)))!));
+
+  it('o grupo de baixo desce até sair da moldura do de cima, inteiro', () => {
+    const [a0, b0] = molduras(todos);
+    expect(b0.minY).toBeLessThan(a0.maxY); // começa sobreposto
+    const r = separarGrupos(todos, [], grupos);
+    expect(r.movidos).toEqual(['gi']);
+    const [a, b] = molduras(r.equipamentos);
+    expect(b.minY).toBeGreaterThanOrEqual(a.maxY + 1);
+    expect(a).toEqual(a0); // o de cima fica
+    // a fileira anda junta, sem mudar o espaçamento
+    const xs = r.equipamentos.filter(e => e.id.startsWith('INV')).map(e => e.posicaoX);
+    expect(xs).toEqual([0, 3, 6, 9, 12]);
+  });
+
+  it('o grupo recém-solto é quem se ajeita', () => {
+    const r = separarGrupos(todos, [], grupos, 'g3');
+    expect(r.movidos).toEqual(['g3']);
+  });
+
+  it('separados ou sozinho não mexe', () => {
+    const longe = [...djs, ...piv, ...inv.map(e => ({ ...e, posicaoY: 30 }))];
+    expect(separarGrupos(longe, [], grupos).movidos).toEqual([]);
+    expect(separarGrupos(todos, [], [grupos[0]]).equipamentos).toBe(todos);
   });
 });
