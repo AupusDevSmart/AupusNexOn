@@ -1,3 +1,4 @@
+import { PAPEIS as PAPEIS_DO_NEXON, ROTULO_PAPEL, papelCanonico } from '@/store/papeis';
 import type { CanalNotificacao, EventoNotificacao } from '@/services/regras-notificacao.services';
 
 export const EVENTOS: { value: EventoNotificacao; label: string; descricao: string }[] = [
@@ -12,15 +13,9 @@ export const CANAIS: { value: CanalNotificacao; label: string }[] = [
   { value: 'whatsapp', label: 'WhatsApp' },
 ];
 
-export const PAPEIS: { value: string; label: string }[] = [
-  { value: 'super_admin', label: 'Super admin' },
-  { value: 'admin', label: 'Administrador' },
-  { value: 'gerente', label: 'Gerente' },
-  { value: 'analista', label: 'Analista' },
-  { value: 'operador', label: 'Operador' },
-  { value: 'proprietario', label: 'Proprietário' },
-];
+/** Papéis da spec de permissões (NEXON-20): mesma lista e rótulos do store. */
+export const PAPEIS: { value: string; label: string }[] = PAPEIS_DO_NEXON.map((p) => ({ value: p, label: ROTULO_PAPEL[p] }));
 
 export const rotuloEvento = (v: string) => EVENTOS.find((e) => e.value === v)?.label ?? v;
 export const rotuloCanal = (v: string) => CANAIS.find((c) => c.value === v)?.label ?? v;
-export const rotuloPapel = (v: string) => PAPEIS.find((p) => p.value === v)?.label ?? v;
+export const rotuloPapel = (v: string) => PAPEIS.find((p) => p.value === v)?.label ?? ROTULO_PAPEL[papelCanonico(v)] ?? v;
