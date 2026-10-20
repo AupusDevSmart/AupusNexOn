@@ -70,6 +70,11 @@ export function GraficoDemanda({
   const temGeracao = fluxo && pontos.some((p) => p.geracao != null);
   const temConsumo = fluxo && pontos.some((p) => p.consumo != null && p.consumo !== 0);
   const temRefCarga = fluxo && pontos.some((p) => p.valorContratadoCarga != null);
+  // Tolerâncias diferentes por lado (carga +5%, geração +1% — NEXON-14): a legenda diz cada uma.
+  const refCarga = pontos.find((p) => p.valorContratadoCarga != null && p.valorAdicionalCarga != null);
+  const pctCarga = refCarga && refCarga.valorContratadoCarga
+    ? Math.round(((refCarga.valorAdicionalCarga as number) / refCarga.valorContratadoCarga - 1) * 100)
+    : null;
   const temRefGeracao = !!referencias && (!fluxo || temGeracao);
   const linhaRef = (dataKey: string, cor: string, dash: string) => (
     <Line
@@ -219,7 +224,14 @@ export function GraficoDemanda({
         ...(temRefGeracao || temRefCarga
           ? [
               { rotulo: 'Contratado', cor: COR.neutro, tracejada: true },
-              { rotulo: rotuloAdicional, cor: COR.consumo, tracejada: true },
+              {
+                rotulo: [
+                  temRefCarga && pctCarga != null ? `+${pctCarga}% carga` : null,
+                  temRefGeracao ? `+${referencias?.percentualAdicional ?? 0}% geração` : null,
+                ].filter(Boolean).join(' · ').replace(/^/, 'Tolerância '),
+                cor: COR.consumo,
+                tracejada: true,
+              },
             ]
           : []),
       ]

@@ -610,11 +610,13 @@ const TimeSeriesChartCore = memo(function TimeSeriesChartCore({
     ]
   );
 
+  // Com zoom (xDomain) a série é desenhada com o dado inteiro e depende do clip pra não
+  // vazar além do eixo — então o clip vale mesmo sem animação (animationDuration=0).
   const useClipReveal =
     !staticPreview &&
     renderData.length > 1 &&
     innerWidth > 0 &&
-    animationDuration > 0;
+    (animationDuration > 0 || xDomain != null);
   const isRevealAnimating = chartPhase === "revealing";
   const isRevealConcealing =
     chartPhase === "exitingReady" && animationDuration > 0;
