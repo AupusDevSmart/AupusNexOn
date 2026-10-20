@@ -13,7 +13,8 @@ import {
   SidebarMenuSubItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { NavigationLink } from "@/features/navigation/utils/navigation-links";
+import { NavigationLink, type ContadorMenu } from "@/features/navigation/utils/navigation-links";
+import { useChamadosContagem } from "@/features/chamados/hooks/useChamadosContagem";
 import { useFilteredNavigationLinks } from "@/features/navigation/utils/useFilteredNavigationLinks";
 import { cn } from "@/lib/utils";
 
@@ -214,7 +215,33 @@ function SeloItem({ texto, destaque }: { texto: string; destaque: boolean }) {
   );
 }
 
+/** Número vivo do item (ex.: chamados abertos). Null quando o item não tem contador. */
+function useContadorMenu(contador?: ContadorMenu): number | null {
+  const chamados = useChamadosContagem(contador === "chamados-abertos");
+  if (contador === "chamados-abertos") return chamados.data?.abertos ?? null;
+  return null;
+}
+
+/** Número à direita do nome; no menu recolhido vira bolinha no canto do ícone. */
+function ContadorItem({ valor, recolhido }: { valor: number; recolhido: boolean }) {
+  const texto = valor > 99 ? "99+" : String(valor);
+  return (
+    <span
+      aria-label={`${valor} em aberto`}
+      className={cn(
+        "shrink-0 rounded-full bg-nexon-verde text-white font-semibold leading-none tabular-nums",
+        recolhido
+          ? "absolute right-0.5 top-0.5 min-w-4 px-1 py-0.5 text-[9px] text-center"
+          : "min-w-5 px-1.5 py-0.5 text-[11px] text-center"
+      )}
+    >
+      {texto}
+    </span>
+  );
+}
+
 function NavMenuItem({ item }: { item: NavigationLink }) {
+  const contador = useContadorMenu(item.contador);
   const navigate = useNavigate();
   const { isMobile, state, setOpenMobile, setOpen } = useSidebar();
   const isCollapsed = state === "collapsed" && !isMobile;
@@ -303,6 +330,7 @@ function NavMenuItem({ item }: { item: NavigationLink }) {
               {item.icon && <item.icon className={cn("shrink-0", isCollapsed ? "!size-[22px]" : "!size-5")} />}
               {!isCollapsed && <span className="text-sm flex-1 truncate">{item.label}</span>}
               {!isCollapsed && item.badge && <SeloItem texto={item.badge} destaque={isSelected && !item.links} />}
+              {!!contador && <ContadorItem valor={contador} recolhido={isCollapsed} />}
               {!isCollapsed && item.links && (
                 <ChevronDown
                   className={cn(
