@@ -172,9 +172,10 @@ describe('grupos abertos se afastam só na tela', () => {
     expect(todos.find(e => e.id === 'B0')!.posicaoY).toBe(4); // original intacto
   });
 
-  it('um aberto e outro recolhido: ninguém anda', () => {
+  it('um aberto e outro recolhido: membros não andam; só o bloco sai de baixo da moldura', () => {
     const v = montarVisao(todos, [], grupos, new Set(['gb']));
-    expect(v.deslocamentoDoEquipamento.size).toBe(0);
+    expect([...v.deslocamentoDoEquipamento.keys()]).toEqual(['grupo:ga']);
+    expect(v.deslocamentos.get('gb') ?? { dx: 0, dy: 0 }).toEqual({ dx: 0, dy: 0 });
   });
 
   it('deslocamento congelado é respeitado (arraste não pula)', () => {
