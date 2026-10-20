@@ -45,6 +45,8 @@ interface GraficoDemandaProps {
   className?: string;
   /** Pontos com `geracao`/`consumo` (mesclarFluxo): consumo para cima, geração para baixo. */
   fluxo?: boolean;
+  /** Série única filtrada (Carga ou Geração): rótulo e cor dela. Sem isto = "Demanda". */
+  serie?: 'carga' | 'geracao';
 }
 
 /**
@@ -60,7 +62,11 @@ export function GraficoDemanda({
   expandido = false,
   className,
   fluxo = false,
+  serie,
 }: GraficoDemandaProps) {
+  const rotuloSerie = serie === 'carga' ? 'Carga' : serie === 'geracao' ? 'Geração' : 'Demanda';
+  const corLinha = serie === 'carga' ? COR_CONSUMO : serie === 'geracao' ? COR.geracao : COR.potencia;
+  const corArea = serie === 'carga' ? COR_CONSUMO : COR.geracao;
   const isMobile = useIsMobile();
   const janela = useJanelaZoom(pontos, dominio, chaveZoom);
   const [areaEl, setAreaEl] = useState<HTMLDivElement | null>(null);
@@ -129,7 +135,7 @@ export function GraficoDemanda({
           traço continua sendo o `Line` abaixo, que define o domínio do eixo. */}
       <Area
         dataKey="potencia"
-        fill={COR.geracao}
+        fill={corArea}
         fillOpacity={0.3}
         gradientToOpacity={0.04}
         showLine={false}
@@ -139,7 +145,7 @@ export function GraficoDemanda({
       />
       <Line
         dataKey="potencia"
-        stroke={COR.potencia}
+        stroke={corLinha}
         strokeWidth={2}
         curve={curveMonotoneX}
         fadeEdges={false}
@@ -201,7 +207,7 @@ export function GraficoDemanda({
               titulo={weekdayDateFmt.format(p.date)}
               valor={formatarKw(p.potencia)}
               unidade="kW"
-              rotulo="Demanda"
+              rotulo={rotuloSerie}
               linhas={
                 referencias
                   ? [
@@ -237,7 +243,7 @@ export function GraficoDemanda({
       ]
     : referencias
     ? [
-        { rotulo: 'Demanda', cor: COR.potencia },
+        { rotulo: rotuloSerie, cor: corLinha },
         { rotulo: 'Contratado', cor: COR.neutro, tracejada: true },
         { rotulo: rotuloAdicional, cor: COR.consumo, tracejada: true },
       ]

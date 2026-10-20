@@ -322,7 +322,26 @@ export function SinopticoGraficosV2({
     ativo: demandaVisivel,
     prefetch: PERIODOS_PREFETCH,
   });
-  const dados = temGeracao || !temConsumo ? ger.dados : con.dados;
+  // Filtro Carga/Geração (só aparece com as duas): as duas = espelhado (consumo para cima,
+  // geração para baixo); uma só = essa série para cima, com o contratado dela. Nunca as
+  // duas desligadas.
+  const [verCarga, setVerCarga] = useState(true);
+  const [verGeracao, setVerGeracao] = useState(true);
+  const temAmbos = temConsumo && temGeracao;
+  const mostraCarga = temConsumo && (!temAmbos || verCarga);
+  const mostraGeracao = !temConsumo || (temGeracao && (!temAmbos || verGeracao));
+  const modoFluxo = mostraCarga && mostraGeracao;
+  const soCarga = mostraCarga && !mostraGeracao;
+  const alternarSerie = (qual: 'carga' | 'geracao') => {
+    if (qual === 'carga') {
+      if (verCarga && !verGeracao) setVerGeracao(true);
+      setVerCarga(!verCarga);
+    } else {
+      if (verGeracao && !verCarga) setVerCarga(true);
+      setVerGeracao(!verGeracao);
+    }
+  };
+  const dados = mostraGeracao ? ger.dados : con.dados;
   const energiaPeriodo = ger.energiaPeriodo;
   const energiaConsumida = Math.abs(con.energiaPeriodo);
   const isInitialLoading = ger.isInitialLoading || con.isInitialLoading;
@@ -378,7 +397,13 @@ export function SinopticoGraficosV2({
   // - mes/ano: barras de energia (kWh) por dia/mês
   const demanda = useMemo(() => {
     if (periodo.tipo !== 'dia' && periodo.tipo !== 'custom') return SEM_DEMANDA;
-    if (!temConsumo) {
+    if (soCarga) {
+      // Consumo vem negativo do backend (sinal −1): para cima aqui.
+      const consumo = (con.dados ?? []).map((d) => ({ ...d, potencia_kw: d.potencia_kw == null ? d.potencia_kw : Math.abs(Number(d.potencia_kw)) }));
+      if (consumo.length === 0) return SEM_DEMANDA;
+      return montarPontosDemanda(consumo, periodo, valorContratadoCarga ?? 0, PERCENTUAL_LIMITE_CARGA);
+    }
+    if (!modoFluxo) {
       if (!ger.dados || ger.dados.length === 0) return SEM_DEMANDA;
       return montarPontosDemanda(ger.dados, periodo, valorContratado, percentualAdicional);
     }
@@ -393,14 +418,16 @@ export function SinopticoGraficosV2({
       ? (g.dominio[1] >= c.dominio[1] ? g.dominio : c.dominio)
       : g.dominio ?? c.dominio;
     return { pontos, dominio };
-  }, [ger.dados, con.dados, temConsumo, periodo, valorContratado, valorContratadoCarga, percentualAdicional]);
+  }, [ger.dados, con.dados, soCarga, modoFluxo, periodo, valorContratado, valorContratadoCarga, percentualAdicional]);
 
   const energia = useMemo(() => {
     if (periodo.tipo !== 'mes' && periodo.tipo !== 'ano') return [];
+    const c = con.dados ? montarPontosEnergia(con.dados, periodo.tipo).map((p) => ({ ...p, energia: Math.abs(p.energia) })) : [];
+    if (soCarga) return c;
     const g = ger.dados ? montarPontosEnergia(ger.dados, periodo.tipo) : [];
-    if (!temConsumo) return g;
-    return mesclarEnergia(g, con.dados ? montarPontosEnergia(con.dados, periodo.tipo) : []);
-  }, [ger.dados, con.dados, temConsumo, periodo.tipo]);
+    if (!modoFluxo) return g;
+    return mesclarEnergia(g, c);
+  }, [ger.dados, con.dados, soCarga, modoFluxo, periodo.tipo]);
 
   // Tensão e FP do M160 — sempre o dia corrente, eixo de 00:00 até agora
   const tensao = useMemo(() => montarPontosFases(dadosM160, 'tensao'), [dadosM160]);
@@ -428,12 +455,18 @@ export function SinopticoGraficosV2({
   const temDadosDemanda = ehSeriesPotencia ? demanda.pontos.length > 0 : energia.length > 0;
   // Linhas de referência (contratado e contratado + adicional) só no período "dia".
   const referencias = useMemo<ReferenciasDemanda | undefined>(
-    () =>
-      periodo.tipo === 'dia'
-        ? { contratado: valorContratado, adicional: valorContratado * (1 + percentualAdicional / 100), percentualAdicional }
-        : undefined,
-    [periodo.tipo, valorContratado, percentualAdicional],
+    () => {
+      if (periodo.tipo !== 'dia') return undefined;
+      if (soCarga) {
+        return valorContratadoCarga
+          ? { contratado: valorContratadoCarga, adicional: valorContratadoCarga * (1 + PERCENTUAL_LIMITE_CARGA / 100), percentualAdicional: PERCENTUAL_LIMITE_CARGA }
+          : undefined;
+      }
+      return { contratado: valorContratado, adicional: valorContratado * (1 + percentualAdicional / 100), percentualAdicional };
+    },
+    [periodo.tipo, soCarga, valorContratado, valorContratadoCarga, percentualAdicional],
   );
+  const serieUnica: 'carga' | 'geracao' | undefined = soCarga ? 'carga' : temConsumo ? 'geracao' : undefined;
   // Troca de período zera o zoom
   const chaveZoomDemanda = `${periodo.tipo}|${periodo.data ?? ''}|${periodo.inicio ?? ''}|${periodo.fim ?? ''}`;
 
@@ -479,6 +512,22 @@ export function SinopticoGraficosV2({
               <Zap className={apenasGrafico ? 'h-4 w-4 text-yellow-500' : 'h-5 w-5 text-yellow-500'} />
               <CardTitle className={apenasGrafico ? 'text-base' : undefined}>Demanda</CardTitle>
               {controleVariavel}
+              {temAmbos && (
+                <div className="ml-1 flex items-center gap-1 border-l pl-2" role="group" aria-label="Séries do gráfico">
+                  {([['carga', 'Carga', verCarga, 'var(--chart-2)'], ['geracao', 'Geração', verGeracao, 'var(--chart-1)']] as const).map(([k, rotulo, ativo, cor]) => (
+                    <button
+                      key={k}
+                      type="button"
+                      aria-pressed={ativo}
+                      onClick={() => alternarSerie(k)}
+                      className={`flex items-center gap-1 rounded-sm px-2 py-0.5 text-[11px] font-medium transition-colors ${ativo ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/50'}`}
+                    >
+                      <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: ativo ? cor : 'transparent', boxShadow: `inset 0 0 0 1.5px ${cor}` }} />
+                      {rotulo}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-1">
               <Button
@@ -591,16 +640,19 @@ export function SinopticoGraficosV2({
             {temConsumo ? (
               (energiaPeriodo > 0 || energiaConsumida > 0) && (
                 <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
-                  {temGeracao && (
+                  {mostraGeracao && temGeracao && (
                     <span className="flex items-baseline gap-1">
                       <span className="text-sm font-semibold">{formatarEnergia(energiaPeriodo)}</span>
                       <span className="text-xs text-muted-foreground">gerados</span>
                     </span>
                   )}
-                  <span className="flex items-baseline gap-1">
-                    <span className="text-sm font-semibold">{formatarEnergia(energiaConsumida)}</span>
-                    <span className="text-xs text-muted-foreground">consumidos no período</span>
-                  </span>
+                  {mostraCarga && (
+                    <span className="flex items-baseline gap-1">
+                      <span className="text-sm font-semibold">{formatarEnergia(energiaConsumida)}</span>
+                      <span className="text-xs text-muted-foreground">consumidos</span>
+                    </span>
+                  )}
+                  <span className="text-xs text-muted-foreground">no período</span>
                 </div>
               )
             ) : energiaPeriodo > 0 && (
@@ -650,10 +702,11 @@ export function SinopticoGraficosV2({
               referencias={referencias}
               chaveZoom={chaveZoomDemanda}
               className={alturaDemanda}
-              fluxo={temConsumo}
+              fluxo={modoFluxo}
+              serie={serieUnica}
             />
           ) : (
-            <GraficoEnergia pontos={energia} tipo={tipoEnergia} className={alturaDemanda} />
+            <GraficoEnergia pontos={energia} tipo={tipoEnergia} className={alturaDemanda} serie={serieUnica} />
           )}
         </CardContent>
       </Card>
@@ -866,7 +919,7 @@ export function SinopticoGraficosV2({
                   <span className="font-semibold text-foreground">{formatarEnergia(energiaPeriodo)}</span> {temConsumo ? 'gerados' : 'no período'}
                 </span>
               )}
-              {temConsumo && energiaConsumida > 0 && (
+              {mostraCarga && energiaConsumida > 0 && (
                 <span className="ml-3 text-sm font-normal text-muted-foreground">
                   <span className="font-semibold text-foreground">{formatarEnergia(energiaConsumida)}</span> consumidos
                 </span>
@@ -898,10 +951,11 @@ export function SinopticoGraficosV2({
                 dominio={demanda.dominio}
                 referencias={referencias}
                 chaveZoom={chaveZoomDemanda}
-                fluxo={temConsumo}
+                fluxo={modoFluxo}
+                serie={serieUnica}
               />
             ) : (
-              <GraficoEnergia pontos={energia} tipo={tipoEnergia} className="h-full" />
+              <GraficoEnergia pontos={energia} tipo={tipoEnergia} className="h-full" serie={serieUnica} />
             )}
           </div>
         </DialogContent>

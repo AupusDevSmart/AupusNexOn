@@ -19,10 +19,12 @@ interface GraficoEnergiaProps {
   tipo: 'mes' | 'ano';
   /** Classes do wrapper (altura). */
   className?: string;
+  /** Série única filtrada: "carga" pinta de azul e chama de Consumo. */
+  serie?: 'carga' | 'geracao';
 }
 
 /** Energia (kWh) por período em barras categóricas. */
-export function GraficoEnergia({ pontos, tipo, className }: GraficoEnergiaProps) {
+export function GraficoEnergia({ pontos, tipo, className, serie }: GraficoEnergiaProps) {
   const isMobile = useIsMobile();
   const temConsumo = pontos.some((p) => p.consumo != null);
   return (
@@ -38,7 +40,7 @@ export function GraficoEnergia({ pontos, tipo, className }: GraficoEnergiaProps)
         animationDuration={600}
       >
         <Grid horizontal numTicksRows={4} />
-        <Bar dataKey="energia" fill={COR.geracao} lineCap={4} />
+        <Bar dataKey="energia" fill={serie === 'carga' ? COR.potencia : COR.geracao} lineCap={4} />
         {temConsumo && <Bar dataKey="consumo" fill={COR.potencia} lineCap={4} />}
         <BarXAxis maxLabels={isMobile ? 8 : 16} />
         <YAxis numTicks={4} formatValue={energiaEixo} />
@@ -67,7 +69,7 @@ export function GraficoEnergia({ pontos, tipo, className }: GraficoEnergiaProps)
                 titulo={titulo}
                 valor={energia.valor}
                 unidade={energia.unidade}
-                rotulo="Energia"
+                rotulo={serie === 'carga' ? 'Consumo' : serie === 'geracao' ? 'Geração' : 'Energia'}
               />
             );
           }}
