@@ -123,6 +123,9 @@ export const EQUIPMENT_SIZES = {
   JP: { width: 0.25, height: 0.25 },
   JUNCAO: { width: 0.25, height: 0.25 },
 
+  // Bloco de grupo recolhido do unifilar (NEXON-31) — 4x2 (160x80px)
+  GRUPO_UNIFILAR: { width: 4, height: 2 },
+
   // Padrão para tipos desconhecidos - 2x2 (80x80px)
   DEFAULT: { width: 2, height: 2 },
 } as const;
