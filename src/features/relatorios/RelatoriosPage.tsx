@@ -5,10 +5,12 @@ import { BoletimSemanalFvPage } from '@/features/monitoramento-fv/BoletimSemanal
 import { ConsumoReportPreview } from './consumo/ConsumoReportPreview';
 import { ConsumoEnvioConfig } from './consumo/ConsumoEnvioConfig';
 import { AbastecimentoReport } from './AbastecimentoReport';
+import { RelatorioOperacaoTab } from './operacao/RelatorioOperacaoTab';
 import { useFiltrosNaUrl } from '@/hooks/useEstadoLembrado';
 
 /**
  * Área de Relatórios (top-level): Geração (usinas) e Consumo (unidades medidas).
+ * Operação (NEXON-33): relatórios mensais A4 de irrigação, geração, consumo e recargas.
  * Geração reusa a página de boletim semanal; Consumo renderiza o componente React
  * de gestão de energia.
  */
@@ -26,6 +28,7 @@ export function RelatoriosPage() {
                 <TabsTrigger value="geracao">Geração</TabsTrigger>
                 <TabsTrigger value="consumo">Consumo</TabsTrigger>
                 <TabsTrigger value="abastecimento">Abastecimento</TabsTrigger>
+                <TabsTrigger value="operacao">Operação</TabsTrigger>
               </TabsList>
             }
           />
@@ -37,6 +40,7 @@ export function RelatoriosPage() {
             </div>
           </TabsContent>
           <TabsContent value="abastecimento"><AbastecimentoReport /></TabsContent>
+          <TabsContent value="operacao"><RelatorioOperacaoTab /></TabsContent>
         </Tabs>
       </Layout.Main>
     </Layout>

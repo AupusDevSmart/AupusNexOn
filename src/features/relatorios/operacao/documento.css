@@ -1,0 +1,60 @@
+/* NEXON-33 — documento A4 dos relatórios de operação. Fonte só deste módulo. */
+
+.rel-op-pagina {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+  -webkit-font-smoothing: antialiased;
+}
+.rel-op-pagina * {
+  box-sizing: border-box;
+}
+.rel-op-bloco {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+.rel-op-linha {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+/* Só a rota de impressão liga estas regras (classe no <body>). */
+@media print {
+  @page {
+    size: A4;
+    margin: 0;
+  }
+  html:has(body.rel-op-imprimindo),
+  body.rel-op-imprimindo {
+    background: #ffffff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  body.rel-op-imprimindo .rel-op-nao-imprimir {
+    display: none !important;
+  }
+  body.rel-op-imprimindo .rel-op-folhas {
+    gap: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+  body.rel-op-imprimindo .rel-op-pagina {
+    /* 297 mm = 1122,5 px: 1 px a menos evita folha em branco no fim. */
+    min-height: 1122px !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+    break-after: page;
+    page-break-after: always;
+    /* Conteúdo que passa da folha continua na próxima com as mesmas margens. */
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+  }
+  body.rel-op-imprimindo .rel-op-pagina:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+}
+
+/* Prévia na tela: folha com sombra leve sobre o fundo do app. */
+.rel-op-folhas .rel-op-pagina {
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.14), 0 0 0 1px rgba(15, 23, 42, 0.05);
+}
