@@ -6,6 +6,7 @@ import {
   Bug,
   ChevronRight,
   Hourglass,
+  TriangleAlert,
   Inbox,
   Check,
   CircleHelp,
@@ -103,6 +104,19 @@ const CAMPO =
 const LINK = "font-medium text-[#177A3C] underline-offset-2 hover:underline dark:text-[#70C04B]";
 const ENTRADA = "animate-in fade-in slide-in-from-bottom-2 duration-300";
 
+// NEXUS-164 (port para o NexON, NEXUS-183): cobrança de pedido bem escrito, 1x por dia, antes do formulário.
+const CHAVE_AVISO = "nexon:luna-aviso-pedido";
+function hoje() {
+  return new Date().toLocaleDateString("sv-SE"); // AAAA-MM-DD no fuso local
+}
+function avisoJaLido() {
+  try {
+    return localStorage.getItem(CHAVE_AVISO) === hoje();
+  } catch {
+    return false;
+  }
+}
+
 function relogio(s: number) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
@@ -134,6 +148,7 @@ export function LunaPedidosPainel() {
   const [anexos, setAnexos] = useState<Anexo[]>([]);
   const [enviado, setEnviado] = useState<Enviado>({});
   const [copiado, setCopiado] = useState(false);
+  const [avisoLido, setAvisoLido] = useState(() => avisoJaLido());
   const [gravando, setGravando] = useState(0); // segundos; 0 = parado
   const [arrastando, setArrastando] = useState(false);
   const [teclado, setTeclado] = useState(0);
@@ -566,7 +581,8 @@ export function LunaPedidosPainel() {
     ? {
         bottom: teclado,
         paddingBottom: teclado ? 0 : "env(safe-area-inset-bottom)",
-        maxHeight: alturaVisivel ? Math.round(alturaVisivel * 0.92) : undefined,
+        // Altura fixa (NEXUS-183): trocar de aba não faz a folha crescer nem encolher.
+        height: alturaVisivel ? Math.round(alturaVisivel * 0.88) : undefined,
       }
     : (() => {
         // Ancorado pela base: a altura tem que caber entre o topo (16 px) e essa base, senão o
@@ -575,7 +591,8 @@ export function LunaPedidosPainel() {
         return {
           left: Math.max(16, Math.min((ancora?.right ?? 16) + 12, window.innerWidth - 436)),
           bottom,
-          maxHeight: Math.max(320, window.innerHeight - bottom - 16),
+          // Altura fixa (NEXUS-183): 640 px ou o que couber até o topo, igual em todas as abas.
+          height: Math.min(640, Math.max(320, window.innerHeight - bottom - 16)),
         };
       })();
 
@@ -612,7 +629,7 @@ export function LunaPedidosPainel() {
         className={cn(
           "absolute flex flex-col overflow-hidden border border-border bg-background text-foreground shadow-2xl",
           celular
-            ? "inset-x-0 max-h-[92dvh] rounded-t-3xl border-b-0 animate-in slide-in-from-bottom duration-300"
+            ? "inset-x-0 h-[88dvh] rounded-t-3xl border-b-0 animate-in slide-in-from-bottom duration-300"
             : "max-h-[calc(100dvh-32px)] w-[420px] max-w-[calc(100vw-32px)] rounded-2xl animate-in fade-in zoom-in-95 slide-in-from-left-2 duration-200",
         )}
       >
@@ -836,7 +853,41 @@ export function LunaPedidosPainel() {
             />
           )}
 
-          {tela === "pedido" && user && abaAtual === "novo" && (
+          {tela === "pedido" && user && abaAtual === "novo" && !avisoLido && (
+            <div key="aviso" className={cn("flex flex-col gap-4 p-4", ENTRADA)}>
+              <div className="flex items-start gap-3 rounded-xl border border-amber-500/50 bg-amber-500/10 p-4">
+                <TriangleAlert className="mt-0.5 size-5 shrink-0 text-amber-500" />
+                <div className="flex min-w-0 flex-col gap-2 text-sm">
+                  <p className="font-semibold">Um toque antes de pedir</p>
+                  <p>
+                    Quem recebe o pedido não tem o contexto que você tem. Quanto mais claro o pedido, mais rápido e mais certo
+                    ele volta pronto.
+                  </p>
+                  <ul className="list-disc space-y-1 pl-4">
+                    <li>Diga o que aconteceu, onde (tela, planta, equipamento) e o que você esperava.</li>
+                    <li>Conte com começo, meio e fim, para que outra pessoa entenda sozinha.</li>
+                    <li>Mais fácil falar do que escrever? Grave um áudio explicando, pelo botão do microfone.</li>
+                  </ul>
+                </div>
+              </div>
+              <button
+                type="button"
+                className={BOTAO_PRINCIPAL}
+                onClick={() => {
+                  try {
+                    localStorage.setItem(CHAVE_AVISO, hoje());
+                  } catch {
+                    /* sem storage: o aviso volta na próxima abertura */
+                  }
+                  setAvisoLido(true);
+                }}
+              >
+                Entendi, vou explicar bem
+              </button>
+            </div>
+          )}
+
+          {tela === "pedido" && user && abaAtual === "novo" && avisoLido && (
             <form key="pedido" id="luna-pedido-form" className={cn("flex flex-col gap-5 p-4", ENTRADA)} onSubmit={enviar} noValidate>
               {!!meus?.counts.ready && (
                 <button
@@ -1100,7 +1151,7 @@ export function LunaPedidosPainel() {
             </button>
           </div>
         )}
-        {tela === "pedido" && user && abaAtual === "novo" && (
+        {tela === "pedido" && user && abaAtual === "novo" && avisoLido && (
           <div className="shrink-0 border-t border-border p-4">
             <button type="submit" form="luna-pedido-form" className={BOTAO_PRINCIPAL} disabled={ocupado || !!gravando}>
               {ocupado ? <Loader2 className="size-5 animate-spin" /> : <SendHorizontal className="size-5" />}
