@@ -461,15 +461,27 @@ function ConfigInversor({ equipamentoId, dados, perfilStr, onPerfil, totalString
     return () => { vivo = false; };
   }, [equipamentoId]);
 
+  // NEXON-18: os 6 parâmetros são sempre editáveis. Sem item no catálogo do modelo, vale a faixa padrão daqui e
+  // a TON decide (recusa volta no toast).
   const linhas: LinhaCfg[] = [
-    { key: 'sub', label: 'Subtensão', faixa: '0,70 a 0,90', unit: 'pu', path: 'protection.under_voltage' },
-    { key: 'sob', label: 'Sobretensão', faixa: '1,05 a 1,20', unit: 'pu', path: 'protection.over_voltage' },
-    { key: 'subf', label: 'Subfrequência', faixa: '56,0 a 59,5', unit: 'Hz', path: 'protection.under_frequency' },
-    { key: 'sobf', label: 'Sobrefrequência', faixa: '60,5 a 63,0', unit: 'Hz', path: 'protection.over_frequency' },
+    { key: 'sub', label: 'Subtensão', faixa: '0,70 a 0,90', unit: 'pu', path: 'protection.under_voltage', sp: 'sp_subtensao' },
+    { key: 'sob', label: 'Sobretensão', faixa: '1,05 a 1,20', unit: 'pu', path: 'protection.over_voltage', sp: 'sp_sobretensao' },
+    { key: 'subf', label: 'Subfrequência', faixa: '56,0 a 59,5', unit: 'Hz', path: 'protection.under_frequency', sp: 'sp_subfrequencia' },
+    { key: 'sobf', label: 'Sobrefrequência', faixa: '60,5 a 63,0', unit: 'Hz', path: 'protection.over_frequency', sp: 'sp_sobrefrequencia' },
     { key: 'fp', label: 'Fator de potência', faixa: '0,80 ind a 0,80 cap', unit: '', path: 'regulation.power_factor_setpoint', sp: 'sp_fp' },
     { key: 'lim', label: 'Limite de potência', faixa: '0 a 100', unit: '%', path: 'regulation.active_power_limit', sp: 'sp_limite_pct' },
   ];
-  const porId = new Map(lista.map((sp) => [sp.id, sp]));
+  const padraoSp: Record<string, SetpointDef> = {
+    sp_subtensao: { id: 'sp_subtensao', label: 'Subtensão', unidade: 'pu', min: 0.7, max: 0.9 },
+    sp_sobretensao: { id: 'sp_sobretensao', label: 'Sobretensão', unidade: 'pu', min: 1.05, max: 1.2 },
+    sp_subfrequencia: { id: 'sp_subfrequencia', label: 'Subfrequência', unidade: 'Hz', min: 56, max: 59.5 },
+    sp_sobrefrequencia: { id: 'sp_sobrefrequencia', label: 'Sobrefrequência', unidade: 'Hz', min: 60.5, max: 63 },
+    sp_fp: { id: 'sp_fp', label: 'Fator de potência', faixas: [[-1, -0.8], [0.8, 1]] },
+    sp_limite_pct: { id: 'sp_limite_pct', label: 'Limite de potência', unidade: '%', min: 0, max: 100 },
+  };
+  const catalogo = new Map(lista.map((sp) => [sp.id, sp]));
+  const porId = new Map(linhas.map((l) => [l.sp as string, catalogo.get(l.sp as string) ?? padraoSp[l.sp as string]]));
+  lista.forEach((sp) => { if (!porId.has(sp.id)) porId.set(sp.id, sp); });
   const extras = lista.filter((sp) => !sp.avancado && !linhas.some((l) => l.sp === sp.id));
   const avancados = lista.filter((sp) => sp.avancado);
   const pathDe = (sp: SetpointDef) => linhas.find((l) => l.sp === sp.id)?.path ?? (sp.id === 'sp_q_pct' ? 'regulation.reactive_pct' : '');
@@ -522,8 +534,7 @@ function ConfigInversor({ equipamentoId, dados, perfilStr, onPerfil, totalString
     { k: 'Modo de reativo', v: pv('regulation.reactive_mode_text') || '—', sub: 'FP fixo · Q fixo · Q(V)', opcional: true },
   ];
   const temIdent = ident.some((r) => !vazio(r.v));
-  const soLeitura = linhas.filter((l) => !(l.sp && porId.get(l.sp)));
-
+  
   return (
     <div style={{ padding: '20px 24px 28px 24px', display: 'flex', flexDirection: 'column', gap: 10 }}>
       <Rotulo style={{ marginTop: 4 }}>Parâmetros do inversor</Rotulo>
@@ -557,11 +568,6 @@ function ConfigInversor({ equipamentoId, dados, perfilStr, onPerfil, totalString
       <button type="button" disabled={saveOff} onClick={() => setReview(true)} style={s.save(saveOff)}>
         {anyBad ? 'Valor fora da faixa' : changed.length === 0 ? 'Sem alterações' : `Revisar ${changed.length} ${changed.length > 1 ? 'alterações' : 'alteração'}`}
       </button>
-      )}
-      {soLeitura.length > 0 && (
-        <span style={{ fontSize: 12, color: NX.mudo, marginTop: 6 }}>
-          {soLeitura.map((l) => l.label).join(', ')}: só leitura — este modelo ainda não tem comando de ajuste pelo NexON ("—" enquanto a TON não lê o registrador).
-        </span>
       )}
       <span style={{ fontSize: 12, color: NX.mudo }}>Ajustes enviados ao inversor pela TON (firmware gerado a partir de 09/10/2026). Só fica editável o que este modelo aceita.</span>
 
