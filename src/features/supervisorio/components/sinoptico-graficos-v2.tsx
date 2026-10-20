@@ -8,12 +8,13 @@ import { Input } from "@/components/ui/input";
 import { Activity, Settings, TrendingUp, Zap, AlertTriangle, Loader2, Expand, ChevronLeft, ChevronRight } from "lucide-react";
 import { useState, useEffect, useMemo } from "react";
 import type { ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/config/api";
 import { useDemandaAgregada, type PeriodoFiltro } from "@/hooks/useDemandaAgregada";
 import { useDadosM160 } from "@/hooks/useDadosM160";
 import { ConfiguracaoDemandaModal, type ConfiguracaoDemanda, type EquipamentoConfig } from "./ConfiguracaoDemandaModal";
 import { CATEGORIA_FLUXO, resolverFluxoEquipamento } from "../utils/categoria-fluxo";
+import { corpoConfiguracaoDemanda, estaNoDiagrama, useDemandasUnidade } from "../sinoptico/hooks/useConfiguracaoDemanda";
 import {
   analisarQualidadeDados,
   deslocarPeriodo,
@@ -76,6 +77,8 @@ interface EquipamentoApi {
   status?: string;
   tipo_equipamento?: string;
   tipo_equipamento_rel?: { codigo?: string; categoria?: { nome?: string } };
+  noDiagrama?: boolean;
+  diagrama_id?: string | null;
 }
 
 const FASES_TODAS: FasesAtivas = { A: true, B: true, C: true };
@@ -162,8 +165,14 @@ export function SinopticoGraficosV2({
     intervaloAtualizacao: 30,
     aplicarPerdas: true,
     fatorPerdas: 3,
-    demandaContratada: valorContratado,
   }));
+  const { demandaGeracao, demandaCarga } = useDemandasUnidade(unidadeId);
+  const queryClient = useQueryClient();
+  // Modal recebe as demandas da unidade (geração e carga) junto da config.
+  const configuracaoModal = useMemo<ConfiguracaoDemanda>(
+    () => ({ ...configuracao, demandaGeracao, demandaCarga }),
+    [configuracao, demandaGeracao, demandaCarga],
+  );
 
   // Buscar equipamentos disponíveis
   const {
@@ -202,6 +211,7 @@ export function SinopticoGraficosV2({
               selecionado: false,
               multiplicador: 1,
               online: equip.status === 'ONLINE' || equip.status === 'online' || true,
+              noDiagrama: estaNoDiagrama(equip),
             };
           });
         }
@@ -243,17 +253,15 @@ export function SinopticoGraficosV2({
         intervaloAtualizacao: configData.intervaloAtualizacao,
         aplicarPerdas: configData.aplicarPerdas,
         fatorPerdas: configData.fatorPerdas,
-        demandaContratada: valorContratado,
       });
     } else if (equipamentosData && equipamentosData.length > 0 && !configData) {
       // Se não tem config na API, usar equipamentos disponíveis
       setConfiguracao(prev => ({
         ...prev,
         equipamentos: equipamentosData,
-        demandaContratada: valorContratado, // Garantir que sempre tenha o valor atualizado da unidade
       }));
     }
-  }, [configData, equipamentosData, valorContratado]);
+  }, [configData, equipamentosData]);
 
   // Resolve fluxo final por equipamento: substitui AMBIGUO pela escolha manual
   // do admin (configuracao.fluxoManual). NEUTRO continua NEUTRO e eh filtrado
@@ -292,38 +300,12 @@ export function SinopticoGraficosV2({
   const handleSalvarConfiguracao = async (novaConfig: ConfiguracaoDemanda) => {
     if (!unidadeId) return;
 
-    // Converter formato para o banco. `fonte` mantido como 'AGRUPAMENTO' fixo
-    // pra compat com schema existente — única fonte real desde a remoção do
-    // dropdown AUTO/A966.
-    const configParaBanco = {
-      fonte: 'AGRUPAMENTO',
-      equipamentos_ids: novaConfig.equipamentos
-        .filter(e => e.selecionado)
-        .map(e => e.id.trim()),
-      // NÃO enviar `fluxo_manual`: o backend (UpdateConfiguracaoDemandaDto) não
-      // tem esse campo e o ValidationPipe roda com forbidNonWhitelisted, então
-      // qualquer campo extra rejeita TODO o PUT com 400 (era a causa de "salvo,
-      // recarrego e não muda"). A escolha manual de equipamentos AMBIGUO (ex:
-      // Medidor SSU) fica só em memória até existir coluna fluxo_manual no schema.
-      mostrar_detalhes: novaConfig.mostrarDetalhes,
-      intervalo_atualizacao: novaConfig.intervaloAtualizacao,
-      aplicar_perdas: novaConfig.aplicarPerdas,
-      fator_perdas: novaConfig.fatorPerdas,
-      valor_contratado: novaConfig.demandaContratada || valorContratado,
-      percentual_adicional: percentualAdicional,
-    };
-
     // Persistência. NÃO engolir erro aqui: se o PUT falhar (ex: 400), propaga
-    // pro modal exibir o erro real (toast.error) e manter-se aberto. Antes o
-    // catch silencioso + toast.success sem await mascaravam falhas de save.
-    await api.put(`/configuracao-demanda/unidade/${unidadeId}`, configParaBanco);
-
-    // Se houver demanda contratada, atualizar na unidade
-    if (novaConfig.demandaContratada !== undefined) {
-      await api.put(`/unidades/${unidadeId}`, {
-        demanda_geracao: novaConfig.demandaContratada
-      });
-    }
+    // pro modal exibir o erro real (toast.error) e manter-se aberto. A API grava
+    // as demandas de geração/carga na unidade e registra na trilha (NEXON-19).
+    await api.put(`/configuracao-demanda/unidade/${unidadeId}`, corpoConfiguracaoDemanda(novaConfig, percentualAdicional));
+    queryClient.invalidateQueries({ queryKey: ['unidade-demanda', unidadeId.trim()] });
+    queryClient.invalidateQueries({ queryKey: ['sinoptico-cfgd-config', unidadeId.trim()] });
 
     // Sucesso: atualizar estado local e fechar.
     setConfiguracao(novaConfig);
@@ -946,7 +928,7 @@ export function SinopticoGraficosV2({
       <ConfiguracaoDemandaModal
         open={modalOpen}
         onOpenChange={setModalOpen}
-        configuracao={configuracao}
+        configuracao={configuracaoModal}
         onSalvar={handleSalvarConfiguracao}
         equipamentosDisponiveis={equipamentosData || []}
       />

@@ -29,7 +29,7 @@ import {
   Save,
   RotateCcw,
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { toast } from "sonner";
 
 import {
@@ -39,6 +39,7 @@ import {
   type FluxoManualSelecao,
 } from "../utils/categoria-fluxo";
 import { formatApiError } from "@/utils/api-error";
+import { equipamentoNaConfig } from "../utils/equipamento-na-config";
 
 export interface EquipamentoConfig {
   id: string;
@@ -51,6 +52,8 @@ export interface EquipamentoConfig {
   selecionado: boolean;
   multiplicador: number;
   online: boolean;
+  /** Está no diagrama unifilar (`noDiagrama` da API). undefined = desconhecido, mostra. */
+  noDiagrama?: boolean;
 }
 
 export interface ConfiguracaoDemanda {
@@ -61,7 +64,10 @@ export interface ConfiguracaoDemanda {
   intervaloAtualizacao: number;
   aplicarPerdas: boolean;
   fatorPerdas: number;
-  demandaContratada?: number;
+  /** Demanda contratada de geração (kW) — unidades.demanda_geracao; linha do gráfico. */
+  demandaGeracao?: number | null;
+  /** Demanda contratada de carga (kW) — unidades.demanda_carga; medidor de consumo. */
+  demandaCarga?: number | null;
 }
 
 interface ConfiguracaoDemandaModalProps {
@@ -70,6 +76,12 @@ interface ConfiguracaoDemandaModalProps {
   configuracao: ConfiguracaoDemanda;
   onSalvar: (config: ConfiguracaoDemanda) => void | Promise<void>;
   equipamentosDisponiveis: EquipamentoConfig[];
+}
+
+/** Campo vazio = sem demanda (null); número negativo ou inválido também. */
+function lerKw(valor: string): number | null {
+  const n = parseFloat(valor.replace(",", "."));
+  return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
 export function ConfiguracaoDemandaModal({
@@ -81,6 +93,16 @@ export function ConfiguracaoDemandaModal({
 }: ConfiguracaoDemandaModalProps) {
   const [config, setConfig] = useState<ConfiguracaoDemanda>(configuracao);
   const [tabAtiva, setTabAtiva] = useState("equipamentos");
+
+  // Seleção salva quando o modal abriu: decide quem fica visível mesmo fora do diagrama.
+  const selecionadosNaOrigem = useMemo(() => {
+    const ids = new Set<string>();
+    for (const e of configuracao.equipamentos ?? []) if (e.selecionado) ids.add(e.id);
+    for (const e of equipamentosDisponiveis ?? []) if (e.selecionado) ids.add(e.id);
+    return ids;
+  }, [configuracao, equipamentosDisponiveis]);
+  const visivel = (eq: EquipamentoConfig) => equipamentoNaConfig(eq, selecionadosNaOrigem.has(eq.id));
+  const equipamentosVisiveis = config.equipamentos.filter(visivel);
 
   // Mescla equipamentos disponíveis com seleção persistida na configuração.
   useEffect(() => {
@@ -133,6 +155,8 @@ export function ConfiguracaoDemandaModal({
       intervaloAtualizacao: 60,
       aplicarPerdas: true,
       fatorPerdas: 3,
+      demandaGeracao: config.demandaGeracao,
+      demandaCarga: config.demandaCarga,
     });
   };
 
@@ -203,7 +227,7 @@ export function ConfiguracaoDemandaModal({
                     onClick={() => {
                       setConfig(prev => ({
                         ...prev,
-                        equipamentos: prev.equipamentos.map(e => ({ ...e, selecionado: true }))
+                        equipamentos: prev.equipamentos.map(e => (visivel(e) ? { ...e, selecionado: true } : e))
                       }));
                     }}
                   >
@@ -226,14 +250,14 @@ export function ConfiguracaoDemandaModal({
 
               <ScrollArea className="h-[300px] rounded-[2px] border">
                 <div className="p-4 space-y-2">
-                  {config.equipamentos.length === 0 ? (
+                  {equipamentosVisiveis.length === 0 ? (
                     <div className="text-center text-muted-foreground py-8">
                       <Activity className="h-12 w-12 mx-auto mb-4 opacity-50" />
                       <p className="font-medium">Nenhum equipamento disponível</p>
-                      <p className="text-sm mt-2">Verifique se há equipamentos com MQTT habilitado na unidade</p>
+                      <p className="text-sm mt-2">Verifique se há equipamentos com MQTT habilitado no diagrama unifilar da unidade</p>
                     </div>
                   ) : (
-                    config.equipamentos.map((equipamento) => {
+                    equipamentosVisiveis.map((equipamento) => {
                       const fluxoPadrao = CATEGORIA_FLUXO[equipamento.categoria] ?? 'NEUTRO';
                       const ehAmbiguo = fluxoPadrao === 'AMBIGUO';
                       const escolhaManual = config.fluxoManual?.[equipamento.id];
@@ -252,6 +276,9 @@ export function ConfiguracaoDemandaModal({
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className="font-medium truncate">{equipamento.nome}</span>
                                 <Badge variant="outline" className="text-xs">{equipamento.categoria || equipamento.tipo || '?'}</Badge>
+                                {equipamento.noDiagrama === false && (
+                                  <Badge variant="outline" className="text-xs text-amber-600">Fora do diagrama</Badge>
+                                )}
                                 {!equipamento.online && (
                                   <Badge variant="destructive" className="text-xs">Offline</Badge>
                                 )}
@@ -314,6 +341,7 @@ export function ConfiguracaoDemandaModal({
 
               <div className="rounded-[2px] bg-muted p-3 text-xs space-y-1">
                 <p className="font-medium">Como o cálculo funciona:</p>
+                <p>Aparecem só os equipamentos do diagrama unifilar (TON, gateway e medidores fora dele ficam de fora).</p>
                 <p>Categorias inequívocas (Inversor PV, Motor, etc.) têm fluxo automático.</p>
                 <p>Power Meter e Medidor SSU dependem da instalação física — selecione manualmente acima.</p>
                 <p>Não selecionados ou marcados como "Ignorar" não entram no agregado.</p>
@@ -323,25 +351,43 @@ export function ConfiguracaoDemandaModal({
 
           <TabsContent value="avancado" className="space-y-4">
             <div className="space-y-4">
-              <div>
-                <Label htmlFor="demandaContratada">Demanda Contratada (kW)</Label>
-                <Input
-                  type="number"
-                  id="demandaContratada"
-                  min={0}
-                  step={0.01}
-                  value={config.demandaContratada || ''}
-                  onChange={(e) =>
-                    setConfig(prev => ({
-                      ...prev,
-                      demandaContratada: parseFloat(e.target.value) || 0
-                    }))
-                  }
-                  placeholder="Ex: 2500"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Valor da demanda contratada com a concessionária (usado como linha de referência no gráfico)
-                </p>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <Label htmlFor="demandaGeracao">Demanda de Geração (kW)</Label>
+                  <Input
+                    type="number"
+                    id="demandaGeracao"
+                    inputMode="decimal"
+                    min={0}
+                    step={0.01}
+                    value={config.demandaGeracao ?? ''}
+                    onChange={(e) =>
+                      setConfig(prev => ({ ...prev, demandaGeracao: lerKw(e.target.value) }))
+                    }
+                    placeholder="Ex: 295"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Contratada para injeção. Linha de referência do gráfico de demanda (limite +1%).
+                  </p>
+                </div>
+                <div>
+                  <Label htmlFor="demandaCarga">Demanda de Carga (kW)</Label>
+                  <Input
+                    type="number"
+                    id="demandaCarga"
+                    inputMode="decimal"
+                    min={0}
+                    step={0.01}
+                    value={config.demandaCarga ?? ''}
+                    onChange={(e) =>
+                      setConfig(prev => ({ ...prev, demandaCarga: lerKw(e.target.value) }))
+                    }
+                    placeholder="Ex: 150"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Contratada para consumo. Usada no medidor de carga do card Demanda (limite +5%).
+                  </p>
+                </div>
               </div>
 
               <div className="space-y-2">
