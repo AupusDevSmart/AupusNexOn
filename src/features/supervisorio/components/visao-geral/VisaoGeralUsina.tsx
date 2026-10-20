@@ -3,6 +3,7 @@ import { Info, Sun, Zap } from 'lucide-react';
 import { coaApi, type UnidadeResumo } from '@/features/coa/api/coa-api';
 import { formatEnergy } from '@/utils/formatEnergy';
 import { GeracaoHistoricoChart } from './GeracaoHistoricoChart';
+import { AnaliseGeracao } from '@/features/geracao/AnaliseGeracao';
 import { KpiRow } from '@/features/supervisorio/sinoptico/components/KpiRow';
 import { GrandezasEletricasPanel } from '@/features/supervisorio/sinoptico/components/GrandezasEletricasPanel';
 import { DemandaFluxoPanel } from '@/features/supervisorio/sinoptico/components/DemandaFluxoPanel';
@@ -126,6 +127,8 @@ export function VisaoGeralUsina({ unidadeId, unidadeNome }: { unidadeId: string;
             <GrandezasEletricasPanel unidadeId={unidadeId} />
             <DemandaFluxoPanel unidadeId={unidadeId} />
           </div>
+          {/* Análise de geração (NEXON-16): só aparece se a unidade tem inversor com leitura. */}
+          <AnaliseGeracao unidadeId={unidadeId} />
           {/* Altura DEFINIDA no xl: o gráfico usa xl:flex-1 (altura vem do pai). Só min-h
               deixava a cadeia flex-1 colapsar pra 0 no desktop → gráfico em branco. */}
           <div className="flex min-h-[240px] flex-col xl:h-[440px] xl:min-h-0">
@@ -134,7 +137,7 @@ export function VisaoGeralUsina({ unidadeId, unidadeNome }: { unidadeId: string;
         </>
       ) : (
         <>
-          <GeracaoHistoricoChart unidadeId={unidadeId} />
+          <AnaliseGeracao unidadeId={unidadeId} fallback={<GeracaoHistoricoChart unidadeId={unidadeId} />} />
           <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
             <Info className="mt-px h-3.5 w-3.5 shrink-0" />
             Visão geral da usina. O detalhamento por inversor não aparece aqui: integrações de nuvem como a da Sungrow entregam apenas os totais da usina.
