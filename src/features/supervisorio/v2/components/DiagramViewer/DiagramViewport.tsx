@@ -55,9 +55,9 @@ export const DiagramViewport: React.FC<DiagramViewportProps> = ({ children, onBa
 
   // ==========================================================================
   // SCROLL (NEXON-31) — listener nativo ({passive:false} permite preventDefault)
-  //   Ctrl/⌘+scroll ou pinça do trackpad → zoom no cursor
-  //   scroll lateral (deltaX) ou Shift+scroll → move para os lados
-  //   scroll vertical do mouse → zoom no cursor (como sempre foi)
+  //   scroll (vertical e lateral) → move a tela, como numa página
+  //   Shift+scroll → move para os lados (mouse sem roda lateral)
+  //   Ctrl/⌘+scroll ou pinça do trackpad → zoom no ponto do mouse
   // Lê o estado FRESCO do store (o listener é registrado uma vez).
   // ==========================================================================
 
@@ -88,20 +88,18 @@ export const DiagramViewport: React.FC<DiagramViewportProps> = ({ children, onBa
       const dy = e.deltaY * px;
 
       if (e.ctrlKey || e.metaKey) {
-        // pinça do trackpad chega como ctrl+wheel com deltas pequenos
-        zoomNoCursor(e, Math.exp(-dy * 0.01));
+        // Pinça do trackpad chega como ctrl+wheel com deltas pequenos (zoom contínuo);
+        // um "clique" da roda do mouse vem grande (~100): passo fixo de 15%.
+        const fator = Math.abs(dy) >= 40 ? (dy < 0 ? 1.15 : 1 / 1.15) : Math.exp(-dy * 0.01);
+        zoomNoCursor(e, fator);
         return;
       }
       const st = useDiagramStore.getState();
-      if (e.shiftKey) {
-        st.setPan(st.viewport.x - (dx || dy), st.viewport.y);
+      if (e.shiftKey && dx === 0) {
+        st.setPan(st.viewport.x - dy, st.viewport.y);
         return;
       }
-      if (dx !== 0) {
-        st.setPan(st.viewport.x - dx, st.viewport.y - dy);
-        return;
-      }
-      zoomNoCursor(e, Math.exp(-dy * 0.0015));
+      st.setPan(st.viewport.x - dx, st.viewport.y - dy);
     };
 
     svg.addEventListener('wheel', handleWheel, { passive: false });
