@@ -19,6 +19,7 @@ import {
 // Lazy load para evitar problemas de import
 import { lazy, Suspense } from "react";
 import { SinopticoSkeleton } from "@/features/supervisorio/sinoptico/components/SinopticoSkeleton";
+import { PaginaSkeleton } from "@/components/common/PaginaSkeleton";
 
 /**
  * Componente de rota protegida
@@ -274,7 +275,7 @@ export const appRoutes = createBrowserRouter([
       //   path: "supervisorio/cadastro-unidades",
       //   element: (
       //     <FeatureWrapper feature="supervisorio">
-      //       <Suspense fallback={<div>Carregando...</div>}>
+      //       <Suspense fallback={<PaginaSkeleton />}>
       //         <CadastroUnidadesPage />
       //       </Suspense>
       //     </FeatureWrapper>
@@ -284,7 +285,7 @@ export const appRoutes = createBrowserRouter([
       //   path: "supervisorio/logs-eventos",
       //   element: (
       //     <FeatureWrapper feature="supervisorio">
-      //       <Suspense fallback={<div>Carregando...</div>}>
+      //       <Suspense fallback={<PaginaSkeleton />}>
       //         <LogsEventosPage />
       //       </Suspense>
       //     </FeatureWrapper>
@@ -294,7 +295,7 @@ export const appRoutes = createBrowserRouter([
         path: "supervisorio/sinoptico",
         element: (
           <FeatureWrapper feature="supervisorio">
-            <Suspense fallback={<div>Carregando...</div>}>
+            <Suspense fallback={<PaginaSkeleton />}>
               <SelecionarUnidadePage />
             </Suspense>
           </FeatureWrapper>
@@ -304,7 +305,7 @@ export const appRoutes = createBrowserRouter([
         path: "supervisorio/sinoptico-ativo",
         element: (
           <FeatureWrapper feature="supervisorio">
-            <Suspense fallback={<div>Carregando...</div>}>
+            <Suspense fallback={<PaginaSkeleton />}>
               <SelecionarUnidadePage />
             </Suspense>
           </FeatureWrapper>
@@ -325,7 +326,7 @@ export const appRoutes = createBrowserRouter([
         path: "supervisorio/iot",
         element: (
           <FeatureWrapper feature="supervisorio">
-            <Suspense fallback={<div>Carregando...</div>}>
+            <Suspense fallback={<PaginaSkeleton variante="diagrama" />}>
               <IotPage />
             </Suspense>
           </FeatureWrapper>
@@ -335,7 +336,7 @@ export const appRoutes = createBrowserRouter([
       //   path: "supervisorio/demo-mqtt",
       //   element: (
       //     <FeatureWrapper feature="supervisorio">
-      //       <Suspense fallback={<div>Carregando...</div>}>
+      //       <Suspense fallback={<PaginaSkeleton />}>
       //         <DemoMqttPage />
       //       </Suspense>
       //     </FeatureWrapper>
@@ -357,7 +358,7 @@ export const appRoutes = createBrowserRouter([
         element: (
           <RequireNotCliente>
             <RequirePermission permission="plantas.view">
-              <Suspense fallback={<div>Carregando...</div>}>
+              <Suspense fallback={<PaginaSkeleton />}>
                 <ProprietariosPage />
               </Suspense>
             </RequirePermission>
@@ -369,7 +370,7 @@ export const appRoutes = createBrowserRouter([
         element: (
           <RequireNotCliente>
             <RequirePermission permission="unidades.view">
-              <Suspense fallback={<div>Carregando...</div>}>
+              <Suspense fallback={<PaginaSkeleton />}>
                 <InstalacoesPage />
               </Suspense>
             </RequirePermission>
@@ -412,7 +413,7 @@ export const appRoutes = createBrowserRouter([
         path: "configuracoes/notificacoes",
         element: (
           <RequirePermission permission="usuarios.manage">
-            <Suspense fallback={<div>Carregando...</div>}>
+            <Suspense fallback={<PaginaSkeleton />}>
               <ConfiguracoesNotificacoesPage />
             </Suspense>
           </RequirePermission>
@@ -422,7 +423,7 @@ export const appRoutes = createBrowserRouter([
         path: "cadastros/regras-logs",
         element: (
           <RequirePermission permission="supervisorio.iot_view">
-            <Suspense fallback={<div>Carregando...</div>}>
+            <Suspense fallback={<PaginaSkeleton />}>
               <CadastroRegrasLogsPage />
             </Suspense>
           </RequirePermission>
@@ -432,7 +433,7 @@ export const appRoutes = createBrowserRouter([
         path: "cadastros/iot-catalog",
         element: (
           <RequirePermission permission="equipamentos.iot_catalog">
-            <Suspense fallback={<div>Carregando...</div>}>
+            <Suspense fallback={<PaginaSkeleton />}>
               <CadastroIotCatalogPage />
             </Suspense>
           </RequirePermission>
@@ -442,7 +443,7 @@ export const appRoutes = createBrowserRouter([
         path: "supervisorio/eventos-protecao",
         element: (
           <RequirePermission permission="supervisorio.iot_view">
-            <Suspense fallback={<div>Carregando...</div>}>
+            <Suspense fallback={<PaginaSkeleton />}>
               <ReleEventosPage />
             </Suspense>
           </RequirePermission>
@@ -452,7 +453,7 @@ export const appRoutes = createBrowserRouter([
         path: "supervisorio/bdo-ufvs",
         element: (
           <RequirePermission permission="Monitoramento">
-            <Suspense fallback={<div>Carregando...</div>}>
+            <Suspense fallback={<PaginaSkeleton />}>
               <CadastroGeracaoFvPage />
             </Suspense>
           </RequirePermission>
@@ -462,7 +463,7 @@ export const appRoutes = createBrowserRouter([
         path: "relatorios",
         element: (
           <RequirePermission permission="Monitoramento">
-            <Suspense fallback={<div>Carregando...</div>}>
+            <Suspense fallback={<PaginaSkeleton />}>
               <RelatoriosPage />
             </Suspense>
           </RequirePermission>
@@ -471,7 +472,7 @@ export const appRoutes = createBrowserRouter([
       {
         path: "chamados",
         element: (
-          <Suspense fallback={<div>Carregando...</div>}>
+          <Suspense fallback={<PaginaSkeleton />}>
             <ChamadosPage />
           </Suspense>
         ),
@@ -480,7 +481,7 @@ export const appRoutes = createBrowserRouter([
         path: "logs/logs-mqtt",
         element: (
           <RequirePermission permission="supervisorio.iot_view">
-            <Suspense fallback={<div>Carregando...</div>}>
+            <Suspense fallback={<PaginaSkeleton />}>
               <LogsMqttPage />
             </Suspense>
           </RequirePermission>
@@ -490,7 +491,7 @@ export const appRoutes = createBrowserRouter([
       // {
       //   path: "design-system-test",
       //   element: (
-      //     <Suspense fallback={<div>Carregando...</div>}>
+      //     <Suspense fallback={<PaginaSkeleton />}>
       //       <DesignSystemTestPage />
       //     </Suspense>
       //   ),

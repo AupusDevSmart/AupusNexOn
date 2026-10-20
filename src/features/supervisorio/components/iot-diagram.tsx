@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback, useState, useMemo, Fragment } from 'react';
+import { DiagramaSkeleton } from '@/features/supervisorio/sinoptico/components/SinopticoSkeleton';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -1644,7 +1645,11 @@ export function IoTDiagram({ unidadeId, unidadeNome }: IoTDiagramProps) {
   }
 
   if (loadingProjects) {
-    return <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">Carregando...</div>;
+    return (
+      <div className="relative flex-1 min-h-[60vh]">
+        <DiagramaSkeleton />
+      </div>
+    );
   }
 
   return (
