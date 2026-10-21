@@ -9,6 +9,8 @@ import { GrandezasEletricasPanel } from '@/features/supervisorio/sinoptico/compo
 import { DemandaFluxoPanel } from '@/features/supervisorio/sinoptico/components/DemandaFluxoPanel';
 import { GraficoConfiguravelPanel } from '@/features/supervisorio/sinoptico/components/GraficoConfiguravelPanel';
 import { ElementosScsCards } from './ElementosScsCards';
+import { SeloFonte } from '@/features/geracao/SeloFonte';
+import { seloDaFonte } from '@/features/geracao/fonte';
 
 /**
  * Visão geral da usina no sinóptico — mostrada ao cliente no lugar do unifilar (por
@@ -35,7 +37,7 @@ function situacao(u: Unidade): { rotulo: string; detalhe: string; cls: string } 
   return { rotulo: 'Sem comunicação', detalhe: 'nenhum dado recente', cls: 'bg-muted text-muted-foreground' };
 }
 
-function Kpi({ icone, rotulo, valor, detalhe }: { icone: ReactNode; rotulo: string; valor: string; detalhe?: string }) {
+function Kpi({ icone, rotulo, valor, detalhe, selo }: { icone: ReactNode; rotulo: string; valor: string; detalhe?: string; selo?: ReactNode }) {
   return (
     <div className="rounded-lg border bg-card p-4">
       <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -44,6 +46,7 @@ function Kpi({ icone, rotulo, valor, detalhe }: { icone: ReactNode; rotulo: stri
       </div>
       <div className="mt-1.5 text-2xl font-bold tabular-nums">{valor}</div>
       {detalhe && <div className="mt-0.5 text-xs text-muted-foreground">{detalhe}</div>}
+      {selo && <div className="mt-1">{selo}</div>}
     </div>
   );
 }
@@ -78,6 +81,8 @@ export function VisaoGeralUsina({ unidadeId, unidadeNome }: { unidadeId: string;
   const s = u ? situacao(u) : null;
   // Tem TON ao vivo? (fonteDados='ton'). 'nuvem' = só fallback do fabricante (totais).
   const temTon = u?.fonteDados === 'ton';
+  // NEXON-37: de onde saiu a energia de hoje (só quando o COA manda).
+  const seloHoje = seloDaFonte(u?.fonteGeracao, !!u?.fontesDivergem);
 
   return (
     <div className="h-full space-y-4 overflow-auto p-4">
@@ -109,7 +114,12 @@ export function VisaoGeralUsina({ unidadeId, unidadeNome }: { unidadeId: string;
             valor={`${nf(u.metricas.potenciaAtual)} kW`}
             detalhe={u.fonteDados === 'nuvem' ? 'média da última hora' : undefined}
           />
-          <Kpi icone={<Sun className="h-3.5 w-3.5" />} rotulo="Energia hoje" valor={formatEnergy(u.metricas.energiaHoje)} />
+          <Kpi
+            icone={<Sun className="h-3.5 w-3.5" />}
+            rotulo="Energia hoje"
+            valor={formatEnergy(u.metricas.energiaHoje)}
+            selo={seloHoje && <SeloFonte texto={seloHoje} divergem={!!u.fontesDivergem} />}
+          />
         </div>
       )}
 

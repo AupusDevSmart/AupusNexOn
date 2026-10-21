@@ -21,6 +21,8 @@ import { geracaoApi, ROTULO_FONTE, type AnaliseGeracao as Analise, type PeriodoA
 import { CardFechamento, CardPerdas, CardPrevisao, CardResumo } from './CardsAnalise';
 import { nf } from './formato';
 import { ConfigUsinaDialog } from './ConfigUsinaDialog';
+import { linhasFonteDoPonto, linhasSelo } from './fonte';
+import { SeloFonte } from './SeloFonte';
 
 /**
  * Análise de geração da instalação com usina (NEXON-16): Dia | Semana | Mês | Ano com
@@ -130,7 +132,7 @@ export function AnaliseGeracao({ unidadeId, fallback }: { unidadeId: string; fal
     const linhas = linhasDeBuckets(ini, ini + pts.length * passo, {
       real: pts.map((p) => p.real_kw ?? null),
       teto: pts.map((p) => Math.max(p.real_kw ?? 0, p.esperado_kw ?? 0)),
-    }).map((l, i) => ({ ...l, date: dataLocal(pts[i].inicio as string), esperadoBruto: pts[i].esperado_kw ?? null }));
+    }).map((l, i) => ({ ...l, date: dataLocal(pts[i].inicio as string), esperadoBruto: pts[i].esperado_kw ?? null, fonte: pts[i].fonte ?? null }));
     return { linhas, esperado: pts.map((p) => ({ date: dataLocal(p.inicio as string), valor: p.esperado_kw ?? null })) };
   }, [a]);
 
@@ -171,7 +173,12 @@ export function AnaliseGeracao({ unidadeId, fallback }: { unidadeId: string; fal
         <div className="flex flex-wrap items-center gap-3 px-4 pt-4">
           <div>
             <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{destaque.rotulo}</div>
-            <div className="text-2xl font-bold tabular-nums">{destaque.valor}</div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-2xl font-bold tabular-nums">{destaque.valor}</span>
+              {a?.fonte_geracao?.selo && (
+                <SeloFonte texto={a.fonte_geracao.selo} divergem={a.fonte_geracao.divergem} linhas={linhasSelo(a.fonte_geracao)} />
+              )}
+            </div>
           </div>
           <div className="ml-auto flex items-center gap-2">
             <div className="flex gap-0.5 rounded-md bg-muted p-0.5" role="group" aria-label="Período da análise">
@@ -260,6 +267,7 @@ export function AnaliseGeracao({ unidadeId, fallback }: { unidadeId: string; fal
                     const linhas: LinhaTooltip[] = [];
                     if (comFonte) linhas.push({ label: rotuloEsperado, value: esp != null ? `${nf(esp, 1)} kW` : 'aguardando satélite' });
                     if (comFonte && real != null && esp != null && esp > 0) linhas.push({ label: 'do esperado', value: `${nf((real / esp) * 100, 0)}%` });
+                    if (p.fonte === 'nuvem') linhas.push({ label: 'Fonte', value: 'nuvem (por hora)' });
                     return (
                       <TooltipDestaque titulo={hh} valor={real != null ? nf(real, 1) : '—'} unidade="kW" rotulo={real != null ? 'Geração' : 'Sem dados'} linhas={linhas} />
                     );
@@ -285,7 +293,7 @@ export function AnaliseGeracao({ unidadeId, fallback }: { unidadeId: string; fal
                     const l = point as LinhaBarra;
                     const titulo = a?.periodo === 'ano' ? l.rotulo : dataBr(l.ponto.data);
                     if (l.ponto.futuro) return <TooltipDestaque titulo={titulo} rotulo="Ainda não aconteceu" />;
-                    const linhas: LinhaTooltip[] = [];
+                    const linhas: LinhaTooltip[] = linhasFonteDoPonto(l.ponto);
                     if (l.esperado != null) {
                       linhas.push({ label: rotuloEsperado, value: `${nf(l.esperado, 0)} kWh` });
                       if (l.real != null && l.esperado > 0) linhas.push({ label: 'do esperado', value: `${nf((l.real / l.esperado) * 100, 0)}%` });

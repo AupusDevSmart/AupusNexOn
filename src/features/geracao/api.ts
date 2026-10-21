@@ -7,6 +7,37 @@ import { api } from '@/config/api';
 
 export type PeriodoAnalise = 'dia' | 'semana' | 'mes' | 'ano';
 export type FonteIrradiancia = 'satelite' | 'solarimetro' | 'nenhuma';
+/** Fonte do kWh gerado (NEXON-37): TON (inversores), nuvem do fabricante ou lançamento manual/BDO. */
+export type FonteGeracao = 'ton' | 'nuvem' | 'manual' | 'mista';
+/** O que a configuração pede: automático (regra da API) ou uma fonte fixada por admin. */
+export type FonteGeracaoConfig = 'automatico' | 'ton' | 'nuvem';
+export type MotivoFonte =
+  | 'manual' | 'fixada' | 'fixada_sem_dado' | 'so_ton' | 'so_nuvem' | 'sem_dados'
+  | 'nuvem_zerada' | 'concordam' | 'ton_incompleta' | 'divergem';
+
+/** Um dia na escolha da fonte (Dia: 1 item; Semana/Mês: 1 por dia; Ano/Total: omitido). */
+export interface DiaFonteGeracao {
+  data: string;
+  kwh: number | null;
+  kwh_ton: number | null;
+  kwh_nuvem: number | null;
+  kwh_manual: number | null;
+  fonte: Exclude<FonteGeracao, 'mista'> | null;
+  motivo: MotivoFonte;
+  divergencia_pct: number | null;
+}
+
+/** Resumo da fonte no período (contrato NEXON-37). Opcional: a API antiga não manda. */
+export interface ResumoFonteGeracao {
+  config: FonteGeracaoConfig;
+  escolhida: FonteGeracao | null;
+  divergem: boolean;
+  selo: string;
+  tem_nuvem: boolean;
+  kwh_ton: number | null;
+  kwh_nuvem: number | null;
+  dias?: DiaFonteGeracao[];
+}
 
 export interface PontoAnalise {
   rotulo: string;
@@ -18,6 +49,11 @@ export interface PontoAnalise {
   esperado_kwh: number | null;
   sem_dados: boolean;
   futuro: boolean;
+  /** NEXON-37 (opcionais): fonte do ponto e as duas medições, quando existem. */
+  fonte?: FonteGeracao | null;
+  kwh_ton?: number | null;
+  kwh_nuvem?: number | null;
+  divergem?: boolean;
 }
 
 export interface CategoriaPerda {
@@ -45,7 +81,9 @@ export interface AnaliseGeracao {
     potencia_ac_kw: number | null;
     exibir_rs: boolean;
     tarifa_rs_kwh: number | null;
+    fonte_geracao?: FonteGeracaoConfig;
   };
+  fonte_geracao?: ResumoFonteGeracao;
   tem_inversor: boolean;
   tem_dados: boolean;
   agora: { potencia_kw: number | null; gerando: boolean } | null;
@@ -86,6 +124,8 @@ export interface ConfigUsina {
   fator_desempenho: number;
   exibir_rs: boolean;
   tarifa_concessionaria_id: string | null;
+  /** NEXON-37: só admin muda (`pode_fixar_fonte`). Ausente = API sem o campo. */
+  fonte_geracao?: FonteGeracaoConfig;
   atualizado_em?: string | null;
   atualizado_por?: string | null;
 }
@@ -94,6 +134,8 @@ export interface ConfigUsinaResposta {
   unidade_id: string;
   unidade_nome: string;
   pode_editar: boolean;
+  /** NEXON-37: true só para admin/super_admin. Ausente = API antiga. */
+  pode_fixar_fonte?: boolean;
   config: ConfigUsina;
   sugestoes: { kwp_dc: number | null; potencia_ac_kw: number | null; inclinacao_graus: number; azimute_graus: number };
   faixas: Record<'kwp_dc' | 'potencia_ac_kw' | 'inclinacao_graus' | 'azimute_graus' | 'fator_desempenho', [number, number]>;

@@ -44,6 +44,8 @@ export interface UnidadeResumo {
   tonViva?: boolean; // TON dá sinal de vida no broker (liveness). OFFLINE+tonViva = device/Modbus (laranja), não internet (cinza)
   fonteDados?: 'ton' | 'nuvem'; // origem de potência/energia (nuvem = fallback do portal do fabricante, sem TON ao vivo)
   nuvemAtualizadoEm?: string | null; // horário local (SP) do snapshot de nuvem usado no fallback
+  fonteGeracao?: 'ton' | 'nuvem' | 'manual' | null; // NEXON-37: de onde saiu a energia de hoje (FonteGeracaoService)
+  fontesDivergem?: boolean; // NEXON-37: TON e nuvem diferem mais de 5% hoje
   naoComissionados?: string[]; // pontos monitorados desta unidade ainda sem comissionamento (dado não validado)
   equipamentosOffline?: string[]; // nomes de equipamentos sem comunicação (pior-caso do status)
   ultimaLeitura: Date | null;

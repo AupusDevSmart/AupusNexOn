@@ -3,8 +3,10 @@ import { Loader2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
+import { useUserStore } from '@/store/useUserStore';
 import { numBr } from './formato';
-import { geracaoApi, type ConfigUsina, type ConfigUsinaResposta, type FonteIrradiancia } from './api';
+import { geracaoApi, type ConfigUsina, type ConfigUsinaResposta, type FonteGeracaoConfig, type FonteIrradiancia } from './api';
+import { ROTULO_CONFIG_FONTE } from './fonte';
 
 /**
  * Grupo "Usina" da configuração da instalação (NEXON-16, seção 7). Mesmas regras dos
@@ -25,6 +27,7 @@ const ROTULOS: Record<keyof ConfigUsina, string> = {
   fator_desempenho: 'Fator de desempenho',
   exibir_rs: 'Exibir valores em R$',
   tarifa_concessionaria_id: 'Tarifa de referência',
+  fonte_geracao: 'Fonte da geração',
   atualizado_em: '',
   atualizado_por: '',
 };
@@ -33,6 +36,12 @@ const FONTES: Array<{ v: FonteIrradiancia; rotulo: string; detalhe: string }> = 
   { v: 'satelite', rotulo: 'Satélite', detalhe: 'Irradiância por satélite na coordenada da instalação' },
   { v: 'solarimetro', rotulo: 'Solarímetro', detalhe: 'Equipamento de medição cadastrado na instalação' },
   { v: 'nenhuma', rotulo: 'Nenhuma', detalhe: 'Sem esperado, perdas nem previsão (use em usina com seguidor)' },
+];
+
+const FONTES_GERACAO: Array<{ v: FonteGeracaoConfig; detalhe: string }> = [
+  { v: 'automatico', detalhe: 'TON preferida; nuvem quando a TON falta ou está incompleta' },
+  { v: 'ton', detalhe: 'Sempre os inversores (TON), quando houver leitura' },
+  { v: 'nuvem', detalhe: 'Sempre a integração do fabricante, quando houver dado' },
 ];
 
 const txt = (v: number | null | undefined) => (v == null ? '' : String(v).replace('.', ','));
@@ -49,6 +58,7 @@ export function ConfigUsinaDialog({ unidadeId, open, onOpenChange, onSalvo }: {
   const [revisando, setRevisando] = useState(false);
   const [gravando, setGravando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const papel = useUserStore((s) => s.papel);
 
   useEffect(() => {
     if (!open) return;
@@ -97,6 +107,11 @@ export function ConfigUsinaDialog({ unidadeId, open, onOpenChange, onSalvo }: {
 
   if (!open) return null;
 
+  // Fonte da geração (NEXON-37): só admin fixa. A API diz quem pode (`pode_fixar_fonte`); sem o
+  // campo, o papel do login decide. Sem `fonte_geracao` na config, a API ainda não tem o campo.
+  const temFonteGeracao = dados?.config.fonte_geracao !== undefined;
+  const podeFixarFonte = temFonteGeracao && (dados?.pode_fixar_fonte ?? papel === 'admin');
+
   const campos: Campo[] = ['kwp_dc', 'potencia_ac_kw', 'inclinacao_graus', 'azimute_graus', 'fator_desempenho'];
   const errosCampos = campos.map(problema).filter(Boolean);
   const erroSolarimetro = form?.fonte === 'solarimetro' && (!form.solarimetro_equipamento_id || !form.solarimetro_medicao);
@@ -118,6 +133,7 @@ export function ConfigUsinaDialog({ unidadeId, open, onOpenChange, onSalvo }: {
     if (v == null || v === '') return k === 'potencia_ac_kw' ? 'soma dos inversores' : '—';
     if (typeof v === 'boolean') return v ? 'sim' : 'não';
     if (k === 'fonte') return FONTES.find((f) => f.v === v)?.rotulo ?? String(v);
+    if (k === 'fonte_geracao') return ROTULO_CONFIG_FONTE[v as FonteGeracaoConfig] ?? String(v);
     if (k === 'solarimetro_equipamento_id') return dados?.solarimetros.find((s) => s.id === v)?.nome ?? String(v);
     if (k === 'tarifa_concessionaria_id') return dados?.concessionarias.find((c) => c.id === v)?.nome ?? String(v);
     if (typeof v === 'number') return v.toLocaleString('pt-BR', { maximumFractionDigits: 3 });
@@ -136,8 +152,10 @@ export function ConfigUsinaDialog({ unidadeId, open, onOpenChange, onSalvo }: {
     setGravando(true);
     setErro(null);
     try {
-      const { atualizado_em: _a, atualizado_por: _b, ...corpo } = novo;
-      await geracaoApi.salvarConfig(unidadeId, corpo);
+      const { atualizado_em: _a, atualizado_por: _b, fonte_geracao, ...corpo } = novo;
+      // Fonte da geração só vai no PUT quando quem pode mudou (não-admin mandando = 403 na API).
+      const mudouFonte = podeFixarFonte && fonte_geracao !== undefined && fonte_geracao !== dados?.config.fonte_geracao;
+      await geracaoApi.salvarConfig(unidadeId, mudouFonte ? { ...corpo, fonte_geracao } : corpo);
       onOpenChange(false);
       onSalvo?.();
     } catch (e: unknown) {
@@ -220,6 +238,32 @@ export function ConfigUsinaDialog({ unidadeId, open, onOpenChange, onSalvo }: {
                 ))}
               </div>
             </fieldset>
+
+            {podeFixarFonte && (
+              <fieldset>
+                <legend className="text-xs font-medium">{ROTULOS.fonte_geracao}</legend>
+                <div className="mt-1 grid gap-2 sm:grid-cols-3">
+                  {FONTES_GERACAO.map((f) => {
+                    const ativo = (form.fonte_geracao ?? 'automatico') === f.v;
+                    return (
+                      <button
+                        key={f.v}
+                        type="button"
+                        onClick={() => set('fonte_geracao', f.v)}
+                        aria-pressed={ativo}
+                        className={`rounded-md border p-2 text-left text-sm ${ativo ? 'border-emerald-600 ring-1 ring-emerald-600' : 'hover:bg-muted'}`}
+                      >
+                        <div className="font-medium">{ROTULO_CONFIG_FONTE[f.v]}</div>
+                        <div className="text-[11px] text-muted-foreground">{f.detalhe}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  No automático, a TON vale; a nuvem entra quando a TON falta ou está incompleta. Acima de 5% de diferença entre as duas, o selo da análise avisa.
+                </p>
+              </fieldset>
+            )}
 
             {form.fonte === 'solarimetro' && (
               <div className="grid gap-3 sm:grid-cols-2">
