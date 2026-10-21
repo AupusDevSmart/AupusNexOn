@@ -27,6 +27,8 @@ import {
   montarPontosFases,
   mesclarEnergia,
   mesclarFluxo,
+  PERCENTUAL_LIMITE_CARGA,
+  PERCENTUAL_LIMITE_GERACAO,
   type Dominio,
   type FasesAtivas,
   type PontoDemanda,
@@ -71,9 +73,8 @@ const ALTURA_COMPACTA = 'h-[150px] xl:h-auto xl:flex-1 xl:min-h-0';
 const PERIODOS_PREFETCH: PeriodoFiltro[] = [{ tipo: 'dia' }, { tipo: 'mes' }, { tipo: 'ano' }];
 const SEM_DEMANDA = { pontos: [] as PontoDemanda[], dominio: undefined as Dominio | undefined };
 
-/** Limite acima do contratado: geração 1% da demanda de geração; carga 5% (NEXON-14). */
-export const PERCENTUAL_LIMITE_GERACAO = 1;
-export const PERCENTUAL_LIMITE_CARGA = 5;
+/** Limite acima do contratado (NEXON-14) — moram em dados.ts; reexportados para quem já importa daqui. */
+export { PERCENTUAL_LIMITE_GERACAO, PERCENTUAL_LIMITE_CARGA };
 
 export function SinopticoGraficosV2({
   unidadeId,

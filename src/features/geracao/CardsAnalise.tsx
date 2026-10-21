@@ -37,7 +37,7 @@ function Metrica({ rotulo, valor, detalhe }: { rotulo: string; valor: ReactNode;
   );
 }
 
-const ROTULO_PERIODO: Record<AnaliseGeracao['periodo'], string> = { dia: 'no dia', semana: 'na semana', mes: 'no mês', ano: 'no ano' };
+const ROTULO_PERIODO: Record<AnaliseGeracao['periodo'], string> = { dia: 'no dia', semana: 'na semana', mes: 'no mês', ano: 'no ano', total: 'no total' };
 
 // Colunas do Resumo = nº de métricas visíveis (sem fonte/R$ são só 2 — não reservar 4).
 const COLS_RESUMO: Record<number, string> = { 2: 'sm:grid-cols-2', 3: 'sm:grid-cols-3', 4: 'sm:grid-cols-4' };

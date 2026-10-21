@@ -5,7 +5,7 @@ import { api } from '@/config/api';
  * Contrato completo em aupus-nexon-api/docs/GERACAO-ANALISE.md.
  */
 
-export type PeriodoAnalise = 'dia' | 'semana' | 'mes' | 'ano';
+export type PeriodoAnalise = 'dia' | 'semana' | 'mes' | 'ano' | 'total';
 export type FonteIrradiancia = 'satelite' | 'solarimetro' | 'nenhuma';
 /** Fonte do kWh gerado (NEXON-37): TON (inversores), nuvem do fabricante ou lançamento manual/BDO. */
 export type FonteGeracao = 'ton' | 'nuvem' | 'manual' | 'mista';

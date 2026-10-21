@@ -10,8 +10,10 @@ import { ChartTooltip } from '@/components/charts/tooltip';
 import { weekdayDateFmt } from '@/components/charts/chart-formatters';
 import { COR } from '@/components/graficos/cores';
 import { TooltipDestaque } from '@/components/graficos/tooltip-destaque';
+import { LINHA_SO_DOMINIO } from '@/components/graficos/linhas-de-buckets';
+import { LinhaTracejadaParcial } from '@/components/graficos/marcadores-esperado';
 import { useIsMobile } from '@/hooks/use-mobile';
-import type { Dominio, PontoDemanda } from './dados';
+import { esperadoNoInstante, type Dominio, type PontoDemanda } from './dados';
 import { formatarKw, potenciaEixo } from './formatos';
 import { FaixaBrush } from './FaixaBrush';
 import { LegendaSeries, type ItemLegenda } from './Legenda';
@@ -20,7 +22,7 @@ import { useJanelaZoom, useRodaZoom } from './use-janela-zoom';
 // bottom com folga: o "0 kW" do eixo Y não pode encostar no primeiro rótulo do eixo X (NEXON-14).
 const MARGEM = { top: 12, right: 16, bottom: 44, left: 64 };
 /** Séries de referência: sem bolinha no hover (só a demanda tem). */
-const CHAVES_REFERENCIA = new Set(['valorContratado', 'valorAdicional', 'valorContratadoCarga', 'valorAdicionalCarga']);
+const CHAVES_REFERENCIA = new Set(['valorContratado', 'valorAdicional', 'valorContratadoCarga', 'valorAdicionalCarga', 'tetoEsperado']);
 const COR_CONSUMO = COR.potencia;
 /** Eixo do fluxo: geração fica abaixo do zero, mas o rótulo mostra o módulo. */
 const eixoFluxo = (kw: number) => potenciaEixo(Math.abs(kw));
@@ -47,7 +49,14 @@ interface GraficoDemandaProps {
   fluxo?: boolean;
   /** Série única filtrada (Carga ou Geração): rótulo e cor dela. Sem isto = "Demanda". */
   serie?: 'carga' | 'geracao';
+  /**
+   * Esperado da geração (satélite/solarímetro), tracejado e parando onde não há valor
+   * (cartão Energia, NEXON-37). `valor` já com o sinal do desenho; as linhas de `pontos`
+   * trazem `tetoEsperado` (constante) para o eixo alcançar o pico do esperado.
+   */
+  esperado?: { pontos: Array<{ date: Date; valor: number | null }>; rotulo: string };
 }
+
 
 /**
  * Demanda (kW) ao longo do tempo. As linhas de contratado e contratado +
@@ -63,6 +72,7 @@ export function GraficoDemanda({
   className,
   fluxo = false,
   serie,
+  esperado,
 }: GraficoDemandaProps) {
   const rotuloSerie = serie === 'carga' ? 'Carga' : serie === 'geracao' ? 'Geração' : 'Demanda';
   const corLinha = serie === 'carga' ? COR_CONSUMO : serie === 'geracao' ? COR.geracao : COR.potencia;
@@ -117,6 +127,23 @@ export function GraficoDemanda({
       {temRefGeracao && linhaRef('valorAdicional', COR.consumo, '3,3')}
       {temRefCarga && linhaRef('valorContratadoCarga', COR.neutro, '6,4')}
       {temRefCarga && linhaRef('valorAdicionalCarga', COR.consumo, '3,3')}
+    </>
+  );
+
+  // Esperado só dentro da janela de zoom (o SVG do overlay não é recortado pelo gráfico).
+  const esperadoVisivel = esperado && janela.xDomain
+    ? esperado.pontos.filter((e) => e.date >= janela.xDomain![0] && e.date <= janela.xDomain![1])
+    : esperado?.pontos;
+  const temEsperado = !!esperado && pontos.some((p) => typeof p.tetoEsperado === 'number');
+  const linhaEsperado = (date: Date) => {
+    if (!esperado) return [];
+    const v = esperadoNoInstante(esperado.pontos, date);
+    return [{ label: esperado.rotulo, value: v != null ? `${formatarKw(v)} kW` : '—', cor: COR.neutro }];
+  };
+  const camadaEsperado = temEsperado && esperadoVisivel && (
+    <>
+      <Line dataKey="tetoEsperado" {...LINHA_SO_DOMINIO} />
+      <LinhaTracejadaParcial pontos={esperadoVisivel} cor={COR.neutro} />
     </>
   );
 
@@ -178,6 +205,7 @@ export function GraficoDemanda({
         />
       )}
       </>)}
+      {camadaEsperado}
       <XAxis numTicks={isMobile ? 4 : 6} tickMode={janela.xDomain ? 'domain' : 'data'} />
       <YAxis numTicks={fluxo ? 6 : 4} formatValue={fluxo ? eixoFluxo : potenciaEixo} />
       <ChartTooltip
@@ -197,6 +225,7 @@ export function GraficoDemanda({
                   ...(temConsumo ? [{ label: 'Consumo', value: `${formatarKw(Math.abs(p.consumo ?? 0))} kW`, cor: COR_CONSUMO }] : []),
                   ...(temGeracao ? [{ label: 'Geração', value: `${formatarKw(Math.abs(p.geracao ?? 0))} kW`, cor: COR.geracao }] : []),
                   ...(temGeracao && temConsumo ? [{ label: 'Líquido (consumo − geração)', value: `${formatarKw(p.potencia)} kW` }] : []),
+                  ...(temEsperado ? linhaEsperado(p.date) : []),
                   ...refs,
                 ]}
               />
@@ -208,14 +237,15 @@ export function GraficoDemanda({
               valor={formatarKw(p.potencia)}
               unidade="kW"
               rotulo={rotuloSerie}
-              linhas={
-                referencias
+              linhas={[
+                ...(temEsperado ? linhaEsperado(p.date) : []),
+                ...(referencias
                   ? [
                       { label: 'Contratado', value: `${formatarKw(referencias.contratado)} kW`, cor: COR.neutro },
                       { label: rotuloAdicional, value: `${formatarKw(referencias.adicional)} kW`, cor: COR.consumo },
                     ]
-                  : undefined
-              }
+                  : []),
+              ]}
             />
           );
         }}
@@ -223,7 +253,8 @@ export function GraficoDemanda({
     </LineChart>
   );
 
-  const itensLegenda: ItemLegenda[] = fluxo
+  const itemEsperado: ItemLegenda[] = temEsperado && esperado ? [{ rotulo: esperado.rotulo, cor: COR.neutro, tracejada: true }] : [];
+  const itensLegendaBase: ItemLegenda[] = fluxo
     ? [
         ...(temConsumo ? [{ rotulo: 'Consumo', cor: COR_CONSUMO }] : []),
         ...(temGeracao ? [{ rotulo: 'Geração', cor: COR.geracao }] : []),
@@ -247,7 +278,10 @@ export function GraficoDemanda({
         { rotulo: 'Contratado', cor: COR.neutro, tracejada: true },
         { rotulo: rotuloAdicional, cor: COR.consumo, tracejada: true },
       ]
+    : temEsperado
+    ? [{ rotulo: rotuloSerie, cor: corLinha }]
     : [];
+  const itensLegenda = [...itensLegendaBase, ...itemEsperado];
 
   if (expandido) {
     return (

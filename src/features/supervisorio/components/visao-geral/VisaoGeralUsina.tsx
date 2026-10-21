@@ -3,7 +3,7 @@ import { Info, Sun, Zap } from 'lucide-react';
 import { coaApi, type UnidadeResumo } from '@/features/coa/api/coa-api';
 import { formatEnergy } from '@/utils/formatEnergy';
 import { GeracaoHistoricoChart } from './GeracaoHistoricoChart';
-import { AnaliseGeracao } from '@/features/geracao/AnaliseGeracao';
+import { CartaoEnergia } from '@/features/geracao/CartaoEnergia';
 import { KpiRow } from '@/features/supervisorio/sinoptico/components/KpiRow';
 import { GrandezasEletricasPanel } from '@/features/supervisorio/sinoptico/components/GrandezasEletricasPanel';
 import { DemandaFluxoPanel } from '@/features/supervisorio/sinoptico/components/DemandaFluxoPanel';
@@ -83,6 +83,13 @@ export function VisaoGeralUsina({ unidadeId, unidadeNome }: { unidadeId: string;
   const temTon = u?.fonteDados === 'ton';
   // NEXON-37: de onde saiu a energia de hoje (só quando o COA manda).
   const seloHoje = seloDaFonte(u?.fonteGeracao, !!u?.fontesDivergem);
+  // Altura DEFINIDA no xl: o gráfico usa xl:flex-1 (altura vem do pai). Só min-h
+  // deixava a cadeia flex-1 colapsar pra 0 no desktop → gráfico em branco.
+  const painelDemanda = (
+    <div className="flex min-h-[240px] flex-col xl:h-[440px] xl:min-h-0">
+      <GraficoConfiguravelPanel unidadeId={unidadeId} />
+    </div>
+  );
 
   return (
     <div className="h-full space-y-4 overflow-auto p-4">
@@ -137,17 +144,14 @@ export function VisaoGeralUsina({ unidadeId, unidadeNome }: { unidadeId: string;
             <GrandezasEletricasPanel unidadeId={unidadeId} />
             <DemandaFluxoPanel unidadeId={unidadeId} />
           </div>
-          {/* Análise de geração (NEXON-16): só aparece se a unidade tem inversor com leitura. */}
-          <AnaliseGeracao unidadeId={unidadeId} />
-          {/* Altura DEFINIDA no xl: o gráfico usa xl:flex-1 (altura vem do pai). Só min-h
-              deixava a cadeia flex-1 colapsar pra 0 no desktop → gráfico em branco. */}
-          <div className="flex min-h-[240px] flex-col xl:h-[440px] xl:min-h-0">
-            <GraficoConfiguravelPanel unidadeId={unidadeId} />
-          </div>
+          {/* Cartão Energia (NEXON-37): análise de geração + carga da Demanda num cartão só,
+              Tensão/FP como abas. Sem análise (sem inversor com leitura, API fora ou sem
+              permissão de ver geração) fica o painel Demanda/Tensão/FP de antes. */}
+          <CartaoEnergia unidadeId={unidadeId} fallback={painelDemanda} semAcesso={painelDemanda} />
         </>
       ) : (
         <>
-          <AnaliseGeracao unidadeId={unidadeId} fallback={<GeracaoHistoricoChart unidadeId={unidadeId} />} />
+          <CartaoEnergia unidadeId={unidadeId} fallback={<GeracaoHistoricoChart unidadeId={unidadeId} />} />
           <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
             <Info className="mt-px h-3.5 w-3.5 shrink-0" />
             Visão geral da usina. O detalhamento por inversor não aparece aqui: integrações de nuvem como a da Sungrow entregam apenas os totais da usina.
