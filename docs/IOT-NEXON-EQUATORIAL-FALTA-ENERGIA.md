@@ -1,7 +1,7 @@
 # Plano: TON detecta queda de energia (função 27) → webhook Equatorial
 
 **Data**: 2026-05-29
-**Status**: **planejado, não implementado** — pronto para outro dev executar
+**Status**: **planejado, não implementado** — pronto para outro dev executar. **Revisão 21/10/2026: ver [§14 Decisões](#14-decisões-de-21102026), que prevalece sobre §5, §12 e §13 onde houver conflito.**
 **Escopo**: backend `aupus-nexon-api` (subscriber MQTT + serviço de webhook) e schema do PostgreSQL (1 nova tabela)
 **Não-escopo**: firmware da TON (já está OK com função 27 mapeada no Pextron URP6000)
 **Out-of-scope**: implementação no Aupus Chat (já existente em `https://wpp.aupusenergia.com.br`, contrato em [/var/www/INTEGRACAO_NEXON_EQUATORIAL.md](/INTEGRACAO_NEXON_EQUATORIAL.md))
@@ -23,6 +23,7 @@
 11. [Resultado da implementação](#11-resultado-da-implementação)
 12. [Discriminação de causa e modelo de confiança](#12-discriminação-de-causa-e-modelo-de-confiança)
 13. [Detecção por tipo de dispositivo (matriz de capacidade)](#13-detecção-por-tipo-de-dispositivo-matriz-de-capacidade)
+14. [Decisões de 21/10/2026](#14-decisões-de-21102026)
 
 ---
 
@@ -844,3 +845,77 @@ Modo E (A966) ................................... ❌ não participa
   - [IOT-RS485-MELHORIAS.md](IOT-RS485-MELHORIAS.md)
   - [IOT-MQTT-CLIENTID-UNICO.md](IOT-MQTT-CLIENTID-UNICO.md)
   - [IOT-MQTT-DESCONEXAO-INVESTIGACAO.md](IOT-MQTT-DESCONEXAO-INVESTIGACAO.md)
+
+---
+
+## 14. Decisões de 21/10/2026
+
+Revisão com o produto. **Prevalece** sobre §5, §12 e §13 onde houver conflito.
+
+### 14.1 O gatilho é sempre um relé de subtensão
+
+A falta só começa a ser tratada quando um **relé de subtensão (função 27)** atua. Duas formas, as duas válidas:
+
+| Forma | Como chega no NexON | Onde já existe suporte |
+|---|---|---|
+| **A. Contato do relé de subtensão numa entrada digital (BI) da TON** | Estado da entrada em `equipamento_io_estado.inputs`; vínculo da entrada com o ponto em `ton_bi` (`invertido` cobre contato NA/NF) | `lerEntradaTon` (equipamentos-cmd), usada hoje pela sequência do pivô |
+| **B. Relé de proteção com a função 27 lida por Modbus** | Flags `f27a/b/c` no payload do relé | Catálogo do relé (Pextron URP6000, Siemens 7SR) |
+
+**Não é gatilho:** tensão zero em medidor (PM/SSU) ou em inversor. Zero ali pode ser só o disjuntor desligado. Esses sinais entram **depois**, como conferência (§14.4).
+
+Hoje nenhuma TON em produção tem uma dessas duas fontes. A primeira instalação define o caso de teste.
+
+### 14.2 Fonte escolhida por unidade
+
+Uma unidade pode ter mais de um relé ou entrada candidata. O admin **escolhe qual vale** para detectar a falta: normalmente a mais **próxima da rede** (antes do disjuntor geral, no ramal de entrada).
+
+- Configuração por unidade: tabela nova `falta_energia_fonte`:
+  - `unidade_id`
+  - `tipo` (`ton_bi` | `rele_f27`)
+  - para `ton_bi`: `ton_id` + `bi_numero` (polaridade vem do `ton_bi.invertido`); para `rele_f27`: `equipamento_id` do relé
+  - `ativo`, `updated_by`
+- **Uma fonte ativa por unidade.** Sem fonte configurada, a unidade não participa (fail-closed).
+- Tela: na unidade, uma lista com as candidatas (entradas da TON vinculadas como "subtensão" e relés com f27) e a escolha de uma. Só super_admin/admin.
+
+### 14.3 A TON da fonte precisa de nobreak
+
+Sem nobreak, a TON apaga junto com a rede e o evento nunca chega (só "TON sumiu", que pode ser internet).
+
+- Campo novo no cadastro da TON: `possui_nobreak` (boolean).
+- **Só dá para ativar a fonte de falta numa TON com `possui_nobreak = true`.** A tela bloqueia e o backend recusa.
+- Consequência útil: durante a falta, a TON **continua publicando**. Se a TON da fonte sumir junto com o relé atuando, trata como suspeita (nobreak sem carga ou falha), não como falta confirmada.
+
+### 14.4 Conferências depois do gatilho
+
+Com o relé atuado (borda 0→1, com debounce), o NexON junta as evidências antes de decidir (modelo de confiança da §12.5):
+
+- TON da fonte **viva** (heartbeat recente) → necessário.
+- Sobrecorrente (f50/f51) logo antes → causa interna, **suprime**.
+- Contato auxiliar do disjuntor geral, se existir → aberto = interno, **suprime**.
+- Tensão do medidor/inversor da mesma unidade → reforço (zero nas três fases confirma; uma fase só = monofásica, vai para o operador).
+- Outras unidades da mesma região com o relé atuado na mesma janela → reforço forte.
+
+### 14.5 UC no formato da Equatorial
+
+A Equatorial Goiás usa UC de **15 dígitos com zeros à esquerda** (ex.: `000333067801228`). O NexON manda `unidades.numero_uc` **só com dígitos e sem tirar zeros**. Contrato atualizado para v1.1 (8–15 dígitos) em `/var/www/INTEGRACAO_NEXON_EQUATORIAL.md`. **Falta implementar a v1.1 no Aupus Chat.**
+
+### 14.6 Envio nasce desligado
+
+Reclamação na Equatorial é ação externa real. Como todo envio novo do NexON, a integração entra com o envio **desligado** e só liga depois de teste aprovado. Antes disso, o detector grava os eventos (`webhook_events_nexon`) sem disparar.
+
+### 14.7 Decidido depois e pendências
+
+- **Escopo da resposta à Clara: "Rua toda"** (decidido 21/10). O NexON manda `ocorrencia.escopo = "rua_toda"`; o Aupus Chat ainda responde "Meu imóvel" fixo até implementar o campo (contrato v1.1).
+- **Concessionária:** todas as unidades são da Equatorial GO. As 8 que estavam sem foram preenchidas (`concessionarias_energia` id `cmhl10gd600002f9scnek0gva`; migração `2026-10-21_unidades_concessionaria_equatorial_go.sql`). 28 de 50 têm `numero_uc`.
+- **`WEBHOOK_AUPUS_CHAT_URL` é só o endereço base** (`https://wpp.aupusenergia.com.br`). O código monta `${URL}/api/v1/webhook/nexon/falta-energia`. POST na base devolve 405 do nginx.
+- **Teste de comunicação (21/10/2026):** POST real autorizado com a UC `000333067801228` → **HTTP 201** (`complaintId 01M5F02S7C0SCY3V3CZBK3YAJA`). Resultado da conversa com a Clara: ver §11.
+- Endereço vem de `plantas` (logradouro, bairro, cidade, UF, CEP); nome e telefone do proprietário (`usuarios`).
+
+### 14.8 Fases revisadas
+
+1. Schema: `webhook_events_nexon` (§4 + campos de confiança da §12.6), `falta_energia_fonte`, `possui_nobreak` na TON.
+2. Tela de fonte por unidade (escolha da entrada/relé, bloqueio sem nobreak).
+3. Detector: borda do relé escolhido (BI ou f27) + debounce + conferências da §14.4 → grava evento com confiança. **Sem envio.**
+4. Envio ao Aupus Chat + endpoint de callback (protocolo), atrás da chave liga/desliga, desligada.
+5. Fila do operador (confiança média) e histórico na unidade.
+6. Teste ponta a ponta com uma TON com nobreak e relé real; depois liga o envio.
