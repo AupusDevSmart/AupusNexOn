@@ -46,6 +46,11 @@ export function useAnaliseGeracao(unidadeId: string) {
 
   // Só a resposta do último pedido vale: clique rápido ou o refresh não podem trocar o período em tela.
   const pedido = useRef(0);
+  // Fallback (gráfico de antes) só quando a PRIMEIRA carga falha. Depois disso um erro de
+  // refresh ou de navegação mantém a última análise na tela, com o erro dentro do cartão,
+  // e o refresh segue tentando.
+  const jaCarregou = useRef(false);
+  useEffect(() => { jaCarregou.current = false; setA(null); }, [unidadeId]);
   const carregar = useCallback(async () => {
     if (!unidadeId) return;
     const meu = ++pedido.current;
@@ -53,7 +58,7 @@ export function useAnaliseGeracao(unidadeId: string) {
     setErro(null);
     try {
       const r = await geracaoApi.analise(unidadeId, periodo, periodo === 'total' ? undefined : ref);
-      if (meu === pedido.current) { setA(r); setSemAcesso(false); }
+      if (meu === pedido.current) { setA(r); setSemAcesso(false); jaCarregou.current = true; }
     } catch (e: unknown) {
       if (meu !== pedido.current) return;
       if (periodo === 'total' && status(e) === 400) {
@@ -61,7 +66,7 @@ export function useAnaliseGeracao(unidadeId: string) {
         setPeriodo('ano');
         return;
       }
-      setA(null);
+      if (!jaCarregou.current) setA(null);
       setSemAcesso(status(e) === 403);
       setErro(mensagemErro(e));
     } finally {
@@ -71,8 +76,9 @@ export function useAnaliseGeracao(unidadeId: string) {
 
   useEffect(() => { carregar(); }, [carregar]);
 
-  // Hoje: a geração anda minuto a minuto e o satélite chega de hora em hora.
-  const incluiHoje = a != null && a.proximo == null;
+  // Hoje: a geração anda minuto a minuto e o satélite chega de hora em hora. Total fica de
+  // fora (consulta pesada; o ano corrente quase não muda em 5 min).
+  const incluiHoje = a != null && a.proximo == null && periodo !== 'total';
   useEffect(() => {
     if (!incluiHoje) return undefined;
     const t = setInterval(carregar, 5 * 60 * 1000);
@@ -84,5 +90,8 @@ export function useAnaliseGeracao(unidadeId: string) {
   /** Abre um período numa data (toque na barra, ‹ ›, campo de data). */
   const abrir = useCallback((p: PeriodoAnalise, data: string) => { setPeriodo(p); setRef(data); }, []);
 
-  return { hoje, periodo, ref, a, loading, erro, semAcesso, semTotal, carregar, escolherPeriodo, abrir };
+  // A análise em tela é a do período pedido? (Erro de navegação deixa a anterior.)
+  const aDoPedido = a != null && a.periodo === periodo && (periodo === 'total' || (ref >= a.inicio.slice(0, 10) && ref <= a.fim.slice(0, 10)));
+
+  return { hoje, periodo, ref, a, aDoPedido, loading, erro, semAcesso, semTotal, carregar, escolherPeriodo, abrir };
 }

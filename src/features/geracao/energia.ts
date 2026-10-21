@@ -90,6 +90,25 @@ export const chaveConsumo = (periodo: PeriodoAnalise, p: Pick<PontoAnalise, 'dat
 
 // ---------------------------------------------------------------- Dia (kW)
 
+const FMT_BRASILIA = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'America/Sao_Paulo',
+  year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+});
+
+/**
+ * Instante (ISO com fuso, "Z" ou Date) → relógio de Brasília sem fuso ("2026-10-20T06:15:00"),
+ * que o `new Date()` lê como horário local. O eixo do dia é montado em horário local
+ * (`parseDiaLocal`): quem abre fora do fuso de Brasília vê 06:15 onde a usina gerou às 06:15,
+ * como o `dataLocal()` antigo da análise. Geração e carga passam pelas mesmas mãos.
+ */
+export function horaBrasilia(instante: string | Date | undefined): string | undefined {
+  if (instante == null) return undefined;
+  const d = instante instanceof Date ? instante : new Date(instante);
+  if (Number.isNaN(d.getTime())) return undefined;
+  const p = Object.fromEntries(FMT_BRASILIA.formatToParts(d).map((x) => [x.type, x.value]));
+  return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:${p.second}`;
+}
+
 export interface PontoEsperado {
   date: Date;
   valor: number | null;
@@ -125,8 +144,12 @@ export function montarDiaEnergia({
   const periodo: PeriodoFiltro = { tipo: 'dia', data };
   const gerApi: PontoDemandaApi[] = geracao
     .filter((p) => !p.futuro && p.real_kw != null && p.inicio)
-    .map((p) => ({ timestamp: p.inicio, potencia_kw: p.real_kw as number, energia_kwh: 0 }));
-  const conApi = consumo.map((d) => ({ ...d, potencia_kw: d.potencia_kw == null ? d.potencia_kw : Math.abs(Number(d.potencia_kw)) }));
+    .map((p) => ({ timestamp: horaBrasilia(p.inicio), potencia_kw: p.real_kw as number, energia_kwh: 0 }));
+  const conApi = consumo.map((d) => ({
+    ...d,
+    timestamp: horaBrasilia(d.timestamp),
+    potencia_kw: d.potencia_kw == null ? d.potencia_kw : Math.abs(Number(d.potencia_kw)),
+  }));
   const refGer = contratadoGeracao
     ? { contratado: contratadoGeracao, adicional: contratadoGeracao * (1 + PERCENTUAL_LIMITE_GERACAO / 100), percentualAdicional: PERCENTUAL_LIMITE_GERACAO }
     : undefined;
@@ -150,8 +173,8 @@ export function montarDiaEnergia({
   const sinal = ef.modo === 'fluxo' ? -1 : 1;
   const esperado: PontoEsperado[] = ef.esperado
     ? geracao
-        .filter((p) => !p.futuro && p.inicio)
-        .map((p) => ({ date: new Date(p.inicio as string), valor: p.esperado_kw == null ? null : sinal * p.esperado_kw }))
+        .filter((p) => !p.futuro && horaBrasilia(p.inicio))
+        .map((p) => ({ date: new Date(horaBrasilia(p.inicio) as string), valor: p.esperado_kw == null ? null : sinal * p.esperado_kw }))
     : [];
   const tetoEsperado = Math.max(0, ...esperado.map((e) => Math.abs(e.valor ?? 0)));
   // Chave constante que só estica o eixo até o esperado (o bklit não tem yDomain).

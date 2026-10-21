@@ -97,7 +97,7 @@ export function CartaoEnergia({ unidadeId, fallback, semAcesso }: {
   semAcesso?: ReactNode;
 }) {
   const an = useAnaliseGeracao(unidadeId);
-  const { a, periodo, ref, hoje, loading, erro } = an;
+  const { a, periodo, ref, hoje, loading, erro, aDoPedido } = an;
   // Grupo "Usina" da configuração: só papéis globais (NEXON-20, capacidades.configUsina).
   const podeConfigurar = useUserStore((s) => s.capacidades.configUsina);
   const [configAberta, setConfigAberta] = useState(false);
@@ -164,8 +164,14 @@ export function CartaoEnergia({ unidadeId, fallback, semAcesso }: {
 
   if (an.semAcesso) return <>{semAcesso ?? null}</>;
   if (a && (!a.tem_inversor || a.tem_dados === false)) return <>{fallback ?? null}</>;
-  // API fora (ou ainda não publicada): com gráfico antigo disponível, ele fica no lugar.
+  // API fora (ou ainda não publicada) na PRIMEIRA carga: com gráfico antigo disponível, ele
+  // fica no lugar. Erro depois disso (refresh, navegação) fica dentro do cartão.
   if (erro && !a && fallback) return <>{fallback}</>;
+  // Erro de refresh: a última análise do mesmo período segue na tela, com aviso.
+  // Erro de navegação: a análise em tela é de outro período — não mostrar como se fosse esta.
+  const defasada = !!erro && !aDoPedido;
+  const avisoRefresh = erro && !defasada ? erro : null;
+  const erroNaTela = defasada ? erro : null;
 
   const btnNav = 'grid h-8 w-8 place-items-center rounded-md border hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40';
   const temGrafico = dia
@@ -173,10 +179,12 @@ export function CartaoEnergia({ unidadeId, fallback, semAcesso }: {
     : !!barras && barras.linhas.some((l) => l.geracao != null || l.consumo != null || l.esperado != null);
   const carregandoConsumo = ef.carga && (con.isInitialLoading || con2.isInitialLoading);
   // Hoje depois do pôr do sol: destaque é a energia do dia, não "0,0 kW" (GER-24).
-  const destaque = a?.agora?.gerando
+  const destaque = defasada
+    ? { rotulo: 'Energia no período', valor: '—' }
+    : a?.agora?.gerando
     ? { rotulo: 'Gerando agora', valor: `${nf(a.agora.potencia_kw ?? 0, 1)} kW` }
     : { rotulo: a?.periodo === 'dia' && a.referencia === hoje ? 'Gerado hoje' : 'Energia no período', valor: a?.resumo ? formatEnergy(a.resumo.energia_kwh) : '—' };
-  const consumido = !ef.carga || !a
+  const consumido = !ef.carga || !a || defasada
     ? null
     : a.periodo === 'dia'
       ? (con.dados.length ? Math.abs(con.energiaPeriodo) : null)
@@ -254,7 +262,7 @@ export function CartaoEnergia({ unidadeId, fallback, semAcesso }: {
               <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{destaque.rotulo}</div>
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                 <span className="text-2xl font-bold tabular-nums">{destaque.valor}</span>
-                {a?.fonte_geracao?.selo && (
+                {!defasada && a?.fonte_geracao?.selo && (
                   <SeloFonte texto={a.fonte_geracao.selo} divergem={a.fonte_geracao.divergem} linhas={linhasSelo(a.fonte_geracao)} />
                 )}
                 {consumido != null && (
@@ -283,7 +291,7 @@ export function CartaoEnergia({ unidadeId, fallback, semAcesso }: {
 
           <div className="flex flex-wrap items-center gap-2 px-4 pt-3">
             {periodo === 'total' ? (
-              <span className="text-sm font-medium">{a ? rotuloReferencia(a) : '…'}</span>
+              <span className="text-sm font-medium">{a && !defasada ? rotuloReferencia(a) : '…'}</span>
             ) : (
               <>
                 <button type="button" className={btnNav} aria-label="Período anterior" disabled={!a} onClick={() => a && an.abrir(periodo, a.anterior)}>
@@ -299,7 +307,7 @@ export function CartaoEnergia({ unidadeId, fallback, semAcesso }: {
                     aria-label="Escolher dia"
                   />
                 ) : (
-                  <span className="min-w-[130px] text-center text-sm font-medium">{a ? rotuloReferencia(a) : '…'}</span>
+                  <span className="min-w-[130px] text-center text-sm font-medium">{a && !defasada ? rotuloReferencia(a) : '…'}</span>
                 )}
                 <button type="button" className={btnNav} aria-label="Próximo período" disabled={!a?.proximo} onClick={() => a?.proximo && an.abrir(periodo, a.proximo)}>
                   <ChevronRight className="h-4 w-4" />
@@ -314,15 +322,20 @@ export function CartaoEnergia({ unidadeId, fallback, semAcesso }: {
           </div>
 
           <div className="px-4 pt-2 text-[11px] text-muted-foreground">{SUBTITULO[periodoAtual]}</div>
+          {avisoRefresh && (
+            <div className="mx-4 mt-2 rounded-md bg-amber-500/15 px-2 py-1 text-[11px] text-amber-700 dark:text-amber-300" role="status">
+              Não foi possível atualizar ({avisoRefresh}). Mostrando a última leitura; nova tentativa em instantes.
+            </div>
+          )}
           <div className="relative px-2 pb-3 pt-1">
             {(loading || carregandoConsumo) && (
               <div className="absolute inset-0 z-10 grid place-items-center bg-white/50 dark:bg-black/30">
                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
               </div>
             )}
-            {!loading && !carregandoConsumo && (erro || !temGrafico) ? (
+            {!loading && !carregandoConsumo && (erroNaTela || !temGrafico) ? (
               <div className="grid h-72 place-items-center px-6 text-center text-sm text-muted-foreground">
-                {erro ?? 'Sem dados de energia neste período.'}
+                {erroNaTela ?? 'Sem dados de energia neste período.'}
               </div>
             ) : dia ? (
               dia.pontos.length > 1 && (
@@ -354,7 +367,7 @@ export function CartaoEnergia({ unidadeId, fallback, semAcesso }: {
         </div>
       )}
 
-      {a && a.tem_dados !== false && (
+      {a && !defasada && a.tem_dados !== false && (
         // Cards dividem a largura (flex-wrap): os que existirem ocupam a linha juntos, sem
         // um cartão sozinho na largura toda e outro pela metade embaixo. Perdas (barra de
         // categorias) quebra para a linha dela.

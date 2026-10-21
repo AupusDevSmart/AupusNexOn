@@ -6,6 +6,7 @@ import {
   alternarSerie,
   consumoNoPeriodo,
   consumoPorChave,
+  horaBrasilia,
   montarBarrasEnergia,
   montarDiaEnergia,
   periodosConsumo,
@@ -120,12 +121,21 @@ describe('dia', () => {
   it('espelhado: geração negativa interpolada, consumo positivo, contratado da carga +5%', () => {
     const d = montarDiaEnergia({ data: '2026-10-20', geracao: ger, consumo: con, ef: seriesEfetivas(TUDO, TUDO), contratadoGeracao: null, contratadoCarga: 300 });
     expect(d.referencias).toBeUndefined();
-    const em1005 = d.pontos.find((p) => p.date.getTime() === new Date(inicio(10, 5)).getTime())!;
+    const em1005 = d.pontos.find((p) => p.date.getTime() === new Date(2026, 9, 20, 10, 5).getTime())!;
     expect(em1005.geracao).toBeCloseTo(-(100 + (100 * 5) / 15));
     expect(em1005.consumo).toBe(60);
     expect(em1005.valorAdicionalCarga).toBeCloseTo(315);
     expect(d.esperado[0].valor).toBe(-120);
     expect(d.pontos[0].tetoEsperado).toBe(-150);
+  });
+
+  it('geração e carga no relógio de Brasília, seja qual for o fuso do navegador', () => {
+    expect(horaBrasilia('2026-10-20T06:15:00-03:00')).toBe('2026-10-20T06:15:00');
+    expect(horaBrasilia('2026-10-20T13:05:00.000Z')).toBe('2026-10-20T10:05:00');
+    expect(horaBrasilia(undefined)).toBeUndefined();
+    const d = montarDiaEnergia({ data: '2026-10-20', geracao: ger, consumo: con, ef: seriesEfetivas(TUDO, TUDO), contratadoGeracao: null, contratadoCarga: null });
+    expect(d.pontos[0].date).toEqual(new Date(2026, 9, 20, 10, 0));
+    expect(d.esperado[1].date).toEqual(new Date(2026, 9, 20, 10, 15));
   });
 
   it('esperado no instante do tooltip, sem sinal', () => {
