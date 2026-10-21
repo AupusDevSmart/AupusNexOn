@@ -4,14 +4,14 @@ Duas pendências. **Web** = NexON no navegador (este repositório, `AupusNexOn`)
 
 | | Web | Backend | App |
 |---|---|---|---|
-| **[1. Gráfico de energia unificado](#parte-1--gráfico-de-energia-unificado-visão-geral)** | a fazer (NEXON-16) | a fazer (regra de fonte TON × nuvem) | a fazer depois do backend: mostrar o mesmo número e o selo de fonte |
-| **[2. Strings não conectadas](#parte-2--strings-do-inversor-entradas-não-conectadas)** | ✅ feito (19/10) | ✅ feito (19/10) | **a corrigir**: ainda mostra a entrada desconectada como alerta |
+| **[1. Gráfico de energia unificado](#parte-1--gráfico-de-energia-unificado-visão-geral)** | ✅ feito (NEXON-37, 21/10) | ✅ feito (NEXON-37, 21/10) | ✅ selo de fonte (NEXON-37, 21/10; sai na próxima versão das lojas) |
+| **[2. Strings não conectadas](#parte-2--strings-do-inversor-entradas-não-conectadas)** | ✅ feito (19/10) | ✅ feito (19/10) | ✅ feito (NEXON-37, 21/10; sai na próxima versão das lojas) |
 
 ---
 
 # Parte 1 — Gráfico de energia unificado (Visão Geral)
 
-Status: **a implementar no NEXON-16** (análise de geração). Desenho de 20/10/2026, aprovado pelo produto; ainda não implementado.
+Status: **implementado no NEXON-37 (21/10/2026)**, as três fases. Contrato da API em `aupus-nexon-api/docs/GERACAO-ANALISE.md` (seção da fonte da geração).
 
 ## Problema
 
@@ -109,7 +109,7 @@ A regra é por **dia**, então um mês pode misturar dias de TON e dias de nuvem
 
 # Parte 2 — Strings do inversor: entradas não conectadas
 
-Status: **web ✅ e backend ✅ (19/10/2026). App: a corrigir.** No app, a entrada sem string continua aparecendo como alerta.
+Status: **web ✅ e backend ✅ (19/10/2026). App ✅ (NEXON-37, 21/10/2026).**
 
 O que o app precisa fazer: chamar o `GET` abaixo e aplicar a mesma [regra de exibição](#regra-de-exibição-replicar-no-app). O backend não muda nada para o app; a classificação é feita na tela, igual ao web.
 
