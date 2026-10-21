@@ -192,7 +192,7 @@ export function DashboardPage() {
               />
 
               {/* Skeletons para os cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
                 {[1, 2, 3, 4, 5, 6].map(i => (
                   <Card key={i} className="p-4">
                     <Skeleton className="h-4 w-24 mb-2" />
@@ -267,7 +267,7 @@ export function DashboardPage() {
               />
 
               {/* Cards de Indicadores Principais */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
                 {/* 1. Potência de Geração */}
                 <MetricCard
                   title="Potência de Geração"
@@ -370,9 +370,9 @@ export function DashboardPage() {
 
               {/* Layout: Mapa + Tabelas Laterais - Alinhado com os cards de cima */}
               {data && (
-                <div className="grid grid-cols-[minmax(0,1fr)] lg:grid-cols-6 gap-4">
+                <div className="grid grid-cols-[minmax(0,1fr)] xl:grid-cols-6 gap-4">
                   {/* Mapa - 4/6 da largura (alinha com os 4 primeiros cards) */}
-                  <div className="lg:col-span-4 h-full min-w-0">
+                  <div className="xl:col-span-4 h-full min-w-0">
                     <MapaCoa
                       unidades={data.plantas.flatMap(planta =>
                         planta.unidades.map(unidade => ({
@@ -447,7 +447,7 @@ export function DashboardPage() {
                   </div> */}
 
                   {/* Painel Lateral - Tabelas de UFVs e Cargas - 2/6 da largura (alinha com os 2 últimos cards) */}
-                  <div className="lg:col-span-2 flex flex-col gap-4 min-w-0">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 min-w-0 xl:col-span-2 xl:flex xl:flex-col">
                     {/* Tabela: USINAS FOTOVOLTAICAS */}
                     <Card className="flex flex-col h-[calc(50vh-8rem)]">
                     <CardHeader className="flex-shrink-0">

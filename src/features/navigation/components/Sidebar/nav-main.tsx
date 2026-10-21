@@ -1,4 +1,5 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
+import { useIsTouch } from "@/hooks/use-mobile";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -104,6 +105,7 @@ function SidebarFlyout({
 
   return (
     <div
+      data-nav-flyout
       className="fixed z-[99999]"
       style={{ top, left: triggerRect.right + 6 }}
       onMouseEnter={onMouseEnter}
@@ -244,6 +246,7 @@ function NavMenuItem({ item }: { item: NavigationLink }) {
   const contador = useContadorMenu(item.contador);
   const navigate = useNavigate();
   const { isMobile, state, setOpenMobile, setOpen } = useSidebar();
+  const isTouch = useIsTouch();
   const isCollapsed = state === "collapsed" && !isMobile;
 
   const { ativo, temFilhoAtivo } = useAtivo(item);
@@ -280,13 +283,27 @@ function NavMenuItem({ item }: { item: NavigationLink }) {
 
   useEffect(() => cancelHide, [cancelHide]);
 
+  // No toque não existe hover: o painel abre no toque e fecha ao tocar fora.
+  useEffect(() => {
+    if (!flyoutVisible) return;
+    const fechar = (e: PointerEvent) => {
+      const alvo = e.target as Element | null;
+      if (itemRef.current?.contains(alvo) || alvo?.closest?.("[data-nav-flyout]")) return;
+      setFlyoutVisible(false);
+    };
+    document.addEventListener("pointerdown", fechar);
+    return () => document.removeEventListener("pointerdown", fechar);
+  }, [flyoutVisible]);
+
   const handleNavigate = useCallback(
     (path: string) => {
       navigate(path);
       if (isMobile) setOpenMobile(false);
+      // Tablet deitado: o menu aberto ocupa 16rem da tela; fecha depois de escolher.
+      else if (isTouch && state === "expanded") setOpen(false);
       setFlyoutVisible(false);
     },
-    [navigate, isMobile, setOpenMobile]
+    [navigate, isMobile, setOpenMobile, isTouch, state, setOpen]
   );
 
   // Recolhido: item com subitens usa o painel flutuante, não o tooltip
@@ -309,6 +326,7 @@ function NavMenuItem({ item }: { item: NavigationLink }) {
               onClick={() => {
                 if (isCollapsed) {
                   if (!item.links) handleNavigate(item.path);
+                  else showFlyout();
                   return;
                 }
                 if (!item.links) {

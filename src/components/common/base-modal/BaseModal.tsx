@@ -470,8 +470,9 @@ export function BaseModal<T extends BaseEntity>({
             "overflow-hidden flex flex-col",
             // Mobile: fullscreen
             "w-full h-full",
-            // Desktop: sidebar direita com 50vw
-            "md:w-[50vw] md:h-full md:border-l md:border-border"
+            // Tablet: 85vw em pé e 65vw deitado (50vw no iPad dava 384px e
+            // espremia o formulário em colunas de ~110px). Desktop: 50vw.
+            "md:w-[85vw] lg:w-[65vw] xl:w-[50vw] md:h-full md:border-l md:border-border"
           )}
         >
           <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b px-6 py-4 shrink-0">

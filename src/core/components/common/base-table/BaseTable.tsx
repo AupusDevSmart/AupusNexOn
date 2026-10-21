@@ -223,7 +223,7 @@ export function BaseTable<T extends BaseEntity>({
             key={acao.chave}
             variant="ghost"
             size="icon"
-            className="h-8 w-8 hover:bg-transparent hover:text-primary"
+            className="h-8 w-8 touch:h-10 touch:w-10 hover:bg-transparent hover:text-primary"
             onClick={acao.executar}
             title={acao.titulo}
           >
@@ -237,7 +237,7 @@ export function BaseTable<T extends BaseEntity>({
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8"
+                className="h-8 w-8 touch:h-10 touch:w-10"
                 title={`Mais ${noMenu.length} ações`}
               >
                 <MoreHorizontal className="h-4 w-4" />
@@ -564,7 +564,7 @@ export function BaseTable<T extends BaseEntity>({
           
           <div className="flex items-center space-x-2">
             <button
-              className="btn-minimal-outline h-8 w-8 p-0 flex items-center justify-center overflow-visible"
+              className="btn-minimal-outline h-8 w-8 touch:h-10 touch:w-10 p-0 flex items-center justify-center overflow-visible"
               onClick={() => onPageChange(pagination.page - 1)}
               disabled={pagination.page === 1}
             >
@@ -606,7 +606,7 @@ export function BaseTable<T extends BaseEntity>({
             </div>
             
             <button
-              className="btn-minimal-outline h-8 w-8 p-0 flex items-center justify-center overflow-visible"
+              className="btn-minimal-outline h-8 w-8 touch:h-10 touch:w-10 p-0 flex items-center justify-center overflow-visible"
               onClick={() => onPageChange(pagination.page + 1)}
               disabled={pagination.page === pagination.totalPages}
             >

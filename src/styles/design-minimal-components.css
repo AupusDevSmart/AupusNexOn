@@ -294,11 +294,8 @@
 /* ========================================
    GRID COM COLUNAS IGUAIS
    ======================================== */
-/* Forçar colunas de largura igual (não usar minmax) */
-.grid-equal-cols-2 {
-  display: grid !important;
-  grid-template-columns: 1fr 1fr !important;
-}
+/* .grid-equal-cols-* mora em src/core/styles/design-minimal-components.css
+   (uma coluna no celular). A cópia daqui forçava duas sempre e anulava aquela. */
 
 /* ========================================
    FOCUS VISIBLE

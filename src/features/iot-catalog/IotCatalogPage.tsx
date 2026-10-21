@@ -287,10 +287,10 @@ export function IotCatalogPage() {
               </div>
               <div className="flex flex-row gap-2 w-full lg:w-auto">
                 <button className="btn-minimal-outline flex-1 lg:flex-none whitespace-nowrap" onClick={() => setTemplateDialog(true)} disabled={tipos.length === 0}>
-                  <Download className="h-4 w-4 lg:mr-2" /><span className="hidden lg:inline">Template</span>
+                  <Download className="h-4 w-4 md:mr-2" /><span className="hidden md:inline">Template</span>
                 </button>
                 <button className="btn-minimal-outline flex-1 lg:flex-none whitespace-nowrap" onClick={() => fileImportRef.current?.click()} disabled={tipos.length === 0}>
-                  <Upload className="h-4 w-4 lg:mr-2" /><span className="hidden lg:inline">Importar</span>
+                  <Upload className="h-4 w-4 md:mr-2" /><span className="hidden md:inline">Importar</span>
                 </button>
                 <input ref={fileImportRef} type="file" accept=".xlsx" className="hidden"
                   onChange={(e) => { const f = e.target.files?.[0]; if (f) onImportPlanilha(f); e.currentTarget.value = ''; }} />
@@ -300,7 +300,7 @@ export function IotCatalogPage() {
                   disabled={tipos.length === 0}
                   title={tipos.length === 0 ? 'Crie um tipo antes' : undefined}
                 >
-                  <Plus className="h-4 w-4 lg:mr-2" /><span className="hidden lg:inline">Novo modelo</span>
+                  <Plus className="h-4 w-4 md:mr-2" /><span className="hidden md:inline">Novo modelo</span>
                 </button>
               </div>
             </div>

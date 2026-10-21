@@ -70,7 +70,7 @@ export function GrandezasEletricasPanel({ unidadeId }: GrandezasEletricasPanelPr
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7"
+            className="h-7 w-7 touch:h-10 touch:w-10"
             aria-label="Configurar medidores"
             onClick={() => setConfigOpen(true)}
           >

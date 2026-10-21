@@ -103,7 +103,7 @@ export function AlarmesAtivosPanel({ unidadeId, unidadeNome, className }: Alarme
                 <button
                   type="button"
                   onClick={() => handleReconhecer(a.id)}
-                  className="shrink-0 self-center rounded border px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  className="shrink-0 self-center rounded border px-1.5 py-0.5 touch:px-3 touch:py-2 text-[10px] touch:text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                   title="Marcar alarme como visto (reconhecer)"
                 >
                   Reconhecer

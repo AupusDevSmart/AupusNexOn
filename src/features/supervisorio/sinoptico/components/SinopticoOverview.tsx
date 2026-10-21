@@ -26,12 +26,12 @@ interface SinopticoOverviewProps {
  */
 export function SinopticoOverview({ unidadeId, unidadeNome, children }: SinopticoOverviewProps) {
   return (
-    <div className="flex h-full flex-col gap-2 overflow-y-auto px-2 pb-2 pt-1 sm:px-3 xl:overflow-hidden">
+    <div className="flex h-full flex-col gap-2 overflow-y-auto px-2 pb-2 pt-1 sm:px-3 lg:overflow-hidden">
       {/* Esquerda: diagrama unifilar sozinho (altura inteira).
           Direita: KPIs -> [Grandezas | Demanda] -> grafico -> Alarmes (empilhados). */}
-      <div className="grid grid-cols-1 gap-2 xl:min-h-0 xl:flex-1 xl:grid-cols-[1.1fr_1fr]">
+      <div className="grid grid-cols-1 gap-2 lg:min-h-0 lg:flex-1 lg:grid-cols-[1.1fr_1fr]">
         {/* Diagrama unifilar — sozinho na esquerda */}
-        <div className="order-1 flex min-h-[60vh] overflow-hidden rounded-sm border border-border xl:min-h-0">
+        <div className="order-1 flex min-h-[60vh] overflow-hidden rounded-sm border border-border lg:min-h-0">
           {children}
         </div>
 
@@ -56,7 +56,7 @@ const ColunaPaineis = memo(function ColunaPaineis({
   // Rola quando nao couber (telas baixas / notebook); em telas altas o grafico
   // (flex-1) preenche e nao aparece scroll.
   return (
-    <div className="order-2 flex flex-col gap-1.5 xl:min-h-0 xl:overflow-y-auto">
+    <div className="order-2 flex flex-col gap-1.5 lg:min-h-0 lg:overflow-y-auto">
       <KpiRow unidadeId={unidadeId} />
 
       {/* Grandezas e Demanda lado a lado */}
@@ -67,7 +67,7 @@ const ColunaPaineis = memo(function ColunaPaineis({
 
       {/* Grafico — entre Demanda e Alarmes; fica com tudo o que sobra (via de
           regra o maior bloco da coluna), nunca abaixo de uma altura util. */}
-      <div className="flex min-h-[230px] flex-1 flex-col xl:min-h-[320px]">
+      <div className="flex min-h-[230px] flex-1 flex-col lg:min-h-[320px]">
         <GraficoConfiguravelPanel unidadeId={unidadeId} />
       </div>
 
@@ -76,7 +76,7 @@ const ColunaPaineis = memo(function ColunaPaineis({
       <AlarmesAtivosPanel
         unidadeId={unidadeId}
         unidadeNome={unidadeNome}
-        className="h-auto shrink-0 xl:max-h-[35%]"
+        className="h-auto shrink-0 lg:max-h-[35%]"
       />
     </div>
   );

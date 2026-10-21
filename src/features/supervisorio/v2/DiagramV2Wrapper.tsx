@@ -397,7 +397,7 @@ const DiagramV2WrapperBase: React.FC<DiagramV2WrapperProps> = ({
       {/* Layout — apenas o diagrama (graficos movidos para o overview do sinoptico) */}
       <div className="grid grid-cols-1 gap-2 sm:gap-4 h-full">
         {/* Diagrama */}
-        <div className="flex min-h-[55vh] xl:min-h-0" style={{ position: 'relative' }}>
+        <div className="flex min-h-[55vh] lg:min-h-0" style={{ position: 'relative' }}>
           <DiagramV2
             diagramaId={diagramaId || unidadeIdFromUrl || 'static-diagram'}
             mode={modoEdicao ? 'edit' : 'view'}

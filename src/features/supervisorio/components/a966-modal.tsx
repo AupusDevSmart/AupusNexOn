@@ -157,8 +157,8 @@ export function A966Modal({
         )}
 
         {/* Linha 1: 2 gauges de demanda + grafico tendencia + fluxo liquido */}
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-3">
-          <div className="xl:col-span-3 flex flex-col gap-3">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
+          <div className="lg:col-span-3 flex flex-col gap-3">
             <div className="rounded-sm border border-border bg-card p-3">
               <DemandaGauge
                 valor={snapshot?.kW_consumo ?? 0}
@@ -181,7 +181,7 @@ export function A966Modal({
             </div>
           </div>
 
-          <div className="xl:col-span-6 rounded-sm border border-border bg-card p-3">
+          <div className="lg:col-span-6 rounded-sm border border-border bg-card p-3">
             <TendenciaPotencia
               equipamentoId={equipamentoId ?? null}
               demandaCarga={data?.unidade?.demanda_carga ?? null}
@@ -189,7 +189,7 @@ export function A966Modal({
             />
           </div>
 
-          <div className="xl:col-span-3">
+          <div className="lg:col-span-3">
             <FluxoLiquidoCard
               fluxoLiquidoKw={snapshot?.fluxo_liquido_kw ?? 0}
               consumoKw={snapshot?.kW_consumo ?? 0}

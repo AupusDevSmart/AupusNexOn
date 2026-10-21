@@ -24,11 +24,11 @@ export function PainelSkeleton({ linhas = 3, className }: { linhas?: number; cla
 export function SinopticoSkeleton() {
   return (
     <div className="flex h-full flex-col gap-2 overflow-hidden px-2 pb-2 pt-1 sm:px-3" role="status" aria-label="Carregando sinóptico">
-      <div className="grid grid-cols-1 gap-2 xl:min-h-0 xl:flex-1 xl:grid-cols-[1.1fr_1fr]">
-        <div className="relative min-h-[60vh] overflow-hidden rounded-sm border border-border bg-card xl:min-h-0">
+      <div className="grid grid-cols-1 gap-2 lg:min-h-0 lg:flex-1 lg:grid-cols-[1.1fr_1fr]">
+        <div className="relative min-h-[60vh] overflow-hidden rounded-sm border border-border bg-card lg:min-h-0">
           <DiagramaSkeleton />
         </div>
-        <div className="flex flex-col gap-1.5 xl:min-h-0">
+        <div className="flex flex-col gap-1.5 lg:min-h-0">
           <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
             {[0, 1, 2, 3].map((i) => (
               <div key={i} className="flex flex-col gap-2 rounded-sm border border-border bg-card p-3">
@@ -41,7 +41,7 @@ export function SinopticoSkeleton() {
             <PainelSkeleton linhas={4} />
             <PainelSkeleton linhas={4} />
           </div>
-          <div className="flex min-h-[230px] flex-1 flex-col gap-2 rounded-sm border border-border bg-card p-3 xl:min-h-[320px]">
+          <div className="flex min-h-[230px] flex-1 flex-col gap-2 rounded-sm border border-border bg-card p-3 lg:min-h-[320px]">
             <Skeleton className="h-3 w-28 rounded-sm" />
             <GraficoSkeleton className="min-h-0 flex-1" />
           </div>

@@ -480,7 +480,7 @@ export function ComissionamentoTab({
                           </a>
                           {isAdmin && (
                             <button onClick={() => removerFoto(f.url)} title="Remover"
-                              className="absolute top-1 right-1 bg-black/60 text-white rounded-full w-5 h-5 text-xs leading-none opacity-0 group-hover:opacity-100">×</button>
+                              className="absolute top-1 right-1 bg-black/60 text-white rounded-full w-5 h-5 touch:w-8 touch:h-8 touch:text-base text-xs leading-none mouse:opacity-0 mouse:group-hover:opacity-100">×</button>
                           )}
                           {f.em && <span className="block text-[10px] text-muted-foreground truncate mt-0.5">{new Date(f.em).toLocaleString("pt-BR")}</span>}
                         </div>

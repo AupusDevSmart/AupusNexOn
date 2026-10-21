@@ -1,6 +1,7 @@
 import tailwindcssAnimate from 'tailwindcss-animate';
 // Container queries (@container, cqw) que o bklit usa para escalar o número do centro dos gráficos.
 import containerQueries from '@tailwindcss/container-queries';
+import plugin from 'tailwindcss/plugin';
 
 const config = {
 	darkMode: ['class'],
@@ -265,7 +266,16 @@ const config = {
 			}
 		}
 	},
-	plugins: [tailwindcssAnimate, containerQueries],
+	plugins: [
+		tailwindcssAnimate,
+		containerQueries,
+		// Tablet e celular: `touch:` vale onde o dedo é o ponteiro (alvo maior, controle
+		// sempre visível); `mouse:` só onde há hover de verdade (some e aparece no hover).
+		plugin(({ addVariant }) => {
+			addVariant('touch', '@media (pointer: coarse)');
+			addVariant('mouse', '@media (hover: hover) and (pointer: fine)');
+		}),
+	],
 };
 
 export default config;
