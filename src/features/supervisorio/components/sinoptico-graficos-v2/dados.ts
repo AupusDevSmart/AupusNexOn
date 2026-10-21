@@ -9,6 +9,10 @@ import { MESES_PT_CURTOS } from './formatos';
 
 export type Dominio = [Date, Date];
 
+/** Limite acima do contratado: geração 1% da demanda de geração; carga 5% (NEXON-14). */
+export const PERCENTUAL_LIMITE_GERACAO = 1;
+export const PERCENTUAL_LIMITE_CARGA = 5;
+
 /** Ponto da série de demanda (período "dia" ou personalizado). */
 export interface PontoDemanda extends Record<string, unknown> {
   date: Date;
@@ -131,11 +135,14 @@ export function montarPontosDemanda(
  * do medidor da concessionária. As consultas são separadas, então os instantes nem
  * sempre coincidem — cada série repete o último valor até o próximo ponto dela (0 antes
  * do primeiro). `potencia` = líquido da rede (consumo − geração), usado pelo zoom/brush.
+ * `interpolar`: entre dois pontos da série o valor é a reta entre eles (séries com passos
+ * diferentes, ex.: geração de 15 min × carga de 5 min, sem degrau).
  */
 export function mesclarFluxo(
   ger: PontoDemanda[],
   con: PontoDemanda[],
   carga?: { contratado: number; adicional: number },
+  opcoes: { interpolar?: boolean } = {},
 ): PontoDemanda[] {
   const tempos = Array.from(new Set([...ger, ...con].map((p) => p.date.getTime()))).sort((a, b) => a - b);
   const refGer = ger[0];
@@ -146,6 +153,10 @@ export function mesclarFluxo(
   return tempos.map((t) => {
     while (ig < ger.length && ger[ig].date.getTime() <= t) g = -Math.abs(ger[ig++].potencia);
     while (ic < con.length && con[ic].date.getTime() <= t) c = Math.abs(con[ic++].potencia);
+    if (opcoes.interpolar) {
+      if (ig > 0 && ig < ger.length) g = -Math.abs(entre(ger[ig - 1], ger[ig], t));
+      if (ic > 0 && ic < con.length) c = Math.abs(entre(con[ic - 1], con[ic], t));
+    }
     const ponto: PontoDemanda = { date: new Date(t), potencia: c + g, consumo: c };
     if (ger.length) ponto.geracao = g;
     if (refGer?.valorContratado != null) {
@@ -158,6 +169,25 @@ export function mesclarFluxo(
     }
     return ponto;
   });
+}
+
+/** Esperado mais próximo do instante (até 7,5 min), sem sinal. */
+export function esperadoNoInstante(pontos: Array<{ date: Date; valor: number | null }>, date: Date): number | null {
+  const t = date.getTime();
+  let melhor: { date: Date; valor: number | null } | null = null;
+  for (const e of pontos) {
+    const d = Math.abs(e.date.getTime() - t);
+    if (d <= 7.5 * 60_000 && (!melhor || d < Math.abs(melhor.date.getTime() - t))) melhor = e;
+  }
+  return melhor?.valor == null ? null : Math.abs(melhor.valor);
+}
+
+/** Valor da reta entre dois pontos no instante `t` (a ≤ t < b). */
+function entre(a: PontoDemanda, b: PontoDemanda, t: number): number {
+  const t0 = a.date.getTime();
+  const t1 = b.date.getTime();
+  if (t1 <= t0) return a.potencia;
+  return a.potencia + ((b.potencia - a.potencia) * (t - t0)) / (t1 - t0);
 }
 
 /** Barras de energia (kWh): por dia no mês, por mês no ano. */
