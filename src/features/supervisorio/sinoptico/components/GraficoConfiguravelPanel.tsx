@@ -22,7 +22,7 @@ function Pilula({ ativo, onClick, children }: { ativo: boolean; onClick: () => v
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-sm px-2 py-0.5 text-[11px] font-medium transition-colors ${
+      className={`rounded-sm px-2 py-0.5 touch:px-3 touch:py-1.5 text-[11px] touch:text-xs font-medium transition-colors ${
         ativo ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted/50"
       }`}
     >

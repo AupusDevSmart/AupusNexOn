@@ -160,9 +160,10 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
       // Criar mapa
       const map = L.map(mapRef.current, {
         zoomControl: false,
-        // No celular o arraste de um dedo fica com a pagina (senao o mapa, que
-        // ocupa a largura toda, prende a rolagem). Pinça continua dando zoom.
-        dragging: !L.Browser.mobile,
+        // No toque (celular e tablet) o arraste de um dedo fica com a pagina
+        // (senao o mapa, que ocupa a largura toda, prende a rolagem). Pinça
+        // continua dando zoom. `L.Browser.mobile` nao servia: o iPad se diz Mac.
+        dragging: !window.matchMedia('(pointer: coarse)').matches,
         scrollWheelZoom: true,
         doubleClickZoom: true,
         touchZoom: true,

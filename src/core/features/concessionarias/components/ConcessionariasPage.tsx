@@ -329,8 +329,8 @@ export function ConcessionariasPage() {
                 disabled={loading}
                 className="btn-minimal-outline flex-1 lg:flex-none whitespace-nowrap"
               >
-                <RefreshCw className={`h-4 w-4 lg:mr-2 ${loading ? 'animate-spin' : ''}`} />
-                <span className="hidden lg:inline">Atualizar</span>
+                <RefreshCw className={`h-4 w-4 md:mr-2 ${loading ? 'animate-spin' : ''}`} />
+                <span className="hidden md:inline">Atualizar</span>
               </button>
 
               {podeEditar && (
@@ -339,8 +339,8 @@ export function ConcessionariasPage() {
                   disabled={isSubmitting}
                   className="btn-minimal-primary flex-1 lg:flex-none whitespace-nowrap"
                 >
-                  <Plus className="h-4 w-4 lg:mr-2" />
-                  <span className="hidden lg:inline">Nova Concessionária</span>
+                  <Plus className="h-4 w-4 md:mr-2" />
+                  <span className="hidden md:inline">Nova Concessionária</span>
                 </button>
               )}
             </div>

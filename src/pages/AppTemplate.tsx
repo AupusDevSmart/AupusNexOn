@@ -46,7 +46,7 @@ export function AppTemplate() {
                 app inteiro para o lado. */}
             <header className="flex-none flex flex-wrap sm:flex-nowrap items-center justify-between gap-x-2 min-w-0 overflow-hidden bg-secondary">
               <div className="flex h-12 min-w-0 flex-1 sm:flex-none items-center gap-2 px-3 sm:px-4 bg-secondary overflow-hidden">
-                <SidebarTrigger className="w-4 h-4 mr-2" />
+                <SidebarTrigger className="h-9 w-9 -ml-2 touch:h-10 touch:w-10" />
                 <CustomBreadcrumbs className="min-w-0" />
               </div>
               {/* Slot pra acoes da pagina na linha dos breadcrumbs (preenchido via

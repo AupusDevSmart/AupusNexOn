@@ -341,8 +341,8 @@ export function PlantasPage({ mostrarTarifacao = false }: PlantasPageProps = {})
                 disabled={loading}
                 className="btn-minimal-outline flex-1 lg:flex-none whitespace-nowrap"
               >
-                <RefreshCw className={`h-4 w-4 lg:mr-2 ${loading ? 'animate-spin' : ''}`} />
-                <span className="hidden lg:inline">Atualizar</span>
+                <RefreshCw className={`h-4 w-4 md:mr-2 ${loading ? 'animate-spin' : ''}`} />
+                <span className="hidden md:inline">Atualizar</span>
               </button>
 
               {podeCadastrar && (
@@ -350,8 +350,8 @@ export function PlantasPage({ mostrarTarifacao = false }: PlantasPageProps = {})
                   onClick={() => openModal('create')}
                   className="btn-minimal-primary flex-1 lg:flex-none whitespace-nowrap"
                 >
-                  <Plus className="h-4 w-4 lg:mr-2" />
-                  <span className="hidden lg:inline">Nova Planta</span>
+                  <Plus className="h-4 w-4 md:mr-2" />
+                  <span className="hidden md:inline">Nova Planta</span>
                 </button>
               )}
             </div>

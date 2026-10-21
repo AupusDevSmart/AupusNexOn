@@ -158,8 +158,8 @@ export default function ProprietariosPage() {
                 disabled={carregando}
                 className="btn-minimal-outline flex-1 lg:flex-none whitespace-nowrap"
               >
-                <RefreshCw className={`h-4 w-4 lg:mr-2 ${carregando ? 'animate-spin' : ''}`} />
-                <span className="hidden lg:inline">Atualizar</span>
+                <RefreshCw className={`h-4 w-4 md:mr-2 ${carregando ? 'animate-spin' : ''}`} />
+                <span className="hidden md:inline">Atualizar</span>
               </button>
             </div>
           </div>

@@ -3965,7 +3965,7 @@ if (import.meta.env.PROD) {
             <div className="flex shrink-0 gap-1 whitespace-nowrap" style={{ zIndex: 10 }}>
               <button
                 onClick={() => setSinopticoTab('visao')}
-                className={`px-3 py-1 text-sm font-medium rounded-[2px] transition-colors ${
+                className={`px-3 py-1 touch:py-2 text-sm font-medium rounded-[2px] transition-colors ${
                   sinopticoTab === 'visao'
                     ? 'bg-muted text-foreground'
                     : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
@@ -3976,7 +3976,7 @@ if (import.meta.env.PROD) {
               {podeVerUnifilar && (
                 <button
                   onClick={() => setSinopticoTab('unifilar')}
-                  className={`px-3 py-1 text-sm font-medium rounded-[2px] transition-colors ${
+                  className={`px-3 py-1 touch:py-2 text-sm font-medium rounded-[2px] transition-colors ${
                     sinopticoTab === 'unifilar'
                       ? 'bg-muted text-foreground'
                       : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
@@ -3988,7 +3988,7 @@ if (import.meta.env.PROD) {
               {podeVerAlarmes && (
                 <button
                   onClick={() => setSinopticoTab('alarmes')}
-                  className={`px-3 py-1 text-sm font-medium rounded-[2px] transition-colors ${
+                  className={`px-3 py-1 touch:py-2 text-sm font-medium rounded-[2px] transition-colors ${
                     sinopticoTab === 'alarmes'
                       ? 'bg-muted text-foreground'
                       : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
@@ -4000,7 +4000,7 @@ if (import.meta.env.PROD) {
               {podeVerIot && (
                 <button
                   onClick={() => setSinopticoTab('iot')}
-                  className={`px-3 py-1 text-sm font-medium rounded-[2px] transition-colors ${
+                  className={`px-3 py-1 touch:py-2 text-sm font-medium rounded-[2px] transition-colors ${
                     sinopticoTab === 'iot'
                       ? 'bg-muted text-foreground'
                       : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
@@ -4012,7 +4012,7 @@ if (import.meta.env.PROD) {
               {podeVerIot && (
                 <button
                   onClick={() => setSinopticoTab('comissionamento')}
-                  className={`px-3 py-1 text-sm font-medium rounded-[2px] transition-colors ${
+                  className={`px-3 py-1 touch:py-2 text-sm font-medium rounded-[2px] transition-colors ${
                     sinopticoTab === 'comissionamento'
                       ? 'bg-muted text-foreground'
                       : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'

@@ -163,7 +163,9 @@ export const DiagramViewport: React.FC<DiagramViewportProps> = ({ children, onBa
     const svg = svgRef.current;
     if (!svg) return;
 
-    let mode: 'pan' | 'pinch' | null = null;
+    // 'toque': um dedo pousou e ainda não andou. Vira 'pan' depois de 8px; se
+    // soltar antes, era um toque e o clique segue para o equipamento.
+    let mode: 'toque' | 'pan' | 'pinch' | null = null;
     let lastX = 0;
     let lastY = 0;
     let pinchStartDist = 1;
@@ -176,18 +178,24 @@ export const DiagramViewport: React.FC<DiagramViewportProps> = ({ children, onBa
         pinchStartDist = dist(e.touches[0], e.touches[1]) || 1;
         pinchStartScale = useDiagramStore.getState().viewport.scale;
         e.preventDefault();
-      } else if (e.touches.length === 1 && e.target === svg) {
-        // Pan so quando comeca no fundo (svg). Tocar num equipamento deixa o tap abrir o modal.
-        mode = 'pan';
+      } else if (e.touches.length === 1) {
+        // Arrastar vale de qualquer ponto (linha, barra, equipamento): num
+        // diagrama denso quase nunca sobra fundo livre para começar no svg.
+        mode = 'toque';
         lastX = e.touches[0].clientX;
         lastY = e.touches[0].clientY;
-        startViewportDrag();
-        e.preventDefault();
+        if (e.target === svg) e.preventDefault();
       }
     };
 
     const onMove = (e: TouchEvent) => {
       const st = useDiagramStore.getState();
+      if (mode === 'toque' && e.touches.length === 1) {
+        const andou = Math.hypot(e.touches[0].clientX - lastX, e.touches[0].clientY - lastY);
+        if (andou < 8) return;
+        mode = 'pan';
+        startViewportDrag();
+      }
       if (mode === 'pan' && e.touches.length === 1) {
         const dx = e.touches[0].clientX - lastX;
         const dy = e.touches[0].clientY - lastY;
@@ -657,17 +665,19 @@ export const DiagramViewport: React.FC<DiagramViewportProps> = ({ children, onBa
         <button
           onClick={() => setZoom(viewport.scale + VIEWPORT.ZOOM_STEP)}
           title="Zoom In"
-          className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-sm text-base leading-none text-muted-foreground/60 transition-colors hover:bg-muted/60 hover:text-foreground"
+          aria-label="Aproximar"
+          className="flex h-6 w-6 touch:h-10 touch:w-10 touch:text-xl cursor-pointer items-center justify-center rounded-sm text-base leading-none text-muted-foreground/60 transition-colors hover:bg-muted/60 hover:text-foreground"
         >
           +
         </button>
-        <span className="px-0.5 tabular-nums text-[10px] text-muted-foreground/60">
+        <span className="px-0.5 tabular-nums text-[10px] touch:text-xs text-muted-foreground/60">
           {Math.round(viewport.scale * 100)}%
         </span>
         <button
           onClick={() => setZoom(viewport.scale - VIEWPORT.ZOOM_STEP)}
           title="Zoom Out"
-          className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-sm text-base leading-none text-muted-foreground/60 transition-colors hover:bg-muted/60 hover:text-foreground"
+          aria-label="Afastar"
+          className="flex h-6 w-6 touch:h-10 touch:w-10 touch:text-xl cursor-pointer items-center justify-center rounded-sm text-base leading-none text-muted-foreground/60 transition-colors hover:bg-muted/60 hover:text-foreground"
         >
           −
         </button>

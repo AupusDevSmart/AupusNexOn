@@ -395,7 +395,8 @@ const ChartCore = memo(function ChartCore({
 
   // Mouse move handler
   const handleMouseMove = useCallback(
-    (event: React.MouseEvent<SVGGElement>) => {
+    // Toque também (tablet): sem isso o tooltip das barras nunca abria no dedo.
+    (event: React.MouseEvent<SVGGElement> | React.TouchEvent<SVGGElement>) => {
       const point = localPoint(event);
       if (!point) {
         return;
@@ -641,6 +642,8 @@ const ChartCore = memo(function ChartCore({
         <g
           onMouseLeave={canInteract ? handleMouseLeave : undefined}
           onMouseMove={canInteract ? handleMouseMove : undefined}
+          onTouchStart={canInteract ? handleMouseMove : undefined}
+          onTouchMove={canInteract ? handleMouseMove : undefined}
           style={{ cursor: canInteract ? "crosshair" : "default" }}
           transform={`translate(${margin.left},${margin.top})`}
         >
