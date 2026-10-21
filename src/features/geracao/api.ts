@@ -13,7 +13,7 @@ export type FonteGeracao = 'ton' | 'nuvem' | 'manual' | 'mista';
 export type FonteGeracaoConfig = 'automatico' | 'ton' | 'nuvem';
 export type MotivoFonte =
   | 'manual' | 'fixada' | 'fixada_sem_dado' | 'so_ton' | 'so_nuvem' | 'sem_dados'
-  | 'nuvem_zerada' | 'concordam' | 'ton_incompleta' | 'divergem';
+  | 'nuvem_zerada' | 'concordam' | 'ton_incompleta' | 'em_andamento' | 'divergem';
 
 /** Um dia na escolha da fonte (Dia: 1 item; Semana/Mês: 1 por dia; Ano/Total: omitido). */
 export interface DiaFonteGeracao {
