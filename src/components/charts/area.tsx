@@ -201,6 +201,7 @@ export function Area({
     showLine,
     showSeriesContent,
     showLoadingPulse,
+    yScale, // eixo anima ao trocar dados: re-mede para o tracejado acompanhar (ver line.tsx)
   ]);
 
   // Unique IDs for this area

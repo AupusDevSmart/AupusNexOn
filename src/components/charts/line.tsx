@@ -282,12 +282,16 @@ export function Line({
   }, [lines, dataKey]);
 
   const pathRef = useRef<SVGPathElement>(null);
+  // yScale entra nas deps: o eixo anima (tween) quando os dados mudam, e medir só no
+  // início deixava o tracejado (dashFromIndex) parado na escala antiga — ex.: contratado
+  // desenhado em ~100 kW com a linha-base invisível certa em 133 kW.
   const { pathLength, pathD } = usePathStrokeMetrics(pathRef, [
     renderData,
     innerWidth,
     dashFromIndex,
     animate,
     useDataTransitionPath ? animatedPathD : null,
+    yScale,
   ]);
 
   const reactId = useId();
