@@ -31,6 +31,14 @@ step "Build (vite, outDir=dist.new)"
 rm -rf dist.new
 pnpm exec vite build --outDir dist.new
 
+step "Manter assets antigos (aba aberta antes do deploy ainda pede os chunks antigos)"
+# NEXON-41: sem isso, quem estava com o NexON aberto via "Failed to fetch dynamically
+# imported module" ao trocar de pagina ate dar F5. Arquivos tem hash no nome: nao colidem.
+if [ -d dist/assets ]; then
+  cp -pn dist/assets/* dist.new/assets/ 2>/dev/null || true
+  find dist.new/assets -type f -mtime +14 -delete
+fi
+
 step "Swap atomico: dist -> dist.previous, dist.new -> dist"
 rm -rf dist.previous
 [ -d dist ] && mv dist dist.previous || true
