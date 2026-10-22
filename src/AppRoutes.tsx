@@ -1,7 +1,8 @@
 import { FeatureWrapper } from "@/components/common/FeatureWrapper";
 import { AppTemplate } from "@/pages/AppTemplate";
 import { Settings } from "@/pages/settings";
-import { createBrowserRouter, Navigate } from "react-router-dom";
+import { createBrowserRouter, Navigate, type RouteObject } from "react-router-dom";
+import { ErroDeRota } from "@/components/erro-de-rota";
 import { DashboardPage } from "./pages/dashboard";
 import { LoginPage } from "@/pages/login/LoginPage";
 import { EsqueciSenhaPage } from "@/pages/esqueci-senha/EsqueciSenhaPage";
@@ -164,7 +165,11 @@ const DesignSystemTestPage = lazy(() =>
   }))
 );
 
-export const appRoutes = createBrowserRouter([
+// NEXON-41: toda rota de topo ganha errorElement, para nenhum erro cair na tela crua do React Router.
+const comErroDeRota = (rotas: RouteObject[]): RouteObject[] =>
+  rotas.map((r) => ({ errorElement: <ErroDeRota />, ...r }) as RouteObject);
+
+export const appRoutes = createBrowserRouter(comErroDeRota([
   // ✅ Rota pública de login
   {
     path: "/login",
@@ -519,4 +524,4 @@ export const appRoutes = createBrowserRouter([
     path: "*",
     element: <Navigate to="/login" replace />,
   },
-]);
+]));

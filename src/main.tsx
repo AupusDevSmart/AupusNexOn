@@ -9,6 +9,9 @@ import '@/core/styles/design-minimal-components.css';
 import '@/styles/design-minimal-components.css';
 
 import App from './App.tsx'
+import { instalarRecargaDeVersaoNova } from '@/lib/versao-nova'
+
+instalarRecargaDeVersaoNova()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
