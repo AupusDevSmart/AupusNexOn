@@ -4799,6 +4799,16 @@ bool modbus_exec_command(const char* device_name, const char* cmd_id, int addr, 
                     }
                     const v = this._valorExpr(step.value, 1);
                     return `            if (_mb.writeSingleRegister(${step.register}, ${v}) != _mb.ku8MBSuccess) return false;\n`;
+                } else if (sFunc === 0x10) {
+                    // FC16: escreve N registradores de uma vez (ponto SunSpec de 2 palavras, ex. S32).
+                    // { func: 0x10, register: R, values: [v0, v1, ...] } — valores aceitam "$valor_hi"/"$valor_lo".
+                    if (step.register === undefined || !Array.isArray(step.values) || step.values.length === 0) {
+                        console.warn(`[gen] step func 0x10 exige register e values[]`);
+                        return null;
+                    }
+                    let out = '';
+                    step.values.forEach((val, i) => { out += `            _mb.setTransmitBuffer(${i}, ${this._valorExpr(val, 0)});\n`; });
+                    return out + `            if (_mb.writeMultipleRegisters(${step.register}, ${step.values.length}) != _mb.ku8MBSuccess) return false;\n`;
                 } else if (sFunc === 0x13) {
                     // SOFAR: le o bloco (FC04), troca a palavra 'index' e regrava com 0x13
                     if (step.start === undefined || step.index === undefined || step.value === undefined) {
@@ -5751,6 +5761,12 @@ static void _publish_dev_${idx}(modbus_publish_fn publish) {
     // Literal (valor fixo) sai igual a antes (byte-identico p/ os comandos existentes).
     _valorExpr(v, padrao) {
         if (v === '$valor') return '(uint16_t)(int16_t)valor';
+        // Derivados do setpoint (SunSpec/FoxESS — WEG SIW400G): FP em módulo + excitação pelo
+        // sinal, e valores de 32 bits (S32) em duas palavras p/ escrita FC16.
+        if (v === '$valor_abs') return '(uint16_t)(valor < 0 ? -valor : valor)';
+        if (v === '$valor_neg') return '(uint16_t)(valor < 0 ? 1 : 0)';
+        if (v === '$valor_hi') return '(uint16_t)(((uint32_t)(int32_t)valor) >> 16)';
+        if (v === '$valor_lo') return '(uint16_t)(((uint32_t)(int32_t)valor) & 0xFFFF)';
         return String(v !== undefined ? v : padrao);
     }
 
@@ -5758,7 +5774,9 @@ static void _publish_dev_${idx}(modbus_publish_fn publish) {
     // unidades do REGISTRADOR). A TON confere de novo, alem do backend — o firmware e' a
     // ultima barreira antes do inversor.
     _guardaValor(m) {
-        const usa = (x) => x && (x.value === '$valor' || (Array.isArray(x.steps) && x.steps.some((st) => st && st.value === '$valor')));
+        const ehValor = (v) => typeof v === 'string' && v.startsWith('$valor');
+        const usaPasso = (st) => st && (ehValor(st.value) || (Array.isArray(st.values) && st.values.some(ehValor)));
+        const usa = (x) => x && (usaPasso(x) || (Array.isArray(x.steps) && x.steps.some(usaPasso)));
         if (!usa(m)) return '';
         let g = `            if (!tem_valor) return false;   // setpoint sem "valor"\n`;
         const mn = Number(m.min), mx = Number(m.max);

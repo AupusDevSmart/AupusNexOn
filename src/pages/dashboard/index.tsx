@@ -24,6 +24,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useNavigate } from "react-router-dom";
 import { useUserStore } from "@/store/useUserStore";
+import { isGlobal, papelCanonico } from "@/store/papeis";
+import { PainelComunicacao } from "@/features/coa/components/PainelComunicacao";
 
 
 /**
@@ -52,6 +54,8 @@ export function DashboardPage() {
   const navigate = useNavigate();
   // Contador de falhas (painel "Alertas Ativos"): só equipe Aupus (NEXON-20).
   const verContadorFalhas = useUserStore((s) => s.capacidades.contadorFalhas);
+  // Quadro de comunicação (TON fora × equipamento sem dado): só equipe (papel global), como os alarmes.
+  const ehEquipe = useUserStore((s) => isGlobal(papelCanonico(s.getUserRole())));
   const {
     data,
     isLoading,
@@ -325,6 +329,8 @@ export function DashboardPage() {
                   color="text-indigo-500"
                 />
               </div>
+
+              {ehEquipe && <PainelComunicacao />}
 
               {/* Estatísticas Adicionais - Estilo COA Antigo */}
               {/* COMENTADO: Cards de estatísticas secundárias - podem ser reativados futuramente */}

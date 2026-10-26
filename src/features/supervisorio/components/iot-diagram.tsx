@@ -19,6 +19,7 @@ import { DeviceIoConfigModal, tipoTemIo, type DeviceIoConfig } from './DeviceIoC
 import { GuiaInstalacaoA966 } from './GuiaInstalacaoA966';
 import { InstrucoesInstalacaoModal, type ContextoInstalacao } from './InstrucoesInstalacaoModal';
 import { dominioDoTipo } from '../v2/utils/dominioEquipamento';
+import { AcompanhamentoOta } from './AcompanhamentoOta';
 
 /**
  * Resposta do OtaController.compileAndPublish (com envelope ResponseInterceptor):
@@ -34,6 +35,9 @@ interface OtaCompilePublishResponse {
   version: string;
   md5: string;
   size: number;
+  /** FIRMWARE_VERSION do binário (o que a TON anuncia ao voltar). */
+  versao_firmware?: string | null;
+  execucao_id?: string | null;
 }
 
 interface OtaCompileFiles {
@@ -209,7 +213,7 @@ function ensureIoTScripts(): Promise<void> {
     //
     // O catalogo de dispositivos foi movido pro backend (GET /iot-catalog/device-catalog.js)
     // — ele revalida sozinho via ETag. Os demais ainda sao estaticos.
-    const IOT_SCRIPTS_VERSION = '20261014-ssu-minuto-medidor-1';
+    const IOT_SCRIPTS_VERSION = '20261026-sunspec-fc16-siw400g';
     const scripts = [
       `${BASE_URL}/iot-catalog/device-catalog.js`,
       `/iot-firmware-base.v2.js?v=${IOT_SCRIPTS_VERSION}`,
@@ -1241,6 +1245,8 @@ export function IoTDiagram({ unidadeId, unidadeNome }: IoTDiagramProps) {
     log: string[];
     binData: any | null;
     simulate?: boolean;
+    /** Equipamento da TON do último OTA disparado — o modal acompanha até a confirmação. */
+    otaEquipamentoId?: string;
   } | null>(null);
 
   // Monta o mapa BO/BI da(s) bomba(s) a partir do mapeamento PADRÃO da TON
@@ -1555,15 +1561,15 @@ export function IoTDiagram({ unidadeId, unidadeNome }: IoTDiagramProps) {
       // resp.data já vem desempacotado pelo interceptor (vide src/config/api.ts).
       const payload = resp.data;
       setFirmwareModal(prev => prev ? {
-        ...prev, status: 'deployed',
+        ...prev, status: 'deployed', otaEquipamentoId: equipamentoId,
         log: [...prev.log,
           'Comando OTA publicado!',
           `Tópico: ${payload.topic}`,
           `URL: ${payload.url}`,
           `Tamanho: ${(payload.size / 1024).toFixed(1)} KB`,
           `MD5: ${payload.md5.slice(0, 12)}…`,
-          'TON deve baixar e aplicar em ~30-90s. Após reiniciar e publicar 3 vezes,',
-          'o firmware é confirmado válido (caso contrário, rollback automático).',
+          ...(payload.versao_firmware ? [`Versão do firmware: ${payload.versao_firmware}`] : []),
+          'Acompanhe abaixo: só fica "confirmado" quando a TON volta anunciando a versão nova.',
         ],
       } : null);
     } catch (e: unknown) {
@@ -2868,6 +2874,10 @@ export function IoTDiagram({ unidadeId, unidadeNome }: IoTDiagramProps) {
                   <p><strong>Dispositivos RS485:</strong> {firmwareModal.projects[firmwareModal.selected].spec.rs485_devices.map((d: any) => d.name).join(', ')}</p>
                 )}
               </div>
+
+              {firmwareModal.status === 'deployed' && firmwareModal.otaEquipamentoId && (
+                <AcompanhamentoOta equipamentoId={firmwareModal.otaEquipamentoId} />
+              )}
 
               {/* Log output */}
               {firmwareModal.log.length > 0 && (
