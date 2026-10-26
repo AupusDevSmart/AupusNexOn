@@ -91,7 +91,8 @@ export function GraficoDemanda({
   const pctCarga = refCarga && refCarga.valorContratadoCarga
     ? Math.round(((refCarga.valorAdicionalCarga as number) / refCarga.valorContratadoCarga - 1) * 100)
     : null;
-  const temRefGeracao = !!referencias && (!fluxo || temGeracao);
+  const temRede = fluxo && pontos.some((p) => p.rede != null);
+  const temRefGeracao = !!referencias && (!fluxo || temGeracao || temRede);
   const linhaRef = (dataKey: string, cor: string, dash: string) => (
     <Line
       key={dataKey}
@@ -116,6 +117,9 @@ export function GraficoDemanda({
       {temConsumo && (
         <Area dataKey="consumo" fill={COR_CONSUMO} fillOpacity={0.3} gradientToOpacity={0.04}
           showLine={false} showHighlight={false} curve={curveMonotoneX} animate={false} />
+      )}
+      {temRede && (
+        <Line dataKey="rede" stroke={COR.tensao} strokeWidth={2} curve={curveMonotoneX} fadeEdges={false} animate={false} />
       )}
       {temGeracao && (
         <Line dataKey="geracao" stroke={COR.geracao} strokeWidth={2} curve={curveMonotoneX} fadeEdges={false} animate={false} />
@@ -225,6 +229,9 @@ export function GraficoDemanda({
                   ...(temConsumo ? [{ label: 'Consumo', value: `${formatarKw(Math.abs(p.consumo ?? 0))} kW`, cor: COR_CONSUMO }] : []),
                   ...(temGeracao ? [{ label: 'Geração', value: `${formatarKw(Math.abs(p.geracao ?? 0))} kW`, cor: COR.geracao }] : []),
                   ...(temGeracao && temConsumo ? [{ label: 'Líquido (consumo − geração)', value: `${formatarKw(p.potencia)} kW` }] : []),
+                  ...(temRede && typeof p.rede === 'number'
+                    ? [{ label: p.rede >= 0 ? 'Rede · importando' : 'Rede · exportando', value: `${formatarKw(Math.abs(p.rede))} kW`, cor: COR.tensao }]
+                    : []),
                   ...(temEsperado ? linhaEsperado(p.date) : []),
                   ...refs,
                 ]}
@@ -258,6 +265,7 @@ export function GraficoDemanda({
     ? [
         ...(temConsumo ? [{ rotulo: 'Consumo', cor: COR_CONSUMO }] : []),
         ...(temGeracao ? [{ rotulo: 'Geração', cor: COR.geracao }] : []),
+        ...(temRede ? [{ rotulo: 'Rede (+ importa · − exporta)', cor: COR.tensao }] : []),
         ...(temRefGeracao || temRefCarga
           ? [
               { rotulo: 'Contratado', cor: COR.neutro, tracejada: true },

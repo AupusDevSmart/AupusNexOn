@@ -72,7 +72,13 @@ function GaugeDemanda({
  * circulares (% da contratada), lado a lado. Sem saldo.
  */
 export function DemandaFluxoPanel({ unidadeId }: DemandaFluxoPanelProps) {
-  const { cargaKw, geracaoKw, demandaCarga, demandaGeracao, loading } = useDemandaFluxo(unidadeId);
+  const { cargaKw, geracaoKw, redeKw, temRede, demandaCarga, demandaGeracao, loading } = useDemandaFluxo(unidadeId);
+  // Rede (medidor de entrada): medidor próprio. Importando compara com a demanda de carga;
+  // exportando, com a de geração.
+  const redeImporta = (redeKw ?? 0) < 0;
+  const redeAbs = redeKw == null ? null : Math.abs(redeKw);
+  const redeContratada = redeImporta ? demandaCarga : demandaGeracao;
+  const colunas = temRede ? 'grid-cols-3' : 'grid-cols-2';
   const { configuracao, equipamentosDisponiveis, salvar } = useConfiguracaoDemanda(unidadeId);
   const [configOpen, setConfigOpen] = useState(false);
 
@@ -94,8 +100,8 @@ export function DemandaFluxoPanel({ unidadeId }: DemandaFluxoPanelProps) {
         }
       >
         {loading ? (
-        <div className="grid grid-cols-2 gap-3" role="status" aria-label="Carregando demanda">
-          {[0, 1].map((i) => (
+        <div className={`grid ${colunas} gap-3`} role="status" aria-label="Carregando demanda">
+          {(temRede ? [0, 1, 2] : [0, 1]).map((i) => (
             <div key={i} className="flex flex-col items-center gap-1">
               <Skeleton className="h-2.5 w-12 rounded-sm" />
               <Skeleton className="h-[100px] w-[100px] rounded-full" />
@@ -104,7 +110,7 @@ export function DemandaFluxoPanel({ unidadeId }: DemandaFluxoPanelProps) {
           ))}
         </div>
         ) : (
-        <div className="grid grid-cols-2 gap-3">
+        <div className={`grid ${colunas} gap-3`}>
           <GaugeDemanda
             rotulo="Carga"
             valor={cargaKw}
@@ -119,6 +125,15 @@ export function DemandaFluxoPanel({ unidadeId }: DemandaFluxoPanelProps) {
             cor={COR.geracao}
             contratada={fmt(demandaGeracao)}
           />
+          {temRede && (
+            <GaugeDemanda
+              rotulo={redeKw == null ? 'Rede' : redeImporta ? 'Rede · importa' : 'Rede · exporta'}
+              valor={redeAbs}
+              pct={pctDe(redeAbs, redeContratada)}
+              cor={COR.tensao}
+              contratada={fmt(redeContratada)}
+            />
+          )}
         </div>
         )}
       </PanelCard>

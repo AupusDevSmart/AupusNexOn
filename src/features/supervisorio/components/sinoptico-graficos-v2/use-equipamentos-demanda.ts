@@ -209,8 +209,16 @@ export function useEquipamentosDemanda({ unidadeId, valorContratado, percentualA
   // Geração e consumo em consultas separadas: o gráfico mostra geração para cima e
   // consumo para baixo (antes era um traço só = geração − consumo, que virava saldo
   // negativo assim que um medidor de carga entrava na conta).
+  // Três grupos independentes, cada um com a sua curva: geração (inversores), consumo
+  // (medidores de carga) e rede (medidor bidirecional do ramal de entrada: A966 / SSU da
+  // TON V2). A rede NUNCA soma na geração nem no consumo — é outra grandeza (o líquido no
+  // ponto de entrega) e somar contaria a usina em dobro.
   const equipamentosGeracao = useMemo(
-    () => equipamentosResolvidos.filter((e) => e.fluxoEnergia !== 'CONSUMO'),
+    () => equipamentosResolvidos.filter((e) => e.fluxoEnergia !== 'CONSUMO' && e.fluxoEnergia !== 'BIDIRECIONAL'),
+    [equipamentosResolvidos],
+  );
+  const equipamentosRede = useMemo(
+    () => equipamentosResolvidos.filter((e) => e.fluxoEnergia === 'BIDIRECIONAL'),
     [equipamentosResolvidos],
   );
   const equipamentosConsumo = useMemo(
@@ -219,6 +227,7 @@ export function useEquipamentosDemanda({ unidadeId, valorContratado, percentualA
   );
   const temConsumo = equipamentosConsumo.some((e) => e.selecionado);
   const temGeracao = equipamentosGeracao.some((e) => e.selecionado && e.fluxoEnergia !== 'NEUTRO');
+  const temRede = equipamentosRede.some((e) => e.selecionado);
 
   // Salvar configuração na API
   const handleSalvarConfiguracao = async (novaConfig: ConfiguracaoDemanda) => {
@@ -255,8 +264,10 @@ export function useEquipamentosDemanda({ unidadeId, valorContratado, percentualA
     equipamentosData,
     equipamentosGeracao,
     equipamentosConsumo,
+    equipamentosRede,
     temConsumo,
     temGeracao,
+    temRede,
     handleSalvarConfiguracao,
   };
 }

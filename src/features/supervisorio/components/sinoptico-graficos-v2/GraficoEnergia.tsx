@@ -27,11 +27,16 @@ interface GraficoEnergiaProps {
 export function GraficoEnergia({ pontos, tipo, className, serie }: GraficoEnergiaProps) {
   const isMobile = useIsMobile();
   const temConsumo = pontos.some((p) => p.consumo != null);
+  const temGeracao = pontos.some((p) => p.energia !== 0) || !pontos.some((p) => p.rede != null);
+  const temRede = pontos.some((p) => p.rede != null);
+  // Barras não aceitam negativo: a rede vai pelo módulo; o tooltip diz se exportou ou importou.
+  const dados = temRede ? pontos.map((p) => ({ ...p, redeBarra: p.rede == null ? undefined : Math.abs(p.rede) })) : pontos;
+  const multi = temConsumo || temRede;
   return (
     <div className={`flex flex-col ${className ?? ''}`}>
       <div className="min-h-0 flex-1">
       <BarChart
-        data={pontos}
+        data={dados}
         xDataKey="label"
         aspectRatio="auto"
         className="h-full"
@@ -40,8 +45,9 @@ export function GraficoEnergia({ pontos, tipo, className, serie }: GraficoEnergi
         animationDuration={600}
       >
         <Grid horizontal numTicksRows={4} />
-        <Bar dataKey="energia" fill={serie === 'carga' ? COR.potencia : COR.geracao} lineCap={4} />
+        {temGeracao && <Bar dataKey="energia" fill={serie === 'carga' ? COR.potencia : COR.geracao} lineCap={4} />}
         {temConsumo && <Bar dataKey="consumo" fill={COR.potencia} lineCap={4} />}
+        {temRede && <Bar dataKey="redeBarra" fill={COR.tensao} lineCap={4} />}
         <BarXAxis maxLabels={isMobile ? 8 : 16} />
         <YAxis numTicks={4} formatValue={energiaEixo} />
         <ChartTooltip
@@ -51,14 +57,15 @@ export function GraficoEnergia({ pontos, tipo, className, serie }: GraficoEnergi
           content={({ point }) => {
             const p = point as PontoEnergia;
             const titulo = tipo === 'mes' ? `Dia ${p.label}` : p.label;
-            if (temConsumo) {
+            if (multi) {
               const txt = (v: number) => { const e = partesEnergia(v); return `${e.valor} ${e.unidade}`; };
               return (
                 <TooltipDestaque
                   titulo={titulo}
                   linhas={[
-                    { label: 'Geração', value: txt(p.energia), cor: COR.geracao },
-                    { label: 'Consumo', value: txt(p.consumo ?? 0), cor: COR.potencia },
+                    ...(temGeracao ? [{ label: 'Geração', value: txt(p.energia), cor: COR.geracao }] : []),
+                    ...(temConsumo ? [{ label: 'Consumo', value: txt(p.consumo ?? 0), cor: COR.potencia }] : []),
+                    ...(temRede && p.rede != null ? [{ label: p.rede >= 0 ? 'Rede · exportado (líq.)' : 'Rede · importado (líq.)', value: txt(Math.abs(p.rede)), cor: COR.tensao }] : []),
                   ]}
                 />
               );
@@ -76,10 +83,14 @@ export function GraficoEnergia({ pontos, tipo, className, serie }: GraficoEnergi
         />
       </BarChart>
       </div>
-      {temConsumo && (
+      {multi && (
         <LegendaSeries
           className="mt-1"
-          itens={[{ rotulo: 'Geração', cor: COR.geracao }, { rotulo: 'Consumo', cor: COR.potencia }]}
+          itens={[
+            ...(temGeracao ? [{ rotulo: 'Geração', cor: COR.geracao }] : []),
+            ...(temConsumo ? [{ rotulo: 'Consumo', cor: COR.potencia }] : []),
+            ...(temRede ? [{ rotulo: 'Rede (líquido)', cor: COR.tensao }] : []),
+          ]}
         />
       )}
     </div>

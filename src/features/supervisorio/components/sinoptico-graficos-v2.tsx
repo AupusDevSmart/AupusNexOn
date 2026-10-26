@@ -113,8 +113,10 @@ export function SinopticoGraficosV2({
     equipamentosData,
     equipamentosGeracao,
     equipamentosConsumo,
+    equipamentosRede,
     temConsumo,
     temGeracao,
+    temRede,
     handleSalvarConfiguracao,
   } = useEquipamentosDemanda({ unidadeId, valorContratado, percentualAdicional, onConfigSaved });
   // Só busca/polla o que está na tela: no painel do sinóptico (apenasGrafico) um
@@ -137,29 +139,48 @@ export function SinopticoGraficosV2({
     ativo: demandaVisivel,
     prefetch: PERIODOS_PREFETCH,
   });
-  // Filtro Carga/Geração (só aparece com as duas): as duas = espelhado (consumo para cima,
-  // geração para baixo); uma só = essa série para cima, com o contratado dela. Nunca as
-  // duas desligadas.
-  const [verCarga, setVerCarga] = useState(true);
-  const [verGeracao, setVerGeracao] = useState(true);
-  const temAmbos = temConsumo && temGeracao;
-  const mostraCarga = temConsumo && (!temAmbos || verCarga);
-  const mostraGeracao = !temConsumo || (temGeracao && (!temAmbos || verGeracao));
-  const modoFluxo = mostraCarga && mostraGeracao;
-  const soCarga = mostraCarga && !mostraGeracao;
-  const alternarSerie = (qual: 'carga' | 'geracao') => {
-    if (qual === 'carga') {
-      if (verCarga && !verGeracao) setVerGeracao(true);
-      setVerCarga(!verCarga);
-    } else {
-      if (verGeracao && !verCarga) setVerCarga(true);
-      setVerGeracao(!verGeracao);
-    }
+  // Rede: medidor bidirecional do ramal de entrada (A966 / SSU da TON V2), curva PRÓPRIA —
+  // nunca soma na geração nem na carga. Vem como líquido exportado (sinal +1 no backend).
+  const rede = useDemandaAgregada({
+    equipamentos: equipamentosRede,
+    periodo,
+    fatorPerdas: 0,
+    intervaloAtualizacao: configuracao.intervaloAtualizacao,
+    ativo: demandaVisivel,
+    prefetch: PERIODOS_PREFETCH,
+  });
+  // Filtro Carga / Geração / Rede (botões só com 2 ou mais disponíveis). Uma série só de
+  // carga ou de geração = para cima, com o contratado dela; qualquer combinação com 2+ ou a
+  // rede = espelhado (consumo/importação para cima, geração/exportação para baixo). Nunca
+  // todas desligadas.
+  type Serie = 'carga' | 'geracao' | 'rede';
+  const [ver, setVer] = useState<Record<Serie, boolean>>({ carga: true, geracao: true, rede: true });
+  const disponivel: Record<Serie, boolean> = { carga: temConsumo, geracao: temGeracao, rede: temRede };
+  const nDisponiveis = (Object.keys(disponivel) as Serie[]).filter((k) => disponivel[k]).length;
+  let mostraCarga = disponivel.carga && ver.carga;
+  let mostraGeracao = disponivel.geracao && ver.geracao;
+  let mostraRede = disponivel.rede && ver.rede;
+  if (!mostraCarga && !mostraGeracao && !mostraRede) {
+    // nada disponível (ou tudo desligado): cai na geração, como antes
+    if (disponivel.geracao || nDisponiveis === 0) mostraGeracao = true;
+    else if (disponivel.carga) mostraCarga = true;
+    else mostraRede = true;
+  }
+  const soCarga = mostraCarga && !mostraGeracao && !mostraRede;
+  const soGeracao = mostraGeracao && !mostraCarga && !mostraRede;
+  const modoFluxo = !soCarga && !soGeracao;
+  const alternarSerie = (qual: Serie) => {
+    setVer((v) => {
+      const prox = { ...v, [qual]: !v[qual] };
+      const algumaLigada = (Object.keys(disponivel) as Serie[]).some((k) => disponivel[k] && prox[k]);
+      return algumaLigada ? prox : v; // não deixa desligar a última
+    });
   };
-  const dados = mostraGeracao ? ger.dados : con.dados;
+  const dados = mostraGeracao ? ger.dados : mostraCarga ? con.dados : rede.dados;
   const energiaPeriodo = ger.energiaPeriodo;
   const energiaConsumida = Math.abs(con.energiaPeriodo);
-  const isInitialLoading = ger.isInitialLoading || con.isInitialLoading;
+  const energiaRede = rede.energiaPeriodo; // líquido exportado (+) / importado (−)
+  const isInitialLoading = ger.isInitialLoading || con.isInitialLoading || rede.isInitialLoading;
 
   // Usar hook de dados M160 para tensão e FP
   const {
@@ -196,18 +217,24 @@ export function SinopticoGraficosV2({
       if (!ger.dados || ger.dados.length === 0) return SEM_DEMANDA;
       return montarPontosDemanda(ger.dados, periodo, valorContratado, percentualAdicional);
     }
-    const g = montarPontosDemanda(ger.dados ?? [], periodo, valorContratado, percentualAdicional);
-    const c = montarPontosDemanda(con.dados ?? [], periodo, 0, 0);
-    const carga = periodo.tipo === 'dia' && valorContratadoCarga
+    const vazio = { pontos: [] as PontoDemanda[], dominio: undefined as Dominio | undefined };
+    const g = mostraGeracao ? montarPontosDemanda(ger.dados ?? [], periodo, valorContratado, percentualAdicional) : vazio;
+    const c = mostraCarga ? montarPontosDemanda(con.dados ?? [], periodo, 0, 0) : vazio;
+    const r = mostraRede ? montarPontosDemanda(rede.dados ?? [], periodo, 0, 0) : vazio;
+    const ehDia = periodo.tipo === 'dia';
+    const carga = ehDia && valorContratadoCarga && (mostraCarga || mostraRede)
       ? { contratado: valorContratadoCarga, adicional: valorContratadoCarga * (1 + PERCENTUAL_LIMITE_CARGA / 100) }
       : undefined;
-    const pontos = mesclarFluxo(g.pontos, c.pontos, carga);
-    // Eixo do dia: o que for mais longe entre as duas séries (dia corrente termina no último ponto).
-    const dominio = g.dominio && c.dominio
-      ? (g.dominio[1] >= c.dominio[1] ? g.dominio : c.dominio)
-      : g.dominio ?? c.dominio;
+    const refGeracao = ehDia && valorContratado && mostraRede && !mostraGeracao
+      ? { contratado: valorContratado, adicional: valorContratado * (1 + percentualAdicional / 100) }
+      : undefined;
+    const pontos = mesclarFluxo(g.pontos, c.pontos, carga, { rede: r.pontos, refGeracao });
+    if (pontos.length === 0) return SEM_DEMANDA;
+    // Eixo do dia: o que for mais longe entre as séries (dia corrente termina no último ponto).
+    const dominios = [g.dominio, c.dominio, r.dominio].filter((d): d is Dominio => !!d);
+    const dominio = dominios.length ? dominios.reduce((a, b) => (b[1] > a[1] ? b : a)) : undefined;
     return { pontos, dominio };
-  }, [ger.dados, con.dados, soCarga, modoFluxo, periodo, valorContratado, valorContratadoCarga, percentualAdicional]);
+  }, [ger.dados, con.dados, rede.dados, soCarga, modoFluxo, mostraGeracao, mostraCarga, mostraRede, periodo, valorContratado, valorContratadoCarga, percentualAdicional]);
 
   const energia = useMemo(() => {
     if (periodo.tipo !== 'mes' && periodo.tipo !== 'ano') return [];
@@ -215,8 +242,9 @@ export function SinopticoGraficosV2({
     if (soCarga) return c;
     const g = ger.dados ? montarPontosEnergia(ger.dados, periodo.tipo) : [];
     if (!modoFluxo) return g;
-    return mesclarEnergia(g, c);
-  }, [ger.dados, con.dados, soCarga, modoFluxo, periodo.tipo]);
+    const r = mostraRede && rede.dados ? montarPontosEnergia(rede.dados, periodo.tipo) : [];
+    return mesclarEnergia(mostraGeracao ? g : [], mostraCarga ? c : [], r);
+  }, [ger.dados, con.dados, rede.dados, soCarga, modoFluxo, mostraGeracao, mostraCarga, mostraRede, periodo.tipo]);
 
   // Tensão e FP do M160 — sempre o dia corrente, eixo de 00:00 até agora
   const tensao = useMemo(() => montarPontosFases(dadosM160, 'tensao'), [dadosM160]);
@@ -255,7 +283,7 @@ export function SinopticoGraficosV2({
     },
     [periodo.tipo, soCarga, valorContratado, valorContratadoCarga, percentualAdicional],
   );
-  const serieUnica: 'carga' | 'geracao' | undefined = soCarga ? 'carga' : temConsumo ? 'geracao' : undefined;
+  const serieUnica: 'carga' | 'geracao' | undefined = soCarga ? 'carga' : soGeracao && nDisponiveis > 1 ? 'geracao' : undefined;
   // Troca de período zera o zoom
   const chaveZoomDemanda = `${periodo.tipo}|${periodo.data ?? ''}|${periodo.inicio ?? ''}|${periodo.fim ?? ''}`;
 
@@ -301,9 +329,11 @@ export function SinopticoGraficosV2({
               <Zap className={apenasGrafico ? 'h-4 w-4 text-yellow-500' : 'h-5 w-5 text-yellow-500'} />
               <CardTitle className={apenasGrafico ? 'text-base' : undefined}>Demanda</CardTitle>
               {controleVariavel}
-              {temAmbos && (
+              {nDisponiveis > 1 && (
                 <div className="ml-1 flex items-center gap-1 border-l pl-2" role="group" aria-label="Séries do gráfico">
-                  {([['carga', 'Carga', verCarga, 'var(--chart-2)'], ['geracao', 'Geração', verGeracao, 'var(--chart-1)']] as const).map(([k, rotulo, ativo, cor]) => (
+                  {([['carga', 'Carga', mostraCarga, 'var(--chart-2)'], ['geracao', 'Geração', mostraGeracao, 'var(--chart-1)'], ['rede', 'Rede', mostraRede, 'var(--chart-4)']] as const)
+                    .filter(([k]) => disponivel[k])
+                    .map(([k, rotulo, ativo, cor]) => (
                     <button
                       key={k}
                       type="button"
@@ -426,9 +456,15 @@ export function SinopticoGraficosV2({
               )}
             </div>
 
-            {temConsumo ? (
-              (energiaPeriodo > 0 || energiaConsumida > 0) && (
+            {temConsumo || temRede ? (
+              (energiaPeriodo > 0 || energiaConsumida > 0 || energiaRede !== 0) && (
                 <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+                  {mostraRede && energiaRede !== 0 && (
+                    <span className="flex items-baseline gap-1">
+                      <span className="text-sm font-semibold">{formatarEnergia(Math.abs(energiaRede))}</span>
+                      <span className="text-xs text-muted-foreground">{energiaRede > 0 ? 'exportados na rede (líq.)' : 'importados da rede (líq.)'}</span>
+                    </span>
+                  )}
                   {mostraGeracao && temGeracao && (
                     <span className="flex items-baseline gap-1">
                       <span className="text-sm font-semibold">{formatarEnergia(energiaPeriodo)}</span>

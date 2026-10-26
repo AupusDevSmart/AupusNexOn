@@ -23,6 +23,8 @@ export interface PontoDemanda extends Record<string, unknown> {
   /** Fluxo separado: consumo para cima (≥ 0), geração para baixo (≤ 0). */
   geracao?: number;
   consumo?: number;
+  /** Rede (medidor bidirecional de entrada): importação para cima (+), exportação para baixo (−). */
+  rede?: number;
   /** Contratado da carga, desenhado no lado positivo (consumo). Os de geração ficam negativos. */
   valorContratadoCarga?: number;
   valorAdicionalCarga?: number;
@@ -34,6 +36,8 @@ export interface PontoEnergia extends Record<string, unknown> {
   energia: number;
   /** Energia consumida (kWh, positiva) — só quando há equipamento de consumo. */
   consumo?: number;
+  /** Rede (medidor bidirecional): energia líquida exportada (+) / importada (−). */
+  rede?: number;
 }
 
 export type Fase = 'A' | 'B' | 'C';
@@ -142,14 +146,23 @@ export function mesclarFluxo(
   ger: PontoDemanda[],
   con: PontoDemanda[],
   carga?: { contratado: number; adicional: number },
-  opcoes: { interpolar?: boolean } = {},
+  opcoes: {
+    interpolar?: boolean;
+    /** Série do medidor bidirecional (líquido EXPORTADO, como vem do backend): curva própria. */
+    rede?: PontoDemanda[];
+    /** Contratado de geração quando não há série de geração na tela (só a rede). */
+    refGeracao?: { contratado: number; adicional: number };
+  } = {},
 ): PontoDemanda[] {
-  const tempos = Array.from(new Set([...ger, ...con].map((p) => p.date.getTime()))).sort((a, b) => a - b);
+  const rede = opcoes.rede ?? [];
+  const tempos = Array.from(new Set([...ger, ...con, ...rede].map((p) => p.date.getTime()))).sort((a, b) => a - b);
   const refGer = ger[0];
   let ig = 0;
   let ic = 0;
+  let ir = 0;
   let g = 0;
   let c = 0;
+  let r = 0;
   return tempos.map((t) => {
     // `g` guarda o valor COM sinal da série de geração: inversor é sempre ≥ 0, mas um medidor
     // bidirecional (A966/SSU no ramal de entrada) entra como líquido exportado e fica
@@ -160,16 +173,24 @@ export function mesclarFluxo(
       if (ig > 0 && ig < ger.length) g = entre(ger[ig - 1], ger[ig], t);
       if (ic > 0 && ic < con.length) c = Math.abs(entre(con[ic - 1], con[ic], t));
     }
+    while (ir < rede.length && rede[ir].date.getTime() <= t) r = rede[ir++].potencia;
+    // Rede vem em blocos de 15 min (A966/SSU): sempre liga os pontos por reta — repetir o
+    // valor nos instantes de 5 min das outras séries desenhava a curva em degraus.
+    if (ir > 0 && ir < rede.length) r = entre(rede[ir - 1], rede[ir], t);
     const exportado = Math.max(0, g);
     const importado = Math.max(0, -g);
     const consumo = c + importado;
     const ponto: PontoDemanda = { date: new Date(t), potencia: consumo - exportado, consumo };
     if (ger.length) ponto.geracao = -exportado;
+    if (rede.length) ponto.rede = -r; // importação (+) para cima, exportação (−) para baixo
     if (refGer?.valorContratado != null) {
       ponto.valorContratado = -refGer.valorContratado;
       ponto.valorAdicional = refGer.valorAdicional != null ? -refGer.valorAdicional : undefined;
+    } else if (opcoes.refGeracao) {
+      ponto.valorContratado = -opcoes.refGeracao.contratado;
+      ponto.valorAdicional = -opcoes.refGeracao.adicional;
     }
-    if (carga && con.length) {
+    if (carga && (con.length || rede.length)) {
       ponto.valorContratadoCarga = carga.contratado;
       ponto.valorAdicionalCarga = carga.adicional;
     }
@@ -236,12 +257,17 @@ export function montarPontosFases(dados: LeituraM160[], grandeza: Grandeza): { p
 }
 
 /** Barras de geração e consumo lado a lado (mês/ano). `energia` = gerada, `consumo` = consumida. */
-export function mesclarEnergia(ger: PontoEnergia[], con: PontoEnergia[]): PontoEnergia[] {
+export function mesclarEnergia(ger: PontoEnergia[], con: PontoEnergia[], rede: PontoEnergia[] = []): PontoEnergia[] {
   const porLabel = new Map<string, PontoEnergia>();
   for (const p of ger) porLabel.set(p.label, { label: p.label, energia: p.energia });
   for (const p of con) {
     const atual = porLabel.get(p.label) ?? { label: p.label, energia: 0 };
     atual.consumo = Math.abs(p.energia);
+    porLabel.set(p.label, atual);
+  }
+  for (const p of rede) {
+    const atual = porLabel.get(p.label) ?? { label: p.label, energia: 0 };
+    atual.rede = p.energia;
     porLabel.set(p.label, atual);
   }
   return [...porLabel.values()];

@@ -72,17 +72,16 @@ export function useDemandaFluxo(unidadeId?: string) {
   }));
 
   const gerIds = selected
-    .filter((e) => e.fluxoEnergia === "GERACAO" || e.fluxoEnergia === "BIDIRECIONAL")
+    .filter((e) => e.fluxoEnergia === "GERACAO")
     .map((e) => e.id.trim());
-  // Bidirecional (medidor de entrada): o valor é o líquido exportado; exportando conta como
-  // geração, importando conta como carga.
-  const bidiIds = new Set(selected.filter((e) => e.fluxoEnergia === "BIDIRECIONAL").map((e) => e.id.trim()));
+  // Rede (medidor bidirecional de entrada): medidor próprio — não soma na geração nem na carga.
+  const redeIds = selected.filter((e) => e.fluxoEnergia === "BIDIRECIONAL").map((e) => e.id.trim());
   const conIds = selected
     .filter((e) => e.fluxoEnergia === "CONSUMO")
     .map((e) => e.id.trim());
   const allIds = useMemo(
-    () => Array.from(new Set([...gerIds, ...conIds])),
-    [gerIds.join(","), conIds.join(",")], // eslint-disable-line react-hooks/exhaustive-deps
+    () => Array.from(new Set([...gerIds, ...conIds, ...redeIds])),
+    [gerIds.join(","), conIds.join(","), redeIds.join(",")], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   // Última leitura de cada equipamento -> mapa id -> kW. Poll a cada 20s.
@@ -115,13 +114,11 @@ export function useDemandaFluxo(unidadeId?: string) {
     return vals.length ? vals.reduce((a, b) => a + b, 0) : null;
   };
 
-  const geracaoBruta = somaGrupo(gerIds.filter((id) => !bidiIds.has(id)));
-  const bidi = [...bidiIds].map((id) => potMap[id]).filter((v): v is number => typeof v === "number" && Number.isFinite(v));
-  const bidiExport = bidi.reduce((a, v) => a + Math.max(0, v), 0);
-  const bidiImport = bidi.reduce((a, v) => a + Math.max(0, -v), 0);
-  const geracaoKw = geracaoBruta != null || bidi.length ? (geracaoBruta ?? 0) + bidiExport : null;
+  const geracaoKw = somaGrupo(gerIds);
   const cargaBruto = somaGrupo(conIds);
-  const cargaKw = cargaBruto != null || bidiImport > 0 ? Math.abs(cargaBruto ?? 0) + bidiImport : null;
+  const cargaKw = cargaBruto != null ? Math.abs(cargaBruto) : null;
+  // Líquido exportado no ponto de entrega (+ exporta, − importa).
+  const redeKw = somaGrupo(redeIds);
   const saldoKw = geracaoKw != null && cargaKw != null ? geracaoKw - cargaKw : null;
 
   const unidade = (unidadeQuery.data ?? {}) as Record<string, any>;
@@ -131,6 +128,8 @@ export function useDemandaFluxo(unidadeId?: string) {
   return {
     cargaKw,
     geracaoKw,
+    redeKw,
+    temRede: redeIds.length > 0,
     saldoKw,
     demandaCarga,
     demandaGeracao,
