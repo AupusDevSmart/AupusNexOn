@@ -151,14 +151,20 @@ export function mesclarFluxo(
   let g = 0;
   let c = 0;
   return tempos.map((t) => {
-    while (ig < ger.length && ger[ig].date.getTime() <= t) g = -Math.abs(ger[ig++].potencia);
+    // `g` guarda o valor COM sinal da série de geração: inversor é sempre ≥ 0, mas um medidor
+    // bidirecional (A966/SSU no ramal de entrada) entra como líquido exportado e fica
+    // negativo quando a usina importa. Exportação → geração (para baixo); importação → consumo.
+    while (ig < ger.length && ger[ig].date.getTime() <= t) g = ger[ig++].potencia;
     while (ic < con.length && con[ic].date.getTime() <= t) c = Math.abs(con[ic++].potencia);
     if (opcoes.interpolar) {
-      if (ig > 0 && ig < ger.length) g = -Math.abs(entre(ger[ig - 1], ger[ig], t));
+      if (ig > 0 && ig < ger.length) g = entre(ger[ig - 1], ger[ig], t);
       if (ic > 0 && ic < con.length) c = Math.abs(entre(con[ic - 1], con[ic], t));
     }
-    const ponto: PontoDemanda = { date: new Date(t), potencia: c + g, consumo: c };
-    if (ger.length) ponto.geracao = g;
+    const exportado = Math.max(0, g);
+    const importado = Math.max(0, -g);
+    const consumo = c + importado;
+    const ponto: PontoDemanda = { date: new Date(t), potencia: consumo - exportado, consumo };
+    if (ger.length) ponto.geracao = -exportado;
     if (refGer?.valorContratado != null) {
       ponto.valorContratado = -refGer.valorContratado;
       ponto.valorAdicional = refGer.valorAdicional != null ? -refGer.valorAdicional : undefined;

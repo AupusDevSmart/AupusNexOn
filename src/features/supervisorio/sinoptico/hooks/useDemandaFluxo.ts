@@ -28,6 +28,8 @@ function extrairPotenciaKw(dados: Record<string, any> | null | undefined): numbe
   if (dados.power_avg != null) return n(dados.power_avg);
   if (dados.potencia_ativa_kw != null) return n(dados.potencia_ativa_kw);
   if (dados.Pt != null) { const v = n(dados.Pt); return v == null ? null : v / 1000; }
+  // A966 / SSU (medidor de entrada, bloco de 15 min): líquido exportado = exportada − importada.
+  if (dados.P_rev != null || dados.P_direto != null) return (n(dados.P_rev) ?? 0) - (n(dados.P_direto) ?? 0);
   if (dados.Dados) {
     const d = dados.Dados;
     return ((n(d.Pa) ?? 0) + (n(d.Pb) ?? 0) + (n(d.Pc) ?? 0)) / 1000;
@@ -72,6 +74,9 @@ export function useDemandaFluxo(unidadeId?: string) {
   const gerIds = selected
     .filter((e) => e.fluxoEnergia === "GERACAO" || e.fluxoEnergia === "BIDIRECIONAL")
     .map((e) => e.id.trim());
+  // Bidirecional (medidor de entrada): o valor é o líquido exportado; exportando conta como
+  // geração, importando conta como carga.
+  const bidiIds = new Set(selected.filter((e) => e.fluxoEnergia === "BIDIRECIONAL").map((e) => e.id.trim()));
   const conIds = selected
     .filter((e) => e.fluxoEnergia === "CONSUMO")
     .map((e) => e.id.trim());
@@ -110,9 +115,13 @@ export function useDemandaFluxo(unidadeId?: string) {
     return vals.length ? vals.reduce((a, b) => a + b, 0) : null;
   };
 
-  const geracaoKw = somaGrupo(gerIds);
+  const geracaoBruta = somaGrupo(gerIds.filter((id) => !bidiIds.has(id)));
+  const bidi = [...bidiIds].map((id) => potMap[id]).filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+  const bidiExport = bidi.reduce((a, v) => a + Math.max(0, v), 0);
+  const bidiImport = bidi.reduce((a, v) => a + Math.max(0, -v), 0);
+  const geracaoKw = geracaoBruta != null || bidi.length ? (geracaoBruta ?? 0) + bidiExport : null;
   const cargaBruto = somaGrupo(conIds);
-  const cargaKw = cargaBruto != null ? Math.abs(cargaBruto) : null;
+  const cargaKw = cargaBruto != null || bidiImport > 0 ? Math.abs(cargaBruto ?? 0) + bidiImport : null;
   const saldoKw = geracaoKw != null && cargaKw != null ? geracaoKw - cargaKw : null;
 
   const unidade = (unidadeQuery.data ?? {}) as Record<string, any>;

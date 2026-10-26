@@ -152,4 +152,13 @@ describe('mesclarFluxo sem interpolar (Demanda de antes)', () => {
     const r = mesclarFluxo([p(0, 100), p(15, 200)], [p(5, 50)]);
     expect(r.map((x) => x.geracao)).toEqual([-100, -100, -200]);
   });
+
+  it('medidor bidirecional: exportação vira geração, importação soma ao consumo', () => {
+    const p = (min: number, potencia: number): PontoDemanda => ({ date: new Date(2026, 0, 1, 10, min), potencia });
+    // geração = líquido exportado do A966: +120 exportando, −30 importando
+    const r = mesclarFluxo([p(0, 120), p(15, -30)], [p(0, 10), p(15, 10)]);
+    expect(r.map((x) => x.geracao)).toEqual([-120, -0]);
+    expect(r.map((x) => x.consumo)).toEqual([10, 40]);
+    expect(r.map((x) => x.potencia)).toEqual([-110, 40]);
+  });
 });

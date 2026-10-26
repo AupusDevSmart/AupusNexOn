@@ -344,11 +344,18 @@ export function ConfiguracaoDemandaModal({
                 </div>
               </ScrollArea>
 
+              {resumo.bidirecional > 0 && resumo.geracao > 0 && (
+                <div className="rounded-[2px] border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-800 dark:text-amber-300" role="status">
+                  O medidor de entrada (bidirecional) já mede a exportação da usina. Marcado junto com os inversores, a geração conta em dobro — use um ou outro.
+                </div>
+              )}
+
               <div className="rounded-[2px] bg-muted p-3 text-xs space-y-1">
                 <p className="font-medium">Como o cálculo funciona:</p>
                 <p>Aparecem só os equipamentos do diagrama unifilar (TON, gateway A966 e medidores fora dele ficam de fora).</p>
                 <p>Categorias inequívocas (Inversor PV, Motor, etc.) têm fluxo automático.</p>
                 <p>Power Meter entra como consumo; Medidor SSU depende da instalação física — escolha o fluxo ao lado.</p>
+                <p>Medidor de entrada (A966 / SSU da TON V2, bidirecional): exportação entra como geração e importação como carga.</p>
                 <p>TON, disjuntores e demais equipamentos que não medem energia não aparecem aqui.</p>
                 <p>Não selecionados ou marcados como "Ignorar" não entram no agregado.</p>
               </div>

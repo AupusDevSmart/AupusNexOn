@@ -35,6 +35,9 @@ export const CATEGORIA_FLUXO: Record<string, FluxoEnergia> = {
   // Backend trata phf (forward, geração líquida) e phr (reverse, consumo líquido)
   // do payload MQTT do gateway.
   'Gateway': 'BIDIRECIONAL',
+  // Medidor Concessionária (EQTL001) — onde o A966 / SSU da TON-V2 grava: o ponto de
+  // conexão com a rede. potencia_ativa_kw = líquido exportado (export − import).
+  'Padrão de Energia - Ramal de Entrada': 'BIDIRECIONAL',
 
   // Inequivocos — consumo
   'Carregador Elétrico': 'CONSUMO',
