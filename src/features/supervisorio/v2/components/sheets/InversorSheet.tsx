@@ -441,6 +441,9 @@ function ConfigInversor({ equipamentoId, dados, perfilStr, onPerfil, totalString
   const g = (p: string) => getPath(dados, p);
   const pv = (p: string) => { const x = g(p); return x == null || x === '' ? '' : String(x).replace('.', ','); };
   const [lista, setLista] = useState<SetpointDef[]>([]);
+  // Último valor APLICADO pelo NexON em cada ajuste (trilha de comandos): o inversor não informa
+  // esses parâmetros na telemetria, então é o que mostramos como valor atual.
+  const [ultimosNx, setUltimosNx] = useState<Record<string, { valor: number; em: string; por: string | null }>>({});
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [aplicado, setAplicado] = useState<Record<string, string>>({});
   const [ultimo, setUltimo] = useState<Record<string, { ok: boolean; txt: string }>>({});
@@ -454,8 +457,9 @@ function ConfigInversor({ equipamentoId, dados, perfilStr, onPerfil, totalString
     let vivo = true;
     api.get(`/equipamentos/${equipamentoId.trim()}/setpoints`)
       .then((r) => {
-        const d = (r?.data?.data ?? r?.data) as { setpoints?: unknown } | null;
+        const d = (r?.data?.data ?? r?.data) as { setpoints?: unknown; ultimos?: unknown } | null;
         if (vivo) setLista(Array.isArray(d?.setpoints) ? (d.setpoints as SetpointDef[]) : []);
+        if (vivo) setUltimosNx(d?.ultimos && typeof d.ultimos === 'object' ? (d.ultimos as typeof ultimosNx) : {});
       })
       .catch(() => { if (vivo) setLista([]); });
     return () => { vivo = false; };
@@ -474,7 +478,16 @@ function ConfigInversor({ equipamentoId, dados, perfilStr, onPerfil, totalString
   const avancados = lista.filter((sp) => sp.avancado);
   const pathDe = (sp: SetpointDef) => linhas.find((l) => l.sp === sp.id)?.path ?? (sp.id === 'sp_q_pct' ? 'regulation.reactive_pct' : '');
   // Valor de referência ("antigo"): o último aplicado aqui ou a leitura da TON.
-  const base = (sp: SetpointDef) => aplicado[sp.id] ?? (pathDe(sp) ? pv(pathDe(sp)) : '');
+  const base = (sp: SetpointDef) =>
+    aplicado[sp.id]
+    ?? (ultimosNx[sp.id] ? String(ultimosNx[sp.id].valor).replace('.', ',') : undefined)
+    ?? (pathDe(sp) ? pv(pathDe(sp)) : '');
+  const notaUltimo = (sp: SetpointDef) => {
+    const u = ultimosNx[sp.id];
+    if (!u || aplicado[sp.id] !== undefined) return null;
+    const quando = new Date(u.em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    return `Aplicado pelo NexON em ${quando}${u.por ? ` por ${u.por}` : ''}`;
+  };
   const valorDe = (sp: SetpointDef) => draft[sp.id] ?? base(sp);
   const editaveis = [...linhas.map((l) => (l.sp ? porId.get(l.sp) : undefined)).filter((x): x is SetpointDef => !!x), ...extras, ...avancados];
   const ruim = (sp: SetpointDef) => { const t = valorDe(sp).trim(); if (t === '') return false; const v = numBr(t); return !Number.isFinite(v) || !dentroFaixa(sp, v); };
@@ -507,11 +520,15 @@ function ConfigInversor({ equipamentoId, dados, perfilStr, onPerfil, totalString
   };
 
   const linhaSp = (sp: SetpointDef, label?: string) => (
-    <ParamNx key={sp.id} id={`cfg-${sp.id}`} label={label ?? sp.label} hint={`Faixa ${faixaTxt(sp)}${uni(sp)}`} bad={ruim(sp)}
-      valor={valorDe(sp)} unit={sp.unidade} ro={writing || roPerfil} placeholder={sp.padrao != null ? String(sp.padrao).replace('.', ',') : '—'}
+    <ParamNx key={sp.id} id={`cfg-${sp.id}`} label={label ?? sp.label}
+      hint={`Faixa ${faixaTxt(sp)}${uni(sp)}${sp.padrao != null && !roPerfil ? ` · padrão ${String(sp.padrao).replace('.', ',')}${uni(sp)} · digite o novo valor` : ''}`} bad={ruim(sp)}
+      // Sem placeholder: o padrão em cinza dentro do campo parecia valor bloqueado (campo desabilitado).
+      valor={valorDe(sp)} unit={sp.unidade} ro={writing || roPerfil} placeholder=""
       onChange={(v) => setDraft((x) => ({ ...x, [sp.id]: v }))}
       nota={sp.obs}
-      extraNota={ultimo[sp.id] && <span style={{ fontSize: 12, fontWeight: 700, color: ultimo[sp.id].ok ? NX.ok : NX.bad }}>{ultimo[sp.id].txt}</span>} />
+      extraNota={ultimo[sp.id]
+        ? <span style={{ fontSize: 12, fontWeight: 700, color: ultimo[sp.id].ok ? NX.ok : NX.bad }}>{ultimo[sp.id].txt}</span>
+        : notaUltimo(sp) && <span style={{ fontSize: 12, fontWeight: 600, color: NX.ok }}>{notaUltimo(sp)}</span>} />
   );
 
   const ident: LinhaNx[] = [
