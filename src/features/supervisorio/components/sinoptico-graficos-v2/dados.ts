@@ -152,6 +152,9 @@ export function mesclarFluxo(
     rede?: PontoDemanda[];
     /** Contratado de geração quando não há série de geração na tela (só a rede). */
     refGeracao?: { contratado: number; adicional: number };
+    /** Sem carga na tela: tudo para cima — geração (+), rede exportando (+) / importando (−),
+     *  contratado de geração positivo. Com carga, o espelhado (consumo ↑, geração ↓). */
+    paraCima?: boolean;
   } = {},
 ): PontoDemanda[] {
   const rede = opcoes.rede ?? [];
@@ -181,14 +184,17 @@ export function mesclarFluxo(
     const importado = Math.max(0, -g);
     const consumo = c + importado;
     const ponto: PontoDemanda = { date: new Date(t), potencia: consumo - exportado, consumo };
-    if (ger.length) ponto.geracao = -exportado;
-    if (rede.length) ponto.rede = -r; // importação (+) para cima, exportação (−) para baixo
+    const sg = opcoes.paraCima ? 1 : -1; // sinal do lado da geração/exportação
+    if (ger.length) ponto.geracao = sg * exportado;
+    // espelhado: importação (+) para cima, exportação (−) para baixo; para cima: o contrário
+    if (rede.length) ponto.rede = sg * r;
+    if (opcoes.paraCima) ponto.potencia = exportado + Math.max(0, r); // zoom/brush
     if (refGer?.valorContratado != null) {
-      ponto.valorContratado = -refGer.valorContratado;
-      ponto.valorAdicional = refGer.valorAdicional != null ? -refGer.valorAdicional : undefined;
+      ponto.valorContratado = sg * refGer.valorContratado;
+      ponto.valorAdicional = refGer.valorAdicional != null ? sg * refGer.valorAdicional : undefined;
     } else if (opcoes.refGeracao) {
-      ponto.valorContratado = -opcoes.refGeracao.contratado;
-      ponto.valorAdicional = -opcoes.refGeracao.adicional;
+      ponto.valorContratado = sg * opcoes.refGeracao.contratado;
+      ponto.valorAdicional = sg * opcoes.refGeracao.adicional;
     }
     if (carga && (con.length || rede.length)) {
       ponto.valorContratadoCarga = carga.contratado;

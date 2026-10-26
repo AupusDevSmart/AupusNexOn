@@ -222,13 +222,14 @@ export function SinopticoGraficosV2({
     const c = mostraCarga ? montarPontosDemanda(con.dados ?? [], periodo, 0, 0) : vazio;
     const r = mostraRede ? montarPontosDemanda(rede.dados ?? [], periodo, 0, 0) : vazio;
     const ehDia = periodo.tipo === 'dia';
-    const carga = ehDia && valorContratadoCarga && (mostraCarga || mostraRede)
+    // Contratado da carga só no espelhado (com carga na tela): sem carga o lado de cima é o da exportação.
+    const carga = ehDia && valorContratadoCarga && mostraCarga
       ? { contratado: valorContratadoCarga, adicional: valorContratadoCarga * (1 + PERCENTUAL_LIMITE_CARGA / 100) }
       : undefined;
     const refGeracao = ehDia && valorContratado && mostraRede && !mostraGeracao
       ? { contratado: valorContratado, adicional: valorContratado * (1 + percentualAdicional / 100) }
       : undefined;
-    const pontos = mesclarFluxo(g.pontos, c.pontos, carga, { rede: r.pontos, refGeracao });
+    const pontos = mesclarFluxo(g.pontos, c.pontos, carga, { rede: r.pontos, refGeracao, paraCima: !mostraCarga });
     if (pontos.length === 0) return SEM_DEMANDA;
     // Eixo do dia: o que for mais longe entre as séries (dia corrente termina no último ponto).
     const dominios = [g.dominio, c.dominio, r.dominio].filter((d): d is Dominio => !!d);
@@ -528,6 +529,7 @@ export function SinopticoGraficosV2({
               chaveZoom={chaveZoomDemanda}
               className={alturaDemanda}
               fluxo={modoFluxo}
+              paraCima={!mostraCarga}
               serie={serieUnica}
             />
           ) : (
@@ -777,6 +779,7 @@ export function SinopticoGraficosV2({
                 referencias={referencias}
                 chaveZoom={chaveZoomDemanda}
                 fluxo={modoFluxo}
+              paraCima={!mostraCarga}
                 serie={serieUnica}
               />
             ) : (

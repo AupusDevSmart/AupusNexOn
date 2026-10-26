@@ -162,6 +162,14 @@ describe('mesclarFluxo sem interpolar (Demanda de antes)', () => {
     expect(r.map((x) => x.rede)).toEqual([-120, 30]); // exporta para baixo, importa para cima
   });
 
+  it('sem carga (paraCima): geração e exportação da rede para cima, importação para baixo', () => {
+    const p = (min: number, potencia: number): PontoDemanda => ({ date: new Date(2026, 0, 1, 10, min), potencia, valorContratado: 295 });
+    const r = mesclarFluxo([p(0, 100), p(15, 100)], [], undefined, { rede: [p(0, 120), p(15, -30)], paraCima: true });
+    expect(r.map((x) => x.geracao)).toEqual([100, 100]);
+    expect(r.map((x) => x.rede)).toEqual([120, -30]);
+    expect(r[0].valorContratado).toBe(295);
+  });
+
   it('série de geração com sinal: importação não vira geração', () => {
     const p = (min: number, potencia: number): PontoDemanda => ({ date: new Date(2026, 0, 1, 10, min), potencia });
     // geração = líquido exportado do A966: +120 exportando, −30 importando
