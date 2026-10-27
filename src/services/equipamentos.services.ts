@@ -432,7 +432,7 @@ export class EquipamentosApiService {
   async editarCadastroUnifilar(
     id: string,
     dto: {
-      tag?: string; localizacao_especifica?: string;
+      tag?: string; localizacao_especifica?: string; tipo_equipamento_id?: string;
       possui_medicao?: boolean; possui_scs?: boolean; scs_comando?: boolean; scs_status?: boolean;
       pontos_comando?: string[]; pontos_status?: string[];
     },

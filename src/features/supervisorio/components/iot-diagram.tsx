@@ -699,7 +699,7 @@ export function IoTDiagram({ unidadeId, unidadeNome }: IoTDiagramProps) {
     const payload = r?.data?.data ?? r?.data;
     const elementos: any[] = payload?.elementos ?? payload?.data?.elementos ?? [];
     return elementos
-      .filter((e: any) => /DISJUNTOR/i.test(`${e.tipo ?? ''} ${e.rotulo ?? ''}`))
+      .filter((e: any) => /DISJUNTOR|SOFT/i.test(`${e.tipo ?? ''} ${e.rotulo ?? ''}`))
       .map((e: any) => ({ id: String(e.equipamento_id || '').trim(), nome: e.rotulo }));
   };
   // Medidor Concessionária (EQTL001) DESENHADO no unifilar: alvo do medidor lido pelo A-966

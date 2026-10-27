@@ -42,7 +42,7 @@ function IconeDoTipo(tipo: string | null) {
   const t = (tipo ?? '').toLowerCase();
   if (t.includes('inversor')) return Zap;
   if (t.includes('medidor') || t.includes('power meter') || t.includes('multimedidor') || t === 'pm') return Gauge;
-  if (t.includes('disjuntor')) return Square;
+  if (t.includes('disjuntor') || t.includes('soft')) return Square;
   if (t.includes('motor')) return CircleDot;
   if (t.includes('piv')) return Sun;
   return Activity;
@@ -82,7 +82,7 @@ type Ficha = { kind: SheetKind | 'disjuntor'; id: string; nome: string };
 
 function fichaDo(el: ElementoScs): Ficha | null {
   const nome = el.rotulo;
-  if ((el.tipo ?? '').toLowerCase().includes('disjuntor')) return { kind: 'disjuntor', id: el.equipamento_id, nome };
+  if (/disjuntor|soft/i.test(el.tipo ?? '')) return { kind: 'disjuntor', id: el.equipamento_id, nome };
   const kind = sheetKindFor(el.tipo, null);
   return kind ? { kind, id: el.equipamento_id, nome } : null;
 }

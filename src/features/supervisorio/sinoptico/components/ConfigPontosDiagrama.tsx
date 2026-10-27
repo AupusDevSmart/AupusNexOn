@@ -32,7 +32,7 @@ function slotsParaCategoria(categoria: string | null | undefined): SlotKey[] {
   const c = (categoria ?? "").toLowerCase();
   if (c.includes("inversor")) return ["kW", "V", "A"];
   if (c.includes("transformador")) return ["kW", "V", "A"];
-  if (c.includes("disjuntor")) return ["Ia", "Ib", "Ic"];
+  if (c.includes("disjuntor") || c.includes("soft")) return ["Ia", "Ib", "Ic"];
   if (c.includes("power meter") || c.includes("medidor")) return ["kW", "V", "A"];
   return ["kW", "V", "A"];
 }

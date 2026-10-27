@@ -415,7 +415,8 @@ const DiagramV2WrapperBase: React.FC<DiagramV2WrapperProps> = ({
               if (!modoEdicao) {
                 setSheetEq({ id: equipment.id.trim(), nome: equipment.nome, categoria: `${(equipment as any).tipo ?? ''} ${(equipment as any).categoria ?? ''}`.trim() });
                 const _tp = (String((equipment as any).tipo || '') + ' ' + String((equipment as any).categoria || '')).toLowerCase();
-                if (_tp.includes('disjuntor')) { setDjSheetId(equipment.id.trim()); return; }
+                // Soft-starter: mesmo papel do DJ na supervisão (medição vinculada, status, comando).
+                if (_tp.includes('disjuntor') || _tp.includes('soft')) { setDjSheetId(equipment.id.trim()); return; }
                 // Power Meter e A-966 pelo mesmo critério do sinóptico (tipo, tag ou nome), não só pela categoria.
                 const _kind = sheetKindFor((equipment as any).tipo, (equipment as any).categoria)
                   ?? (isPowerMeter(equipment as any) || /a-?966/i.test(`${(equipment as any).tipo ?? ''} ${equipment.nome ?? ''} ${(equipment as any).tag ?? ''}`) ? 'medidor' : null);

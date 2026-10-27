@@ -21,7 +21,7 @@ import { Bloco, Rotulo, RotulosUnifilar, StatusNx, Exclama, LinhasNx, FasesNx, D
  * de `comandos` (ton_bo), sempre com o diálogo "Abrir/Fechar <DJ>?".
  */
 interface Bundle {
-  equipamento: { id: string; nome: string | null };
+  equipamento: { id: string; nome: string | null; tipo?: string | null };
   scs: { habilitado: boolean; comando: boolean; status: boolean; medicao: string };
   pm: { equipamento_id: string; nome: string | null } | null;
   status_fonte: { rele_equipamento_id: string; rele_nome: string | null; campo_aberto: string | null; campo_fechado: string | null } | null;
@@ -137,7 +137,10 @@ export function DisjuntorSheet({ equipamentoId, onClose, onConfigurarPontos }: {
     return null;
   }, [bundle, releDados]);
 
-  const nome = bundle?.equipamento.nome ?? 'Disjuntor';
+  // Mesma ficha serve ao soft-starter (papel de manobra igual ao DJ): só muda o rótulo.
+  const ehSoft = /SOFT/i.test(bundle?.equipamento.tipo ?? '');
+  const oQue = ehSoft ? 'soft-starter' : 'disjuntor';
+  const nome = bundle?.equipamento.nome ?? (ehSoft ? 'Soft-starter' : 'Disjuntor');
   const temStatus = !!bundle?.scs.status;
   const temComando = !!bundle?.scs.comando;
 
@@ -286,13 +289,13 @@ export function DisjuntorSheet({ equipamentoId, onClose, onConfigurarPontos }: {
     ? 'Sem pontos de comando declarados'
     : `${bundle?.manobras?.hoje ?? 0} ${(bundle?.manobras?.hoje ?? 0) === 1 ? 'manobra' : 'manobras'} hoje${!temStatus ? ' · só comandos enviados, sem confirmação de posição' : ''}`;
 
-  const subtitulo = [bundle?.status_fonte?.rele_nome && `via ${bundle.status_fonte.rele_nome}`, bundle?.pm?.nome && `PM ${bundle.pm.nome}`].filter(Boolean).join(' · ') || 'Disjuntor';
+  const subtitulo = [bundle?.status_fonte?.rele_nome && `via ${bundle.status_fonte.rele_nome}`, bundle?.pm?.nome && `PM ${bundle.pm.nome}`].filter(Boolean).join(' · ') || (ehSoft ? 'Soft-starter' : 'Disjuntor');
 
   const notaMed = temPm && !bundle?.pm
     ? 'Medição declarada como PM, mas nenhum Power Meter associado — associe em "Configurações SCS" da TON.'
     : temIed && !bundle?.status_fonte
-      ? 'Medição declarada como IED, mas nenhum relé vinculado a este disjuntor na Topologia.'
-      : !temPm && !temIed ? 'Sem medição declarada neste disjuntor.' : null;
+      ? `Medição declarada como IED, mas nenhum relé vinculado a este ${oQue} na Topologia.`
+      : !temPm && !temIed ? `Sem medição declarada neste ${oQue}.` : null;
 
   // Cartão "Consumida / Injetada hoje" (PM) — na coluna da medição ou, num DJ só com
   // medição, embaixo do status (equilibra as duas colunas).
@@ -349,13 +352,13 @@ export function DisjuntorSheet({ equipamentoId, onClose, onConfigurarPontos }: {
     >
       {!bundle ? (
         <div style={{ padding: 32, display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <span style={{ textAlign: 'center', fontSize: 14, color: NX.mudo }}>Sem dados do disjuntor.</span>
+          <span style={{ textAlign: 'center', fontSize: 14, color: NX.mudo }}>Sem dados do equipamento.</span>
           {aba === 'cfg' && <RotulosUnifilar onConfigurar={onConfigurarPontos} />}
         </div>
       ) : aba === 'cfg' ? (
         <div style={{ padding: '20px 24px 28px 24px', display: 'flex', flexDirection: 'column', gap: 10 }}>
           <RotulosUnifilar onConfigurar={onConfigurarPontos} />
-          <Rotulo style={{ marginTop: 4 }}>Parâmetros do disjuntor</Rotulo>
+          <Rotulo style={{ marginTop: 4 }}>Parâmetros do {oQue}</Rotulo>
           {PARAMS_DJ.map((p) => (
             <Bloco key={p.key} style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
               <label htmlFor={`cfg-${p.key}`} style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -368,7 +371,7 @@ export function DisjuntorSheet({ equipamentoId, onClose, onConfigurarPontos }: {
           ))}
           <button type="button" disabled style={s.save(true)}>Sem alterações</button>
           <span style={{ fontSize: 12, color: NX.mudo, marginTop: 6 }}>
-            Limites de tensão, corrente e FP: o NexON ainda não lê nem grava estes parâmetros no relé do disjuntor.
+            Limites de tensão, corrente e FP: o NexON ainda não lê nem grava estes parâmetros no {ehSoft ? 'soft-starter' : 'relé do disjuntor'}.
           </span>
           <Rotulo style={{ marginTop: 10 }}>Cadastro</Rotulo>
           <LinhasNx rows={[

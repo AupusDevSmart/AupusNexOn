@@ -88,6 +88,7 @@ function rotuloTipo(eq: Equipment): string {
   const t = `${eq.categoria ?? ''} ${eq.tipo ?? ''}`.toUpperCase();
   if (t.includes('INVERSOR')) return 'Inversor';
   if (t.includes('MEDIDOR') || t.includes('SSU') || t.includes('METER')) return 'Medidor';
+  if (t.includes('SOFT')) return 'Soft-starter';
   if (t.includes('DISJUNTOR')) return 'Disjuntor';
   if (t.includes('TRANSFORM') || t.includes('TRAFO')) return 'Transformador';
   if (t.includes('CHAVE') || t.includes('SECCIONADORA')) return 'Chave';

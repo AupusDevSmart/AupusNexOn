@@ -87,6 +87,8 @@ export const EQUIPMENT_SIZES = {
   DISJUNTOR_GERAL: { width: 2, height: 2 },
   DISJUNTOR_TERMICO: { width: 2, height: 2 },
   DISJUNTOR_MAGNETOTERMICO: { width: 2, height: 2 },
+  SOFTSTARTER: { width: 2, height: 2 },
+  SOFT_STARTER: { width: 2, height: 2 },
 
   // Carregadores Elétricos - TODOS 2x2 (80x80px)
   CARREGADOR_ELETRICO: { width: 2, height: 2 },

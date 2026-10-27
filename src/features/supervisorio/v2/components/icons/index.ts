@@ -10,6 +10,7 @@ export { QGBTIcon } from './QGBTIcon';
 export { TransformadorIcon } from './TransformadorIcon';
 export { MedidorIcon } from './MedidorIcon';
 export { DisjuntorIcon } from './DisjuntorIcon';
+export { SoftStarterIcon } from './SoftStarterIcon';
 export { RedeConcessionariaIcon } from './RedeConcessionariaIcon';
 export { CarregadorEletricoIcon } from './CarregadorEletricoIcon';
 export { CargaIcon } from './CargaIcon';

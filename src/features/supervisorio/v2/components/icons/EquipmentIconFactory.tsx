@@ -13,6 +13,7 @@ import { QGBTIcon } from './QGBTIcon';
 import { TransformadorIcon } from './TransformadorIcon';
 import { MedidorIcon } from './MedidorIcon';
 import { DisjuntorIcon } from './DisjuntorIcon';
+import { SoftStarterIcon } from './SoftStarterIcon';
 import { RedeConcessionariaIcon } from './RedeConcessionariaIcon';
 import { JunctionPointIcon } from './JunctionPointIcon';
 import { BancoCapacitorIcon } from './BancoCapacitorIcon';
@@ -152,8 +153,6 @@ const ICON_MAP: Record<string, IconComponent> = {
   'TON3': TONIcon,
   'TON4': TONIcon,
 
-  // 15. SoftStarter (usando InversorIcon temporariamente)
-  'SOFTSTARTER': InversorIcon,
 
   // 16. Transformador de Corrente (TC)
   'TRANSFORMADOR_DE_CORRENTE_TC': TransformadorIcon,
@@ -190,6 +189,9 @@ const ICON_MAP: Record<string, IconComponent> = {
 
   // Disjuntores (tipos antigos)
   'DISJUNTOR': DisjuntorIcon,
+  'SOFTSTARTER': SoftStarterIcon,
+  'SOFT_STARTER': SoftStarterIcon,
+  'SOFT STARTER': SoftStarterIcon,
   'DISJUNTOR_FECHADO': DisjuntorIcon,  // ← FIX: Usar DisjuntorIcon (mesmo do BT) ao invés de MedidorIcon
   'DISJUNTOR_ABERTO': DisjuntorIcon,   // ← FIX: Usar DisjuntorIcon (mesmo do BT) ao invés de MedidorIcon
   'DISJUNTOR_GERAL': DisjuntorIcon,
@@ -274,6 +276,7 @@ const B = (top: number, bottom: number, left: number, right: number, vbW = 80, v
   ({ top, bottom, left, right, vbW, vbH });
 const ICON_BODY = new Map<IconComponent, IconBody>([
   [DisjuntorIcon, B(22, 58, 22, 58)],
+  [SoftStarterIcon, B(22, 58, 22, 58)],
   [TransformadorIcon, B(17, 63, 25, 55)],
   [InversorIcon, B(18, 62, 18, 62)],
   [MedidorIcon, B(13, 67, 16, 64)],
@@ -341,6 +344,7 @@ export const getEquipmentIcon = (categoria: string | undefined | null): IconComp
  */
 const matchIconByKeyword = (norm: string): IconComponent | null => {
   const k = norm.normalize('NFD').replace(/[̀-ͯ]/g, ''); // tira acentos
+  if (k.includes('SOFT')) return SoftStarterIcon;
   if (k.includes('BOMBA')) return BombaCombustivelIcon;
   if (k === 'CARGA' || k.startsWith('CARGA_')) return CargaIcon;
   if (k.includes('PIVO')) return PivoIcon;

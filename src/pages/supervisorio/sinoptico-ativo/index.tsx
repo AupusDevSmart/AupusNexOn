@@ -3859,7 +3859,7 @@ if (import.meta.env.PROD) {
                       comp.categoria ||
                       '';
                     const ehDisjuntor =
-                      categoria.includes('Disjuntor') || tipo.includes('DISJUNTOR');
+                      categoria.includes('Disjuntor') || tipo.includes('DISJUNTOR') || /SOFT/i.test(`${categoria} ${tipo}`);
                     const ehTrafo =
                       categoria.includes('Transformador') || tipo.includes('TRANSFORMADOR');
                     if (ehDisjuntor) {

@@ -928,9 +928,11 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
           mode="edit"
           equipmentId={editingEquipment.id}
           equipmentTipoLabel={editingEquipment.tipo}
-          onSaved={({ tag }) => {
+          onSaved={({ tag, tipo }) => {
             const atualizados = equipamentos.map(eq =>
-              eq.id === editingEquipment.id ? { ...eq, tag, nome: tag } : eq
+              eq.id === editingEquipment.id
+                ? { ...eq, tag, nome: tag, ...(tipo ? { tipo: tipo.codigo, categoria: tipo.nome } : {}) }
+                : eq
             );
             useDiagramStore.setState({ equipamentos: atualizados, isDirty: true });
             useDiagramStore.getState().recalcularRotas();

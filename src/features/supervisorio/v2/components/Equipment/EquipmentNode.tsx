@@ -53,7 +53,7 @@ const EquipmentNodeImpl: React.FC<EquipmentNodeProps> = ({ equipment, onClick, o
   // Status do disjuntor (vermelho=fechado / verde=aberto). O dado vem do relé
   // que lê os auxiliares 52a/52b — ver useDisjuntorEstado. Hook chamado sempre
   // (id null quando não é disjuntor) pra não quebrar a ordem dos hooks.
-  const ehDisjuntor = /DISJUNTOR/i.test(
+  const ehDisjuntor = /DISJUNTOR|SOFT/i.test(
     `${equipment.categoria ?? ''} ${equipment.tipo ?? ''}`,
   );
   const { estado: estadoDisjuntor } = useDisjuntorEstado(

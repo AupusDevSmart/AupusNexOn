@@ -62,6 +62,7 @@ const CATEGORIAS_FIXAS: Array<{ chave: string; rotulo: string; casa: (codigo: st
   { chave: CAT_USINAS, rotulo: 'Usinas', casa: (c) => c === 'INVERSOR' },
   { chave: 'carregadores', rotulo: 'Carregadores', casa: (c) => c === 'CARREGADOR_ELETRICO' },
   { chave: 'disjuntores', rotulo: 'Disjuntores', casa: (c) => c === 'DISJUNTOR' },
+  { chave: 'softstarters', rotulo: 'Soft-starters', casa: (c) => c === 'SOFTSTARTER' },
   {
     chave: 'medidores',
     rotulo: 'Medidores',

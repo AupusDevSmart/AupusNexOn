@@ -72,12 +72,16 @@ interface Props {
   equipmentTipoLabel?: string; // edit: rótulo do tipo (fallback)
   initialTipoId?: string; // create: tipo pré-escolhido no select "Adicionar" da barra do unifilar
   onCreated?: (equip: EquipamentoApiResponse) => void;
-  onSaved?: (v: { tag: string; localizacao: string }) => void;
+  /** `tipo` só vem quando o tipo foi trocado (código + nome, pro diagrama trocar o símbolo na hora). */
+  onSaved?: (v: { tag: string; localizacao: string; tipo?: { codigo: string; nome: string } }) => void;
 }
 
 export function EquipamentoCadastroModal({ open, onClose, unidadeId, mode, equipmentId, equipmentTipoLabel, initialTipoId, onCreated, onSaved }: Props) {
   const [tipos, setTipos] = useState<Tipo[]>([]);
   const [tipoId, setTipoId] = useState('');
+  // Edição: tipo gravado hoje. Trocar (ex.: DJ desenhado errado → Soft-starter) mantém id,
+  // posição, ligações, vínculos e rótulos — só muda símbolo, pontos nativos e ficha.
+  const [tipoOriginal, setTipoOriginal] = useState('');
   const [tipoLabel, setTipoLabel] = useState(equipmentTipoLabel ?? '');
   const [tag, setTag] = useState('');
   const [localizacao, setLocalizacao] = useState('');
@@ -115,8 +119,11 @@ export function EquipamentoCadastroModal({ open, onClose, unidadeId, mode, equip
         .finally(() => setLoading(false));
     } else if (mode === 'edit' && equipmentId) {
       setLoading(true);
+      setTipos([]); setTipoId(''); setTipoOriginal('');
+      equipamentosApi.tiposUnifilar().then((t) => setTipos(Array.isArray(t) ? t : [])).catch(() => setTipos([]));
       equipamentosApi.getCadastroUnifilar(equipmentId)
         .then((c) => {
+          setTipoId(c?.tipo_id ?? ''); setTipoOriginal(c?.tipo_id ?? '');
           setTag(c?.tag ?? '');
           setLocalizacao(c?.localizacao_especifica ?? '');
           setPossuiMedicao(!!c?.possui_medicao);
@@ -156,6 +163,24 @@ export function EquipamentoCadastroModal({ open, onClose, unidadeId, mode, equip
   };
   const escolherTipo = (id: string) => escolherTipoDe(tipos, id);
 
+  // Troca de tipo na edição: não sugere TAG nova; os pontos nativos do tipo antigo saem e
+  // entram os do novo (customizados ficam).
+  const trocarTipo = (id: string) => {
+    const t = tipos.find((x) => x.id === id);
+    if (!t) return;
+    setTipoId(id);
+    setTipoLabel(t.nome);
+    const visual = t.somente_visual === true;
+    setSomenteVisual(visual);
+    if (visual) { setPossuiScs(false); setPossuiMedicao(false); setScsComando(false); setScsStatus(false); }
+    const nat = t.pontos_nativos ?? { comando: [], status: [] };
+    const customs = (sel: string[], antigos: string[]) => sel.filter((p) => !antigos.includes(p));
+    setPontosComando(!visual && scsComando ? [...nat.comando, ...customs(pontosComando, nativos.comando)] : []);
+    setPontosStatus(!visual && scsStatus ? [...nat.status, ...customs(pontosStatus, nativos.status)] : []);
+    setNativos(nat);
+  };
+  const tipoTrocado = mode === 'edit' && !!tipoId && !!tipoOriginal && tipoId !== tipoOriginal;
+
   const podeSalvar = mode === 'create' ? !!tipoId && !saving : !saving;
 
   const salvar = async () => {
@@ -176,6 +201,7 @@ export function EquipamentoCadastroModal({ open, onClose, unidadeId, mode, equip
         await equipamentosApi.editarCadastroUnifilar(equipmentId, {
           tag: tag,
           localizacao_especifica: localizacao,
+          ...(tipoTrocado ? { tipo_equipamento_id: tipoId } : {}),
           possui_medicao: possuiScs && possuiMedicao,
           possui_scs: possuiScs,
           scs_comando: possuiScs && scsComando,
@@ -183,7 +209,8 @@ export function EquipamentoCadastroModal({ open, onClose, unidadeId, mode, equip
           pontos_comando: possuiScs && scsComando ? pontosComando : [],
           pontos_status: possuiScs && scsStatus ? pontosStatus : [],
         });
-        onSaved?.({ tag, localizacao });
+        const novo = tipoTrocado ? tipos.find((x) => x.id === tipoId) : undefined;
+        onSaved?.({ tag, localizacao, ...(novo ? { tipo: { codigo: novo.codigo, nome: novo.nome } } : {}) });
       }
       onClose();
     } catch (e: any) {
@@ -210,8 +237,8 @@ export function EquipamentoCadastroModal({ open, onClose, unidadeId, mode, equip
             {/* Tipo */}
             <div className="space-y-1.5">
               <Label className="text-sm font-medium">Tipo <span className="text-red-500">*</span></Label>
-              {mode === 'create' ? (
-                <Select value={tipoId} onValueChange={escolherTipo}>
+              {mode === 'create' || tipos.length ? (
+                <Select value={tipoId} onValueChange={mode === 'create' ? escolherTipo : trocarTipo}>
                   <SelectTrigger><SelectValue placeholder="Selecione o tipo" /></SelectTrigger>
                   <SelectContent>
                     {tipos.map((t) => <SelectItem key={t.id} value={t.id}>{t.nome}{t.sigla ? ` (${t.sigla})` : ''}</SelectItem>)}
@@ -219,6 +246,11 @@ export function EquipamentoCadastroModal({ open, onClose, unidadeId, mode, equip
                 </Select>
               ) : (
                 <div className="px-3 py-2 bg-muted/50 rounded-md text-sm">{tipoLabel || '—'}</div>
+              )}
+              {tipoTrocado && (
+                <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                  Trocar o tipo mantém posição, ligações, vínculos da Topologia e rótulos; muda o símbolo, os pontos nativos e a ficha.
+                </p>
               )}
             </div>
 
