@@ -58,6 +58,8 @@ interface DiagramV2Props {
   availableEquipments?: AvailableEquipment[]; // Lista de equipamentos da unidade disponíveis
   onBackgroundClick?: () => void; // Callback quando clica no background
   onEquipmentClick?: (equipment: Equipment) => void; // Callback quando clica em equipamento
+  /** Rótulos do símbolo selecionado (botão na barra de edição). Ausente = sem permissão. */
+  onConfigurarPontos?: (eq: { id: string; nome: string; categoria: string }) => void;
 }
 
 export const DiagramV2: React.FC<DiagramV2Props> = ({
@@ -67,6 +69,7 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
   availableEquipments = [],
   onBackgroundClick,
   onEquipmentClick,
+  onConfigurarPontos,
 }) => {
   const loadDiagrama = useDiagramStore(state => state.loadDiagrama);
   const createDiagrama = useDiagramStore(state => state.createDiagrama);
@@ -798,6 +801,11 @@ export const DiagramV2: React.FC<DiagramV2Props> = ({
       {currentMode === 'edit' && (
         <EditorToolbar
           availableEquipments={availableEquipments}
+          onConfigurarRotulos={onConfigurarPontos ? (eq) => onConfigurarPontos({
+            id: eq.id.trim(),
+            nome: eq.tag || eq.nome,
+            categoria: `${(eq as any).tipo ?? ''} ${(eq as any).categoria ?? ''}`.trim(),
+          }) : undefined}
           onCreateEquipment={(tipoId) => {
             if (!diagrama?.unidadeId) {
               toast({

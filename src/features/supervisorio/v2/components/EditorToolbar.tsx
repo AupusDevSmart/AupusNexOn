@@ -13,7 +13,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Move, MousePointer2, Pencil, Trash2, Keyboard } from 'lucide-react';
+import { Move, MousePointer2, Pencil, Trash2, Keyboard, Tag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { equipamentosApi } from '@/services/equipamentos.services';
@@ -40,6 +40,8 @@ interface EditorToolbarProps {
   onAddEquipmentToDiagram?: (equipmentId: string) => void;
   onEditEquipment: (equipment: Equipment) => void;
   onDeleteSelected: (equipmentIds: string[]) => void;
+  /** Rótulos ao lado do símbolo (valores ao vivo de qualquer fonte). Ausente = sem permissão. */
+  onConfigurarRotulos?: (equipment: Equipment) => void;
 }
 
 const ATALHOS: Array<[string, string]> = [
@@ -72,6 +74,7 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
   onAddEquipmentToDiagram,
   onEditEquipment,
   onDeleteSelected,
+  onConfigurarRotulos,
 }) => {
   const equipamentos = useDiagramStore(state => state.equipamentos);
   const visualConnections = useDiagramStore(state => state.visualConnections);
@@ -195,6 +198,17 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
               title="Editar cadastro (ou duplo-clique no símbolo)"
             >
               <Pencil className="h-4 w-4" />Editar
+            </Button>
+          )}
+          {selecionados.length === 1 && onConfigurarRotulos && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onConfigurarRotulos(selecionados[0])}
+              className="flex items-center gap-1"
+              title="Valores ao vivo exibidos ao lado do símbolo (corrente, tensão, potência), de qualquer equipamento com dados"
+            >
+              <Tag className="h-4 w-4" />Rótulos
             </Button>
           )}
           <Button

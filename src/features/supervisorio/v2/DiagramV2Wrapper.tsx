@@ -409,6 +409,7 @@ const DiagramV2WrapperBase: React.FC<DiagramV2WrapperProps> = ({
             unidadeNome={unidadeNome}
             availableEquipments={equipamentosDisponiveis}
             onBackgroundClick={onBackgroundClick}
+            onConfigurarPontos={onConfigurarPontos}
             onEquipmentClick={(equipment) => {
               // DJ: abre o SHEET do disjuntor (Fase 6), fora do modo edicao.
               if (!modoEdicao) {
