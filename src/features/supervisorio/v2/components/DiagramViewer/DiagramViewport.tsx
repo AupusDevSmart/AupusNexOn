@@ -54,10 +54,12 @@ export const DiagramViewport: React.FC<DiagramViewportProps> = ({ children, onBa
   const themeColors = getThemeColors(theme);
 
   // ==========================================================================
-  // SCROLL (NEXON-31) — listener nativo ({passive:false} permite preventDefault)
-  //   scroll (vertical e lateral) → move a tela, como numa página
-  //   Shift+scroll → move para os lados (mouse sem roda lateral)
+  // SCROLL — listener nativo ({passive:false} permite preventDefault)
+  //   scroll → zoom no ponto do mouse (pedido do dono: o NEXON-31 tinha trocado por
+  //            mover a tela; voltou a ser zoom)
+  //   scroll lateral / Shift+scroll → move para os lados
   //   Ctrl/⌘+scroll ou pinça do trackpad → zoom no ponto do mouse
+  //   mover a tela continua no arraste (vazio, Espaço+arraste, botão do meio)
   // Lê o estado FRESCO do store (o listener é registrado uma vez).
   // ==========================================================================
 
@@ -87,19 +89,16 @@ export const DiagramViewport: React.FC<DiagramViewportProps> = ({ children, onBa
       const dx = e.deltaX * px;
       const dy = e.deltaY * px;
 
-      if (e.ctrlKey || e.metaKey) {
-        // Pinça do trackpad chega como ctrl+wheel com deltas pequenos (zoom contínuo);
-        // um "clique" da roda do mouse vem grande (~100): passo fixo de 15%.
-        const fator = Math.abs(dy) >= 40 ? (dy < 0 ? 1.15 : 1 / 1.15) : Math.exp(-dy * 0.01);
-        zoomNoCursor(e, fator);
-        return;
-      }
       const st = useDiagramStore.getState();
-      if (e.shiftKey && dx === 0) {
-        st.setPan(st.viewport.x - dy, st.viewport.y);
-        return;
+      if (!e.ctrlKey && !e.metaKey) {
+        if (e.shiftKey && dx === 0) { st.setPan(st.viewport.x - dy, st.viewport.y); return; }
+        // Gesto lateral (roda lateral / dois dedos para o lado) continua movendo.
+        if (Math.abs(dx) > Math.abs(dy)) { st.setPan(st.viewport.x - dx, st.viewport.y); return; }
       }
-      st.setPan(st.viewport.x - dx, st.viewport.y - dy);
+      // Pinça do trackpad chega como ctrl+wheel com deltas pequenos (zoom contínuo);
+      // um "clique" da roda do mouse vem grande (~100): passo fixo de 15%.
+      const fator = Math.abs(dy) >= 40 ? (dy < 0 ? 1.15 : 1 / 1.15) : Math.exp(-dy * 0.01);
+      zoomNoCursor(e, fator);
     };
 
     svg.addEventListener('wheel', handleWheel, { passive: false });
