@@ -7,7 +7,7 @@ import type { CustosEnergiaResponseDto } from '@/types/dtos/custos-energia-dto';
 import { SsuOperacao } from './sheets/MedidorSheet';
 import { NX, s, NxShell, NxDialog, NxDialogHead, NxDialogButtons, type NxTone } from './sheets/nxMock';
 import { Registros, linhasPosto, brl, type RegistroExtra } from './sheets/equipUi';
-import { Bloco, Rotulo, StatusNx, Exclama, LinhasNx, FasesNx, Duas, Coluna, GraficoNx, type GrupoGrandezaNx, type LinhaNx } from './sheets/InversorSheet';
+import { Bloco, Rotulo, RotulosUnifilar, StatusNx, Exclama, LinhasNx, FasesNx, Duas, Coluna, GraficoNx, type GrupoGrandezaNx, type LinhaNx } from './sheets/InversorSheet';
 
 /**
  * Modal do DJ no web — tela "Equipamento · DJ UBS" do app (NEXON-5) adaptada ao
@@ -99,7 +99,7 @@ const PARAMS_DJ = [
   { key: 'fpMin', label: 'FP mínimo', faixa: '0,80 a 1,00', unit: '' },
 ];
 
-export function DisjuntorSheet({ equipamentoId, onClose }: { equipamentoId: string; onClose: () => void }) {
+export function DisjuntorSheet({ equipamentoId, onClose, onConfigurarPontos }: { equipamentoId: string; onClose: () => void; onConfigurarPontos?: () => void }) {
   const [bundle, setBundle] = useState<Bundle | null>(null);
   const [loading, setLoading] = useState(true);
   const [aba, setAba] = useState('op');
@@ -348,9 +348,13 @@ export function DisjuntorSheet({ equipamentoId, onClose }: { equipamentoId: stri
       onClose={onClose}
     >
       {!bundle ? (
-        <div style={{ padding: 32, textAlign: 'center', fontSize: 14, color: NX.mudo }}>Sem dados do disjuntor.</div>
+        <div style={{ padding: 32, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <span style={{ textAlign: 'center', fontSize: 14, color: NX.mudo }}>Sem dados do disjuntor.</span>
+          {aba === 'cfg' && <RotulosUnifilar onConfigurar={onConfigurarPontos} />}
+        </div>
       ) : aba === 'cfg' ? (
         <div style={{ padding: '20px 24px 28px 24px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <RotulosUnifilar onConfigurar={onConfigurarPontos} />
           <Rotulo style={{ marginTop: 4 }}>Parâmetros do disjuntor</Rotulo>
           {PARAMS_DJ.map((p) => (
             <Bloco key={p.key} style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>

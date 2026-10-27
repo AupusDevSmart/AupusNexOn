@@ -11,6 +11,7 @@ import {
   type HistPoint, type Horarios,
 } from './equipUi';
 import { NX, s, NxShell, type NxTone } from './nxMock';
+import { RotulosUnifilar } from './InversorSheet';
 import { ComposedChart } from '@/components/charts/composed-chart';
 import { BarChart } from '@/components/charts/bar-chart';
 import { Bar } from '@/components/charts/bar';
@@ -960,7 +961,7 @@ function MedidorConfig({ equipamentoId, ssuId }: { equipamentoId: string; ssuId:
 
 // -------------------------------------------------------------------- modal
 
-export function MedidorSheet({ equipamentoId, nome, onClose }: { equipamentoId: string; nome?: string; onClose: () => void }) {
+export function MedidorSheet({ equipamentoId, nome, onClose, onConfigurarPontos }: { equipamentoId: string; nome?: string; onClose: () => void; onConfigurarPontos?: () => void }) {
   // Fonte da medição: o device IoT associado a este medidor em "Vínculos → Medições"
   // (TON-V2 com SSU, A-966, PM…) — mesmo lookup do DJ→PM. Sem vínculo, o próprio medidor.
   // Só lê depois de resolver a fonte: antes lia o próprio medidor, montava o corpo de PM
@@ -1007,7 +1008,10 @@ export function MedidorSheet({ equipamentoId, nome, onClose }: { equipamentoId: 
       {!(fonteOk && carregado)
         ? <div style={{ padding: '24px 4px', fontSize: 14, color: NX.mudo }}>Carregando leituras do medidor…</div>
         : aba === 'cfg'
-        ? <MedidorConfig equipamentoId={idDados} ssuId={ehSsu ? idDados : null} />
+        ? <>
+            {onConfigurarPontos && <div style={{ padding: '20px 24px 0 24px' }}><RotulosUnifilar onConfigurar={onConfigurarPontos} /></div>}
+            <MedidorConfig equipamentoId={idDados} ssuId={ehSsu ? idDados : null} />
+          </>
         : ehSsu
           ? <MedidorSsu equipamentoId={idDados} onStatus={setStatus} />
           : <MedidorPm equipamentoId={idDados} onStatus={setStatus} />}

@@ -172,6 +172,11 @@ const DiagramV2WrapperBase: React.FC<DiagramV2WrapperProps> = ({
   const [djSheetId, setDjSheetId] = useState<string | null>(null);
   // Sheets dos demais equipamentos do unifilar (inversor/medidor/motor/pivô) — Fase 6.
   const [eqpSheet, setEqpSheet] = useState<{ kind: string; id: string; nome?: string } | null>(null);
+  // Equipamento da ficha aberta: a aba Configuração da ficha leva aos rótulos do unifilar dele.
+  const [sheetEq, setSheetEq] = useState<{ id: string; nome: string; categoria: string } | null>(null);
+  const configRotulos = onConfigurarPontos && sheetEq
+    ? () => { const eq = sheetEq; setDjSheetId(null); setEqpSheet(null); onConfigurarPontos(eq); }
+    : undefined;
 
   const setEquipamentos = (equipamentos: Equipment[]) => {
     const store = useDiagramStore.getState();
@@ -407,6 +412,7 @@ const DiagramV2WrapperBase: React.FC<DiagramV2WrapperProps> = ({
             onEquipmentClick={(equipment) => {
               // DJ: abre o SHEET do disjuntor (Fase 6), fora do modo edicao.
               if (!modoEdicao) {
+                setSheetEq({ id: equipment.id.trim(), nome: equipment.nome, categoria: `${(equipment as any).tipo ?? ''} ${(equipment as any).categoria ?? ''}`.trim() });
                 const _tp = (String((equipment as any).tipo || '') + ' ' + String((equipment as any).categoria || '')).toLowerCase();
                 if (_tp.includes('disjuntor')) { setDjSheetId(equipment.id.trim()); return; }
                 // Power Meter e A-966 pelo mesmo critério do sinóptico (tipo, tag ou nome), não só pela categoria.
@@ -492,14 +498,14 @@ const DiagramV2WrapperBase: React.FC<DiagramV2WrapperProps> = ({
       )}
 
       {djSheetId && (
-        <DisjuntorSheet equipamentoId={djSheetId} onClose={() => setDjSheetId(null)} />
+        <DisjuntorSheet equipamentoId={djSheetId} onClose={() => setDjSheetId(null)} onConfigurarPontos={configRotulos} />
       )}
 
       {eqpSheet?.kind === 'inversor' && (
-        <InversorSheet equipamentoId={eqpSheet.id} nome={eqpSheet.nome} onClose={() => setEqpSheet(null)} />
+        <InversorSheet equipamentoId={eqpSheet.id} nome={eqpSheet.nome} onClose={() => setEqpSheet(null)} onConfigurarPontos={configRotulos} />
       )}
       {eqpSheet?.kind === 'medidor' && (
-        <MedidorSheet equipamentoId={eqpSheet.id} nome={eqpSheet.nome} onClose={() => setEqpSheet(null)} />
+        <MedidorSheet equipamentoId={eqpSheet.id} nome={eqpSheet.nome} onClose={() => setEqpSheet(null)} onConfigurarPontos={configRotulos} />
       )}
       {eqpSheet?.kind === 'motor' && (
         <MotorSheet equipamentoId={eqpSheet.id} nome={eqpSheet.nome} onClose={() => setEqpSheet(null)} />

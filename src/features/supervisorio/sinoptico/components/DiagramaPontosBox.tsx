@@ -47,7 +47,10 @@ function getByPath(obj: any, path: string): unknown {
 function PontoValor({ slot, ponto }: { slot: SlotKey; ponto: Ponto }) {
   const { data } = useEquipamentoMqttData(ponto.equipamentoFonteId ?? "");
   const dados = (data as any)?.dado?.dados;
-  const raw = ponto.campoJson ? getByPath(dados, ponto.campoJson) : undefined;
+  const lido = ponto.campoJson ? getByPath(dados, ponto.campoJson) : undefined;
+  // Pt (PM) e power.active_total (inversor) chegam em W: no slot kW, converte.
+  const emWatts = slot === "kW" && /(^|\.)(Pt|active_total)$/.test(ponto.campoJson ?? "");
+  const raw = typeof lido === "number" && emWatts ? lido / 1000 : lido;
   const val =
     typeof raw === "number" ? raw.toLocaleString("pt-BR", { maximumFractionDigits: 1 }) : "--";
   return (

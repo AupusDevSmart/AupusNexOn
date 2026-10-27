@@ -51,6 +51,27 @@ export function Rotulo({ children, style }: { children: ReactNode; style?: CSSPr
   return <span style={{ ...s.label, textTransform: 'uppercase', ...style }}>{children}</span>;
 }
 
+/**
+ * Atalho para os rótulos do unifilar (valores ao lado do símbolo: corrente do DJ, kW do
+ * inversor…). Antes ficava nos modais antigos de comando; as fichas novas não tinham entrada.
+ * Só aparece para quem tem cadastro técnico (quem abre a ficha passa `onConfigurar`).
+ */
+export function RotulosUnifilar({ onConfigurar }: { onConfigurar?: () => void }) {
+  if (!onConfigurar) return null;
+  return (
+    <Bloco style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+      <span style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <span style={{ fontSize: 15, fontWeight: 700 }}>Rótulos no unifilar</span>
+        <span style={{ fontSize: 12, color: NX.mudo }}>Valores ao vivo exibidos ao lado do símbolo (corrente, tensão, potência).</span>
+      </span>
+      <button type="button" onClick={onConfigurar}
+        style={{ height: 36, padding: '0 14px', borderRadius: 10, border: `1px solid ${NX.borda}`, background: NX.card, color: NX.texto, fontSize: 14, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+        Configurar
+      </button>
+    </Bloco>
+  );
+}
+
 /** Cartão de status: bolinha + rótulo colorido + texto (+ linha extra). */
 export function StatusNx({ tone, label, text, extra }: { tone: NxTone; label: string; text?: ReactNode; extra?: ReactNode }) {
   return (
@@ -605,7 +626,7 @@ function ConfigInversor({ equipamentoId, dados, perfilStr, onPerfil, totalString
 /**
  * Sheet do Inversor Fotovoltaico. Data-driven pela telemetria do próprio equipamento.
  */
-export function InversorSheet({ equipamentoId, nome, onClose }: { equipamentoId: string; nome?: string; onClose: () => void }) {
+export function InversorSheet({ equipamentoId, nome, onClose, onConfigurarPontos }: { equipamentoId: string; nome?: string; onClose: () => void; onConfigurarPontos?: () => void }) {
   const { perfil: perfilStr, recarregar: recarregarPerfil } = useStringsPerfil(equipamentoId);
   const { dados, ts } = useDados(equipamentoId);
   const [aba, setAba] = useState('op');
@@ -770,7 +791,10 @@ export function InversorSheet({ equipamentoId, nome, onClose }: { equipamentoId:
       onClose={onClose}
     >
       {aba === 'cfg' ? (
-        <ConfigInversor equipamentoId={equipamentoId} dados={dados} perfilStr={perfilStr} onPerfil={recarregarPerfil} totalStrings={strings.length} />
+        <>
+          {onConfigurarPontos && <div style={{ padding: '20px 24px 0 24px' }}><RotulosUnifilar onConfigurar={onConfigurarPontos} /></div>}
+          <ConfigInversor equipamentoId={equipamentoId} dados={dados} perfilStr={perfilStr} onPerfil={recarregarPerfil} totalStrings={strings.length} />
+        </>
       ) : (
         <div style={{ padding: '20px 24px 28px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
           <Duas>
