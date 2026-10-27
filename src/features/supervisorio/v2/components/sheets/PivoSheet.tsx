@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { iotApiService } from '@/services/iot.services';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { api } from '@/config/api';
@@ -316,7 +317,19 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   const titulo = nome || 'Pivô';
   const estreito = useEstreito();
   const perfil = usePerfilPivo();
-  const { dados, ts } = useDados(id);
+  // Medição elétrica: o medidor do IoT vinculado a este pivô (Vínculos → Medições; ex.: PM da
+  // bomba na TON4 do pivô, fora do unifilar). Sem vínculo, a telemetria do próprio pivô.
+  const [fonteMedicao, setFonteMedicao] = useState<string | null>(null);
+  useEffect(() => {
+    let vivo = true;
+    setFonteMedicao(null);
+    iotApiService.powerMeterByDisjuntor(id)
+      .then((r) => { if (vivo && r?.equipamento_id) setFonteMedicao(r.equipamento_id.trim()); })
+      .catch(() => undefined);
+    return () => { vivo = false; };
+  }, [id]);
+  const idMedicao = fonteMedicao ?? id;
+  const { dados, ts } = useDados(idMedicao);
   const { estado, erro, carregar, executando } = usePivoEstado(id);
   const prog = useProgramacoes(id);
   const [aba, setAba] = useState('op');
@@ -607,7 +620,7 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
             </span>
           </button>
 
-          <GraficoPotencia equipamentoId={id} resumo={ptKw != null ? `${fmt(ptKw, 1)} kW agora` : '—'} />
+          <GraficoPotencia equipamentoId={idMedicao} resumo={ptKw != null ? `${fmt(ptKw, 1)} kW agora` : '—'} />
 
           <RegistrosPivo equipamentoId={id} extra={regSeq} estreito={estreito} />
         </div>
