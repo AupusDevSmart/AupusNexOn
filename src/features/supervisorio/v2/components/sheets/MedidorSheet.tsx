@@ -660,7 +660,7 @@ function useDemandaMeses(equipamentoId: string, n = 6) {
 
 /** Operação do medidor com telemetria direta (PM M160/PD666: Pt/Qt/St em W). */
 function MedidorPm({ equipamentoId, onStatus }: { equipamentoId: string; onStatus: (s: StatusMed) => void }) {
-  const { dados, ts } = useDados(equipamentoId);
+  const { dados, ts, carregado } = useDados(equipamentoId);
   const [per, setPer] = useState<Per>('hoje');
   const info = tsInfo(ts);
   const n = (p: string) => { const v = getPath(dados, p); return v == null || v === '' || Number.isNaN(Number(v)) ? null : Number(v); };
@@ -696,7 +696,8 @@ function MedidorPm({ equipamentoId, onStatus }: { equipamentoId: string; onStatu
   const fpInt = (() => { const p = media((d) => Math.abs(Number(d?.Pt))), st = media((d) => Number(d?.St)); return p != null && st ? Math.min(1, p / st) : null; })();
 
   let tone: NxTone = 'ok', stLabel = 'Normal', stText = 'Comunicando · medidor online';
-  if (!info.online) { tone = 'off'; stLabel = 'Sem comunicação'; stText = info.hasTs ? `Última leitura ${info.idade}` : 'Sem leitura'; }
+  if (!carregado) { tone = 'off'; stLabel = 'Carregando…'; stText = 'Buscando a última leitura'; }
+  else if (!info.online) { tone = 'off'; stLabel = 'Sem comunicação'; stText = info.hasTs ? `Última leitura ${info.idade}` : 'Sem leitura'; }
   else if (tol != null && proj != null && proj > tol) { tone = 'warn'; stLabel = 'Alerta'; stText = 'Projeção acima da tolerância'; }
   const posto = postoEm(new Date(now), horarios);
   useEffect(() => { onStatus({ tone, label: stLabel, posto }); }, [tone, stLabel, posto]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -846,7 +847,8 @@ function MedidorSsu({ equipamentoId, onStatus }: { equipamentoId: string; onStat
 
   const info = tsInfo(agora?.timestamp ?? snap?.timestamp_dados ?? null);
   let tone: NxTone = 'ok', stLabel = 'Normal', stText = 'Comunicando · TON online';
-  if (!info.online) { tone = 'off'; stLabel = 'Sem comunicação'; stText = error ?? (info.hasTs ? `Última leitura ${info.idade}` : 'Sem leitura do medidor'); }
+  if (!data && !error) { tone = 'off'; stLabel = 'Carregando…'; stText = 'Buscando a última leitura'; }
+  else if (!info.online) { tone = 'off'; stLabel = 'Sem comunicação'; stText = error ?? (info.hasTs ? `Última leitura ${info.idade}` : 'Sem leitura do medidor'); }
   else if (tol != null && proj != null && proj > tol) { tone = 'warn'; stLabel = 'Alerta'; stText = 'Projeção acima da tolerância'; }
   // Posto informado pelo próprio medidor (TON-V2); sem ele, pela janela da concessionária.
   const POSTO_PILL: Record<number, string> = { 1: 'Ponta', 2: 'Fora de ponta', 3: 'Reservado' };
@@ -961,23 +963,28 @@ function MedidorConfig({ equipamentoId, ssuId }: { equipamentoId: string; ssuId:
 export function MedidorSheet({ equipamentoId, nome, onClose }: { equipamentoId: string; nome?: string; onClose: () => void }) {
   // Fonte da medição: o device IoT associado a este medidor em "Vínculos → Medições"
   // (TON-V2 com SSU, A-966, PM…) — mesmo lookup do DJ→PM. Sem vínculo, o próprio medidor.
+  // Só lê depois de resolver a fonte: antes lia o próprio medidor, montava o corpo de PM
+  // (5 requisições) e trocava ao chegar a fonte — e o selo dizia "Sem comunicação" no meio.
   const [fonte, setFonte] = useState<{ id: string; nome: string | null } | null>(null);
+  const [fonteOk, setFonteOk] = useState(false);
   useEffect(() => {
     let vivo = true;
     setFonte(null);
+    setFonteOk(false);
     iotApiService.powerMeterByDisjuntor(equipamentoId)
       .then((r) => { if (vivo && r?.equipamento_id) setFonte({ id: r.equipamento_id.trim(), nome: r.nome }); })
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => { if (vivo) setFonteOk(true); });
     return () => { vivo = false; };
   }, [equipamentoId]);
   const idDados = fonte?.id ?? equipamentoId;
-  const { dados } = useDados(idDados);
+  const { dados, carregado } = useDados(fonteOk ? idDados : null);
   const g = (p: string) => getPath(dados, p);
   // Bloco da SSU (A-966 / TON-V2): tem NSU e pulsos em data.phf — não é telemetria instantânea.
   const ehSsu = !!dados && (g('NSU') != null || g('data.phf') != null);
   const [aba, setAba] = useState('op');
-  const [status, setStatus] = useState<StatusMed>({ tone: 'off', label: 'Sem comunicação' });
-  const { res: custos } = useCustos(idDados, 'mes');
+  const [status, setStatus] = useState<StatusMed>({ tone: 'off', label: 'Carregando…' });
+  const { res: custos } = useCustos(fonteOk ? idDados : null, 'mes');
   const un = custos?.unidade;
   const tarifa = !custos ? null : custos.tarifa_fonte === 'PERSONALIZADA' ? 'tarifa personalizada' : un?.subgrupo ? `tarifa ${un.subgrupo}` : null;
   const subtitle = ['Entrada', un?.nome ?? fonte?.nome ?? null, ehSsu ? 'SSU via TON' : 'medidor direto', tarifa].filter(Boolean).join(' · ');
@@ -997,7 +1004,9 @@ export function MedidorSheet({ equipamentoId, nome, onClose }: { equipamentoId: 
       onTab={setAba}
       onClose={onClose}
     >
-      {aba === 'cfg'
+      {!(fonteOk && carregado)
+        ? <div style={{ padding: '24px 4px', fontSize: 14, color: NX.mudo }}>Carregando leituras do medidor…</div>
+        : aba === 'cfg'
         ? <MedidorConfig equipamentoId={idDados} ssuId={ehSsu ? idDados : null} />
         : ehSsu
           ? <MedidorSsu equipamentoId={idDados} onStatus={setStatus} />

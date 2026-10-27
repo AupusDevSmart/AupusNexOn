@@ -56,7 +56,10 @@ export function useCurvaDia(equipamentoId?: string | null, intervalo: 1 | 5 | 15
 export function useDados(equipamentoId?: string | null, intervalMs = 15000) {
   const [dados, setDados] = useState<Record<string, any> | null>(null);
   const [ts, setTs] = useState<string | null>(null);
+  // Primeira resposta (ok ou erro) já chegou? Antes disso a tela não pode dizer "Sem comunicação".
+  const [carregado, setCarregado] = useState(false);
   useEffect(() => {
+    setCarregado(false);
     if (!equipamentoId) { setDados(null); return; }
     let vivo = true;
     const load = () =>
@@ -67,12 +70,13 @@ export function useDados(equipamentoId?: string | null, intervalMs = 15000) {
           setDados((dado?.dados ?? null) as any);
           setTs((dado?.created_at ?? dado?.timestamp ?? null) as any);
         })
-        .catch(() => { if (vivo) setDados(null); });
+        .catch(() => { if (vivo) setDados(null); })
+        .finally(() => { if (vivo) setCarregado(true); });
     load();
     const t = setInterval(load, intervalMs);
     return () => { vivo = false; clearInterval(t); };
   }, [equipamentoId, intervalMs]);
-  return { dados, ts };
+  return { dados, ts, carregado };
 }
 
 /** Idade legível de uma leitura (ms → "agora"/"há 5 min"/"há 3 h"/"há 23 dias"). */
