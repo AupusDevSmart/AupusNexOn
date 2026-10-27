@@ -177,7 +177,7 @@ const SERIES = [
   { id: 'bomba', label: 'Bomba', color: corSerie(1), pick: (d: Record<string, unknown>) => kw(getPath(d, 'bomba.Pt') ?? d?.bomba_Pt ?? getPath(d, 'bomba.potencia') ?? d?.bomba_potencia) },
 ];
 
-function GraficoPotencia({ equipamentoId, resumo }: { equipamentoId: string; resumo: string }) {
+function GraficoPotencia({ equipamentoId, resumo, titulo = 'Gráfico de potência' }: { equipamentoId: string; resumo: string; titulo?: string }) {
   const [open, setOpen] = useState(false);
   const [per, setPer] = useState<Periodo>('hoje');
   // `fimBusca` entra no memo: um `new Date()` solto no render mudava a cada render e refazia a busca em loop.
@@ -202,7 +202,7 @@ function GraficoPotencia({ equipamentoId, resumo }: { equipamentoId: string; res
     <div style={{ ...s.card, padding: '0 16px' }}>
       <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} style={{ width: '100%', minHeight: 52, display: 'flex', alignItems: 'center', gap: 12 }}>
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={VERDE} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 17l5-6 4 3 5-7 4 4" /><path d="M3 21h18" /></svg>
-        <span style={{ flex: 1, fontSize: 15, fontWeight: 800 }}>Gráfico de potência</span>
+        <span style={{ flex: 1, fontSize: 15, fontWeight: 800 }}>{titulo}</span>
         <span style={{ fontSize: 13, color: NX.mudo }}>{resumo}</span>
         <IcoChevron size={18} style={{ transition: 'transform .15s', transform: `rotate(${open ? 180 : 0}deg)` }} />
       </button>
@@ -320,16 +320,20 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   // Medição elétrica: o medidor do IoT vinculado a este pivô (Vínculos → Medições; ex.: PM da
   // bomba na TON4 do pivô, fora do unifilar). Sem vínculo, a telemetria do próprio pivô.
   const [fonteMedicao, setFonteMedicao] = useState<string | null>(null);
+  const [nomeMedicao, setNomeMedicao] = useState<string | null>(null);
   useEffect(() => {
     let vivo = true;
-    setFonteMedicao(null);
+    setFonteMedicao(null); setNomeMedicao(null);
     iotApiService.powerMeterByDisjuntor(id)
-      .then((r) => { if (vivo && r?.equipamento_id) setFonteMedicao(r.equipamento_id.trim()); })
+      .then((r) => { if (vivo && r?.equipamento_id) { setFonteMedicao(r.equipamento_id.trim()); setNomeMedicao(r.nome ?? null); } })
       .catch(() => undefined);
     return () => { vivo = false; };
   }, [id]);
+  // O PM vinculado mede a BOMBA (pivô 3 e 11 dividem a mesma → mesmo PM): elétrica vem dele,
+  // ângulo/pressão/horímetro vêm da telemetria do próprio pivô. Sem PM, tudo do pivô.
   const idMedicao = fonteMedicao ?? id;
-  const { dados, ts } = useDados(idMedicao);
+  const { dados, ts } = useDados(id);
+  const { dados: dadosPm, ts: tsPm } = useDados(fonteMedicao);
   const { estado, erro, carregar, executando } = usePivoEstado(id);
   const prog = useProgramacoes(id);
   const [aba, setAba] = useState('op');
@@ -365,8 +369,12 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
 
   const g = (p: string) => getPath(dados, p);
   const num = (...ps: string[]) => { for (const p of ps) { const v = g(p); if (v != null && v !== '' && !Number.isNaN(Number(v))) return Number(v); } return null; };
-  const info = tsInfo(ts);
-  const ptKw = kw(g('Pt') ?? g('power.active_total'));
+  // Elétrica: do PM da bomba quando vinculado; senão da telemetria do pivô.
+  const ge = (p: string) => getPath(fonteMedicao ? dadosPm : dados, p);
+  const numE = (...ps: string[]) => { for (const p of ps) { const v = ge(p); if (v != null && v !== '' && !Number.isNaN(Number(v))) return Number(v); } return null; };
+  const maisRecente = [ts, tsPm].filter((x): x is string => !!x).sort((a, c) => new Date(a).getTime() - new Date(c).getTime()).pop() ?? null;
+  const info = tsInfo(maisRecente);
+  const ptKw = kw(ge('Pt') ?? ge('power.active_total'));
 
   const st = estado?.pivo.status;
   const b = estado?.bombeamento ?? null;
@@ -455,43 +463,58 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
     }
   };
 
-  const media = (...ks: string[]) => { const v = ks.map((k) => num(k)).filter((x): x is number => x != null); return v.length ? v.reduce((a, c) => a + c, 0) / v.length : null; };
+  const media = (...ks: string[]) => { const v = ks.map((k) => numE(k)).filter((x): x is number => x != null); return v.length ? v.reduce((a, c) => a + c, 0) / v.length : null; };
   const tensao = media('Vab', 'Vbc', 'Vca') ?? media('Va', 'Vb', 'Vc');
   const corrente = media('Ia', 'Ib', 'Ic');
   const kpis = [
     { k: 'Ângulo', v: angTxt },
     { k: 'Pressão', v: num('pressao') != null ? `${fmt(num('pressao'), 1)} bar` : '—' },
-    { k: 'Tensão', v: tensao != null ? `${fmt(tensao, 0)} V` : '—' },
-    { k: 'Potência total', v: ptKw != null ? `${fmt(ptKw, 1)} kW` : '—' },
-    { k: 'Corrente pivô', v: corrente != null ? `${fmt(corrente, 1)} A` : '—' },
     { k: 'Horímetro', v: num('horimetro') != null ? `${fmt(num('horimetro'), 0)} h` : '—' },
+    // Elétrica no card do pivô só quando NÃO há PM da bomba (aí ela fica no Bombeamento).
+    ...(fonteMedicao ? [] : [
+      { k: 'Tensão', v: tensao != null ? `${fmt(tensao, 0)} V` : '—' },
+      { k: 'Potência total', v: ptKw != null ? `${fmt(ptKw, 1)} kW` : '—' },
+      { k: 'Corrente pivô', v: corrente != null ? `${fmt(corrente, 1)} A` : '—' },
+    ]),
   ];
-  const bNum = (...ks: string[]) => num(...ks.map((k) => `bomba.${k}`), ...ks.map((k) => `bomba_${k}`));
+  const bNum = (...ks: string[]) => numE(...ks.map((k) => `bomba.${k}`), ...ks.map((k) => `bomba_${k}`));
+  // Sem medição própria da bomba (bomba.*), vale o PM vinculado ao pivô (mesmo das tensões).
+  // FP só com carga: com corrente zero o PM reporta 0,999, que não quer dizer nada.
+  const bPt = bNum('Pt', 'potencia') != null ? kw(bNum('Pt', 'potencia')) : ptKw;
+  const stVa = numE('St');
+  const bFp = bNum('FPt', 'fp') ?? (stVa ? Math.min(1, Math.abs(Number(ge('Pt'))) / stVa) : null);
+  const bCorr = corrente;
   const bKpis = [
-    { k: 'Pressão recalque', v: bNum('pressao') != null ? `${fmt(bNum('pressao'), 1)} bar` : '—' },
-    { k: 'Potência', v: bNum('Pt', 'potencia') != null ? `${fmt(kw(bNum('Pt', 'potencia')), 1)} kW` : '—' },
-    { k: 'FP', v: bNum('FPt', 'fp') != null ? fmt(bNum('FPt', 'fp'), 2) : '—' },
-    { k: 'Temp. motor', v: bNum('temperatura') != null ? `${fmt(bNum('temperatura'), 0)} °C` : '—' },
-    { k: 'Horímetro', v: bNum('horimetro') != null ? `${fmt(bNum('horimetro'), 0)} h` : '—' },
-    { k: 'Partidas', v: bNum('partidas') != null ? fmt(bNum('partidas'), 0) : '—' },
-  ];
+    { k: 'Pressão recalque', v: bNum('pressao') != null ? `${fmt(bNum('pressao'), 1)} bar` : null },
+    { k: 'Potência', v: bPt != null ? `${fmt(bPt, 1)} kW` : '—' },
+    { k: 'FP', v: bFp != null ? fmt(bFp, 2) : bPt === 0 ? 'sem carga' : '—' },
+    { k: 'Corrente média', v: bCorr != null ? `${fmt(bCorr, 1)} A` : '—' },
+    { k: 'Temp. motor', v: bNum('temperatura') != null ? `${fmt(bNum('temperatura'), 0)} °C` : null },
+    { k: 'Horímetro', v: bNum('horimetro') != null ? `${fmt(bNum('horimetro'), 0)} h` : null },
+    { k: 'Partidas', v: bNum('partidas') != null ? fmt(bNum('partidas'), 0) : null },
+  ].filter((k): k is { k: string; v: string } => k.v != null);
+  // Tensão de linha (Vab…) quando o medidor manda; senão fase-neutro (Va…) com rótulo A/B/C.
   const fases: Array<[string, string, string]> = (['a', 'b', 'c'] as const).map((f) => {
     const ff = { a: 'Vab', b: 'Vbc', c: 'Vca' }[f];
-    const v = bNum(ff) ?? num(ff) ?? num(`V${f}`), i = bNum(`I${f}`) ?? num(`I${f}`);
-    return [ff.slice(1).toUpperCase(), v != null ? `${fmt(v, 0)} V` : '—', i != null ? `${fmt(i, 1)} A` : '—'];
+    const vl = bNum(ff) ?? numE(ff), v = vl ?? numE(`V${f}`), i = bNum(`I${f}`) ?? numE(`I${f}`);
+    return [vl != null ? ff.slice(1).toUpperCase() : f.toUpperCase(), v != null ? `${fmt(v, 0)} V` : '—', i != null ? `${fmt(i, 1)} A` : '—'];
   });
   const bStatus = !b ? '—' : falhaPressao ? 'Desligada · falha de pressão' : emUsoPor ? `Em uso pelo ${emUsoPor}` : b.ligada === 1 ? 'Ligada'
     : b.ligada === 0 ? 'Desligada' : girando && !cfgGiro.semAgua ? 'Ligada' : girando ? 'Desligada · girando sem água' : 'Sem retorno';
   const bCor = !b ? NX.neutro : falhaPressao ? NX.bad : emUsoPor || b.ligada === 1 || (b.ligada == null && girando && !cfgGiro.semAgua) ? NX.ok : NX.neutro;
-  const bSub = !b ? 'Não configurado' : `${b.ton_nome ?? 'TON'}${b.ton_removida ? ' (removida!)' : ''} · ${b.compartilhada_com.length ? 'sistema conjugado' : 'ligada junto com o pivô'}`;
+  const bSub = (!b ? (fonteMedicao ? 'Comando não configurado' : 'Não configurado')
+    : `${b.ton_nome ?? 'TON'}${b.ton_removida ? ' (removida!)' : ''} · ${b.compartilhada_com.length ? `compartilhada com ${b.compartilhada_com.join(', ')}` : 'ligada junto com o pivô'}`)
+    + (nomeMedicao && bNum('Pt', 'potencia') == null ? ` · medição ${nomeMedicao.replace(/_/g, ' ')}` : '');
 
   // Passos da última sequência entram em Registros (✓✓ = confirmado pelo equipamento).
   const regSeq: Reg[] = useMemo(() => (seq?.passos ?? []).map((p) => ({
     t: new Date(p.t).getTime(), txt: p.msg, quem: p.etapa === 'comando' ? 'Comando' : 'Sistema', ok: p.ok === true, ruim: p.ok === false,
   })), [seq?.passos]);
 
-  const { res: custoDia } = useCustos(id, 'dia');
-  const { res: custoSel } = useCustos(id, custoPer, undefined, modal === 'cost');
+  // Energia e custo medidos pelo PM da bomba (compartilhado: pivô 3 e 11 mostram o mesmo).
+  const { res: custoDia } = useCustos(idMedicao, 'dia');
+  const { res: custoSel } = useCustos(idMedicao, custoPer, undefined, modal === 'cost');
+  const rotuloEnergia = fonteMedicao ? (b?.compartilhada_com.length ? 'Energia do bombeamento (compartilhado)' : 'Energia do bombeamento') : 'Energia do pivô';
 
   // Botão principal
   const cmdOff = on ? !estado?.pivo.comandos.desligar && !b : !estado?.pivo.comandos[ultima.direcao === 'Avanço' ? 'direita' : 'esquerda'];
@@ -578,7 +601,7 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
                   </span>
                   <span style={{ fontSize: 13, fontWeight: 800, color: bCor, textAlign: 'right' }}>{bStatus}</span>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', rowGap: 12, padding: '12px 0' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(3, bKpis.length)}, minmax(0, 1fr))`, rowGap: 12, padding: '12px 0' }}>
                   {bKpis.map((k, i) => (
                     <div key={k.k} style={kpiCel(i)}>
                       <span style={{ fontSize: 15, fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{k.v}</span>
@@ -609,7 +632,7 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
               <span style={{ fontSize: 22, fontWeight: 800, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{brl(custoDia?.custos.custo_total)}</span>
             </span>
             <span style={{ ...col(2), padding: '0 20px', borderLeft: `1px solid ${NX.linha}`, minWidth: 0 }}>
-              <span style={{ fontSize: 13, color: NX.mudo, whiteSpace: 'nowrap' }}>Energia do pivô</span>
+              <span style={{ fontSize: 13, color: NX.mudo, whiteSpace: 'nowrap' }}>{rotuloEnergia}</span>
               <span style={{ fontSize: 22, fontWeight: 800, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{custoDia ? `${fmt(custoDia.consumo.energia_total_kwh, 0)} kWh` : '—'}</span>
             </span>
             <span style={{
@@ -620,7 +643,7 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
             </span>
           </button>
 
-          <GraficoPotencia equipamentoId={idMedicao} resumo={ptKw != null ? `${fmt(ptKw, 1)} kW agora` : '—'} />
+          <GraficoPotencia equipamentoId={idMedicao} titulo={fonteMedicao ? 'Potência do bombeamento' : 'Gráfico de potência'} resumo={ptKw != null ? `${fmt(ptKw, 1)} kW agora` : '—'} />
 
           <RegistrosPivo equipamentoId={id} extra={regSeq} estreito={estreito} />
         </div>
@@ -694,7 +717,7 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
             <span>Total</span><span>{brl(custoSel?.custos.custo_total)}</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 13, color: NX.mudo }}>
-            <span>Pivô {custoSel ? fmt(custoSel.consumo.energia_total_kwh, 0) : '—'} kWh · {brl(custoSel?.custos.custo_total)} &nbsp;|&nbsp; Bombeamento —</span>
+            <span>{fonteMedicao ? 'Bombeamento' : 'Pivô'} {custoSel ? fmt(custoSel.consumo.energia_total_kwh, 0) : '—'} kWh · {brl(custoSel?.custos.custo_total)}{fonteMedicao && b?.compartilhada_com.length ? ` · bomba compartilhada com ${b.compartilhada_com.join(', ')}` : ''}</span>
             <span style={{ whiteSpace: 'nowrap' }}>R$/mm/ha: —</span>
           </div>
         </div>
