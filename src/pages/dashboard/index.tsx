@@ -258,15 +258,18 @@ export function DashboardPage() {
                 className="!mb-2"
                 title="Centro de Operação de Ativos (COA)"
                 actions={
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => refresh()}
-                    disabled={isLoading}
-                  >
-                    <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-                    Atualizar
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    {ehEquipe && <PainelComunicacao />}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => refresh()}
+                      disabled={isLoading}
+                    >
+                      <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+                      Atualizar
+                    </Button>
+                  </div>
                 }
               />
 
@@ -329,8 +332,6 @@ export function DashboardPage() {
                   color="text-indigo-500"
                 />
               </div>
-
-              {ehEquipe && <PainelComunicacao />}
 
               {/* Estatísticas Adicionais - Estilo COA Antigo */}
               {/* COMENTADO: Cards de estatísticas secundárias - podem ser reativados futuramente */}

@@ -780,6 +780,18 @@ export function InversorSheet({ equipamentoId, nome, onClose, onConfigurarPontos
     { label: 'Tensão MPPT · V', unit: 'V', items: mppts.map((m) => ({ id: `m${m.n}`, label: String(m.n), short: `MPPT ${m.n}`, pick: pickN(`dc.mppt${m.n}_voltage`) })) },
   ];
 
+  const energiaHoje = (
+    <Bloco style={{ padding: '14px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+      <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <span style={{ fontSize: 13, color: NX.mudo }}>Energia total · hoje</span>
+        <span style={{ fontSize: 30, lineHeight: '36px', fontWeight: 800, letterSpacing: -0.5, fontVariantNumeric: 'tabular-nums' }}>
+          {fmt(num('energy.daily_yield'), 1)}<span style={{ fontSize: 16, fontWeight: 700, color: NX.mudo, marginLeft: 6 }}>kWh</span>
+        </span>
+      </span>
+      {tone === 'warn' && <Exclama title={stText} />}
+    </Bloco>
+  );
+
   return (
     <NxShell
       title={nomeEq}
@@ -797,54 +809,39 @@ export function InversorSheet({ equipamentoId, nome, onClose, onConfigurarPontos
         </>
       ) : (
         <div style={{ padding: '20px 24px 28px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <Duas>
-            <Coluna>
-              {!podeComandar ? null : temCmd ? (
-                <div style={{ display: 'grid', gridTemplateColumns: `repeat(${botoes.length}, minmax(0, 1fr))`, gap: 8 }}>
-                  {botoes.map((b) => {
-                    const c = b === 'Ligar' ? cmdLigar : cmdDesligar;
-                    const busy = !!enviando;
-                    return (
-                      <button key={b} type="button" disabled={busy || !c} onClick={() => setConfirmar(b)}
-                        style={s.cmd(busy || !c ? 'busy' : b === 'Desligar' ? 'outline' : 'primary')}>
-                        {busy ? 'Executando…' : b}
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : (
-                <>
-                  <button type="button" disabled style={s.cmd('busy')}>{gerando ? 'Desligar' : 'Ligar'}</button>
-                  <span style={{ fontSize: 12, color: NX.mudo, textAlign: 'center' }}>Sem ponto Ligar/Desligar vinculado a este inversor (Topologia → Configurar I/O).</span>
-                </>
-              )}
-              <Bloco style={{ padding: '14px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <span style={{ fontSize: 13, color: NX.mudo }}>Energia total · hoje</span>
-                  <span style={{ fontSize: 30, lineHeight: '36px', fontWeight: 800, letterSpacing: -0.5, fontVariantNumeric: 'tabular-nums' }}>
-                    {fmt(num('energy.daily_yield'), 1)}<span style={{ fontSize: 16, fontWeight: 700, color: NX.mudo, marginLeft: 6 }}>kWh</span>
-                  </span>
-                </span>
-                {tone === 'warn' && <Exclama title={stText} />}
-              </Bloco>
-            </Coluna>
-            <Coluna>
-              <LinhasNx titulo="Grandezas" rows={[
-                { k: 'Ativa', v: pativa != null && pct != null ? (
-                  <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
-                    <span>{fmt(pativa, 1)} kW</span>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: NX.mudo }}>{Math.round(pct)}% da potência nominal</span>
-                  </span>
-                ) : pativa != null ? `${fmt(pativa, 1)} kW` : '—' },
-                { k: 'Reativa', v: qkvar != null ? `${fmt(qkvar, 1)} kvar` : '—' },
-                { k: 'Entrada CC', v: dcMed != null ? `${fmt(dcMed, 1)} kW` : dcCalc != null ? `${fmt(dcCalc, 1)} kW (calc.)` : '—' },
-                { k: 'Energia acumulada', v: acumulada },
-                { k: 'Aparente', v: sMed != null ? `${fmt(sMed, 1)} kVA` : sCalc != null ? `${fmt(sCalc, 1)} kVA (calc.)` : '—', opcional: true },
-                { k: 'Fator de potência', v: fpMed != null ? fmt(fpMed, 2) : fpCalc != null ? `${fmt(fpCalc, 2)} (calc.)` : '—', opcional: true },
-                { k: 'Frequência', v: num('power.frequency') != null ? `${fmt(num('power.frequency'), 2)} Hz` : '—', opcional: true },
-              ]} />
-            </Coluna>
-          </Duas>
+          {/* Comandos (só se houver ponto vinculado) e energia do dia numa faixa curta; grandezas embaixo
+              em largura total (em duas colunas o cartão de energia esticava até a altura das grandezas). */}
+          {podeComandar && temCmd ? (
+            <Duas>
+              <div style={{ display: 'grid', gridTemplateColumns: `repeat(${botoes.length}, minmax(0, 1fr))`, gap: 8, alignContent: 'center' }}>
+                {botoes.map((b) => {
+                  const c = b === 'Ligar' ? cmdLigar : cmdDesligar;
+                  const busy = !!enviando;
+                  return (
+                    <button key={b} type="button" disabled={busy || !c} onClick={() => setConfirmar(b)}
+                      style={s.cmd(busy || !c ? 'busy' : b === 'Desligar' ? 'outline' : 'primary')}>
+                      {busy ? 'Executando…' : b}
+                    </button>
+                  );
+                })}
+              </div>
+              {energiaHoje}
+            </Duas>
+          ) : energiaHoje}
+          <LinhasNx titulo="Grandezas" rows={[
+            { k: 'Ativa', v: pativa != null && pct != null ? (
+              <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                <span>{fmt(pativa, 1)} kW</span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: NX.mudo }}>{Math.round(pct)}% da potência nominal</span>
+              </span>
+            ) : pativa != null ? `${fmt(pativa, 1)} kW` : '—' },
+            { k: 'Reativa', v: qkvar != null ? `${fmt(qkvar, 1)} kvar` : '—' },
+            { k: 'Entrada CC', v: dcMed != null ? `${fmt(dcMed, 1)} kW` : dcCalc != null ? `${fmt(dcCalc, 1)} kW (calc.)` : '—' },
+            { k: 'Energia acumulada', v: acumulada },
+            { k: 'Aparente', v: sMed != null ? `${fmt(sMed, 1)} kVA` : sCalc != null ? `${fmt(sCalc, 1)} kVA (calc.)` : '—', opcional: true },
+            { k: 'Fator de potência', v: fpMed != null ? fmt(fpMed, 2) : fpCalc != null ? `${fmt(fpCalc, 2)} (calc.)` : '—', opcional: true },
+            { k: 'Frequência', v: num('power.frequency') != null ? `${fmt(num('power.frequency'), 2)} Hz` : '—', opcional: true },
+          ]} />
 
           <GraficoNx equipamentoId={equipamentoId} catalogo={catalogo} padrao={['pAt']}
             resumo={pativa != null ? `${fmt(pativa, 1)} kW agora` : undefined} />

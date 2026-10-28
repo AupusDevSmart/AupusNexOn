@@ -273,7 +273,7 @@ export function DisjuntorSheet({ equipamentoId, onClose, onConfigurarPontos }: {
     { k: 'Frequência', v: num('Freq') != null ? `${fmt(num('Freq'), 2)} Hz` : '—' },
     In
       ? { k: 'Carregamento', v: `${fmt((iMax / In) * 100, 0)}%`, sub: `${fmt(iMax, 0)} A de ${fmt(In, 0)} A`, opcional: !medDados }
-      : { k: 'Corrente máxima', v: medDados ? `${fmt(iMax, 0)} A` : '—', sub: 'Informe a corrente nominal no cadastro p/ ver o carregamento', opcional: true },
+      : { k: 'Corrente máxima', v: medDados ? `${fmt(iMax, 0)} A` : '—', opcional: true },
   ];
 
   const consumo = custosHoje?.consumo;
@@ -432,9 +432,6 @@ export function DisjuntorSheet({ equipamentoId, onClose, onConfigurarPontos }: {
                         );
                       })}
                     </div>
-                  )}
-                  {bundle.comandos.length === 0 && (
-                    <span style={{ fontSize: 12, color: NX.warn, textAlign: 'center' }}>Comando declarado, mas sem vínculo a canal (BO) da TON — configure em "Configurações SCS".</span>
                   )}
                   {local === true && <span style={{ fontSize: 12, color: NX.mudo, textAlign: 'center' }}>Disjuntor em modo local: comando remoto bloqueado.</span>}
                   {ultimo && <span style={{ fontSize: 12, fontWeight: 700, color: ultimo.ok ? NX.ok : NX.bad }}>{ultimo.texto}</span>}
