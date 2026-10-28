@@ -297,8 +297,7 @@ export function DisjuntorSheet({ equipamentoId, onClose, onConfigurarPontos }: {
       ? `Medição declarada como IED, mas nenhum relé vinculado a este ${oQue} na Topologia.`
       : !temPm && !temIed ? `Sem medição declarada neste ${oQue}.` : null;
 
-  // Cartão "Consumida / Injetada hoje" (PM) — na coluna da medição ou, num DJ só com
-  // medição, embaixo do status (equilibra as duas colunas).
+  // Cartão "Consumida / Injetada hoje" (PM) — na coluna da medição, acima da potência.
   const blocoEnergia = (
                     <Bloco style={{ padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 16 }}>
                       <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
@@ -331,14 +330,15 @@ export function DisjuntorSheet({ equipamentoId, onClose, onConfigurarPontos }: {
                 <Bloco style={{ padding: '14px 16px', fontSize: 13, color: NX.mudo }}>{notaMed ?? 'Sem medição.'}</Bloco>
               ) : (
                 <>
-                  {temPm && !soMedicao && blocoEnergia}
+                  {temPm && blocoEnergia}
                   <LinhasNx titulo="Potência" rows={potRows} />
                 </>
               )}
     </>
   );
-  // DJ só com medição e sem o par energia/potência (nota, SSU, sem leitura): status em cima, conteúdo embaixo.
-  const umaColuna = soMedicao && !(medOk && !notaMed && temPm && !pmEhSsu);
+  // DJ só com medição (sem status/comando): status em cima e a medição embaixo, em largura total —
+  // em duas colunas o cartão de energia esticava até a altura da potência.
+  const umaColuna = soMedicao;
 
   return (
     <NxShell
@@ -440,7 +440,6 @@ export function DisjuntorSheet({ equipamentoId, onClose, onConfigurarPontos }: {
                   {ultimo && <span style={{ fontSize: 12, fontWeight: 700, color: ultimo.ok ? NX.ok : NX.bad }}>{ultimo.texto}</span>}
                 </>
               )}
-              {soMedicao && temPm && blocoEnergia}
             </Coluna>
             <Coluna>
               {colunaMedicao}

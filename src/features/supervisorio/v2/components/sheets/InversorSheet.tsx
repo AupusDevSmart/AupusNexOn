@@ -849,67 +849,64 @@ export function InversorSheet({ equipamentoId, nome, onClose, onConfigurarPontos
           <GraficoNx equipamentoId={equipamentoId} catalogo={catalogo} padrao={['pAt']}
             resumo={pativa != null ? `${fmt(pativa, 1)} kW agora` : undefined} />
 
-          <Duas>
-            <FasesNx rows={fases} ff={mostraFF} onFF={(v) => setFf((temFF || !temFN) ? v : !v)} temToggle={temFF || temFN} nota={notaTensao} />
-            <Coluna>
-              <Bloco style={{ overflow: 'hidden' }}>
-                <div style={{ padding: '12px 16px 0 16px' }}><span style={{ fontSize: 15, fontWeight: 800 }}>Corrente contínua</span></div>
-                <button type="button" aria-expanded={mpptOpen} disabled={!mppts.length && !strings.length} onClick={() => setMpptOpen((v) => !v)}
-                  style={{ width: '100%', minHeight: 56, display: 'flex', alignItems: 'center', gap: 12, padding: '0 16px', boxSizing: 'border-box' }}>
-                  <span style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <span style={{ fontSize: 15, fontWeight: 700 }}>MPPT e strings</span>
-                    <span style={{ fontSize: 12, color: NX.mudo }}>{mppts.length || strings.length ? `${mppts.length} MPPT · ${emUso.length} strings em uso${naoConectadas ? ` · ${naoConectadas} não conectada${naoConectadas > 1 ? 's' : ''}` : ''}` : '—'}</span>
-                  </span>
-                  {baixas.length > 0 && (
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 800, color: NX.warn }}>
-                      <span style={{ width: 8, height: 8, borderRadius: 4, background: NX.warn }} />{baixas.length} em alerta
-                    </span>
-                  )}
-                  {(mppts.length > 0 || strings.length > 0) && <IcoChevron size={18} style={{ flex: 'none', transition: 'transform .15s', transform: `rotate(${mpptOpen ? 180 : 0}deg)` }} />}
-                </button>
-                {mpptOpen && (
-                  <div style={{ padding: '0 16px 8px 16px' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', padding: '8px 0', borderTop: `1px solid ${NX.linha}`, fontSize: 11, fontWeight: 700, letterSpacing: 0.4, color: NX.mudo }}>
-                      <span>MPPT · TENSÃO</span><span style={{ textAlign: 'right' }}>STRING · CORRENTE</span>
+          {/* Por fase, CC e temperatura um embaixo do outro, em largura total (lado a lado a CC ficava espremida). */}
+          <FasesNx rows={fases} ff={mostraFF} onFF={(v) => setFf((temFF || !temFN) ? v : !v)} temToggle={temFF || temFN} nota={notaTensao} />
+          <Bloco style={{ overflow: 'hidden' }}>
+            <div style={{ padding: '12px 16px 0 16px' }}><span style={{ fontSize: 15, fontWeight: 800 }}>Corrente contínua</span></div>
+            <button type="button" aria-expanded={mpptOpen} disabled={!mppts.length && !strings.length} onClick={() => setMpptOpen((v) => !v)}
+              style={{ width: '100%', minHeight: 56, display: 'flex', alignItems: 'center', gap: 12, padding: '0 16px', boxSizing: 'border-box' }}>
+              <span style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <span style={{ fontSize: 15, fontWeight: 700 }}>MPPT e strings</span>
+                <span style={{ fontSize: 12, color: NX.mudo }}>{mppts.length || strings.length ? `${mppts.length} MPPT · ${emUso.length} strings em uso${naoConectadas ? ` · ${naoConectadas} não conectada${naoConectadas > 1 ? 's' : ''}` : ''}` : '—'}</span>
+              </span>
+              {baixas.length > 0 && (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 800, color: NX.warn }}>
+                  <span style={{ width: 8, height: 8, borderRadius: 4, background: NX.warn }} />{baixas.length} em alerta
+                </span>
+              )}
+              {(mppts.length > 0 || strings.length > 0) && <IcoChevron size={18} style={{ flex: 'none', transition: 'transform .15s', transform: `rotate(${mpptOpen ? 180 : 0}deg)` }} />}
+            </button>
+            {mpptOpen && (
+              <div style={{ padding: '0 16px 8px 16px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', padding: '8px 0', borderTop: `1px solid ${NX.linha}`, fontSize: 11, fontWeight: 700, letterSpacing: 0.4, color: NX.mudo }}>
+                  <span>MPPT · TENSÃO</span><span style={{ textAlign: 'right' }}>STRING · CORRENTE</span>
+                </div>
+                {(mppts.length ? mppts : [{ n: 0, v: 0 }]).map((m, k) => {
+                  const sts = mppts.length ? strings.slice(k * porMppt, (k + 1) * porMppt) : strings;
+                  return (
+                    <div key={m.n} style={{ borderTop: `1px solid ${NX.linha}`, padding: '8px 0', display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', alignItems: 'start' }}>
+                      <span style={{ display: 'flex', flexDirection: 'column' }}>
+                        {mppts.length > 0 && (<>
+                          <span style={{ fontSize: 14, fontWeight: 800 }}>MPPT {m.n}</span>
+                          <span style={{ fontSize: 13, color: NX.mudo, fontVariantNumeric: 'tabular-nums' }}>{fmt(m.v, 0)} V</span>
+                        </>)}
+                      </span>
+                      <span style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        {sts.map((x) => (
+                          <span key={x.n} style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, fontSize: 13 }}>
+                            <span style={{ color: NX.mudo }}>String {x.n}</span>
+                            {stringNaoConectada(perfilStr, x.n) ? (
+                              <span style={{ fontSize: 12, color: NX.mudo, minWidth: 52, textAlign: 'right' }} title="Entrada sem string (projeto) — fora dos alertas">não conectada</span>
+                            ) : (
+                              <span style={{ fontWeight: 800, fontVariantNumeric: 'tabular-nums', minWidth: 52, textAlign: 'right', color: corString(x.n, x.v) }}>{fmt(x.v, 1)} A</span>
+                            )}
+                          </span>
+                        ))}
+                      </span>
                     </div>
-                    {(mppts.length ? mppts : [{ n: 0, v: 0 }]).map((m, k) => {
-                      const sts = mppts.length ? strings.slice(k * porMppt, (k + 1) * porMppt) : strings;
-                      return (
-                        <div key={m.n} style={{ borderTop: `1px solid ${NX.linha}`, padding: '8px 0', display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', alignItems: 'start' }}>
-                          <span style={{ display: 'flex', flexDirection: 'column' }}>
-                            {mppts.length > 0 && (<>
-                              <span style={{ fontSize: 14, fontWeight: 800 }}>MPPT {m.n}</span>
-                              <span style={{ fontSize: 13, color: NX.mudo, fontVariantNumeric: 'tabular-nums' }}>{fmt(m.v, 0)} V</span>
-                            </>)}
-                          </span>
-                          <span style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                            {sts.map((x) => (
-                              <span key={x.n} style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, fontSize: 13 }}>
-                                <span style={{ color: NX.mudo }}>String {x.n}</span>
-                                {stringNaoConectada(perfilStr, x.n) ? (
-                                  <span style={{ fontSize: 12, color: NX.mudo, minWidth: 52, textAlign: 'right' }} title="Entrada sem string (projeto) — fora dos alertas">não conectada</span>
-                                ) : (
-                                  <span style={{ fontWeight: 800, fontVariantNumeric: 'tabular-nums', minWidth: 52, textAlign: 'right', color: corString(x.n, x.v) }}>{fmt(x.v, 1)} A</span>
-                                )}
-                              </span>
-                            ))}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </Bloco>
-              <LinhasNx titulo="Temperatura e isolamento" rows={[
-                { k: 'Temperatura interna', v: num('temperature.internal') != null ? `${fmt(num('temperature.internal'), 1)} °C` : '—' },
-                { k: 'Resistência de isolamento', v: isol == null ? '—' : isol >= 1000 ? `${fmt(isol / 1000, 2)} MΩ` : `${fmt(isol, 0)} kΩ` },
-                { k: 'Tensão do barramento', v: num('protection.bus_voltage') != null ? `${fmt(num('protection.bus_voltage'), 0)} V` : '—', opcional: true },
-                { k: 'Tempo de operação hoje', v: minHoje != null ? `${fmt(minHoje / 60, 1)} h` : '—', opcional: true },
-                { k: 'Tempo de operação total', v: num('energy.total_running_time') != null ? `${fmt(num('energy.total_running_time'), 0)} h` : '—', opcional: true },
-                ...(temFalhas ? [{ k: 'Falhas', v: falhasTxt, cor: ativas.length ? COR.bad : undefined }] : []),
-              ]} />
-            </Coluna>
-          </Duas>
+                  );
+                })}
+              </div>
+            )}
+          </Bloco>
+          <LinhasNx titulo="Temperatura e isolamento" rows={[
+            { k: 'Temperatura interna', v: num('temperature.internal') != null ? `${fmt(num('temperature.internal'), 1)} °C` : '—' },
+            { k: 'Resistência de isolamento', v: isol == null ? '—' : isol >= 1000 ? `${fmt(isol / 1000, 2)} MΩ` : `${fmt(isol, 0)} kΩ` },
+            { k: 'Tensão do barramento', v: num('protection.bus_voltage') != null ? `${fmt(num('protection.bus_voltage'), 0)} V` : '—', opcional: true },
+            { k: 'Tempo de operação hoje', v: minHoje != null ? `${fmt(minHoje / 60, 1)} h` : '—', opcional: true },
+            { k: 'Tempo de operação total', v: num('energy.total_running_time') != null ? `${fmt(num('energy.total_running_time'), 0)} h` : '—', opcional: true },
+            ...(temFalhas ? [{ k: 'Falhas', v: falhasTxt, cor: ativas.length ? COR.bad : undefined }] : []),
+          ]} />
 
           <Registros equipamentoId={equipamentoId} />
         </div>
