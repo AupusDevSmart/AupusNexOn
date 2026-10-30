@@ -9,6 +9,8 @@ import { NX, s, NxSwitch, NxDialogHead } from './nxMock';
  */
 
 export type Direcao = 'Avanço' | 'Reverso';
+/** Valor gravado (Avanço/Reverso, = girar_direita/girar_esquerda) → o que aparece na tela. */
+export const DIRECAO_LABEL: Record<Direcao, string> = { 'Avanço': 'Direita', 'Reverso': 'Esquerda' };
 export interface FaixaCanhao { id: string; liga: number; desliga: number }
 export interface ConfigIrrigacao { direcao: Direcao; percentual: number; semAgua: boolean; canhao: boolean; faixasCanhao: FaixaCanhao[] }
 export type Parada = { tipo: 'semParar' } | { tipo: 'porAngulo'; angulo: number } | { tipo: 'porVoltas'; voltas: number };
@@ -41,10 +43,10 @@ const fimDe = (ini: string, min?: number | null) => {
   const t = (h * 60 + m + min) % 1440;
   return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
 };
-/** "Seg a sex · 21:00 → 05:00" / "100% · Molhado · Avanço". */
+/** "Seg a sex · 21:00 → 05:00" / "100% · Molhado · Direita". */
 export function textoProgramacao(p: Programacao) {
   const fim = fimDe(p.hora_inicio, p.duracao_min);
-  const dir = p.sentido === 'horario' ? 'Avanço' : 'Reverso';
+  const dir = p.sentido === 'horario' ? 'Direita' : 'Esquerda';
   return {
     quando: `${diasTxt(p.dias)} · ${p.hora_inicio}${fim ? ` → ${fim}` : ''}`,
     det: `${p.com_agua === false ? `Seco · ${dir}` : `${p.velocidade != null ? `${fmt(p.velocidade, 0)}%` : '—'} · Molhado · ${dir}`}${p.ativo ? '' : ' · pausado'}`,
@@ -394,7 +396,7 @@ export function IrrigacaoAvancada({
       <span style={{ fontSize: 15, fontWeight: 700 }}>Direção</span>
       <div style={{ display: 'flex', padding: 3, borderRadius: 12, background: NX.seg }}>
         {(['Avanço', 'Reverso'] as const).map((d) => (
-          <button key={d} type="button" aria-pressed={cfg.direcao === d} onClick={() => setCfg((c) => ({ ...c, direcao: d }))} style={s.seg(cfg.direcao === d)}>{d}</button>
+          <button key={d} type="button" aria-pressed={cfg.direcao === d} onClick={() => setCfg((c) => ({ ...c, direcao: d }))} style={s.seg(cfg.direcao === d)}>{DIRECAO_LABEL[d]}</button>
         ))}
       </div>
     </div>
@@ -644,4 +646,4 @@ export function IrrigacaoAvancada({
 }
 
 export const tituloEnvio = (m: Modo) => (m === 'simples' ? 'Iniciar irrigação simples?' : m === 'angulo' ? 'Iniciar irrigação por ângulo?' : 'Iniciar irrigação por segmentos?');
-export const resumoConfig = (c: ConfigIrrigacao) => (c.semAgua ? `${c.direcao} · Seco` : `${c.direcao} · ${c.percentual}% · Molhado`);
+export const resumoConfig = (c: ConfigIrrigacao) => (c.semAgua ? `${DIRECAO_LABEL[c.direcao]} · Seco` : `${DIRECAO_LABEL[c.direcao]} · ${c.percentual}% · Molhado`);

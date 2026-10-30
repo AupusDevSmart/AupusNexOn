@@ -22,6 +22,7 @@ import {
 import {
   IrrigacaoAvancada, CONFIG_PADRAO, arco, tituloEnvio, resumoConfig, previsao, textoProgramacao,
   type ConfigIrrigacao, type EnvioIrrigacao, type FaixaCanhao, type Parada, type Programacao, type NovaProgramacao, type AbaIrrigacao,
+  DIRECAO_LABEL,
 } from './PivoIrrigacao';
 
 /**
@@ -78,7 +79,7 @@ const erroMsg = (e: unknown): string => {
   const x = e as { response?: { data?: { message?: string; data?: { message?: string } } }; message?: string };
   return x?.response?.data?.message ?? x?.response?.data?.data?.message ?? x?.message ?? 'Falha';
 };
-const ACAO_LABEL: Record<Acao, string> = { girar_direita: 'Ligar · Avanço', girar_esquerda: 'Ligar · Reverso', desligar: 'Desligar' };
+const ACAO_LABEL: Record<Acao, string> = { girar_direita: 'Ligar · Direita', girar_esquerda: 'Ligar · Esquerda', desligar: 'Desligar' };
 const col = (gap: number): CSSProperties => ({ display: 'flex', flexDirection: 'column', gap });
 const VERDE = '#1F7A43';
 
@@ -404,7 +405,7 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
     if (executando && seq?.acao === 'desligar') return { tone: 'ok', label: 'Normal', texto: 'Desligando…' };
     if (ligando) return { tone: 'ok', label: 'Normal', texto: b ? 'Esperando pressurização · bomba ligada' : 'Ligando…' };
     if (falha) return { tone: 'bad', label: 'Falha', texto: falhaPressao ? 'Falha de pressão · Parado' : st?.erro === 1 ? 'Falha no painel · Parado' : 'Falha na partida · Parado' };
-    if (girando) return { tone: 'ok', label: 'Normal', texto: cfgGiro.semAgua ? `Girando · ${direcaoAtual} · Seco` : `Irrigando · ${cfgGiro.percentual}% · ${direcaoAtual} · Molhado` };
+    if (girando) return { tone: 'ok', label: 'Normal', texto: cfgGiro.semAgua ? `Girando · ${DIRECAO_LABEL[direcaoAtual]} · Seco` : `Irrigando · ${cfgGiro.percentual}% · ${DIRECAO_LABEL[direcaoAtual]} · Molhado` };
     if (pausaPonta) return { tone: 'ok', label: 'Normal', texto: `Pausado pelo horário de ponta · retoma às ${pausaPonta.retoma_as}` };
     if (emUsoPor) return { tone: 'ok', label: 'Normal', texto: `Parado · Bomba em uso pelo ${emUsoPor}` };
     if (st?.desligado === 1 || st?.direita === 0 || st?.esquerda === 0) return { tone: 'ok', label: 'Normal', texto: 'Parado · Painel energizado' };
@@ -561,7 +562,7 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
         <div style={{ padding: '20px 24px 28px 24px', ...col(16) }}>
           <div style={{ display: 'grid', gridTemplateColumns: estreito ? 'minmax(0, 1fr)' : 'repeat(2, minmax(0, 1fr))', gap: 16, alignItems: 'start' }}>
             <div style={col(12)}>
-              <MapaPivo angulo={angulo} girando={girando} falha={falha} sentido={sentido} direcao={direcaoAtual} faixas={ultima.canhao ? ultima.faixasCanhao : []} />
+              <MapaPivo angulo={angulo} girando={girando} falha={falha} sentido={sentido} direcao={DIRECAO_LABEL[direcaoAtual]} faixas={ultima.canhao ? ultima.faixasCanhao : []} />
               <div style={{ ...s.card, padding: '12px 16px', ...col(4) }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={s.stDot(tone)} />
