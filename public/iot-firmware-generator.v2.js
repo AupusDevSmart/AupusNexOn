@@ -3351,8 +3351,8 @@ bool lora_ready() { return digitalRead(LORA_AUX) == HIGH; }
         const temParV2 = role === 'gateway' && (spec.lora_peers || []).some(
             (p) => ((typeof TON_CAPS !== 'undefined' && TON_CAPS[p.peer_type]) || {}).versao === 2);
         const ssuFieldSet = !temParV2 ? '' : `
-// ---- SSU (medidor da concessionaria, NBR 14522 na SU+ do satelite TON-V2) — MESMO
-//      layout do gerador TON-V2 (LORA_FIELDS_SSU_V1); mudar la' = mudar aqui. ----
+// ---- SSU (medidor da concessionaria, NBR 14522 na SU+ do satelite TON-V2) — MESMOS
+//      layouts do gerador TON-V2 (LORA_FIELDS_SSU_V1/V2); mudar la' = mudar aqui. ----
 static const LoraField LORA_FIELDS_SSU_V1[] = {
     {"NSU",     LFT_U32, 1.0f},
     {"cdo",     LFT_U8,  1.0f},
@@ -3369,6 +3369,33 @@ static const LoraField LORA_FIELDS_SSU_V1[] = {
     {"seg",     LFT_U16, 1.0f},
     {"posto",   LFT_U8,  1.0f},
     {"ssu_err", LFT_U32, 1.0f},
+    {NULL, 0, 0}
+};
+
+// v2 = v1 + fim + pulsos do minuto (satelite MESTRE-PUXA manda minutos e blocos no POLL).
+static const LoraField LORA_FIELDS_SSU_V2[] = {
+    {"NSU",     LFT_U32, 1.0f},
+    {"cdo",     LFT_U8,  1.0f},
+    {"phf",     LFT_U32, 1.0f},
+    {"phr",     LFT_U32, 1.0f},
+    {"sts",     LFT_U8,  1.0f},
+    {"qhfi",    LFT_U32, 1.0f},
+    {"qhfc",    LFT_U32, 1.0f},
+    {"qhri",    LFT_U32, 1.0f},
+    {"qhrc",    LFT_U32, 1.0f},
+    {"ke",      LFT_U32, 100000.0f},
+    {"fmt",     LFT_U8,  1.0f},
+    {"q",       LFT_U8,  1.0f},
+    {"seg",     LFT_U16, 1.0f},
+    {"posto",   LFT_U8,  1.0f},
+    {"ssu_err", LFT_U32, 1.0f},
+    {"fim",     LFT_U8,  1.0f},
+    {"mphf",    LFT_U32, 1.0f},
+    {"mphr",    LFT_U32, 1.0f},
+    {"mqhfi",   LFT_U32, 1.0f},
+    {"mqhfc",   LFT_U32, 1.0f},
+    {"mqhri",   LFT_U32, 1.0f},
+    {"mqhrc",   LFT_U32, 1.0f},
     {NULL, 0, 0}
 };
 
@@ -3570,7 +3597,7 @@ ${ssuFieldSet}
 // Indexada por type_code — define apenas o LAYOUT, nao o subtopic.
 static const LoraFieldSet LORA_FIELD_SETS[] = {
     {LORA_TYPE_M160, 1, LORA_FIELDS_M160_V1},
-${ssuFieldSet ? '    {LORA_TYPE_SSU,  1, LORA_FIELDS_SSU_V1},\n' : ''}    {0, 0, NULL}  // terminator
+${ssuFieldSet ? '    {LORA_TYPE_SSU,  1, LORA_FIELDS_SSU_V1},\n    {LORA_TYPE_SSU,  2, LORA_FIELDS_SSU_V2},\n' : ''}    {0, 0, NULL}  // terminator
 };
 
 static const LoraFieldSet* _lora_fieldset_for_type(uint8_t type_code, uint8_t version) {

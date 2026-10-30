@@ -97,6 +97,14 @@ vira obrigatório: backend lê Ke por equipamento (e a TON publica `ke` como met
    frame binário `LORA_TYPE_SSU` (0x11, ≈90 B no ar); o gateway carimba a hora e republica plano; o backend
    lê `phf/phr/qh*` no topo ou em `data.{}` (COALESCE já existente). Gateway precisa ser regravado com a
    tabela nova.
+   **Atualização 30/10/2026 — SSU por POLL (igual ao PM):** no satélite mestre-puxa (`SSU_LORA_POLL=1`)
+   cada minuto do medidor (`fim:0`) e cada bloco do intervalo (`fim:1`) entram numa fila (6 posições;
+   cheia → descarta primeiro o minuto mais antigo) e saem **na resposta ao POLL** do gateway, junto com
+   o PM e o estado do pivô. Frame `LORA_TYPE_SSU` **v2** = v1 + `fim` + pulsos do minuto achatados
+   (`mphf, mphr, mqhfi, mqhfc, mqhri, mqhrc`); o backend remonta o `min:{}` e segue o mesmo caminho
+   do SSU por MQTT (`fim:0` → `ssu_minutos`, `fim:1` → bloco). O satélite codifica na versão mais nova
+   do field-set; o gateway decodifica v1 e v2. Gateway **V1** com satélite V2 também decodifica (o
+   gerador V1 emite os layouts SSU só quando há par v2). Sem poll (fallback empurrar), só o bloco na hora.
 
 ## 6. Riscos e como tratar
 - **6.1 110 baud no core Arduino/ESP32-S3:** divisor APB 80 MHz/110 ≈ 727 k — cabe nos registradores

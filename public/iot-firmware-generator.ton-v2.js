@@ -194,7 +194,8 @@ var FirmwareGeneratorTonV2 = class FirmwareGeneratorTonV2 {
                (spec.tcp_devices && spec.tcp_devices.length > 0) ||
                !!spec.pivo ||
                !!spec.bomba ||
-               !!spec.carregador;
+               !!spec.carregador ||
+               !!spec.ssu;
     }
 
     _analyzeTon(ton, components, connections) {
@@ -2065,9 +2066,13 @@ extern char MQTT_CLIENT_ID[20];
 // Mensagem a cada MINUTO DO MEDIDOR (quando o seg regressivo entra no minuto seguinte), no
 // MESMO formato do bloco + "min" (pulsos do minuto) + "fim":0. No fim do intervalo do medidor
 // sai a de fechamento ("fim":1) = bloco oficial. Minutos alinhados ao intervalo da
-// concessionaria (15 msgs por intervalo de 15 min). So' MQTT; satelite LoRa fica so' no bloco.
+// concessionaria (15 msgs por intervalo de 15 min). Satelite LoRa MESTRE-PUXA (SSU_LORA_POLL)
+// enfileira minutos e blocos e manda na resposta ao POLL; sem poll, so' o bloco na hora.
 // Satelite LoRa (sem internet): bucket em JSON plano -> frame binario LORA_TYPE_SSU (cabe no MTU 200)
 #define SSU_LORA_BIN                ${spec.lora_role === 'satellite' && !spec.wifi ? 1 : 0}
+// Satelite MESTRE-PUXA: minutos (fim=0) e blocos (fim=1) do SSU vao para uma fila e
+// saem na resposta ao POLL do gateway (igual ao PM). 0 = empurra so' o bloco na hora.
+#define SSU_LORA_POLL               ${spec.lora_role === 'satellite' && !spec.wifi && !this._loraAutonomousPush() ? 1 : 0}
 `;
         }
 
@@ -2465,6 +2470,9 @@ typedef void (*ssu_publish_fn)(const char* subtopic, const char* payload);
 
 void ssu_init();                        // UART0@IO48 a 110 baud + fila de blocos (setup)
 void ssu_tick(ssu_publish_fn publish);  // drena blocos, acumula, publica no fim do intervalo (loop)
+// Satelite MESTRE-PUXA (SSU_LORA_POLL): envia os minutos/blocos enfileirados na resposta
+// ao POLL do gateway. Nos demais modos nao faz nada (a publicacao e' no ssu_tick).
+void ssu_poll_flush(ssu_publish_fn publish);
 
 // Saude do enlace (diagnostics)
 uint32_t ssu_blocos_validos();
@@ -2576,18 +2584,22 @@ static void _montarJson(char* payload, size_t n, const ssu::Resultado& ult, int 
     // O backend soma qhfi+qhri como indutivo e qhfc+qhrc como capacitivo — igual ao A-966.
 #if SSU_LORA_BIN
     // Satelite LoRa: JSON PLANO e curto (sem frame/ver/time) — vira o frame binario
-    // LORA_TYPE_SSU (~90 B no ar, cabe no MTU 200 do E220). O gateway carimba o
+    // LORA_TYPE_SSU v2 (~68 B de campos, cabe no MTU 200 do E220). O gateway carimba o
     // timestamp e republica plano; o backend le phf/phr/qh* em data.{} OU no topo.
-    (void)fim;
+    // fim: 1 = bloco do intervalo, 0 = minuto do medidor; m* = pulsos do minuto
+    // (o "min":{} do formato MQTT, achatado — o backend aceita os dois).
     snprintf(payload, n,
         "{\\"NSU\\":%lu,\\"cdo\\":%lu,\\"phf\\":%lu,\\"phr\\":%lu,\\"sts\\":%d,"
         "\\"qhfi\\":%lu,\\"qhfc\\":%lu,\\"qhri\\":%lu,\\"qhrc\\":%lu,"
-        "\\"ke\\":%.6f,\\"fmt\\":%u,\\"q\\":%u,\\"seg\\":%u,\\"posto\\":%u,\\"ssu_err\\":%lu}",
+        "\\"ke\\":%.6f,\\"fmt\\":%u,\\"q\\":%u,\\"seg\\":%u,\\"posto\\":%u,\\"ssu_err\\":%lu,"
+        "\\"fim\\":%d,\\"mphf\\":%lu,\\"mphr\\":%lu,\\"mqhfi\\":%lu,\\"mqhfc\\":%lu,\\"mqhri\\":%lu,\\"mqhrc\\":%lu}",
         (unsigned long)_nsu, cdo,
         (unsigned long)_acum[1], (unsigned long)_acum[2], sts,
         (unsigned long)_acum[3], (unsigned long)_acum[4], (unsigned long)_acum[5], (unsigned long)_acum[6],
         (double)SSU_KE, (unsigned)st.formato, (unsigned)ult.quadrante,
-        (unsigned)ult.segundos, (unsigned)ult.postoHorario, (unsigned long)st.blocosInvalidos);
+        (unsigned)ult.segundos, (unsigned)ult.postoHorario, (unsigned long)st.blocosInvalidos,
+        fim, (unsigned long)_minuto[1], (unsigned long)_minuto[2], (unsigned long)_minuto[3],
+        (unsigned long)_minuto[4], (unsigned long)_minuto[5], (unsigned long)_minuto[6]);
 #else
     char frame[32]; int p = 0;
     for (uint8_t i = 0; i < ult.rawLen && p < (int)sizeof(frame) - 3; i++)
@@ -2607,11 +2619,50 @@ static void _montarJson(char* payload, size_t n, const ssu::Resultado& ult, int 
 #endif
 }
 
+#if SSU_LORA_POLL
+// Fila do satelite MESTRE-PUXA: o que o medidor fechou (minutos e blocos) espera o
+// proximo POLL do gateway — o satelite nao transmite sem ser chamado (igual ao PM).
+// Cheia (gateway sem pollar): descarta primeiro o MINUTO mais antigo; bloco oficial
+// (fim=1) so' sai se a fila tiver apenas blocos.
+#define SSU_PEND_MAX 6
+static char    _pend[SSU_PEND_MAX][400];
+static uint8_t _pendFim[SSU_PEND_MAX];
+static uint8_t _pendN = 0;
+
+static void _enfileirar(const char* payload, int fim) {
+    if (_pendN >= SSU_PEND_MAX) {
+        int k = 0;
+        for (int i = 0; i < _pendN; i++) if (!_pendFim[i]) { k = i; break; }
+        Serial.printf("[SSU] fila LoRa cheia: descartando %s mais antigo\\n", _pendFim[k] ? "BLOCO" : "minuto");
+        for (int i = k; i < _pendN - 1; i++) { memcpy(_pend[i], _pend[i + 1], sizeof(_pend[0])); _pendFim[i] = _pendFim[i + 1]; }
+        _pendN--;
+    }
+    strncpy(_pend[_pendN], payload, sizeof(_pend[0]) - 1);
+    _pend[_pendN][sizeof(_pend[0]) - 1] = 0;
+    _pendFim[_pendN] = (uint8_t)fim;
+    _pendN++;
+}
+
+void ssu_poll_flush(ssu_publish_fn publish) {
+    if (!_pendN) return;
+    for (uint8_t i = 0; i < _pendN; i++) publish(SSU_SUBTOPIC, _pend[i]);
+    Serial.printf("[SSU] %u registro(s) enviados no POLL\\n", (unsigned)_pendN);
+    _pendN = 0;
+}
+#else
+void ssu_poll_flush(ssu_publish_fn) {}
+#endif
+
 // Fechamento do intervalo do medidor (fim=1) = bloco oficial.
 static void _publicar(ssu_publish_fn publish, const ssu::Resultado& ult) {
     char payload[640];
     _montarJson(payload, sizeof(payload), ult, 1);
+#if SSU_LORA_POLL
+    (void)publish;
+    _enfileirar(payload, 1);
+#else
     publish(SSU_SUBTOPIC, payload);
+#endif
     Serial.printf("[SSU] bloco do intervalo publicado: phf=%lu phr=%lu (fmt=%u)\\n",
                   (unsigned long)_acum[1], (unsigned long)_acum[2], (unsigned)_leitor.stats().formato);
     _nsu++;
@@ -2619,12 +2670,17 @@ static void _publicar(ssu_publish_fn publish, const ssu::Resultado& ult) {
     _salvarNvs();
 }
 
-#if !SSU_LORA_BIN
+#if !SSU_LORA_BIN || SSU_LORA_POLL
 // Minuto do medidor (fim=0): so' para a potencia "agora"; nao zera o acumulado do intervalo.
 static void _publicarMinuto(ssu_publish_fn publish, const ssu::Resultado& ult) {
     char payload[640];
     _montarJson(payload, sizeof(payload), ult, 0);
+#if SSU_LORA_POLL
+    (void)publish;
+    _enfileirar(payload, 0);
+#else
     publish(SSU_SUBTOPIC, payload);
+#endif
     for (int i = 1; i <= 6; i++) _minuto[i] = 0;
 }
 #endif
@@ -2647,7 +2703,7 @@ void ssu_tick(ssu_publish_fn publish) {
         _acum[r.regReativa] += r.deltaReativa;
         _minuto[r.regAtiva]   += r.deltaAtiva;
         _minuto[r.regReativa] += r.deltaReativa;
-#if !SSU_LORA_BIN
+#if !SSU_LORA_BIN || SSU_LORA_POLL
         // Minuto do MEDIDOR: o seg e' regressivo; quando seg/60 diminui, fechou um minuto do
         // intervalo (alinhado ao intervalo da concessionaria). Na virada do intervalo o seg
         // SOBE (fimIntervaloDemanda) e quem publica e' o _publicar (fim=1).
@@ -4247,11 +4303,43 @@ static const LoraField LORA_FIELDS_SSU_V1[] = {
 
 #define LORA_TYPE_SSU 0x11
 
+// ---- SSU v2: v1 + fim (1 bloco do intervalo / 0 minuto do medidor) + pulsos do minuto
+//      (m* = o "min":{} do formato MQTT). Satelite MESTRE-PUXA manda minutos e blocos na
+//      resposta ao POLL. Gateway decodifica v1 (satelite antigo) e v2. Mudar aqui = mudar
+//      no gerador V1 (gateway V1 com satelite V2). ----
+static const LoraField LORA_FIELDS_SSU_V2[] = {
+    {"NSU",     LFT_U32, 1.0f},
+    {"cdo",     LFT_U8,  1.0f},
+    {"phf",     LFT_U32, 1.0f},
+    {"phr",     LFT_U32, 1.0f},
+    {"sts",     LFT_U8,  1.0f},
+    {"qhfi",    LFT_U32, 1.0f},
+    {"qhfc",    LFT_U32, 1.0f},
+    {"qhri",    LFT_U32, 1.0f},
+    {"qhrc",    LFT_U32, 1.0f},
+    {"ke",      LFT_U32, 100000.0f},
+    {"fmt",     LFT_U8,  1.0f},
+    {"q",       LFT_U8,  1.0f},
+    {"seg",     LFT_U16, 1.0f},
+    {"posto",   LFT_U8,  1.0f},
+    {"ssu_err", LFT_U32, 1.0f},
+    {"fim",     LFT_U8,  1.0f},
+    {"mphf",    LFT_U32, 1.0f},
+    {"mphr",    LFT_U32, 1.0f},
+    {"mqhfi",   LFT_U32, 1.0f},
+    {"mqhfc",   LFT_U32, 1.0f},
+    {"mqhri",   LFT_U32, 1.0f},
+    {"mqhrc",   LFT_U32, 1.0f},
+    {NULL, 0, 0}  // terminator
+};
+
 // Tabela de field-sets FIXA e compartilhada (gateway e satellite tem a mesma).
-// Indexada por type_code — define apenas o LAYOUT, nao o subtopic.
+// Indexada por type_code — define apenas o LAYOUT, nao o subtopic. Versoes do mesmo
+// tipo em ordem crescente: o satelite codifica na ULTIMA (_lora_fieldset_atual).
 static const LoraFieldSet LORA_FIELD_SETS[] = {
     {LORA_TYPE_M160, 1, LORA_FIELDS_M160_V1},
     {LORA_TYPE_SSU,  1, LORA_FIELDS_SSU_V1},
+    {LORA_TYPE_SSU,  2, LORA_FIELDS_SSU_V2},
     {0, 0, NULL}  // terminator
 };
 
@@ -4260,6 +4348,15 @@ static const LoraFieldSet* _lora_fieldset_for_type(uint8_t type_code, uint8_t ve
         if (s->type_code == type_code && s->version == version) return s;
     }
     return NULL;
+}
+
+// Versao mais nova do tipo (a tabela lista as versoes em ordem crescente).
+static const LoraFieldSet* _lora_fieldset_atual(uint8_t type_code) {
+    const LoraFieldSet* atual = NULL;
+    for (const LoraFieldSet* s = LORA_FIELD_SETS; s->fields; s++) {
+        if (s->type_code == type_code) atual = s;
+    }
+    return atual;
 }
 
 // SATELLITE-SIDE: mapeia o subtopic REAL emitido pelo device reader
@@ -4531,10 +4628,11 @@ static void lora_handle_rx(const char* raw) {
 static bool _lora_try_publish_binary(const char* subtopic, const char* payload_json) {
     uint8_t type_code = _lora_typecode_for_subtopic(subtopic);
     if (!type_code) return false;  // sem field-set p/ esse device -> caller usa JSON
-    const LoraFieldSet* fs = _lora_fieldset_for_type(type_code, 1);
+    const LoraFieldSet* fs = _lora_fieldset_atual(type_code);
     if (!fs) return false;
 
-    StaticJsonDocument<400> doc;
+    // 768: o deserialize copia as chaves (entrada const char*) — o SSU v2 tem 22 campos.
+    StaticJsonDocument<768> doc;
     if (deserializeJson(doc, payload_json) != DeserializationError::Ok) {
         Serial.println("[LORA-SAT] bin: JSON invalido");
         return false;
@@ -8381,6 +8479,12 @@ void lora_poll_respond(const char* gw_mac, const char* req_id) {
             if (satReactive && spec.pivo && spec.has_relays) {
                 cpp += `    // Pivo: republica o estado atual da maquina (mesmo helper do push).
     _pivot_publish_status();
+`;
+            }
+            if (satReactive && spec.ssu) {
+                cpp += `    // Medidor SSU: minutos (fim=0) e blocos (fim=1) que o medidor fechou desde o
+    // ultimo POLL — frame binario LORA_TYPE_SSU v2, igual ao PM.
+    ssu_poll_flush([](const char* sub, const char* payload){ lora_publish_data(sub, payload); });
 `;
             }
             cpp += `    // Fecha o ciclo: o mestre casa pelo req_id, republica o que chegou e avanca.
