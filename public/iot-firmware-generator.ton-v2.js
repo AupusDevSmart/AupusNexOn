@@ -8481,6 +8481,29 @@ void lora_poll_respond(const char* gw_mac, const char* req_id) {
     _pivot_publish_status();
 `;
             }
+            if (satReactive) {
+                const inFmt = spec.ssu
+                    ? `"{\\"d1\\":%d,\\"d2\\":%d,\\"d3\\":%d,\\"d4\\":%d,\\"d5\\":%d,\\"d6\\":%d,\\"d7\\":%d,\\"d8\\":%d}",
+                s&1, (s>>1)&1, (s>>2)&1, (s>>3)&1, (s>>4)&1, (s>>5)&1, (s>>6)&1, (s>>7)&1`
+                    : `"{\\"d1\\":%d,\\"d2\\":%d,\\"d3\\":%d,\\"d4\\":%d,\\"d5\\":%d,\\"d6\\":%d,\\"d7\\":%d,\\"d8\\":%d,\\"s1\\":%d}",
+                s&1, (s>>1)&1, (s>>2)&1, (s>>3)&1, (s>>4)&1, (s>>5)&1, (s>>6)&1, (s>>7)&1, su_get_state() ? 1 : 0`;
+                cpp += `    // Entradas (BI): o envio na mudanca e' 1 frame sem confirmacao — se perder, o NexON
+    // fica com o valor velho (ex.: a sequencia do pivo nao confirma o giro). Reenvia no
+    // POLL quando mudou desde o ultimo reenvio ou a cada 30 s.
+    {
+        static int16_t _inPollAnt = -1;
+        static unsigned long _inPollMs = 0;
+        uint8_t s = inputs_get_state();
+        if ((int16_t)s != _inPollAnt || millis() - _inPollMs >= 30000UL) {
+            char buf[144];
+            snprintf(buf, sizeof(buf), ${inFmt});
+            lora_publish_data("inputs", buf);
+            _inPollAnt = (int16_t)s;
+            _inPollMs = millis();
+        }
+    }
+`;
+            }
             if (satReactive && spec.ssu) {
                 cpp += `    // Medidor SSU: minutos (fim=0) e blocos (fim=1) que o medidor fechou desde o
     // ultimo POLL — frame binario LORA_TYPE_SSU v2, igual ao PM.

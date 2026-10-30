@@ -188,6 +188,7 @@ check('caso E: field-set SSU na tabela do satelite E do gateway', has(fSatE, 'sr
 check('caso E: SSU v2 (fim + pulsos do minuto) no satelite E no gateway', has(fSatE, 'src/main.cpp', '{LORA_TYPE_SSU,  2, LORA_FIELDS_SSU_V2}') && has(fGwE, 'src/main.cpp', '{LORA_TYPE_SSU,  2, LORA_FIELDS_SSU_V2}'));
 check('caso E: satelite mestre-puxa => SSU_LORA_POLL 1 e fila do SSU no POLL', has(fSatE, 'include/config.h', 'SSU_LORA_POLL               1') && has(fSatE, 'src/main.cpp', 'ssu_poll_flush([](const char* sub, const char* payload){ lora_publish_data(sub, payload); });'));
 check('caso E: satelite codifica na versao atual do field-set', has(fSatE, 'src/main.cpp', 'const LoraFieldSet* fs = _lora_fieldset_atual(type_code);'));
+check('caso E: satelite reenvia as entradas no POLL (mudou ou a cada 30 s)', has(fSatE, 'src/main.cpp', 'millis() - _inPollMs >= 30000UL'));
 check('caso C: gateway/satelite sem SSU tambem levam o field-set (tabela fixa compartilhada)', has(fSat, 'src/main.cpp', 'LORA_FIELDS_SSU_V1'));
 // V1 nao pode enxergar o medidor SSU (tipo novo so' no V2)
 const casoDv1 = { components: [...casoD.components, { id: 'm2', type: 'ton1', x: 5, y: 5, props: { name: 'TON1', mqtt_topic_base: 'TESTE/SMK/M/T1' } }], connections: [...casoD.connections, conn('m2', 'd2', 'ssu')] };
