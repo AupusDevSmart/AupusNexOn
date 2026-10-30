@@ -3345,6 +3345,35 @@ bool lora_ready() { return digitalRead(LORA_AUX) == HIGH; }
                 || d.type === 'power_meter';
         };
         const m160Devices = (spec.rs485_devices || []).filter(isM160);
+        // Gateway V1 com satelite TON-V2: o medidor SSU (NBR 14522) do satelite chega
+        // em frame binario LORA_TYPE_SSU (0x11). So' emite o layout quando ha' par v2 —
+        // gateways V1 sem satelite v2 geram firmware identico ao de antes.
+        const temParV2 = role === 'gateway' && (spec.lora_peers || []).some(
+            (p) => ((typeof TON_CAPS !== 'undefined' && TON_CAPS[p.peer_type]) || {}).versao === 2);
+        const ssuFieldSet = !temParV2 ? '' : `
+// ---- SSU (medidor da concessionaria, NBR 14522 na SU+ do satelite TON-V2) — MESMO
+//      layout do gerador TON-V2 (LORA_FIELDS_SSU_V1); mudar la' = mudar aqui. ----
+static const LoraField LORA_FIELDS_SSU_V1[] = {
+    {"NSU",     LFT_U32, 1.0f},
+    {"cdo",     LFT_U8,  1.0f},
+    {"phf",     LFT_U32, 1.0f},
+    {"phr",     LFT_U32, 1.0f},
+    {"sts",     LFT_U8,  1.0f},
+    {"qhfi",    LFT_U32, 1.0f},
+    {"qhfc",    LFT_U32, 1.0f},
+    {"qhri",    LFT_U32, 1.0f},
+    {"qhrc",    LFT_U32, 1.0f},
+    {"ke",      LFT_U32, 100000.0f},
+    {"fmt",     LFT_U8,  1.0f},
+    {"q",       LFT_U8,  1.0f},
+    {"seg",     LFT_U16, 1.0f},
+    {"posto",   LFT_U8,  1.0f},
+    {"ssu_err", LFT_U32, 1.0f},
+    {NULL, 0, 0}
+};
+
+#define LORA_TYPE_SSU 0x11
+`;
         const m160SubtopicCases = m160Devices.map((d) => {
             const sub = `${d.name || 'dev'}_${d.modbus_address || 1}/data`;
             return `    if (strcmp(subtopic, "${cEsc(sub)}") == 0) return LORA_TYPE_M160;`;
@@ -3536,12 +3565,12 @@ static const LoraField LORA_FIELDS_M160_V1[] = {
 };
 
 #define LORA_TYPE_M160 0x10
-
+${ssuFieldSet}
 // Tabela de field-sets FIXA e compartilhada (gateway e satellite tem a mesma).
 // Indexada por type_code — define apenas o LAYOUT, nao o subtopic.
 static const LoraFieldSet LORA_FIELD_SETS[] = {
     {LORA_TYPE_M160, 1, LORA_FIELDS_M160_V1},
-    {0, 0, NULL}  // terminator
+${ssuFieldSet ? '    {LORA_TYPE_SSU,  1, LORA_FIELDS_SSU_V1},\n' : ''}    {0, 0, NULL}  // terminator
 };
 
 static const LoraFieldSet* _lora_fieldset_for_type(uint8_t type_code, uint8_t version) {
