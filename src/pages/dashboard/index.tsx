@@ -98,6 +98,8 @@ export function DashboardPage() {
 
     data.plantas.forEach(planta => {
       planta.unidades.forEach(unidade => {
+        // Sem vínculo no arqIoT (equipamentosScs = 0) não entra na soma: mesma regra dos apps.
+        if (unidade.equipamentosScs === 0) return;
         // Classificar pelo tipo do cadastro (Geração/Carga/Misto) — robusto a acento/caixa.
         if (ehUnidadeGeracao(unidade.tipo)) {
           // GERAÇÃO (inclui 'Misto' = UFV híbrida, ex.: UFV com secador)
