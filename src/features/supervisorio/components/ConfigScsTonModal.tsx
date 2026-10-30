@@ -14,7 +14,7 @@ import { api } from '@/config/api';
  */
 interface Ponto { id: string; label: string; json: string; json_default: string }
 interface Device {
-  comp_id: string; tipo: string; nome: string; equipamento_id: string | null;
+  comp_id: string; diagram_id?: string | null; tipo: string; nome: string; equipamento_id: string | null;
   associado: { equipamento_id: string; nome: string | null } | null;
   pontos: { ai: Ponto[]; bi: Ponto[]; bo: Ponto[] };
 }
@@ -28,7 +28,11 @@ const podeAssociar = (t: string) =>
   t === 'power_meter' || t === 'medidor_comum' || t === 'rele_protecao' || t === 'inversor';
 const allPontos = (d: Device) => [...d.pontos.ai, ...d.pontos.bi, ...d.pontos.bo];
 
-export function ConfigScsTonModal({ tonEquipId, tonNome, onClose }: { tonEquipId: string; tonNome?: string; onClose: () => void }) {
+export function ConfigScsTonModal({ tonEquipId, tonNome, onClose, onDeviceProps }: {
+  tonEquipId: string; tonNome?: string; onClose: () => void;
+  /** O backend já gravou no diagrama; o editor aberto atualiza a cópia em memória (senão o Salvar desfaz). */
+  onDeviceProps?: (diagramId: string, patch: Record<string, unknown>) => void;
+}) {
   const [data, setData] = useState<{ devices: Device[]; elementos_scs: Elemento[] } | null>(null);
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState<string | null>(null);
@@ -65,6 +69,8 @@ export function ConfigScsTonModal({ tonEquipId, tonNome, onClose }: { tonEquipId
     setMsg(null); setSavingV(true);
     try {
       await api.post('/iot/scs/vinculo', { comp_id: compId, elemento_equipamento_id: elementoId || null });
+      const dId = data?.devices.find((d) => d.comp_id === compId)?.diagram_id;
+      if (dId) onDeviceProps?.(dId, { disjuntor_equipamento_id: elementoId || null });
       await load();
     } catch (e: any) { setMsg(e?.response?.data?.message || 'Falha ao salvar vínculo'); }
     finally { setSavingV(false); }
@@ -80,6 +86,7 @@ export function ConfigScsTonModal({ tonEquipId, tonNome, onClose }: { tonEquipId
     }
     try {
       await api.post('/iot/scs/pontos', { comp_id: sel.comp_id, overrides });
+      if (sel.diagram_id) onDeviceProps?.(sel.diagram_id, { pontos_override: Object.keys(overrides).length ? overrides : null });
       await load();
     } catch (e: any) { setMsg(e?.response?.data?.message || 'Falha ao salvar correspondência'); }
     finally { setSavingP(false); }

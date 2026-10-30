@@ -345,6 +345,18 @@ export function IoTDiagram({ unidadeId, unidadeNome }: IoTDiagramProps) {
   // Modal "Configurações SCS" da TON — associa cada device conectado (ex.: PM) a um
   // elemento do unifilar com SCS habilitado (Fase 6, reestruturação IoT).
   const [scsConfigTon, setScsConfigTon] = useState<{ id: string; nome?: string } | null>(null);
+  // Vínculo SCS / correspondência de pontos: o backend já gravou no JSON do diagrama.
+  // Ajusta a cópia em memória do editor (sem marcar "não salvo") — senão o próximo
+  // Salvar regravava as props antigas e o vínculo "voltava sozinho".
+  const aplicarPropsDevice = useCallback((diagramId: string, patch: Record<string, unknown>) => {
+    const comp = (editorRef.current?.components ?? []).find((c: any) => String(c.id) === diagramId);
+    if (!comp) return;
+    comp.props = { ...(comp.props ?? {}) };
+    for (const [k, v] of Object.entries(patch)) {
+      if (v == null) delete comp.props[k];
+      else comp.props[k] = v;
+    }
+  }, []);
 
   // Sheet de vínculos da TON (Comando/Status/Medições) — Fase 7.
   const [vinculosTon, setVinculosTon] = useState<{ id: string; nome: string; aba: 'comando' | 'status' | 'medicao' } | null>(null);
@@ -2216,6 +2228,7 @@ export function IoTDiagram({ unidadeId, unidadeNome }: IoTDiagramProps) {
           tonEquipId={vinculosTon.id}
           tonNome={vinculosTon.nome}
           abaInicial={vinculosTon.aba}
+          onDeviceProps={aplicarPropsDevice}
         />
       )}
 
@@ -2224,6 +2237,7 @@ export function IoTDiagram({ unidadeId, unidadeNome }: IoTDiagramProps) {
           tonEquipId={scsConfigTon.id}
           tonNome={scsConfigTon.nome}
           onClose={() => setScsConfigTon(null)}
+          onDeviceProps={aplicarPropsDevice}
         />
       )}
 

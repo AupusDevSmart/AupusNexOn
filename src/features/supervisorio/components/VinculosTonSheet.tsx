@@ -31,7 +31,7 @@ interface Elemento {
 }
 interface PontoCat { id: string; label: string; json: string; json_default: string }
 interface Device {
-  comp_id: string; tipo: string; nome: string; equipamento_id: string | null;
+  comp_id: string; diagram_id?: string | null; tipo: string; nome: string; equipamento_id: string | null;
   associado: { equipamento_id: string; nome: string | null } | null;
   pontos: { ai: PontoCat[]; bi: PontoCat[]; bo: PontoCat[] };
 }
@@ -42,8 +42,12 @@ const LABEL_DEV: Record<string, string> = {
 };
 
 export function VinculosTonSheet({
-  open, onClose, tonEquipId, tonNome, abaInicial = 'comando',
-}: { open: boolean; onClose: () => void; tonEquipId: string; tonNome?: string; abaInicial?: Aba }) {
+  open, onClose, tonEquipId, tonNome, abaInicial = 'comando', onDeviceProps,
+}: {
+  open: boolean; onClose: () => void; tonEquipId: string; tonNome?: string; abaInicial?: Aba;
+  /** O backend já gravou no diagrama; o editor aberto atualiza a cópia em memória (senão o Salvar desfaz). */
+  onDeviceProps?: (diagramId: string, patch: Record<string, unknown>) => void;
+}) {
   const [aba, setAba] = useState<Aba>(abaInicial);
   const [elementos, setElementos] = useState<Elemento[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
@@ -111,11 +115,13 @@ export function VinculosTonSheet({
     } catch (e: any) { setMsg(e?.response?.data?.message || 'Falha ao vincular'); }
   };
 
-  const associarDevice = async (compId: string, elementoId: string) => {
+  const associarDevice = async (compId: string, elementoId: string, recarregar = true) => {
     setMsg(null);
     try {
       await api.post('/iot/scs/vinculo', { comp_id: compId, elemento_equipamento_id: elementoId || null });
-      await carregar();
+      const dId = devices.find((d) => d.comp_id === compId)?.diagram_id;
+      if (dId) onDeviceProps?.(dId, { disjuntor_equipamento_id: elementoId || null });
+      if (recarregar) await carregar();
     } catch (e: any) { setMsg(e?.response?.data?.message || 'Falha ao associar'); }
   };
 
@@ -227,10 +233,11 @@ export function VinculosTonSheet({
                     <div className="flex-1 min-w-[120px]">Device Modbus</div>
                     <Select
                       value={devices.find((d) => d.associado?.equipamento_id === e.equipamento_id)?.comp_id ?? NONE}
-                      onValueChange={(v) => {
+                      onValueChange={async (v) => {
+                        // Em sequência: as duas gravações reescrevem o mesmo diagrama.
                         const atual = devices.find((d) => d.associado?.equipamento_id === e.equipamento_id);
-                        if (atual && atual.comp_id !== v) associarDevice(atual.comp_id, '');
-                        if (v !== NONE) associarDevice(v, e.equipamento_id);
+                        if (atual && atual.comp_id !== v) await associarDevice(atual.comp_id, '', v === NONE);
+                        if (v !== NONE) await associarDevice(v, e.equipamento_id);
                       }}
                     >
                       <SelectTrigger className="h-8 w-56"><SelectValue placeholder="— sem device —" /></SelectTrigger>
