@@ -3,7 +3,8 @@ import { CheckCircle2, Circle, Loader2, XCircle } from 'lucide-react';
 import { api } from '@/config/api';
 
 /**
- * Acompanha o último OTA da TON até a confirmação (GET /equipamentos/:id/ota/ultima).
+ * Acompanha a última gravação da TON até a confirmação (GET /equipamentos/:id/ota/ultima):
+ * OTA ou gravação local pela USB (canal 'usb' — começa em 'reiniciando').
  * O backend registra cada OTA e avança o estado pelo `ota/status` da TON e pelo anúncio
  * de `status` quando ela volta: só é "confirmado" quando a TON anuncia a versão nova.
  */
@@ -16,12 +17,14 @@ interface Execucao {
   detalhe: string | null;
   versao_firmware: string | null;
   versao_anterior: string | null;
+  canal?: 'ota' | 'usb';
   criado_em: string;
   concluido_em: string | null;
 }
 
 const ABERTOS: Estado[] = ['publicado', 'baixando', 'reiniciando'];
 const ORDEM: Estado[] = ['publicado', 'baixando', 'reiniciando', 'confirmado'];
+const ORDEM_USB: Estado[] = ['reiniciando', 'confirmado'];
 const ROTULO: Record<string, string> = {
   publicado: 'Comando enviado à TON',
   baixando: 'Baixando o firmware',
@@ -58,14 +61,17 @@ export function AcompanhamentoOta({ equipamentoId, onTerminar }: { equipamentoId
     return <div className="text-xs text-muted-foreground flex items-center gap-2"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Aguardando o registro do OTA…</div>;
   }
 
-  const idxAtual = ORDEM.indexOf(ex.estado);
+  const usb = ex.canal === 'usb';
+  const ordem = usb ? ORDEM_USB : ORDEM;
+  const rotulo = (e: Estado) => (usb && e === 'reiniciando' ? 'Gravado pela USB — reiniciando' : ROTULO[e]);
+  const idxAtual = ordem.indexOf(ex.estado);
   const falhou = ex.estado === 'falhou' || ex.estado === 'sem_resposta';
 
   return (
     <div className="rounded-md border p-3 space-y-2" aria-live="polite">
-      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Andamento do OTA</div>
+      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{usb ? 'Confirmação do firmware' : 'Andamento do OTA'}</div>
       <ol className="space-y-1.5">
-        {ORDEM.map((etapa, i) => {
+        {ordem.map((etapa, i) => {
           const feita = !falhou ? i < idxAtual || ex.estado === 'confirmado' : i < Math.max(idxAtual, 0);
           const atual = !falhou && i === idxAtual && ex.estado !== 'confirmado';
           return (
@@ -74,7 +80,7 @@ export function AcompanhamentoOta({ equipamentoId, onTerminar }: { equipamentoId
                 : atual ? <Loader2 className="h-4 w-4 animate-spin text-primary" />
                 : <Circle className="h-4 w-4 text-muted-foreground/40" />}
               <span className={feita || atual ? '' : 'text-muted-foreground'}>
-                {ROTULO[etapa]}
+                {rotulo(etapa)}
                 {etapa === 'baixando' && (atual || feita) && ` · ${ex.estado === 'baixando' ? ex.progresso : 100}%`}
               </span>
             </li>
@@ -97,11 +103,13 @@ export function AcompanhamentoOta({ equipamentoId, onTerminar }: { equipamentoId
       )}
       {ex.estado === 'sem_resposta' && (
         <p className="text-sm text-amber-700 dark:text-amber-400">
-          Sem resposta da TON em 15 min. Se ela estava offline, o comando expira em 3 min — dispare de novo com a TON online.
+          {usb
+            ? 'A TON não anunciou a versão gravada em 15 min — confira no Serial se ela conectou (WiFi/MQTT, ou o gateway no caso de satélite LoRa).'
+            : 'Sem resposta da TON em 15 min. Se ela estava offline, o comando expira em 3 min — dispare de novo com a TON online.'}
         </p>
       )}
       {ABERTOS.includes(ex.estado) && (
-        <p className="text-[11px] text-muted-foreground">Leva de 1 a 3 min. Pode fechar esta janela: o resultado fica registrado.</p>
+        <p className="text-[11px] text-muted-foreground">{usb ? 'Confirma quando a TON voltar e anunciar a versão (satélite LoRa: até ~1 min).' : 'Leva de 1 a 3 min.'} Pode fechar esta janela: o resultado fica registrado.</p>
       )}
       {erro && <p className="text-[11px] text-amber-600">{erro}</p>}
     </div>

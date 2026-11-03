@@ -1473,11 +1473,30 @@ export function IoTDiagram({ unidadeId, unidadeNome }: IoTDiagramProps) {
 
     const success = await flashESP32(firmwareModal.binData.firmware, logFn);
 
+    // Confirmação igual à do OTA: registra a versão gravada e o NexON confirma quando a TON
+    // anunciar essa versão (status ao vivo; satélite LoRa via gateway). Firmware 🧪 publica
+    // em TESTE/ — não há o que confirmar no cadastro.
+    const proj = firmwareModal.projects[firmwareModal.selected];
+    const eqId = String(proj?.spec?.equipamentoId || '').trim();
+    const versao = Object.values(proj?.files ?? {})
+      .map((c) => (typeof c === 'string' ? /#define\s+FIRMWARE_VERSION\s+"([^"]+)"/.exec(c)?.[1] : undefined))
+      .find(Boolean);
+    let confirmarEm: string | undefined;
+    if (success && eqId && versao && !firmwareModal.simulate) {
+      try {
+        await api.post(`/equipamentos/${encodeURIComponent(eqId)}/ota/gravacao-usb`, { versao_firmware: versao });
+        confirmarEm = eqId;
+      } catch {
+        logFn('Aviso: não foi possível registrar a confirmação da versão (a gravação foi feita).');
+      }
+    }
+
     setFirmwareModal(prev => prev ? {
       ...prev,
       status: success ? 'done' : 'compiled',
+      otaEquipamentoId: confirmarEm ?? prev.otaEquipamentoId,
       log: [...prev.log, success
-        ? 'Gravacao concluida! Abrindo Serial Monitor...'
+        ? `Gravacao concluida!${confirmarEm ? ` Aguardando a TON anunciar ${versao}...` : ''} Abrindo Serial Monitor...`
         : 'Falha na gravacao. Tente novamente ou baixe o .bin.'],
     } : null);
 
@@ -2889,7 +2908,7 @@ export function IoTDiagram({ unidadeId, unidadeNome }: IoTDiagramProps) {
                 )}
               </div>
 
-              {firmwareModal.status === 'deployed' && firmwareModal.otaEquipamentoId && (
+              {(firmwareModal.status === 'deployed' || firmwareModal.status === 'done') && firmwareModal.otaEquipamentoId && (
                 <AcompanhamentoOta equipamentoId={firmwareModal.otaEquipamentoId} />
               )}
 
