@@ -1,11 +1,13 @@
 # Percentímetro do pivô na TON (lâmina → %)
 
-> **Status:** planejamento (03/11/2026). Nada implementado.
+> **Status:** planejamento (03/11/2026; revisado com as respostas de campo no mesmo dia). Nada implementado.
 > **Relacionados:** [IOT-PIVO-BOMBEAMENTO.md](IOT-PIVO-BOMBEAMENTO.md) (sequência bomba → pressão → pivô)
 
 ## 1. Objetivo
 
-O operador informa a **lâmina d'água (mm)**. O NexON calcula o **percentual** e manda **um comando** à TON. A **própria TON** faz o ciclo do percentímetro: a BO fica ligada `% × 60 s` e desligada o resto do minuto, repetindo enquanto o pivô gira. Nada é enviado a cada minuto por MQTT/LoRa.
+O operador informa a **lâmina d'água (mm)**. O NexON calcula o **percentual** e manda **um comando** à TON. A **própria TON** faz o ciclo do percentímetro, repetindo enquanto o pivô está ligado. Nada é enviado a cada minuto por MQTT/LoRa.
+
+**O que a BO comanda:** o **motor de movimento** (o que faz o pivô andar). BO ligada = pivô andando; BO desligada = pivô parado no lugar, irrigando. Com 50 %, o pivô passa metade de cada minuto parado e a outra metade andando até o próximo ponto. 100 % = anda o tempo todo (velocidade máxima, lâmina mínima); **0 % = parado** o minuto inteiro.
 
 O percentual deixa de ser de 5 em 5 % (como nos painéis/tabelas): sai com **uma casa decimal** da lâmina pedida.
 
@@ -36,7 +38,7 @@ Nas 20 linhas: erro máximo do % = **0,09 p.p.** (arredondamento da lâmina impr
 
 **Limites:**
 - Lâmina **menor** que `lamina_100` é impossível (exigiria passar de 100 %): recusar com "lâmina mínima deste pivô: 3,58 mm".
-- **% mínimo** configurável por pivô (padrão **5 %** = 3 s ligado por minuto): abaixo disso a última torre mal arranca. Lâmina máxima = `lamina_100 ÷ %mín` (71,6 mm no exemplo).
+- **Sem % mínimo**: qualquer lâmina ≥ `lamina_100` vale. Por % direto, a faixa é 0–100 % (0 % = parado irrigando no lugar).
 - Resolução: 0,1 % = 60 ms de ON por ciclo — sobra precisão (o laço da TON verifica a cada ~50 ms).
 
 ## 3. Firmware (TON V1 e V2 — percentímetro local)
@@ -50,7 +52,8 @@ Nas 20 linhas: erro máximo do % = **0,09 p.p.** (arredondamento da lâmina impr
 
 **Ciclo:**
 - Período `PERC_CICLO_MS` (padrão 60 000; configurável por pivô). Cada ciclo começa pela fase **ON** (`permil × ciclo / 1000`), depois **OFF** até fechar o ciclo.
-- 100 % = BO sempre ligada. Abaixo do mínimo = recusa no comando (`perc_invalido`).
+- 100 % = BO sempre ligada; 0 % = BO sempre desligada (parado). Fora de 0–1000 permil = recusa (`perc_invalido`).
+- **Canhão final** (quando houver) fica ligado o tempo todo, independente do ciclo.
 - Mudança de % no meio do ciclo vale **no próximo ciclo** (sem pulsos curtos estranhos).
 - Implementação igual ao pulso local: `millis()` no laço, sem bloquear, sem timer em outra task (I2C).
 
@@ -70,17 +73,17 @@ Nas 20 linhas: erro máximo do % = **0,09 p.p.** (arredondamento da lâmina impr
 ## 5. Backend
 
 - `ConfigIrrigacao` ganha `lamina_mm`; `percentual` passa a aceitar 1 casa decimal (hoje é inteiro 1–100). `duracaoParadaMs` já usa o percentual — só muda o arredondamento.
-- Parâmetros novos do pivô: `percentimetro_minimo` (%) e `percentimetro_ciclo_s` (s) — técnicos.
+- Parâmetro novo do pivô: `percentimetro_ciclo_s` (s, padrão 60) — técnico.
 - **Sequência de ligar:** antes do comando de girar, manda `perc <permil>` à TON e só segue com o ack. O passo "Percentímetro 60 % (ajuste do painel do pivô)" (hoje só informativo) vira "Percentímetro 59,7 % (lâmina 6,00 mm) aplicado na TON".
 - **Alterar a lâmina com o pivô girando:** `PUT /pivos/:id/percentimetro` → um comando; recalcula a parada prevista.
 - **Desligar:** sem BI de giro, manda `perc off`; com BI, a TON já para sozinha (o comando vai como redundância barata).
 - **Programações:** além de "velocidade (%)", aceitam lâmina.
-- **Validação:** lâmina < `lamina_100` ou % < mínimo → 400 com a faixa válida do pivô. Sem `lamina_100` cadastrado → só aceita %.
+- **Validação:** lâmina < `lamina_100` → 400 com a lâmina mínima do pivô. Sem `lamina_100` cadastrado → só aceita %.
 
 ## 6. Tela
 
 - **Irrigação avançada:** campo **Lâmina (mm)** como entrada principal, mostrando ao lado o resultado: `= 59,7 % · volta 10h11 · quadrante 2h33`. Alternativa: digitar o % e ver a lâmina.
-- Faixa válida do pivô sob o campo ("3,58 a 71,6 mm").
+- Lâmina mínima do pivô sob o campo ("mínimo 3,58 mm = 100 %").
 - Ficha do pivô: status mostra o % **aplicado pela TON** (do `pc`), não só o pedido; divergência vira alerta.
 - Opcional: tabela no estilo da iCrop gerada a partir do cadastro (útil para conferir com o painel).
 
@@ -92,10 +95,14 @@ Nas 20 linhas: erro máximo do % = **0,09 p.p.** (arredondamento da lâmina impr
 | 2 | Backend + tela (lâmina → %, comando no ligar, alteração em curso) | Bancada com a sequência completa (ligar → `perc` → girar) |
 | 3 | Campo (Pivô 11 Chimarrão) | Fiação no circuito da última torre; conferir tempo de volta real × previsto |
 
-## 8. Perguntas em aberto
+## 8. Decidido (03/11/2026)
 
-1. No painel do Pivô 11 (iCrop), onde está o percentímetro: módulo do painel ou relé temporizador? Qual borne comanda a última torre?
-2. O ciclo é sempre 60 s nos painéis que vamos atender, ou varia (30 / 120 s)?
-3. % mínimo: 5 % (como a tabela) ou outro valor por pivô?
-4. Canhão final: segue ligado o tempo todo ou acompanha o ciclo?
-5. Com o pivô girando **sem água** (seco), o percentímetro vale (velocidade) ou fica em 100 %?
+- Sem % mínimo; 0 % = parado.
+- A BO liga/desliga o **motor de movimento** (ON = anda, OFF = parado irrigando).
+- Canhão final ligado o tempo todo (se houver).
+
+## 9. Perguntas em aberto
+
+1. No painel do Pivô 11 (iCrop), qual borne comanda o motor de movimento, e o percentímetro do painel fica em 100 % / "externo" ou sai do circuito?
+2. O ciclo é sempre 60 s, ou algum painel usa outro período?
+3. Com o pivô girando **sem água** (seco), o percentímetro vale (controla a velocidade) ou fica em 100 %?
