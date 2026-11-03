@@ -4877,6 +4877,7 @@ ${gwOrchestrate ? this._genGatewayOrchestrator(spec) : `
 static void _gw_poll_tick() {}
 static bool _gw_poll_match(const char* req_id, const char* from) { (void)req_id; (void)from; return false; }
 static void _poll_note_activity(const char* from) { (void)from; }
+static void _poll_pedir_confirmacao(const char* mac) { (void)mac; }
 `}
 // Tick periodico — chamado do loop() do main. Reenvia pendentes que estouraram
 // timeout, e descarta os que esgotaram tentativas (publica ack de erro). Depois
@@ -5043,6 +5044,7 @@ static void lora_handle_rx(const char* raw) {
                           cmd_id, idx, _loraPending[idx].attempts);
             _pending_release(idx);
         }
+        _poll_pedir_confirmacao(from);  // POLL logo apos o comando: traz o retorno (entradas)
         char topic[200];
         snprintf(topic, sizeof(topic), "%s/satellite/%s/cmd/ack", MQTT_TOPIC_BASE, from);
         char ack_buf[400];
@@ -5160,6 +5162,23 @@ static uint8_t  _poll_timeouts[POLL_MAX_TARGETS];  // timeouts seguidos por sate
 static bool     _poll_online[POLL_MAX_TARGETS];    // estado de presenca conhecido
 static unsigned long _poll_last_ms[POLL_MAX_TARGETS]; // millis do ultimo POLL (0=nunca)
 
+// POLL DE CONFIRMACAO: o satelite manda a mudanca das entradas na hora, mas esse frame
+// colide com o resto do comando (ack, pulso "rN off") no canal half-duplex e se perde —
+// o retorno so' chegava no proximo POLL (ate' 1 min). Depois de cada ACK de comando o
+// gateway agenda um POLL daquele satelite POLL_CONFIRMA_MS depois (fora da cadencia):
+// a resposta traz as entradas ja' atualizadas. Cada ACK novo (ex.: o do "off") re-agenda.
+#define POLL_CONFIRMA_MS   3000UL
+static unsigned long _poll_confirma_em[POLL_MAX_TARGETS]; // 0 = nada agendado
+static void _poll_pedir_confirmacao(const char* mac) {
+    for (int i = 0; i < _poll_n; i++) {
+        if (_lora_mac_eq(_poll_targets[i].mac, mac)) {
+            _poll_confirma_em[i] = millis() + POLL_CONFIRMA_MS;
+            if (!_poll_confirma_em[i]) _poll_confirma_em[i] = 1;
+            return;
+        }
+    }
+}
+
 // Adiciona um alvo (se novo e ha espaco). Semeia o diagrama E a descoberta
 // dinamica: ao ouvir o heartbeat de um satelite pollável (status "poll":1) com
 // MAC novo, o gateway passa a pollá-lo — sem precisar do MAC no diagrama (como o
@@ -5173,7 +5192,7 @@ static bool _poll_add(const char* mac, const char* name) {
     _poll_targets[_poll_n].mac[sizeof(_poll_targets[0].mac) - 1] = 0;
     strncpy(_poll_targets[_poll_n].name, (name && name[0]) ? name : mac, sizeof(_poll_targets[0].name) - 1);
     _poll_targets[_poll_n].name[sizeof(_poll_targets[0].name) - 1] = 0;
-    _poll_timeouts[_poll_n] = 0; _poll_online[_poll_n] = false; _poll_last_ms[_poll_n] = 0;
+    _poll_timeouts[_poll_n] = 0; _poll_online[_poll_n] = false; _poll_last_ms[_poll_n] = 0; _poll_confirma_em[_poll_n] = 0;
     Serial.printf("[LORA-GW] alvo de poll +%s (%s) total=%d\\n",
                   mac, _poll_targets[_poll_n].name, _poll_n + 1);
     _poll_n++;
@@ -5285,6 +5304,16 @@ static void _gw_poll_tick() {
 
     // Canal livre e nao esperando: agenda o proximo satelite (round-robin).
     if ((long)(now - _poll_next_ms) < 0) return;  // respiro entre polls
+    // POLL de confirmacao vencido tem prioridade (retorno do comando).
+    for (int i = 0; i < _poll_n; i++) {
+        if (_poll_confirma_em[i] && (long)(now - _poll_confirma_em[i]) >= 0) {
+            _poll_confirma_em[i] = 0;
+            Serial.printf("[LORA-GW] POLL de confirmacao (apos comando) -> %s\\n", _poll_targets[i].mac);
+            _poll_idx = i;
+            _poll_send(i);
+            return;
+        }
+    }
     // Cadencia minima por alvo: nao re-POLLa um satelite antes de POLL_MIN_INTERVAL_MS
     // (ele precisa acumular uma janela de amostras entre respostas — senao a media
     // degrada). Espera estrita pelo proximo da fila: como todos foram pollados em
@@ -8458,6 +8487,24 @@ ${spec.bomba && spec.has_relays ? '    bomba_init();   // posto de combustivel: 
         // um stub que so' responde pollresp (inerte: nenhum POLL chega no fallback).
         const satReactive = spec.lora_role === 'satellite' && !this._loraAutonomousPush() && this._satelliteHasDevice(spec);
         if (spec.lora_role === 'satellite') {
+            const inFmt = spec.ssu
+                ? `"{\\"d1\\":%d,\\"d2\\":%d,\\"d3\\":%d,\\"d4\\":%d,\\"d5\\":%d,\\"d6\\":%d,\\"d7\\":%d,\\"d8\\":%d}",
+        s&1, (s>>1)&1, (s>>2)&1, (s>>3)&1, (s>>4)&1, (s>>5)&1, (s>>6)&1, (s>>7)&1`
+                : `"{\\"d1\\":%d,\\"d2\\":%d,\\"d3\\":%d,\\"d4\\":%d,\\"d5\\":%d,\\"d6\\":%d,\\"d7\\":%d,\\"d8\\":%d,\\"s1\\":%d}",
+        s&1, (s>>1)&1, (s>>2)&1, (s>>3)&1, (s>>4)&1, (s>>5)&1, (s>>6)&1, (s>>7)&1, su_get_state() ? 1 : 0`;
+            cpp += `
+// Entradas (BI) via LoRa: o envio na mudanca e' 1 frame sem confirmacao e pode colidir
+// com o resto do comando (ack, pulso "off"). O gateway faz um POLL de confirmacao logo
+// apos o comando (a resposta traz as entradas); se nenhum POLL vier em 8 s (gateway
+// antigo, POLL perdido), o satelite repete as entradas 1x (reserva).
+static unsigned long _in_reforco_ms = 0;   // 0 = nada pendente
+static void _sat_publicar_entradas() {
+    uint8_t s = inputs_get_state();
+    char buf[144];
+    snprintf(buf, sizeof(buf), ${inFmt});
+    lora_publish_data("inputs", buf);
+}
+`;
             cpp += `
 // MESTRE-PUXA: responde um POLL do mestre. Le+publica a telemetria do device
 // (mesmo decode/escala/empacotamento do push antigo) e sinaliza fim com pollresp.
@@ -8482,25 +8529,18 @@ void lora_poll_respond(const char* gw_mac, const char* req_id) {
 `;
             }
             if (satReactive) {
-                const inFmt = spec.ssu
-                    ? `"{\\"d1\\":%d,\\"d2\\":%d,\\"d3\\":%d,\\"d4\\":%d,\\"d5\\":%d,\\"d6\\":%d,\\"d7\\":%d,\\"d8\\":%d}",
-                s&1, (s>>1)&1, (s>>2)&1, (s>>3)&1, (s>>4)&1, (s>>5)&1, (s>>6)&1, (s>>7)&1`
-                    : `"{\\"d1\\":%d,\\"d2\\":%d,\\"d3\\":%d,\\"d4\\":%d,\\"d5\\":%d,\\"d6\\":%d,\\"d7\\":%d,\\"d8\\":%d,\\"s1\\":%d}",
-                s&1, (s>>1)&1, (s>>2)&1, (s>>3)&1, (s>>4)&1, (s>>5)&1, (s>>6)&1, (s>>7)&1, su_get_state() ? 1 : 0`;
-                cpp += `    // Entradas (BI): o envio na mudanca e' 1 frame sem confirmacao — se perder, o NexON
-    // fica com o valor velho (ex.: a sequencia do pivo nao confirma o giro). Reenvia no
-    // POLL quando mudou desde o ultimo reenvio ou a cada 30 s.
+                cpp += `    // Entradas (BI): reenvia no POLL quando mudaram desde o ultimo reenvio ou a cada
+    // 30 s (o envio na mudanca pode ter colidido). Cobre o reforco pendente.
     {
         static int16_t _inPollAnt = -1;
         static unsigned long _inPollMs = 0;
         uint8_t s = inputs_get_state();
         if ((int16_t)s != _inPollAnt || millis() - _inPollMs >= 30000UL) {
-            char buf[144];
-            snprintf(buf, sizeof(buf), ${inFmt});
-            lora_publish_data("inputs", buf);
+            _sat_publicar_entradas();
             _inPollAnt = (int16_t)s;
             _inPollMs = millis();
         }
+        _in_reforco_ms = 0;
     }
 `;
             }
@@ -8580,9 +8620,17 @@ ${spec.has_relays ? '        relays_health_tick();   // C3 anti-travamento: conf
         // proxima reconexao republica o estado atual. Antes (mqtt_publish) lotava
         // o SD com milhares de copias do mesmo estado quando MQTT oscilava.
         if (spec.wifi) cpp += `            mqtt_publish_raw(MQTT_TOPIC_INPUTS, buf);\n`;
-        if (spec.lora_role === 'satellite') cpp += `            lora_publish_data("inputs", buf);\n`;
+        if (spec.lora_role === 'satellite') cpp += `            lora_publish_data("inputs", buf);
+            _in_reforco_ms = millis() + 8000UL;   // reserva: repete se nenhum POLL vier em 8 s
+`;
         cpp += `        }
-
+`;
+        if (spec.lora_role === 'satellite') cpp += `        if (_in_reforco_ms && (long)(millis() - _in_reforco_ms) >= 0) {
+            _in_reforco_ms = 0;
+            _sat_publicar_entradas();
+        }
+`;
+        cpp += `
         // Saidas transistor (TR1-4) on-change. Em satellite vai via LoRa.
         uint8_t os = outputs_get_state();
         if (_io_force || os != _prev_out) {

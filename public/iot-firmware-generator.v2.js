@@ -4124,6 +4124,7 @@ ${gwOrchestrate ? this._genGatewayOrchestrator(spec) : `
 static void _gw_poll_tick() {}
 static bool _gw_poll_match(const char* req_id, const char* from) { (void)req_id; (void)from; return false; }
 static void _poll_note_activity(const char* from) { (void)from; }
+static void _poll_pedir_confirmacao(const char* mac) { (void)mac; }
 `}
 // Tick periodico — chamado do loop() do main. Reenvia pendentes que estouraram
 // timeout, e descarta os que esgotaram tentativas (publica ack de erro). Depois
@@ -4290,6 +4291,7 @@ static void lora_handle_rx(const char* raw) {
                           cmd_id, idx, _loraPending[idx].attempts);
             _pending_release(idx);
         }
+        _poll_pedir_confirmacao(from);  // POLL logo apos o comando: traz o retorno (entradas)
         char topic[200];
         snprintf(topic, sizeof(topic), "%s/satellite/%s/cmd/ack", MQTT_TOPIC_BASE, from);
         char ack_buf[400];
@@ -4407,6 +4409,23 @@ static uint8_t  _poll_timeouts[POLL_MAX_TARGETS];  // timeouts seguidos por sate
 static bool     _poll_online[POLL_MAX_TARGETS];    // estado de presenca conhecido
 static unsigned long _poll_last_ms[POLL_MAX_TARGETS]; // millis do ultimo POLL (0=nunca)
 
+// POLL DE CONFIRMACAO: o satelite manda a mudanca das entradas na hora, mas esse frame
+// colide com o resto do comando (ack, pulso "rN off") no canal half-duplex e se perde —
+// o retorno so' chegava no proximo POLL (ate' 1 min). Depois de cada ACK de comando o
+// gateway agenda um POLL daquele satelite POLL_CONFIRMA_MS depois (fora da cadencia):
+// a resposta traz as entradas ja' atualizadas. Cada ACK novo (ex.: o do "off") re-agenda.
+#define POLL_CONFIRMA_MS   3000UL
+static unsigned long _poll_confirma_em[POLL_MAX_TARGETS]; // 0 = nada agendado
+static void _poll_pedir_confirmacao(const char* mac) {
+    for (int i = 0; i < _poll_n; i++) {
+        if (_lora_mac_eq(_poll_targets[i].mac, mac)) {
+            _poll_confirma_em[i] = millis() + POLL_CONFIRMA_MS;
+            if (!_poll_confirma_em[i]) _poll_confirma_em[i] = 1;
+            return;
+        }
+    }
+}
+
 // Adiciona um alvo (se novo e ha espaco). Semeia o diagrama E a descoberta
 // dinamica: ao ouvir o heartbeat de um satelite pollável (status "poll":1) com
 // MAC novo, o gateway passa a pollá-lo — sem precisar do MAC no diagrama (como o
@@ -4420,7 +4439,7 @@ static bool _poll_add(const char* mac, const char* name) {
     _poll_targets[_poll_n].mac[sizeof(_poll_targets[0].mac) - 1] = 0;
     strncpy(_poll_targets[_poll_n].name, (name && name[0]) ? name : mac, sizeof(_poll_targets[0].name) - 1);
     _poll_targets[_poll_n].name[sizeof(_poll_targets[0].name) - 1] = 0;
-    _poll_timeouts[_poll_n] = 0; _poll_online[_poll_n] = false; _poll_last_ms[_poll_n] = 0;
+    _poll_timeouts[_poll_n] = 0; _poll_online[_poll_n] = false; _poll_last_ms[_poll_n] = 0; _poll_confirma_em[_poll_n] = 0;
     Serial.printf("[LORA-GW] alvo de poll +%s (%s) total=%d\\n",
                   mac, _poll_targets[_poll_n].name, _poll_n + 1);
     _poll_n++;
@@ -4532,6 +4551,16 @@ static void _gw_poll_tick() {
 
     // Canal livre e nao esperando: agenda o proximo satelite (round-robin).
     if ((long)(now - _poll_next_ms) < 0) return;  // respiro entre polls
+    // POLL de confirmacao vencido tem prioridade (retorno do comando).
+    for (int i = 0; i < _poll_n; i++) {
+        if (_poll_confirma_em[i] && (long)(now - _poll_confirma_em[i]) >= 0) {
+            _poll_confirma_em[i] = 0;
+            Serial.printf("[LORA-GW] POLL de confirmacao (apos comando) -> %s\\n", _poll_targets[i].mac);
+            _poll_idx = i;
+            _poll_send(i);
+            return;
+        }
+    }
     // Cadencia minima por alvo: nao re-POLLa um satelite antes de POLL_MIN_INTERVAL_MS
     // (ele precisa acumular uma janela de amostras entre respostas — senao a media
     // degrada). Espera estrita pelo proximo da fila: como todos foram pollados em
