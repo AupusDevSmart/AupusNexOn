@@ -191,6 +191,7 @@ check('caso E: satelite codifica na versao atual do field-set', has(fSatE, 'src/
 check('caso E: satelite reenvia as entradas no POLL (mudou ou a cada 30 s)', has(fSatE, 'src/main.cpp', 'millis() - _inPollMs >= 30000UL'));
 check('caso E: gateway faz POLL de confirmacao apos o ACK de comando', has(fGwE, 'src/main.cpp', '_poll_pedir_confirmacao(from);') && has(fGwE, 'src/main.cpp', '#define POLL_CONFIRMA_MS   3000UL'));
 check('caso E: satelite repete as entradas se nenhum POLL vier em 8 s', has(fSatE, 'src/main.cpp', '_in_reforco_ms = millis() + 8000UL;') && has(fSatE, 'src/main.cpp', 'static void _sat_publicar_entradas()'));
+check('caso E: pulso local "rN pulse <ms>" no parser + desligamento no loop', has(fSatE, 'src/main.cpp', 'if (cmd.indexOf("pulse") >= 0) {') && has(fSatE, 'src/main.cpp', '_relay_pulse_tick();    // pulso local'));
 check('caso C: gateway/satelite sem SSU tambem levam o field-set (tabela fixa compartilhada)', has(fSat, 'src/main.cpp', 'LORA_FIELDS_SSU_V1'));
 // V1 nao pode enxergar o medidor SSU (tipo novo so' no V2)
 const casoDv1 = { components: [...casoD.components, { id: 'm2', type: 'ton1', x: 5, y: 5, props: { name: 'TON1', mqtt_topic_base: 'TESTE/SMK/M/T1' } }], connections: [...casoD.connections, conn('m2', 'd2', 'ssu')] };

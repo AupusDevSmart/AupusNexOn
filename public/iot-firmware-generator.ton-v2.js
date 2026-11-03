@@ -8128,6 +8128,23 @@ static void _publish_cmd_ack(const char* cmd_id, const char* status, const char*
             cpp += this._genCarregador(spec);
         }
 
+        if (spec.has_relays) {
+            cpp += `// PULSO LOCAL: "rN pulse <ms>" liga o rele e a propria TON desliga apos <ms>. Um comando
+// so' (um ACK): via LoRa o "off" separado viajava pelo radio — o rele ficava 3-7 s ligado
+// e o "off" colidia com o retorno das entradas. Desligamento no loop (sem bloquear, sem
+// timer em outra task disputando o I2C). "on"/"off" explicito cancela pulso pendente.
+static unsigned long _relay_pulse_off_at[9] = {0};   // 0 = sem pulso pendente
+static void _relay_pulse_tick() {
+    for (int i = 1; i <= 8; i++) {
+        if (_relay_pulse_off_at[i] && (long)(millis() - _relay_pulse_off_at[i]) >= 0) {
+            _relay_pulse_off_at[i] = 0;
+            relay_set(i, false);
+        }
+    }
+}
+
+`;
+        }
         cpp += `// Executa o comando bruto (sem envelope). Preenche result_msg com descricao curta.
 // Retorna true em sucesso, false em erro.
 static bool _process_command_inner(const char* raw, char* result_msg, size_t msg_sz) {
@@ -8206,8 +8223,19 @@ ${spec.wifi ? `    // Caixa-preta: publica o anel inteiro em <base>/log
     if (cmd.length() >= 4 && cmd[0] == 'r' && cmd[1] >= '1' && cmd[1] <= '8') {
 `;
         if (spec.has_relays) {
-            cpp += `        bool on = cmd.indexOf("on") >= 0;
-        relay_set(cmd[1] - '0', on);
+            cpp += `        uint8_t n = cmd[1] - '0';
+        if (cmd.indexOf("pulse") >= 0) {
+            long ms = cmd.substring(cmd.lastIndexOf(' ') + 1).toInt();
+            if (ms < 50 || ms > 10000) { snprintf(result_msg, msg_sz, "pulso_invalido"); return false; }
+            relay_set(n, true);
+            _relay_pulse_off_at[n] = millis() + (unsigned long)ms;
+            if (!_relay_pulse_off_at[n]) _relay_pulse_off_at[n] = 1;
+            snprintf(result_msg, msg_sz, "rele_%c_pulse_%ld", cmd[1], ms);
+            return true;
+        }
+        bool on = cmd.indexOf("on") >= 0;
+        _relay_pulse_off_at[n] = 0;
+        relay_set(n, on);
         snprintf(result_msg, msg_sz, "rele_%c_%s", cmd[1], on ? "on" : "off");
         return true;
 `;
@@ -8582,7 +8610,7 @@ void loop() {
         last_input_scan = now;
         bb_stage(BB_ENTRADAS);
         inputs_scan();
-${spec.has_relays ? '        relays_health_tick();   // C3 anti-travamento: confere os reles no I2C a cada 2 s\n' : ''}
+${spec.has_relays ? '        relays_health_tick();   // C3 anti-travamento: confere os reles no I2C a cada 2 s\n        _relay_pulse_tick();    // pulso local: desliga o rele no fim do "rN pulse <ms>"\n' : ''}
         static bool _io_force = true;        // forca publicacao inicial (boot)
         static bool _mqtt_was_up = false;
         static uint8_t _prev_out = 0;
