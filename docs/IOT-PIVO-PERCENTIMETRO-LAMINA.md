@@ -1,6 +1,6 @@
 # Percentímetro do pivô na TON (lâmina → %)
 
-> **Status:** planejamento (03/11/2026; revisado com as respostas de campo no mesmo dia). Nada implementado.
+> **Status:** fases 1 e 2 implementadas (03/11/2026) — firmware V1/V2, backend e tela. Falta a bancada e o campo (fase 3).
 > **Relacionados:** [IOT-PIVO-BOMBEAMENTO.md](IOT-PIVO-BOMBEAMENTO.md) (sequência bomba → pressão → pivô)
 
 ## 1. Objetivo
@@ -47,8 +47,10 @@ Nas 20 linhas: erro máximo do % = **0,09 p.p.** (arredondamento da lâmina impr
 
 | Comando | Efeito | Ack |
 |---|---|---|
-| `perc <permil>` | ex.: `perc 597` = 59,7 %; grava em NVS e passa a valer no próximo ciclo | `perc_597` |
+| `perc <bo> <permil> <ciclo_s> <máscara>` | ex.: `perc 4 597 60 3` = BO4, 59,7 %, ciclo 60 s, roda só com DIN1 ou DIN2 em 1; grava em NVS; girando, vale no próximo ciclo | `perc_4_597` |
 | `perc off` | desliga o percentímetro (BO em OFF) | `perc_off` |
+
+Os parâmetros vão no comando — não há mapeamento novo no diagrama. A **máscara** são as DINs de "Girando" (bit0 = DIN1), que o NexON calcula pelos pontos do pivô na mesma TON.
 
 **Ciclo:**
 - Período `PERC_CICLO_MS` (padrão 60 000; configurável por pivô). Cada ciclo começa pela fase **ON** (`permil × ciclo / 1000`), depois **OFF** até fechar o ciclo.
@@ -58,7 +60,7 @@ Nas 20 linhas: erro máximo do % = **0,09 p.p.** (arredondamento da lâmina impr
 - Implementação igual ao pulso local: `millis()` no laço, sem bloquear, sem timer em outra task (I2C).
 
 **Quando roda (segurança):**
-- Só com o pivô **girando**: BI "Girando direita/esquerda" = 1 (quando mapeadas); sem BI de giro, entre o comando de ligar e o de desligar.
+- Só com o pivô **ligado no painel**: alguma DIN da máscara (Girando direita/esquerda) = 1; máscara 0 (sem BI de giro) = roda entre o `perc` e o `perc off`.
 - Pivô parado, **Erro** = 1 ou **falta de pressão** (pressostato, quando houver) → BO em OFF na hora e ciclo zerado.
 - **Reboot da TON** no meio da irrigação: lê o `perc` do NVS e retoma **só se** o pivô estiver girando. Evita o pior caso: última torre parada (água concentrada num ponto) ou a 100 % (lâmina menor que a pedida).
 
@@ -74,7 +76,8 @@ Nas 20 linhas: erro máximo do % = **0,09 p.p.** (arredondamento da lâmina impr
 
 - `ConfigIrrigacao` ganha `lamina_mm`; `percentual` passa a aceitar 1 casa decimal (hoje é inteiro 1–100). `duracaoParadaMs` já usa o percentual — só muda o arredondamento.
 - Parâmetro novo do pivô: `percentimetro_ciclo_s` (s, padrão 60) — técnico.
-- **Sequência de ligar:** antes do comando de girar, manda `perc <permil>` à TON e só segue com o ack. O passo "Percentímetro 60 % (ajuste do painel do pivô)" (hoje só informativo) vira "Percentímetro 59,7 % (lâmina 6,00 mm) aplicado na TON".
+- **Sequência de ligar (implementada):** válvula → bomba (+ confirmação) → **pressostato** (ponto de status "Pressostato": espera até `pressurizacao_s`; sem ele, espera fixa) → **`perc`** (exige o ack `perc_<bo>_<permil>`; firmware antigo = falha "regrave a TON") → girar → confirmação. **Sem água:** pula bomba e pressão, `perc … 1000` (100 %). Falha antes de girar desliga a bomba e o percentímetro.
+- **Pontos do pivô (pelo nome):** comando "Percentímetro" (BO do motor de movimento) e status "Pressostato". Criar no cadastro do pivô (pontos personalizados) e vincular na TON.
 - **Alterar a lâmina com o pivô girando:** `PUT /pivos/:id/percentimetro` → um comando; recalcula a parada prevista.
 - **Desligar:** sem BI de giro, manda `perc off`; com BI, a TON já para sozinha (o comando vai como redundância barata).
 - **Programações:** além de "velocidade (%)", aceitam lâmina.

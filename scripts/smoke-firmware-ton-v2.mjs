@@ -91,6 +91,12 @@ const casoE = {
   connections: [conn('e1', 'e2', 'wifi'), conn('e1', 'e3', 'lora_radio'), conn('e3', 'e4', 'ssu')],
 };
 
+// Caso P: o satelite do caso E com um PIVO (como a bancada) — percentimetro local.
+const casoP = {
+  components: [...casoE.components, { id: 'e5', type: 'pivo', x: 2, y: 1, props: { name: 'PIV' } }],
+  connections: [...casoE.connections, conn('e5', 'e3', 'rs485')],
+};
+
 const GenV1 = vm.runInContext('FirmwareGenerator', sandbox);
 const GenV2 = vm.runInContext('FirmwareGeneratorTonV2', sandbox);
 const editor = (d) => ({ components: d.components, connections: d.connections, simulate: false, loraAutonomous: false });
@@ -192,6 +198,9 @@ check('caso E: satelite reenvia as entradas no POLL (mudou ou a cada 30 s)', has
 check('caso E: gateway faz POLL de confirmacao apos o ACK de comando', has(fGwE, 'src/main.cpp', '_poll_pedir_confirmacao(from);') && has(fGwE, 'src/main.cpp', '#define POLL_CONFIRMA_MS   3000UL'));
 check('caso E: satelite repete as entradas se nenhum POLL vier em 8 s', has(fSatE, 'src/main.cpp', '_in_reforco_ms = millis() + 8000UL;') && has(fSatE, 'src/main.cpp', 'static void _sat_publicar_entradas()'));
 check('caso E: pulso local "rN pulse <ms>" no parser + desligamento no loop', has(fSatE, 'src/main.cpp', 'if (cmd.indexOf("pulse") >= 0) {') && has(fSatE, 'src/main.cpp', '_relay_pulse_tick();    // pulso local'));
+const fSatP = ((new GenV2(editor(casoP)).generateAll()).find(p => p.spec.tonType === 'ton4v2') || {}).files || {};
+check('caso P: percentimetro local (perc no parser, ciclo no loop, pc no status do pivo)', has(fSatP, 'src/main.cpp', 'return perc_configurar(bo, pm, cy, mk, result_msg, msg_sz);') && has(fSatP, 'src/main.cpp', '_perc_tick();           // percentimetro') && has(fSatP, 'src/main.cpp', '(int)perc_aplicado());'));
+check('caso E: sem pivo => sem percentimetro', !has(fSatE, 'src/main.cpp', 'perc_configurar'));
 check('caso C: gateway/satelite sem SSU tambem levam o field-set (tabela fixa compartilhada)', has(fSat, 'src/main.cpp', 'LORA_FIELDS_SSU_V1'));
 // V1 nao pode enxergar o medidor SSU (tipo novo so' no V2)
 const casoDv1 = { components: [...casoD.components, { id: 'm2', type: 'ton1', x: 5, y: 5, props: { name: 'TON1', mqtt_topic_base: 'TESTE/SMK/M/T1' } }], connections: [...casoD.connections, conn('m2', 'd2', 'ssu')] };

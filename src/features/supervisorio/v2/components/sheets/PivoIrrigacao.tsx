@@ -12,7 +12,12 @@ export type Direcao = 'Avanço' | 'Reverso';
 /** Valor gravado (Avanço/Reverso, = girar_direita/girar_esquerda) → o que aparece na tela. */
 export const DIRECAO_LABEL: Record<Direcao, string> = { 'Avanço': 'Direita', 'Reverso': 'Esquerda' };
 export interface FaixaCanhao { id: string; liga: number; desliga: number }
-export interface ConfigIrrigacao { direcao: Direcao; percentual: number; semAgua: boolean; canhao: boolean; faixasCanhao: FaixaCanhao[] }
+/** percentual = percentímetro 0–100 % (1 casa; 0 = parado irrigando). lamina (mm) = o que o operador digitou —
+ *  vai junto e o servidor recalcula o % com a lâmina a 100 % do cadastro. */
+export interface ConfigIrrigacao { direcao: Direcao; percentual: number; lamina?: number | null; semAgua: boolean; canhao: boolean; faixasCanhao: FaixaCanhao[] }
+
+/** 59.7 → "59,7"; 60 → "60". */
+export const fmtPct = (p: number) => (Number.isInteger(p) ? String(p) : p.toFixed(1).replace('.', ','));
 export type Parada = { tipo: 'semParar' } | { tipo: 'porAngulo'; angulo: number } | { tipo: 'porVoltas'; voltas: number };
 export type Modo = 'simples' | 'angulo' | 'segmentos';
 export interface EnvioIrrigacao { modo: Modo; config: ConfigIrrigacao; parada: Parada; inicio: Date | null; anguloFinal?: number; segmento?: number }
@@ -268,7 +273,9 @@ export function previsao(config: ConfigIrrigacao, parada: Parada, direcao: Direc
   if (parada.tipo === 'semParar') return { texto: 'Sem previsão de término (sem parada)', fim: null as Date | null };
   let delta = parada.tipo === 'porVoltas' ? 360 * parada.voltas : direcao === 'Reverso' ? norm(atual - parada.angulo) : norm(parada.angulo - atual);
   if (delta <= 0) delta += 360;
-  const horas = (delta / 360) * tempoVolta100 * (config.semAgua ? 1 : 100 / Math.max(1, config.percentual));
+  // 0 % = parado irrigando: não chega (sem previsão por ângulo/voltas).
+  if (!config.semAgua && !(config.percentual > 0)) return { texto: 'Sem previsão de término (0 % = parado irrigando)', fim: null as Date | null };
+  const horas = (delta / 360) * tempoVolta100 * (config.semAgua ? 1 : 100 / config.percentual);
   const fim = new Date(inicio.getTime() + horas * 3600000);
   const d0 = new Date(); d0.setHours(0, 0, 0, 0);
   const dias = Math.floor((new Date(fim).setHours(0, 0, 0, 0) - d0.getTime()) / 86400000);
@@ -333,7 +340,7 @@ export function IrrigacaoAvancada({
     } else if (aba === 'canhao') setAba('simples');
   };
   const carregarUltima = () => {
-    const base = { direcao: ultima.direcao, semAgua: ultima.semAgua, percentual: ultima.percentual };
+    const base = { direcao: ultima.direcao, semAgua: ultima.semAgua, percentual: ultima.percentual, lamina: ultima.lamina ?? null };
     setCfg((c) => ({ ...c, ...base }));
     if (aba === 'segmentos') setSegs((x) => x.map((y, i) => (i === segSel ? { ...y, ...base } : y)));
     setPctTxt(null); setLamTxt(null); setCarregada(true);
@@ -341,8 +348,20 @@ export function IrrigacaoAvancada({
 
   const pct = atualCfg.percentual;
   const lam = pct > 0 ? (lamina100 * 100) / pct : null;
-  const onPct = (v: string) => { setPctTxt(v); setLamTxt(null); const p = Number(v.replace(',', '.')); if (p > 0) setAtual({ percentual: Math.min(100, Math.max(1, Math.round(p))) }); };
-  const onLam = (v: string) => { setLamTxt(v); setPctTxt(null); const l = Number(v.replace(',', '.')); if (l > 0) setAtual({ percentual: Math.min(100, Math.max(1, Math.round((lamina100 * 100) / l))) }); };
+  // % com 1 casa (0 = parado irrigando). Digitando a lâmina, ela vai junto e o servidor confere.
+  const onPct = (v: string) => {
+    setPctTxt(v); setLamTxt(null);
+    const p = Number(v.replace(',', '.'));
+    if (v.trim() !== '' && Number.isFinite(p) && p >= 0) setAtual({ percentual: Math.min(100, Math.round(p * 10) / 10), lamina: null });
+  };
+  const onLam = (v: string) => {
+    setLamTxt(v); setPctTxt(null);
+    const l = Number(v.replace(',', '.'));
+    if (!(l > 0) || !(lamina100 > 0)) return;
+    if (l < lamina100) { setAtual({ percentual: 100, lamina: null }); return; }   // abaixo do mínimo: fica em 100 % (aviso abaixo)
+    setAtual({ percentual: Math.min(100, Math.round(((lamina100 * 100) / l) * 10) / 10), lamina: Math.round(l * 100) / 100 });
+  };
+  const lamAbaixo = (() => { const l = Number((lamTxt ?? '').replace(',', '.')); return lamTxt != null && l > 0 && lamina100 > 0 && l < lamina100; })();
 
   const paradaEf: Parada = modo === 'angulo' ? { tipo: 'porAngulo', angulo: anguloFinal } : parada;
   const inicio = modo !== 'angulo' && inicioTipo === 'data' && inicioData ? new Date(inicioData) : new Date();
@@ -424,17 +443,25 @@ export function IrrigacaoAvancada({
       <label style={caixaCampo}>
         <span style={rotulo}>Percentímetro</span>
         <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <input inputMode="decimal" disabled={seco} value={seco ? '—' : pctTxt ?? String(pct)} onChange={(e) => onPct(e.target.value)} onBlur={() => setPctTxt(null)} style={inputGrande} />
+          <input inputMode="decimal" disabled={seco} value={seco ? '—' : pctTxt ?? fmtPct(pct)} onChange={(e) => onPct(e.target.value)} onBlur={() => setPctTxt(null)} style={inputGrande} />
           <span style={{ color: NX.mudo }}>%</span>
         </span>
       </label>
       <label style={caixaCampo}>
         <span style={rotulo}>Lâmina</span>
         <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <input inputMode="decimal" disabled={seco} value={seco ? '—' : lamTxt ?? (lam != null ? fmt(lam, 2) : '')} onChange={(e) => onLam(e.target.value)} onBlur={() => setLamTxt(null)} style={inputGrande} />
+          <input inputMode="decimal" disabled={seco} value={seco ? '—' : lamTxt ?? (lam != null ? fmt(lam, 2) : '—')} onChange={(e) => onLam(e.target.value)} onBlur={() => setLamTxt(null)} style={inputGrande} />
           <span style={{ color: NX.mudo }}>mm</span>
         </span>
       </label>
+      {!seco && lamAbaixo && (
+        <span style={{ gridColumn: '1 / -1', fontSize: 12, color: NX.warn }}>
+          Lâmina mínima deste pivô: {fmt(lamina100, 2)} mm (100 %).
+        </span>
+      )}
+      {!seco && pct === 0 && (
+        <span style={{ gridColumn: '1 / -1', fontSize: 12, color: NX.mudo }}>0 % = pivô parado irrigando no lugar.</span>
+      )}
     </div>
   );
   const inicioParada = (
@@ -646,4 +673,4 @@ export function IrrigacaoAvancada({
 }
 
 export const tituloEnvio = (m: Modo) => (m === 'simples' ? 'Iniciar irrigação simples?' : m === 'angulo' ? 'Iniciar irrigação por ângulo?' : 'Iniciar irrigação por segmentos?');
-export const resumoConfig = (c: ConfigIrrigacao) => (c.semAgua ? `${DIRECAO_LABEL[c.direcao]} · Seco` : `${DIRECAO_LABEL[c.direcao]} · ${c.percentual}% · Molhado`);
+export const resumoConfig = (c: ConfigIrrigacao) => (c.semAgua ? `${DIRECAO_LABEL[c.direcao]} · Seco` : `${DIRECAO_LABEL[c.direcao]} · ${fmtPct(c.percentual)}% · Molhado`);

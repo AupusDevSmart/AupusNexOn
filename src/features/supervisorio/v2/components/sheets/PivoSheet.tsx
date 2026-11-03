@@ -22,7 +22,7 @@ import {
 import {
   IrrigacaoAvancada, CONFIG_PADRAO, arco, tituloEnvio, resumoConfig, previsao, textoProgramacao,
   type ConfigIrrigacao, type EnvioIrrigacao, type FaixaCanhao, type Parada, type Programacao, type NovaProgramacao, type AbaIrrigacao,
-  DIRECAO_LABEL,
+  DIRECAO_LABEL, fmtPct,
 } from './PivoIrrigacao';
 
 /**
@@ -58,7 +58,7 @@ interface Estado {
 interface IrrigacaoSrv { modo: string; config: ConfigIrrigacao; parada: Parada | { tipo: 'porTempo'; minutos: number }; programacao?: { nome: string } | null }
 interface Janela { ativo: boolean; inicio: string; fim: string; dias: number[] }
 interface ParametrosPivo {
-  pressao_minima: number | null; lamina_100: number | null; tempo_volta_100: number | null; correcao_angulo_zero: number | null;
+  pressao_minima: number | null; lamina_100: number | null; tempo_volta_100: number | null; percentimetro_ciclo_s?: number | null; correcao_angulo_zero: number | null;
   direcionamento: 'valvula' | 'fisico'; valvula_ton_id: string | null; valvula_bo: number | null;
 }
 interface PivoConfig {
@@ -405,7 +405,7 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
     if (executando && seq?.acao === 'desligar') return { tone: 'ok', label: 'Normal', texto: 'Desligando…' };
     if (ligando) return { tone: 'ok', label: 'Normal', texto: b ? 'Esperando pressurização · bomba ligada' : 'Ligando…' };
     if (falha) return { tone: 'bad', label: 'Falha', texto: falhaPressao ? 'Falha de pressão · Parado' : st?.erro === 1 ? 'Falha no painel · Parado' : 'Falha na partida · Parado' };
-    if (girando) return { tone: 'ok', label: 'Normal', texto: cfgGiro.semAgua ? `Girando · ${DIRECAO_LABEL[direcaoAtual]} · Seco` : `Irrigando · ${cfgGiro.percentual}% · ${DIRECAO_LABEL[direcaoAtual]} · Molhado` };
+    if (girando) return { tone: 'ok', label: 'Normal', texto: cfgGiro.semAgua ? `Girando · ${DIRECAO_LABEL[direcaoAtual]} · Seco` : `Irrigando · ${fmtPct(cfgGiro.percentual)}% · ${DIRECAO_LABEL[direcaoAtual]} · Molhado` };
     if (pausaPonta) return { tone: 'ok', label: 'Normal', texto: `Pausado pelo horário de ponta · retoma às ${pausaPonta.retoma_as}` };
     if (emUsoPor) return { tone: 'ok', label: 'Normal', texto: `Parado · Bomba em uso pelo ${emUsoPor}` };
     if (st?.desligado === 1 || st?.direita === 0 || st?.esquerda === 0) return { tone: 'ok', label: 'Normal', texto: 'Parado · Painel energizado' };
@@ -765,11 +765,12 @@ function Linha({ titulo, sub, children, minHeight = 56 }: { titulo: string; sub?
 }
 
 const PARAMS = [
-  { key: 'pressurizacao_s', label: 'Tempo para pressurizar', hint: 'Espera entre a bomba ligar e o pivô girar · faixa 10 a 600 s', unit: 's', min: 10, max: 600, real: true, d: 0 },
+  { key: 'pressurizacao_s', label: 'Tempo para pressurizar', hint: 'Com pressostato: espera máxima pela pressão; sem: espera fixa · faixa 10 a 600 s', unit: 's', min: 10, max: 600, real: true, d: 0 },
   { key: 'confirma_giro_s', label: 'Confirmação do giro', hint: 'Tempo para o status "Irrigando" aparecer · faixa 5 a 120 s', unit: 's', min: 5, max: 120, real: true, d: 0 },
   { key: 'pressao_minima', label: 'Pressão mínima', hint: 'Abaixo dela: falha de pressão · faixa 0,5 a 6,0 bar', unit: 'bar', min: 0.5, max: 6, real: true, d: 1 },
   { key: 'lamina_100', label: 'Lâmina d’água a 100%', hint: 'Faixa 2,00 a 20,00 mm', unit: 'mm', min: 2, max: 20, real: true, d: 2 },
   { key: 'tempo_volta_100', label: 'Tempo de volta a 100%', hint: 'Base da previsão de término · faixa 6 a 72 h', unit: 'h', min: 6, max: 72, real: true, d: 1 },
+  { key: 'percentimetro_ciclo_s', label: 'Ciclo do percentímetro', hint: 'A TON liga o motor de movimento % deste tempo · padrão 60 s · faixa 5 a 600 s', unit: 's', min: 5, max: 600, real: true, d: 0 },
   { key: 'correcao_angulo_zero', label: 'Correção do ângulo zero', hint: 'Faixa −180 a 180°', unit: '°', min: -180, max: 180, real: true, d: 0 },
 ] as const;
 
@@ -795,6 +796,7 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
     setPar({
       pressao_minima: fmtPar(pp?.pressao_minima, 1), lamina_100: fmtPar(pp?.lamina_100, 2),
       tempo_volta_100: fmtPar(pp?.tempo_volta_100, 1), correcao_angulo_zero: fmtPar(pp?.correcao_angulo_zero, 0),
+      percentimetro_ciclo_s: fmtPar(pp?.percentimetro_ciclo_s, 0),
     });
     setAgua({ direcionamento: pp?.direcionamento ?? 'valvula', valvula: pp?.valvula_ton_id && pp?.valvula_bo ? `${pp.valvula_ton_id}|${pp.valvula_bo}` : '' });
   }, [cfg]);  
@@ -897,6 +899,7 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
             parametros: {
               pressao_minima: parNum('pressao_minima'), lamina_100: parNum('lamina_100'),
               tempo_volta_100: parNum('tempo_volta_100'), correcao_angulo_zero: parNum('correcao_angulo_zero'),
+              percentimetro_ciclo_s: parNum('percentimetro_ciclo_s') == null ? null : Math.round(parNum('percentimetro_ciclo_s')!),
               direcionamento: agua.direcionamento, valvula_ton_id: vt, valvula_bo: vb ? Number(vb) : null,
             },
           } : {}),

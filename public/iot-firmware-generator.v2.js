@@ -6011,6 +6011,102 @@ static void _publish_dev_${idx}(modbus_publish_fn publish) {
     //   - relay_set(num, on)  -> acionamento das BO (relés)
     //   - mqtt_publish_sub / lora_publish_data -> publicacao de status
     // BI/BO == 0 significam "não usa" e são omitidos (sem monitoramento/acionamento).
+    // ================================================================
+    // PERCENTÍMETRO LOCAL do pivô (docs/IOT-PIVO-PERCENTIMETRO-LAMINA.md)
+    // A BO comanda o MOTOR DE MOVIMENTO: ligada = anda, desligada = parado irrigando.
+    // Ciclo local (padrao 60 s): fase ON = permil × ciclo, depois OFF ate fechar.
+    // Um comando so' ("perc <bo> <permil> <ciclo_s> <mascara>"); nada por minuto no radio.
+    // ================================================================
+    _genPercentimetro(spec) {
+        return `#include <Preferences.h>
+// ===== PERCENTÍMETRO LOCAL (motor de movimento do pivô) =====
+// "perc <bo> <permil> <ciclo_s> <mascara>": BO <bo> liga permil/1000 do ciclo e desliga o
+// resto (1000 = anda direto, 0 = parado). <mascara> = DINs de "girando" (bit0 = DIN1): com
+// mascara, o ciclo so' roda com alguma delas em 1 (pivô ligado no painel); sem, roda sempre.
+// Fica no NVS e volta sozinho apos reinicio. Mudanca de % vale no proximo ciclo.
+// "perc off" desliga (BO em OFF).
+#define PERC_RELE_MAX 6
+static uint8_t  _perc_bo = 0;            // 0 = sem percentimetro
+static int16_t  _perc_pm = -1;           // permil em uso (-1 = desligado)
+static int16_t  _perc_prox = -1;         // permil pendente p/ o proximo ciclo (-1 = nada)
+static uint32_t _perc_ciclo_ms = 60000UL;
+static uint8_t  _perc_mask = 0;
+static unsigned long _perc_ini = 0;      // inicio do ciclo atual (0 = fora de ciclo)
+static int8_t   _perc_saida_atual = -1;  // -1 = ainda nao escrito (forca a 1a escrita)
+static bool     _perc_carregado = false;
+
+static void _perc_salvar() {
+    Preferences pr;
+    if (!pr.begin("perc", false)) return;
+    pr.putUChar("bo", _perc_bo); pr.putShort("pm", _perc_pm);
+    pr.putUInt("cy", _perc_ciclo_ms); pr.putUChar("mk", _perc_mask);
+    pr.end();
+}
+
+static void _perc_saida(bool on) {
+    if (!_perc_bo || _perc_saida_atual == (on ? 1 : 0)) return;
+    _perc_saida_atual = on ? 1 : 0;
+    relay_set(_perc_bo, on);
+}
+
+// Permil aplicado (status "pc" do pivo); -1 = percentimetro desligado.
+static int16_t perc_aplicado() { return (_perc_bo && _perc_pm >= 0) ? _perc_pm : -1; }
+
+static void _perc_tick() {
+    if (!_perc_carregado) {
+        _perc_carregado = true;
+        Preferences pr;
+        if (pr.begin("perc", true)) {
+            _perc_bo = pr.getUChar("bo", 0); _perc_pm = pr.getShort("pm", -1);
+            _perc_ciclo_ms = pr.getUInt("cy", 60000UL); _perc_mask = pr.getUChar("mk", 0);
+            pr.end();
+        }
+        if (_perc_bo > PERC_RELE_MAX || _perc_ciclo_ms < 5000UL || _perc_ciclo_ms > 600000UL || _perc_pm > 1000) { _perc_bo = 0; _perc_pm = -1; }
+        if (_perc_bo && _perc_pm >= 0)
+            Serial.printf("[PERC] retomado do NVS: BO%u %d.%d%% ciclo %lus mascara 0x%02X\\n",
+                          _perc_bo, _perc_pm / 10, _perc_pm % 10, (unsigned long)(_perc_ciclo_ms / 1000), _perc_mask);
+    }
+    if (!_perc_bo || _perc_pm < 0) return;
+    bool girando = !_perc_mask || (inputs_get_state() & _perc_mask);
+    if (!girando) { _perc_ini = 0; _perc_saida(false); return; }
+    unsigned long now = millis();
+    if (!_perc_ini || now - _perc_ini >= _perc_ciclo_ms) {     // ciclo novo: comeca pela fase ON
+        _perc_ini = now ? now : 1;
+        if (_perc_prox >= 0) { _perc_pm = _perc_prox; _perc_prox = -1; }
+    }
+    uint32_t on_ms = (uint32_t)(((uint64_t)_perc_ciclo_ms * (uint32_t)_perc_pm) / 1000ULL);
+    _perc_saida((now - _perc_ini) < on_ms);
+}
+
+// Retorna false (e msg) em parametro invalido.
+static bool perc_configurar(int bo, int pm, int ciclo_s, int mask, char* msg, size_t msg_sz) {
+    if (bo < 1 || bo > PERC_RELE_MAX || pm < 0 || pm > 1000 || ciclo_s < 5 || ciclo_s > 600 || mask < 0 || mask > 255) {
+        snprintf(msg, msg_sz, "perc_invalido");
+        return false;
+    }
+    if (!_perc_carregado) _perc_tick();                   // garante o NVS lido antes de trocar
+    if (_perc_bo && _perc_bo != bo) { relay_set(_perc_bo, false); _perc_saida_atual = -1; }
+    bool emCiclo = _perc_ini != 0 && _perc_bo == bo && _perc_pm >= 0;
+    _perc_bo = (uint8_t)bo; _perc_ciclo_ms = (uint32_t)ciclo_s * 1000UL; _perc_mask = (uint8_t)mask;
+    if (emCiclo) _perc_prox = (int16_t)pm;                 // girando: vale no proximo ciclo
+    else { _perc_pm = (int16_t)pm; _perc_prox = -1; _perc_ini = 0; }
+    int16_t salvo = _perc_pm; _perc_pm = (int16_t)pm; _perc_salvar(); _perc_pm = salvo;   // NVS ja com o novo
+    Serial.printf("[PERC] BO%d %d.%d%% ciclo %ds mascara 0x%02X%s\\n", bo, pm / 10, pm % 10, ciclo_s, mask, emCiclo ? " (no proximo ciclo)" : "");
+    snprintf(msg, msg_sz, "perc_%d_%d", bo, pm);
+    return true;
+}
+
+static void perc_desligar() {
+    if (!_perc_carregado) _perc_tick();
+    if (_perc_bo) relay_set(_perc_bo, false);
+    _perc_pm = -1; _perc_prox = -1; _perc_ini = 0; _perc_saida_atual = -1;
+    _perc_salvar();
+    Serial.println("[PERC] desligado");
+}
+
+`;
+    }
+
     _genPivot(spec) {
         const p = spec.pivo;
         const biPress = p.bi_pressostato;   // 1-6 ou 0
@@ -6098,11 +6194,12 @@ static void _pivot_publish_status() {
     // e' derivavel de estado=="rodando". (Consumidor backend ainda e' stub.)
     char payload[120];
     snprintf(payload, sizeof(payload),
-        "{\\"estado\\":\\"%s\\",\\"ps\\":%d,\\"dir\\":\\"%c\\",\\"falha\\":\\"%s\\"}",
+        "{\\"estado\\":\\"%s\\",\\"ps\\":%d,\\"dir\\":\\"%c\\",\\"falha\\":\\"%s\\",\\"pc\\":%d}",
         _pivot_state_str(_pivot_state),
         ${biPress ? biRead(biPress) : '0'},
         _pivot_dir,
-        _pivot_falha);
+        _pivot_falha,
+        (int)perc_aplicado());
 ${pubLine}
 }
 
@@ -7405,6 +7502,7 @@ static void _publish_cmd_ack(const char* cmd_id, const char* status, const char*
         // Emitida apenas quando ha um pivô conectado a esta TON (spec.pivo) e a
         // TON tem relés (BO). Reusa inputs_get_state() (BI) e relay_set() (BO).
         if (spec.pivo && spec.has_relays) {
+            cpp += this._genPercentimetro(spec);   // antes do pivo: o status usa perc_aplicado()
             cpp += this._genPivot(spec);
         }
         if (spec.bomba && spec.has_relays) {
@@ -7554,7 +7652,14 @@ ${spec.wifi ? `    // Caixa-preta: publica o anel inteiro em <base>/log
         // pivot off/stop  -> para (abre os BO)
         // pivot dir l/r   -> sentido esquerda/direita
         if (spec.pivo && spec.has_relays) {
-            cpp += `    if (cmd.startsWith("pivot")) {
+            cpp += `    // Percentimetro local: "perc <bo> <permil> <ciclo_s> <mascara>" | "perc off"
+    if (cmd.startsWith("perc")) {
+        if (cmd.indexOf("off") >= 0) { perc_desligar(); snprintf(result_msg, msg_sz, "perc_off"); return true; }
+        int bo = 0, pm = -1, cy = 60, mk = 0;
+        if (sscanf(cmd.c_str(), "perc %d %d %d %d", &bo, &pm, &cy, &mk) < 2) { snprintf(result_msg, msg_sz, "perc_invalido"); return false; }
+        return perc_configurar(bo, pm, cy, mk, result_msg, msg_sz);
+    }
+    if (cmd.startsWith("pivot")) {
         if (cmd.indexOf("off") >= 0 || cmd.indexOf("stop") >= 0) {
             pivot_cmd_stop();
             snprintf(result_msg, msg_sz, "pivot_off");
@@ -7829,7 +7934,7 @@ void loop() {
         last_input_scan = now;
         bb_stage(BB_ENTRADAS);
         inputs_scan();
-${spec.has_relays ? '        relays_health_tick();   // C3 anti-travamento: confere os reles no I2C a cada 2 s\n        _relay_pulse_tick();    // pulso local: desliga o rele no fim do "rN pulse <ms>"\n' : ''}
+${spec.has_relays ? '        relays_health_tick();   // C3 anti-travamento: confere os reles no I2C a cada 2 s\n        _relay_pulse_tick();    // pulso local: desliga o rele no fim do "rN pulse <ms>"\n' : ''}${spec.pivo && spec.has_relays ? '        _perc_tick();           // percentimetro local do pivo (motor de movimento)\n' : ''}
         static bool _io_force = true;        // forca publicacao inicial (boot)
         static bool _mqtt_was_up = false;
         static uint8_t _prev_out = 0;
