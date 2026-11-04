@@ -21,6 +21,8 @@ import { tonAiApi, type TonAi } from '@/services/ton-ai.services';
  * I/O" do próprio device — ali o vínculo vive no diagrama, não em tabela.
  */
 const NONE = '__none__';
+/** Maior pulso que o firmware das TONs aceita ("rN pulse <ms>": 50 a 10000; acima → pulso_invalido). */
+const PULSO_TON_MAX = 10_000;
 type Aba = 'comando' | 'status' | 'medicao';
 
 interface Ponto { id: string; tipo: string; nome: string }
@@ -115,6 +117,15 @@ export function VinculosTonSheet({
     } catch (e: any) { setMsg(e?.response?.data?.message || 'Falha ao vincular'); }
   };
 
+  /** Duração do pulso da BO (a própria TON desliga o relé depois desse tempo). */
+  const salvarPulso = async (bo: TonBo, ms: number) => {
+    setMsg(null);
+    try {
+      await tonBoApi.update(tid, bo.id, { pulso_ms: ms });
+      await carregar();
+    } catch (e: any) { setMsg(e?.response?.data?.error?.message || e?.response?.data?.message || 'Falha ao salvar o pulso'); }
+  };
+
   const associarDevice = async (compId: string, elementoId: string, recarregar = true) => {
     setMsg(null);
     try {
@@ -147,9 +158,24 @@ export function VinculosTonSheet({
   const LinhaPonto = ({ kind, ponto }: { kind: 'bo' | 'bi' | 'ai'; ponto: Ponto }) => {
     const atual = canalDoPonto(kind, ponto.id);
     const lista = canais(kind, ponto.id);
+    const bo = kind === 'bo' ? bos.find((r) => r.equipamento_ponto_id === ponto.id) : undefined;
     return (
       <div className="flex items-center gap-2 px-3 py-1.5 border-t text-sm">
         <div className="flex-1 truncate">{ponto.nome}</div>
+        {bo?.id && (
+          <label className="flex items-center gap-1 text-xs text-muted-foreground" title={`Duração do pulso: a TON desliga o relé depois desse tempo (50 a ${PULSO_TON_MAX} ms)`}>
+            <input key={bo.pulso_ms} type="number" min={50} max={PULSO_TON_MAX} step={50} defaultValue={bo.pulso_ms}
+              aria-label={`Pulso de ${ponto.nome} em ms`}
+              onKeyDown={(ev) => { if (ev.key === 'Enter') ev.currentTarget.blur(); }}
+              onBlur={(ev) => {
+                const n = Math.round(Number(ev.currentTarget.value));
+                if (!Number.isFinite(n) || n === bo.pulso_ms) { ev.currentTarget.value = String(bo.pulso_ms); return; }
+                void salvarPulso(bo, Math.max(50, Math.min(PULSO_TON_MAX, n)));
+              }}
+              className="h-8 w-20 rounded-md border border-input bg-background px-2 text-right text-sm tabular-nums" />
+            ms
+          </label>
+        )}
         <Select
           value={atual != null ? String(atual) : NONE}
           onValueChange={(v) => vincularCanal(kind, ponto.id, v === NONE ? null : Number(v))}
