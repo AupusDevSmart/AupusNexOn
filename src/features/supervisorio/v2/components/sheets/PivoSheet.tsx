@@ -413,7 +413,8 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
 
   const { tone, label, texto } = ((): { tone: NxTone; label: string; texto: string } => {
     if (executando && seq?.acao === 'desligar') return { tone: 'ok', label: 'Normal', texto: 'Desligando…' };
-    if (ligando) return { tone: 'ok', label: 'Normal', texto: b ? 'Esperando pressurização · bomba ligada' : 'Ligando…' };
+    // Mostra o passo em que a partida está (ex.: "Aguardando pressurização (120s)").
+    if (ligando) return { tone: 'ok', label: 'Normal', texto: seq?.passos?.at(-1)?.msg ?? 'Ligando…' };
     if (falha) return { tone: 'bad', label: 'Falha', texto: falhaPressao ? 'Falha de pressão · Parado' : st?.erro === 1 ? 'Falha no painel · Parado' : 'Falha na partida · Parado' };
     if (girando) return { tone: 'ok', label: 'Normal', texto: cfgGiro.semAgua ? `Girando · ${DIRECAO_LABEL[direcaoAtual]} · Seco` : `Irrigando · ${fmtPct(cfgGiro.percentual)}% · ${DIRECAO_LABEL[direcaoAtual]} · Molhado` };
     if (pausaPonta) return { tone: 'ok', label: 'Normal', texto: `Pausado pelo horário de ponta · retoma às ${pausaPonta.retoma_as}` };
