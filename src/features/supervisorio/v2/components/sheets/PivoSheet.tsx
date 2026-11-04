@@ -410,14 +410,16 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   const on = girando || ligando;
   // Última partida que falhou (nas últimas 6 h) e o pivô parado: falha.
   const falhaSeq = !!seq?.erro && !executando && !girando && Date.now() - new Date(seq.finished_at ?? seq.created_at).getTime() < 6 * 3600000;
-  const falhaPressao = falhaSeq && /press/i.test(seq?.erro ?? '');
+  // "Sem permissivo… (bomba, tensão, pressão no painel)" cita pressão mas é falta de permissivo.
+  const falhaPermissivo = falhaSeq && /permissivo/i.test(seq?.erro ?? '');
+  const falhaPressao = falhaSeq && !falhaPermissivo && /press/i.test(seq?.erro ?? '');
   const falha = st?.erro === 1 || falhaSeq;
 
   const { tone, label, texto } = ((): { tone: NxTone; label: string; texto: string } => {
     if (executando && seq?.acao === 'desligar') return { tone: 'ok', label: 'Normal', texto: 'Desligando…' };
     // Mostra o passo em que a partida está (ex.: "Aguardando pressurização (120s)").
     if (ligando) return { tone: 'ok', label: 'Normal', texto: seq?.passos?.at(-1)?.msg ?? 'Ligando…' };
-    if (falha) return { tone: 'bad', label: 'Falha', texto: falhaPressao ? 'Falha de pressão · Parado' : st?.erro === 1 ? 'Falha no painel · Parado' : 'Falha na partida · Parado' };
+    if (falha) return { tone: 'bad', label: 'Falha', texto: falhaPressao ? 'Falha de pressão · Parado' : falhaPermissivo ? 'Sem permissivo para ligar · Parado' : st?.erro === 1 ? 'Falha no painel · Parado' : 'Falha na partida · Parado' };
     if (girando) return { tone: 'ok', label: 'Normal', texto: cfgGiro.semAgua ? `Girando · ${DIRECAO_LABEL[direcaoAtual]} · Seco` : `Irrigando · ${fmtPct(cfgGiro.percentual)}% · ${DIRECAO_LABEL[direcaoAtual]} · Molhado` };
     if (pausaPonta) return { tone: 'ok', label: 'Normal', texto: `Pausado pelo horário de ponta · retoma às ${pausaPonta.retoma_as}` };
     if (emUsoPor) return { tone: 'ok', label: 'Normal', texto: `Parado · Bomba em uso pelo ${emUsoPor}` };
