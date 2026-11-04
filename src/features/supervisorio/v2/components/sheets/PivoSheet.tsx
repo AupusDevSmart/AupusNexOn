@@ -49,7 +49,7 @@ interface Bombeamento {
 }
 interface Estado {
   pivo: {
-    comandos: { direita: boolean; esquerda: boolean; desligar: boolean }; status: { direita: Bin; esquerda: Bin; desligado: Bin; erro: Bin };
+    comandos: { direita: boolean; esquerda: boolean; desligar: boolean; percentimetro?: boolean }; status: { direita: Bin; esquerda: Bin; desligado: Bin; erro: Bin };
     /** Canhão final: ponto Canhao (botão que alterna) + status Canhao_ligado. Ausente em API antiga. */
     canhao?: { comando: boolean; tem_status: boolean; ligado: Bin };
   };
@@ -376,6 +376,8 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   const ponta = cfgPivo?.bloqueio_ponta ?? null;
   const [enviando, setEnviando] = useState<Acao | null>(null);
   const [canhaoEnv, setCanhaoEnv] = useState(false);
+  const [percTxt, setPercTxt] = useState<string | null>(null);   // edição do % com o pivô girando
+  const [percEnv, setPercEnv] = useState(false);
   const [custoPer, setCustoPer] = useState<'dia' | 'mes'>('dia');
 
   const g = (p: string) => getPath(dados, p);
@@ -489,6 +491,21 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
     }
   };
 
+  // Percentímetro com o pivô girando: a TON troca no próximo ciclo, sem desligar.
+  const ajustarPerc = async (percentual: number) => {
+    setPercEnv(true);
+    try {
+      await api.post(`/pivos/${id}/percentimetro`, { percentual });
+      toast.success(`Percentímetro em ${fmtPct(percentual)}%`, { description: 'Vale a partir do próximo ciclo da TON.' });
+      setPercTxt(null);
+    } catch (e) {
+      toast.error('Percentímetro não mudou', { description: erroMsg(e) });
+    } finally {
+      setPercEnv(false);
+      await carregar();
+    }
+  };
+
   const media = (...ks: string[]) => { const v = ks.map((k) => numE(k)).filter((x): x is number => x != null); return v.length ? v.reduce((a, c) => a + c, 0) / v.length : null; };
   const tensao = media('Vab', 'Vbc', 'Vca') ?? media('Va', 'Vb', 'Vc');
   const corrente = media('Ia', 'Ib', 'Ic');
@@ -549,6 +566,11 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   // Ativar só com o pivô girando com água; desativar sempre (o backend trava se já está desligado).
   const canhaoSeco = girando && !!cfgGiro.semAgua;
   const canhaoOff = canhaoEnv || executando || (canhao?.ligado !== 1 && (!girando || canhaoSeco));
+  // Ajuste do % só girando com água e com o ponto Percentimetro na TON.
+  const percAtual = cfgAtual && !cfgAtual.semAgua ? cfgAtual.percentual : null;
+  const percNovo = percTxt == null ? null : Number(percTxt.replace(',', '.'));
+  const percInvalido = percNovo == null || !Number.isFinite(percNovo) || percNovo < 0 || percNovo > 100;
+  const percOff = percEnv || executando || percInvalido || percNovo === percAtual;
   const desligaAgenda = !on && !!agendada;
   const cmdLabel = emUsoPor && !on ? `Bomba em uso pelo ${emUsoPor}` : busy ? 'Executando…' : on || desligaAgenda ? (desligaAgenda ? 'Cancelar agendamento' : 'Desligar') : 'Ligar';
   const cmdBloq = (!!emUsoPor && !on) || (cmdOff && !desligaAgenda);
@@ -615,6 +637,25 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
                       style={{ height: 36, padding: '0 14px', borderRadius: 10, border: `1px solid ${NX.borda}`, fontSize: 14, fontWeight: 700, color: canhaoOff ? NX.desab : NX.texto, background: NX.card, cursor: canhaoOff ? 'default' : 'pointer' }}>
                       {canhaoEnv ? 'Enviando…' : canhao.ligado === 1 ? 'Desativar canhão' : 'Ativar canhão'}
                     </button>
+                  )}
+                </div>
+              )}
+              {girando && percAtual != null && estado?.pivo.comandos.percentimetro && (
+                <div style={{ ...s.card, padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <span style={col(2)}>
+                    <span style={{ fontSize: 15, fontWeight: 700 }}>Percentímetro</span>
+                    <span style={{ fontSize: 12, color: NX.mudo }}>{fmtPct(percAtual)}%{cfgAtual?.lamina ? ` · ${fmt(cfgAtual.lamina, 2)} mm` : ''} · muda sem desligar</span>
+                  </span>
+                  {perfil.comandar && (
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <input inputMode="decimal" aria-label="Novo percentual" value={percTxt ?? fmtPct(percAtual)} disabled={percEnv || executando}
+                        onChange={(e) => setPercTxt(e.target.value)} style={s.campo(percEnv || executando, percTxt != null && percInvalido, 64)} />
+                      <span style={{ fontSize: 14, color: NX.mudo }}>%</span>
+                      <button type="button" disabled={percOff} onClick={() => percNovo != null && void ajustarPerc(percNovo)}
+                        style={{ height: 36, padding: '0 14px', borderRadius: 10, border: `1px solid ${NX.borda}`, fontSize: 14, fontWeight: 700, color: percOff ? NX.desab : NX.texto, background: NX.card, cursor: percOff ? 'default' : 'pointer' }}>
+                        {percEnv ? 'Enviando…' : 'Aplicar'}
+                      </button>
+                    </span>
                   )}
                 </div>
               )}
