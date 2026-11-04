@@ -571,6 +571,11 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   const percNovo = percTxt == null ? null : Number(percTxt.replace(',', '.'));
   const percInvalido = percNovo == null || !Number.isFinite(percNovo) || percNovo < 0 || percNovo > 100;
   const percOff = percEnv || executando || percInvalido || percNovo === percAtual;
+  // O botão do canhão ALTERNA: sem o Canhao_ligado o NexON não sabe se o pulso liga ou desliga.
+  const semCanhaoMotivo = !canhao ? null
+    : !canhao.comando ? 'Ligue o ponto Canhao a uma BO (Topologia IoT → Configurar I/O)'
+      : !canhao.tem_status ? 'Falta o status Canhao_ligado numa BI: sem ele não dá para saber se o pulso liga ou desliga'
+        : null;
   const desligaAgenda = !on && !!agendada;
   const cmdLabel = emUsoPor && !on ? `Bomba em uso pelo ${emUsoPor}` : busy ? 'Executando…' : on || desligaAgenda ? (desligaAgenda ? 'Cancelar agendamento' : 'Desligar') : 'Ligar';
   const cmdBloq = (!!emUsoPor && !on) || (cmdOff && !desligaAgenda);
@@ -752,7 +757,7 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
           <IrrigacaoAvancada
             key={irrAba}
             nome={titulo} angulo={angulo} ultima={ultima} lamina100={cfgPivo?.parametros?.lamina_100 ?? 7.15} tempoVolta100={cfgPivo?.parametros?.tempo_volta_100 ?? 21} ponta={ponta}
-            enviando={!!enviando} abaInicial={irrAba} temCanhao={!estado?.pivo.canhao || (estado.pivo.canhao.comando && estado.pivo.canhao.tem_status)}
+            enviando={!!enviando} abaInicial={irrAba} semCanhaoMotivo={semCanhaoMotivo}
             programacoes={prog.progs} onRemoverProgramacao={prog.remover} onSalvarProgramacao={prog.salvar}
             onEnviar={(e) => { setEnvio(e); setConfirmKind('start'); setConfirmOpen(true); }}
             onClose={() => setModal(null)}

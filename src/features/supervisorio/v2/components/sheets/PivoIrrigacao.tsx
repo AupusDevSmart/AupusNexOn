@@ -258,8 +258,8 @@ interface Props {
   tempoVolta100: number;
   ponta: { ativo: boolean; inicio: string; fim: string } | null;
   enviando: boolean;
-  /** false = pivô sem os pontos Canhao + Canhao_ligado: o NexON não comanda o canhão */
-  temCanhao?: boolean;
+  /** Por que o NexON não comanda o canhão (falta o ponto Canhao ou o status Canhao_ligado); null = comanda */
+  semCanhaoMotivo?: string | null;
   abaInicial?: AbaIrrigacao;
   programacoes: Programacao[] | null;
   onRemoverProgramacao: (id: string) => void;
@@ -298,7 +298,7 @@ const tituloSub = (t: string, sub: string) => (
 );
 
 export function IrrigacaoAvancada({
-  nome, angulo, ultima, lamina100, tempoVolta100, ponta, enviando, temCanhao = true, abaInicial = 'simples',
+  nome, angulo, ultima, lamina100, tempoVolta100, ponta, enviando, semCanhaoMotivo = null, abaInicial = 'simples',
   programacoes, onRemoverProgramacao, onSalvarProgramacao, onEnviar, onClose,
 }: Props) {
   const atual = angulo ?? 0;
@@ -330,9 +330,9 @@ export function IrrigacaoAvancada({
     else setCfg((c) => ({ ...c, ...p }));
   };
   const efetiva = modo === 'segmentos' ? segs[segSel] : cfg;
-  const canhaoAtivo = cfg.canhao && !efetiva.semAgua && temCanhao;
+  const canhaoAtivo = cfg.canhao && !efetiva.semAgua && !semCanhaoMotivo;
   const seco = atualCfg.semAgua;
-  const semCanhao = seco || !temCanhao;
+  const semCanhao = seco || !!semCanhaoMotivo;
 
   const toggleCanhao = () => {
     const on = !cfg.canhao;
@@ -431,7 +431,7 @@ export function IrrigacaoAvancada({
   );
   const canhaoRow = (
     <button type="button" role="switch" aria-checked={cfg.canhao && !semCanhao} disabled={semCanhao} onClick={toggleCanhao} style={linhaSwitch(semCanhao)}>
-      {tituloSub('Canhão final', !temCanhao ? 'Pivô sem os pontos Canhao e Canhao_ligado' : seco ? 'Indisponível girando sem água' : cfg.canhao ? 'Começa ligado' : 'Começa desligado')}
+      {tituloSub('Canhão final', semCanhaoMotivo ? semCanhaoMotivo : seco ? 'Indisponível girando sem água' : cfg.canhao ? 'Começa ligado' : 'Começa desligado')}
       <NxSwitch on={cfg.canhao && !semCanhao} />
     </button>
   );
