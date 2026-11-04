@@ -85,8 +85,8 @@ const corpo = <T,>(r: unknown): T => {
   return (d && typeof d === 'object' && 'data' in d && Object.keys(d).length <= 3 ? d.data : d) as T;
 };
 const erroMsg = (e: unknown): string => {
-  const x = e as { response?: { data?: { message?: string; data?: { message?: string } } }; message?: string };
-  return x?.response?.data?.message ?? x?.response?.data?.data?.message ?? x?.message ?? 'Falha';
+  const x = e as { response?: { data?: { message?: string; error?: { message?: string }; data?: { message?: string } } }; message?: string };
+  return x?.response?.data?.error?.message ?? x?.response?.data?.message ?? x?.response?.data?.data?.message ?? x?.message ?? 'Falha';
 };
 const ACAO_LABEL: Record<Acao, string> = { girar_direita: 'Ligar · Direita', girar_esquerda: 'Ligar · Esquerda', desligar: 'Desligar' };
 const col = (gap: number): CSSProperties => ({ display: 'flex', flexDirection: 'column', gap });
