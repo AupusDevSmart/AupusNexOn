@@ -258,6 +258,8 @@ interface Props {
   tempoVolta100: number;
   ponta: { ativo: boolean; inicio: string; fim: string } | null;
   enviando: boolean;
+  /** false = pivô sem os pontos Canhao + Canhao_ligado: o NexON não comanda o canhão */
+  temCanhao?: boolean;
   abaInicial?: AbaIrrigacao;
   programacoes: Programacao[] | null;
   onRemoverProgramacao: (id: string) => void;
@@ -296,7 +298,7 @@ const tituloSub = (t: string, sub: string) => (
 );
 
 export function IrrigacaoAvancada({
-  nome, angulo, ultima, lamina100, tempoVolta100, ponta, enviando, abaInicial = 'simples',
+  nome, angulo, ultima, lamina100, tempoVolta100, ponta, enviando, temCanhao = true, abaInicial = 'simples',
   programacoes, onRemoverProgramacao, onSalvarProgramacao, onEnviar, onClose,
 }: Props) {
   const atual = angulo ?? 0;
@@ -328,8 +330,9 @@ export function IrrigacaoAvancada({
     else setCfg((c) => ({ ...c, ...p }));
   };
   const efetiva = modo === 'segmentos' ? segs[segSel] : cfg;
-  const canhaoAtivo = cfg.canhao && !efetiva.semAgua;
+  const canhaoAtivo = cfg.canhao && !efetiva.semAgua && temCanhao;
   const seco = atualCfg.semAgua;
+  const semCanhao = seco || !temCanhao;
 
   const toggleCanhao = () => {
     const on = !cfg.canhao;
@@ -427,9 +430,9 @@ export function IrrigacaoAvancada({
     </button>
   );
   const canhaoRow = (
-    <button type="button" role="switch" aria-checked={cfg.canhao && !seco} disabled={seco} onClick={toggleCanhao} style={linhaSwitch(seco)}>
-      {tituloSub('Canhão final', seco ? 'Indisponível girando sem água' : cfg.canhao ? 'Ligado' : 'Desligado')}
-      <NxSwitch on={cfg.canhao && !seco} />
+    <button type="button" role="switch" aria-checked={cfg.canhao && !semCanhao} disabled={semCanhao} onClick={toggleCanhao} style={linhaSwitch(semCanhao)}>
+      {tituloSub('Canhão final', !temCanhao ? 'Pivô sem os pontos Canhao e Canhao_ligado' : seco ? 'Indisponível girando sem água' : cfg.canhao ? 'Começa ligado' : 'Começa desligado')}
+      <NxSwitch on={cfg.canhao && !semCanhao} />
     </button>
   );
   const avisoCanhao = aviso && cfg.canhao && (

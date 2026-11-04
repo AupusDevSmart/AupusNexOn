@@ -37,15 +37,27 @@ import {
 type Bin = 0 | 1 | null;
 type Acao = 'girar_direita' | 'girar_esquerda' | 'desligar';
 interface Passo { t: string; etapa: string; msg: string; ok: boolean | null }
+/** Onde está um sinal da bomba/válvula: "TON4v2 · 46:A8" + "BO5" (Topologia IoT). */
+interface Saida { ton: string | null; saida: string }
 interface Bombeamento {
   ton_id: string; ton_nome: string | null; ton_removida: boolean; modo: 'pulso' | 'mantido';
   bo_liga: number; bo_desliga?: number | null; bi_confirma?: number | null; confirma_s?: number; pulso_ms?: number;
   ligada: Bin; compartilhada_com: string[];
+  /** pontos = Ligar_bomba/Desligar_bomba/Bomba_ligada na Topologia; legado = TON+BO da Configuração antiga */
+  origem?: 'pontos' | 'legado'; dono_nome?: string | null;
+  saidas?: { ligar: Saida; desligar: Saida | null; confirma: Saida | null };
 }
 interface Estado {
-  pivo: { comandos: { direita: boolean; esquerda: boolean; desligar: boolean }; status: { direita: Bin; esquerda: Bin; desligado: Bin; erro: Bin } };
+  pivo: {
+    comandos: { direita: boolean; esquerda: boolean; desligar: boolean }; status: { direita: Bin; esquerda: Bin; desligado: Bin; erro: Bin };
+    /** Canhão final: ponto Canhao (botão que alterna) + status Canhao_ligado. Ausente em API antiga. */
+    canhao?: { comando: boolean; tem_status: boolean; ligado: Bin };
+  };
   bombeamento: null | Bombeamento;
-  sequencia_cfg: { pressurizacao_s: number; confirma_giro_s: number };
+  /** Sistema conjugado: este pivô usa a bomba de outro */
+  bomba_de?: null | { id: string; nome: string | null };
+  valvula?: null | (Saida & { origem: 'pontos' | 'legado' });
+  sequencia_cfg: { pressurizacao_s: number; confirma_giro_s: number; confirma_bomba_s?: number };
   sequencia: null | { id: string; acao: string; status: string; passos: Passo[]; erro: string | null; created_at: string; finished_at: string | null; origem?: string };
   /** Automação do servidor (programação, agendamento, parada, ponta). Ausente em API antiga. */
   irrigacao?: {
@@ -65,10 +77,8 @@ interface PivoConfig {
   bloqueio_ponta: Janela; reservado: Janela; origem_ponta: { numero_uc?: string; concessionaria?: string } | null;
   parametros?: ParametrosPivo; unidade_nome?: string | null; planta_nome?: string | null; proprietario_nome?: string | null;
 }
-interface Opcoes {
-  tons: Array<{ id: string; nome: string; topico: string | null; unidade: string }>;
-  bombeamentos: Array<{ pivo_id: string; nome: string; bombeamento: Partial<Bombeamento> | null }>;
-}
+/** Pivôs da planta com a bomba ligada na Topologia (para o sistema conjugado). */
+interface Opcoes { bombas: Array<{ pivo_id: string; nome: string }> }
 
 /** Resposta da API vem com envelope simples ou duplo ({data:{data}}). */
 const corpo = <T,>(r: unknown): T => {
@@ -366,6 +376,7 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   useEffect(() => { carregarCfg(); }, [carregarCfg]);
   const ponta = cfgPivo?.bloqueio_ponta ?? null;
   const [enviando, setEnviando] = useState<Acao | null>(null);
+  const [canhaoEnv, setCanhaoEnv] = useState(false);
   const [custoPer, setCustoPer] = useState<'dia' | 'mes'>('dia');
 
   const g = (p: string) => getPath(dados, p);
@@ -464,6 +475,20 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
     }
   };
 
+  // Canhão pela ficha: o backend confere o estado (Canhao_ligado) e só pulsa se for diferente.
+  const comandarCanhao = async (ligar: boolean) => {
+    setCanhaoEnv(true);
+    try {
+      await api.post(`/pivos/${id}/canhao`, { ligar });
+      toast.success(ligar ? 'Canhão ligado' : 'Canhão desligado');
+    } catch (e) {
+      toast.error(ligar ? 'Canhão não ligou' : 'Canhão não desligou', { description: erroMsg(e) });
+    } finally {
+      setCanhaoEnv(false);
+      await carregar();
+    }
+  };
+
   const media = (...ks: string[]) => { const v = ks.map((k) => numE(k)).filter((x): x is number => x != null); return v.length ? v.reduce((a, c) => a + c, 0) / v.length : null; };
   const tensao = media('Vab', 'Vbc', 'Vca') ?? media('Va', 'Vb', 'Vc');
   const corrente = media('Ia', 'Ib', 'Ic');
@@ -504,7 +529,7 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
     : b.ligada === 0 ? 'Desligada' : girando && !cfgGiro.semAgua ? 'Ligada' : girando ? 'Desligada · girando sem água' : 'Sem retorno';
   const bCor = !b ? NX.neutro : falhaPressao ? NX.bad : emUsoPor || b.ligada === 1 || (b.ligada == null && girando && !cfgGiro.semAgua) ? NX.ok : NX.neutro;
   const bSub = (!b ? (fonteMedicao ? 'Comando não configurado' : 'Não configurado')
-    : `${b.ton_nome ?? 'TON'}${b.ton_removida ? ' (removida!)' : ''} · ${b.compartilhada_com.length ? `compartilhada com ${b.compartilhada_com.join(', ')}` : 'ligada junto com o pivô'}`)
+    : `${b.dono_nome ? `bomba do ${b.dono_nome} · ` : ''}${b.ton_nome ?? 'TON'}${b.ton_removida ? ' (removida!)' : ''} · ${b.compartilhada_com.length ? `compartilhada com ${b.compartilhada_com.join(', ')}` : 'ligada junto com o pivô'}`)
     + (nomeMedicao && bNum('Pt', 'potencia') == null ? ` · medição ${nomeMedicao.replace(/_/g, ' ')}` : '');
 
   // Passos da última sequência entram em Registros (✓✓ = confirmado pelo equipamento).
@@ -520,6 +545,10 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   // Botão principal
   const cmdOff = on ? !estado?.pivo.comandos.desligar && !b : !estado?.pivo.comandos[ultima.direcao === 'Avanço' ? 'direita' : 'esquerda'];
   const busy = !!enviando || (executando && seq?.acao === 'desligar');
+  const canhao = estado?.pivo.canhao;
+  // Ativar só com o pivô girando com água; desativar sempre (o backend trava se já está desligado).
+  const canhaoSeco = girando && !!cfgGiro.semAgua;
+  const canhaoOff = canhaoEnv || executando || (canhao?.ligado !== 1 && (!girando || canhaoSeco));
   const desligaAgenda = !on && !!agendada;
   const cmdLabel = emUsoPor && !on ? `Bomba em uso pelo ${emUsoPor}` : busy ? 'Executando…' : on || desligaAgenda ? (desligaAgenda ? 'Cancelar agendamento' : 'Desligar') : 'Ligar';
   const cmdBloq = (!!emUsoPor && !on) || (cmdOff && !desligaAgenda);
@@ -573,6 +602,22 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
                 {agendadaTxt && <span style={{ fontSize: 13, color: NX.mudo }}>{agendadaTxt}</span>}
                 {erro && <span style={{ fontSize: 13, color: NX.warn }}>{erro}</span>}
               </div>
+              {canhao?.comando && canhao.tem_status && (
+                <div style={{ ...s.card, padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <span style={col(2)}>
+                    <span style={{ fontSize: 15, fontWeight: 700 }}>Canhão final</span>
+                    <span style={{ fontSize: 12, color: canhao.ligado === 1 ? NX.ok : NX.mudo }}>
+                      {canhao.ligado === 1 ? 'Ligado' : canhao.ligado === 0 ? 'Desligado' : 'Sem leitura'}{canhaoSeco ? ' · girando sem água' : ''}
+                    </span>
+                  </span>
+                  {perfil.comandar && canhao.ligado !== null && (
+                    <button type="button" disabled={canhaoOff} onClick={() => comandarCanhao(canhao.ligado !== 1)}
+                      style={{ height: 36, padding: '0 14px', borderRadius: 10, border: `1px solid ${NX.borda}`, fontSize: 14, fontWeight: 700, color: canhaoOff ? NX.desab : NX.texto, background: NX.card, cursor: canhaoOff ? 'default' : 'pointer' }}>
+                      {canhaoEnv ? 'Enviando…' : canhao.ligado === 1 ? 'Desativar canhão' : 'Ativar canhão'}
+                    </button>
+                  )}
+                </div>
+              )}
               {perfil.comandar && (
               <button type="button" disabled={busy || cmdBloq} style={cmdStyle}
                 onClick={() => { setConfirmKind(on || desligaAgenda ? 'stop' : 'quick'); setConfirmOpen(true); }}>{cmdLabel}</button>
@@ -666,7 +711,7 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
           <IrrigacaoAvancada
             key={irrAba}
             nome={titulo} angulo={angulo} ultima={ultima} lamina100={cfgPivo?.parametros?.lamina_100 ?? 7.15} tempoVolta100={cfgPivo?.parametros?.tempo_volta_100 ?? 21} ponta={ponta}
-            enviando={!!enviando} abaInicial={irrAba}
+            enviando={!!enviando} abaInicial={irrAba} temCanhao={!estado?.pivo.canhao || (estado.pivo.canhao.comando && estado.pivo.canhao.tem_status)}
             programacoes={prog.progs} onRemoverProgramacao={prog.remover} onSalvarProgramacao={prog.salvar}
             onEnviar={(e) => { setEnvio(e); setConfirmKind('start'); setConfirmOpen(true); }}
             onClose={() => setModal(null)}
@@ -730,11 +775,6 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
 // ---------------------------------------------------------------------------
 // Configuração: bombeamento + partida + ponta + programação
 // ---------------------------------------------------------------------------
-interface FormBomba { ton_id: string; modo: 'pulso' | 'mantido'; bo_liga: string; bo_desliga: string; bi_confirma: string; confirma_s: string; pulso_ms: string }
-const formDe = (o?: Partial<Bombeamento> | null): FormBomba => ({
-  ton_id: o?.ton_id ?? '', modo: o?.modo ?? 'pulso', bo_liga: String(o?.bo_liga ?? 1), bo_desliga: String(o?.bo_desliga ?? ''),
-  bi_confirma: String(o?.bi_confirma ?? ''), confirma_s: String(o?.confirma_s ?? 30), pulso_ms: String(o?.pulso_ms ?? 1000),
-});
 const numOk = (v: string, min: number, max: number) => { const n = Number(String(v).replace(',', '.')); return v !== '' && Number.isFinite(n) && n >= min && n <= max; };
 const secao = (t: string, mt: number) => <span style={{ ...s.label, marginTop: mt }}>{t}</span>;
 
@@ -752,9 +792,9 @@ function ChipSelect({ value, onChange, label, height = 38, disabled, children }:
     </span>
   );
 }
-function Linha({ titulo, sub, children, minHeight = 56 }: { titulo: string; sub?: string; children: ReactNode; minHeight?: number }) {
+function Linha({ titulo, sub, children, minHeight = 56, first }: { titulo: string; sub?: string; children: ReactNode; minHeight?: number; first?: boolean }) {
   return (
-    <div style={{ borderTop: `1px solid ${NX.linha}`, minHeight, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+    <div style={{ borderTop: first ? 'none' : `1px solid ${NX.linha}`, minHeight, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
       <span style={col(2)}>
         <span style={{ fontSize: 15, fontWeight: 700 }}>{titulo}</span>
         {sub && <span style={{ fontSize: 12, color: NX.mudo }}>{sub}</span>}
@@ -767,12 +807,28 @@ function Linha({ titulo, sub, children, minHeight = 56 }: { titulo: string; sub?
 const PARAMS = [
   { key: 'pressurizacao_s', label: 'Tempo para pressurizar', hint: 'Com pressostato: espera máxima pela pressão; sem: espera fixa · faixa 10 a 600 s', unit: 's', min: 10, max: 600, real: true, d: 0 },
   { key: 'confirma_giro_s', label: 'Confirmação do giro', hint: 'Tempo para o status "Irrigando" aparecer · faixa 5 a 120 s', unit: 's', min: 5, max: 120, real: true, d: 0 },
+  { key: 'confirma_bomba_s', label: 'Confirmação da bomba', hint: 'Tempo para o "Bomba ligada" aparecer · faixa 5 a 300 s', unit: 's', min: 5, max: 300, real: true, d: 0 },
   { key: 'pressao_minima', label: 'Pressão mínima', hint: 'Abaixo dela: falha de pressão · faixa 0,5 a 6,0 bar', unit: 'bar', min: 0.5, max: 6, real: true, d: 1 },
   { key: 'lamina_100', label: 'Lâmina d’água a 100%', hint: 'Faixa 2,00 a 20,00 mm', unit: 'mm', min: 2, max: 20, real: true, d: 2 },
   { key: 'tempo_volta_100', label: 'Tempo de volta a 100%', hint: 'Base da previsão de término · faixa 6 a 72 h', unit: 'h', min: 6, max: 72, real: true, d: 1 },
   { key: 'percentimetro_ciclo_s', label: 'Ciclo do percentímetro', hint: 'A TON liga o motor de movimento % deste tempo · padrão 60 s · faixa 5 a 600 s', unit: 's', min: 5, max: 600, real: true, d: 0 },
   { key: 'correcao_angulo_zero', label: 'Correção do ângulo zero', hint: 'Faixa −180 a 180°', unit: '°', min: -180, max: 180, real: true, d: 0 },
 ] as const;
+/** Linha somente leitura: onde está o sinal (TON · fim do MAC · BO/BI) — muda na Topologia IoT. */
+function SinalBomba({ titulo, s: sinal, vazio = '—' }: { titulo: string; s: Saida | null; vazio?: string }) {
+  return (
+    <Linha titulo={titulo} minHeight={44}>
+      <span style={{ fontSize: 14, fontWeight: sinal ? 700 : 400, color: sinal ? NX.texto : NX.mudo, textAlign: 'right' }}>
+        {sinal ? `${sinal.ton ?? 'TON'} · ${sinal.saida}` : vazio}
+      </span>
+    </Linha>
+  );
+}
+
+/** Tempos da sequência (PUT /bombeamento); o resto vai em pivo_config.parametros (PUT /config). */
+type ChaveSeq = 'pressurizacao_s' | 'confirma_giro_s' | 'confirma_bomba_s';
+const CHAVES_SEQ: readonly string[] = ['pressurizacao_s', 'confirma_giro_s', 'confirma_bomba_s'];
+const PARAMS_PAR = PARAMS.filter((p) => !CHAVES_SEQ.includes(p.key));
 
 function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg, onAdicionarHorario }: {
   pivoId: string; estado: Estado | null; cfg: PivoConfig | null; perfil: { tecnico: boolean; operacional: boolean }; onSalvo: () => void;
@@ -780,17 +836,15 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
 }) {
   const [op, setOp] = useState<Opcoes | null>(null);
   // Base (gravado) × rascunho
-  const [base, setBase] = useState<{ ativo: boolean; f: FormBomba; seq: { pressurizacao_s: number; confirma_giro_s: number } } | null>(null);
-  const [ativo, setAtivo] = useState(false);
-  const [f, setF] = useState<FormBomba>(formDe());
-  const [seq, setSeq] = useState({ pressurizacao_s: '120', confirma_giro_s: '30' });
+  const [base, setBase] = useState<{ bombaDe: string; seq: Record<ChaveSeq, number> } | null>(null);
+  const [seq, setSeq] = useState<Record<ChaveSeq, string>>({ pressurizacao_s: '120', confirma_giro_s: '30', confirma_bomba_s: '30' });
   const [conj, setConj] = useState(false);
   const [conjPivo, setConjPivo] = useState('');
   const [ponta, setPonta] = useState<Janela | null>(null);
   // Parâmetros de irrigação e válvula (pivo_config.parametros) — texto do campo × gravado.
   const fmtPar = (v: number | null | undefined, d: number) => (v == null ? '' : v.toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d }));
   const [par, setPar] = useState<Record<string, string>>({});
-  const [agua, setAgua] = useState<{ direcionamento: 'valvula' | 'fisico'; valvula: string }>({ direcionamento: 'valvula', valvula: '' });
+  const [direcionamento, setDirecionamento] = useState<'valvula' | 'fisico'>('valvula');
   useEffect(() => {
     const pp = cfg?.parametros;
     setPar({
@@ -798,61 +852,47 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
       tempo_volta_100: fmtPar(pp?.tempo_volta_100, 1), correcao_angulo_zero: fmtPar(pp?.correcao_angulo_zero, 0),
       percentimetro_ciclo_s: fmtPar(pp?.percentimetro_ciclo_s, 0),
     });
-    setAgua({ direcionamento: pp?.direcionamento ?? 'valvula', valvula: pp?.valvula_ton_id && pp?.valvula_bo ? `${pp.valvula_ton_id}|${pp.valvula_bo}` : '' });
-  }, [cfg]);  
+    setDirecionamento(pp?.direcionamento ?? 'valvula');
+  }, [cfg]);
   const parNum = (k: string) => { const t = (par[k] ?? '').trim(); return t === '' ? null : Number(t.replace(',', '.')); };
   const [revisar, setRevisar] = useState(false);
   const [gravando, setGravando] = useState(false);
 
   useEffect(() => {
-    api.get(`/pivos/${pivoId}/bombeamento/opcoes`).then((r) => setOp(corpo<Opcoes>(r))).catch(() => setOp({ tons: [], bombeamentos: [] }));
+    api.get(`/pivos/${pivoId}/bombeamento/opcoes`).then((r) => setOp(corpo<Opcoes>(r))).catch(() => setOp({ bombas: [] }));
   }, [pivoId]);
   useEffect(() => { setPonta(cfg?.bloqueio_ponta ?? null); }, [cfg]);
   useEffect(() => {
     if (!estado || base) return;
-    const b = estado.bombeamento;
-    const fb = formDe(b);
-    setBase({ ativo: !!b, f: fb, seq: estado.sequencia_cfg });
-    setAtivo(!!b); setF(fb); setConj(!!b?.compartilhada_com.length);
-    setSeq({ pressurizacao_s: String(estado.sequencia_cfg.pressurizacao_s), confirma_giro_s: String(estado.sequencia_cfg.confirma_giro_s) });
+    const sc = estado.sequencia_cfg;
+    const sq = { pressurizacao_s: sc.pressurizacao_s, confirma_giro_s: sc.confirma_giro_s, confirma_bomba_s: sc.confirma_bomba_s ?? 30 };
+    const de = estado.bomba_de?.id ?? '';
+    setBase({ bombaDe: de, seq: sq });
+    setConj(!!de); setConjPivo(de);
+    setSeq({ pressurizacao_s: String(sq.pressurizacao_s), confirma_giro_s: String(sq.confirma_giro_s), confirma_bomba_s: String(sq.confirma_bomba_s) });
   }, [estado, base]);
-  useEffect(() => {
-    if (conjPivo || !op || !f.ton_id) return;
-    const o = op.bombeamentos.find((x) => x.pivo_id !== pivoId && x.bombeamento?.ton_id === f.ton_id);
-    if (o) setConjPivo(o.pivo_id);
-  }, [op, f.ton_id, conjPivo, pivoId]);
 
-  const set = (k: keyof FormBomba, v: string) => setF((x) => ({ ...x, [k]: v }));
-  const copiarDe = (pid: string) => {
-    setConjPivo(pid);
-    const o = op?.bombeamentos.find((x) => x.pivo_id === pid)?.bombeamento;
-    if (!o) return;
-    setAtivo(true); setF(formDe(o));
-    toast.info('Bomba do outro pivô copiada — os dois vão dividir a bomba (um por vez). Revise e salve.');
-  };
-
-  const tonNome = (tid: string) => op?.tons.find((t) => t.id === tid)?.nome ?? (tid || '—');
+  const b = estado?.bombeamento ?? null;
+  // Dono da bomba = pontos no próprio pivô; os outros do conjugado apontam para ele.
+  const compartilhada = !conj && !!b?.compartilhada_com.length;
+  const nomePivo = (pid: string) => op?.bombas.find((x) => x.pivo_id === pid)?.nome ?? (pid === estado?.bomba_de?.id ? estado?.bomba_de?.nome : null) ?? '—';
+  const bombaDeAgora = conj ? conjPivo : '';
   const mudancas = useMemo(() => {
     if (!base) return [];
     const out: Array<{ label: string; de: string; para: string }> = [];
     const add = (label: string, de: string, para: string) => { if (de !== para) out.push({ label, de, para }); };
-    add('Este pivô tem bombeamento', base.ativo ? 'Sim' : 'Não', ativo ? 'Sim' : 'Não');
-    if (ativo) {
-      add('Bomba', base.ativo ? tonNome(base.f.ton_id) : '—', tonNome(f.ton_id));
+    add('Usa a bomba do pivô', base.bombaDe ? nomePivo(base.bombaDe) : '—', bombaDeAgora ? nomePivo(bombaDeAgora) : '—');
+    for (const k of CHAVES_SEQ as ChaveSeq[]) {
+      add(PARAMS.find((p) => p.key === k)!.label, `${base.seq[k]} s`, `${Number(seq[k])} s`);
     }
-    add('Tempo para pressurizar', `${base.seq.pressurizacao_s} s`, `${Number(seq.pressurizacao_s)} s`);
-    add('Confirmação do giro', `${base.seq.confirma_giro_s} s`, `${Number(seq.confirma_giro_s)} s`);
-    for (const p of PARAMS.slice(2)) {
+    for (const p of PARAMS_PAR) {
       const antes = cfg?.parametros?.[p.key as keyof ParametrosPivo] as number | null | undefined;
       const agora = parNum(p.key);
       if ((antes ?? null) !== agora) add(p.label, antes == null ? '—' : `${fmtPar(antes, p.d)} ${p.unit}`, agora == null ? '—' : `${fmtPar(agora, p.d)} ${p.unit}`);
     }
-    if (conj) {
-      const pp = cfg?.parametros;
-      add('Direcionamento da água', (pp?.direcionamento ?? 'valvula') === 'valvula' ? 'Válvula pelo NexON' : 'Intertravamento físico', agua.direcionamento === 'valvula' ? 'Válvula pelo NexON' : 'Intertravamento físico');
-      const vAntes = pp?.valvula_ton_id && pp?.valvula_bo ? `${pp.valvula_ton_id}|${pp.valvula_bo}` : '';
-      const vTxt = (v: string) => { if (!v) return '—'; const [t, bo] = v.split('|'); return `${tonNome(t)} · BO${bo}`; };
-      if (agua.direcionamento === 'valvula') add('Saída que comanda a válvula', vTxt(vAntes), vTxt(agua.valvula));
+    if (conj || compartilhada) {
+      const txt = (d: 'valvula' | 'fisico') => (d === 'valvula' ? 'Válvula pelo NexON' : 'Intertravamento físico');
+      add('Direcionamento da água', txt(cfg?.parametros?.direcionamento ?? 'valvula'), txt(direcionamento));
     }
     if (cfg && ponta) {
       const a = cfg.bloqueio_ponta;
@@ -861,14 +901,12 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
       add('Horário de ponta · fim', a.fim, ponta.fim);
     }
     return out;
-  }, [base, ativo, f, seq, cfg, ponta, par, agua, conj]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [base, seq, cfg, ponta, par, direcionamento, conj, conjPivo, op]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const bombaRuim = ativo && (!f.ton_id || !numOk(f.bo_liga, 1, 16) || !numOk(f.confirma_s, 5, 300)
-    || (f.modo === 'pulso' && (!numOk(f.bo_desliga, 1, 16) || !numOk(f.pulso_ms, 100, 10000)))
-    || (f.bi_confirma !== '' && !numOk(f.bi_confirma, 1, 16)));
-  const seqRuim = !numOk(seq.pressurizacao_s, 10, 600) || !numOk(seq.confirma_giro_s, 5, 120);
+  const bombaRuim = conj && !conjPivo;
+  const seqRuim = (CHAVES_SEQ as ChaveSeq[]).some((k) => { const p = PARAMS.find((x) => x.key === k)!; return !numOk(seq[k], p.min, p.max); });
   const pontaRuim = !!ponta && !(/^\d{2}:\d{2}$/.test(ponta.inicio) && /^\d{2}:\d{2}$/.test(ponta.fim));
-  const parRuim = PARAMS.slice(2).some((p) => { const v = parNum(p.key); return v != null && (Number.isNaN(v) || v < p.min || v > p.max); });
+  const parRuim = PARAMS_PAR.some((p) => { const v = parNum(p.key); return v != null && (Number.isNaN(v) || v < p.min || v > p.max); });
   const invalido = bombaRuim || seqRuim || pontaRuim || parRuim;
   const n = mudancas.length;
   const saveOff = invalido || n === 0;
@@ -876,23 +914,20 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
   const gravar = async () => {
     setGravando(true);
     try {
-      const daConfig = new Set(['Bloquear no horário de ponta', 'Horário de ponta · início', 'Horário de ponta · fim', 'Direcionamento da água', 'Saída que comanda a válvula', ...PARAMS.slice(2).map((p) => p.label)]);
+      const daConfig = new Set(['Bloquear no horário de ponta', 'Horário de ponta · início', 'Horário de ponta · fim', 'Direcionamento da água', ...PARAMS_PAR.map((p) => p.label)]);
       const bombaMudou = mudancas.some((m) => !daConfig.has(m.label));
+      const seqNum = { pressurizacao_s: Number(seq.pressurizacao_s), confirma_giro_s: Number(seq.confirma_giro_s), confirma_bomba_s: Number(seq.confirma_bomba_s) };
       if (bombaMudou) {
+        // bomba_de só vai quando mudou: pivô ainda na configuração antiga não perde a dele.
+        const conjMudou = base!.bombaDe !== bombaDeAgora;
         await api.put(`/pivos/${pivoId}/bombeamento`, {
-          bombeamento: ativo ? {
-            ton_id: f.ton_id, modo: f.modo, bo_liga: Number(f.bo_liga),
-            bo_desliga: f.bo_desliga === '' ? null : Number(f.bo_desliga),
-            bi_confirma: f.bi_confirma === '' ? null : Number(f.bi_confirma),
-            confirma_s: Number(f.confirma_s), pulso_ms: Number(f.pulso_ms), ativo: true,
-          } : null,
-          sequencia: { pressurizacao_s: Number(seq.pressurizacao_s), confirma_giro_s: Number(seq.confirma_giro_s) },
+          ...(conjMudou ? { bombeamento: { bomba_de: bombaDeAgora || null } } : {}),
+          sequencia: seqNum,
         });
       }
       const pontaMudou = cfg && ponta && (cfg.bloqueio_ponta.ativo !== ponta.ativo || cfg.bloqueio_ponta.inicio !== ponta.inicio || cfg.bloqueio_ponta.fim !== ponta.fim);
-      const parMudou = mudancas.some((m) => PARAMS.slice(2).some((p) => p.label === m.label) || m.label === 'Direcionamento da água' || m.label === 'Saída que comanda a válvula');
+      const parMudou = mudancas.some((m) => PARAMS_PAR.some((p) => p.label === m.label) || m.label === 'Direcionamento da água');
       if (pontaMudou || parMudou) {
-        const [vt, vb] = agua.valvula ? agua.valvula.split('|') : [null, null];
         await api.put(`/pivos/${pivoId}/config`, {
           ...(pontaMudou ? { bloqueio_ponta: ponta } : {}),
           ...(parMudou ? {
@@ -900,14 +935,14 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
               pressao_minima: parNum('pressao_minima'), lamina_100: parNum('lamina_100'),
               tempo_volta_100: parNum('tempo_volta_100'), correcao_angulo_zero: parNum('correcao_angulo_zero'),
               percentimetro_ciclo_s: parNum('percentimetro_ciclo_s') == null ? null : Math.round(parNum('percentimetro_ciclo_s')!),
-              direcionamento: agua.direcionamento, valvula_ton_id: vt, valvula_bo: vb ? Number(vb) : null,
+              direcionamento,
             },
           } : {}),
         });
       }
       toast.success('Configuração do pivô salva');
       // O gravado passa a ser o rascunho (não espera o refresh do estado).
-      setBase({ ativo, f, seq: { pressurizacao_s: Number(seq.pressurizacao_s), confirma_giro_s: Number(seq.confirma_giro_s) } });
+      setBase({ bombaDe: bombaDeAgora, seq: seqNum });
       setRevisar(false); onSalvo();
     } catch (e) {
       toast.error('Não salvou', { description: erroMsg(e) });
@@ -928,45 +963,34 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
     <div style={{ padding: '20px 24px 28px 24px', ...col(10) }}>
       {secao('BOMBEAMENTO', 4)}
       <div style={{ ...s.card, padding: '0 16px' }}>
-        <NxSwitchRow first title="Este pivô tem bombeamento" sub="Ligar o pivô com água liga a bomba; desligar o pivô desliga a bomba" on={ativo} disabled={roTec} onToggle={() => setAtivo((v) => !v)} />
-        {ativo && (
+        {conj ? (
+          <Linha first titulo="Bomba" sub="Sistema conjugado · um pivô por vez">
+            <ChipSelect label="Usa a bomba do pivô" disabled={roTec} value={conjPivo} onChange={setConjPivo}>
+              <option value="">Escolha o pivô…</option>
+              {(op?.bombas ?? []).filter((x) => x.pivo_id !== pivoId).map((x) => <option key={x.pivo_id} value={x.pivo_id}>Bomba do {x.nome}</option>)}
+            </ChipSelect>
+          </Linha>
+        ) : (
+          <Linha first titulo="Bomba" sub={b?.origem === 'legado' ? 'Configuração antiga · ligue Ligar_bomba na Topologia IoT para substituir' : 'Pontos do pivô ligados na Topologia IoT'}>
+            <span style={{ fontSize: 14, fontWeight: 700, color: b ? NX.texto : NX.mudo }}>{b ? (compartilhada ? `Compartilhada com ${b.compartilhada_com.join(', ')}` : 'Configurada') : 'Sem bomba'}</span>
+          </Linha>
+        )}
+        {(!conj || conjPivo === estado?.bomba_de?.id) && b?.saidas && (
           <>
-            <Linha titulo="Bomba" sub="TON e medidor de energia da bomba">
-              <ChipSelect label="Bomba" disabled={roTec} value={f.ton_id} onChange={(v) => set('ton_id', v)}>
-                <option value="">Escolha a TON…</option>
-                {(op?.tons ?? []).map((t) => <option key={t.id} value={t.id}>{t.nome} · {t.unidade}</option>)}
-              </ChipSelect>
-            </Linha>
-            <NxSwitchRow title="Sistema conjugado" sub="A bomba atende outro pivô · um pivô por vez" on={conj} disabled={roTec} onToggle={() => setConj((v) => !v)} />
-            {conj && (
-              <div style={{ borderTop: `1px solid ${NX.linha}`, padding: '12px 0', ...col(10) }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                  <span style={{ fontSize: 14, fontWeight: 700 }}>Outro pivô</span>
-                  <ChipSelect label="Outro pivô" height={36} disabled={roTec} value={conjPivo} onChange={copiarDe}>
-                    <option value="">—</option>
-                    {(op?.bombeamentos ?? []).filter((x) => x.pivo_id !== pivoId).map((x) => <option key={x.pivo_id} value={x.pivo_id}>{x.nome}</option>)}
-                  </ChipSelect>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 14, fontWeight: 700 }}>Direcionamento da água</span>
-                  <NxSeg<'valvula' | 'fisico'> disabled={roTec} value={agua.direcionamento} onChange={(v) => setAgua((a) => ({ ...a, direcionamento: v }))} options={[{ v: 'valvula', label: 'Válvula pelo NexON' }, { v: 'fisico', label: 'Intertravamento físico' }]} />
-                </div>
-                {agua.direcionamento === 'valvula' && (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                    <span style={col(2)}>
-                      <span style={{ fontSize: 14, fontWeight: 700 }}>Saída que comanda a válvula</span>
-                      <span style={{ fontSize: 12, color: NX.mudo }}>Válvula solenoide na adutora, junto ao pivô mais próximo</span>
-                    </span>
-                    <ChipSelect label="Saída que comanda a válvula" height={36} disabled={roTec} value={agua.valvula} onChange={(v) => setAgua((a) => ({ ...a, valvula: v }))}>
-                      <option value="">—</option>
-                      {(op?.tons ?? []).flatMap((t) => Array.from({ length: 8 }, (_, i) => (
-                        <option key={`${t.id}|${i + 1}`} value={`${t.id}|${i + 1}`}>{t.nome} · BO{i + 1}</option>
-                      )))}
-                    </ChipSelect>
-                  </div>
-                )}
-              </div>
-            )}
+            <SinalBomba titulo="Ligar bomba" s={b.saidas.ligar} />
+            <SinalBomba titulo="Desligar bomba" s={b.saidas.desligar} vazio="Mantida pela saída de ligar" />
+            <SinalBomba titulo="Bomba ligada" s={b.saidas.confirma} vazio="Sem confirmação" />
+          </>
+        )}
+        <NxSwitchRow title="Sistema conjugado" sub="Usa a bomba de outro pivô" on={conj} disabled={roTec || compartilhada}
+          onToggle={() => setConj((v) => !v)} />
+        {(conj || compartilhada) && (
+          <>
+            <div style={{ borderTop: `1px solid ${NX.linha}`, padding: '12px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 14, fontWeight: 700 }}>Direcionamento da água</span>
+              <NxSeg<'valvula' | 'fisico'> disabled={roTec} value={direcionamento} onChange={setDirecionamento} options={[{ v: 'valvula', label: 'Válvula pelo NexON' }, { v: 'fisico', label: 'Intertravamento físico' }]} />
+            </div>
+            {direcionamento === 'valvula' && <SinalBomba titulo="Válvula" s={estado?.valvula ?? null} vazio="Ligue o ponto Valvula na Topologia IoT" />}
           </>
         )}
       </div>
@@ -974,8 +998,8 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
 
       {secao('PARTIDA E IRRIGAÇÃO', 10)}
       {PARAMS.map((p) => {
-        const ehSeq = p.key === 'pressurizacao_s' || p.key === 'confirma_giro_s';
-        const val = ehSeq ? seq[p.key as 'pressurizacao_s' | 'confirma_giro_s'] : (par[p.key] ?? '');
+        const ehSeq = CHAVES_SEQ.includes(p.key);
+        const val = ehSeq ? seq[p.key as ChaveSeq] : (par[p.key] ?? '');
         const nv = Number(String(val).replace(',', '.'));
         const ruim = ehSeq ? !numOk(val, p.min, p.max) : val !== '' && (Number.isNaN(nv) || nv < p.min || nv > p.max);
         // Lâmina é operacional; o resto da partida é técnico.

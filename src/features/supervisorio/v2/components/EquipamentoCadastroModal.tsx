@@ -17,7 +17,9 @@ import { equipamentosApi, type EquipamentoApiResponse } from '@/services/equipam
  * definido (não no sheet de visualização). O tipo pm/ied da medição vem da associação
  * no IoT.
  */
-type PontosNativos = { comando: string[]; status: string[] };
+/** opcionais = nativos que aparecem no cadastro mas vêm desmarcados (ex.: Pivô → Ligar_bomba, Canhao). */
+type PontosNativos = { comando: string[]; status: string[]; opcionais?: string[] };
+const padraoDe = (n: PontosNativos, k: 'comando' | 'status') => n[k].filter((p) => !n.opcionais?.includes(p));
 type Tipo = { id: string; codigo: string; nome: string; sigla: string | null; pontos_nativos?: PontosNativos; somente_visual?: boolean };
 
 /**
@@ -154,8 +156,8 @@ export function EquipamentoCadastroModal({ open, onClose, unidadeId, mode, equip
     const nat = t?.pontos_nativos ?? { comando: [], status: [] };
     setNativos(nat);
     // Os nativos já vêm marcados (o padrão do tipo); desmarca-se o que não se aplica.
-    setPontosComando(scsComando ? nat.comando : []);
-    setPontosStatus(scsStatus ? nat.status : []);
+    setPontosComando(scsComando ? padraoDe(nat, 'comando') : []);
+    setPontosStatus(scsStatus ? padraoDe(nat, 'status') : []);
     try {
       const { tag: prox } = await equipamentosApi.proximaTag(id, unidadeId);
       setTag(prox ?? '');
@@ -175,8 +177,8 @@ export function EquipamentoCadastroModal({ open, onClose, unidadeId, mode, equip
     if (visual) { setPossuiScs(false); setPossuiMedicao(false); setScsComando(false); setScsStatus(false); }
     const nat = t.pontos_nativos ?? { comando: [], status: [] };
     const customs = (sel: string[], antigos: string[]) => sel.filter((p) => !antigos.includes(p));
-    setPontosComando(!visual && scsComando ? [...nat.comando, ...customs(pontosComando, nativos.comando)] : []);
-    setPontosStatus(!visual && scsStatus ? [...nat.status, ...customs(pontosStatus, nativos.status)] : []);
+    setPontosComando(!visual && scsComando ? [...padraoDe(nat, 'comando'), ...customs(pontosComando, nativos.comando)] : []);
+    setPontosStatus(!visual && scsStatus ? [...padraoDe(nat, 'status'), ...customs(pontosStatus, nativos.status)] : []);
     setNativos(nat);
   };
   const tipoTrocado = mode === 'edit' && !!tipoId && !!tipoOriginal && tipoId !== tipoOriginal;
@@ -291,7 +293,7 @@ export function EquipamentoCadastroModal({ open, onClose, unidadeId, mode, equip
                       checked={scsComando}
                       onCheckedChange={(v) => {
                         const b = !!v; setScsComando(b);
-                        setPontosComando(b ? (pontosComando.length ? pontosComando : nativos.comando) : []);
+                        setPontosComando(b ? (pontosComando.length ? pontosComando : padraoDe(nativos, 'comando')) : []);
                       }}
                     />
                     <span className="text-sm">Comando</span>
@@ -304,7 +306,7 @@ export function EquipamentoCadastroModal({ open, onClose, unidadeId, mode, equip
                       checked={scsStatus}
                       onCheckedChange={(v) => {
                         const b = !!v; setScsStatus(b);
-                        setPontosStatus(b ? (pontosStatus.length ? pontosStatus : nativos.status) : []);
+                        setPontosStatus(b ? (pontosStatus.length ? pontosStatus : padraoDe(nativos, 'status')) : []);
                       }}
                     />
                     <span className="text-sm">Status</span>
