@@ -63,6 +63,13 @@ Pulso no Desligar → confirma a parada (Girando em 0) → `perc off` → canhã
 - Sem água o canhão fica indisponível.
 - As faixas do canhão por ângulo (aba "Canhão" da Irrigação) ficam para depois, porque precisam da leitura de ângulo.
 
+## 6b. Percentímetro com o pivô girando
+
+- Card "Percentímetro" na Operação, só com o pivô girando com água e o ponto Percentimetro ligado a uma BO.
+- `POST /pivos/:id/percentimetro {percentual}` ou `{lamina}` manda um `perc` novo. A TON troca no **próximo ciclo**, sem desligar.
+- Atualiza a irrigação em curso. A parada por voltas ou ângulo é recalculada: o que falta percorrer anda na velocidade nova. A parada por tempo não muda.
+- Recusa com o pivô parado, sem água ou com o mesmo valor.
+
 ## 7. Implementado (04/11/2026)
 
 - **Backend** (`pivo-sequencia.service.ts`):
