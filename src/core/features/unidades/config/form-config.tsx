@@ -279,6 +279,10 @@ const PontosMedicaoManager = ({ value, onChange, disabled, mode }: FormFieldProp
   );
 };
 
+/** Campo opcional sem valor: o 0 e coordenada valida, nao vazio. */
+const semValor = (value: unknown) =>
+  value === null || value === undefined || String(value).trim() === '';
+
 /**
  * Configuração dos campos do formulário de Unidades
  */
@@ -322,7 +326,9 @@ export const unidadesFormFields: FormField[] = [
     // e renomear coluna por causa de rotulo de tela nao se paga.
     label: 'Perfil',
     type: 'select',
-    required: true,
+    // Perfil, coordenadas, UF e cidade sao opcionais desde nov/2026: so o nome
+    // e a planta sao obrigatorios
+    required: false,
     options: [
       { value: TipoUnidade.CARGA, label: 'Carga' },
       { value: TipoUnidade.GERACAO, label: 'Geração' },
@@ -360,10 +366,10 @@ export const unidadesFormFields: FormField[] = [
     key: 'latitude',
     label: 'Latitude',
     type: 'number',
-    required: true,
+    required: false,
     placeholder: 'Ex: -23.5505',
     validation: (value) => {
-      if (!value) return 'Latitude é obrigatória';
+      if (semValor(value)) return null;
       const num = parseFloat(value as string);
       if (isNaN(num) || num < -90 || num > 90) return 'Latitude deve estar entre -90 e 90';
       return null;
@@ -373,10 +379,10 @@ export const unidadesFormFields: FormField[] = [
     key: 'longitude',
     label: 'Longitude',
     type: 'number',
-    required: true,
+    required: false,
     placeholder: 'Ex: -46.6333',
     validation: (value) => {
-      if (!value) return 'Longitude é obrigatória';
+      if (semValor(value)) return null;
       const num = parseFloat(value as string);
       if (isNaN(num) || num < -180 || num > 180) return 'Longitude deve estar entre -180 e 180';
       return null;

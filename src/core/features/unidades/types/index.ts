@@ -39,15 +39,15 @@ export interface Unidade {
   id: string;
   plantaId: string;
   nome: string;
-  tipo: TipoUnidade;
+  tipo: TipoUnidade | null;
 
-  // Localização
-  estado: string;
-  cidade: string;
-  latitude: number;
-  longitude: number;
+  // Localização (opcionais desde nov/2026)
+  estado: string | null;
+  cidade: string | null;
+  latitude: number | null;
+  longitude: number | null;
 
-  potencia: number;
+  potencia: number | null;
   status: StatusUnidade;
   pontosMedicao?: any; // JSON
 
@@ -96,12 +96,12 @@ export interface Unidade {
 export interface CreateUnidadeDto {
   planta_id: string;
   nome: string;
-  tipo: TipoUnidade;
-  estado: string;
-  cidade: string;
-  latitude: number;
-  longitude: number;
-  potencia: number;
+  tipo: TipoUnidade | null;
+  estado: string | null;
+  cidade: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  potencia: number | null;
   status: StatusUnidade;
   pontos_medicao?: any;
   irrigante?: boolean;
@@ -207,12 +207,12 @@ export interface UnidadeFormData {
   plantaId: string;
   proprietarioId?: string; // ✅ ID do proprietário (para filtrar plantas)
   nome: string;
-  tipo: TipoUnidade;
-  estado: string;
-  cidade: string;
-  latitude: number | string;
-  longitude: number | string;
-  potencia: number | string;
+  tipo: TipoUnidade | '' | null;
+  estado: string | null;
+  cidade: string | null;
+  latitude: number | string | null;
+  longitude: number | string | null;
+  potencia: number | string | null;
   status: StatusUnidade;
   pontosMedicao?: string; // JSON como string no form
   irrigante?: boolean;
@@ -230,6 +230,16 @@ export interface UnidadeFormData {
 }
 
 // ===== UTILITÁRIOS DE CONVERSÃO =====
+
+const textoOuNulo = <T extends string>(valor: T | null | undefined): T | null =>
+  valor === null || valor === undefined || valor.trim() === '' ? null : valor;
+
+const numeroOuNulo = (valor: number | string | null | undefined): number | null => {
+  if (valor === null || valor === undefined) return null;
+  if (typeof valor === 'number') return valor;
+  const texto = valor.trim().replace(',', '.');
+  return texto === '' ? null : Number(texto);
+};
 
 /**
  * Converter FormData para DTO da API
@@ -264,12 +274,14 @@ export const formDataToDto = (formData: UnidadeFormData): CreateUnidadeDto => {
   const dto: any = {
     planta_id: formData.plantaId,
     nome: formData.nome,
-    tipo: formData.tipo,
-    estado: formData.estado,
-    cidade: formData.cidade,
-    latitude: typeof formData.latitude === 'string' ? parseFloat(formData.latitude) : formData.latitude,
-    longitude: typeof formData.longitude === 'string' ? parseFloat(formData.longitude) : formData.longitude,
-    potencia: formData.potencia ? (typeof formData.potencia === 'string' ? parseFloat(formData.potencia) : formData.potencia) : 0,
+    // Opcionais desde nov/2026: vazio vai como null (no update apaga o
+    // gravado). parseFloat("") dava NaN, e potencia vazia virava 0.
+    tipo: textoOuNulo(formData.tipo),
+    estado: textoOuNulo(formData.estado),
+    cidade: textoOuNulo(formData.cidade),
+    latitude: numeroOuNulo(formData.latitude),
+    longitude: numeroOuNulo(formData.longitude),
+    potencia: numeroOuNulo(formData.potencia),
     status: formData.status,
     irrigante: formData.irrigante,
     grupo: formData.grupo,

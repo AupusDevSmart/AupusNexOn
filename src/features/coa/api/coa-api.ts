@@ -25,7 +25,7 @@ export interface DashboardData {
 export interface PlantaResumo {
   id: string;
   nome: string;
-  cliente: string;
+  cliente: string | null; // planta sem proprietario (opcional desde nov/2026)
   unidades: UnidadeResumo[];
   totais: {
     geracao: number;

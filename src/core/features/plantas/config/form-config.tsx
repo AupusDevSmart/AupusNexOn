@@ -207,14 +207,13 @@ const EnderecoCompleto = ({ onChange, disabled, entity, value }: FormFieldProps 
 
       {/* Logradouro - 50% */}
       <div className="basis-full sm:basis-[calc(50%-4px)] flex-shrink-0 flex-grow-0 space-y-2">
-        <label className="text-sm font-medium">Logradouro <span className="text-red-500">*</span></label>
+        <label className="text-sm font-medium">Logradouro</label>
         <input
           type="text"
           placeholder="Ex: Av. Industrial, 1000"
           value={logradouro}
           onChange={(e) => setLogradouro(e.target.value)}
           disabled={disabled}
-          required
           className="input-minimal"
         />
       </div>
@@ -234,13 +233,12 @@ const EnderecoCompleto = ({ onChange, disabled, entity, value }: FormFieldProps 
 
       {/* UF - 50% */}
       <div className="basis-full sm:basis-[calc(50%-4px)] flex-shrink-0 flex-grow-0 space-y-2">
-        <label className="text-sm font-medium">UF <span className="text-red-500">*</span></label>
+        <label className="text-sm font-medium">UF</label>
         <select
           value={selectedUF}
           onChange={(e) => handleUFChange(e.target.value)}
           disabled={disabled || loadingEstados}
           className="select-minimal"
-          required
         >
           <option value="">
             {loadingEstados ? "Carregando estados..." : "Selecione um estado"}
@@ -255,13 +253,12 @@ const EnderecoCompleto = ({ onChange, disabled, entity, value }: FormFieldProps 
 
       {/* Cidade - 50% */}
       <div className="basis-full sm:basis-[calc(50%-4px)] flex-shrink-0 flex-grow-0 space-y-2">
-        <label className="text-sm font-medium">Cidade <span className="text-red-500">*</span></label>
+        <label className="text-sm font-medium">Cidade</label>
         <select
           value={selectedCidade}
           onChange={(e) => setSelectedCidade(e.target.value)}
           disabled={disabled || loadingCidades || !selectedUF}
           className="select-minimal"
-          required
         >
           <option value="">
             {!selectedUF
@@ -378,10 +375,12 @@ export const plantasFormFields: FormField[] = [
     key: 'cnpj',
     label: 'CNPJ / CPF',
     type: 'custom',
-    required: true,
+    // Opcional desde nov/2026 (muitas plantas sao cadastradas sem o CNPJ);
+    // quando preenchido, o numero ainda e conferido
+    required: false,
     render: CNPJFieldComponent,
     validation: (value) => {
-      if (!value) return 'CNPJ/CPF é obrigatório';
+      if (!value || CNPJUtils.unmask(value.toString()) === '') return null;
 
       const cleanValue = CNPJUtils.unmask(value.toString());
 
@@ -403,7 +402,7 @@ export const plantasFormFields: FormField[] = [
     key: 'proprietarioId',
     label: 'Proprietário',
     type: 'custom',
-    required: true,
+    required: false,
     render: ({ value, onChange, disabled, mode }) => (
       <ProprietarioSelector
         value={value as string | null}
@@ -411,12 +410,6 @@ export const plantasFormFields: FormField[] = [
         disabled={disabled}
       />
     ),
-    validation: (value) => {
-      if (!value || value === '') {
-        return 'Proprietário é obrigatório';
-      }
-      return null;
-    },
   },
   {
     key: 'horarioFuncionamento',
@@ -431,7 +424,7 @@ export const plantasFormFields: FormField[] = [
     key: 'localizacao',
     label: 'Localização',
     type: 'text',
-    required: true,
+    required: false,
     placeholder: 'Ex: Zona Sul - Galpão 1',
   },
 
@@ -440,29 +433,27 @@ export const plantasFormFields: FormField[] = [
     key: 'endereco',
     label: 'Endereço Completo',
     type: 'custom',
-    required: true,
+    // Nenhum campo do endereco e obrigatorio desde nov/2026; o que vier
+    // preenchido ainda tem o formato conferido (a API confere o mesmo)
+    required: false,
     colSpan: 2,
     render: EnderecoCompleto,
     validation: (value) => {
-      if (!value || typeof value !== 'object') {
-        return 'Endereço é obrigatório';
-      }
+      if (!value || typeof value !== 'object') return null;
 
-      const { logradouro, cidade, uf, cep } = value;
+      const logradouro = (value.logradouro ?? '').trim();
+      const uf = (value.uf ?? '').trim();
+      const cep = (value.cep ?? '').trim();
 
-      if (!logradouro || logradouro.trim().length < 5) {
+      if (logradouro && logradouro.length < 5) {
         return 'Logradouro deve ter pelo menos 5 caracteres';
       }
 
-      if (!cidade || cidade.trim().length < 2) {
-        return 'Cidade é obrigatória';
-      }
-
-      if (!uf || uf.trim().length !== 2) {
+      if (uf && uf.length !== 2) {
         return 'UF deve ter exatamente 2 caracteres';
       }
 
-      if (!cep || !cep.match(/^\d{5}-\d{3}$/)) {
+      if (cep && !cep.match(/^\d{5}-\d{3}$/)) {
         return 'CEP deve estar no formato XXXXX-XXX';
       }
 

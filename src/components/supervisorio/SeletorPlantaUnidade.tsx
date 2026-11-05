@@ -189,15 +189,16 @@ export function SeletorPlantaUnidade({
                       <div className="flex items-center gap-3 mt-1">
                         <p className="text-xs text-gray-600 dark:text-gray-400 flex items-center gap-1 font-medium">
                           <MapPin className="w-3 h-3" />
-                          {unidade.cidade} / {unidade.estado}
+                          {/* Cidade, UF, potencia e tipo sao opcionais desde nov/2026 */}
+                          {[unidade.cidade, unidade.estado].filter(Boolean).join(' / ') || '-'}
                         </p>
                         <p className="text-xs text-gray-600 dark:text-gray-400 flex items-center gap-1 font-medium">
                           <Zap className="w-3 h-3" />
-                          {unidade.potencia} kW
+                          {unidade.potencia != null ? `${unidade.potencia} kW` : '-'}
                         </p>
                       </div>
                       <p className="text-xs text-gray-500 dark:text-gray-500 mt-1 font-medium">
-                        Tipo: {unidade.tipo}
+                        Tipo: {unidade.tipo || '-'}
                       </p>
                     </div>
                   </div>

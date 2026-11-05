@@ -141,7 +141,7 @@ const PlantaUnidadeEquipamentoSelector = ({ value, onChange, disabled, onMultipl
   const plantaOptions = plantas.map((p) => ({ value: p.id?.trim(), label: p.nome }));
   const unidadeOptions = unidades.map((u) => ({
     value: u.id?.trim(),
-    label: u.cidade ? `${u.nome} - ${u.cidade}/${u.estado}` : u.nome,
+    label: u.cidade ? `${u.nome} - ${[u.cidade, u.estado].filter(Boolean).join('/')}` : u.nome,
   }));
   const equipamentoOptions = equipamentos.map((e) => ({ value: e.id?.trim(), label: e.nome }));
 

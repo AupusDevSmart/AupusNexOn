@@ -489,7 +489,7 @@ export function MapaCoa({ unidades, onUnidadeClick }: MapaCoaProps) {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{unidade.nome}</p>
                       <p className="text-xs text-muted-foreground truncate">
-                        {unidade.cidade}, {unidade.estado}
+                        {[unidade.cidade, unidade.estado].filter(Boolean).join(', ') || '-'}
                       </p>
                     </div>
                   </div>
