@@ -12,6 +12,7 @@ import {
 } from './equipUi';
 import { NX, s, NxShell, type NxTone } from './nxMock';
 import { RotulosUnifilar } from './InversorSheet';
+import { ControleMedConfig, ControleMedResumo } from './ControleMed';
 import { ComposedChart } from '@/components/charts/composed-chart';
 import { BarChart } from '@/components/charts/bar-chart';
 import { Bar } from '@/components/charts/bar';
@@ -209,6 +210,8 @@ interface LinhaMes extends Record<string, unknown> { k: string; v: number | null
 
 /** Tudo o que a tela mostra; as duas fontes (SSU e PM) preenchem este modelo. */
 interface Vista {
+  /** Acima de tudo (card do controle automático); null = nada. */
+  topo?: ReactNode;
   tone: NxTone; stLabel: string; stText: string;
   terminaEm: string; proj: number | null; contr: number | null; tol: number | null;
   kpis: Kpi[];
@@ -413,6 +416,7 @@ function MedidorVista({ v }: { v: Vista }) {
   return (
     <div style={{ padding: '20px 24px 28px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
       <style>{CSS_MED}</style>
+      {v.topo}
       <div className="nxm-g2">
         <div style={{ ...card16, padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
@@ -808,7 +812,7 @@ function energiaPorPosto(blocos: Bloco[], horarios: Horarios): Postos {
 }
 
 /** Operação do medidor lido pela SSU (A-966 / TON-V2). */
-function MedidorSsu({ equipamentoId, onStatus }: { equipamentoId: string; onStatus: (s: StatusMed) => void }) {
+function MedidorSsu({ equipamentoId, onStatus, topo }: { equipamentoId: string; onStatus: (s: StatusMed) => void; topo?: ReactNode }) {
   const { data, error } = useGatewayDashboard(equipamentoId);
   const horarios = useHorarios(equipamentoId);
   const [per, setPer] = useState<Per>('hoje');
@@ -900,7 +904,7 @@ function MedidorSsu({ equipamentoId, onStatus }: { equipamentoId: string; onStat
 
   return (
     <MedidorVista v={{
-      tone, stLabel, stText, terminaEm, proj, contr, tol, kpis, gen, per, setPer,
+      topo, tone, stLabel, stText, terminaEm, proj, contr, tol, kpis, gen, per, setPer,
       hoje: hojeComProj, ciclo, horarios,
       maxMes: mes?.pico_consumo ? { kw: mes.pico_consumo.kw, t: new Date(mes.pico_consumo.timestamp).getTime() } : null,
       meses: barras,
@@ -1011,9 +1015,10 @@ export function MedidorSheet({ equipamentoId, nome, onClose, onConfigurarPontos 
         ? <>
             {onConfigurarPontos && <div style={{ padding: '20px 24px 0 24px' }}><RotulosUnifilar onConfigurar={onConfigurarPontos} /></div>}
             <MedidorConfig equipamentoId={idDados} ssuId={ehSsu ? idDados : null} />
+            <div style={{ padding: '0 24px 28px 24px' }}><ControleMedConfig medId={equipamentoId} /></div>
           </>
         : ehSsu
-          ? <MedidorSsu equipamentoId={idDados} onStatus={setStatus} />
+          ? <MedidorSsu equipamentoId={idDados} onStatus={setStatus} topo={<ControleMedResumo medId={equipamentoId} />} />
           : <MedidorPm equipamentoId={idDados} onStatus={setStatus} />}
     </NxShell>
   );
