@@ -79,6 +79,10 @@ const IoTDiagram = lazy(() =>
 const ComissionamentoTab = lazy(() =>
   import("@/features/supervisorio/components/ComissionamentoTab").then((m) => ({ default: m.ComissionamentoTab })),
 );
+// Câmeras (NEXON-88): hls.js e o módulo inteiro só baixam quando a aba abre.
+const CamerasTab = lazy(() =>
+  import("@/features/supervisorio/cameras/components/CamerasTab").then((m) => ({ default: m.CamerasTab })),
+);
 const VisaoGeralUsina = lazy(() =>
   import("@/features/supervisorio/components/visao-geral/VisaoGeralUsina").then((m) => ({ default: m.VisaoGeralUsina })),
 );
@@ -1812,7 +1816,7 @@ export function SinopticoAtivoPage() {
   // Tab ativa: 'unifilar' ou 'iot'
   // Cliente (não-admin) não vê o unifilar por enquanto — abre na Visão Geral da usina,
   // que funciona com ou sem TON (cai para a integração de nuvem do fabricante).
-  const [sinopticoTab, setSinopticoTab] = useState<'visao' | 'unifilar' | 'alarmes' | 'iot' | 'comissionamento'>(
+  const [sinopticoTab, setSinopticoTab] = useState<'visao' | 'unifilar' | 'alarmes' | 'iot' | 'comissionamento' | 'cameras'>(
     () => abaInicial,
   );
 
@@ -1843,7 +1847,8 @@ export function SinopticoAtivoPage() {
   }, []);
 
   // Defensivo: se por qualquer motivo a aba IoT ficar ativa sem permissao,
-  // volta para o diagrama unifilar.
+  // volta para o diagrama unifilar. A aba Câmeras não entra aqui: todo usuário
+  // que vê a unidade vê as câmeras (comandos e cadastro são gateados dentro dela).
   useEffect(() => {
     if ((sinopticoTab === 'iot' || sinopticoTab === 'comissionamento') && !podeVerIot) {
       setSinopticoTab(abaInicial);
@@ -4009,6 +4014,16 @@ if (import.meta.env.PROD) {
                   Topologia
                 </button>
               )}
+              <button
+                onClick={() => setSinopticoTab('cameras')}
+                className={`px-3 py-1 touch:py-2 text-sm font-medium rounded-[2px] transition-colors ${
+                  sinopticoTab === 'cameras'
+                    ? 'bg-muted text-foreground'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                }`}
+              >
+                Câmeras
+              </button>
               {podeVerIot && (
                 <button
                   onClick={() => setSinopticoTab('comissionamento')}
@@ -4082,6 +4097,15 @@ if (import.meta.env.PROD) {
             <div className="flex-1 min-h-0 border-x border-b border-border rounded-b-lg overflow-hidden flex flex-col">
               <Suspense fallback={<AbaSkeleton />}>
                 <ComissionamentoTab unidadeId={unidadeId} unidadeNome={unidadeAtual?.nome} isAdmin={podeCadastroTecnico} />
+              </Suspense>
+            </div>
+          )}
+
+          {/* Câmeras (NEXON-88): vídeo ao vivo, alertas e armamento. Todo usuário que vê a unidade. */}
+          {unidadeId && sinopticoTab === 'cameras' && (
+            <div className="flex-1 min-h-0 border-x border-b border-border rounded-b-lg overflow-hidden flex flex-col">
+              <Suspense fallback={<AbaSkeleton />}>
+                <CamerasTab unidadeId={unidadeId} unidadeNome={unidadeAtual?.nome} />
               </Suspense>
             </div>
           )}
