@@ -295,9 +295,9 @@ export function CamerasTab({ unidadeId, unidadeNome }: CamerasTabProps) {
                 </TabsTrigger>
                 <TabsTrigger
                   value="todas"
-                  className="h-full gap-1.5 rounded-none border-b-2 border-transparent text-[13px] shadow-none data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none"
+                  className="h-full min-w-0 gap-1.5 rounded-none border-b-2 border-transparent px-2 text-[13px] shadow-none data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none"
                 >
-                  Todas as notificações
+                  <span className="min-w-0 truncate">Todas as notificações</span>
                   {resumo.nao_lidos > 0 && <Contador valor={resumo.nao_lidos} />}
                 </TabsTrigger>
               </TabsList>

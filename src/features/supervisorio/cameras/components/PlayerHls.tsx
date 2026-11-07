@@ -1,4 +1,5 @@
-import Hls from 'hls.js';
+// Build leve: sem legendas/áudio alternativo/DRM, ~230 kB a menos no chunk da aba (tipos em ../hls-light.d.ts).
+import Hls from 'hls.js/light';
 import { Loader2, RefreshCw, VideoOff, type LucideIcon } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
