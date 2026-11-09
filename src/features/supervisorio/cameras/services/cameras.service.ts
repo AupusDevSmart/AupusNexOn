@@ -49,7 +49,7 @@ function paginado<T>(r: unknown, limit: number): Paginado<T> {
  */
 export const CamerasService = {
   async listar(unidadeId: string): Promise<Camera[]> {
-    const { data } = await api.get('/cameras', { params: { unidade_id: unidadeId.trim(), limit: 100 } });
+    const { data } = await api.get('/cameras', { params: { unidade_id: unidadeId.trim() } });
     return lista<Camera>(data);
   },
 
