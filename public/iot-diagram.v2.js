@@ -463,6 +463,22 @@ var COMPONENT_TYPES = {
         ]
     },
 
+    // Encoder absoluto de posicao (ex.: Hohner Serie 67): Modbus RTU no RS485 da TON.
+    // Le a contagem bruta (catalogo); o NexON converte em angulo do pivo (resolucao,
+    // sentido e zero ficam na Configuracao do pivo).
+    encoder: {
+        label: 'Encoder', category: 'irrigacao', color: '#0EA5E9',
+        icon: 'M12 3a9 9 0 100 18 9 9 0 000-18zm0 3v6l4 2',
+        ports: ['top', 'bottom', 'left', 'right'],
+        generates_firmware: false,
+        defaults: { name: 'Encoder', catalog_id: '', modbus_address: 1 },
+        fields: [
+            { key: 'name', label: 'Nome', type: 'text' },
+            { key: 'catalog_id', label: 'Modelo', type: 'device_select', device_type: 'encoder_posicao' },
+            { key: 'modbus_address', label: 'Endereco Modbus (1 a 7, jumper no conector)', type: 'number' },
+        ]
+    },
+
     // ============================================================
     // IRRIGACAO — Pivo central (acionado pela TON via reles/entradas)
     // ============================================================
@@ -645,7 +661,7 @@ var CATEGORIES = [
     { id: 'controller', label: 'Controladores TON', types: ['ton1', 'ton2', 'ton3', 'ton4', 'ton1v2', 'ton2v2', 'ton3v2', 'ton4v2'] },
     { id: 'infra', label: 'Infraestrutura', types: ['wifi_router', 'mqtt_broker', 'meter_gateway', 'inverter_datalogger', 'conversor'] },
     { id: 'device', label: 'Dispositivos', types: ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao'] },
-    { id: 'irrigacao', label: 'Irrigação / Bomba', types: ['pivo', 'bomba'] },
+    { id: 'irrigacao', label: 'Irrigação / Bomba', types: ['pivo', 'encoder', 'bomba'] },
     { id: 'carregador', label: 'Carregador Elétrico', types: ['carregador'] },
 ];
 
@@ -1344,7 +1360,7 @@ var DiagramEditor = class {
             const other = from.type === 'inverter_datalogger' ? to.type : from.type;
             // Datalogger ↔ Dispositivo (inversor / medidor / rele) = RS485
             if (other === 'inversor' || other === 'power_meter' ||
-                other === 'medidor_comum' || other === 'rele_protecao') return ['rs485'];
+                other === 'medidor_comum' || other === 'rele_protecao' || other === 'encoder') return ['rs485'];
             // Datalogger ↔ TON = TCP (via rede)
             if (tonTypes.includes(other)) return ['tcp'];
             // Datalogger ↔ Router = WiFi ou Ethernet
@@ -1356,7 +1372,7 @@ var DiagramEditor = class {
         if (types.includes('conversor')) {
             const other = from.type === 'conversor' ? to.type : from.type;
             if (other === 'inversor' || other === 'power_meter' ||
-                other === 'medidor_comum' || other === 'rele_protecao') return ['rs485'];
+                other === 'medidor_comum' || other === 'rele_protecao' || other === 'encoder') return ['rs485'];
             if (tonTypes.includes(other)) return ['tcp'];
             return ['tcp'];
         }
@@ -1368,7 +1384,7 @@ var DiagramEditor = class {
         if (types.includes('medidor_ssu')) return ['ssu'];
 
         // TON ↔ device = rs485 or tcp
-        const deviceTypes = ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao'];
+        const deviceTypes = ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao', 'encoder'];
         if (types.some(t => tonTypes.includes(t)) && types.some(t => deviceTypes.includes(t))) {
             return ['rs485', 'tcp'];
         }
@@ -1863,7 +1879,7 @@ var DiagramEditor = class {
 
         const types = [from.type, to.type];
         const tonTypes = Object.keys(TON_CAPS);
-        const deviceTypes = ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao'];
+        const deviceTypes = ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao', 'encoder'];
 
         // Rule 1: TON to TON — apenas entre TONs com LoRa (TON2 ou TON4).
         // Topologia gateway/satellite: TON2 (com WiFi/Eth + LoRa) atua como
@@ -1960,7 +1976,7 @@ var DiagramEditor = class {
         // Rule 7: Datalogger conecta a: Dispositivos Modbus (RS485), Router (WiFi/Eth), TON (TCP)
         if (types.includes('inverter_datalogger')) {
             const other = from.type === 'inverter_datalogger' ? to.type : from.type;
-            const allowedTargets = ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao', 'wifi_router', ...tonTypes];
+            const allowedTargets = ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao', 'encoder', 'wifi_router', ...tonTypes];
             if (!allowedTargets.includes(other)) {
                 return { allowed: false, reason: 'Datalogger se conecta a: Dispositivos Modbus (RS485), Router (WiFi) ou TON (TCP)' };
             }
@@ -1969,7 +1985,7 @@ var DiagramEditor = class {
         // Rule 7b: Conversor conecta a: Dispositivos Modbus (RS485) ou TON (TCP)
         if (types.includes('conversor')) {
             const other = from.type === 'conversor' ? to.type : from.type;
-            const allowedTargets = ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao', ...tonTypes];
+            const allowedTargets = ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao', 'encoder', ...tonTypes];
             if (!allowedTargets.includes(other)) {
                 return { allowed: false, reason: 'Conversor se conecta a: Dispositivos Modbus (RS485) ou TON (TCP)' };
             }
@@ -2011,7 +2027,7 @@ var DiagramEditor = class {
         if (!from || !to) return 'rs485';
         const types = [from.type, to.type];
         const tonTypes = Object.keys(TON_CAPS);
-        const deviceTypes = ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao'];
+        const deviceTypes = ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao', 'encoder'];
         // TON com LoRa ↔ TON com LoRa = LoRa (TON2 e TON4)
         if (types.some(t => isLoraNode(t)) && types.every(t => tonTypes.includes(t))) return 'lora_radio';
         // Pivô ↔ TON = controle (fio de relés/entradas; visualmente como RS485)
@@ -2026,14 +2042,14 @@ var DiagramEditor = class {
         // Datalogger ↔ Dispositivo Modbus (inversor / medidor / rele) = RS485
         if (types.includes('inverter_datalogger') && (
             types.includes('inversor') || types.includes('power_meter') ||
-            types.includes('medidor_comum') || types.includes('rele_protecao')
+            types.includes('medidor_comum') || types.includes('rele_protecao') || types.includes('encoder')
         )) return 'rs485';
         // Datalogger ↔ TON = TCP
         if (types.includes('inverter_datalogger') && types.some(t => tonTypes.includes(t))) return 'tcp';
         // Conversor ↔ Dispositivo Modbus = RS485
         if (types.includes('conversor') && (
             types.includes('inversor') || types.includes('power_meter') ||
-            types.includes('medidor_comum') || types.includes('rele_protecao')
+            types.includes('medidor_comum') || types.includes('rele_protecao') || types.includes('encoder')
         )) return 'rs485';
         // Conversor ↔ TON = TCP
         if (types.includes('conversor') && types.some(t => tonTypes.includes(t))) return 'tcp';

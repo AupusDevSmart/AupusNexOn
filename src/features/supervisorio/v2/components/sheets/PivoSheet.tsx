@@ -65,13 +65,30 @@ interface Estado {
     pausada_ponta: null | { retoma_as: string };
     bomba_em_uso_por: string | null;
   };
+  /** Posição do pivô (encoder ou telemetria). Ausente em API antiga. */
+  posicao?: {
+    fonte: 'encoder' | 'telemetria'; angulo: number | null; angulo_sem_zero: number | null; bruto: number | null;
+    lido_em: string | null; motivo: string | null;
+    encoder: { equipamento_id: string; resolucao: number | null; invertido: boolean; zero: number } | null;
+  };
 }
 interface IrrigacaoSrv { modo: string; config: ConfigIrrigacao; parada: Parada | { tipo: 'porTempo'; minutos: number }; programacao?: { nome: string } | null }
 interface Janela { ativo: boolean; inicio: string; fim: string; dias: number[] }
 interface ParametrosPivo {
   pressao_minima: number | null; lamina_100: number | null; tempo_volta_100: number | null; percentimetro_ciclo_s?: number | null; correcao_angulo_zero: number | null;
   direcionamento: 'valvula' | 'fisico'; valvula_ton_id: string | null; valvula_bo: number | null;
+  encoder_equipamento_id?: string | null; encoder_resolucao?: number | null; encoder_invertido?: boolean;
 }
+/** Encoders da instalação (criados pelo diagrama IoT) com a última contagem lida. */
+interface OpcaoEncoder { id: string; nome: string; bruto: number | null; lido_em: string | null }
+/** Resoluções da Série 67 (código de compra): 9, 11, 12 e 13 bits. */
+const RESOLUCOES_ENCODER = [360, 2048, 4096, 8192];
+/** Contagem → ângulo antes do zero (mesma conta do servidor, pivo-posicao.util). */
+const anguloSemZero = (bruto: number, res: number, inv: boolean) => {
+  const g = ((((Math.round(bruto) % res) + res) % res) * 360) / res;
+  return inv ? (360 - g) % 360 : g;
+};
+const norm360 = (g: number) => ((g % 360) + 360) % 360;
 interface PivoConfig {
   bloqueio_ponta: Janela; reservado: Janela; origem_ponta: { numero_uc?: string; concessionaria?: string } | null;
   parametros?: ParametrosPivo; unidade_nome?: string | null; planta_nome?: string | null; proprietario_nome?: string | null;
@@ -150,8 +167,8 @@ const setorD = (cx: number, cy: number, r: number, a0: number, a1: number) => {
   return `M${cx} ${cy} L${p0[0]} ${p0[1]} A${r} ${r} 0 ${span > 180 ? 1 : 0} 1 ${p1[0]} ${p1[1]} Z`;
 };
 
-function MapaPivo({ angulo, girando, falha, sentido, direcao, faixas }: {
-  angulo: number | null; girando: boolean; falha: boolean; sentido: 'direita' | 'esquerda' | null; direcao: string; faixas: FaixaCanhao[];
+function MapaPivo({ angulo, aviso, girando, falha, sentido, direcao, faixas }: {
+  angulo: number | null; aviso?: string | null; girando: boolean; falha: boolean; sentido: 'direita' | 'esquerda' | null; direcao: string; faixas: FaixaCanhao[];
 }) {
   const a = angulo ?? 0;
   const arm = pt(179, 150, 118, a);
@@ -175,6 +192,11 @@ function MapaPivo({ angulo, girando, falha, sentido, direcao, faixas }: {
       <div style={{ position: 'absolute', top: 12, left: 12, height: 30, padding: '0 12px', borderRadius: 15, background: 'rgba(14,14,34,0.75)', color: '#FFFFFF', display: 'flex', alignItems: 'center', fontSize: 13, fontWeight: 700 }}>
         {angulo != null ? `${fmt(angulo, 1)}°` : '—°'} · {direcao}
       </div>
+      {aviso && (
+        <div role="status" style={{ position: 'absolute', left: 12, right: 12, bottom: 12, padding: '8px 12px', borderRadius: 10, background: 'rgba(14,14,34,0.75)', color: '#FFFFFF', fontSize: 12, fontWeight: 600 }}>
+          Posição indisponível: {aviso}
+        </div>
+      )}
     </div>
   );
 }
@@ -404,7 +426,9 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   const pausaPonta = irrSrv?.pausada_ponta ?? null;
   const direcaoAtual = sentido === 'direita' ? 'Avanço' : sentido === 'esquerda' ? 'Reverso' : ultima.direcao;
   const cfgGiro = cfgAtual ?? ultima;
-  const angulo = num('angulo', 'posicao');
+  // Posição: a do servidor (encoder convertido, ou telemetria). API antiga: telemetria do pivô.
+  const angulo = estado?.posicao ? estado.posicao.angulo : num('angulo', 'posicao');
+  const avisoPosicao = estado?.posicao?.fonte === 'encoder' && angulo == null ? estado.posicao.motivo : null;
   const angTxt = angulo != null ? `${fmt(angulo, 1)}°` : '—';
   const ligando = executando && seq?.acao !== 'desligar';
   const on = girando || ligando;
@@ -620,7 +644,7 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
         <div style={{ padding: '20px 24px 28px 24px', ...col(16) }}>
           <div style={{ display: 'grid', gridTemplateColumns: estreito ? 'minmax(0, 1fr)' : 'repeat(2, minmax(0, 1fr))', gap: 16, alignItems: 'start' }}>
             <div style={col(12)}>
-              <MapaPivo angulo={angulo} girando={girando} falha={falha} sentido={sentido} direcao={DIRECAO_LABEL[direcaoAtual]} faixas={ultima.canhao ? ultima.faixasCanhao : []} />
+              <MapaPivo angulo={angulo} aviso={avisoPosicao} girando={girando} falha={falha} sentido={sentido} direcao={DIRECAO_LABEL[direcaoAtual]} faixas={ultima.canhao ? ultima.faixasCanhao : []} />
               <div style={{ ...s.card, padding: '12px 16px', ...col(4) }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={s.stDot(tone)} />
@@ -878,6 +902,81 @@ type ChaveSeq = 'pressurizacao_s' | 'confirma_giro_s' | 'confirma_bomba_s';
 const CHAVES_SEQ: readonly string[] = ['pressurizacao_s', 'confirma_giro_s', 'confirma_bomba_s'];
 const PARAMS_PAR = PARAMS.filter((p) => !CHAVES_SEQ.includes(p.key));
 
+/**
+ * Posição do pivô pelo encoder absoluto: escolhe o encoder (nó Encoder do diagrama IoT,
+ * mesma instalação), a resolução do código de compra, o sentido e o zero. "Zerar aqui"
+ * faz a posição lida agora virar 0° (o braço apontando para o norte do mapa).
+ */
+function SecaoEncoder({ encs, enc, setEnc, encSel, encRes, encRuim, ro, somenteLeitura, zero, setZero }: {
+  encs: OpcaoEncoder[] | null; enc: { id: string; res: string; inv: boolean }; setEnc: (f: (e: { id: string; res: string; inv: boolean }) => { id: string; res: string; inv: boolean }) => void;
+  encSel: OpcaoEncoder | null; encRes: number | null; encRuim: boolean; ro: boolean; somenteLeitura: boolean; zero: string; setZero: (v: string) => void;
+}) {
+  const zeroNum = zero.trim() === '' ? 0 : Number(zero.replace(',', '.'));
+  const zeroRuim = zero.trim() !== '' && (Number.isNaN(zeroNum) || zeroNum < -180 || zeroNum > 180);
+  const podeCalcular = !!encSel && encSel.bruto != null && encRes != null && !encRuim;
+  const semZero = podeCalcular ? anguloSemZero(encSel!.bruto!, encRes!, enc.inv) : null;
+  const previa = semZero != null && !zeroRuim ? norm360(semZero + zeroNum) : null;
+  const zerarAqui = () => {
+    if (semZero == null) return;
+    let z = -semZero;
+    if (z <= -180) z += 360;
+    z = Math.round(z * 10) / 10;
+    setZero((Object.is(z, -0) ? 0 : z).toLocaleString('pt-BR', { maximumFractionDigits: 1 }));
+  };
+  const hora = (iso: string | null) => (iso ? new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : null);
+  const resOpcoes = encRes != null && !RESOLUCOES_ENCODER.includes(encRes) ? [...RESOLUCOES_ENCODER, encRes] : RESOLUCOES_ENCODER;
+  return (
+    <div style={{ ...s.card, padding: '0 16px' }}>
+      <Linha first titulo="Encoder" sub={encs && encs.length === 0 ? 'Nenhum encoder nesta instalação · ligue um nó Encoder à TON na Topologia IoT e salve' : 'Encoder absoluto no centro do pivô (Topologia IoT)'}>
+        <ChipSelect label="Encoder" disabled={ro || !encs} value={enc.id} onChange={(v) => setEnc((e) => ({ ...e, id: v }))}>
+          <option value="">Sem encoder</option>
+          {(encs ?? []).map((x) => <option key={x.id} value={x.id}>{x.nome}</option>)}
+          {enc.id && encs && !encs.some((x) => x.id === enc.id) && <option value={enc.id}>Encoder removido</option>}
+        </ChipSelect>
+      </Linha>
+      {enc.id && (
+        <>
+          <Linha titulo="Resolução" sub={encRuim ? 'Escolha a resolução do código de compra' : 'Posições por volta (código de compra)'}>
+            <ChipSelect label="Resolução do encoder" disabled={ro} value={enc.res} onChange={(v) => setEnc((e) => ({ ...e, res: v }))}>
+              <option value="">Escolha…</option>
+              {resOpcoes.map((r) => <option key={r} value={String(r)}>{r.toLocaleString('pt-BR')}</option>)}
+            </ChipSelect>
+          </Linha>
+          <NxSwitchRow title="Sentido invertido" sub="Ligue se o ângulo diminui com o pivô em Avanço" on={enc.inv} disabled={ro}
+            onToggle={() => setEnc((e) => ({ ...e, inv: !e.inv }))} />
+          <div style={{ borderTop: `1px solid ${NX.linha}`, padding: '10px 0', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <label htmlFor="w-correcao_angulo_zero" style={{ flex: 1, ...col(2) }}>
+              <span style={{ fontSize: 15, fontWeight: 700 }}>Correção do ângulo zero</span>
+              <span style={{ fontSize: 12, color: zeroRuim ? NX.bad : NX.mudo }}>{ro && !somenteLeitura ? MSG_SOMENTE_LEITURA : 'Faixa −180 a 180° · 0° = norte do mapa'}</span>
+            </label>
+            <button type="button" disabled={ro || semZero == null} onClick={zerarAqui}
+              style={{ height: 38, padding: '0 12px', borderRadius: 10, border: `1px solid ${NX.borda}`, fontSize: 13, fontWeight: 800, color: ro || semZero == null ? NX.desab : NX.texto }}>
+              Zerar aqui
+            </button>
+            <input id="w-correcao_angulo_zero" inputMode="decimal" value={zero} disabled={ro} style={s.campo(ro, zeroRuim)} onChange={(e) => setZero(e.target.value)} />
+            <span style={{ fontSize: 14, color: NX.mudo, width: 28 }}>°</span>
+          </div>
+          <Linha titulo="Leitura agora" sub={encSel?.lido_em ? `Contagem ${encSel.bruto ?? '—'} · ${hora(encSel.lido_em)}` : 'Sem leitura do encoder ainda'}>
+            <span style={{ fontSize: 15, fontWeight: 800, color: previa != null ? NX.texto : NX.mudo, fontVariantNumeric: 'tabular-nums' }}>
+              {previa != null ? `${fmt(previa, 1)}°` : '—°'}
+            </span>
+          </Linha>
+        </>
+      )}
+      {!enc.id && (
+        <div style={{ borderTop: `1px solid ${NX.linha}`, padding: '10px 0', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <label htmlFor="w-correcao_angulo_zero" style={{ flex: 1, ...col(2) }}>
+            <span style={{ fontSize: 15, fontWeight: 700 }}>Correção do ângulo zero</span>
+            <span style={{ fontSize: 12, color: zeroRuim ? NX.bad : NX.mudo }}>Faixa −180 a 180°</span>
+          </label>
+          <input id="w-correcao_angulo_zero" inputMode="decimal" value={zero} disabled={ro} style={s.campo(ro, zeroRuim)} onChange={(e) => setZero(e.target.value)} />
+          <span style={{ fontSize: 14, color: NX.mudo, width: 28 }}>°</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg, onAdicionarHorario }: {
   pivoId: string; estado: Estado | null; cfg: PivoConfig | null; perfil: { tecnico: boolean; operacional: boolean }; onSalvo: () => void;
   progs: Programacao[] | null; onRemoverProg: (id: string) => void; onAdicionarHorario: () => void;
@@ -901,6 +1000,19 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
     });
   }, [cfg]);
   const parNum = (k: string) => { const t = (par[k] ?? '').trim(); return t === '' ? null : Number(t.replace(',', '.')); };
+  // Encoder de posição (técnico): equipamento, resolução e sentido. O zero é o correcao_angulo_zero.
+  const [encs, setEncs] = useState<OpcaoEncoder[] | null>(null);
+  const [enc, setEnc] = useState<{ id: string; res: string; inv: boolean }>({ id: '', res: '', inv: false });
+  useEffect(() => {
+    const pp = cfg?.parametros;
+    setEnc({ id: pp?.encoder_equipamento_id ?? '', res: pp?.encoder_resolucao != null ? String(pp.encoder_resolucao) : '', inv: !!pp?.encoder_invertido });
+  }, [cfg]);
+  useEffect(() => {
+    api.get(`/pivos/${pivoId}/encoder/opcoes`).then((r) => setEncs(corpo<OpcaoEncoder[]>(r) ?? [])).catch(() => setEncs([]));
+  }, [pivoId]);
+  const encRes = enc.res === '' ? null : Number(enc.res);
+  const encSel = encs?.find((x) => x.id === enc.id) ?? null;
+  const nomeEnc = (id: string | null | undefined) => (!id ? 'Sem encoder' : encs?.find((x) => x.id === id)?.nome ?? id);
   const [revisar, setRevisar] = useState(false);
   const [gravando, setGravando] = useState(false);
 
@@ -936,6 +1048,12 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
       const agora = parNum(p.key);
       if ((antes ?? null) !== agora) add(p.label, antes == null ? '—' : `${fmtPar(antes, p.d)} ${p.unit}`, agora == null ? '—' : `${fmtPar(agora, p.d)} ${p.unit}`);
     }
+    if (cfg) {
+      const pp = cfg.parametros;
+      add('Encoder', nomeEnc(pp?.encoder_equipamento_id), nomeEnc(enc.id || null));
+      add('Resolução do encoder', pp?.encoder_resolucao != null ? `${pp.encoder_resolucao}` : '—', encRes != null ? `${encRes}` : '—');
+      add('Encoder invertido', pp?.encoder_invertido ? 'Sim' : 'Não', enc.inv ? 'Sim' : 'Não');
+    }
     if (cfg && ponta) {
       const a = cfg.bloqueio_ponta;
       add('Bloquear no horário de ponta', a.ativo ? 'Sim' : 'Não', ponta.ativo ? 'Sim' : 'Não');
@@ -943,20 +1061,23 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
       add('Horário de ponta · fim', a.fim, ponta.fim);
     }
     return out;
-  }, [base, seq, cfg, ponta, par, conj, conjPivo, op]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [base, seq, cfg, ponta, par, conj, conjPivo, op, enc, encs]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const bombaRuim = conj && !conjPivo;
   const seqRuim = (CHAVES_SEQ as ChaveSeq[]).some((k) => { const p = PARAMS.find((x) => x.key === k)!; return !numOk(seq[k], p.min, p.max); });
   const pontaRuim = !!ponta && !(/^\d{2}:\d{2}$/.test(ponta.inicio) && /^\d{2}:\d{2}$/.test(ponta.fim));
   const parRuim = PARAMS_PAR.some((p) => { const v = parNum(p.key); return v != null && (Number.isNaN(v) || v < p.min || v > p.max); });
-  const invalido = bombaRuim || seqRuim || pontaRuim || parRuim;
+  // Com encoder escolhido, a resolução é obrigatória (sem ela o servidor não calcula o ângulo).
+  const encRuim = !!enc.id && (encRes == null || !Number.isInteger(encRes) || encRes < 16 || encRes > 16_777_216);
+  const invalido = bombaRuim || seqRuim || pontaRuim || parRuim || encRuim;
   const n = mudancas.length;
   const saveOff = invalido || n === 0;
 
   const gravar = async () => {
     setGravando(true);
     try {
-      const daConfig = new Set(['Bloquear no horário de ponta', 'Horário de ponta · início', 'Horário de ponta · fim', ...PARAMS_PAR.map((p) => p.label)]);
+      const ROT_ENC = ['Encoder', 'Resolução do encoder', 'Encoder invertido'];
+      const daConfig = new Set(['Bloquear no horário de ponta', 'Horário de ponta · início', 'Horário de ponta · fim', ...PARAMS_PAR.map((p) => p.label), ...ROT_ENC]);
       const bombaMudou = mudancas.some((m) => !daConfig.has(m.label));
       const seqNum = { pressurizacao_s: Number(seq.pressurizacao_s), confirma_giro_s: Number(seq.confirma_giro_s), confirma_bomba_s: Number(seq.confirma_bomba_s) };
       if (bombaMudou) {
@@ -968,7 +1089,7 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
         });
       }
       const pontaMudou = cfg && ponta && (cfg.bloqueio_ponta.ativo !== ponta.ativo || cfg.bloqueio_ponta.inicio !== ponta.inicio || cfg.bloqueio_ponta.fim !== ponta.fim);
-      const parMudou = mudancas.some((m) => PARAMS_PAR.some((p) => p.label === m.label));
+      const parMudou = mudancas.some((m) => PARAMS_PAR.some((p) => p.label === m.label) || ROT_ENC.includes(m.label));
       if (pontaMudou || parMudou) {
         await api.put(`/pivos/${pivoId}/config`, {
           ...(pontaMudou ? { bloqueio_ponta: ponta } : {}),
@@ -977,6 +1098,9 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
               pressao_minima: parNum('pressao_minima'), lamina_100: parNum('lamina_100'),
               tempo_volta_100: parNum('tempo_volta_100'), correcao_angulo_zero: parNum('correcao_angulo_zero'),
               percentimetro_ciclo_s: parNum('percentimetro_ciclo_s') == null ? null : Math.round(parNum('percentimetro_ciclo_s')!),
+              encoder_equipamento_id: enc.id || null,
+              encoder_resolucao: enc.id ? encRes : cfg?.parametros?.encoder_resolucao ?? null,
+              encoder_invertido: enc.inv,
             },
           } : {}),
         });
@@ -1029,7 +1153,7 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
       {roTec && !roOp && <span style={{ fontSize: 12, color: NX.mudo }}>{MSG_SOMENTE_LEITURA}</span>}
 
       {secao('PARTIDA E IRRIGAÇÃO', 10)}
-      {PARAMS.map((p) => {
+      {PARAMS.filter((p) => p.key !== 'correcao_angulo_zero').map((p) => {
         const ehSeq = CHAVES_SEQ.includes(p.key);
         const val = ehSeq ? seq[p.key as ChaveSeq] : (par[p.key] ?? '');
         const nv = Number(String(val).replace(',', '.'));
@@ -1048,6 +1172,10 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
           </div>
         );
       })}
+
+      {secao('POSIÇÃO DO PIVÔ', 10)}
+      <SecaoEncoder encs={encs} enc={enc} setEnc={setEnc} encSel={encSel} encRes={encRes} encRuim={encRuim} ro={roTec} somenteLeitura={somenteLeitura}
+        zero={par.correcao_angulo_zero ?? ''} setZero={(v) => setPar((x) => ({ ...x, correcao_angulo_zero: v }))} />
 
       {secao('HORÁRIO DE PONTA', 10)}
       <div style={{ ...s.card, padding: '0 16px' }}>

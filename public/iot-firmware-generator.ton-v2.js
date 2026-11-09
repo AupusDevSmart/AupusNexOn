@@ -383,7 +383,7 @@ var FirmwareGeneratorTonV2 = class FirmwareGeneratorTonV2 {
     }
 
     _processRS485(ton, other, result, components, connections) {
-        const deviceTypes = ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao'];
+        const deviceTypes = ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao', 'encoder'];
         if (!deviceTypes.includes(other.type)) return;
         if (result.rs485_devices.find(d => d.componentId === other.id)) return;
 
@@ -420,7 +420,7 @@ var FirmwareGeneratorTonV2 = class FirmwareGeneratorTonV2 {
     }
 
     _processTCP(ton, other, result, components, connections) {
-        const deviceTypes = ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao'];
+        const deviceTypes = ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao', 'encoder'];
 
         // Caso 1: TON ↔ Datalogger (TCP)
         // O datalogger agrupa inversores via RS485. Gerar tcp_devices para cada inversor.
@@ -765,7 +765,7 @@ var FirmwareGeneratorTonV2 = class FirmwareGeneratorTonV2 {
     _genInverterTcpH(spec) {
         // Tipos lidos via Modbus TCP (espelha _processTCP.deviceTypes).
         // Antes só 'inversor' entrava — bug fazia power_meter atrás de datalogger ser silenciosamente ignorado.
-        const TCP_READABLE_TYPES = ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao'];
+        const TCP_READABLE_TYPES = ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao', 'encoder'];
         const count = spec.tcp_devices.filter(d => TCP_READABLE_TYPES.includes(d.type)).length;
         return `#ifndef INVERTER_TCP_H
 #define INVERTER_TCP_H
@@ -809,7 +809,7 @@ extern const uint8_t TCP_INVERTER_IDS[];
     _genInverterTcpCpp(spec) {
         // Aceita qualquer device-com-catalogo conectado via gateway (datalogger).
         // Antes só 'inversor' entrava — power_meter atrás de datalogger não era gerado.
-        const TCP_READABLE_TYPES = ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao'];
+        const TCP_READABLE_TYPES = ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao', 'encoder'];
         const invs = spec.tcp_devices.filter(d => TCP_READABLE_TYPES.includes(d.type) && d.gateway);
         if (invs.length === 0) {
             return `#include "inverter_tcp.h"
@@ -8650,7 +8650,7 @@ void lora_poll_respond(const char* gw_mac, const char* req_id) {
     modbus_publish_all([](const char* sub, const char* payload){ lora_publish_data(sub, payload); });
 `;
             }
-            const TCP_READABLE_TYPES = ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao'];
+            const TCP_READABLE_TYPES = ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao', 'encoder'];
             if (satReactive && (spec.tcp_devices || []).filter(d => TCP_READABLE_TYPES.includes(d.type)).length > 0) {
                 cpp += `    // Modbus TCP (datalogger/conversor): publica medias acumuladas via LoRa.
     inverter_tcp_publish_all([](const char* sub, const char* payload){ lora_publish_data(sub, payload); });
@@ -8905,7 +8905,7 @@ ${spec.has_relays ? '        relays_health_tick();   // C3 anti-travamento: conf
 
         // Leitura de devices via TCP (datalogger) — inclui inversores, power_meters, etc.
         // Antes só filtrava 'inversor' — power_meter via datalogger era ignorado.
-        const TCP_READABLE_TYPES = ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao'];
+        const TCP_READABLE_TYPES = ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao', 'encoder'];
         const tcpInvs = (spec.tcp_devices || []).filter(d => TCP_READABLE_TYPES.includes(d.type));
         if (tcpInvs.length > 0) {
             const tcpPubCall = spec.wifi
