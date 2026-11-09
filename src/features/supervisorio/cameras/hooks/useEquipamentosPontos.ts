@@ -19,7 +19,7 @@ export function useEquipamentosUnidade(unidadeId?: string, habilitado = true) {
   return useQuery<EquipamentoResumido[]>({
     queryKey: ['cameras', 'equipamentos', unidadeId?.trim()],
     queryFn: async () => {
-      const r = await equipamentosApi.findAll({ unidade_id: unidadeId!.trim(), limit: 200 });
+      const r = await equipamentosApi.findAll({ unidade_id: unidadeId!.trim(), limit: 100 });
       return comoLista<{ id: string; nome: string; tag?: string | null }>(r)
         .map((e) => ({ id: e.id, nome: e.nome, tag: e.tag ?? null }))
         .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
