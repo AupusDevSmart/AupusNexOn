@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Briefcase, Factory, MapPin, RefreshCw } from 'lucide-react';
+import { Briefcase, Factory, Mail, MapPin, Pencil, Phone, RefreshCw } from 'lucide-react';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { useUserStore } from '@/store/useUserStore';
 import { Layout } from '@/core/components/common/Layout';
 import { TitleCard } from '@/core/components/common/title-card';
 import { BaseTable } from '@/core/components/common/base-table/BaseTable';
@@ -25,6 +27,10 @@ interface Proprietario {
   telefone?: string;
   cidade?: string;
   estado?: string;
+  endereco?: string;
+  cep?: string;
+  instagram?: string;
+  status?: string;
   role?: string;
   totalPlantas?: number;
 }
@@ -74,11 +80,117 @@ const colunas: TableColumn<Proprietario>[] = [
   },
 ];
 
+function Campo({ rotulo, children }: { rotulo: string; children: React.ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-xs uppercase tracking-wide text-muted-foreground">{rotulo}</dt>
+      <dd className="mt-0.5 text-sm text-foreground break-words">{children || <span className="text-muted-foreground">Não informado</span>}</dd>
+    </div>
+  );
+}
+
+/** Ficha do proprietário: o cadastro completo (só leitura) e os atalhos para plantas e instalações. */
+function FichaProprietario({ p, onFechar }: { p: Proprietario | null; onFechar: () => void }) {
+  const navigate = useNavigate();
+  const podeEditar = useUserStore((s) => (s.capacidades?.cadastra?.length ?? 0) > 0);
+  const ir = (rota: string) => {
+    onFechar();
+    navigate(rota);
+  };
+  const cidadeUf = p?.cidade ? `${p.cidade}${p.estado ? `/${p.estado}` : ''}` : p?.estado;
+  const doc = p?.cpf_cnpj ? `${p.tipo === 'pessoa_juridica' ? 'CNPJ' : 'CPF'} ${p.cpf_cnpj}` : 'CPF/CNPJ não informado';
+
+  return (
+    <Sheet open={!!p} onOpenChange={(aberto) => !aberto && onFechar()}>
+      <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+        {p && (
+          <>
+            <SheetHeader>
+              <SheetTitle className="flex items-center gap-2">
+                <Briefcase className="h-5 w-5 shrink-0 text-muted-foreground" />
+                <span className="truncate" title={p.nome}>{p.nome}</span>
+              </SheetTitle>
+              <SheetDescription className="tabular-nums">
+                {doc}
+                {p.status && p.status !== 'Ativo' ? ` · ${p.status}` : ''}
+              </SheetDescription>
+            </SheetHeader>
+
+            <div className="mt-6 flex flex-col gap-6">
+              <section className="flex flex-col gap-3">
+                <h3 className="text-sm font-semibold">Contato</h3>
+                <dl className="grid gap-3">
+                  <Campo rotulo="E-mail">
+                    {p.email && (
+                      <a href={`mailto:${p.email}`} className="inline-flex items-center gap-1.5 hover:underline">
+                        <Mail className="h-3.5 w-3.5 shrink-0" />
+                        {p.email}
+                      </a>
+                    )}
+                  </Campo>
+                  <Campo rotulo="Telefone">
+                    {p.telefone && (
+                      <a href={`tel:${p.telefone.replace(/[^\d+]/g, '')}`} className="inline-flex items-center gap-1.5 hover:underline tabular-nums">
+                        <Phone className="h-3.5 w-3.5 shrink-0" />
+                        {p.telefone}
+                      </a>
+                    )}
+                  </Campo>
+                  {p.instagram && <Campo rotulo="Instagram">{p.instagram}</Campo>}
+                </dl>
+              </section>
+
+              <section className="flex flex-col gap-3">
+                <h3 className="text-sm font-semibold">Endereço</h3>
+                <dl className="grid gap-3 sm:grid-cols-2">
+                  <div className="sm:col-span-2">
+                    <Campo rotulo="Logradouro">{p.endereco}</Campo>
+                  </div>
+                  <Campo rotulo="Cidade/UF">{cidadeUf}</Campo>
+                  <Campo rotulo="CEP">{p.cep && <span className="tabular-nums">{p.cep}</span>}</Campo>
+                </dl>
+              </section>
+
+              <section className="flex flex-col gap-3">
+                <h3 className="text-sm font-semibold">
+                  Plantas <span className="font-normal text-muted-foreground tabular-nums">({p.totalPlantas ?? 0})</span>
+                </h3>
+                <div className="flex flex-wrap gap-2">
+                  <button className="btn-minimal-outline" onClick={() => ir(`/cadastros/plantas?proprietarioId=${p.id.trim()}`)}>
+                    <Factory className="h-4 w-4 mr-2" />
+                    Ver plantas
+                  </button>
+                  <button className="btn-minimal-outline" onClick={() => ir(`/ativos/instalacoes?proprietarioId=${p.id.trim()}`)}>
+                    <MapPin className="h-4 w-4 mr-2" />
+                    Ver instalações
+                  </button>
+                </div>
+              </section>
+
+              {podeEditar && (
+                <p className="text-xs text-muted-foreground border-t pt-4">
+                  Para alterar estes dados, edite a pessoa em{' '}
+                  <button className="inline-flex items-center gap-1 text-foreground hover:underline" onClick={() => ir('/cadastros/usuarios')}>
+                    <Pencil className="h-3 w-3" />
+                    Usuários e Permissões
+                  </button>
+                  .
+                </p>
+              )}
+            </div>
+          </>
+        )}
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 export default function ProprietariosPage() {
   const navigate = useNavigate();
   const [filtros, setFiltros] = useFiltrosNaUrl('ativos:proprietarios', inicial);
   const [lista, setLista] = useState<Proprietario[]>([]);
   const [carregando, setCarregando] = useState(true);
+  const [aberto, setAberto] = useState<Proprietario | null>(null);
   const requisicao = useRef(0);
 
   const carregar = useCallback(async () => {
@@ -171,7 +283,7 @@ export default function ProprietariosPage() {
               pagination={pagination}
               loading={carregando}
               onPageChange={(page) => setFiltros((f) => ({ ...f, page }))}
-              onView={(p) => navigate(`/cadastros/plantas?proprietarioId=${p.id.trim()}`)}
+              onView={(p) => setAberto(p)}
               customActions={[
                 {
                   key: 'ver_plantas',
@@ -196,6 +308,7 @@ export default function ProprietariosPage() {
           </div>
         </div>
       </Layout.Main>
+      <FichaProprietario p={aberto} onFechar={() => setAberto(null)} />
     </Layout>
   );
 }
