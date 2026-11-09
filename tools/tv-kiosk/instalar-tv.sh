@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# NexON na TV — Raspberry Pi (3 ou mais novo) em modo quiosque.
-# Raspberry Pi OS **Lite** (Bookworm). Rodar UMA vez, por SSH, com o usuário normal (não root):
+# NexON na TV — Raspberry Pi (3, 4 ou 5) em modo quiosque.
+# Raspberry Pi OS **Lite** 64-bit (Bookworm). Rodar UMA vez, por SSH, com o usuário normal (não root):
 #   bash instalar-tv.sh [URL]
 # O Pi passa a ligar direto no Chromium em tela cheia (cage, sem área de trabalho),
 # reabre o navegador se ele fechar e reinicia todo dia às 04:00.
@@ -9,16 +9,26 @@ set -euo pipefail
 URL="${1:-https://nexon.aupusenergia.com.br}"
 USUARIO="$(id -un)"
 [ "$USUARIO" = "root" ] && { echo "Rode com o usuário normal (ex.: pi), não root."; exit 1; }
+MODELO="$(tr -d '\0' < /proc/device-tree/model 2>/dev/null || echo desconhecido)"
+# Pi 3 (1 GB): economia de memória. Pi 4/5: sem as economias (elas pioram o desenho).
+FRACO=0
+case "$MODELO" in *"Pi 3"*|*"Pi 2"*|*"Zero"*) FRACO=1 ;; esac
+EXTRA=""
+[ "$FRACO" = 1 ] && EXTRA="--enable-low-end-device-mode --renderer-process-limit=2"
+echo "Modelo: $MODELO (modo econômico: $FRACO)"
 
-echo "== Pacotes (cage + Chromium + zram) =="
+echo "== Pacotes (cage + Chromium) =="
 sudo apt-get update
 CHROMIUM=chromium-browser
 apt-cache show chromium-browser >/dev/null 2>&1 || CHROMIUM=chromium
-sudo apt-get install -y --no-install-recommends cage "$CHROMIUM" zram-tools fonts-noto-color-emoji
+sudo apt-get install -y --no-install-recommends cage "$CHROMIUM" fonts-noto-color-emoji
 
-echo "== Memória: zram (o Pi 3 tem só 1 GB) =="
-echo -e "ALGO=lz4\nPERCENT=60" | sudo tee /etc/default/zramswap >/dev/null
-sudo systemctl restart zramswap || true
+if [ "$FRACO" = 1 ]; then
+  echo "== Memória: zram (Pi 3 tem só 1 GB) =="
+  sudo apt-get install -y --no-install-recommends zram-tools
+  echo -e "ALGO=lz4\nPERCENT=60" | sudo tee /etc/default/zramswap >/dev/null
+  sudo systemctl restart zramswap || true
+fi
 
 echo "== Script do quiosque =="
 cat > "$HOME/tv.sh" <<EOF
@@ -29,8 +39,7 @@ while true; do
   cage -- $CHROMIUM \\
     --kiosk --noerrdialogs --disable-infobars --disable-session-crashed-bubble \\
     --no-first-run --password-store=basic --check-for-update-interval=31536000 \\
-    --disable-features=Translate,MediaRouter --enable-low-end-device-mode \\
-    --renderer-process-limit=2 --disk-cache-size=50000000 \\
+    --disable-features=Translate,MediaRouter $EXTRA --disk-cache-size=50000000 \\
     --ozone-platform=wayland \\
     "$URL"
   sleep 5
@@ -48,7 +57,7 @@ if [ "$(tty)" = "/dev/tty1" ]; then exec "$HOME/tv.sh"; fi
 EOF
 fi
 
-echo "== Vídeo: 1080p fixo (4K não roda no Pi 3) e tela sem apagar =="
+echo "== Vídeo: 1080p fixo (em TV 4K o texto fica legível e o desenho leve) e tela sem apagar =="
 CMDLINE=/boot/firmware/cmdline.txt
 [ -f "$CMDLINE" ] || CMDLINE=/boot/cmdline.txt
 sudo cp -n "$CMDLINE" "$CMDLINE.antes-tv" || true
