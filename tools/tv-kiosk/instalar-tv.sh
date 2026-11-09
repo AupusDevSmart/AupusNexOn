@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# NexON na TV — Raspberry Pi (3 ou mais novo) em modo quiosque.
+# Raspberry Pi OS **Lite** (Bookworm). Rodar UMA vez, por SSH, com o usuário normal (não root):
+#   bash instalar-tv.sh [URL]
+# O Pi passa a ligar direto no Chromium em tela cheia (cage, sem área de trabalho),
+# reabre o navegador se ele fechar e reinicia todo dia às 04:00.
+set -euo pipefail
+
+URL="${1:-https://nexon.aupusenergia.com.br}"
+USUARIO="$(id -un)"
+[ "$USUARIO" = "root" ] && { echo "Rode com o usuário normal (ex.: pi), não root."; exit 1; }
+
+echo "== Pacotes (cage + Chromium + zram) =="
+sudo apt-get update
+CHROMIUM=chromium-browser
+apt-cache show chromium-browser >/dev/null 2>&1 || CHROMIUM=chromium
+sudo apt-get install -y --no-install-recommends cage "$CHROMIUM" zram-tools fonts-noto-color-emoji
+
+echo "== Memória: zram (o Pi 3 tem só 1 GB) =="
+echo -e "ALGO=lz4\nPERCENT=60" | sudo tee /etc/default/zramswap >/dev/null
+sudo systemctl restart zramswap || true
+
+echo "== Script do quiosque =="
+cat > "$HOME/tv.sh" <<EOF
+#!/usr/bin/env bash
+# Abre o NexON em tela cheia; se o Chromium fechar ou travar, abre de novo.
+# O perfil (~/.config/chromium) guarda o login: entra uma vez com teclado e mouse e pronto.
+while true; do
+  cage -- $CHROMIUM \\
+    --kiosk --noerrdialogs --disable-infobars --disable-session-crashed-bubble \\
+    --no-first-run --password-store=basic --check-for-update-interval=31536000 \\
+    --disable-features=Translate,MediaRouter --enable-low-end-device-mode \\
+    --renderer-process-limit=2 --disk-cache-size=50000000 \\
+    --ozone-platform=wayland \\
+    "$URL"
+  sleep 5
+done
+EOF
+chmod +x "$HOME/tv.sh"
+
+echo "== Login automático no tty1 e quiosque ao entrar =="
+sudo raspi-config nonint do_boot_behaviour B2   # console com login automático
+if ! grep -q 'tv.sh' "$HOME/.bash_profile" 2>/dev/null; then
+  cat >> "$HOME/.bash_profile" <<'EOF'
+
+# NexON na TV: só no console da TV (tty1); SSH continua normal
+if [ "$(tty)" = "/dev/tty1" ]; then exec "$HOME/tv.sh"; fi
+EOF
+fi
+
+echo "== Vídeo: 1080p fixo (4K não roda no Pi 3) e tela sem apagar =="
+CMDLINE=/boot/firmware/cmdline.txt
+[ -f "$CMDLINE" ] || CMDLINE=/boot/cmdline.txt
+sudo cp -n "$CMDLINE" "$CMDLINE.antes-tv" || true
+for opt in "video=HDMI-A-1:1920x1080@60" "consoleblank=0"; do
+  grep -q "${opt%%=*}=" "$CMDLINE" || sudo sed -i "1 s|\$| $opt|" "$CMDLINE"
+done
+
+echo "== Reboot diário 04:00 (limpa a memória) =="
+( sudo crontab -l 2>/dev/null | grep -v 'reboot # nexon-tv'; echo '0 4 * * * /sbin/shutdown -r now # nexon-tv' ) | sudo crontab -
+
+echo
+echo "Pronto. Reinicie com:  sudo reboot"
+echo "Na primeira vez, faça o login no NexON na TV (teclado e mouse). Depois pode tirar o mouse."
+echo "Para sair do quiosque: por SSH,  pkill -f tv.sh; pkill cage"
+echo "Para trocar a página: edite a URL em ~/tv.sh e rode  pkill cage"
