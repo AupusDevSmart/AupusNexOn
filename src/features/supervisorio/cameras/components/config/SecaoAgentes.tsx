@@ -22,9 +22,9 @@ import { useAgentesCameras } from '../../hooks/useConfigCameras';
 import { CamerasService } from '../../services/cameras.service';
 import type { Agente } from '../../types';
 import { mensagemErro } from '../../utils/erros';
+import { LIMITE_PARADO_MS } from '../../utils/agentes';
 
 /** Agente sem contato há mais que isto aparece como parado. */
-const LIMITE_PARADO_MS = 3 * 60_000;
 
 /** Agentes da unidade: criar (mostra o token UMA vez), gerar token novo, remover. */
 export function SecaoAgentes({ unidadeId }: { unidadeId: string }) {

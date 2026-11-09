@@ -39,6 +39,10 @@ vi.mock('../hooks/useTokenMidia', () => ({
 // Player e sheet têm cadeias próprias de hooks; aqui só interessa a aba.
 vi.mock('./PlayerHls', () => ({ PlayerHls: () => <div data-testid="player">player</div> }));
 vi.mock('./ConfigCamerasSheet', () => ({ ConfigCamerasSheet: () => null }));
+vi.mock('../hooks/useConfigCameras', () => ({
+  useAgentesCameras: () => ({ data: [] }),
+  useConfigCameras: () => ({ data: undefined }),
+}));
 
 const hoje = chaveHoje();
 const ontem = deslocarDia(hoje, -1);
@@ -157,15 +161,25 @@ describe('CamerasTab', () => {
   it('estado vazio com botão de cadastro só para cadastro técnico', () => {
     camerasMock.mockReturnValue(pronto([]));
     resumoMock.mockReturnValue(pronto(RESUMO_VAZIO));
+    // Sem câmera, a aba vira o tutorial de ligação (NEXON-88); o atalho de cadastro é só do cadastro técnico.
     const { unmount } = render();
-    expect(screen.getByText('Nenhuma câmera nesta usina')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Ligue as câmeras de UFV Aupus II/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Cadastrar câmera' })).toBeInTheDocument();
     unmount();
 
     capacidades.cadastroTecnico = false;
+    const segundo = render();
+    expect(screen.getByRole('heading', { name: /Ligue as câmeras/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cadastrar câmera' })).not.toBeInTheDocument();
+    segundo.unmount();
+
+    // Quem não cadastra nem configura (proprietário) vê só a explicação.
+    capacidades.configOperacional = false;
     render();
     expect(screen.getByText('Nenhuma câmera nesta usina')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Cadastrar câmera' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /Ligue as câmeras/ })).not.toBeInTheDocument();
+    capacidades.cadastroTecnico = true;
+    capacidades.configOperacional = true;
   });
 
   it('cabeçalho, comandos, grade, último alerta e resumo da noite seguem o contrato', () => {

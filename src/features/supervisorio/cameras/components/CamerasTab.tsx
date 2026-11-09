@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Cctv, ChevronRight, Lightbulb, Loader2, Plus, RefreshCw, Settings, Shield, ShieldOff, Siren, type LucideIcon } from 'lucide-react';
+import { ChevronRight, Lightbulb, Loader2, RefreshCw, Settings, Shield, ShieldOff, Siren, type LucideIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import {
@@ -32,6 +32,7 @@ import { GradeCameras } from './GradeCameras';
 import { PontoNaoLido } from './ItemEvento';
 import { PainelCamera } from './PainelCamera';
 import { PainelNotificacoes } from './PainelNotificacoes';
+import { TutorialCameras } from './TutorialCameras';
 
 type Modo = 'camera' | 'todas';
 
@@ -223,19 +224,13 @@ export function CamerasTab({ unidadeId, unidadeNome }: CamerasTabProps) {
       </div>
 
       {lista.length === 0 ? (
-        <div className="flex flex-1 flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border p-8 text-center">
-          <Cctv className="h-8 w-8 text-muted-foreground" aria-hidden />
-          <p className="text-sm font-medium">Nenhuma câmera nesta usina</p>
-          <p className="max-w-sm text-xs text-muted-foreground">
-            Cadastre as câmeras e um agente na rede {unidadeNome ? `de ${unidadeNome}` : 'da usina'} para ver o vídeo e receber os alertas aqui.
-          </p>
-          {podeCadastrar && (
-            <Button type="button" size="sm" onClick={() => abrirConfig('cameras')}>
-              <Plus aria-hidden />
-              Cadastrar câmera
-            </Button>
-          )}
-        </div>
+        <TutorialCameras
+          unidadeId={unidadeId}
+          unidadeNome={unidadeNome}
+          podeCadastrar={podeCadastrar}
+          podeConfigurar={podeConfigurar}
+          onAbrirConfig={abrirConfig}
+        />
       ) : (
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
           <div className="flex min-w-0 flex-1 flex-col gap-2.5">
