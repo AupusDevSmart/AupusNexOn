@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # NexON na TV — Raspberry Pi (3, 4 ou 5) em modo quiosque.
-# Raspberry Pi OS **Lite** 64-bit (Bookworm). Rodar UMA vez, por SSH, com o usuário normal (não root):
+# Raspberry Pi OS **Lite** 64-bit (Bookworm ou Trixie). Rodar UMA vez, por SSH, com o usuário normal (não root):
 #   bash instalar-tv.sh [URL]
 # O Pi passa a ligar direto no Chromium em tela cheia (cage, sem área de trabalho),
 # reabre o navegador se ele fechar e reinicia todo dia às 04:00.
@@ -19,9 +19,14 @@ echo "Modelo: $MODELO (modo econômico: $FRACO)"
 
 echo "== Pacotes (cage + Chromium) =="
 sudo apt-get update
-CHROMIUM=chromium-browser
-apt-cache show chromium-browser >/dev/null 2>&1 || CHROMIUM=chromium
-sudo apt-get install -y --no-install-recommends cage "$CHROMIUM" fonts-noto-color-emoji
+# Bookworm: pacote chromium-browser; Trixie (Pi OS mais novo): chromium
+PACOTE=chromium
+apt-cache show chromium-browser >/dev/null 2>&1 && PACOTE=chromium-browser
+sudo apt-get install -y --no-install-recommends cage "$PACOTE" fonts-noto-color-emoji
+# o binário é descoberto depois de instalar (o pacote de transição pode não trazer o nome antigo)
+CHROMIUM="$(command -v chromium || command -v chromium-browser || true)"
+[ -n "$CHROMIUM" ] || { echo "Chromium não ficou instalado (pacote $PACOTE). Mande esta saída para o suporte."; exit 1; }
+echo "Navegador: $CHROMIUM"
 
 if [ "$FRACO" = 1 ]; then
   echo "== Memória: zram (Pi 3 tem só 1 GB) =="
@@ -66,7 +71,9 @@ for opt in "video=HDMI-A-1:1920x1080@60" "consoleblank=0"; do
 done
 
 echo "== Reboot diário 04:00 (limpa a memória) =="
-( sudo crontab -l 2>/dev/null | grep -v 'reboot # nexon-tv'; echo '0 4 * * * /sbin/shutdown -r now # nexon-tv' ) | sudo crontab -
+# root ainda não tem crontab num Pi novo: "crontab -l" falha e, com set -e/pipefail, derrubava o script aqui
+CRON_ATUAL="$(sudo crontab -l 2>/dev/null | grep -v 'reboot # nexon-tv' || true)"
+printf '%s\n%s\n' "$CRON_ATUAL" '0 4 * * * /sbin/shutdown -r now # nexon-tv' | sed '/^$/d' | sudo crontab -
 
 echo
 echo "Pronto. Reinicie com:  sudo reboot"
