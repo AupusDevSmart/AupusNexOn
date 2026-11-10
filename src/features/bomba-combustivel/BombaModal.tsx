@@ -340,7 +340,8 @@ export function BombaModal({ bomba, open, onOpenChange }: { bomba: Bomba | null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[95vw] max-w-4xl max-h-[90vh] overflow-y-auto">
+      {/* DialogContent do app = painel lateral de altura total (inset-y-0); não limitar a altura aqui */}
+      <DialogContent className="max-w-4xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-3 pr-6">
             <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary"><Fuel className="h-5 w-5" /></span>
