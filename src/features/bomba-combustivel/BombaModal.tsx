@@ -111,6 +111,16 @@ export function BombaModal({ bomba, open, onOpenChange }: { bomba: Bomba | null;
   };
 
   const tel = estado?.telemetria ?? null;
+  // Leitor Wiegand (TON-V2, AI1/AI2): a TON publica a ultima tag lida e ha quantos segundos.
+  const ultimaTag: string = tel?.leitor === 'wiegand' && typeof tel?.ultima_tag === 'string' ? tel.ultima_tag : '';
+  const ultimaTagHa = (() => {
+    const s = Number(tel?.ultima_tag_s);
+    if (!ultimaTag || !Number.isFinite(s) || s < 0) return null;
+    const desde = estado?.ultima_leitura ? Math.max(0, (Date.now() - new Date(estado.ultima_leitura).getTime()) / 1000) : 0;
+    const t = Math.round(s + desde);
+    return t < 60 ? `há ${t} s` : t < 3600 ? `há ${Math.round(t / 60)} min` : `há ${Math.round(t / 3600)} h`;
+  })();
+  const ultimaTagCadastrada = !!ultimaTag && rfids.some((r) => String(r.uid ?? '').toUpperCase() === ultimaTag.toUpperCase());
   const nivel = estado?.nivel_pct;
   const desatualizada = estado?.lista_versao_ton != null && estado?.lista_versao_nexon != null && Number(estado.lista_versao_ton) !== Number(estado.lista_versao_nexon);
 
@@ -196,6 +206,26 @@ export function BombaModal({ bomba, open, onOpenChange }: { bomba: Bomba | null;
 
           <TabsContent value="rfid" className="space-y-3">
             <div className="text-xs text-muted-foreground">A tag identifica a <b>máquina</b>. "Matrículas" restringe quais operadores podem abastecer esta máquina (vazio = qualquer operador cadastrado). O limite é por dia e por máquina.</div>
+            {tel?.leitor === 'wiegand' && (
+              <div className="flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-sm">
+                <span className="text-muted-foreground">Última tag lida:</span>
+                {ultimaTag ? (
+                  <>
+                    <span className="font-mono font-semibold">{ultimaTag}</span>
+                    {ultimaTagHa && <span className="text-xs text-muted-foreground">{ultimaTagHa}</span>}
+                    {ultimaTagCadastrada ? (
+                      <span className="text-xs text-muted-foreground">· já autorizada</span>
+                    ) : (
+                      <Button size="sm" variant="outline" className="ml-auto" onClick={() => setNovo((p) => ({ ...p, uid: ultimaTag }))}>
+                        Usar esta tag
+                      </Button>
+                    )}
+                  </>
+                ) : (
+                  <span className="text-muted-foreground">nenhuma ainda — aproxime a tag do leitor</span>
+                )}
+              </div>
+            )}
             <div className="flex flex-wrap items-end gap-2">
               <Input placeholder="UID da tag (ex.: PC-07)" value={novo.uid} onChange={(e) => setNovo((p) => ({ ...p, uid: e.target.value }))} className="w-[150px]" />
               <Input placeholder="Máquina" value={novo.maquina_nome} onChange={(e) => setNovo((p) => ({ ...p, maquina_nome: e.target.value }))} className="w-[150px]" />

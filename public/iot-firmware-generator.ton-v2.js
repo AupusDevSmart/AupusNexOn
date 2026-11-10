@@ -742,6 +742,12 @@ var FirmwareGeneratorTonV2 = class FirmwareGeneratorTonV2 {
             files['src/bomba_posto.cpp'] = this._genBombaLibCpp();
             files['include/bomba.h'] = this._genBombaH(spec);
             files['src/bomba.cpp'] = this._genBombaCpp(spec);
+            if (spec.bomba.leitor === 'wiegand_ai') {
+                files['include/wiegand.h'] = this._genWiegandLibH();
+                files['src/wiegand.cpp'] = this._genWiegandLibCpp();
+                files['include/wiegand_ai.h'] = this._genWiegandAiH();
+                files['src/wiegand_ai.cpp'] = this._genWiegandAiCpp();
+            }
         }
 
         // Medidor SSU (NBR 14522) na entrada SU+: lib do parser + glue (so' com medidor no diagrama)
@@ -7052,8 +7058,16 @@ void pivot_loop() {
             k_fator:         flt(p.k_fator, 450),
             uid_teste:       (p.uid_teste || 'PC-07').trim().toUpperCase(),
             mat_teste:       (p.mat_teste || '1234').trim(),
+            // Leitor RFID: 'simulado' (comandos card/mat) ou 'wiegand_ai' (D0 na AI1, D1 na AI2,
+            // amostrados pelo ADC em modo continuo — lib wiegand). Com Wiegand as AI ficam do leitor.
+            leitor:          p.leitor_rfid === 'wiegand_ai' ? 'wiegand_ai' : 'simulado',
+            wg_antirep_s:    (() => { const n = parseInt(p.wiegand_antirep_s, 10); return Number.isFinite(n) && n >= 0 && n <= 60 ? n : 2; })(),
         };
         const b = result.bomba;
+        if (b.leitor === 'wiegand_ai' && b.ai_nivel) {
+            result.warnings.push(`Bomba: leitor Wiegand usa a AI1 e a AI2 — o nível do tanque na AI${b.ai_nivel} foi DESLIGADO (use as boias).`);
+            b.ai_nivel = 0;
+        }
         if (!result.has_relays) {
             result.warnings.push('Bomba conectada a uma TON sem relés (BO) — o contator não pode ser acionado. Use TON3/TON4 (ton2 não tem BO).');
         } else {
@@ -7104,6 +7118,7 @@ bool bomba_cmd(const String& cmd, char* msg, size_t msg_sz);
         const biRead = (n) => n ? `((st >> ${n - 1}) & 1)` : null;
         // adc_read_mv(channel) da base e' 1-BASED (1=AN1, 2=AN2; V2: 3/4=AN_C). Bug anterior: passava ai_nivel-1 => AI1 lia o AN2.
         const aiCh = b.ai_nivel ? b.ai_nivel : -1;
+        const wg = b.leitor === 'wiegand_ai';
         return `// bomba.cpp — glue gerado: POSTO DE COMBUSTIVEL na TON. A logica (estados, validacao,
 // fins, contator colado, manual) esta em bomba_posto.cpp (lib pura, testada no host).
 // Mapa: BO liga=${b.bo_liga || '—'} permissao=${b.bo_permissao || '—'} solenoide=${b.bo_solenoide || '—'} sinaleiro=${b.bo_sinaleiro || '—'};
@@ -7122,7 +7137,8 @@ bool bomba_cmd(const String& cmd, char* msg, size_t msg_sz);
 #include <Preferences.h>
 #include <time.h>
 #include <esp_system.h>
-
+${wg ? `#include "wiegand_ai.h"   // leitor RFID Wiegand: D0 na AI1, D1 na AI2 (ADC continuo)
+` : ''}
 extern bool g_cmd_from_serial;   // main.cpp
 
 #define BOMBA_PULSO_MS         ${b.pulso_ms}UL
@@ -7143,7 +7159,8 @@ extern bool g_cmd_from_serial;   // main.cpp
 #define BOMBA_K_FATOR          ${Number(b.k_fator).toFixed(2)}f
 #define BOMBA_UID_TESTE        "${b.uid_teste}"
 #define BOMBA_MAT_TESTE        "${b.mat_teste}"
-
+${wg ? `#define BOMBA_WG_ANTIREP_MS    ${b.wg_antirep_s * 1000}UL   // mesma tag dentro desta janela e' ignorada
+` : ''}
 static bomba::Maquina*  _m = nullptr;
 static bomba_publish_fn _pub = nullptr;
 static char   _pubPend[3][256]; static uint8_t _pubPendN = 0;   // eventos gerados antes do publish existir
@@ -7153,7 +7170,11 @@ static unsigned long _lastTel = 0, _lastSessaoSave = 0;
 static bool   _relayLast[5] = {false,false,false,false,false};
 static uint32_t _seqEvento = 0;
 static bool   _sessaoAberta = false;
-
+${wg ? `static wiegand::Teclado _tec(15000, 12);   // matricula: digitos + '#'; '*' apaga; 15 s sem tecla apaga
+static char     _ultTag[12] = "";          // ultima tag lida (cadastro pelo NexON)
+static uint32_t _ultTagMs = 0;
+static bool     _wgBruto = false;          // 'wg bruto on': imprime cada quadro
+` : ''}
 static void _emitir(const char* sub, const char* payload) {
     if (_pub) { _pub(sub, payload); return; }
     if (_pubPendN < 3) { strncpy(_pubPend[_pubPendN], payload, 255); _pubPend[_pubPendN][255] = 0; _pubPendN++; }
@@ -7278,15 +7299,16 @@ static _Ouv _ouv;
 
 static void _telemetria() {
     const bomba::Entradas& e = _m->entradas();
-    char p[420];
+    char p[${wg ? 520 : 420}];
     snprintf(p, sizeof(p),
         "{\\"estado\\":\\"%s\\",\\"nivel_pct\\":%.0f,\\"litros\\":%.2f,\\"uid\\":\\"%s\\",\\"matricula\\":\\"%s\\",\\"lista_versao\\":%lu,\\"lista_tags\\":%d,"
         "\\"contator\\":%d,\\"automatico\\":%d,\\"emergencia\\":%d,\\"bico_no_suporte\\":%d,\\"boia_min\\":%d,\\"boia_alta\\":%d,\\"fluxo_lpm\\":%.1f,"
-        "\\"online\\":%d,\\"validacao\\":\\"%s\\",\\"motivo_bloqueio\\":\\"%s\\",\\"ver\\":\\"%s\\"}",
+        "\\"online\\":%d,\\"validacao\\":\\"%s\\",\\"motivo_bloqueio\\":\\"%s\\",\\"ver\\":\\"%s\\"${wg ? ',\\"leitor\\":\\"wiegand\\",\\"ultima_tag\\":\\"%s\\",\\"ultima_tag_s\\":%ld' : ''}}",
         bomba::estadoNome(_m->estado()), e.nivel_pct, _m->litros(), _m->uidAtual(), _m->matAtual(),
         (unsigned long)_m->lista().versao, _m->lista().ntags(),
         e.contator ? 1 : 0, e.automatico ? 1 : 0, e.emergencia ? 1 : 0, e.bico_no_suporte ? 1 : 0, e.nivel_baixo_boia ? 1 : 0, e.boia_alta ? 1 : 0,
-        _fluxo_lpm, _m->online() ? 1 : 0, bomba::validacaoNome(_m->validacaoAtual()), _m->motivoBloqueio(), FIRMWARE_VERSION);
+        _fluxo_lpm, _m->online() ? 1 : 0, bomba::validacaoNome(_m->validacaoAtual()), _m->motivoBloqueio(), FIRMWARE_VERSION${wg ? `,
+        _ultTag, _ultTagMs ? (long)((millis() - _ultTagMs) / 1000UL) : -1L` : ''});
     _emitir("bomba", p);
 }
 
@@ -7347,9 +7369,11 @@ ${[b.bo_liga, b.bo_permissao, b.bo_solenoide, b.bo_sinaleiro].filter(Boolean).ma
         _m->bloquear(bloq.c_str(), millis());
         Serial.printf("[BOMBA] BLOQUEIO restaurado do NVS (%s): reset nao destrava, use 'rearme'\\n", bloq.c_str());
     }
-    Serial.printf("[OK] Posto de combustivel: maquina de estados (lista v%lu, %d tags) — comandos: card/mat/fluxo/status/rearme/net/lista\\n",
+    Serial.printf("[OK] Posto de combustivel: maquina de estados (lista v%lu, %d tags) — comandos: card/mat/fluxo/status/rearme/net/lista${wg ? '/wg' : ''}\\n",
                   (unsigned long)_m->lista().versao, _m->lista().ntags());
-}
+${wg ? `    if (wiegand_ai_init(BOMBA_WG_ANTIREP_MS)) Serial.println("[WIEGAND] leitor ativo: D0 na AI1, D1 na AI2 (comando 'wg' p/ diagnostico)");
+    else Serial.println("[WIEGAND] ERRO: ADC continuo nao iniciou — leitor desativado (comandos card/mat seguem)");
+` : ''}}
 
 bool bomba_ota_permitida() { return !_m || _m->otaPermitida(); }
 
@@ -7402,7 +7426,28 @@ void bomba_loop(bomba_publish_fn publish) {
         } else _tIoFalha = 0;
     }
     _m->setOnline(!_net_forcado_off && mqtt_connected());
-    _m->tick(millis(), in);
+${wg ? `    // Leitor Wiegand: eventos da tarefa do ADC (tag / tecla / quadro descartado)
+    {
+        wiegand::Evento ev;
+        while (wiegand_ai_evento(ev)) {
+            uint32_t now = millis();
+            if (ev.tipo == wiegand::TAG) {
+                Serial.printf("[WIEGAND] uid=%s bits=%u paridade=ok\\n", ev.uid, (unsigned)ev.bits);
+                strncpy(_ultTag, ev.uid, sizeof(_ultTag) - 1); _ultTag[sizeof(_ultTag) - 1] = 0; _ultTagMs = now;
+                _tec.limpar();
+                _m->cartao(ev.uid, now);
+                _lastTel = 0;   // NexON ve a tag lida na hora (cadastro)
+            } else if (ev.tipo == wiegand::TECLA) {
+                Serial.printf("[WIEGAND] tecla %c\\n", wiegand::caractereTecla((int)ev.valor));
+                if (_tec.tecla(ev.valor, now)) { Serial.printf("[WIEGAND] matricula=%s\\n", _tec.texto()); _m->matricula(_tec.texto(), now); }
+            } else if (ev.tipo == wiegand::INVALIDO) {
+                Serial.printf("[WIEGAND] quadro descartado: %s (bits=%u)\\n", ev.motivo ? ev.motivo : "?", (unsigned)ev.bits);
+            }
+            if (_wgBruto) wiegand_ai_imprimir(true);
+        }
+        _tec.tick(millis());
+    }
+` : ''}    _m->tick(millis(), in);
     const bomba::Saidas& o = _m->saidas();
     _aplicarRele(0, ${b.bo_liga || 0}, o.liga);
     _aplicarRele(1, ${b.bo_permissao || 0}, o.permissao);
@@ -7440,7 +7485,14 @@ bool bomba_cmd(const String& cmdIn, char* msg, size_t msg_sz) {
         _fluxo_lpm = v.length() ? v.toFloat() : 0.0f; if (_fluxo_lpm < 0) _fluxo_lpm = 0;
         snprintf(msg, msg_sz, "fluxo_%.1f_lpm", _fluxo_lpm); return true;
     }
-    if (low == "rearme") { _m->rearme(millis()); snprintf(msg, msg_sz, "rearme_%s", bomba::estadoNome(_m->estado())); return true; }
+${wg ? `    if (low == "wg" || low == "wiegand") {
+        wiegand_ai_imprimir(true);
+        snprintf(msg, msg_sz, "wg_ultima_%s", _ultTag[0] ? _ultTag : "nenhuma"); return true;
+    }
+    if (low == "wg limpar" || low == "limpar") { wiegand_ai_limpar(); _tec.limpar(); snprintf(msg, msg_sz, "wg_limpo"); return true; }
+    if (low == "wg bruto on")  { _wgBruto = true;  snprintf(msg, msg_sz, "wg_bruto_on");  return true; }
+    if (low == "wg bruto off") { _wgBruto = false; snprintf(msg, msg_sz, "wg_bruto_off"); return true; }
+` : ''}    if (low == "rearme") { _m->rearme(millis()); snprintf(msg, msg_sz, "rearme_%s", bomba::estadoNome(_m->estado())); return true; }
     if (low == "net off") { _net_forcado_off = true;  snprintf(msg, msg_sz, "net_off_forcado"); return true; }
     if (low == "net on")  { _net_forcado_off = false; snprintf(msg, msg_sz, "net_on"); return true; }
     if (low == "lista") {
@@ -7450,14 +7502,525 @@ bool bomba_cmd(const String& cmdIn, char* msg, size_t msg_sz) {
     }
     if (low == "status") {
         const bomba::Entradas& e = _m->entradas();
-        Serial.printf("[BOMBA] estado=%s uid=%s mat=%s litros=%.2f nivel=%.0f%% (an1=%.0f an2=%.0f mV) fluxo=%.1f L/min | contator=%d auto=%d emerg=%d bico=%d boia_min=%d boia_alta=%d | online=%d lista=v%lu(%d) ver=%s\\n",
-            bomba::estadoNome(_m->estado()), _m->uidAtual(), _m->matAtual(), _m->litros(), e.nivel_pct, adc_read_mv(1), adc_read_mv(2), _fluxo_lpm,
+        Serial.printf("[BOMBA] estado=%s uid=%s mat=%s litros=%.2f nivel=%.0f%% (an1=%.0f an2=%.0f mV${wg ? ' = repouso do leitor' : ''}) fluxo=%.1f L/min | contator=%d auto=%d emerg=%d bico=%d boia_min=%d boia_alta=%d | online=%d lista=v%lu(%d) ver=%s\\n",
+            bomba::estadoNome(_m->estado()), _m->uidAtual(), _m->matAtual(), _m->litros(), e.nivel_pct, ${wg ? 'wiegand_ai_repouso_mv(0), wiegand_ai_repouso_mv(1)' : 'adc_read_mv(1), adc_read_mv(2)'}, _fluxo_lpm,
             e.contator, e.automatico, e.emergencia, e.bico_no_suporte, e.nivel_baixo_boia, e.boia_alta,
             _m->online() ? 1 : 0, (unsigned long)_m->lista().versao, _m->lista().ntags(), FIRMWARE_VERSION);
         _telemetria();
         snprintf(msg, msg_sz, "status_%s", bomba::estadoNome(_m->estado())); return true;
     }
     return false;
+}
+`;
+    }
+
+    // Leitor Wiegand: lib pura (copia byte-identica de firmware-libs/wiegand/wiegand.h — o smoke confere)
+    _genWiegandLibH() {
+        return `// ============================================================================
+// wiegand — leitor RFID/teclado Wiegand amostrado pelo ADC (TON-V2: D0 na AI1,
+// D1 na AI2). C++ puro, sem Arduino: testado no host (test_wiegand.cpp).
+//
+// Camadas:
+//   Detector       — 1 por linha: recebe as amostras cruas do ADC (com o instante
+//                    em us) e devolve cada pulso (inicio + largura). O nivel de
+//                    repouso e' calibrado sozinho (media lenta); pulso = amostra
+//                    abaixo de 40 % do repouso, fim acima de 60 % (histerese).
+//   Decodificador  — junta os pulsos das duas linhas em quadros (fim do quadro =
+//                    silencio) e classifica: 26/34 bits = TAG (paridades),
+//                    4/8 bits = TECLA. Tag repetida dentro da janela e' ignorada.
+//   Teclado        — acumula as teclas: digitos, '*' apaga, '#' fecha a matricula.
+//
+// Wiegand: repouso alto; bit 0 = pulso baixo no D0, bit 1 = pulso baixo no D1.
+// 26 bits = paridade PAR (bits 0..12) + 24 dados + paridade IMPAR (bits 13..25).
+// 34 bits = paridade PAR (0..16) + 32 dados + paridade IMPAR (17..33).
+// Teclado: 4 bits por tecla (0-9, 10 = '*', 11 = '#') ou 8 bits (nibble alto =
+// complemento do baixo).
+// ============================================================================
+#ifndef WIEGAND_H
+#define WIEGAND_H
+#include <stdint.h>
+#include <stddef.h>
+
+namespace wiegand {
+
+static const int MAX_BITS = 64;
+
+// ---------------------------------------------------------------------------
+// Detector de pulso de UMA linha a partir das amostras do ADC
+// ---------------------------------------------------------------------------
+struct Pulso {
+    uint32_t inicio_us;
+    uint32_t largura_us;
+};
+
+class Detector {
+public:
+    // piso_repouso: abaixo disso a linha e' considerada sem sinal (desligada/solta);
+    // largura_max_us: pulso mais longo que isso nao e' bit (fio solto, curto).
+    explicit Detector(uint16_t piso_repouso = 600, uint32_t largura_max_us = 3000);
+    // Uma amostra crua (0..4095) no instante t_us. Retorna true quando um pulso termina.
+    bool amostra(uint16_t v, uint32_t t_us, Pulso& out);
+    uint16_t repouso() const { return (uint16_t)(_repouso_x16 >> 4); }
+    bool temSinal() const { return repouso() >= _piso; }
+    bool emPulso() const { return _emPulso; }
+    // estatisticas
+    uint32_t pulsos() const { return _pulsos; }
+    uint32_t longos() const { return _longos; }        // descartados por largura > max
+    uint32_t larguraMin() const { return _lmin; }
+    uint32_t larguraMax() const { return _lmax; }
+    uint16_t minimoVisto() const { return _vmin; }       // menor amostra desde o ultimo limparStats
+    void limparStats();
+private:
+    uint32_t _repouso_x16;
+    bool     _calibrado;
+    uint16_t _piso;
+    uint32_t _lmax_aceito;
+    bool     _emPulso;
+    uint32_t _t0;
+    uint32_t _pulsos, _longos, _lmin, _lmax;
+    uint16_t _vmin;
+};
+
+// ---------------------------------------------------------------------------
+// Quadro -> evento
+// ---------------------------------------------------------------------------
+enum TipoEvento { NENHUM = 0, TAG, TECLA, INVALIDO, REPETIDO };
+
+struct Evento {
+    TipoEvento tipo;
+    uint8_t    bits;        // tamanho do quadro
+    uint32_t   valor;       // TAG: dados (24 ou 32 bits); TECLA: 0..11
+    char       uid[12];     // TAG: hexa maiusculo (6 ou 8 digitos)
+    const char* motivo;     // INVALIDO: "paridade", "bits_N", "tecla", "excesso"
+};
+
+struct Config {
+    uint32_t fim_quadro_us = 25000;   // silencio que fecha o quadro
+    uint32_t antirep_ms    = 2000;    // mesma tag dentro desta janela = REPETIDO (0 = desliga)
+};
+
+class Decodificador {
+public:
+    explicit Decodificador(const Config& c = Config());
+    // Um bit detectado: linha 0 = D0 (bit 0), 1 = D1 (bit 1).
+    void adicionarBit(uint8_t linha, uint32_t inicio_us, uint32_t largura_us);
+    // Chamar periodicamente; fecha o quadro depois do silencio. true = gerou evento.
+    bool tick(uint32_t agora_us, Evento& ev);
+    // ultimo quadro (diagnostico)
+    uint8_t  ultimoN() const { return _uN; }
+    uint8_t  ultimoBit(int i) const { return (uint8_t)((_uBits >> (63 - i)) & 1u); }
+    uint32_t ultimaLargura(int i) const { return _uLarg[i]; }
+    uint32_t ultimoIntervalo(int i) const { return _uInt[i]; }   // i >= 1: inicio(i) - inicio(i-1)
+    // estatisticas
+    uint32_t quadros = 0, tags = 0, teclas = 0, invalidos = 0, repetidos = 0;
+    const char* ultimoMotivo = "";
+    void limparStats();
+private:
+    Config   _c;
+    uint64_t _bits;
+    uint8_t  _n;
+    bool     _excesso;
+    uint32_t _tUltimo;
+    uint32_t _larg[MAX_BITS];
+    uint32_t _ini[MAX_BITS];
+    // copia do ultimo quadro fechado
+    uint64_t _uBits;
+    uint8_t  _uN;
+    uint32_t _uLarg[MAX_BITS];
+    uint32_t _uInt[MAX_BITS];
+    // anti-repeticao
+    uint32_t _ultDados;
+    uint8_t  _ultBits;
+    uint32_t _ultTagMs;
+    bool     _temUlt;
+    bool _classificar(uint32_t agora_us, Evento& ev);
+};
+
+// ---------------------------------------------------------------------------
+// Teclado: matricula por digitos, '#' confirma, '*' apaga
+// ---------------------------------------------------------------------------
+class Teclado {
+public:
+    explicit Teclado(uint32_t timeout_ms = 15000, uint8_t max_digitos = 12);
+    // Retorna true quando '#' fecha uma matricula (texto() valido ate a proxima tecla).
+    bool tecla(uint32_t k, uint32_t agora_ms);
+    void tick(uint32_t agora_ms);           // timeout sem tecla apaga o que foi digitado
+    const char* texto() const { return _fechado; }
+    const char* parcial() const { return _buf; }
+    void limpar();
+private:
+    uint32_t _timeout;
+    uint8_t  _max;
+    char     _buf[16];
+    char     _fechado[16];
+    uint8_t  _n;
+    uint32_t _tUlt;
+};
+
+// ---------------------------------------------------------------------------
+// Funcoes puras (expostas para teste)
+// ---------------------------------------------------------------------------
+// q = bits do quadro, o primeiro bit recebido no MSB (bit n-1 do inteiro).
+bool paridade26(uint32_t q, uint32_t& dados24);
+bool paridade34(uint64_t q, uint32_t& dados32);
+int  tecla4(uint32_t v);      // 0..11 ou -1
+int  tecla8(uint32_t v);      // 0..11 ou -1 (nibble alto = complemento)
+void hexa(uint32_t v, uint8_t digitos, char* out);   // out >= digitos + 1
+char caractereTecla(int k);   // '0'..'9', '*', '#', '?'
+
+}  // namespace wiegand
+#endif
+`;
+    }
+
+    // copia byte-identica de firmware-libs/wiegand/wiegand.cpp
+    _genWiegandLibCpp() {
+        return `// wiegand.cpp — ver wiegand.h. C++ puro.
+#include "wiegand.h"
+#include <string.h>
+
+namespace wiegand {
+
+// ---------------------------------------------------------------------------
+// Detector
+// ---------------------------------------------------------------------------
+Detector::Detector(uint16_t piso_repouso, uint32_t largura_max_us)
+    : _repouso_x16(0), _calibrado(false), _piso(piso_repouso), _lmax_aceito(largura_max_us),
+      _emPulso(false), _t0(0), _pulsos(0), _longos(0), _lmin(0), _lmax(0), _vmin(0xFFFF) {}
+
+void Detector::limparStats() {
+    _pulsos = 0; _longos = 0; _lmin = 0; _lmax = 0; _vmin = 0xFFFF;
+}
+
+bool Detector::amostra(uint16_t v, uint32_t t_us, Pulso& out) {
+    if (v < _vmin) _vmin = v;
+    if (!_calibrado) { _repouso_x16 = (uint32_t)v << 4; _calibrado = true; return false; }
+    uint32_t rep = _repouso_x16 >> 4;
+    uint32_t limBaixo = rep * 4 / 10;   // entra no pulso abaixo de 40 % do repouso
+    uint32_t limAlto  = rep * 6 / 10;   // sai do pulso acima de 60 %
+    if (!_emPulso) {
+        if (rep >= _piso && v < limBaixo) { _emPulso = true; _t0 = t_us; return false; }
+        // repouso: media lenta (1/64) — acompanha deriva da fonte, ignora o pulso
+        _repouso_x16 = _repouso_x16 - (_repouso_x16 >> 6) + ((uint32_t)v << 4 >> 6);
+        return false;
+    }
+    if (v <= limAlto) {
+        // ainda no pulso; pulso longo demais = linha presa/solta: abandona e recalibra
+        if ((uint32_t)(t_us - _t0) > _lmax_aceito) { _emPulso = false; _longos++; _calibrado = false; }
+        return false;
+    }
+    _emPulso = false;
+    uint32_t larg = (uint32_t)(t_us - _t0);
+    if (larg > _lmax_aceito) { _longos++; return false; }
+    _pulsos++;
+    if (_lmin == 0 || larg < _lmin) _lmin = larg;
+    if (larg > _lmax) _lmax = larg;
+    out.inicio_us = _t0;
+    out.largura_us = larg;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Funcoes puras
+// ---------------------------------------------------------------------------
+static int contaUns(uint64_t v) { int n = 0; while (v) { n += (int)(v & 1u); v >>= 1; } return n; }
+
+bool paridade26(uint32_t q, uint32_t& dados24) {
+    // bit 25 (MSB) = paridade par sobre os bits 25..13; bit 0 = paridade impar sobre 12..0
+    uint32_t alto = (q >> 13) & 0x1FFFu;   // 13 bits: P_par + 12 dados
+    uint32_t baixo = q & 0x1FFFu;          // 12 dados + P_impar
+    dados24 = (q >> 1) & 0xFFFFFFu;
+    return (contaUns(alto) % 2 == 0) && (contaUns(baixo) % 2 == 1);
+}
+
+bool paridade34(uint64_t q, uint32_t& dados32) {
+    uint64_t alto = (q >> 17) & 0x1FFFFull;
+    uint64_t baixo = q & 0x1FFFFull;
+    dados32 = (uint32_t)((q >> 1) & 0xFFFFFFFFull);
+    return (contaUns(alto) % 2 == 0) && (contaUns(baixo) % 2 == 1);
+}
+
+int tecla4(uint32_t v) {
+    v &= 0xFu;
+    return v <= 11 ? (int)v : -1;
+}
+
+int tecla8(uint32_t v) {
+    uint32_t lo = v & 0xFu, hi = (v >> 4) & 0xFu;
+    if ((hi ^ lo) != 0xFu) return -1;
+    return lo <= 11 ? (int)lo : -1;
+}
+
+void hexa(uint32_t v, uint8_t digitos, char* out) {
+    static const char H[] = "0123456789ABCDEF";
+    for (int i = digitos - 1; i >= 0; i--) { out[i] = H[v & 0xFu]; v >>= 4; }
+    out[digitos] = 0;
+}
+
+char caractereTecla(int k) {
+    if (k >= 0 && k <= 9) return (char)('0' + k);
+    if (k == 10) return '*';
+    if (k == 11) return '#';
+    return '?';
+}
+
+// ---------------------------------------------------------------------------
+// Decodificador
+// ---------------------------------------------------------------------------
+Decodificador::Decodificador(const Config& c)
+    : _c(c), _bits(0), _n(0), _excesso(false), _tUltimo(0), _uBits(0), _uN(0),
+      _ultDados(0), _ultBits(0), _ultTagMs(0), _temUlt(false) {
+    memset(_larg, 0, sizeof(_larg)); memset(_ini, 0, sizeof(_ini));
+    memset(_uLarg, 0, sizeof(_uLarg)); memset(_uInt, 0, sizeof(_uInt));
+}
+
+void Decodificador::limparStats() {
+    quadros = tags = teclas = invalidos = repetidos = 0;
+    ultimoMotivo = "";
+}
+
+void Decodificador::adicionarBit(uint8_t linha, uint32_t inicio_us, uint32_t largura_us) {
+    _tUltimo = inicio_us + largura_us;
+    if (_n >= MAX_BITS) { _excesso = true; return; }
+    _bits = (_bits << 1) | (linha ? 1u : 0u);
+    _larg[_n] = largura_us;
+    _ini[_n] = inicio_us;
+    _n++;
+}
+
+bool Decodificador::tick(uint32_t agora_us, Evento& ev) {
+    if (_n == 0 && !_excesso) return false;
+    if ((uint32_t)(agora_us - _tUltimo) < _c.fim_quadro_us) return false;
+    // fecha o quadro: copia para o diagnostico
+    _uN = _n;
+    _uBits = _n ? (_bits << (64 - _n)) : 0;   // primeiro bit no MSB do uint64
+    for (int i = 0; i < _n; i++) {
+        _uLarg[i] = _larg[i];
+        _uInt[i] = i ? (uint32_t)(_ini[i] - _ini[i - 1]) : 0;
+    }
+    bool r = _classificar(agora_us, ev);
+    _bits = 0; _n = 0; _excesso = false;
+    return r;
+}
+
+bool Decodificador::_classificar(uint32_t agora_us, Evento& ev) {
+    memset(&ev, 0, sizeof(ev));
+    ev.bits = _n;
+    quadros++;
+    if (_excesso) { ev.tipo = INVALIDO; ev.motivo = "excesso"; invalidos++; ultimoMotivo = ev.motivo; return true; }
+    uint32_t agora_ms = agora_us / 1000u;
+    if (_n == 26 || _n == 34) {
+        uint32_t dados = 0;
+        bool ok = (_n == 26) ? paridade26((uint32_t)_bits, dados) : paridade34(_bits, dados);
+        if (!ok) { ev.tipo = INVALIDO; ev.motivo = "paridade"; invalidos++; ultimoMotivo = ev.motivo; return true; }
+        ev.valor = dados;
+        hexa(dados, _n == 26 ? 6 : 8, ev.uid);
+        // mesma tag dentro da janela: REPETIDO (a janela anda enquanto a tag fica encostada)
+        if (_c.antirep_ms && _temUlt && _ultDados == dados && _ultBits == _n &&
+            (uint32_t)(agora_ms - _ultTagMs) < _c.antirep_ms) {
+            _ultTagMs = agora_ms;
+            ev.tipo = REPETIDO; repetidos++;
+            return true;
+        }
+        _temUlt = true; _ultDados = dados; _ultBits = _n; _ultTagMs = agora_ms;
+        ev.tipo = TAG; tags++;
+        return true;
+    }
+    if (_n == 4 || _n == 8) {
+        int k = (_n == 4) ? tecla4((uint32_t)_bits) : tecla8((uint32_t)_bits);
+        if (k < 0) { ev.tipo = INVALIDO; ev.motivo = "tecla"; invalidos++; ultimoMotivo = ev.motivo; return true; }
+        ev.tipo = TECLA; ev.valor = (uint32_t)k; teclas++;
+        return true;
+    }
+    ev.tipo = INVALIDO;
+    // "bits_N" sem printf: motivo estatico por faixa + o N vai em ev.bits
+    ev.motivo = "bits";
+    invalidos++; ultimoMotivo = ev.motivo;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Teclado
+// ---------------------------------------------------------------------------
+Teclado::Teclado(uint32_t timeout_ms, uint8_t max_digitos)
+    : _timeout(timeout_ms), _max(max_digitos > 15 ? 15 : max_digitos), _n(0), _tUlt(0) {
+    _buf[0] = 0; _fechado[0] = 0;
+}
+
+void Teclado::limpar() { _n = 0; _buf[0] = 0; }
+
+void Teclado::tick(uint32_t agora_ms) {
+    if (_n && _timeout && (uint32_t)(agora_ms - _tUlt) > _timeout) limpar();
+}
+
+bool Teclado::tecla(uint32_t k, uint32_t agora_ms) {
+    tick(agora_ms);
+    _tUlt = agora_ms;
+    if (k <= 9) {
+        if (_n < _max) { _buf[_n++] = (char)('0' + k); _buf[_n] = 0; }
+        return false;
+    }
+    if (k == 10) { limpar(); return false; }   // '*': apaga
+    if (k == 11) {                              // '#': confirma
+        if (!_n) return false;
+        memcpy(_fechado, _buf, (size_t)_n + 1);
+        limpar();
+        return true;
+    }
+    return false;
+}
+
+}  // namespace wiegand
+`;
+    }
+
+    // Glue do leitor Wiegand nas AI1/AI2 (ADC1 continuo/DMA) — so com bomba.leitor = wiegand_ai
+    _genWiegandAiH() {
+        return `// wiegand_ai.h — leitor RFID Wiegand pelas entradas analogicas da TON-V2 (gerado).
+// D0 (verde) na AI1 = IO6 (ADC1_CH5), D1 (branco) na AI2 = IO7 (ADC1_CH6). O divisor
+// 22k/3k3 da placa leva os 5 V de repouso do leitor a ~0,65 V no pino (seguro).
+// O ADC1 roda em modo continuo (DMA, 80 kHz no total = 1 amostra a cada 25 us por
+// canal) numa tarefa propria; a lib wiegand separa pulsos, quadros e teclas.
+// Com o leitor ativo, adc_read_mv(1/2) NAO deve ser chamado (o ADC1 e' do DMA).
+#ifndef WIEGAND_AI_H
+#define WIEGAND_AI_H
+#include <Arduino.h>
+#include "wiegand.h"
+
+bool  wiegand_ai_init(uint32_t antirep_ms);   // false = ADC continuo nao iniciou
+bool  wiegand_ai_ativo();
+bool  wiegand_ai_evento(wiegand::Evento& ev); // proximo evento (tag/tecla/descartado), sem bloquear
+void  wiegand_ai_imprimir(bool quadro);       // [WG] contadores, repouso, larguras (+ ultimo quadro)
+void  wiegand_ai_limpar();                    // zera contadores
+float wiegand_ai_repouso_mv(int linha);       // tensao de repouso estimada no borne (0 = D0/AI1, 1 = D1/AI2)
+#endif
+`;
+    }
+
+    // captura: tarefa do ADC -> Detector/Decodificador -> fila de eventos p/ o loop da bomba
+    _genWiegandAiCpp() {
+        return `// wiegand_ai.cpp — ver wiegand_ai.h. Captura pelo ADC1 em modo continuo (driver IDF 4.4).
+#include "wiegand_ai.h"
+#include "driver/adc.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
+#include "freertos/task.h"
+
+#define WG_FREQ_HZ       80000UL   // conversoes/s no total (2 canais -> 25 us por canal)
+#define WG_CH_D0         5         // ADC1_CH5 = IO6 = AI1
+#define WG_CH_D1         6         // ADC1_CH6 = IO7 = AI2
+#define WG_LEITURA_BYTES 1024
+#define WG_FUNDO_MV      950.0f    // atenuacao 0 dB: ~0..950 mV no pino
+#define WG_DIVISOR       7.67f     // 22k/3k3 da placa V2
+
+static QueueHandle_t _fila = nullptr;
+static wiegand::Detector _d0, _d1;
+static wiegand::Decodificador* _dec = nullptr;
+static volatile bool     _ativo = false;
+static volatile uint32_t _overflow = 0, _erros = 0, _descartesFila = 0;
+static volatile uint64_t _amostras = 0;
+
+static void _tarefa(void*) {
+    static uint8_t buf[WG_LEITURA_BYTES];
+    uint64_t n = 0;
+    for (;;) {
+        uint32_t len = 0;
+        esp_err_t r = adc_digi_read_bytes(buf, sizeof(buf), &len, 20);
+        if (r == ESP_ERR_INVALID_STATE) _overflow++;          // buffer do driver encheu: perdeu amostras
+        else if (r != ESP_OK && r != ESP_ERR_TIMEOUT) _erros++;
+        for (uint32_t i = 0; i + SOC_ADC_DIGI_RESULT_BYTES <= len; i += SOC_ADC_DIGI_RESULT_BYTES) {
+            adc_digi_output_data_t* p = (adc_digi_output_data_t*)&buf[i];
+            uint32_t ch = p->type2.channel;
+            uint16_t v = (uint16_t)p->type2.data;
+            // tempo pela contagem de conversoes: exato entre amostras, sem jitter da tarefa
+            uint32_t t_us = (uint32_t)(n * 1000000ULL / WG_FREQ_HZ);
+            n++;
+            wiegand::Pulso pu;
+            if (ch == WG_CH_D0) { if (_d0.amostra(v, t_us, pu)) _dec->adicionarBit(0, pu.inicio_us, pu.largura_us); }
+            else if (ch == WG_CH_D1) { if (_d1.amostra(v, t_us, pu)) _dec->adicionarBit(1, pu.inicio_us, pu.largura_us); }
+        }
+        _amostras = n;
+        wiegand::Evento ev;
+        if (_dec->tick((uint32_t)(n * 1000000ULL / WG_FREQ_HZ), ev)) {
+            if (xQueueSend(_fila, &ev, 0) != pdTRUE) _descartesFila++;
+        }
+    }
+}
+
+bool wiegand_ai_init(uint32_t antirep_ms) {
+    static wiegand::Config c;
+    c.antirep_ms = antirep_ms;
+    static wiegand::Decodificador dec(c);
+    _dec = &dec;
+    _fila = xQueueCreate(8, sizeof(wiegand::Evento));
+    if (!_fila) return false;
+
+    adc_digi_init_config_t ic = {};
+    ic.max_store_buf_size = 16384;   // ~50 ms de folga se a tarefa atrasar (WiFi no mesmo nucleo)
+    ic.conv_num_each_intr = 256;
+    ic.adc1_chan_mask = BIT(WG_CH_D0) | BIT(WG_CH_D1);
+    ic.adc2_chan_mask = 0;
+    if (adc_digi_initialize(&ic) != ESP_OK) return false;
+
+    static adc_digi_pattern_config_t pat[2] = {};
+    pat[0].atten = ADC_ATTEN_DB_0; pat[0].channel = WG_CH_D0; pat[0].unit = 0; pat[0].bit_width = SOC_ADC_DIGI_MAX_BITWIDTH;
+    pat[1].atten = ADC_ATTEN_DB_0; pat[1].channel = WG_CH_D1; pat[1].unit = 0; pat[1].bit_width = SOC_ADC_DIGI_MAX_BITWIDTH;
+    adc_digi_configuration_t dc = {};
+    dc.conv_limit_en = false;
+    dc.conv_limit_num = 250;
+    dc.pattern_num = 2;
+    dc.adc_pattern = pat;
+    dc.sample_freq_hz = WG_FREQ_HZ;
+    dc.conv_mode = ADC_CONV_SINGLE_UNIT_1;
+    dc.format = ADC_DIGI_OUTPUT_FORMAT_TYPE2;
+    if (adc_digi_controller_configure(&dc) != ESP_OK) return false;
+    if (adc_digi_start() != ESP_OK) return false;
+    if (xTaskCreatePinnedToCore(_tarefa, "wiegand", 4096, nullptr, 5, nullptr, 0) != pdPASS) return false;
+    _ativo = true;
+    return true;
+}
+
+bool wiegand_ai_ativo() { return _ativo; }
+
+bool wiegand_ai_evento(wiegand::Evento& ev) {
+    return _fila && xQueueReceive(_fila, &ev, 0) == pdTRUE;
+}
+
+static float _mv(uint16_t raw) { return raw * WG_FUNDO_MV / 4095.0f * WG_DIVISOR; }
+
+float wiegand_ai_repouso_mv(int linha) { return _mv(linha ? _d1.repouso() : _d0.repouso()); }
+
+void wiegand_ai_limpar() {
+    _d0.limparStats(); _d1.limparStats();
+    if (_dec) _dec->limparStats();
+    _overflow = 0; _erros = 0; _descartesFila = 0;
+}
+
+void wiegand_ai_imprimir(bool quadro) {
+    if (!_ativo || !_dec) { Serial.println("[WG] leitor inativo (ADC continuo nao iniciou)"); return; }
+    Serial.printf("[WG] repouso D0/AI1=%u (~%.0f mV%s) D1/AI2=%u (~%.0f mV%s) | minimo visto D0=%u D1=%u\\n",
+        _d0.repouso(), _mv(_d0.repouso()), _d0.temSinal() ? "" : " SEM SINAL",
+        _d1.repouso(), _mv(_d1.repouso()), _d1.temSinal() ? "" : " SEM SINAL",
+        _d0.minimoVisto(), _d1.minimoVisto());
+    Serial.printf("[WG] pulsos D0=%lu D1=%lu | largura D0 %lu..%lu us, D1 %lu..%lu us | longos descartados %lu/%lu\\n",
+        (unsigned long)_d0.pulsos(), (unsigned long)_d1.pulsos(),
+        (unsigned long)_d0.larguraMin(), (unsigned long)_d0.larguraMax(),
+        (unsigned long)_d1.larguraMin(), (unsigned long)_d1.larguraMax(),
+        (unsigned long)_d0.longos(), (unsigned long)_d1.longos());
+    Serial.printf("[WG] quadros=%lu tags=%lu teclas=%lu invalidos=%lu (ultimo: %s) repetidos=%lu | overflow=%lu erros=%lu fila=%lu | amostras=%llu\\n",
+        (unsigned long)_dec->quadros, (unsigned long)_dec->tags, (unsigned long)_dec->teclas,
+        (unsigned long)_dec->invalidos, _dec->ultimoMotivo[0] ? _dec->ultimoMotivo : "-", (unsigned long)_dec->repetidos,
+        (unsigned long)_overflow, (unsigned long)_erros, (unsigned long)_descartesFila, (unsigned long long)_amostras);
+    if (!quadro) return;
+    int n = _dec->ultimoN();
+    if (!n) { Serial.println("[WG] nenhum quadro ainda — aproxime a tag ou aperte uma tecla"); return; }
+    Serial.printf("[WG] ultimo quadro: %d bits: ", n);
+    for (int i = 0; i < n; i++) Serial.print(_dec->ultimoBit(i) ? '1' : '0');
+    Serial.print("\\n[WG] larguras (us):");
+    for (int i = 0; i < n; i++) Serial.printf(" %lu", (unsigned long)_dec->ultimaLargura(i));
+    Serial.print("\\n[WG] intervalos (us):");
+    for (int i = 1; i < n; i++) Serial.printf(" %lu", (unsigned long)_dec->ultimoIntervalo(i));
+    Serial.println();
 }
 `;
     }

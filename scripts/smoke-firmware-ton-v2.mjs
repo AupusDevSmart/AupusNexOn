@@ -244,6 +244,22 @@ const fG = (genG.generateAll()[0] || {}).files || {};
 check('caso G: campo (sem TESTE/) => BOMBA_SIM_CMDS 0 (card/mat/fluxo/net so pelo Serial)', has(fG, 'src/bomba.cpp', 'BOMBA_SIM_CMDS         0') && has(fG, 'src/bomba.cpp', 'sim_cmd_recusado_build_campo'));
 check('caso A: sem bomba => sem g_cmd_from_serial (byte-identico)', !has(fA, 'src/main.cpp', 'g_cmd_from_serial'));
 
+// ---- Posto com leitor Wiegand nas AI1/AI2 (caso W) ----
+const casoW = { ...casoF, components: casoF.components.map(c => c.id === 'f2' ? { ...c, props: { ...c.props, leitor_rfid: 'wiegand_ai', wiegand_antirep_s: 3 } } : c) };
+const genW = new GenV2(editor(casoW)); genW._bombaIoByEquip = genF._bombaIoByEquip;
+const pW = genW.generateAll();
+const fW = (pW[0] || {}).files || {};
+const wgLib = join(HERE, '..', 'firmware-libs', 'wiegand');
+check('caso W: leitor wiegand_ai no spec + AI de nivel desligada com aviso', pW[0] && pW[0].spec.bomba.leitor === 'wiegand_ai' && pW[0].spec.bomba.ai_nivel === 0 && pW[0].warnings.some(w => /Wiegand/.test(w)));
+check('caso W: lib + glue presentes', !!fW['include/wiegand.h'] && !!fW['src/wiegand.cpp'] && !!fW['include/wiegand_ai.h'] && !!fW['src/wiegand_ai.cpp']);
+check('caso W: lib embutida == fonte canonica (wiegand.h)', fW['include/wiegand.h'] === readFileSync(join(wgLib, 'wiegand.h'), 'utf8'));
+check('caso W: lib embutida == fonte canonica (wiegand.cpp)', fW['src/wiegand.cpp'] === readFileSync(join(wgLib, 'wiegand.cpp'), 'utf8'));
+check('caso W: tag -> cartao(), # -> matricula(), anti-repeticao 3 s', has(fW, 'src/bomba.cpp', '_m->cartao(ev.uid, now);') && has(fW, 'src/bomba.cpp', '_m->matricula(_tec.texto(), now);') && has(fW, 'src/bomba.cpp', 'BOMBA_WG_ANTIREP_MS    3000UL'));
+check('caso W: telemetria com ultima_tag + comandos wg + init do leitor', has(fW, 'src/bomba.cpp', '\\"ultima_tag\\":') && has(fW, 'src/bomba.cpp', 'low == "wg bruto on"') && has(fW, 'src/bomba.cpp', 'wiegand_ai_init(BOMBA_WG_ANTIREP_MS)'));
+check('caso W: nao le AI1/AI2 avulso com o ADC em modo continuo', !has(fW, 'src/bomba.cpp', 'adc_read_mv('));
+check('caso W: ADC1 continuo em IO6/IO7 (CH5/CH6), 80 kHz, atenuacao 0 dB', has(fW, 'src/wiegand_ai.cpp', 'BIT(WG_CH_D0) | BIT(WG_CH_D1)') && has(fW, 'src/wiegand_ai.cpp', '#define WG_FREQ_HZ       80000UL') && has(fW, 'src/wiegand_ai.cpp', 'ADC_ATTEN_DB_0'));
+check('caso F: leitor simulado => sem wiegand (glue igual ao de antes)', !fF['src/wiegand_ai.cpp'] && !has(fF, 'src/bomba.cpp', 'wiegand') && has(fF, 'src/bomba.cpp', 'char p[420];'));
+
 if (fails) { console.error(`\n${fails} verificações falharam`); process.exit(1); }
 console.log('\nSMOKE DE GERAÇÃO: tudo OK');
 
@@ -257,6 +273,7 @@ if (DO_COMPILE) {
     ['ton1v2-ssu-mqtt', pD[0]],
     ['ton4v2-ssu-satellite', pE.find(p => p.spec.tonType === 'ton4v2')],
     ['ton3v2-posto-bomba', pF[0]],
+    ['ton3v2-posto-wiegand', pW[0]],
   ];
   for (const [label, proj] of alvos) {
     process.stdout.write(`compilando ${label}... `);
