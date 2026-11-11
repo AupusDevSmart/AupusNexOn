@@ -45,6 +45,7 @@ export type NovaProgramacao = Omit<Programacao, 'id'>;
 export const CONFIG_PADRAO: ConfigIrrigacao = { direcao: 'Reverso', percentual: 60, semAgua: false, canhao: false, faixasCanhao: [] };
 
 // ------------------------------------------------------------- programação
+const VERDE = '#72BF4A';
 const DIAS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
 export const diasTxt = (d: number[]) => {
   const k = [...d].sort((a, b) => a - b).join(',');
@@ -143,6 +144,12 @@ export function arco(cx: number, cy: number, r: number, a0: number, len: number,
   return setor ? `M${cx} ${cy} L${x0.toFixed(1)} ${y0.toFixed(1)} ${a} Z` : `M${x0.toFixed(1)} ${y0.toFixed(1)} ${a}`;
 }
 /** Anel (segmento) entre os raios ri e ro, de a0 a a1 graus. */
+function anel(cx: number, cy: number, ri: number, ro: number, a0: number, a1: number) {
+  const [x0, y0] = ponto(cx, cy, ro, a0), [x1, y1] = ponto(cx, cy, ro, a1);
+  const [x2, y2] = ponto(cx, cy, ri, a1), [x3, y3] = ponto(cx, cy, ri, a0);
+  const f = (n: number) => n.toFixed(1);
+  return `M${f(x0)} ${f(y0)} A${ro} ${ro} 0 0 1 ${f(x1)} ${f(y1)} L${f(x2)} ${f(y2)} A${ri} ${ri} 0 0 0 ${f(x3)} ${f(y3)} Z`;
+}
 const anguloDo = (e: RPointerEvent<SVGSVGElement>, cx: number, cy: number, vb: number) => {
   const r = e.currentTarget.getBoundingClientRect();
   const x = ((e.clientX - r.left) / r.width) * vb, y = ((e.clientY - r.top) / r.height) * vb;
@@ -151,6 +158,50 @@ const anguloDo = (e: RPointerEvent<SVGSVGElement>, cx: number, cy: number, vb: n
 
 // ------------------------------------------------------------------ dials
 /** Aba Ângulo: círculo de 220 px do app (toque escolhe o ângulo final). */
+// ------------------------------------------------------------------ dials
+/** Parada por ângulo: círculo do app (toque escolhe o ângulo final). */
+function DialAngulo({ atual, final, direcao, onChange }: { atual: number; final: number; direcao: Direcao; onChange: (g: number) => void }) {
+  const [ini, len] = direcao === 'Reverso' ? [final, norm(atual - final)] : [atual, norm(final - atual)];
+  const [ax, ay] = ponto(110, 110, 100, atual), [fx, fy] = ponto(110, 110, 100, final);
+  const set = (e: RPointerEvent<SVGSVGElement>) => onChange(anguloDo(e, 110, 110, 220).g);
+  return (
+    <svg viewBox="0 0 220 220" width="190" height="190" role="img" aria-label="Ângulo final" style={{ touchAction: 'none', cursor: 'pointer' }}
+      onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); set(e); }}
+      onPointerMove={(e) => { if (e.buttons) set(e); }}>
+      <circle cx="110" cy="110" r="100" fill="#26301F" stroke={NX.borda} />
+      {len > 0 && <path d={arco(110, 110, 100, ini, len, true)} fill="rgba(114,191,74,0.35)" />}
+      <line x1="110" y1="110" x2={ax} y2={ay} stroke="#FFFFFF" strokeWidth="2.5" strokeLinecap="round" />
+      <line x1="110" y1="110" x2={fx} y2={fy} stroke={VERDE} strokeWidth="2.5" strokeDasharray="4 4" />
+      <circle cx={fx} cy={fy} r="9" fill={VERDE} />
+      <text x="110" y="24" fontSize="11" fill={NX.mudo} textAnchor="middle">0°</text>
+      <text x="200" y="114" fontSize="11" fill={NX.mudo} textAnchor="end">90°</text>
+      <text x="110" y="204" fontSize="11" fill={NX.mudo} textAnchor="middle">180°</text>
+      <text x="20" y="114" fontSize="11" fill={NX.mudo}>270°</text>
+    </svg>
+  );
+}
+
+/** Por segmentos: 4 segmentos fixos de 90° (anel do app). */
+function AnelSegmentos({ segs, sel, atual, onSel }: { segs: ConfigIrrigacao[]; sel: number; atual: number; onSel: (i: number) => void }) {
+  const [ax, ay] = ponto(110, 110, 100, atual);
+  return (
+    <svg viewBox="0 0 220 220" width="190" height="190" role="img" aria-label="Segmentos do pivô">
+      <circle cx="110" cy="110" r="100" fill="#26301F" />
+      {segs.map((sg, i) => (
+        <path key={i} d={anel(110, 110, 50, 100, i * 90 + 2, (i + 1) * 90 - 2)} stroke={NX.card} strokeWidth="3" style={{ cursor: 'pointer' }}
+          fill={sg.semAgua ? (i === sel ? '#9A9AB8' : '#4A4A6A') : (i === sel ? VERDE : 'rgba(114,191,74,0.45)')}
+          onClick={() => onSel(i)} />
+      ))}
+      <circle cx="110" cy="110" r="46" fill={NX.card} />
+      <line x1="110" y1="110" x2={ax} y2={ay} stroke={NX.texto} strokeWidth="2.5" strokeLinecap="round" />
+      {segs.map((_, i) => {
+        const [x, y] = ponto(110, 110, 74, i * 90 + 45);
+        return <text key={i} x={x} y={y + 4} fontSize="12" fontWeight="700" fill="#FFFFFF" textAnchor="middle" style={{ pointerEvents: 'none' }}>{i + 1}</text>;
+      })}
+    </svg>
+  );
+}
+
 /** Aba Canhão: alças de liga/desliga sobre o círculo do pivô. */
 function DialCanhao({ atual, faixas, onChange }: { atual: number; faixas: FaixaCanhao[]; onChange: (fs: FaixaCanhao[]) => void }) {
   const VB = 290, cx = 145, cy = 145, r = 117;
@@ -317,6 +368,10 @@ export function IrrigacaoAvancada({
   const [cfg, setCfg] = useState<ConfigIrrigacao>({ ...base, canhao: ligado ? base.canhao : false });
   const [faixas, setFaixas] = useState<FaixaCanhao[]>(base.faixasCanhao);
   const [faixasAbertas, setFaixasAbertas] = useState(false);
+  // Por segmentos: quatro quartos de volta, cada um com água/percentímetro próprios; vai o do segmento escolhido.
+  const [porSegmentos, setPorSegmentos] = useState(false);
+  const [segs, setSegs] = useState<ConfigIrrigacao[]>(() => Array.from({ length: 4 }, () => ({ ...base, canhao: false })));
+  const [segSel, setSegSel] = useState(0);
   const [inicioTipo, setInicioTipo] = useState<'agora' | 'data'>('agora');
   const [inicioData, setInicioData] = useState('');
   const [parada, setParada] = useState<Parada>(() => (ligado ? paradaValida(emCurso?.parada) : { tipo: 'semParar' }));
@@ -333,8 +388,14 @@ export function IrrigacaoAvancada({
   // Percentual para voltar a girar depois de escolher Parado.
   const pctAntes = useRef(base.percentual > 0 ? base.percentual : 100);
 
-  const parado = ehParado(cfg);
-  const seco = cfg.semAgua;
+  // Movimento, água e percentímetro editam o segmento escolhido quando "Por segmentos" está ligado.
+  const atualCfg = porSegmentos ? segs[segSel] : cfg;
+  const setAtual = (f: (c: ConfigIrrigacao) => ConfigIrrigacao) => {
+    if (porSegmentos) setSegs((x) => x.map((y, i) => (i === segSel ? f(y) : y)));
+    else setCfg(f);
+  };
+  const parado = ehParado(atualCfg);
+  const seco = atualCfg.semAgua;
   const movimento: Movimento = parado ? 'Parado' : cfg.direcao;
   const semCanhao = seco || !!semCanhaoMotivo;
   const canhaoAtivo = cfg.canhao && !semCanhao;
@@ -342,37 +403,38 @@ export function IrrigacaoAvancada({
   const setMovimento = (m: Movimento) => {
     setPctTxt(null); setLamTxt(null);
     if (m === 'Parado') {
-      if (!parado && cfg.percentual > 0) pctAntes.current = cfg.percentual;
-      setCfg((c) => ({ ...c, semAgua: false, percentual: 0, lamina: null }));
+      if (!parado && atualCfg.percentual > 0) pctAntes.current = atualCfg.percentual;
+      setAtual((c) => ({ ...c, semAgua: false, percentual: 0, lamina: null }));
       // parado não percorre ângulo nem volta: a parada sai, e volta se o operador voltar a girar
       if (!parado && (parada.tipo === 'porAngulo' || parada.tipo === 'porVoltas')) { paradaAntes.current = parada; setParada({ tipo: 'semParar' }); }
     } else {
       if (parado && paradaAntes.current && parada.tipo === 'semParar') setParada(paradaAntes.current);
       paradaAntes.current = null;
-      setCfg((c) => ({ ...c, direcao: m, ...(ehParado(c) ? { percentual: pctAntes.current, lamina: null } : {}) }));
+      setCfg((c) => ({ ...c, direcao: m }));   // a direção é do pivô inteiro, não do segmento
+      setAtual((c) => (ehParado(c) ? { ...c, percentual: pctAntes.current, lamina: null } : c));
     }
   };
 
-  const pct = cfg.percentual;
+  const pct = atualCfg.percentual;
   const lam = pct > 0 ? (lamina100 * 100) / pct : null;
   // % com 1 casa, de 1 a 100 (0 é o Movimento "Parado"). Digitando a lâmina, ela vai junto e o servidor confere.
   const onPct = (v: string) => {
     setPctTxt(v); setLamTxt(null);
     const p = Number(v.replace(',', '.'));
-    if (v.trim() !== '' && Number.isFinite(p) && p >= 1) setCfg((c) => ({ ...c, percentual: Math.min(100, Math.round(p * 10) / 10), lamina: null }));
+    if (v.trim() !== '' && Number.isFinite(p) && p >= 1) setAtual((c) => ({ ...c, percentual: Math.min(100, Math.round(p * 10) / 10), lamina: null }));
   };
   const onLam = (v: string) => {
     setLamTxt(v); setPctTxt(null);
     const l = Number(v.replace(',', '.'));
     if (!(l > 0) || !(lamina100 > 0)) return;
-    if (l < lamina100) { setCfg((c) => ({ ...c, percentual: 100, lamina: null })); return; }   // abaixo do mínimo: fica em 100 % (aviso abaixo)
-    setCfg((c) => ({ ...c, percentual: Math.max(1, Math.min(100, Math.round(((lamina100 * 100) / l) * 10) / 10)), lamina: Math.round(l * 100) / 100 }));
+    if (l < lamina100) { setAtual((c) => ({ ...c, percentual: 100, lamina: null })); return; }   // abaixo do mínimo: fica em 100 % (aviso abaixo)
+    setAtual((c) => ({ ...c, percentual: Math.max(1, Math.min(100, Math.round(((lamina100 * 100) / l) * 10) / 10)), lamina: Math.round(l * 100) / 100 }));
   };
   const lamAbaixo = (() => { const l = Number((lamTxt ?? '').replace(',', '.')); return lamTxt != null && l > 0 && lamina100 > 0 && l < lamina100; })();
   const pctAbaixo = (() => { const p = Number((pctTxt ?? '').replace(',', '.')); return pctTxt != null && pctTxt.trim() !== '' && Number.isFinite(p) && p < 1; })();
 
   const inicio = !ligado && inicioTipo === 'data' && inicioData ? new Date(inicioData) : new Date();
-  const prev = previsao(cfg, parada, cfg.direcao, atual, tempoVolta100, inicio);
+  const prev = previsao(atualCfg, parada, cfg.direcao, atual, tempoVolta100, inicio);
   const pontaTxt = useMemo(() => {
     if (!ponta) return null;
     const p0 = horaDe(ponta.inicio), p1 = horaDe(ponta.fim);
@@ -397,9 +459,10 @@ export function IrrigacaoAvancada({
   const paradoIndisponivel = parado && !podeParado;
   // Ligado, o reinício é sempre agora: agendar início não faz sentido com o pivô girando.
   const montar = (): EnvioIrrigacao => ({
-    modo: 'simples', parada, inicio: ligado || inicioTipo === 'agora' ? null : inicio,
+    modo: porSegmentos ? 'segmentos' : 'simples', parada, inicio: ligado || inicioTipo === 'agora' ? null : inicio,
+    ...(porSegmentos ? { segmento: segSel + 1 } : {}),
     ...(ligado ? { manterParada: paradaIntacta } : {}),
-    config: { ...cfg, canhao: canhaoAtivo, faixasCanhao: canhaoAtivo ? faixas : [] },
+    config: { ...atualCfg, direcao: cfg.direcao, canhao: canhaoAtivo, faixasCanhao: canhaoAtivo ? faixas : [] },
   });
   const enviar = () => onEnviar(montar());
   // "Editado" = o que seria enviado mudou desde que o diálogo abriu. Fora da conta: o início (é
@@ -442,8 +505,12 @@ export function IrrigacaoAvancada({
   const tempoInput: CSSProperties = { height: 38, borderRadius: 10, border: `1px solid ${NX.borda}`, padding: '0 10px', fontSize: 15, fontWeight: 700, color: NX.texto, background: NX.card };
   const movimentos: Movimento[] = ['Avanço', 'Reverso', 'Parado'];
 
+  // Tamanho fixo: cabeçalho e rodapé parados, o meio rola. Trocar de aba não muda o diálogo.
+  const corpo: CSSProperties = { flex: 1, minHeight: 0, overflowY: 'auto', ...col(14), paddingRight: 4 };
+  const rodape: CSSProperties = { ...col(8), flex: 'none' };
+
   return (
-    <div style={col(14)}>
+    <div style={{ ...col(12), height: '100%', minHeight: 0 }}>
       <NxDialogHead title="Planejamento de irrigação" sub={`${nome} · ângulo atual ${angulo != null ? `${fmt(angulo, 1)}°` : '—'}`} onClose={onClose} />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 4, padding: 4, borderRadius: 12, background: NX.seg }}>
         {([{ v: 'simples', label: 'Irrigação' }, { v: 'agenda', label: `Agenda${nProg ? ` · ${nProg}` : ''}` }] as const).map((a) => (
@@ -453,6 +520,23 @@ export function IrrigacaoAvancada({
 
       {aba === 'simples' && (
         <>
+        <div style={corpo}>
+          <div style={col(8)}>
+            <button type="button" role="switch" aria-checked={porSegmentos} onClick={() => { setPctTxt(null); setLamTxt(null); setPorSegmentos((v) => !v); }} style={{ ...linha, width: '100%' }}>
+              <span style={{ ...col(2), textAlign: 'left' }}>
+                <span style={titulo15}>Por segmentos</span>
+                <span style={rotulo}>{porSegmentos ? `Segmento ${segSel + 1} selecionado · as opções abaixo são dele` : 'Água e percentímetro diferentes em cada quarto de volta'}</span>
+              </span>
+              <NxSwitch on={porSegmentos} />
+            </button>
+            {porSegmentos && (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                <AnelSegmentos segs={segs} sel={segSel} atual={atual} onSel={(i) => { setPctTxt(null); setLamTxt(null); setSegSel(i); }} />
+                <span style={{ fontSize: 13, color: NX.mudo }}>Toque no segmento para editar</span>
+              </div>
+            )}
+          </div>
+
           <div style={col(4)}>
             <div style={linha}>
               <span style={titulo15}>Movimento</span>
@@ -473,8 +557,8 @@ export function IrrigacaoAvancada({
               <span style={titulo15}>Água</span>
               <div role="radiogroup" aria-label="Água" style={segBox}>
                 <button type="button" role="radio" aria-checked={!seco} disabled={parado}
-                  onClick={() => setCfg((c) => ({ ...c, semAgua: false, ...(c.percentual > 0 ? {} : { percentual: pctAntes.current, lamina: null }) }))} style={s.seg(!seco)}>Molhado</button>
-                <button type="button" role="radio" aria-checked={seco} disabled={parado} onClick={() => { setPctTxt(null); setLamTxt(null); setCfg((c) => ({ ...c, semAgua: true })); }} style={s.seg(seco)}>Seco</button>
+                  onClick={() => setAtual((c) => ({ ...c, semAgua: false, ...(c.percentual > 0 ? {} : { percentual: pctAntes.current, lamina: null }) }))} style={s.seg(!seco)}>Molhado</button>
+                <button type="button" role="radio" aria-checked={seco} disabled={parado} onClick={() => { setPctTxt(null); setLamTxt(null); setAtual((c) => ({ ...c, semAgua: true })); }} style={s.seg(seco)}>Seco</button>
               </div>
             </div>
             {parado && dica('Parado: liga a água sem girar — irriga no lugar onde está.')}
@@ -595,6 +679,12 @@ export function IrrigacaoAvancada({
               </span>
             </span>
           </div>
+          {parada.tipo === 'porAngulo' && (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+              <DialAngulo atual={atual} final={parada.angulo} direcao={cfg.direcao} onChange={(g) => mudarParada({ tipo: 'porAngulo', angulo: g })} />
+              <span style={{ fontSize: 13, color: NX.mudo }}>Toque no círculo para escolher o ângulo final · {parada.angulo}°</span>
+            </div>
+          )}
           <div style={{ background: NX.caixa, borderRadius: 12, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
             {/* Parada em curso intacta: o término que vale é o dela (o reinício herda o que falta), não um novo do zero. */}
             <span style={{ fontSize: 14, color: NX.caixaTx }}>{ligado && notaParada && paradaIntacta ? notaParada : prev.texto}</span>
@@ -609,7 +699,9 @@ export function IrrigacaoAvancada({
               </span>
             )}
           </div>
+        </div>
 
+        <div style={rodape}>
           {/* Rodapé: parado → Ligar; ligado → Desligar e, depois de editar, Salvar e enviar. */}
           {ligado && !editado && !semRegistro && dica('Pivô ligado com esta configuração. Edite qualquer opção para reiniciar com as novas.', NX.mudo)}
           {ligado && !editado && semRegistro && dica('Pivô ligado fora do NexON (painel): não há irrigação registrada. Confira as opções — ao salvar, o pivô desliga e liga de novo com elas.', NX.warn)}
@@ -624,11 +716,13 @@ export function IrrigacaoAvancada({
               Desligar
             </button>
           )}
+        </div>
         </>
       )}
 
       {aba === 'agenda' && (
         <>
+        <div style={corpo}>
           <div style={col(8)}>
             {programacoes == null && <span style={{ fontSize: 14, color: NX.mudo }}>Carregando…</span>}
             {programacoes != null && !nProg && !nova && <span style={{ fontSize: 14, color: NX.mudo }}>Nenhum horário programado.</span>}
@@ -677,7 +771,10 @@ export function IrrigacaoAvancada({
               </button>
             )}
           </div>
+        </div>
+        <div style={rodape}>
           {nova && botaoEnviar(salvandoProg ? 'Salvando…' : 'Salvar agendamento', salvarAgendamento, salvandoProg || parado)}
+        </div>
         </>
       )}
     </div>

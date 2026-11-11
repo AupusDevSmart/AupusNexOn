@@ -187,19 +187,22 @@ export function NxShell({ title, subtitle, right, tabs, tab, onTab, onClose, chi
 }
 
 /** Diálogo por cima do modal (Confirmar comando, Irrigação avançada, Custos, Exportar, Revisão). */
-export function NxDialog({ open, onClose, label, width = 380, children }: {
+export function NxDialog({ open, onClose, label, width = 380, altura, children }: {
   open: boolean; onClose: () => void; label: string; width?: number; children: ReactNode;
+  /** Altura FIXA (px, limitada a 92 % da tela): o diálogo não muda de tamanho com o conteúdo;
+   *  quem rola é o conteúdo, por dentro. Sem ela, a altura acompanha o conteúdo. */
+  altura?: number;
 }) {
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent
         aria-label={label}
         className="nx-eq top-1/2 bottom-auto left-1/2 right-auto -translate-x-1/2 -translate-y-1/2 max-h-[92dvh] p-0 border-0 gap-0 data-[state=open]:slide-in-from-right-0 data-[state=closed]:slide-out-to-right-0 [&>button:last-child]:hidden"
-        style={{ width: `min(${width}px, 94vw)`, maxWidth: width, background: NX.card, borderRadius: 18, boxShadow: '0 20px 50px rgba(10,12,30,0.3)' }}
+        style={{ width: `min(${width}px, 94vw)`, maxWidth: width, background: NX.card, borderRadius: 18, boxShadow: '0 20px 50px rgba(10,12,30,0.3)', ...(altura ? { height: `min(${altura}px, 92dvh)` } : {}) }}
       >
         <NxStyle />
         <DialogTitle className="sr-only">{label}</DialogTitle>
-        <div style={{ padding: 22, boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto', maxHeight: '92dvh' }}>
+        <div style={{ padding: 22, boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 8, ...(altura ? { height: '100%', overflow: 'hidden' } : { overflowY: 'auto', maxHeight: '92dvh' }) }}>
           {children}
         </div>
       </DialogContent>
