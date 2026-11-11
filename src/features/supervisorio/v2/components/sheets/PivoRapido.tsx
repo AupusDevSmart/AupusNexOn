@@ -67,6 +67,7 @@ const col = (gap: number): CSSProperties => ({ display: 'flex', flexDirection: '
 const linha: CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 44 };
 const rotulo: CSSProperties = { fontSize: 15, fontWeight: 700 };
 const segBox: CSSProperties = { display: 'flex', padding: 3, borderRadius: 12, background: NX.seg };
+/** "Parado" só é mostrado quando a irrigação em curso já é parada: ligar parado saiu da tela (NEXON-98). */
 const MOVIMENTOS: Movimento[] = ['Avanço', 'Reverso', 'Parado'];
 const movLabel = (m: Movimento) => (m === 'Parado' ? 'Parado' : DIRECAO_LABEL[m]);
 
@@ -128,7 +129,7 @@ export function PainelRapido({ valor, base, onChange, lamina100, desabilitado, o
       <div style={linha}>
         <span style={rotulo}>Movimento</span>
         <div role="radiogroup" aria-label="Movimento" style={segBox}>
-          {MOVIMENTOS.map((m) => {
+          {MOVIMENTOS.filter((m) => m !== 'Parado' || parado).map((m) => {
             const off = !!desabilitado || (m === 'Parado' && !podeParado && !parado);
             return (
               <button key={m} type="button" role="radio" aria-checked={mov === m} disabled={off} title={m === 'Parado' && !podeParado ? 'Precisa do ponto Percentímetro na TON' : undefined}
@@ -220,7 +221,7 @@ export function AtalhosRapidos({ valor, base, onChange, desabilitado, onMaisOpco
       <div style={bloco(mudouMov)}>
         <span style={titulo}>MOVIMENTO</span>
         <div style={{ display: 'flex', gap: 6 }}>
-          {MOVIMENTOS.map((m) => {
+          {MOVIMENTOS.filter((m) => m !== 'Parado' || parado).map((m) => {
             const semPonto = m === 'Parado' && !podeParado && !parado;
             return (
               <button key={m} type="button" disabled={desabilitado || semPonto} aria-pressed={mov === m} title={semPonto ? 'Precisa do ponto Percentímetro na TON' : undefined}
