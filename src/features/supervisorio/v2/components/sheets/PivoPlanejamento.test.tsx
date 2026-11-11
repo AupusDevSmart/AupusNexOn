@@ -260,6 +260,22 @@ describe('Planejamento de irrigação', () => {
     expect(cfg.faixasCanhao).toEqual([expect.objectContaining({ liga: ate, desliga: de })]);
   });
 
+  it('canhão com a volta toda marcada sem irrigar vai DESLIGADO (não "ligado a volta toda")', () => {
+    const { onEnviar } = abrir();
+    fireEvent.click(screen.getByRole('switch', { name: /Canhão final/ }));
+    fireEvent.click(screen.getByText('Marcar onde não irrigar'));
+    fireEvent.click(screen.getByText('+ Marcar trecho sem irrigar'));
+    // estica o trecho até encostar nele mesmo: De 0 até 0 não é representável, então dois trechos encostados
+    fireEvent.change(screen.getByLabelText('Trecho 1 sem irrigar, de'), { target: { value: '0' } });
+    fireEvent.change(screen.getByLabelText('Trecho 1 sem irrigar, até'), { target: { value: '180' } });
+    fireEvent.click(screen.getByText('+ Marcar trecho sem irrigar'));
+    fireEvent.change(screen.getByLabelText('Trecho 2 sem irrigar, de'), { target: { value: '180' } });
+    fireEvent.change(screen.getByLabelText('Trecho 2 sem irrigar, até'), { target: { value: '0' } });
+    expect(screen.getByText('A volta toda está marcada: o canhão vai desligado.')).toBeTruthy();
+    fireEvent.click(screen.getByText('Ligar'));
+    expect(onEnviar.mock.calls[0][0].config).toMatchObject({ canhao: false, faixasCanhao: [] });
+  });
+
   it('canhão sem nada marcado vai sem faixas (ligado a volta toda); faixas em curso não mexidas vão como vieram', () => {
     const { onEnviar } = abrir();
     fireEvent.click(screen.getByRole('switch', { name: /Canhão final/ }));
