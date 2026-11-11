@@ -15,15 +15,16 @@ export interface ItemPlanilha {
   sentido: string;
   percentual: string;
   com_agua: string;
+  canhao: string;
 }
 
 /** Irrigação já agendada por data (GET /pivos/:id/agenda). */
 export interface AgendaItem {
   id: string; data: string; hora_inicio: string; duracao_min: number | null;
-  sentido: 'horario' | 'anti_horario'; velocidade: number | null; com_agua: boolean; executada?: boolean;
+  sentido: 'horario' | 'anti_horario'; velocidade: number | null; com_agua: boolean; canhao?: boolean; executada?: boolean;
 }
 
-export const COLUNAS = ['Data', 'Início', 'Fim', 'Duração (min)', 'Sentido', 'Percentímetro (%)', 'Água'] as const;
+export const COLUNAS = ['Data', 'Início', 'Fim', 'Duração (min)', 'Sentido', 'Percentímetro (%)', 'Água', 'Canhão'] as const;
 
 const chave = (v: unknown) => String(v ?? '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z]/g, '');
 /** Cabeçalho da planilha → campo. Aceita variações ("Hora início", "Percentimetro", "Agua"…). */
@@ -35,6 +36,7 @@ const CAMPO: Array<[RegExp, keyof Omit<ItemPlanilha, 'linha'>]> = [
   [/^(sentido|direcao)/, 'sentido'],
   [/^(percent|velocidade)/, 'percentual'],
   [/^(agua|comagua)/, 'com_agua'],
+  [/^canhao/, 'canhao'],
 ];
 
 const txt = (v: unknown) => (v instanceof Date ? `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, '0')}-${String(v.getDate()).padStart(2, '0')}` : String(v ?? '').trim());
@@ -54,7 +56,7 @@ export function linhasParaItens(matriz: unknown[][]): { itens: ItemPlanilha[]; e
   const itens: ItemPlanilha[] = [];
   matriz.slice(iCab + 1).forEach((l, i) => {
     if (!(l ?? []).some((c) => txt(c) !== '')) return;
-    const it: ItemPlanilha = { linha: iCab + i + 2, data: '', hora_inicio: '', hora_fim: '', duracao_min: '', sentido: '', percentual: '', com_agua: '' };
+    const it: ItemPlanilha = { linha: iCab + i + 2, data: '', hora_inicio: '', hora_fim: '', duracao_min: '', sentido: '', percentual: '', com_agua: '', canhao: '' };
     mapa.forEach((campo, j) => { if (campo) it[campo] = txt(l[j]); });
     itens.push(it);
   });
@@ -84,14 +86,14 @@ export async function baixarModelo(nomePivo: string) {
   const d = (dias: number) => { const x = new Date(Date.now() + dias * 86400000); return `${String(x.getDate()).padStart(2, '0')}/${String(x.getMonth() + 1).padStart(2, '0')}/${x.getFullYear()}`; };
   const linhas = [
     [...COLUNAS],
-    [d(1), '21:00', '05:00', '', 'Direita', '60', 'Sim'],
-    [d(2), '21:00', '', '480', 'Esquerda', '80', 'Sim'],
-    [d(3), '08:00', '10:00', '', 'Direita', '', 'Não'],
+    [d(1), '21:00', '05:00', '', 'Direita', '60', 'Sim', 'Sim'],
+    [d(2), '21:00', '', '480', 'Esquerda', '80', 'Sim', 'Não'],
+    [d(3), '08:00', '10:00', '', 'Direita', '', 'Não', ''],
   ];
   const ws = XLSX.utils.aoa_to_sheet(linhas);
   // tudo como texto: o Excel não troca "21:00" por fração de dia nem a data por número
   Object.keys(ws).filter((k) => !k.startsWith('!')).forEach((k) => { ws[k].t = 's'; ws[k].z = '@'; });
-  ws['!cols'] = [{ wch: 12 }, { wch: 8 }, { wch: 8 }, { wch: 14 }, { wch: 10 }, { wch: 18 }, { wch: 8 }];
+  ws['!cols'] = [{ wch: 12 }, { wch: 8 }, { wch: 8 }, { wch: 14 }, { wch: 10 }, { wch: 18 }, { wch: 8 }, { wch: 8 }];
   const ajuda = XLSX.utils.aoa_to_sheet([
     ['Agenda do pivô por planilha — uma linha por irrigação'],
     [''],
@@ -102,6 +104,7 @@ export async function baixarModelo(nomePivo: string) {
     ['Sentido', 'Direita ou Esquerda.'],
     ['Percentímetro (%)', 'De 1 a 100. Deixe em branco quando a Água for Não.'],
     ['Água', 'Sim (irriga) ou Não (gira seco, a bomba não liga). Em branco = Sim.'],
+    ['Canhão', 'Sim liga o canhão final junto com o pivô, a volta toda. Não ou em branco = desligado. Só com Água = Sim e em pivô com o canhão configurado.'],
     [''],
     ['Uma irrigação não pode começar antes de a anterior terminar.'],
     ['Se uma linha estiver errada, nada é gravado e o NexON diz quais linhas corrigir.'],
@@ -117,13 +120,13 @@ export async function baixarModelo(nomePivo: string) {
 const br = (data: string) => `${data.slice(8, 10)}/${data.slice(5, 7)}/${data.slice(0, 4)}`;
 const hhmm = (min: number) => `${String(Math.floor(min / 60) % 24).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
 
-/** "12/11/2026 · 21:00 → 05:00" e "60% · Molhado · Direita". */
+/** "12/11/2026 · 21:00 → 05:00" e "60% · Molhado · Direita" (com " · canhão" quando liga junto). */
 export function textoAgenda(a: AgendaItem) {
   const [h, m] = a.hora_inicio.split(':').map(Number);
   const fim = a.duracao_min ? hhmm(h * 60 + m + a.duracao_min) : null;
   const dir = a.sentido === 'horario' ? 'Direita' : 'Esquerda';
   return {
     quando: `${br(a.data)} · ${a.hora_inicio}${fim ? ` → ${fim}` : ''}`,
-    det: a.com_agua === false ? `Seco · ${dir}` : `${a.velocidade != null ? `${String(a.velocidade).replace('.', ',')}%` : '—'} · Molhado · ${dir}`,
+    det: a.com_agua === false ? `Seco · ${dir}` : `${a.velocidade != null ? `${String(a.velocidade).replace('.', ',')}%` : '—'} · Molhado · ${dir}${a.canhao ? ' · canhão' : ''}`,
   };
 }

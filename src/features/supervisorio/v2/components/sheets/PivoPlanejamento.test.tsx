@@ -235,6 +235,21 @@ describe('Planejamento de irrigação', () => {
     expect(screen.queryByLabelText('Percentímetro')).toBeNull();
     fireEvent.click(screen.getByText('Salvar agendamento'));
     expect(onSalvar).toHaveBeenCalledWith(expect.objectContaining({ sentido: 'horario', velocidade: 60, com_agua: true }));
+    // sem canhão o campo nem vai (API antiga recusaria o corpo)
+    expect((onSalvar.mock.calls[0] as unknown[])[0]).not.toHaveProperty('canhao');
+  });
+
+  it('agenda: o canhão ligado na Irrigação vai junto no agendamento', async () => {
+    const onSalvar = vi.fn(async () => true);
+    abrir({ onSalvarProgramacao: onSalvar });
+    fireEvent.click(screen.getByRole('radio', { name: 'Direita' }));
+    fireEvent.click(screen.getByRole('switch', { name: /Canhão final/ }));
+    fireEvent.click(screen.getByText('Agenda'));
+    fireEvent.click(screen.getByText('+ Adicionar horário'));
+    expect(screen.getByText('Direita · 60% · Molhado · canhão')).toBeTruthy();
+    expect(screen.getByText('Canhão final: liga junto com o pivô, a volta toda.')).toBeTruthy();
+    fireEvent.click(screen.getByText('Salvar agendamento'));
+    expect(onSalvar).toHaveBeenCalledWith(expect.objectContaining({ com_agua: true, canhao: true }));
   });
 
   it('agenda não liga parado: com Movimento Parado o agendamento não salva', () => {
@@ -316,8 +331,8 @@ describe('agenda por planilha', () => {
     const { itens, erro } = linhasParaItens([CAB, ['12/11/2026', '21:00', '05:00', '', 'Direita', '60', 'Sim'], ['', '', '', '', '', '', ''], ['13/11/2026', '21:00', '', '480', 'Esquerda', '80', '']]);
     expect(erro).toBeNull();
     expect(itens).toEqual([
-      { linha: 2, data: '12/11/2026', hora_inicio: '21:00', hora_fim: '05:00', duracao_min: '', sentido: 'Direita', percentual: '60', com_agua: 'Sim' },
-      { linha: 4, data: '13/11/2026', hora_inicio: '21:00', hora_fim: '', duracao_min: '480', sentido: 'Esquerda', percentual: '80', com_agua: '' },
+      { linha: 2, data: '12/11/2026', hora_inicio: '21:00', hora_fim: '05:00', duracao_min: '', sentido: 'Direita', percentual: '60', com_agua: 'Sim', canhao: '' },
+      { linha: 4, data: '13/11/2026', hora_inicio: '21:00', hora_fim: '', duracao_min: '480', sentido: 'Esquerda', percentual: '80', com_agua: '', canhao: '' },
     ]);
   });
 
@@ -329,10 +344,17 @@ describe('agenda por planilha', () => {
     expect(linhasParaItens([CAB]).erro).toMatch(/nenhuma linha/);
   });
 
+  it('coluna Canhão: lida quando existe; planilha antiga, sem ela, fica em branco (= desligado)', () => {
+    const { itens } = linhasParaItens([[...CAB, 'Canhão'], ['12/11/2026', '21:00', '05:00', '', 'Direita', '60', 'Sim', 'Sim']]);
+    expect(itens[0].canhao).toBe('Sim');
+    expect(linhasParaItens([CAB, ['12/11/2026', '21:00', '05:00', '', 'Direita', '60', 'Sim']]).itens[0].canhao).toBe('');
+  });
+
   it('texto de uma irrigação agendada por data', () => {
     expect(textoAgenda({ id: 'x', data: '2026-11-12', hora_inicio: '21:00', duracao_min: 480, sentido: 'horario', velocidade: 60, com_agua: true }))
       .toEqual({ quando: '12/11/2026 · 21:00 → 05:00', det: '60% · Molhado · Direita' });
     expect(textoAgenda({ id: 'x', data: '2026-11-12', hora_inicio: '08:00', duracao_min: 120, sentido: 'anti_horario', velocidade: null, com_agua: false }).det).toBe('Seco · Esquerda');
+    expect(textoAgenda({ id: 'x', data: '2026-11-12', hora_inicio: '21:00', duracao_min: 480, sentido: 'horario', velocidade: 60, com_agua: true, canhao: true }).det).toBe('60% · Molhado · Direita · canhão');
   });
 
   it('a Agenda mostra o modelo, o envio e o que já está agendado por data; apagar pede ao pai', () => {
