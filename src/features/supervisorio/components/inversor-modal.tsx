@@ -18,9 +18,8 @@ import {
   TrendingUp,
   Zap,
 } from "lucide-react";
-import { BarChart } from "@/components/charts/bar-chart";
-import { Bar } from "@/components/charts/bar";
-import { BarXAxis } from "@/components/charts/bar-x-axis";
+import { AreaChart, Area } from "@/components/charts/area-chart";
+import { XAxis } from "@/components/charts/x-axis";
 import { ChartTooltip } from "@/components/charts/tooltip";
 import { COR } from "@/components/graficos/cores";
 import { TooltipDestaque } from "@/components/graficos/tooltip-destaque";
@@ -208,20 +207,24 @@ export function InversorModal({
             </CardHeader>
             <CardContent>
               <div className="h-32 rounded bg-muted p-2">
-                <BarChart
-                  data={dados.curvaGeracao.slice(-12).map((p) => ({ hora: p.hora.slice(0, 5), potencia: p.potencia }))}
-                  xDataKey="hora"
+                {/* Curva do dia = linha (NEXON-99). */}
+                <AreaChart
+                  data={dados.curvaGeracao.slice(-12).map((p) => {
+                    const [h, m] = p.hora.split(":").map(Number);
+                    const date = new Date();
+                    date.setHours(h || 0, m || 0, 0, 0);
+                    return { date, hora: p.hora.slice(0, 5), potencia: p.potencia };
+                  })}
                   aspectRatio="auto"
                   className="h-full"
                   margin={{ top: 8, right: 8, bottom: 22, left: 8 }}
                   animationDuration={0}
                 >
-                  <Bar dataKey="potencia" fill={COR.geracao} lineCap={3} animate={false} />
-                  <BarXAxis showAllLabels />
+                  <Area dataKey="potencia" fill={COR.geracao} fillOpacity={0.25} stroke={COR.geracao} strokeWidth={2} animate={false} />
+                  <XAxis numTicks={4} />
                   <ChartTooltip
                     showDatePill={false}
-                    showCrosshair={false}
-                    showDots={false}
+                    showDots
                     content={({ point }) => (
                       <TooltipDestaque
                         titulo={String(point.hora)}
@@ -231,7 +234,7 @@ export function InversorModal({
                       />
                     )}
                   />
-                </BarChart>
+                </AreaChart>
               </div>
               <div className="mt-4 grid grid-cols-3 gap-2 sm:gap-4 text-center">
                 <div>
