@@ -7517,7 +7517,7 @@ void setup() {
     Serial.println("[OK] Transistores (TR1-TR4)");
 
     adc_init();
-${spec.bomba && spec.has_relays ? '    bomba_init();   // posto de combustivel: reles desligados, lista/sessao do NVS\n' : ''}${spec.pivo && spec.has_relays ? '    pivo_init();    // pivo: config do NVS; reles do pivo desligados (reinicio = pivo parado)\n' : ''}    Serial.println("[OK] ADC (AN1/AN2)");
+${spec.bomba && spec.has_relays ? '    bomba_init();   // posto de combustivel: reles desligados, lista/sessao do NVS\n' : ''}${spec.pivo && spec.has_relays ? '    pivo_init();    // pivo: config do NVS; reles do pivo desligados (reinicio = pivo parado)\n' + (spec.lora_role === 'satellite' && !this._loraAutonomousPush() && this._satelliteHasDevice(spec) ? '    pivo_so_no_poll(true);   // satelite mestre-puxa: status do pivo so\' na resposta ao POLL\n' : '') : ''}    Serial.println("[OK] ADC (AN1/AN2)");
 
     // SD Card - buffer offline para MQTT
     if (sd_buffer_init()) {
@@ -7576,6 +7576,19 @@ ${spec.bomba && spec.has_relays ? '    bomba_init();   // posto de combustivel: 
         const satReactive = spec.lora_role === 'satellite' && !this._loraAutonomousPush() && this._satelliteHasDevice(spec);
         if (spec.lora_role === 'satellite') {
             cpp += `
+// Entradas (BI) via LoRa: o envio na mudanca e' 1 frame sem confirmacao e pode colidir
+// com o POLL do gateway ou com o ack do comando. A resposta a cada POLL reenvia as
+// entradas (se mudaram desde o ultimo reenvio ou a cada 30 s); se nenhum POLL vier em
+// 8 s depois de uma mudanca, o satelite repete as entradas 1x (reserva). Igual ao V2.
+static unsigned long _in_reforco_ms = 0;   // 0 = nada pendente
+static void _sat_publicar_entradas() {
+    uint8_t s = inputs_get_state();
+    char buf[80];
+    snprintf(buf, sizeof(buf), "{\\"d1\\":%d,\\"d2\\":%d,\\"d3\\":%d,\\"d4\\":%d,\\"d5\\":%d,\\"d6\\":%d}",
+        s&1, (s>>1)&1, (s>>2)&1, (s>>3)&1, (s>>4)&1, (s>>5)&1);
+    lora_publish_data("inputs", buf);
+}
+
 // MESTRE-PUXA: responde um POLL do mestre. Le+publica a telemetria do device
 // (mesmo decode/escala/empacotamento do push antigo) e sinaliza fim com pollresp.
 void lora_poll_respond(const char* gw_mac, const char* req_id) {
@@ -7594,8 +7607,24 @@ void lora_poll_respond(const char* gw_mac, const char* req_id) {
 `;
             }
             if (satReactive && spec.pivo && spec.has_relays) {
-                cpp += `    // Pivo: republica o status no proximo loop (mesmo caminho do push).
-    pivo_publicar_agora();
+                cpp += `    // Pivo: status do pivo dentro da resposta (o satelite nao manda status sozinho).
+    pivo_publicar([](const char* sub, const char* payload){ lora_publish_data(sub, payload); });
+`;
+            }
+            if (satReactive) {
+                cpp += `    // Entradas (BI): reenvia no POLL quando mudaram desde o ultimo reenvio ou a cada
+    // 30 s (o envio na mudanca pode ter colidido). Cobre o reforco pendente.
+    {
+        static int16_t _inPollAnt = -1;
+        static unsigned long _inPollMs = 0;
+        uint8_t s = inputs_get_state();
+        if ((int16_t)s != _inPollAnt || millis() - _inPollMs >= 30000UL) {
+            _sat_publicar_entradas();
+            _inPollAnt = (int16_t)s;
+            _inPollMs = millis();
+        }
+        _in_reforco_ms = 0;
+    }
 `;
             }
             cpp += `    // Fecha o ciclo: o mestre casa pelo req_id, republica o que chegou e avanca.
@@ -7655,9 +7684,17 @@ ${spec.has_relays ? '        relays_health_tick();   // C3 anti-travamento: conf
         // proxima reconexao republica o estado atual. Antes (mqtt_publish) lotava
         // o SD com milhares de copias do mesmo estado quando MQTT oscilava.
         if (spec.wifi) cpp += `            mqtt_publish_raw(MQTT_TOPIC_INPUTS, buf);\n`;
-        if (spec.lora_role === 'satellite') cpp += `            lora_publish_data("inputs", buf);\n`;
+        if (spec.lora_role === 'satellite') cpp += `            lora_publish_data("inputs", buf);
+            _in_reforco_ms = millis() + 8000UL;   // reserva: repete se nenhum POLL vier em 8 s
+`;
         cpp += `        }
-
+`;
+        if (spec.lora_role === 'satellite') cpp += `        if (_in_reforco_ms && (long)(millis() - _in_reforco_ms) >= 0) {
+            _in_reforco_ms = 0;
+            _sat_publicar_entradas();
+        }
+`;
+        cpp += `
         // Saidas transistor (TR1-4) on-change. Em satellite vai via LoRa.
         uint8_t os = outputs_get_state();
         if (_io_force || os != _prev_out) {

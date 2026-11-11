@@ -8818,7 +8818,7 @@ void setup() {
     Serial.println("[OK] Transistores (TR1-TR4)");
 
     adc_init();
-${spec.bomba && spec.has_relays ? '    bomba_init();   // posto de combustivel: reles desligados, lista/sessao do NVS\n' : ''}${spec.pivo && spec.has_relays ? '    pivo_init();    // pivo: config do NVS; reles do pivo desligados (reinicio = pivo parado)\n' : ''}    Serial.println("[OK] ADC (AN1/AN2 + AN_C1/AN_C2)");
+${spec.bomba && spec.has_relays ? '    bomba_init();   // posto de combustivel: reles desligados, lista/sessao do NVS\n' : ''}${spec.pivo && spec.has_relays ? '    pivo_init();    // pivo: config do NVS; reles do pivo desligados (reinicio = pivo parado)\n' + (spec.lora_role === 'satellite' && !this._loraAutonomousPush() && this._satelliteHasDevice(spec) ? '    pivo_so_no_poll(true);   // satelite mestre-puxa: status do pivo so\' na resposta ao POLL\n' : '') : ''}    Serial.println("[OK] ADC (AN1/AN2 + AN_C1/AN_C2)");
 
     if (pwm_init()) Serial.println("[OK] PWM (PCA9685 8ch @0x42)");
     else Serial.println("[FAIL] PWM (PCA9685 nao respondeu no 0x42)");
@@ -8916,8 +8916,8 @@ void lora_poll_respond(const char* gw_mac, const char* req_id) {
 `;
             }
             if (satReactive && spec.pivo && spec.has_relays) {
-                cpp += `    // Pivo: republica o status no proximo loop (mesmo caminho do push).
-    pivo_publicar_agora();
+                cpp += `    // Pivo: status do pivo dentro da resposta (o satelite nao manda status sozinho).
+    pivo_publicar([](const char* sub, const char* payload){ lora_publish_data(sub, payload); });
 `;
             }
             if (satReactive) {

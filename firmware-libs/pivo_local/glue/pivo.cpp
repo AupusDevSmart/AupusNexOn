@@ -55,6 +55,9 @@ static unsigned long _ult_pub = 0;
 static uint8_t  _bi_ant = 0xFF;
 static char     _falha_boot[16] = "";    // "reinicio": desligou irrigando (queda de energia/reset)
 static bool     _ativo_nvs = false;
+// Satelite LoRa mestre-puxa: frame espontaneo colide com o POLL do gateway (e com as
+// entradas, que mudam no mesmo instante). O status vai so' na resposta ao POLL.
+static bool     _so_poll = false;
 // percentimetro LEGADO (comando "perc" do servidor), so' com a sequencia local parada
 static uint8_t  _leg_bo = 0;
 static int16_t  _leg_pm = -1;            // -1 = desligado
@@ -174,6 +177,7 @@ void pivo_init() {
 bool pivo_ocioso() { return !_m || _m->estado() == PARADO; }
 void pivo_encoder_bruto(float bruto) { _enc_bruto = bruto; _enc_novo = true; }
 void pivo_publicar_agora() { _pub_agora = true; _ult_pub = 0; }
+void pivo_so_no_poll(bool so_poll) { _so_poll = so_poll; }
 
 static bool _biPapel(uint8_t st, int papel) {
     uint8_t n = _bi[papel];
@@ -236,6 +240,13 @@ static void _publicarStatus(pivo_publish_fn pub) {
     if (pub) pub("pivo", payload);
 }
 
+void pivo_publicar(pivo_publish_fn publish) {
+    if (!_m || !publish) return;
+    _pub_agora = false;
+    _ult_pub = millis() ? millis() : 1;
+    _publicarStatus(publish);
+}
+
 void pivo_loop(pivo_publish_fn publish) {
     if (!_m) return;
     unsigned long now = millis();
@@ -291,6 +302,7 @@ void pivo_loop(pivo_publish_fn publish) {
         _evh = (_evh + 1) % 12; _evn--;
     }
     unsigned long periodo = _m->estado() == PARADO ? 60000UL : 30000UL;
+    if (_so_poll) return;   // satelite mestre-puxa: status em pivo_publicar() (POLL)
     if ((_pub_agora && now - _ult_pub >= 1000UL) || !_ult_pub || now - _ult_pub >= periodo) {
         _pub_agora = false;
         _ult_pub = now ? now : 1;
