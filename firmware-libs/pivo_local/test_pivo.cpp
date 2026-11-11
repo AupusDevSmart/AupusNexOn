@@ -153,7 +153,7 @@ int main() {
         CHECK(!strcmp(b.m.falha(), "sem_tensao"), "7b queda de tensao desliga");
         Painel c; c.ligar(plano()); c.ate(IRRIGANDO, 60000); c.rodar(5000);
         c.quebra_giro = true; c.rodar(3500);
-        CHECK(!strcmp(c.m.falha(), "parou_sem_comando"), "7b lado caiu = parou sem comando");
+        CHECK(!strcmp(c.m.falha(), "lado_caiu"), "7b lado caiu = lado_caiu");
     }
     // 8) Por angulo, direita 10 -> 100
     {

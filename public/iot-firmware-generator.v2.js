@@ -283,6 +283,12 @@ var FirmwareGenerator = class FirmwareGenerator {
         if (result.lora_role === 'satellite' && !result.wifi && (result.lora_peers || []).length === 0) {
             result.warnings.push('Satellite sem peer LoRa configurado — não conseguirá comunicar');
         }
+        if (result.pivo && result.has_relays && !result.rs485_devices.some(d => d.type === 'encoder')) {
+            result.warnings.push('Pivô sem Encoder no RS485 desta TON — só funciona a parada por tempo (voltas, ângulo e segmentos precisam do encoder na mesma TON).');
+        }
+        if (result.pivo && result.has_relays && typeof PivoLocalGen === 'undefined') {
+            result.warnings.push('iot-firmware-pivo.js não carregou — recarregue a página antes de gerar o firmware do pivô.');
+        }
 
         return result;
     }
@@ -582,38 +588,20 @@ var FirmwareGenerator = class FirmwareGenerator {
         }
     }
 
-    // Pivô (Cenário B): painel "burro", a TON é o cérebro. Anexa a config do
-    // pivô ao spec da TON (espelha como _processLoRa/_processDevice anexam seus
-    // dados). Apenas UMA TON controla o pivô (regra do diagrama). BI=entradas
-    // digitais (1-6, 0=não usa), BO=relés (1-6, 0=não usa). A máquina de estados
-    // e o parser de comando só são emitidos quando result.pivo existe.
+    // Pivo (sequencia local na TON, docs/IOT-PIVO-TON-LOCAL.md): o no Pivo ligado a TON
+    // faz o gerador incluir a lib pivo_local + glue. O mapa de BO/BI (com polaridade), os
+    // tempos e o encoder NAO vem do diagrama: o NexON manda por comando ("pivo io/tempos/enc")
+    // e a TON guarda na NVS — trocar I/O ou polaridade nao exige regravar.
     _processPivo(ton, other, result) {
-        if (result.pivo) return;  // só um pivô por TON
+        if (result.pivo) return;  // so' um pivo por TON
         const p = other.props || {};
-        const num = (v) => {
-            const n = parseInt(v, 10);
-            return Number.isFinite(n) && n >= 1 && n <= 6 ? n : 0;  // 0 = não usa
-        };
         result.pivo = {
             componentId: other.id,
             name: p.name || COMPONENT_TYPES[other.type].label,
             equipamento_id: (p.equipamento_id || '').trim(),
-            bi_pressostato:    num(p.bi_pressostato),
-            bi_emergencia:     num(p.bi_emergencia),
-            bi_desalinhamento: num(p.bi_desalinhamento),
-            bi_fim_curso:      num(p.bi_fim_curso),
-            bo_movimento:      num(p.bo_movimento),
-            bo_sentido_dir:    num(p.bo_sentido_dir),
-            bo_sentido_esq:    num(p.bo_sentido_esq),
-            bo_canhao:         num(p.bo_canhao),
-            tempo_pressao_s:   (() => { const t = parseInt(p.tempo_pressao_s, 10); return Number.isFinite(t) && t > 0 ? t : 120; })(),
         };
-        // O controle do pivô depende de relés (BO). TON1/TON2 não têm relés —
-        // sem eles a máquina de estados não consegue acionar o painel.
         if (!result.has_relays) {
-            result.warnings.push('Pivô conectado a uma TON sem relés (BO) — controle do pivô não será gerado. Use TON3/TON4.');
-        } else if (!result.pivo.bo_movimento) {
-            result.warnings.push('Pivô sem BO Movimento configurado — máquina de estados não terá como acionar o pivô.');
+            result.warnings.push('Pivô conectado a uma TON sem relés (BO) — o controle do pivô não será gerado. Use TON3/TON4.');
         }
     }
 
@@ -699,6 +687,12 @@ var FirmwareGenerator = class FirmwareGenerator {
         if (spec.has_lora) {
             files['src/lora.cpp'] = this._genLoraCpp(spec);
             files['include/lora.h'] = this._genLoraH();
+        }
+
+        // Pivo (sequencia local na TON): lib pivo_local + glue pivo.cpp, de public/iot-firmware-pivo.js
+        // (gerado de firmware-libs/pivo_local/ por tools/sync-pivo-lib.mjs). docs/IOT-PIVO-TON-LOCAL.md
+        if (spec.pivo && spec.has_relays) {
+            Object.assign(files, PivoLocalGen.files());
         }
 
         // Posto de combustivel: lib pura + glue (so' com bomba no diagrama e TON com reles)
@@ -2234,7 +2228,7 @@ void mqtt_loop() {}
 bool mqtt_publish(const char* t, const char* p) { return false; }
 bool mqtt_connected() { return false; }
 #include <Arduino.h>
-bool mqtt_restart_permitido() { return true; }
+bool mqtt_restart_permitido() {${spec.pivo && spec.has_relays ? ` extern bool pivo_ocioso(); if (!pivo_ocioso()) return false;` : ''} return true; }
 void mqtt_request_restart(const char* reason, unsigned long delay_ms) { Serial.printf("[SYS] reinicio (%s)\\n", reason); delay(delay_ms > 3000 ? 3000 : delay_ms); ESP.restart(); }
 const char* mqtt_restart_cause() { return ""; }
 unsigned long mqtt_conn_age_ms() { return 0xFFFFFFFFUL; }
@@ -2622,6 +2616,13 @@ ${spec.bomba ? `        { extern bool bomba_ota_permitida();
               mqtt_publish_raw(st.c_str(), "{\\"state\\":\\"refused\\",\\"msg\\":\\"bomba_ocupada\\"}");
               return;
           } }
+` : ''}${spec.pivo && spec.has_relays ? `        { extern bool pivo_ocioso();
+          if (!pivo_ocioso()) {   // pivo: OTA so' com o pivo parado (OTA reinicia e derruba as saidas)
+              Serial.println("[OTA] RECUSADA: pivo ligado");
+              String st = String(MQTT_TOPIC_BASE) + "/ota/status";
+              mqtt_publish_raw(st.c_str(), "{\\"state\\":\\"refused\\",\\"msg\\":\\"pivo_ligado\\"}");
+              return;
+          } }
 ` : ''}        ota_handle_command(buf);
         return;
     }
@@ -2691,7 +2692,7 @@ static char _restartReason[24] = "";
 
 bool mqtt_restart_permitido() {
     if (ota_in_progress()) return false;
-${spec.bomba ? `    { extern bool bomba_ota_permitida(); if (!bomba_ota_permitida()) return false; }\n` : ''}    return true;
+${spec.bomba ? `    { extern bool bomba_ota_permitida(); if (!bomba_ota_permitida()) return false; }\n` : ''}${spec.pivo && spec.has_relays ? `    { extern bool pivo_ocioso(); if (!pivo_ocioso()) return false; }   // pivo irrigando: segue sem internet, nao reinicia\n` : ''}    return true;
 }
 
 const char* mqtt_restart_cause() { return _bootCause; }
@@ -4611,6 +4612,8 @@ bool modbus_exec_command(const char* device_name, const char* cmd_id, int addr =
 
     _genModbusCpp(spec) {
         const devs = (spec.rs485_devices || []).filter(d => d.catalog_device);
+        // Pivo: o encoder (posicao do pivo) entrega cada leitura boa para a sequencia local.
+        this._pivoEnc = !!(spec.pivo && spec.has_relays);
 
         let cpp = `#include "modbus_meter.h"
 #include "hal.h"
@@ -4625,7 +4628,7 @@ bool modbus_exec_command(const char* device_name, const char* cmd_id, int addr =
 
 static ModbusMaster _mb;
 static HardwareSerial _rs485(RS485_UART_NUM);
-
+${this._pivoEnc && devs.some(d => d.type === 'encoder') ? 'extern void pivo_encoder_bruto(float bruto);   // pivo: src/pivo.cpp\n' : ''}
 // NOTA: ModbusMaster usa ku16MBResponseTimeout = 2000ms como static const compilada
 // na lib — nao expoe setter runtime. Timeout fica em 2s (folgado pra Sungrow).
 // Refator pra ajustar exige trocar a lib (ex: eModbus) — fora deste escopo.
@@ -5528,6 +5531,9 @@ ${dpt ? `        _fDPT = _pow10i((int)_lDPT - ${dpt.base});\n` : ''}${dct ? `   
         });
 
         cpp += `    _ds${idx}.samples++;\n`;
+        if (this._pivoEnc && dev.type === 'encoder' && lastFields.some(f => f.pid === 'posicao')) {
+            cpp += `    pivo_encoder_bruto(v_posicao);   // pivo: posicao nova para a sequencia local\n`;
+        }
 
         // Log de debug: mostra os principais campos lidos a cada sample
         cpp += `    // Log de debug — mostra principais valores lidos\n`;
@@ -6003,284 +6009,6 @@ static void _publish_dev_${idx}(modbus_publish_fn publish) {
 
     _escStr(s) {
         return String(s || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-    }
-
-    // ---- Máquina de estados do pivô (Cenário B) ----
-    // Emitida só quando spec.pivo existe e a TON tem relés. Reusa:
-    //   - inputs_get_state()  -> leitura das BI (entradas digitais)
-    //   - relay_set(num, on)  -> acionamento das BO (relés)
-    //   - mqtt_publish_sub / lora_publish_data -> publicacao de status
-    // BI/BO == 0 significam "não usa" e são omitidos (sem monitoramento/acionamento).
-    // ================================================================
-    // PERCENTÍMETRO LOCAL do pivô (docs/IOT-PIVO-PERCENTIMETRO-LAMINA.md)
-    // A BO comanda o MOTOR DE MOVIMENTO: ligada = anda, desligada = parado irrigando.
-    // Ciclo local (padrao 60 s): fase ON = permil × ciclo, depois OFF ate fechar.
-    // Um comando so' ("perc <bo> <permil> <ciclo_s> <mascara>"); nada por minuto no radio.
-    // ================================================================
-    _genPercentimetro(spec) {
-        return `#include <Preferences.h>
-// ===== PERCENTÍMETRO LOCAL (motor de movimento do pivô) =====
-// "perc <bo> <permil> <ciclo_s> <mascara>": BO <bo> liga permil/1000 do ciclo e desliga o
-// resto (1000 = anda direto, 0 = parado). <mascara> = DINs de "girando" (bit0 = DIN1): com
-// mascara, o ciclo so' roda com alguma delas em 1 (pivô ligado no painel); sem, roda sempre.
-// Fica no NVS e volta sozinho apos reinicio. Mudanca de % vale no proximo ciclo.
-// "perc off" desliga (BO em OFF).
-#define PERC_RELE_MAX 6
-static uint8_t  _perc_bo = 0;            // 0 = sem percentimetro
-static int16_t  _perc_pm = -1;           // permil em uso (-1 = desligado)
-static int16_t  _perc_prox = -1;         // permil pendente p/ o proximo ciclo (-1 = nada)
-static uint32_t _perc_ciclo_ms = 60000UL;
-static uint8_t  _perc_mask = 0;
-static unsigned long _perc_ini = 0;      // inicio do ciclo atual (0 = fora de ciclo)
-static int8_t   _perc_saida_atual = -1;  // -1 = ainda nao escrito (forca a 1a escrita)
-static bool     _perc_carregado = false;
-
-static void _perc_salvar() {
-    Preferences pr;
-    if (!pr.begin("perc", false)) return;
-    pr.putUChar("bo", _perc_bo); pr.putShort("pm", _perc_pm);
-    pr.putUInt("cy", _perc_ciclo_ms); pr.putUChar("mk", _perc_mask);
-    pr.end();
-}
-
-static void _perc_saida(bool on) {
-    if (!_perc_bo || _perc_saida_atual == (on ? 1 : 0)) return;
-    _perc_saida_atual = on ? 1 : 0;
-    relay_set(_perc_bo, on);
-}
-
-// Permil aplicado (status "pc" do pivo); -1 = percentimetro desligado.
-static int16_t perc_aplicado() { return (_perc_bo && _perc_pm >= 0) ? _perc_pm : -1; }
-
-static void _perc_tick() {
-    if (!_perc_carregado) {
-        _perc_carregado = true;
-        Preferences pr;
-        if (pr.begin("perc", true)) {
-            _perc_bo = pr.getUChar("bo", 0); _perc_pm = pr.getShort("pm", -1);
-            _perc_ciclo_ms = pr.getUInt("cy", 60000UL); _perc_mask = pr.getUChar("mk", 0);
-            pr.end();
-        }
-        if (_perc_bo > PERC_RELE_MAX || _perc_ciclo_ms < 5000UL || _perc_ciclo_ms > 600000UL || _perc_pm > 1000) { _perc_bo = 0; _perc_pm = -1; }
-        if (_perc_bo && _perc_pm >= 0)
-            Serial.printf("[PERC] retomado do NVS: BO%u %d.%d%% ciclo %lus mascara 0x%02X\\n",
-                          _perc_bo, _perc_pm / 10, _perc_pm % 10, (unsigned long)(_perc_ciclo_ms / 1000), _perc_mask);
-    }
-    if (!_perc_bo || _perc_pm < 0) return;
-    bool girando = !_perc_mask || (inputs_get_state() & _perc_mask);
-    if (!girando) { _perc_ini = 0; _perc_saida(false); return; }
-    unsigned long now = millis();
-    if (!_perc_ini || now - _perc_ini >= _perc_ciclo_ms) {     // ciclo novo: comeca pela fase ON
-        _perc_ini = now ? now : 1;
-        if (_perc_prox >= 0) { _perc_pm = _perc_prox; _perc_prox = -1; }
-    }
-    uint32_t on_ms = (uint32_t)(((uint64_t)_perc_ciclo_ms * (uint32_t)_perc_pm) / 1000ULL);
-    _perc_saida((now - _perc_ini) < on_ms);
-}
-
-// Retorna false (e msg) em parametro invalido.
-static bool perc_configurar(int bo, int pm, int ciclo_s, int mask, char* msg, size_t msg_sz) {
-    if (bo < 1 || bo > PERC_RELE_MAX || pm < 0 || pm > 1000 || ciclo_s < 5 || ciclo_s > 600 || mask < 0 || mask > 255) {
-        snprintf(msg, msg_sz, "perc_invalido");
-        return false;
-    }
-    if (!_perc_carregado) _perc_tick();                   // garante o NVS lido antes de trocar
-    if (_perc_bo && _perc_bo != bo) { relay_set(_perc_bo, false); _perc_saida_atual = -1; }
-    bool emCiclo = _perc_ini != 0 && _perc_bo == bo && _perc_pm >= 0;
-    _perc_bo = (uint8_t)bo; _perc_ciclo_ms = (uint32_t)ciclo_s * 1000UL; _perc_mask = (uint8_t)mask;
-    if (emCiclo) _perc_prox = (int16_t)pm;                 // girando: vale no proximo ciclo
-    else { _perc_pm = (int16_t)pm; _perc_prox = -1; _perc_ini = 0; }
-    int16_t salvo = _perc_pm; _perc_pm = (int16_t)pm; _perc_salvar(); _perc_pm = salvo;   // NVS ja com o novo
-    Serial.printf("[PERC] BO%d %d.%d%% ciclo %ds mascara 0x%02X%s\\n", bo, pm / 10, pm % 10, ciclo_s, mask, emCiclo ? " (no proximo ciclo)" : "");
-    snprintf(msg, msg_sz, "perc_%d_%d", bo, pm);
-    return true;
-}
-
-static void perc_desligar() {
-    if (!_perc_carregado) _perc_tick();
-    if (_perc_bo) relay_set(_perc_bo, false);
-    _perc_pm = -1; _perc_prox = -1; _perc_ini = 0; _perc_saida_atual = -1;
-    _perc_salvar();
-    Serial.println("[PERC] desligado");
-}
-
-`;
-    }
-
-    _genPivot(spec) {
-        const p = spec.pivo;
-        const biPress = p.bi_pressostato;   // 1-6 ou 0
-        const biEmerg = p.bi_emergencia;
-        const biDesal = p.bi_desalinhamento;
-        const boMov   = p.bo_movimento;
-        const boDir   = p.bo_sentido_dir;
-        const boEsq   = p.bo_sentido_esq;
-        const tempo   = p.tempo_pressao_s;
-
-        // Helpers de geração: leitura de BI (1=ativo). Numero 0 => expressao "false".
-        const biRead = (n) => n ? `((inputs_get_state() >> ${n - 1}) & 1)` : 'false';
-
-        // Status publish: usa o mesmo mecanismo dos demais I/O.
-        let pubLine = `    Serial.printf("[PIVO] %s\\n", payload);`;
-        if (spec.wifi) {
-            pubLine = `    mqtt_publish_sub("pivo", payload);`;
-        } else if (spec.lora_role === 'satellite') {
-            pubLine = `    lora_publish_data("pivo", payload);`;
-        }
-
-        let cpp = `// ===== PIVÔ: máquina de estados (Cenário B — a TON é o cérebro) =====
-// Painel "burro": a TON aciona os relés (BO) e lê o painel pelas entradas (BI).
-// Config (do diagrama): BI pressostato=${biPress || '—'}, BI emergencia=${biEmerg || '—'},
-//   BI desalinhamento=${biDesal || '—'}; BO movimento=${boMov || '—'}, BO dir=${boDir || '—'},
-//   BO esq=${boEsq || '—'}; timeout pressão=${tempo}s.
-`;
-        // Forward-decl: em satellite o helper lora_publish_data e' definido mais
-        // abaixo (no router LoRa). O modulo do pivo o referencia antes — declara aqui.
-        if (!spec.wifi && spec.lora_role === 'satellite') {
-            cpp += `static void lora_publish_data(const char* subtopic, const char* payload_json);  // def. no router LoRa abaixo
-`;
-        }
-        cpp += `
-enum PivotState {
-    PIVO_OCIOSO = 0,        // parado, aguardando comando "pivot on"
-    PIVO_ESPERANDO_PRESSAO, // comando recebido; esperando pressostato (água chegar)
-    PIVO_RODANDO,           // água OK; BO movimento acionado
-    PIVO_FALHA_PRESSAO,     // timeout sem pressão
-    PIVO_PARADO,            // parado por comando "pivot off" ou por falha de segurança
-};
-
-static PivotState   _pivot_state    = PIVO_OCIOSO;
-static unsigned long _pivot_t_wait   = 0;     // millis em que entrou em ESPERANDO_PRESSAO
-static char          _pivot_dir      = 'R';   // sentido pedido ('L'/'R'); aplicado ao rodar
-static const char*   _pivot_falha    = "";    // motivo da ultima parada por seguranca
-#define PIVO_TIMEOUT_MS  ${tempo}000UL        // ${tempo}s para a água chegar
-
-static const char* _pivot_state_str(PivotState s) {
-    switch (s) {
-        case PIVO_OCIOSO:            return "ocioso";
-        case PIVO_ESPERANDO_PRESSAO: return "esperando_pressao";
-        case PIVO_RODANDO:           return "rodando";
-        case PIVO_FALHA_PRESSAO:     return "falha_pressao";
-        case PIVO_PARADO:            return "parado";
-        default:                     return "?";
-    }
-}
-
-// Abre TODOS os BO do pivô (movimento + sentidos). Chamado ao parar.
-static void _pivot_relays_off() {
-`;
-        if (boMov) cpp += `    relay_set(${boMov}, false);  // BO movimento\n`;
-        if (boDir) cpp += `    relay_set(${boDir}, false);  // BO sentido direita\n`;
-        if (boEsq) cpp += `    relay_set(${boEsq}, false);  // BO sentido esquerda\n`;
-        cpp += `}
-
-// Aplica o sentido atual (_pivot_dir) aos BO de sentido (se configurados).
-static void _pivot_apply_dir() {
-`;
-        if (boDir || boEsq) {
-            if (boDir) cpp += `    relay_set(${boDir}, _pivot_dir == 'R');  // direita\n`;
-            if (boEsq) cpp += `    relay_set(${boEsq}, _pivot_dir == 'L');  // esquerda\n`;
-        } else {
-            cpp += `    // Sem BO de sentido configurado (pivô só liga/desliga).\n`;
-        }
-        cpp += `}
-
-`;
-        // Publica status do pivô — espelha inputs/relays.
-        cpp += `// Publica estado do pivô em <BASE>/pivo (ou via LoRa em satellite).
-static void _pivot_publish_status() {
-    // Payload COMPACTO pra caber no MTU 200 do LoRa (envelope + payload). Chaves:
-    // estado, ps (pressostato), dir (sentido), falha. "rodando" foi removido —
-    // e' derivavel de estado=="rodando". (Consumidor backend ainda e' stub.)
-    char payload[120];
-    snprintf(payload, sizeof(payload),
-        "{\\"estado\\":\\"%s\\",\\"ps\\":%d,\\"dir\\":\\"%c\\",\\"falha\\":\\"%s\\",\\"pc\\":%d}",
-        _pivot_state_str(_pivot_state),
-        ${biPress ? biRead(biPress) : '0'},
-        _pivot_dir,
-        _pivot_falha,
-        (int)perc_aplicado());
-${pubLine}
-}
-
-// ----- Comandos (chamados pelo parser em _process_command_inner) -----
-static void pivot_cmd_start() {
-    _pivot_falha = "";
-    _pivot_t_wait = millis();
-    _pivot_state = PIVO_ESPERANDO_PRESSAO;
-    Serial.println("[PIVO] start -> ESPERANDO_PRESSAO");
-    _pivot_publish_status();
-}
-
-static void pivot_cmd_stop() {
-    _pivot_relays_off();
-    _pivot_state = PIVO_PARADO;
-    Serial.println("[PIVO] stop -> PARADO");
-    _pivot_publish_status();
-}
-
-static void pivot_cmd_dir(char d) {
-    _pivot_dir = (d == 'L') ? 'L' : 'R';
-    Serial.printf("[PIVO] sentido = %c\\n", _pivot_dir);
-    // Se ja' esta rodando, aplica imediatamente.
-    if (_pivot_state == PIVO_RODANDO) _pivot_apply_dir();
-    _pivot_publish_status();
-}
-
-// ----- Loop da máquina de estados (chamado no loop() principal) -----
-void pivot_loop() {
-    bool press = ${biRead(biPress)};
-`;
-        // Monitoramento de segurança: só os sinais configurados (BI != 0) geram
-        // checagem de parada — emitidos condicionalmente no case RODANDO abaixo.
-        cpp += `
-    switch (_pivot_state) {
-        case PIVO_OCIOSO:
-        case PIVO_PARADO:
-        case PIVO_FALHA_PRESSAO:
-            // Estados terminais/idle: nada a fazer ate' o proximo comando.
-            break;
-
-        case PIVO_ESPERANDO_PRESSAO:
-            if (press) {
-                // Água chegou: aciona movimento + sentido e vai para RODANDO.
-`;
-        if (boMov) cpp += `                relay_set(${boMov}, true);  // BO movimento\n`;
-        cpp += `                _pivot_apply_dir();
-                _pivot_state = PIVO_RODANDO;
-                Serial.println("[PIVO] pressao OK -> RODANDO");
-                _pivot_publish_status();
-            } else if (millis() - _pivot_t_wait >= PIVO_TIMEOUT_MS) {
-                _pivot_relays_off();
-                _pivot_falha = "timeout";
-                _pivot_state = PIVO_FALHA_PRESSAO;
-                Serial.println("[PIVO] timeout sem pressao -> FALHA_PRESSAO");
-                _pivot_publish_status();
-            }
-            break;
-
-        case PIVO_RODANDO: {
-            // Monitora condicoes de parada de seguranca.
-            bool stop = false;
-            const char* motivo = "";
-            if (!press) { stop = true; motivo = "press_caiu"; }
-`;
-        if (biEmerg) cpp += `            if (${biRead(biEmerg)}) { stop = true; motivo = "emergencia"; }\n`;
-        if (biDesal) cpp += `            if (${biRead(biDesal)}) { stop = true; motivo = "desalinhamento"; }\n`;
-        cpp += `            if (stop) {
-                _pivot_relays_off();
-                _pivot_falha = motivo;
-                _pivot_state = PIVO_PARADO;
-                Serial.printf("[PIVO] parada de seguranca (%s) -> PARADO\\n", motivo);
-                _pivot_publish_status();
-            }
-            break;
-        }
-    }
-}
-
-`;
-        return cpp;
     }
 
     // ======================================================================
@@ -7502,8 +7230,7 @@ static void _publish_cmd_ack(const char* cmd_id, const char* status, const char*
         // Emitida apenas quando ha um pivô conectado a esta TON (spec.pivo) e a
         // TON tem relés (BO). Reusa inputs_get_state() (BI) e relay_set() (BO).
         if (spec.pivo && spec.has_relays) {
-            cpp += this._genPercentimetro(spec);   // antes do pivo: o status usa perc_aplicado()
-            cpp += this._genPivot(spec);
+            cpp += `#include "pivo.h"   // pivo: sequencia local em src/pivo.cpp (lib pivo_local)\n`;
         }
         if (spec.bomba && spec.has_relays) {
             cpp += this._genBomba(spec);
@@ -7647,40 +7374,9 @@ ${spec.wifi ? `    // Caixa-preta: publica o anel inteiro em <base>/log
     if (cmd.indexOf("habilitar") >= 0)   { carregador_habilitar();   snprintf(result_msg, msg_sz, "carga_on");  return true; }
 `;
         }
-        // ===== Comandos do pivô (só quando ha um pivô conectado a esta TON) =====
-        // pivot on/start  -> liga (entra em ESPERANDO_PRESSAO)
-        // pivot off/stop  -> para (abre os BO)
-        // pivot dir l/r   -> sentido esquerda/direita
+        // ===== Comandos do pivo (so' com pivo nesta TON): "pivo io|tempos|enc|ligar|desligar|perc|canhao|status|cfg" =====
         if (spec.pivo && spec.has_relays) {
-            cpp += `    // Percentimetro local: "perc <bo> <permil> <ciclo_s> <mascara>" | "perc off"
-    if (cmd.startsWith("perc")) {
-        if (cmd.indexOf("off") >= 0) { perc_desligar(); snprintf(result_msg, msg_sz, "perc_off"); return true; }
-        int bo = 0, pm = -1, cy = 60, mk = 0;
-        if (sscanf(cmd.c_str(), "perc %d %d %d %d", &bo, &pm, &cy, &mk) < 2) { snprintf(result_msg, msg_sz, "perc_invalido"); return false; }
-        return perc_configurar(bo, pm, cy, mk, result_msg, msg_sz);
-    }
-    if (cmd.startsWith("pivot")) {
-        if (cmd.indexOf("off") >= 0 || cmd.indexOf("stop") >= 0) {
-            pivot_cmd_stop();
-            snprintf(result_msg, msg_sz, "pivot_off");
-            return true;
-        }
-        if (cmd.indexOf("dir") >= 0) {
-            // "pivot dir l" / "pivot dir r" — define sentido (aplicado ao iniciar/rodando)
-            char d = (cmd.indexOf(" l") >= 0 || cmd.endsWith("l")) ? 'L'
-                   : (cmd.indexOf(" r") >= 0 || cmd.endsWith("r")) ? 'R' : 0;
-            if (d) { pivot_cmd_dir(d); snprintf(result_msg, msg_sz, "pivot_dir_%c", d); return true; }
-            snprintf(result_msg, msg_sz, "pivot_dir_invalida");
-            return false;
-        }
-        if (cmd.indexOf("on") >= 0 || cmd.indexOf("start") >= 0) {
-            pivot_cmd_start();
-            snprintf(result_msg, msg_sz, "pivot_on");
-            return true;
-        }
-        snprintf(result_msg, msg_sz, "pivot_cmd_desconhecido");
-        return false;
-    }
+            cpp += `    { int r = pivo_cmd(cmd, result_msg, msg_sz); if (r >= 0) return r == 1; }   // pivo (src/pivo.cpp)
 `;
         }
         cpp += `    if (cmd == "status") {
@@ -7821,7 +7517,7 @@ void setup() {
     Serial.println("[OK] Transistores (TR1-TR4)");
 
     adc_init();
-${spec.bomba && spec.has_relays ? '    bomba_init();   // posto de combustivel: reles desligados, lista/sessao do NVS\n' : ''}    Serial.println("[OK] ADC (AN1/AN2)");
+${spec.bomba && spec.has_relays ? '    bomba_init();   // posto de combustivel: reles desligados, lista/sessao do NVS\n' : ''}${spec.pivo && spec.has_relays ? '    pivo_init();    // pivo: config do NVS; reles do pivo desligados (reinicio = pivo parado)\n' : ''}    Serial.println("[OK] ADC (AN1/AN2)");
 
     // SD Card - buffer offline para MQTT
     if (sd_buffer_init()) {
@@ -7898,8 +7594,8 @@ void lora_poll_respond(const char* gw_mac, const char* req_id) {
 `;
             }
             if (satReactive && spec.pivo && spec.has_relays) {
-                cpp += `    // Pivo: republica o estado atual da maquina (mesmo helper do push).
-    _pivot_publish_status();
+                cpp += `    // Pivo: republica o status no proximo loop (mesmo caminho do push).
+    pivo_publicar_agora();
 `;
             }
             cpp += `    // Fecha o ciclo: o mestre casa pelo req_id, republica o que chegou e avanca.
@@ -7934,7 +7630,7 @@ void loop() {
         last_input_scan = now;
         bb_stage(BB_ENTRADAS);
         inputs_scan();
-${spec.has_relays ? '        relays_health_tick();   // C3 anti-travamento: confere os reles no I2C a cada 2 s\n        _relay_pulse_tick();    // pulso local: desliga o rele no fim do "rN pulse <ms>"\n' : ''}${spec.pivo && spec.has_relays ? '        _perc_tick();           // percentimetro local do pivo (motor de movimento)\n' : ''}
+${spec.has_relays ? '        relays_health_tick();   // C3 anti-travamento: confere os reles no I2C a cada 2 s\n        _relay_pulse_tick();    // pulso local: desliga o rele no fim do "rN pulse <ms>"\n' : ''}
         static bool _io_force = true;        // forca publicacao inicial (boot)
         static bool _mqtt_was_up = false;
         static uint8_t _prev_out = 0;
@@ -7993,11 +7689,14 @@ ${spec.has_relays ? '        relays_health_tick();   // C3 anti-travamento: conf
     }
 `;
 
-        // Máquina de estados do pivô — roda a cada loop (timing interno próprio).
+        // Pivo (sequencia local) — roda a cada loop (timing interno proprio).
         if (spec.pivo && spec.has_relays) {
+            const pivoPub = spec.wifi ? 'mqtt_publish_sub'
+                : (spec.lora_role === 'satellite' ? '[](const char* sub, const char* payload){ lora_publish_data(sub, payload); }'
+                : '[](const char* sub, const char* payload){ Serial.printf("[PIVO] %s: %s\\n", sub, payload); }');
             cpp += `
-    // Pivô: máquina de estados (lê BI das entradas, aciona BO via relés).
-    pivot_loop();
+    // Pivo: le BI, roda a sequencia (lib pivo_local), aplica BO + percentimetro, publica.
+    pivo_loop(${pivoPub});
 `;
         }
         if (spec.bomba && spec.has_relays) {

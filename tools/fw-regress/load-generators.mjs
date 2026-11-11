@@ -73,6 +73,7 @@ export function loadGenerators({ catalogCode }) {
   });
 
   vm.runInContext(catalogCode, sandbox, { filename: 'device-catalog.js' });
+  runFile(sandbox, 'iot-firmware-pivo.js'); // PivoLocalGen (lib + glue do pivo)
   runFile(sandbox, 'iot-firmware-base.v2.js');
   runFile(sandbox, 'iot-firmware-generator.v2.js');
   runFile(sandbox, 'iot-firmware-base.ton-v2.js');

@@ -1,5 +1,7 @@
 # Pivô: Ligar em um botão (bomba, solenoide, percentímetro, canhão)
 
+> ⚠️ **Substituído em 11/11/2026** por [IOT-PIVO-TON-LOCAL.md](IOT-PIVO-TON-LOCAL.md): a sequência passa a rodar na TON. Este documento descreve o modelo anterior (sequência no servidor).
+
 > **Status:** plano fechado (04/11/2026). Parte do backend já está escrita e não foi publicada (seção 7).
 > **Relacionados:** [IOT-PIVO-BOMBEAMENTO.md](IOT-PIVO-BOMBEAMENTO.md) · [IOT-PIVO-PERCENTIMETRO-LAMINA.md](IOT-PIVO-PERCENTIMETRO-LAMINA.md)
 
@@ -158,6 +160,6 @@ Serve para painel que **não faz selo**, por exemplo a TON no lugar das saídas 
 | Giro não confirmado | pulso no Desligar | `off` nos dois sentidos |
 
 - **Troca de modo só com o pivô desligado** (o servidor recusa com 409): trocar ligado deixaria saída presa em alto ou sem selo.
-- **Reboot da TON derruba todas as saídas** (`RELAYS_RESTORE_ON_SW_RESET = 0` no firmware de pivô): o pivô para. É o lado seguro. O NexON vê o Girando em 0 e considera a irrigação encerrada.
+- **Reboot da TON:** as saídas só caem se o **nó Pivô estiver ligado a essa TON no diagrama IoT** (`RELAYS_RESTORE_ON_SW_RESET = 0`). Sem o nó, a TON religa os relés como estavam. A TON também reinicia sozinha após 10 min sem broker.
 - Sistema conjugado: o modo vale pelo pivô **dono** da bomba (o Ligar dele vai a `off`).
 - Código: `pivo-sequencia.service.ts` (`mantido()`, `saidaMantida()`), testes em `pivo-pontos.spec.ts` ("saídas mantidas").

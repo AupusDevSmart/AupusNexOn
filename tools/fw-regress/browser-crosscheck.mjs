@@ -37,6 +37,7 @@ const normFwVersion = (s) => s.replace(/FIRMWARE_VERSION(\s+)"[^"]*"/g, 'FIRMWAR
 
 const SCRIPTS = [
   CATALOG_SNAP,
+  join(PUBLIC, 'iot-firmware-pivo.js'),
   join(PUBLIC, 'iot-firmware-base.v2.js'),
   join(PUBLIC, 'iot-firmware-generator.v2.js'),
   join(PUBLIC, 'iot-firmware-base.ton-v2.js'),

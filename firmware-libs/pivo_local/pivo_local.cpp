@@ -318,7 +318,7 @@ void Maquina::tick(uint32_t now, const Entradas& in) {
         if (_cfg.tem_seguranca && in.desalinhado) { _iniciarDesligar("seguranca", true, now); break; }
         if (_plano.com_agua && _cfg.tem_pressao && _queda(in.pressao, _q_pressao, now)) { _iniciarDesligar("sem_pressao", true, now); break; }
         if (_cfg.tem_tensao && _queda(in.tensao, _q_tensao, now)) { _iniciarDesligar("sem_tensao", true, now); break; }
-        if (_temGir() && _queda(_gir(), _q_lado, now)) { _iniciarDesligar("parou_sem_comando", true, now); break; }
+        if (_temGir() && _queda(_gir(), _q_lado, now)) { _iniciarDesligar("lado_caiu", true, now); break; }
         if (_plano.parada == POR_DURACAO) {
             if ((now - _t_ligar) >= _plano.duracao_s * 1000UL) { _iniciarDesligar("concluido", false, now); break; }
         } else {

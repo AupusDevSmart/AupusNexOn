@@ -1,6 +1,6 @@
 # Pivô controlado pela TON (sequência local, sem depender de internet)
 
-> **Status:** plano 11/11/2026 · Fase 1 em andamento.
+> **Status:** 11/11/2026 · Fase 1 (lib) e Fase 2 (firmware V1/V2) prontas e compiladas · Fases 3–5 pendentes.
 > **Substitui:** a sequência no servidor de [IOT-PIVO-LIGAR-BOMBA-CANHAO.md](IOT-PIVO-LIGAR-BOMBA-CANHAO.md) (pulsos, Ligar/Desligar do painel, pontos em qualquer TON).
 > **Reaproveita:** percentímetro local ([IOT-PIVO-PERCENTIMETRO-LAMINA.md](IOT-PIVO-PERCENTIMETRO-LAMINA.md)) e encoder ([IOT-PIVO-ENCODER-POSICAO.md](IOT-PIVO-ENCODER-POSICAO.md)).
 
@@ -52,7 +52,7 @@
 - Parada por tempo ou horário: o NexON converte o horário em **duração** no momento do envio. A TON conta pelo relógio interno (millis), sem precisar de hora certa nem de internet.
 - **Segurança (BI05) atuou** → Desligar na hora.
 - **Pressão (BI01, só com água) ou tensão (BI02) caiu por mais de 3 s** → Desligar + Falha.
-- **Lado (BI03/BI04) caiu por mais de 3 s** → Desligar + Falha "parou sem comando". O pivô parado com a bomba ligada encharca um ponto só.
+- **Lado (BI03/BI04) caiu por mais de 3 s** → Desligar + Falha "parou sem comando" (código `lado_caiu`). O pivô parado com a bomba ligada encharca um ponto só.
 - **Sem posição** (encoder sem leitura nova) com parada por voltas ou ângulo → depois de 5 min, Desligar + Falha "sem posição".
 
 **Desligar**
@@ -115,3 +115,34 @@ Todos são de teste, então o modelo novo **substitui** o atual:
 | 3 | Backend: monta o plano e a config, publica, lê status/evento para estado e histórico, agenda e ponta disparam pelo comando novo; pontos novos e I/O padrão |
 | 4 | Tela: Ligar abre o planejamento (Simples/Ângulo/Segmentos + gráfico) e Agenda; status com Irrigando/Parado/Girando/Falha, sentido, posição, permissão e alinhamento; polaridade das BIs na configuração |
 | 5 | Bancada no TON4v2 do lab e remapeamento dos pivôs existentes |
+
+## 9. Protocolo TON ↔ NexON (Fase 2, implementado)
+
+Código: lib `firmware-libs/pivo_local/` (testes: `g++ -std=c++17 -o t test_pivo.cpp pivo_local.cpp && ./t`) e glue `firmware-libs/pivo_local/glue/pivo.cpp`.
+`node tools/sync-pivo-lib.mjs` gera `public/iot-firmware-pivo.js`, que os dois geradores (V1 e V2) embutem quando há um **nó Pivô ligado à TON** no diagrama IoT. `--check` confere se a cópia está igual à fonte.
+
+**Comandos** (texto curto para caber no LoRa; por `<base>/cmd` com envelope `cmd_id`, ou Serial):
+
+| Comando | Quando |
+|---|---|
+| `pivo io <bo1..bo6> <bi1..bi6> <inv>` | Mapa por papel. BO: bomba, válvula, dir, esq, percentímetro, canhão. BI: pressão, tensão, gir. dir, gir. esq, segurança, canhão. `0` = não ligado. `inv` = 6 dígitos (1 = BI ativa em baixo). Recusa BO repetida. **Sem esse comando a TON não liga** (`pivo_sem_config`). |
+| `pivo tempos <tensão> <pressurização> <giro> <canhão> <bomba> <parada> <tolerância> <sem_posição> <janela_giro> <ciclo_perc>` | Segundos. Padrão `2 120 30 30 30 60 3 300 600 60`. |
+| `pivo enc <resolução> <inv 0/1> <zero°>` | `0` = sem encoder (só parada por tempo). |
+| `pivo ligar <id> <d/e> <água 0/1> <permil> <canhão 0/1> <v/a/t> <valor> [s <ini°>:<permil>:<canhão> …]` | `v` voltas, `a` ângulo final, `t` duração em s (o horário de parada vira duração no envio). Até 8 segmentos em ordem crescente. |
+| `pivo desligar [motivo]`, `pivo perc <permil>`, `pivo canhao <0/1>`, `pivo status`, `pivo cfg` | |
+
+io/tempos/enc ficam na NVS e só são aceitos com o pivô parado. Recusas voltam no ack (`pivo_io_incompleto`, `pivo_sem_encoder`, `pivo_ja_ligado`, `pivo_pivo_girando`, `pivo_desalinhado`…).
+
+**Status** `<base>/pivo` (na mudança, a cada 30 s ligado e 60 s parado; ≤ 120 B para o LoRa):
+`{"e":2,"p":0,"f":"","d":"D","a":1,"pm":1000,"an":123.4,"pc":95,"al":360,"sg":-1,"bi":15,"bo":95,"c":1}`
+- `e` 0 parado · 1 ligando · 2 irrigando · 3 desligando. `p` passo (1 tensão, 2 pressão, 3 lado, 4 bomba off, 5 lado off).
+- `f` falha da última parada: `sem_tensao`, `sem_pressao`, `nao_girou`, `seguranca`, `lado_caiu`, `sem_posicao`, `nao_parou`, `reinicio` (desligou irrigando: queda de energia ou reset).
+- `pm` percentímetro em permil (−1 desligado). `an` ângulo (null sem encoder). `pc`/`al` graus percorridos/alvo (−1 sem alvo). `sg` segmento (−1 sem).
+- `bi` bit0 pressão, 1 tensão, 2 gir. dir, 3 gir. esq, 4 desalinhado, 5 canhão (já com a polaridade). `bo` bit0 bomba, 1 válvula, 2 dir, 3 esq, 4 percentímetro na fase ON, 5 canhão, **6 girando**. `c` = config recebida.
+
+**Eventos** `<base>/pivo/evento`: `{"t":"passo","x":"bomba_ligada","e":"ligando","id":"<id>"}`. `t`: ligar, passo, irrigando, segmento, aviso (`canhao_nao_ligou`, `pressao_nao_caiu`, `salto_posicao`), desligar, falha, parado.
+
+**Segurança do firmware**
+- Reinício por falta de broker, memória baixa, comando `reboot` e OTA são **recusados com o pivô ligado**.
+- Num reinício as saídas caem (`RELAYS_RESTORE_ON_SW_RESET = 0`) e a TON publica a falha `reinicio`.
+- **Pendente:** os comandos manuais `rN on/off/pulse` ainda atuam nas BOs do pivô durante a irrigação.
