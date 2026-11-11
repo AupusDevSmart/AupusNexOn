@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState, type CSSProperties, type PointerEvent as RPointerEvent } from 'react';
 import { fmt } from './sheetParts';
 import { NX, s, NxSwitch, NxDialogHead } from './nxMock';
+import { baixarModelo, lerPlanilha, textoAgenda, type AgendaItem, type ItemPlanilha } from './pivoAgendaPlanilha';
 
 /**
  * Planejamento de irrigação do pivô no web (antiga "Irrigação avançada"), diálogo de 520 px.
@@ -21,7 +22,11 @@ export const DIRECAO_LABEL: Record<Direcao, string> = { 'Avanço': 'Direita', 'R
 export interface FaixaCanhao { id: string; liga: number; desliga: number }
 /** percentual = percentímetro 0–100 % (1 casa; 0 = parado irrigando). lamina (mm) = o que o operador digitou —
  *  vai junto e o servidor recalcula o % com a lâmina a 100 % do cadastro. */
-export interface ConfigIrrigacao { direcao: Direcao; percentual: number; lamina?: number | null; semAgua: boolean; canhao: boolean; faixasCanhao: FaixaCanhao[] }
+export interface ConfigIrrigacao {
+  direcao: Direcao; percentual: number; lamina?: number | null; semAgua: boolean; canhao: boolean; faixasCanhao: FaixaCanhao[];
+  /** Marcado pelo servidor: parado em pivô sem o ponto Percentímetro — só a bomba liga, o pivô não gira. */
+  semGiro?: boolean;
+}
 
 /** 59.7 → "59,7"; 60 → "60". */
 export const fmtPct = (p: number) => (Number.isInteger(p) ? String(p) : p.toFixed(1).replace('.', ','));
@@ -297,9 +302,15 @@ interface Props {
   notaParada?: string | null;
   /** A mudança sai sem reiniciar (só o percentímetro, e a TON troca girando)? Muda o aviso. */
   semReinicio?: (e: EnvioIrrigacao) => boolean;
-  /** A TON tem o ponto Percentímetro: dá para ligar PARADO (0 %, irriga no lugar). Sem ele o
-   *  percentual fica no painel do pivô e o NexON não garante que ele não gire. */
+  /** Dá para ligar PARADO (água sem girar): pelo percentímetro em 0 % ou, sem o ponto, só com a
+   *  bomba (o servidor não manda girar). Falso = pivô sem percentímetro e sem bomba configurada. */
   podeParado?: boolean;
+  /** Agenda por data (planilha): o que está agendado de hoje em diante. null = carregando ou indisponível. */
+  agenda?: AgendaItem[] | null;
+  /** Sobe a planilha. Devolve null se gravou, ou o motivo da recusa (nada é gravado pela metade). */
+  onImportarAgenda?: (itens: ItemPlanilha[], substituir: boolean) => Promise<string | null>;
+  /** Apaga a agenda por data de hoje em diante. */
+  onLimparAgenda?: () => Promise<void>;
 }
 
 /** Parada da irrigação em curso → a que o formulário edita (tipo desconhecido vira "sem parar"). */
@@ -356,7 +367,7 @@ export function IrrigacaoAvancada({
   nome, angulo, ultima, lamina100, tempoVolta100, ponta, enviando, semCanhaoMotivo = null, abaInicial = 'simples',
   programacoes, onRemoverProgramacao, onSalvarProgramacao, onEnviar, onClose,
   ligado = false, emCurso = null, onDesligar, desligarOff = false, enviarOff = false, semRegistro = false, notaParada = null, semReinicio,
-  podeParado = false,
+  podeParado = false, agenda = null, onImportarAgenda, onLimparAgenda,
 }: Props) {
   const atual = angulo ?? 0;
   // Ligado: parte da irrigação em curso (o que o operador vê girando), não da última enviada.
@@ -385,6 +396,29 @@ export function IrrigacaoAvancada({
   const paradaAntes = useRef<Parada | null>(null);
   const [nova, setNova] = useState<null | { grupo: string; ini: string; fim: string }>(null);
   const [salvandoProg, setSalvandoProg] = useState(false);
+  // Planilha: o arquivo lido espera o "Importar"; o erro (do arquivo ou da API) fica na tela.
+  const arquivoRef = useRef<HTMLInputElement>(null);
+  const [plan, setPlan] = useState<null | { arquivo: string; itens: ItemPlanilha[] }>(null);
+  const [planErro, setPlanErro] = useState<string | null>(null);
+  const [substituir, setSubstituir] = useState(false);
+  const [planEnviando, setPlanEnviando] = useState(false);
+  const [confirmaLimpar, setConfirmaLimpar] = useState(false);
+  const escolherArquivo = async (f: File | undefined) => {
+    if (!f) return;
+    setPlanErro(null); setPlan(null);
+    const r = await lerPlanilha(f);
+    if (r.erro) setPlanErro(r.erro);
+    else setPlan({ arquivo: f.name, itens: r.itens });
+    if (arquivoRef.current) arquivoRef.current.value = '';   // deixa escolher o mesmo arquivo de novo
+  };
+  const importar = async () => {
+    if (!plan || !onImportarAgenda) return;
+    setPlanEnviando(true); setPlanErro(null);
+    const erro = await onImportarAgenda(plan.itens, substituir);
+    setPlanEnviando(false);
+    if (erro) setPlanErro(erro);
+    else { setPlan(null); setSubstituir(false); }
+  };
   // Percentual para voltar a girar depois de escolher Parado.
   const pctAntes = useRef(base.percentual > 0 ? base.percentual : 100);
 
@@ -545,7 +579,7 @@ export function IrrigacaoAvancada({
                   const off = m === 'Parado' && !podeParado && !parado;
                   return (
                     <button key={m} type="button" role="radio" aria-checked={movimento === m} disabled={off}
-                      title={off ? 'Precisa do ponto Percentímetro na TON' : undefined}
+                      title={off ? 'Este pivô não tem percentímetro na TON nem bomba configurada' : undefined}
                       onClick={() => setMovimento(m)} style={{ ...s.seg(movimento === m), ...(off ? { opacity: 0.45, cursor: 'default' } : {}) }}>
                       {m === 'Parado' ? 'Parado' : DIRECAO_LABEL[m]}
                     </button>
@@ -563,7 +597,7 @@ export function IrrigacaoAvancada({
             </div>
             {parado && dica('Parado: liga a água sem girar — irriga no lugar onde está.')}
             {seco && dica('Seco: gira sem água, a bomba não liga.')}
-            {!podeParado && !parado && dica('Ligar parado precisa do ponto Percentímetro na TON.')}
+            {!podeParado && !parado && dica('Para ligar parado o pivô precisa do percentímetro na TON ou de uma bomba configurada.')}
           </div>
 
           {!parado && !seco && (
@@ -708,7 +742,7 @@ export function IrrigacaoAvancada({
           {ligado && editado && (semReinicio?.(montar())
             ? dica('Só o percentímetro mudou: ao salvar, troca sem desligar o pivô.')
             : dica('Ao salvar, o pivô desliga e liga de novo com as novas opções.', NX.warn))}
-          {paradoIndisponivel && dica('Ligar parado precisa do ponto Percentímetro na TON: escolha Direita ou Esquerda.', NX.warn)}
+          {paradoIndisponivel && dica('Este pivô não tem como ligar parado (sem percentímetro na TON e sem bomba configurada): escolha Direita ou Esquerda.', NX.warn)}
           {(!ligado || editado || semRegistro) && botaoEnviar(rotuloEnviar, enviar, enviando || enviarOff || paradoIndisponivel)}
           {ligado && onDesligar && (
             <button type="button" disabled={desligarOff || enviando} onClick={onDesligar}
@@ -724,6 +758,7 @@ export function IrrigacaoAvancada({
         <>
         <div style={corpo}>
           <div style={col(8)}>
+            <span style={s.label}>TODA SEMANA</span>
             {programacoes == null && <span style={{ fontSize: 14, color: NX.mudo }}>Carregando…</span>}
             {programacoes != null && !nProg && !nova && <span style={{ fontSize: 14, color: NX.mudo }}>Nenhum horário programado.</span>}
             {(programacoes ?? []).map((p) => {
@@ -771,9 +806,66 @@ export function IrrigacaoAvancada({
               </button>
             )}
           </div>
+
+          {/* Agenda por data: a planilha (uma linha por irrigação, do ano todo). */}
+          <div style={col(8)}>
+            <span style={{ ...s.label, marginTop: 6 }}>POR DATA · PLANILHA{agenda?.length ? ` · ${agenda.length}` : ''}</span>
+            <span style={{ fontSize: 13, color: NX.mudo }}>Uma linha por irrigação: dia, início, fim, sentido, percentímetro e água. Dá para subir o ano todo de uma vez.</span>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+              <button type="button" onClick={() => void baixarModelo(nome)}
+                style={{ height: 44, borderRadius: 12, border: `1px solid ${NX.borda}`, fontSize: 14, fontWeight: 800, textAlign: 'center', color: NX.texto, background: NX.card }}>
+                Baixar modelo
+              </button>
+              <button type="button" disabled={!onImportarAgenda || planEnviando} onClick={() => arquivoRef.current?.click()}
+                style={{ height: 44, borderRadius: 12, border: `1px dashed ${NX.off}`, fontSize: 14, fontWeight: 800, textAlign: 'center', color: onImportarAgenda ? NX.acao : NX.desab }}>
+                Enviar planilha
+              </button>
+              <input ref={arquivoRef} type="file" accept=".xlsx,.xls,.csv" aria-label="Planilha da agenda" style={{ display: 'none' }}
+                onChange={(e) => void escolherArquivo(e.target.files?.[0])} />
+            </div>
+            {planErro && <span role="alert" style={{ fontSize: 13, color: NX.bad, whiteSpace: 'pre-wrap' }}>{planErro}</span>}
+            {plan && (
+              <div style={{ border: `1px solid ${NX.borda}`, borderRadius: 14, padding: 12, ...col(8) }}>
+                <span style={titulo15}>{plan.itens.length} {plan.itens.length === 1 ? 'irrigação lida' : 'irrigações lidas'} de {plan.arquivo}</span>
+                <span style={{ fontSize: 13, color: NX.mudo }}>Da linha {plan.itens[0].linha} ({plan.itens[0].data}) à linha {plan.itens[plan.itens.length - 1].linha} ({plan.itens[plan.itens.length - 1].data}). Se alguma linha estiver errada, nada é gravado.</span>
+                <button type="button" role="switch" aria-checked={substituir} onClick={() => setSubstituir((v) => !v)} style={{ ...linha, width: '100%' }}>
+                  <span style={{ ...col(2), textAlign: 'left' }}>
+                    <span style={titulo15}>Substituir o que já está agendado</span>
+                    <span style={rotulo}>{substituir ? 'Apaga a agenda por data de hoje em diante e grava a planilha' : 'Soma ao que já está agendado (sem sobrepor)'}</span>
+                  </span>
+                  <NxSwitch on={substituir} />
+                </button>
+                <button type="button" onClick={() => { setPlan(null); setPlanErro(null); }} style={{ alignSelf: 'flex-start', fontSize: 13, fontWeight: 700, color: NX.mudo }}>Cancelar</button>
+              </div>
+            )}
+            {(agenda ?? []).map((a) => {
+              const t = textoAgenda(a);
+              return (
+                <div key={a.id} style={{ background: NX.caixa, borderRadius: 14, padding: '8px 8px 8px 16px', display: 'flex', alignItems: 'center', gap: 12, ...(a.executada ? { opacity: 0.55 } : {}) }}>
+                  <span style={{ flex: 1, ...col(2) }}>
+                    <span style={{ fontSize: 14, fontWeight: 700 }}>{t.quando}</span>
+                    <span style={{ fontSize: 12, color: NX.mudo }}>{t.det}{a.executada ? ' · já executada' : ''}</span>
+                  </span>
+                  <button type="button" aria-label={`Remover ${t.quando}`} onClick={() => onRemoverProgramacao(a.id)} style={{ width: 40, height: 40, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={NX.bad} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></svg>
+                  </button>
+                </div>
+              );
+            })}
+            {!!agenda?.length && onLimparAgenda && (
+              // dois toques: apagar a agenda do ano todo não pode ser um clique sem querer
+              <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 13 }}>
+                <button type="button" onClick={() => { if (confirmaLimpar) { setConfirmaLimpar(false); void onLimparAgenda(); } else setConfirmaLimpar(true); }} style={{ fontWeight: 800, color: NX.bad }}>
+                  {confirmaLimpar ? 'Confirmar: apagar tudo' : agenda.length === 1 ? 'Apagar a agendada por data' : `Apagar as ${agenda.length} agendadas por data`}
+                </button>
+                {confirmaLimpar && <button type="button" onClick={() => setConfirmaLimpar(false)} style={{ fontWeight: 700, color: NX.mudo }}>Cancelar</button>}
+              </span>
+            )}
+          </div>
         </div>
         <div style={rodape}>
           {nova && botaoEnviar(salvandoProg ? 'Salvando…' : 'Salvar agendamento', salvarAgendamento, salvandoProg || parado)}
+          {!nova && plan && botaoEnviar(planEnviando ? 'Importando…' : `Importar ${plan.itens.length} ${plan.itens.length === 1 ? 'irrigação' : 'irrigações'}`, () => void importar(), planEnviando)}
         </div>
         </>
       )}

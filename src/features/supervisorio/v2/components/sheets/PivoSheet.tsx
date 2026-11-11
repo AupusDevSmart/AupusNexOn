@@ -29,6 +29,7 @@ import {
   DIRECAO_LABEL, fmtPct, paradaValida,
 } from './PivoIrrigacao';
 import { usePivoLayout, PIVO_LAYOUTS } from './pivoLayout';
+import type { AgendaItem, ItemPlanilha } from './pivoAgendaPlanilha';
 import { PainelRapido, AtalhosRapidos, rascunhoDe, mudancas, envioDoRascunho, mesmaParada, type Rascunho } from './PivoRapido';
 
 /**
@@ -55,7 +56,8 @@ interface Bombeamento {
 }
 interface Estado {
   pivo: {
-    comandos: { direita: boolean; esquerda: boolean; desligar: boolean; percentimetro?: boolean }; status: { direita: Bin; esquerda: Bin; desligado: Bin; erro: Bin };
+    /** `parado`: dá para ligar a água sem girar (percentímetro em 0 % ou, sem o ponto, só a bomba). Ausente em API antiga. */
+    comandos: { direita: boolean; esquerda: boolean; desligar: boolean; percentimetro?: boolean; parado?: boolean }; status: { direita: Bin; esquerda: Bin; desligado: Bin; erro: Bin };
     /** Canhão final: ponto Canhao (botão que alterna) + status Canhao_ligado. Ausente em API antiga. */
     canhao?: { comando: boolean; tem_status: boolean; ligado: Bin };
   };
@@ -66,6 +68,8 @@ interface Estado {
   sequencia: null | { id: string; acao: string; status: string; passos: Passo[]; erro: string | null; created_at: string; finished_at: string | null; origem?: string };
   /** Reinício (NEXON-98) que não executou: as novas opções NÃO valeram. Ausente em API antiga. */
   reinicio_falhou?: null | { erro: string; em: string };
+  /** Desligar de irrigação parada que não desligou a bomba: a irrigação segue em curso. Ausente em API antiga. */
+  desligar_falhou?: null | { erro: string; em: string };
   /** Automação do servidor (programação, agendamento, parada, ponta). Ausente em API antiga. */
   irrigacao?: {
     ativa: boolean; atual: IrrigacaoSrv | null; parar_em: string | null; ultima: IrrigacaoSrv | null;
@@ -146,7 +150,32 @@ function useProgramacoes(pivoId: string) {
     try { await api.post(`/pivos/${pivoId}/programacoes`, p); carregar(); toast.success('Agendamento salvo'); return true; }
     catch (e) { toast.error('Não salvou', { description: erroMsg(e) }); return false; }
   };
-  return { progs, remover, salvar };
+  // Agenda por data (planilha, NEXON-98): de hoje em diante. API antiga (sem a rota) → lista vazia.
+  const [agenda, setAgenda] = useState<AgendaItem[] | null>(null);
+  const carregarAgenda = useCallback(() => {
+    api.get(`/pivos/${pivoId}/agenda`).then((r) => setAgenda(corpo<{ itens?: AgendaItem[] }>(r)?.itens ?? [])).catch(() => setAgenda([]));
+  }, [pivoId]);
+  useEffect(() => { carregarAgenda(); }, [carregarAgenda]);
+  const removerQualquer = async (pid: string) => { await remover(pid); carregarAgenda(); };
+  /** Devolve null se gravou, ou o motivo da recusa (a API recusa a planilha inteira e diz as linhas). */
+  const importarAgenda = async (itens: ItemPlanilha[], substituir: boolean): Promise<string | null> => {
+    try {
+      const r = corpo<{ gravados?: number; removidos?: number }>(await api.post(`/pivos/${pivoId}/agenda/importar`, { itens, substituir }));
+      carregarAgenda();
+      toast.success(`Agenda gravada: ${r?.gravados ?? itens.length} irrigações`, { description: substituir && r?.removidos ? `Substituiu ${r.removidos} que estavam agendadas.` : 'O servidor liga o pivô em cada dia e hora.' });
+      return null;
+    } catch (e) {
+      return erroMsg(e);
+    }
+  };
+  const limparAgenda = async () => {
+    try {
+      const r = corpo<{ removidos?: number }>(await api.delete(`/pivos/${pivoId}/agenda`));
+      carregarAgenda();
+      toast.success(`Agenda por data apagada (${r?.removidos ?? 0})`);
+    } catch (e) { toast.error('Não apagou', { description: erroMsg(e) }); }
+  };
+  return { progs, remover: removerQualquer, salvar, agenda, importarAgenda, limparAgenda };
 }
 
 /** Abaixo de 760 px a grade de 2 colunas vira 1. */
@@ -447,7 +476,10 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   const irrSrv = estado?.irrigacao;
   const semStatus = st?.direita == null && st?.esquerda == null && st?.desligado == null;
   // Sem BI de status na TON: vale o que o servidor comandou (sequência concluída e não desligada).
-  const girando = st?.direita === 1 || st?.esquerda === 1 || (semStatus && !!irrSrv?.ativa && seq?.status !== 'executando');
+  // Irrigando PARADO só com a bomba (pivô sem percentímetro): o status diz "parado" de propósito;
+  // quem diz que está ligado é o servidor (irrigacao.ativa com `semGiro`).
+  const irrigandoParado = !!irrSrv?.ativa && irrSrv.atual?.config.semGiro === true && seq?.status !== 'executando';
+  const girando = st?.direita === 1 || st?.esquerda === 1 || (semStatus && !!irrSrv?.ativa && seq?.status !== 'executando') || irrigandoParado;
   const cfgAtual = irrSrv?.atual?.config ?? null;
   const sentido: 'direita' | 'esquerda' | null = st?.direita === 1 ? 'direita' : st?.esquerda === 1 ? 'esquerda'
     : girando && cfgAtual ? (cfgAtual.direcao === 'Avanço' ? 'direita' : 'esquerda') : null;
@@ -475,7 +507,7 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
     if (ligando) return { tone: 'ok', label: 'Normal', texto: seq?.passos?.at(-1)?.msg ?? 'Ligando…' };
     if (falha) return { tone: 'bad', label: 'Falha', texto: falhaPressao ? 'Falha de pressão · Parado' : falhaPermissivo ? 'Sem permissivo para ligar · Parado' : st?.erro === 1 ? 'Falha no painel · Parado' : 'Falha na partida · Parado' };
     if (girando) return { tone: 'ok', label: 'Normal', texto: cfgGiro.semAgua ? `Girando · ${DIRECAO_LABEL[direcaoAtual]} · Seco`
-      : ehParado(cfgGiro) && estado?.pivo.comandos.percentimetro ? 'Irrigando parado · no lugar · Molhado' : `Irrigando · ${fmtPct(cfgGiro.percentual)}% · ${DIRECAO_LABEL[direcaoAtual]} · Molhado` };
+      : ehParado(cfgGiro) && (irrigandoParado || estado?.pivo.comandos.percentimetro) ? 'Irrigando parado · no lugar · Molhado' : `Irrigando · ${fmtPct(cfgGiro.percentual)}% · ${DIRECAO_LABEL[direcaoAtual]} · Molhado` };
     if (pausaPonta) return { tone: 'ok', label: 'Normal', texto: `Pausado pelo horário de ponta · retoma às ${pausaPonta.retoma_as}` };
     if (emUsoPor) return { tone: 'ok', label: 'Normal', texto: `Parado · Bomba em uso pelo ${emUsoPor}` };
     if (st?.desligado === 1 || st?.direita === 0 || st?.esquerda === 0) return { tone: 'ok', label: 'Normal', texto: 'Parado · Painel energizado' };
@@ -661,9 +693,10 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
 
   // Botão principal
   const desligarOff = !estado?.pivo.comandos.desligar && !b;
-  // Ligar/deixar PARADO (0 %, irriga no lugar) só com o ponto Percentímetro na TON: sem ele o
-  // percentual é o do painel e o NexON não garante que o pivô não gire.
-  const podeParado = !!estado?.pivo.comandos.percentimetro;
+  // Ligar/deixar PARADO (irriga no lugar): com o ponto Percentímetro (0 %) ou, sem ele, só com a
+  // bomba — o servidor não manda girar. É a API que diz se dá (`comandos.parado`); API antiga:
+  // só com o percentímetro.
+  const podeParado = estado?.pivo.comandos.parado ?? !!estado?.pivo.comandos.percentimetro;
   const lamina100 = cfgPivo?.parametros?.lamina_100 ?? 7.15;
   const busy = !!enviando || (executando && seq?.acao === 'desligar');
   const canhao = estado?.pivo.canhao;
@@ -777,7 +810,7 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
         <div style={{ padding: '20px 24px 28px 24px', ...col(16) }}>
           <div style={{ display: 'grid', gridTemplateColumns: estreito ? 'minmax(0, 1fr)' : 'repeat(2, minmax(0, 1fr))', gap: 16, alignItems: 'start' }}>
             <div style={col(12)}>
-              <MapaPivo angulo={angulo} aviso={avisoPosicao} girando={girando} falha={falha} sentido={sentido} direcao={DIRECAO_LABEL[direcaoAtual]} faixas={ultima.canhao ? ultima.faixasCanhao : []} />
+              <MapaPivo angulo={angulo} aviso={avisoPosicao} girando={girando && !irrigandoParado} falha={falha} sentido={sentido} direcao={DIRECAO_LABEL[direcaoAtual]} faixas={ultima.canhao ? ultima.faixasCanhao : []} />
               <div style={{ ...s.card, padding: '12px 16px', ...col(4) }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={s.stDot(tone)} />
@@ -790,6 +823,11 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
                 {estado?.reinicio_falhou && (
                   <span style={{ fontSize: 13, color: NX.warn }}>
                     Reinício não executou ({new Date(estado.reinicio_falhou.em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}): {estado.reinicio_falhou.erro.replace(/^Reinício não executou:\s*/, '')} — vale a irrigação anterior.
+                  </span>
+                )}
+                {estado?.desligar_falhou && (
+                  <span style={{ fontSize: 13, color: NX.bad }}>
+                    Desligar não concluiu ({new Date(estado.desligar_falhou.em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}): {estado.desligar_falhou.erro.replace(/^Desligar não concluiu:\s*/, '')}. A água pode seguir ligada — desligue de novo e confira a bomba no painel.
                   </span>
                 )}
               </div>
@@ -943,6 +981,7 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
             nome={titulo} angulo={angulo} ultima={ultima} lamina100={lamina100} tempoVolta100={cfgPivo?.parametros?.tempo_volta_100 ?? 21} ponta={ponta}
             enviando={!!enviando} abaInicial={irrAba} semCanhaoMotivo={semCanhaoMotivo}
             programacoes={prog.progs} onRemoverProgramacao={prog.remover} onSalvarProgramacao={prog.salvar}
+            agenda={prog.agenda} onImportarAgenda={prog.importarAgenda} onLimparAgenda={prog.limparAgenda}
             ligado={on} emCurso={on ? { config: cfgBase, parada: irrSrv?.atual?.parada ?? null } : null}
             semRegistro={semRegistro} notaParada={notaParada} enviarOff={on && executando} semReinicio={soPercentual} podeParado={podeParado}
             onDesligar={pedirDesligar} desligarOff={busy || desligarOff}
