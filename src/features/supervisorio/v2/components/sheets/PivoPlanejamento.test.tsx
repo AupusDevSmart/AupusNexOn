@@ -23,9 +23,9 @@ function abrir(props: Partial<Parameters<typeof IrrigacaoAvancada>[0]> = {}) {
   return { onEnviar, onDesligar };
 }
 const marcado = (nome: string) => screen.getByRole('radio', { name: nome }).getAttribute('aria-checked') === 'true';
-// Parado e Água são switches (o nome acessível começa pelo título da linha)
-const chave = (nome: 'Parado' | 'Água') => screen.getByRole('switch', { name: new RegExp(`^${nome}`) }) as HTMLButtonElement;
-const ligada = (nome: 'Parado' | 'Água') => chave(nome).getAttribute('aria-checked') === 'true';
+// Água é um switch (o nome acessível começa pelo título da linha)
+const chave = (nome: 'Água') => screen.getByRole('switch', { name: new RegExp(`^${nome}`) }) as HTMLButtonElement;
+const ligada = (nome: 'Água') => chave(nome).getAttribute('aria-checked') === 'true';
 
 describe('Planejamento de irrigação', () => {
   it('uma tela só: sem as abas Ângulo e Segmentos, sem Carregar última', () => {
@@ -91,37 +91,30 @@ describe('Planejamento de irrigação', () => {
     expect(onEnviar.mock.calls[0][0]).toMatchObject({ modo: 'simples', inicio: null, config: { direcao: 'Reverso', percentual: 60, semAgua: false } });
   });
 
-  it('Parado: liga sem girar (0 %, com água), sem percentímetro nem parada por ângulo', () => {
-    const { onEnviar } = abrir();
-    fireEvent.click(chave('Parado'));
-    expect(screen.queryByLabelText('Percentímetro')).toBeNull();
-    expect(screen.getByText(/irriga no lugar onde está/)).toBeTruthy();
-    expect(screen.queryByRole('option', { name: 'Por ângulo' })).toBeNull();
-    expect(screen.queryByRole('option', { name: 'Por segmento' })).toBeNull();
-    expect((screen.getByRole('radio', { name: 'Direita' }) as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByText(/irriga no mesmo lugar até alguém desligar/)).toBeTruthy();
-    fireEvent.click(screen.getByText('Ligar parado'));
-    expect(onEnviar.mock.calls[0][0]).toMatchObject({ config: { percentual: 0, semAgua: false }, parada: { tipo: 'semParar' } });
-  });
-
-  it('Parado e de volta a girar: retoma o percentual que estava', () => {
-    const { onEnviar } = abrir();
-    fireEvent.click(chave('Parado'));
-    fireEvent.click(chave('Parado'));
-    fireEvent.click(screen.getByRole('radio', { name: 'Direita' }));
+  it('ligar parado saiu da tela: não há switch nem opção Parado, e uma última irrigação em 0 % abre girando', () => {
+    const { onEnviar } = abrir({ podeParado: true, ultima: { ...CONFIG_PADRAO, direcao: 'Avanço', percentual: 0 } });
+    expect(screen.queryByRole('switch', { name: /^Parado/ })).toBeNull();
+    expect(screen.queryByRole('radio', { name: 'Parado' })).toBeNull();
+    expect(screen.queryByText('Ligar parado')).toBeNull();
+    expect(screen.getByLabelText('Percentímetro')).toBeTruthy();
     fireEvent.click(screen.getByText('Ligar'));
-    expect(onEnviar.mock.calls[0][0]).toMatchObject({ config: { direcao: 'Avanço', percentual: 60 } });
+    expect(onEnviar.mock.calls[0][0].config).toMatchObject({ direcao: 'Avanço', percentual: 100, semAgua: false });
   });
 
-  it('pivô sem percentímetro e sem bomba configurada não liga parado', () => {
-    abrir({ podeParado: false });
-    expect(chave('Parado').disabled).toBe(true);
-    expect(screen.getByText(/não tem percentímetro na TON nem bomba configurada/)).toBeTruthy();
+  it('irrigação em curso parada: escolher a direção volta a girar', () => {
+    const { onEnviar } = abrir({ ligado: true, emCurso: { config: { ...EM_CURSO, percentual: 0 }, parada: { tipo: 'semParar' } } });
+    expect(screen.getByText(/Irrigando parado/)).toBeTruthy();
+    expect(marcado('Direita')).toBe(false);
+    expect(marcado('Esquerda')).toBe(false);
+    fireEvent.click(screen.getByRole('radio', { name: 'Direita' }));
+    expect(screen.queryByText(/Irrigando parado/)).toBeNull();
+    fireEvent.click(screen.getByText('Salvar e enviar'));
+    expect(onEnviar.mock.calls[0][0].config).toMatchObject({ direcao: 'Avanço', semAgua: false });
+    expect(onEnviar.mock.calls[0][0].config.percentual).toBeGreaterThan(0);
   });
 
   it('sem o ponto, uma última irrigação em 0 % não abre como Parado: sobe para 100 % girando', () => {
     const { onEnviar } = abrir({ podeParado: false, ultima: { ...CONFIG_PADRAO, direcao: 'Avanço', percentual: 0 } });
-    expect(ligada('Parado')).toBe(false);
     expect(marcado('Direita')).toBe(true);
     fireEvent.click(screen.getByText('Ligar'));
     expect(onEnviar.mock.calls[0][0].config).toMatchObject({ direcao: 'Avanço', percentual: 100, semAgua: false });
@@ -131,20 +124,9 @@ describe('Planejamento de irrigação', () => {
     const { onEnviar } = abrir({ ultima: { ...CONFIG_PADRAO, semAgua: true, percentual: 0 } });
     fireEvent.click(chave('Água'));
     expect(ligada('Água')).toBe(true);
-    expect(ligada('Parado')).toBe(false);
+    expect(screen.getByLabelText('Percentímetro')).toBeTruthy();
     fireEvent.click(screen.getByText('Ligar'));
     expect(onEnviar.mock.calls[0][0].config.percentual).toBeGreaterThan(0);
-  });
-
-  it('Parado tira a parada por ângulo e a devolve ao voltar a girar', () => {
-    const { onEnviar } = abrir();
-    fireEvent.change(screen.getByLabelText('Parada'), { target: { value: 'porAngulo' } });
-    fireEvent.change(screen.getByLabelText('Ângulo de parada'), { target: { value: '90' } });
-    fireEvent.click(chave('Parado'));
-    expect((screen.getByLabelText('Parada') as HTMLSelectElement).value).toBe('semParar');
-    fireEvent.click(chave('Parado'));
-    fireEvent.click(screen.getByText('Ligar'));
-    expect(onEnviar.mock.calls[0][0].parada).toEqual({ tipo: 'porAngulo', angulo: 90 });
   });
 
   it('em curso parado com parada por ângulo: mostra a parada como é e avisa que só para por tempo', () => {
@@ -179,7 +161,7 @@ describe('Planejamento de irrigação', () => {
   it('percentímetro vai de 1 a 100: digitar 0 não zera, aponta o Parado', () => {
     const { onEnviar } = abrir();
     fireEvent.change(screen.getByLabelText('Percentímetro'), { target: { value: '0' } });
-    expect(screen.getByText(/ligue o Parado/)).toBeTruthy();
+    expect(screen.getByText('De 1 a 100 %.')).toBeTruthy();
     fireEvent.click(screen.getByText('Ligar'));
     expect(onEnviar.mock.calls[0][0].config.percentual).toBe(60);
   });
@@ -217,7 +199,7 @@ describe('Planejamento de irrigação', () => {
 
   it('irrigação em curso a 0 % abre como Parado e não conta como edição', () => {
     abrir({ ligado: true, emCurso: { config: { ...EM_CURSO, percentual: 0 }, parada: { tipo: 'semParar' } } });
-    expect(ligada('Parado')).toBe(true);
+    expect(screen.getByText(/Irrigando parado/)).toBeTruthy();
     expect(screen.queryByText('Salvar e enviar')).toBeNull();
   });
 
@@ -285,10 +267,9 @@ describe('Planejamento de irrigação', () => {
     expect(onSalvar).toHaveBeenCalledWith(expect.objectContaining({ com_agua: true, canhao: true }));
   });
 
-  it('agenda não liga parado: com o Parado ligado o agendamento não salva', () => {
+  it('agenda não liga parado: com a irrigação em curso parada o agendamento não salva', () => {
     const onSalvar = vi.fn(async () => true);
-    abrir({ onSalvarProgramacao: onSalvar });
-    fireEvent.click(chave('Parado'));
+    abrir({ onSalvarProgramacao: onSalvar, ligado: true, emCurso: { config: { ...EM_CURSO, percentual: 0 }, parada: { tipo: 'semParar' } } });
     fireEvent.click(screen.getByText('Agenda'));
     fireEvent.click(screen.getByText('+ Adicionar horário'));
     expect(screen.getByText(/A agenda não liga parado/)).toBeTruthy();
@@ -342,8 +323,8 @@ describe('edição rápida na ficha', () => {
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ direcao: 'Reverso' }));
     fireEvent.click(screen.getByLabelText('Mais 10%'));
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ percentual: 100 }));
-    fireEvent.click(screen.getByText('Parado'));
-    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ percentual: 0, semAgua: false }));
+    // ligar parado saiu da tela: a opção só existe quando a irrigação em curso já é parada
+    expect(screen.queryByText('Parado')).toBeNull();
     rerender(<AtalhosRapidos valor={{ ...base, percentual: 5 }} base={base} onChange={onChange} lamina100={7.15} onMaisOpcoes={() => undefined} podeParado />);
     fireEvent.click(screen.getByLabelText('Menos 10%'));
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ percentual: 1 }));

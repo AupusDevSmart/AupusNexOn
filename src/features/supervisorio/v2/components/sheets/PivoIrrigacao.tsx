@@ -12,7 +12,7 @@ import { baixarModelo, lerPlanilha, textoAgenda, type AgendaItem, type ItemPlani
  * botão vira "Salvar e enviar" (o pivô reinicia com as novas opções).
  *
  * Redesenho (11/11/2026): uma tela só. As abas Ângulo e Segmentos saíram; Direção é só Direita ou
- * Esquerda; Água e Parado (liga a água sem girar) são switches; as faixas do canhão ficam na
+ * Esquerda; Água é um switch; ligar parado saiu da tela (pedido do dono); as faixas do canhão ficam na
  * própria tela; a Parada tem "Por tempo", "Por ângulo" (círculo) e "Por segmento" (anel: para no
  * fim do quarto de volta escolhido); a Agenda usa as opções da tela em vez de repetir os campos.
  */
@@ -368,7 +368,7 @@ const segBox: CSSProperties = { display: 'flex', padding: 3, borderRadius: 12, b
 
 
 /**
- * Planejamento de irrigação — UMA tela (NEXON-98, redesenho): Direção, Água, Parado,
+ * Planejamento de irrigação — UMA tela (NEXON-98, redesenho): Direção, Água,
  * percentímetro/lâmina, canhão (com as faixas no próprio lugar), início e parada. Parar num
  * ângulo é a Parada "Por ângulo"; parar no fim de um quarto de volta é a "Por segmento" (vai para
  * a API como parada por ângulo). A Agenda usa as opções desta tela em vez de repetir os campos.
@@ -383,7 +383,8 @@ export function IrrigacaoAvancada({
   // Ligado: parte da irrigação em curso (o que o operador vê girando), não da última enviada.
   // Sem o ponto Percentímetro o NexON não segura o pivô parado: uma config em 0 % (última
   // enviada, registro antigo) nunca abre como "Parado" — sobe para 100 % (o painel é quem manda).
-  const sanear = (c: ConfigIrrigacao): ConfigIrrigacao => (!podeParado && !(c.percentual > 0) ? { ...c, percentual: 100, lamina: null } : c);
+  // A tela não oferece mais ligar parado: 0 % só aparece quando é a irrigação EM CURSO (e o pivô a sustenta).
+  const sanear = (c: ConfigIrrigacao): ConfigIrrigacao => ((!ligado || !podeParado) && !(c.percentual > 0) ? { ...c, percentual: 100, lamina: null } : c);
   const base: ConfigIrrigacao = sanear(ligado && emCurso ? { ...CONFIG_PADRAO, ...emCurso.config, faixasCanhao: emCurso.config.faixasCanhao ?? [] } : ultima);
   const [aba, setAba] = useState<AbaIrrigacao>(abaInicial);
   const [cfg, setCfg] = useState<ConfigIrrigacao>({ ...base, canhao: ligado ? base.canhao : false });
@@ -401,8 +402,6 @@ export function IrrigacaoAvancada({
   // O operador mexeu na Parada (mesmo voltando ao mesmo valor): vale a nova, do zero.
   const [paradaTocada, setParadaTocada] = useState(false);
   const mudarParada = (p: Parada) => { setParadaTocada(true); setParada(p); };
-  // Parada que o Parado tirou (por ângulo/voltas), para devolver ao voltar a girar.
-  const paradaAntes = useRef<{ parada: Parada; porSegmento: boolean } | null>(null);
   const [nova, setNova] = useState<null | { grupo: string; ini: string; fim: string }>(null);
   const [salvandoProg, setSalvandoProg] = useState(false);
   // Planilha: o arquivo lido espera o "Importar"; o erro (do arquivo ou da API) fica na tela.
@@ -440,22 +439,11 @@ export function IrrigacaoAvancada({
   // O que vai para o pivô: "Por segmento" é uma parada por ângulo no fim do segmento escolhido.
   const paradaEf: Parada = porSegmento ? { tipo: 'porAngulo', angulo: fimDoSegmento(segSel, cfg.direcao) } : parada;
 
-  // Parado: liga a água sem girar (0 % com água). É um switch à parte, não uma direção.
-  const setParado = (on: boolean) => {
+  // Parado (0 % com água) não se escolhe mais na tela; se a irrigação em curso é assim, escolher a
+  // direção volta a girar com o percentual de antes.
+  const girar = (d: Direcao) => {
     setPctTxt(null); setLamTxt(null);
-    if (on) {
-      if (cfg.percentual > 0) pctAntes.current = cfg.percentual;
-      setCfg((c) => ({ ...c, semAgua: false, percentual: 0, lamina: null }));
-      // parado não percorre ângulo, segmento nem volta: a parada sai, e volta se o operador voltar a girar
-      if (porSegmento || parada.tipo === 'porAngulo' || parada.tipo === 'porVoltas') {
-        paradaAntes.current = { parada, porSegmento };
-        setPorSegmento(false); setParada({ tipo: 'semParar' });
-      }
-    } else {
-      if (paradaAntes.current && !porSegmento && parada.tipo === 'semParar') { setParada(paradaAntes.current.parada); setPorSegmento(paradaAntes.current.porSegmento); }
-      paradaAntes.current = null;
-      setCfg((c) => (ehParado(c) ? { ...c, percentual: pctAntes.current, lamina: null } : c));
-    }
+    setCfg((c) => (ehParado(c) ? { ...c, direcao: d, percentual: pctAntes.current, lamina: null } : { ...c, direcao: d }));
   };
 
   const pct = cfg.percentual;
@@ -566,17 +554,18 @@ export function IrrigacaoAvancada({
         <>
         <div style={corpo}>
           <div style={col(4)}>
-            <div style={{ ...linha, ...(parado ? { opacity: 0.45 } : {}) }}>
+            <div style={linha}>
               <span style={titulo15}>Direção</span>
               <div role="radiogroup" aria-label="Direção" style={segBox}>
                 {(['Avanço', 'Reverso'] as const).map((d) => (
-                  <button key={d} type="button" role="radio" aria-checked={!parado && cfg.direcao === d} disabled={parado}
-                    onClick={() => setCfg((c) => ({ ...c, direcao: d }))} style={{ ...s.seg(!parado && cfg.direcao === d), ...(parado ? { cursor: 'default' } : {}) }}>
+                  <button key={d} type="button" role="radio" aria-checked={!parado && cfg.direcao === d}
+                    onClick={() => girar(d)} style={s.seg(!parado && cfg.direcao === d)}>
                     {DIRECAO_LABEL[d]}
                   </button>
                 ))}
               </div>
             </div>
+            {parado && dica('Irrigando parado (sem girar). Escolha a direção para voltar a girar.', NX.warn)}
             <button type="button" role="switch" aria-checked={!seco} disabled={parado}
               onClick={() => { setPctTxt(null); setLamTxt(null); setCfg((c) => (c.semAgua ? { ...c, semAgua: false, ...(c.percentual > 0 ? {} : { percentual: pctAntes.current, lamina: null }) } : { ...c, semAgua: true })); }}
               style={{ ...linha, width: '100%', ...(parado ? { opacity: 0.45 } : {}) }}>
@@ -585,14 +574,6 @@ export function IrrigacaoAvancada({
                 <span style={rotulo}>{seco ? 'Seco: gira sem água, a bomba não liga' : 'Molhado: irriga'}</span>
               </span>
               <NxSwitch on={!seco} />
-            </button>
-            <button type="button" role="switch" aria-checked={parado} disabled={!podeParado && !parado} onClick={() => setParado(!parado)}
-              style={{ ...linha, width: '100%', ...(!podeParado && !parado ? { opacity: 0.45 } : {}) }}>
-              <span style={{ ...col(2), textAlign: 'left' }}>
-                <span style={titulo15}>Parado</span>
-                <span style={rotulo}>{!podeParado && !parado ? 'Este pivô não tem percentímetro na TON nem bomba configurada' : parado ? 'Liga a água sem girar — irriga no lugar onde está' : 'Ligar a água sem girar'}</span>
-              </span>
-              <NxSwitch on={parado} />
             </button>
           </div>
 
@@ -613,7 +594,7 @@ export function IrrigacaoAvancada({
                 </span>
               </label>
               {lamAbaixo && <span style={{ gridColumn: '1 / -1', fontSize: 12, color: NX.warn }}>Lâmina mínima deste pivô: {fmt(lamina100, 2)} mm (100 %).</span>}
-              {pctAbaixo && <span style={{ gridColumn: '1 / -1', fontSize: 12, color: NX.mudo }}>De 1 a 100 %. Para não girar, ligue o Parado.</span>}
+              {pctAbaixo && <span style={{ gridColumn: '1 / -1', fontSize: 12, color: NX.mudo }}>De 1 a 100 %.</span>}
             </div>
           )}
 
@@ -752,7 +733,7 @@ export function IrrigacaoAvancada({
           {ligado && editado && (semReinicio?.(montar())
             ? dica('Só o percentímetro mudou: ao salvar, troca sem desligar o pivô.')
             : dica('Ao salvar, o pivô desliga e liga de novo com as novas opções.', NX.warn))}
-          {paradoIndisponivel && dica('Este pivô não tem como ligar parado (sem percentímetro na TON e sem bomba configurada): desligue o Parado.', NX.warn)}
+          {paradoIndisponivel && dica('Este pivô não tem como ligar parado (sem percentímetro na TON e sem bomba configurada): escolha Direita ou Esquerda.', NX.warn)}
           {(!ligado || editado || semRegistro) && botaoEnviar(rotuloEnviar, enviar, enviando || enviarOff || paradoIndisponivel)}
           {ligado && onDesligar && (
             <button type="button" disabled={desligarOff || enviando} onClick={onDesligar}
@@ -806,7 +787,7 @@ export function IrrigacaoAvancada({
                   <button type="button" onClick={() => setAba('simples')} style={{ fontWeight: 800, color: NX.acao, whiteSpace: 'nowrap' }}>Mudar</button>
                 </div>
                 {/* A programação do servidor não liga parado (0 % vira 100 % girando): só com movimento. */}
-                {parado && dica('A agenda não liga parado: desligue o Parado em Irrigação.', NX.warn)}
+                {parado && dica('A agenda não liga parado: escolha Direita ou Esquerda em Irrigação.', NX.warn)}
                 {!parado && dica(canhaoAgenda ? 'Canhão final: liga junto com o pivô, a volta toda.' : semCanhaoMotivo ? 'Canhão final: este pivô não tem o canhão configurado.' : cfg.semAgua ? 'Canhão final: não liga no seco.' : 'Canhão final: desligado. Para agendar com ele, ligue o Canhão final em Irrigação.')}
                 <button type="button" onClick={() => setNova(null)} style={{ alignSelf: 'flex-start', fontSize: 13, fontWeight: 700, color: NX.mudo }}>Cancelar</button>
               </div>
