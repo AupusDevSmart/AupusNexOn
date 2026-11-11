@@ -37,7 +37,7 @@ static uint8_t  _bo[6] = {1, 2, 3, 4, 5, 6};
 static uint8_t  _bi[6] = {1, 2, 3, 4, 5, 6};
 static uint8_t  _inv = 0;                // bit k = BI do papel k ativa em baixo
 // s: tensao, pressurizacao, giro, canhao, bomba, parada, tolerancia, sem_posicao, janela_giro, ciclo_perc
-static uint32_t _tp[10] = {2, 120, 30, 30, 30, 60, 3, 300, 600, 60};
+static uint32_t _tp[10] = {2, 120, 30, 30, 30, 60, 0, 300, 600, 60};   // tolerancia 0 = queda desliga na hora
 static uint32_t _enc_res = 0;            // 0 = sem encoder
 static bool     _enc_inv = false;
 static float    _enc_zero = 0;
@@ -480,7 +480,7 @@ int pivo_cmd(const String& cmd, char* msg, size_t sz) {
         unsigned long t[10];
         if (!resto || sscanf(resto, "%lu %lu %lu %lu %lu %lu %lu %lu %lu %lu", &t[0], &t[1], &t[2], &t[3], &t[4], &t[5], &t[6], &t[7], &t[8], &t[9]) != 10)
             return _erro(msg, sz, "pivo_tempos_invalido");
-        static const unsigned long lo[10] = {1, 5, 5, 5, 5, 5, 1, 30, 30, 5};
+        static const unsigned long lo[10] = {1, 5, 5, 5, 5, 5, 0, 30, 30, 5};   // tolerancia aceita 0 (instantaneo)
         static const unsigned long hi[10] = {60, 1800, 600, 600, 600, 600, 60, 3600, 3600, 600};
         for (int k = 0; k < 10; k++) if (t[k] < lo[k] || t[k] > hi[k]) return _erro(msg, sz, "pivo_tempos_faixa");
         for (int k = 0; k < 10; k++) _tp[k] = (uint32_t)t[k];

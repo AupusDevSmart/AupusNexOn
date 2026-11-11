@@ -138,21 +138,29 @@ int main() {
         CHECK(!b.m.saidas().bomba, "6 bomba cortada na hora");
         CHECK(b.ate(PARADO, 60000) && !strcmp(b.m.falha(), "seguranca"), "6 falha seguranca");
     }
-    // 7) Queda de pressao: 2 s tolera, 4 s desliga
+    // 7) Queda de pressao com tolerancia configurada (3 s): 2 s tolera, 4 s desliga
     {
-        Painel b; b.ligar(plano()); b.ate(IRRIGANDO, 60000); b.rodar(10000);
+        Config c3; c3.tolerancia_ms = 3000;
+        Painel b(c3); b.ligar(plano()); b.ate(IRRIGANDO, 60000); b.rodar(10000);
         b.quebra_pressao = true; b.rodar(2000); b.quebra_pressao = false; b.rodar(1000);
         CHECK(b.m.estado() == IRRIGANDO, "7 queda de 2 s tolerada");
         b.quebra_pressao = true; b.rodar(4000);
         CHECK(b.m.estado() != IRRIGANDO && !strcmp(b.m.falha(), "sem_pressao"), "7 queda de 4 s desliga");
     }
-    // 7b) Queda de tensao e lado
+    // 7a) Padrao (tolerancia 0): queda de pressao desliga no PRIMEIRO tick
+    {
+        Painel b; b.ligar(plano()); b.ate(IRRIGANDO, 60000); b.rodar(10000);
+        b.quebra_pressao = true; b.passo();
+        CHECK(b.m.estado() == DESLIGANDO && !strcmp(b.m.falha(), "sem_pressao"), "7a pressao caiu: desliga no mesmo tick");
+        CHECK(!b.m.saidas().bomba, "7a bomba cortada na hora");
+    }
+    // 7b) Queda de tensao e lado (instantaneo)
     {
         Painel b; b.ligar(plano()); b.ate(IRRIGANDO, 60000); b.rodar(5000);
-        b.tensao = false; b.rodar(3500);
+        b.tensao = false; b.passo();
         CHECK(!strcmp(b.m.falha(), "sem_tensao"), "7b queda de tensao desliga");
         Painel c; c.ligar(plano()); c.ate(IRRIGANDO, 60000); c.rodar(5000);
-        c.quebra_giro = true; c.rodar(3500);
+        c.quebra_giro = true; c.passo();
         CHECK(!strcmp(c.m.falha(), "lado_caiu"), "7b lado caiu = lado_caiu");
     }
     // 8) Por angulo, direita 10 -> 100

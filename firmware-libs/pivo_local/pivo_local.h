@@ -62,7 +62,7 @@ struct Config {
     uint32_t confirma_canhao_ms = 30000;    // ligar 8 (nao para a irrigacao, so' avisa)
     uint32_t confirma_bomba_ms  = 30000;    // desligar 2 (nao bloqueia, so' avisa)
     uint32_t confirma_parada_ms = 60000;    // desligar 5 (sem parar = falha "nao_parou")
-    uint32_t tolerancia_ms      = 3000;     // queda de pressao/tensao/lado irrigando
+    uint32_t tolerancia_ms      = 0;        // queda de pressao/tensao/lado irrigando (0 = instantaneo; decidido 11/11)
     uint32_t sem_posicao_ms     = 300000;   // parada por posicao sem leitura do encoder
     uint32_t janela_giro_ms     = 600000;   // "girando" = angulo mudou dentro desta janela (encoder de 360 pos. anda em passos de 1 grau)
 };

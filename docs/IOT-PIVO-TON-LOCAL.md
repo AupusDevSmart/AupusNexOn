@@ -52,8 +52,8 @@
 - Cada posição nova do encoder: confere a parada do plano (voltas percorridas, ângulo final, fim do segmento).
 - Parada por tempo ou horário: o NexON converte o horário em **duração** no momento do envio. A TON conta pelo relógio interno (millis), sem precisar de hora certa nem de internet.
 - **Segurança (BI05) atuou** → Desligar na hora.
-- **Pressão (BI01, só com água) ou tensão (BI02) caiu por mais de 3 s** → Desligar + Falha.
-- **Lado (BI03/BI04) caiu por mais de 3 s** → Desligar + Falha "parou sem comando" (código `lado_caiu`). O pivô parado com a bomba ligada encharca um ponto só.
+- **Pressão (BI01, só com água) ou tensão (BI02) caiu** → Desligar + Falha **na hora** (tolerância 0; era 3 s, mudado em 11/11).
+- **Lado (BI03/BI04) caiu** (na hora) → Desligar + Falha "parou sem comando" (código `lado_caiu`). O pivô parado com a bomba ligada encharca um ponto só.
 - **Sem posição** (encoder sem leitura nova) com parada por voltas ou ângulo → depois de 5 min, Desligar + Falha "sem posição".
 
 **Desligar**
@@ -127,7 +127,7 @@ Código: lib `firmware-libs/pivo_local/` (testes: `g++ -std=c++17 -o t test_pivo
 | Comando | Quando |
 |---|---|
 | `pivo io <bo1..bo6> <bi1..bi6> <inv>` | Mapa por papel. BO: bomba, válvula, dir, esq, percentímetro, canhão. BI: pressão, tensão, gir. dir, gir. esq, segurança, canhão. `0` = não ligado. `inv` = 6 dígitos (1 = BI ativa em baixo). Recusa BO repetida. A TON já sai da gravação com o I/O padrão ativo (BO01–06 / BI01–06, ativo em alto); o NexON reenvia se o mapa for outro. |
-| `pivo tempos <tensão> <pressurização> <giro> <canhão> <bomba> <parada> <tolerância> <sem_posição> <janela_giro> <ciclo_perc>` | Segundos. Padrão `2 120 30 30 30 60 3 300 600 60`. |
+| `pivo tempos <tensão> <pressurização> <giro> <canhão> <bomba> <parada> <tolerância> <sem_posição> <janela_giro> <ciclo_perc>` | Segundos. Padrão `2 120 30 30 30 60 0 300 600 60` (tolerância 0 = queda desliga na hora; firmware anterior a 11/11 aceita só 1–60, e o backend manda 1 nesse caso). |
 | `pivo enc <resolução> <inv 0/1> <zero°>` | `0` = sem encoder (só parada por tempo). |
 | `pivo ligar <id> <d/e> <água 0/1> <permil> <canhão 0/1> <v/a/t> <valor> [s <ini°>:<permil>:<canhão> …]` | `v` voltas, `a` ângulo final, `t` duração em s (o horário de parada vira duração no envio). Até 8 segmentos em ordem crescente. |
 | `pivo desligar [motivo]`, `pivo perc <permil>`, `pivo canhao <0/1>`, `pivo status`, `pivo cfg` | |
