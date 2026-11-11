@@ -121,3 +121,22 @@ Depois, em Topologia → TON4v2 → Configurar I/O, ligar BO1–BO6 e BI1–BI6 
 4. **Ligar sem água:** BO1 não é acionada; espera BI4; `perc` 100 %; gira.
 5. **Canhão pela ficha:** com o pivô girando com água, Ativar → pulso BO6 → BI6 = 1. Ativar de novo é recusado ("já está ligado").
 6. **Desligar:** pulso BO4 → Girando em 0 → `perc off` → canhão (pulso BO6 se BI6 = 1) → confirma Ligado = 0.
+
+## Saídas mantidas (painel sem selo) — 11/11/2026
+
+Opção por pivô em **Configuração → Bombeamento → Saídas mantidas** (`pivo_config.sequencia.comandos_mantidos`, padrão desligado = pulsos).
+Serve para painel que **não faz selo**, por exemplo a TON no lugar das saídas do CLP (painel Fockink do Pivô 11: o CLP mantém O1 bombeamento, O2/O3 direita/esquerda, O4 canhão).
+
+| Função | Pulso (padrão) | Mantidas |
+|---|---|---|
+| Ligar (bomba) | pulso no Ligar | `rN on` e fica em alto durante a irrigação |
+| Girar dir./esq. | pulso no botão | o sentido oposto vai a `off` **antes**, depois `rN on` (nunca os dois em alto) |
+| Canhão | pulso que alterna; exige o status `Canhao_ligado` | `on`/`off` direto; o status é opcional (só confirma) |
+| Desligar | pulso no ponto Desligar | `off` nos dois sentidos → confirma parado → canhão `off` → Ligar `off`. Não precisa do ponto Desligar |
+| Percentímetro | ciclo local na TON (igual) | igual |
+| Giro não confirmado | pulso no Desligar | `off` nos dois sentidos |
+
+- **Troca de modo só com o pivô desligado** (o servidor recusa com 409): trocar ligado deixaria saída presa em alto ou sem selo.
+- **Reboot da TON derruba todas as saídas** (`RELAYS_RESTORE_ON_SW_RESET = 0` no firmware de pivô): o pivô para. É o lado seguro. O NexON vê o Girando em 0 e considera a irrigação encerrada.
+- Sistema conjugado: o modo vale pelo pivô **dono** da bomba (o Ligar dele vai a `off`).
+- Código: `pivo-sequencia.service.ts` (`mantido()`, `saidaMantida()`), testes em `pivo-pontos.spec.ts` ("saídas mantidas").

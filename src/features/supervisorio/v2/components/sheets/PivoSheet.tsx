@@ -56,7 +56,7 @@ interface Estado {
   bombeamento: null | Bombeamento;
   /** Sistema conjugado: este pivô usa a bomba de outro */
   bomba_de?: null | { id: string; nome: string | null };
-  sequencia_cfg: { pressurizacao_s: number; confirma_giro_s: number; confirma_bomba_s?: number };
+  sequencia_cfg: { pressurizacao_s: number; confirma_giro_s: number; confirma_bomba_s?: number; comandos_mantidos?: boolean };
   sequencia: null | { id: string; acao: string; status: string; passos: Passo[]; erro: string | null; created_at: string; finished_at: string | null; origem?: string };
   /** Automação do servidor (programação, agendamento, parada, ponta). Ausente em API antiga. */
   irrigacao?: {
@@ -983,7 +983,9 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
 }) {
   const [op, setOp] = useState<Opcoes | null>(null);
   // Base (gravado) × rascunho
-  const [base, setBase] = useState<{ bombaDe: string; seq: Record<ChaveSeq, number> } | null>(null);
+  const [base, setBase] = useState<{ bombaDe: string; seq: Record<ChaveSeq, number>; mantido: boolean } | null>(null);
+  // Saídas mantidas: BO em alto enquanto a função está ligada (painel sem selo) × pulsos nos botões
+  const [mantido, setMantido] = useState(false);
   const [seq, setSeq] = useState<Record<ChaveSeq, string>>({ pressurizacao_s: '120', confirma_giro_s: '30', confirma_bomba_s: '30' });
   const [conj, setConj] = useState(false);
   const [conjPivo, setConjPivo] = useState('');
@@ -1025,7 +1027,8 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
     const sc = estado.sequencia_cfg;
     const sq = { pressurizacao_s: sc.pressurizacao_s, confirma_giro_s: sc.confirma_giro_s, confirma_bomba_s: sc.confirma_bomba_s ?? 30 };
     const de = estado.bomba_de?.id ?? '';
-    setBase({ bombaDe: de, seq: sq });
+    setBase({ bombaDe: de, seq: sq, mantido: !!sc.comandos_mantidos });
+    setMantido(!!sc.comandos_mantidos);
     setConj(!!de); setConjPivo(de);
     setSeq({ pressurizacao_s: String(sq.pressurizacao_s), confirma_giro_s: String(sq.confirma_giro_s), confirma_bomba_s: String(sq.confirma_bomba_s) });
   }, [estado, base]);
@@ -1040,6 +1043,7 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
     const out: Array<{ label: string; de: string; para: string }> = [];
     const add = (label: string, de: string, para: string) => { if (de !== para) out.push({ label, de, para }); };
     add('Usa a bomba do pivô', base.bombaDe ? nomePivo(base.bombaDe) : '—', bombaDeAgora ? nomePivo(bombaDeAgora) : '—');
+    add('Saídas', base.mantido ? 'Mantidas' : 'Pulso', mantido ? 'Mantidas' : 'Pulso');
     for (const k of CHAVES_SEQ as ChaveSeq[]) {
       add(PARAMS.find((p) => p.key === k)!.label, `${base.seq[k]} s`, `${Number(seq[k])} s`);
     }
@@ -1061,7 +1065,7 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
       add('Horário de ponta · fim', a.fim, ponta.fim);
     }
     return out;
-  }, [base, seq, cfg, ponta, par, conj, conjPivo, op, enc, encs]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [base, seq, cfg, ponta, par, conj, conjPivo, op, enc, encs, mantido]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const bombaRuim = conj && !conjPivo;
   const seqRuim = (CHAVES_SEQ as ChaveSeq[]).some((k) => { const p = PARAMS.find((x) => x.key === k)!; return !numOk(seq[k], p.min, p.max); });
@@ -1085,7 +1089,7 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
         const conjMudou = base!.bombaDe !== bombaDeAgora;
         await api.put(`/pivos/${pivoId}/bombeamento`, {
           ...(conjMudou ? { bombeamento: { bomba_de: bombaDeAgora || null } } : {}),
-          sequencia: seqNum,
+          sequencia: { ...seqNum, comandos_mantidos: mantido },
         });
       }
       const pontaMudou = cfg && ponta && (cfg.bloqueio_ponta.ativo !== ponta.ativo || cfg.bloqueio_ponta.inicio !== ponta.inicio || cfg.bloqueio_ponta.fim !== ponta.fim);
@@ -1107,7 +1111,7 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
       }
       toast.success('Configuração do pivô salva');
       // O gravado passa a ser o rascunho (não espera o refresh do estado).
-      setBase({ bombaDe: bombaDeAgora, seq: seqNum });
+      setBase({ bombaDe: bombaDeAgora, seq: seqNum, mantido });
       setRevisar(false); onSalvo();
     } catch (e) {
       toast.error('Não salvou', { description: erroMsg(e) });
@@ -1136,7 +1140,7 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
             </ChipSelect>
           </Linha>
         ) : (
-          <Linha first titulo="Bomba" sub={b?.origem === 'legado' ? 'Configuração antiga · ligue o ponto Ligar na Topologia IoT para substituir' : 'Ligar liga a bomba (e fecha a solenoide); o Desligar do pivô para tudo'}>
+          <Linha first titulo="Bomba" sub={b?.origem === 'legado' ? 'Configuração antiga · ligue o ponto Ligar na Topologia IoT para substituir' : mantido ? 'Ligar fica em alto durante a irrigação; desligar baixa todas as saídas' : 'Ligar liga a bomba (e fecha a solenoide); o Desligar do pivô para tudo'}>
             <span style={{ fontSize: 14, fontWeight: 700, color: b ? NX.texto : NX.mudo }}>{b ? (compartilhada ? `Compartilhada com ${b.compartilhada_com.join(', ')}` : 'Configurada') : 'Sem bomba'}</span>
           </Linha>
         )}
@@ -1149,6 +1153,11 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
         )}
         <NxSwitchRow title="Sistema conjugado" sub="Usa a bomba de outro pivô" on={conj} disabled={roTec || compartilhada}
           onToggle={() => setConj((v) => !v)} />
+        <NxSwitchRow title="Saídas mantidas"
+          sub={mantido
+            ? 'Cada saída fica ligada enquanto a função está ligada (Ligar, Girar, Canhão). Para painel sem selo, como a TON no lugar do CLP. Só troca com o pivô desligado.'
+            : 'Desligado: pulsos nos botões do painel, que faz o selo. Ligue para manter as saídas ligadas (painel sem selo).'}
+          on={mantido} disabled={roTec} onToggle={() => setMantido((v) => !v)} />
       </div>
       {roTec && !roOp && <span style={{ fontSize: 12, color: NX.mudo }}>{MSG_SOMENTE_LEITURA}</span>}
 
