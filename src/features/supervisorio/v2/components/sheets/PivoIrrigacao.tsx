@@ -44,6 +44,8 @@ export type AbaIrrigacao = 'simples' | 'agenda';
 export interface Programacao {
   id: string; nome: string; ativo: boolean; hora_inicio: string; dias: number[]; modo: 'percurso' | 'tempo';
   duracao_min?: number | null; sentido: 'horario' | 'anti_horario'; velocidade?: number | null; com_agua?: boolean;
+  /** liga o canhão final junto com o pivô (só com água) */
+  canhao?: boolean;
 }
 export type NovaProgramacao = Omit<Programacao, 'id'>;
 
@@ -71,7 +73,7 @@ export function textoProgramacao(p: Programacao) {
   const dir = p.sentido === 'horario' ? 'Direita' : 'Esquerda';
   return {
     quando: `${diasTxt(p.dias)} · ${p.hora_inicio}${fim ? ` → ${fim}` : ''}`,
-    det: `${p.com_agua === false ? `Seco · ${dir}` : `${p.velocidade != null ? `${fmt(p.velocidade, 0)}%` : '—'} · Molhado · ${dir}`}${p.ativo ? '' : ' · pausado'}`,
+    det: `${p.com_agua === false ? `Seco · ${dir}` : `${p.velocidade != null ? `${fmt(p.velocidade, 0)}%` : '—'} · Molhado · ${dir}${p.canhao ? ' · canhão' : ''}`}${p.ativo ? '' : ' · pausado'}`,
   };
 }
 const GRUPOS_DIAS: Array<{ v: string; label: string; dias: number[] }> = [
@@ -433,6 +435,9 @@ export function IrrigacaoAvancada({
   const movimento: Movimento = parado ? 'Parado' : cfg.direcao;
   const semCanhao = seco || !!semCanhaoMotivo;
   const canhaoAtivo = cfg.canhao && !semCanhao;
+  // A Agenda grava com `cfg` (o pivô inteiro), não com o segmento selecionado: o canhão dela
+  // segue a água de `cfg`, senão um segmento seco selecionado tiraria o canhão do agendamento.
+  const canhaoAgenda = cfg.canhao && !cfg.semAgua && !semCanhaoMotivo;
 
   const setMovimento = (m: Movimento) => {
     setPctTxt(null); setLamTxt(null);
@@ -521,6 +526,8 @@ export function IrrigacaoAvancada({
       nome: `${g.label} · ${nova.ini} → ${nova.fim}`, ativo: true, hora_inicio: nova.ini, dias: g.dias, modo: 'tempo',
       duracao_min: dur, sentido: cfg.direcao === 'Avanço' ? 'horario' : 'anti_horario',
       velocidade: cfg.semAgua ? null : cfg.percentual, com_agua: !cfg.semAgua,
+      // só vai quando liga: API que ainda não conhece o campo recusa o corpo inteiro (forbidNonWhitelisted)
+      ...(canhaoAgenda ? { canhao: true } : {}),
     });
     setSalvandoProg(false);
     if (ok) setNova(null);
@@ -567,6 +574,7 @@ export function IrrigacaoAvancada({
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
                 <AnelSegmentos segs={segs} sel={segSel} atual={atual} onSel={(i) => { setPctTxt(null); setLamTxt(null); setSegSel(i); }} />
                 <span style={{ fontSize: 13, color: NX.mudo }}>Toque no segmento para editar</span>
+                {dica('Vai para o pivô o segmento selecionado, na volta toda: o NexON ainda não troca água e percentímetro sozinho a cada quarto.', NX.warn)}
               </div>
             )}
           </div>
@@ -640,6 +648,7 @@ export function IrrigacaoAvancada({
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
                   <DialCanhao atual={atual} faixas={faixas} onChange={setFaixas} />
                   <span style={{ fontSize: 13, color: NX.mudo }}>Arraste as alças ou digite os ângulos · setor verde = canhão ligado</span>
+                  {dica('As faixas ficam salvas, mas o NexON ainda não liga e desliga o canhão pelo ângulo: ele fica ligado a volta toda.', NX.warn)}
                 </div>
                 {faixas.map((f, i) => (
                   <div key={f.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr) 32px', gap: 8, alignItems: 'center' }}>
@@ -792,11 +801,13 @@ export function IrrigacaoAvancada({
                 </div>
                 {/* As opções vêm da aba Irrigação: nada de repetir direção, água e percentímetro aqui. */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, fontSize: 13 }}>
-                  <span style={{ color: NX.mudo }}>Vai irrigar com: <b style={{ color: NX.texto }}>{resumoConfig(cfg)}</b></span>
+                  <span style={{ color: NX.mudo }}>Vai irrigar com: <b style={{ color: NX.texto }}>{resumoConfig(cfg)}{canhaoAgenda ? ' · canhão' : ''}</b></span>
                   <button type="button" onClick={() => setAba('simples')} style={{ fontWeight: 800, color: NX.acao, whiteSpace: 'nowrap' }}>Mudar</button>
                 </div>
                 {/* A programação do servidor não liga parado (0 % vira 100 % girando): só com movimento. */}
                 {parado && dica('A agenda não liga parado: escolha Direita ou Esquerda em Irrigação.', NX.warn)}
+                {!parado && dica(canhaoAgenda ? 'Canhão final: liga junto com o pivô, a volta toda.' : semCanhaoMotivo ? 'Canhão final: este pivô não tem o canhão configurado.' : cfg.semAgua ? 'Canhão final: não liga no seco.' : 'Canhão final: desligado. Para agendar com ele, ligue o Canhão final em Irrigação.')}
+                {porSegmentos && dica('A agenda não leva os segmentos: vale o movimento, a água e o percentímetro acima, na volta toda.', NX.warn)}
                 <button type="button" onClick={() => setNova(null)} style={{ alignSelf: 'flex-start', fontSize: 13, fontWeight: 700, color: NX.mudo }}>Cancelar</button>
               </div>
             ) : (
@@ -810,7 +821,7 @@ export function IrrigacaoAvancada({
           {/* Agenda por data: a planilha (uma linha por irrigação, do ano todo). */}
           <div style={col(8)}>
             <span style={{ ...s.label, marginTop: 6 }}>POR DATA · PLANILHA{agenda?.length ? ` · ${agenda.length}` : ''}</span>
-            <span style={{ fontSize: 13, color: NX.mudo }}>Uma linha por irrigação: dia, início, fim, sentido, percentímetro e água. Dá para subir o ano todo de uma vez.</span>
+            <span style={{ fontSize: 13, color: NX.mudo }}>Uma linha por irrigação: dia, início, fim, sentido, percentímetro, água e canhão. Dá para subir o ano todo de uma vez.</span>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
               <button type="button" onClick={() => void baixarModelo(nome)}
                 style={{ height: 44, borderRadius: 12, border: `1px solid ${NX.borda}`, fontSize: 14, fontWeight: 800, textAlign: 'center', color: NX.texto, background: NX.card }}>
