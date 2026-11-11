@@ -16,11 +16,25 @@ interface Props {
  *   enviando    — ha coisa na fila. Sem isto o usuario edita, olha o outro
  *                 sistema, nao ve nada e conclui que quebrou — quando so
  *                 faltavam alguns segundos.
- *   erro        — a entrega ja falhou tres vezes. E o unico estado que pede
- *                 acao, e por isso e o unico com cor.
+ *   erro        — a entrega ja falhou tres vezes. Pede acao, e por isso tem cor.
+ *   recusado    — o outro lado respondeu e nao gravou (la deixou de ser
+ *                 compartilhado, esta apagado). A entrega nao repete: compartilhar
+ *                 de novo e o que religa.
  */
 export function SeloSincronizacao({ estado }: Props) {
   if (!estado?.compartilhado) return null;
+
+  if (estado.recusado) {
+    return (
+      <span
+        className="inline-flex items-center gap-1 text-xs text-amber-600"
+        title={`Não chega ao ${OUTRO_PRODUTO}: ${estado.recusado}. Compartilhar de novo religa.`}
+      >
+        <AlertTriangle className="h-3.5 w-3.5" />
+        Recusado
+      </span>
+    );
+  }
 
   if (estado.com_erro) {
     return (

@@ -4,26 +4,16 @@ import { BaseModal } from '@/core/components/common/base-modal/BaseModal';
 import { Button } from '@/core/components/ui/button';
 import {
   Factory,
-  AlertCircle,
-  CheckCircle,
   Trash2
 } from 'lucide-react';
 import { ModalMode } from '@/core/types/base';
-import { UnidadeFormData, Unidade } from '../types';
+import { Unidade } from '../types';
 import { unidadesFormFields } from '../config/form-config';
 import { AnexosUnidadeField } from './AnexosUnidadeField';
 import { toast } from '@/core/hooks/use-toast';
-import { formDataToDto, unidadeToFormData } from '../types';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/core/components/ui/alert-dialog';
+import { formDataToDto } from '../types';
+import { ConfirmarExclusao } from '@/core/features/sincronizacao/ConfirmarExclusao';
+import type { ExclusaoDeUnidade } from '@/core/types/contracts';
 
 interface UnidadeModalProps {
   isOpen: boolean;
@@ -33,7 +23,7 @@ interface UnidadeModalProps {
   onSuccess: () => void;
   createUnidade: (data: any) => Promise<any>;
   updateUnidade: (params: { id: string; data: any }) => Promise<any>;
-  deleteUnidade: (id: string) => Promise<void>;
+  deleteUnidade: (alvo: string | ExclusaoDeUnidade) => Promise<void>;
   /**
    * Mostra subgrupo tarifario, demandas e os checkboxes de perfil. Sao detalhe
    * de faturamento: interessam ao supervisorio, nao a quem cadastra instalacao
@@ -160,13 +150,15 @@ export function UnidadeModal({
     }
   };
 
-  const handleDeleteConfirm = async () => {
+  // `confirmarCompartilhado`: o diálogo mostrou o que é compartilhado com o Service e a pessoa
+  // digitou o nome (a API recusa sem ele, 409; 10/11/2026)
+  const handleDeleteConfirm = async (confirmarCompartilhado: boolean) => {
     if (!unidade) return;
 
     setIsDeleting(true);
 
     try {
-      await deleteUnidade(unidade.id);
+      await deleteUnidade({ id: unidade.id.trim(), confirmarCompartilhado });
       toast({ title: `Instalação ${unidade.nome} removida!` });
       setShowDeleteDialog(false);
       onSuccess();
@@ -305,55 +297,23 @@ export function UnidadeModal({
       )}
 
 
-      {/* DIALOG DE CONFIRMAÇÃO DE DELETE */}
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div className="space-y-3">
-                <p className="text-sm text-muted-foreground">
-                  Você está prestes a excluir permanentemente a instalação
-                  <span className="font-semibold"> {unidade?.nome}</span>. Esta ação não pode ser revertida.
-                </p>
-
-                {/* Aviso sobre equipamentos */}
-                {unidade && unidade.totalEquipamentos > 0 && (
-                  <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-md p-3">
-                    <div className="flex items-start gap-2">
-                      <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
-                      <div>
-                        <p className="text-amber-900 dark:text-amber-100 font-medium text-sm">
-                          Esta instalação possui {unidade.totalEquipamentos} equipamento{unidade.totalEquipamentos > 1 ? 's' : ''} vinculado{unidade.totalEquipamentos > 1 ? 's' : ''}
-                        </p>
-                        <p className="text-amber-700 dark:text-amber-300 text-sm mt-1">
-                          Todos os equipamentos serão excluídos em cascata junto com seus dados históricos, registros de manutenção e anomalias.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {!unidade?.totalEquipamentos && (
-                  <p className="text-sm text-muted-foreground">
-                    Todos os dados relacionados a esta instalação serão permanentemente removidos do sistema.
-                  </p>
-                )}
-              </div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteConfirm}
-              disabled={isDeleting}
-              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
-            >
-              {isDeleting ? 'Excluindo...' : 'Confirmar Exclusão'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* A confirmação confere o que é compartilhado com o Service antes (10/11/2026) */}
+      {unidade && (
+        <ConfirmarExclusao
+          aberto={showDeleteDialog}
+          onAbertoChange={setShowDeleteDialog}
+          recurso="unidades"
+          id={unidade.id}
+          nome={unidade.nome}
+          oQueSai={
+            (unidade.totalEquipamentos ?? 0) > 0
+              ? `a instalação e os ${unidade.totalEquipamentos} equipamento(s) dela, com o histórico de manutenção`
+              : 'a instalação'
+          }
+          excluindo={isDeleting}
+          onConfirmar={handleDeleteConfirm}
+        />
+      )}
     </BaseModal>
   );
 }

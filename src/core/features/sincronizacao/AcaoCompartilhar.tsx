@@ -35,6 +35,9 @@ export function AcaoCompartilhar({ nome, estado, onCompartilhar, onParar, format
   const [salvando, setSalvando] = useState(false);
 
   const compartilhado = !!estado?.compartilhado;
+  // O outro lado recusou (lá deixou de ser compartilhado, está apagado): compartilhar de novo religa
+  const religar = compartilhado && !!estado?.recusado;
+  const acao: 'ligar' | 'desligar' = compartilhado && !religar ? 'desligar' : 'ligar';
 
   const executar = async () => {
     setSalvando(true);
@@ -49,7 +52,7 @@ export function AcaoCompartilhar({ nome, estado, onCompartilhar, onParar, format
         await onParar();
         toast({
           title: 'Compartilhamento encerrado',
-          description: `O registro continua no ${OUTRO_PRODUTO}, mas para de receber alterações.`,
+          description: `O registro continua no ${OUTRO_PRODUTO}, e as alterações deixam de atravessar nos dois sentidos.`,
         });
       }
       setConfirmando(null);
@@ -64,8 +67,9 @@ export function AcaoCompartilhar({ nome, estado, onCompartilhar, onParar, format
     }
   };
 
-  const rotulo = compartilhado ? 'Parar de compartilhar' : `Compartilhar com o ${OUTRO_PRODUTO}`;
-  const Icone = compartilhado ? Unlink : Share2;
+  const rotulo =
+    acao === 'desligar' ? 'Parar de compartilhar' : religar ? `Compartilhar de novo com o ${OUTRO_PRODUTO}` : `Compartilhar com o ${OUTRO_PRODUTO}`;
+  const Icone = acao === 'desligar' ? Unlink : Share2;
 
   return (
     <>
@@ -76,7 +80,7 @@ export function AcaoCompartilhar({ nome, estado, onCompartilhar, onParar, format
         className={formato === 'linha' ? 'h-8 w-8 text-muted-foreground hover:text-foreground' : 'text-muted-foreground'}
         title={rotulo}
         aria-label={rotulo}
-        onClick={() => setConfirmando(compartilhado ? 'desligar' : 'ligar')}
+        onClick={() => setConfirmando(acao)}
       >
         <Icone className="h-4 w-4" />
         {formato === 'botao' && <span className="ml-1.5">{rotulo}</span>}
@@ -98,8 +102,8 @@ export function AcaoCompartilhar({ nome, estado, onCompartilhar, onParar, format
               ) : (
                 <>
                   <span className="font-medium text-foreground">{nome}</span> continua no{' '}
-                  {OUTRO_PRODUTO}, mas para de receber as alterações feitas aqui.
-                  Nada é apagado de lá.
+                  {OUTRO_PRODUTO}, e as alterações deixam de atravessar, daqui para lá e de lá para cá.
+                  Vale também para o que fica debaixo dele. Nada é apagado de lá.
                 </>
               )}
             </AlertDialogDescription>

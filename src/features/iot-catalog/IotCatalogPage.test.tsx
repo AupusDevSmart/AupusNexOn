@@ -1,6 +1,6 @@
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders, sonnerMockFactory } from '@/test-utils';
 import type { IotDeviceModelo, IotDeviceTipo } from '@/services/iot-catalog.services';
 
@@ -75,6 +75,12 @@ vi.mock('sonner', () => sonnerMockFactory());
 import { IotCatalogPage } from './IotCatalogPage';
 
 describe('IotCatalogPage', () => {
+  // A tela lembra busca, filtro, página e aba no localStorage (useEstadoLembrado, 19/10/2026):
+  // sem limpar, a busca "goodwe" do primeiro teste ficava para os seguintes
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
   it('1. filtro de texto reduz a tabela a modelos que casam com a busca', async () => {
     const user = userEvent.setup();
     renderWithProviders(<IotCatalogPage />);

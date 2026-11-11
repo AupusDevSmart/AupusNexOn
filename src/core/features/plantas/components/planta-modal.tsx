@@ -6,26 +6,14 @@ import {
   Factory,
   AlertCircle,
   CheckCircle,
-  Trash2,
-  MapPin,
-  Clock,
-  Building2
+  Trash2
 } from 'lucide-react';
-import { ModalMode, PlantaFormData } from '../types';
+import { ModalMode } from '../types';
 import { plantasFormFields } from '../config/form-config';
 import { useHttpClient } from '@/core/context/hooks';
 import { CNPJUtils } from '@/core/components/ui/cnpj-input';
 import { PlantaOperadoresTab, type PlantaOperadoresTabHandle } from './PlantaOperadoresTab';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/core/components/ui/alert-dialog';
+import { ConfirmarExclusao } from '@/core/features/sincronizacao/ConfirmarExclusao';
 
 interface PlantaModalProps {
   isOpen: boolean;
@@ -151,14 +139,18 @@ export function PlantaModal({
     }
   };
 
-  const handleDeleteConfirm = async () => {
+  // `confirmarCompartilhado`: o diálogo mostrou o que é compartilhado com o Service e a pessoa
+  // digitou o nome (a API recusa sem ele, 409; 10/11/2026)
+  const handleDeleteConfirm = async (confirmarCompartilhado: boolean) => {
     if (!planta) return;
 
     setIsDeleting(true);
     setSubmitError(null);
 
     try {
-      await httpClient.delete(`/plantas/${planta.id}`);
+      await httpClient.delete(`/plantas/${planta.id.trim()}`, {
+        params: confirmarCompartilhado ? { confirmarCompartilhado: true } : undefined,
+      });
       setSubmitSuccess(`Planta ${planta.nome} deletada com sucesso!`);
       setShowDeleteDialog(false);
 
@@ -306,29 +298,19 @@ export function PlantaModal({
         </div>
       )}
 
-      {/* DIALOG DE CONFIRMAÇÃO DE DELETE */}
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
-            <AlertDialogDescription>
-              Tem certeza que deseja excluir a planta <strong>{planta?.nome}</strong>?
-              <br /><br />
-              Esta ação não pode ser desfeita e irá remover permanentemente a planta, suas unidades e equipamentos vinculados.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteConfirm}
-              disabled={isDeleting}
-              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
-            >
-              {isDeleting ? 'Excluindo...' : 'Excluir'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* A confirmação confere o que é compartilhado com o Service antes (10/11/2026) */}
+      {planta && (
+        <ConfirmarExclusao
+          aberto={showDeleteDialog}
+          onAbertoChange={setShowDeleteDialog}
+          recurso="plantas"
+          id={planta.id}
+          nome={planta.nome}
+          oQueSai="a planta, as instalações e os equipamentos dela"
+          excluindo={isDeleting}
+          onConfirmar={handleDeleteConfirm}
+        />
+      )}
     </BaseModal>
   );
 }

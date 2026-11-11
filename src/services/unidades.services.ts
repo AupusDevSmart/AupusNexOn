@@ -108,12 +108,13 @@ class UnidadesService {
   }
 
   // Excluir unidade
-  async excluirUnidade(id: string): Promise<void> {
+  /** `confirmarCompartilhado`: a tela mostrou o que é compartilhado com o Service (a API recusa sem ele, 409) */
+  async excluirUnidade(id: string, confirmarCompartilhado = false): Promise<void> {
     try {
-      await api.delete(`${this.baseUrl}/${id}`);
-
-      // Exibir sucesso
-      alert('Unidade excluída com sucesso!');
+      await api.delete(`${this.baseUrl}/${id.trim()}`, {
+        params: confirmarCompartilhado ? { confirmarCompartilhado: true } : undefined,
+      });
+      // O alert() nativo de sucesso saiu (10/11/2026): a tela já avisa com o toast dela
     } catch (error) {
       console.error('Erro ao excluir unidade:', error);
       throw error;
@@ -315,7 +316,8 @@ export const getAllUnidades = (filters: FilterUnidadeDto) => unidadesService.lis
 export const getUnidadeById = (id: string) => unidadesService.buscarUnidade(id);
 export const createUnidade = (dados: CreateUnidadeDto) => unidadesService.criarUnidade(dados);
 export const updateUnidade = (id: string, dados: UpdateUnidadeDto) => unidadesService.atualizarUnidade(id, dados);
-export const deleteUnidade = (id: string) => unidadesService.excluirUnidade(id);
+export const deleteUnidade = (alvo: string | { id: string; confirmarCompartilhado?: boolean }) =>
+  typeof alvo === 'string' ? unidadesService.excluirUnidade(alvo) : unidadesService.excluirUnidade(alvo.id, alvo.confirmarCompartilhado === true);
 export const getUnidadesByPlanta = (plantaId: string) => unidadesService.buscarUnidadesPorPlanta(plantaId);
 export const getUnidadesByProprietario = (proprietarioId: string) => unidadesService.buscarUnidadesPorProprietario(proprietarioId);
 export const getUnidadeEstatisticas = (id: string) => unidadesService.buscarEstatisticasUnidade(id);

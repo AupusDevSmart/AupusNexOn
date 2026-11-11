@@ -1,5 +1,6 @@
 import React from 'react';
 import ErrorBoundary from './ErrorBoundary';
+import { AvisoDeExclusoes } from '@/core/features/sincronizacao/AvisoDeExclusoes';
 import { useRolagemLembrada } from '@/hooks/useEstadoLembrado';
 
 export function Layout({ children, className = '', asidePosition = 'left' }: { children: React.ReactNode, className?: string, asidePosition?: 'left' | 'right' }) {
@@ -52,6 +53,8 @@ Layout.Main = function Main({ children, className = '', withSidebar = false }: {
         ref={ref}
         className={`bg-secondary h-full ${withSidebar ? 'w-full lg:w-5/6' : 'w-full'} min-w-0 flex flex-col items-start justify-start overflow-y-auto overflow-x-hidden [&>*]:max-w-full p-3 sm:p-6 gap-4 sm:gap-6 pt-2 lg:pt-2 ${className}`}
       >
+        {/* As exclusões feitas no Service esperando decisão (10/11/2026): só para quem gerencia o compartilhamento */}
+        <AvisoDeExclusoes />
         {children}
       </main>
     </ErrorBoundary>

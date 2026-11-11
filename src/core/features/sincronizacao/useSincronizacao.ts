@@ -10,6 +10,12 @@ export interface EstadoSincronizacao {
   atualizado_em: string | null;
   pendentes: number;
   com_erro: boolean;
+  /**
+   * O outro produto respondeu e não gravou (lá deixou de ser compartilhado, está
+   * apagado, o e-mail é de outra conta): o porquê, ou nulo. Antes o selo dizia
+   * "compartilhado" e nada chegava lá (10/11/2026).
+   */
+  recusado?: string | null;
 }
 
 /** O nome do outro produto, para os rotulos dizerem para ONDE vai. */
