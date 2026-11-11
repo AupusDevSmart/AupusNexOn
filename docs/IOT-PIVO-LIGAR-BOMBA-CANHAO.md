@@ -87,7 +87,7 @@ Pulso no Desligar → confirma a parada (Girando em 0) → `perc off` → canhã
 - Reinício exige o ponto Desligar (ou saídas mantidas): sem como parar o pivô, a API recusa (400).
 - **Só o percentímetro mudou** (e o ponto Percentimetro está na TON): não reinicia; usa o `POST /percentimetro` da seção 6b e o alerta diz que vale sem desligar.
 - Trilha: `Reiniciar com novas opções · <antes> → <depois>`, com usuário e aparelho (`GET /logs-mqtt?tipo=comando&equipamentoId=…&search=Reiniciar`).
-- **Layout da operação (teste):** aba Configuração → "Layout da operação · teste", preferência do navegador (`nexon:pivo:layout`):
+- **Layout da operação (teste):** aba Configuração → "Layout da operação · teste", preferência do navegador (`nexon:pivo:layout`), só para quem tem a configuração técnica (admin e analista; os demais ficam no Modal):
   - **Modal** (padrão): um botão só, tudo no Planejamento.
   - **Painel:** com o pivô ligado, direção, água, percentímetro/lâmina e parada ficam editáveis na ficha, com **Desligar** e **Salvar e enviar**.
   - **Atalhos:** com o pivô ligado, direção, água e percentímetro (±1, ±10) em botões de um toque, com **Desligar** e **Salvar e enviar**.
