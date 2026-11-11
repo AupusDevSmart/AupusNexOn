@@ -126,6 +126,15 @@ export function VinculosTonSheet({
     } catch (e: any) { setMsg(e?.response?.data?.error?.message || e?.response?.data?.message || 'Falha ao salvar o pulso'); }
   };
 
+  /** Nível que significa "atuado" no status: Alto (padrão, invertido = false) ou Baixo (invertido = true). */
+  const salvarNivel = async (bi: TonBi, baixo: boolean) => {
+    setMsg(null);
+    try {
+      await tonBiApi.update(tid, bi.id, { invertido: baixo });
+      await carregar();
+    } catch (e: any) { setMsg(e?.response?.data?.error?.message || e?.response?.data?.message || 'Falha ao salvar o nível'); }
+  };
+
   const associarDevice = async (compId: string, elementoId: string, recarregar = true) => {
     setMsg(null);
     try {
@@ -159,6 +168,7 @@ export function VinculosTonSheet({
     const atual = canalDoPonto(kind, ponto.id);
     const lista = canais(kind, ponto.id);
     const bo = kind === 'bo' ? bos.find((r) => r.equipamento_ponto_id === ponto.id) : undefined;
+    const bi = kind === 'bi' ? bis.find((r) => r.equipamento_ponto_id === ponto.id) : undefined;
     return (
       <div className="flex items-center gap-2 px-3 py-1.5 border-t text-sm">
         <div className="flex-1 truncate">{ponto.nome}</div>
@@ -192,6 +202,22 @@ export function VinculosTonSheet({
               </label>
             )}
           </div>
+        )}
+        {bi?.id && (
+          // Nível que o NexON e a TON interpretam como o status ATIVO (ex.: Seguranca em Alto = desalinhado)
+          <label className="flex items-center gap-1 text-xs text-muted-foreground"
+            title={`Com o sinal neste nível, "${ponto.nome}" está ativo/atuado. Padrão: Alto.`}>
+            ativo em
+            <select
+              aria-label={`Nível ativo de ${ponto.nome}`}
+              value={bi.invertido ? 'baixo' : 'alto'}
+              onChange={(ev) => void salvarNivel(bi, ev.target.value === 'baixo')}
+              className="h-8 rounded-md border border-input bg-background px-1.5 text-xs"
+            >
+              <option value="alto">Alto</option>
+              <option value="baixo">Baixo</option>
+            </select>
+          </label>
         )}
         <Select
           value={atual != null ? String(atual) : NONE}
