@@ -213,7 +213,7 @@ function ensureIoTScripts(): Promise<void> {
     //
     // O catalogo de dispositivos foi movido pro backend (GET /iot-catalog/device-catalog.js)
     // — ele revalida sozinho via ETag. Os demais ainda sao estaticos.
-    const IOT_SCRIPTS_VERSION = '20261111c-sat-entradas';
+    const IOT_SCRIPTS_VERSION = '20261111d-pivo-fase3';
     const scripts = [
       `${BASE_URL}/iot-catalog/device-catalog.js`,
       // Pivo na TON (lib pivo_local + glue), usado pelos 2 geradores: gerado por tools/sync-pivo-lib.mjs

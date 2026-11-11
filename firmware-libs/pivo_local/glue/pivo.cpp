@@ -396,7 +396,16 @@ int pivo_cmd(const String& cmd, char* msg, size_t sz) {
         if (resto && *resto) { strncpy(mot, resto, sizeof(mot) - 1); mot[sizeof(mot) - 1] = 0; for (char* c = mot; *c; c++) if (*c == ' ' || *c == '"' || *c == '\\') *c = '_'; }
         Estado e = _m->estado();
         if (_m->desligar(mot, millis())) return _ok(msg, sz, "pivo_desligando");
-        return _ok(msg, sz, e == DESLIGANDO ? "pivo_ja_desligando" : "pivo_ja_parado");
+        if (e == PARADO) {
+            // Sequencia local parada, mas as BOs podem ter sido ligadas por fora (rN on, sequencia
+            // antiga no servidor, percentimetro legado): desliga TODAS as BOs do pivo na hora.
+            for (int k = 0; k < 6; k++) if (_bo[k]) { relay_set(_bo[k], false); _apl[k] = 0; }
+            if (_leg_bo) relay_set(_leg_bo, false);
+            _leg_pm = -1; _leg_ini = 0; _leg_saida = -1; _perc_on = false;
+            pivo_publicar_agora();
+            return _ok(msg, sz, "pivo_ja_parado");
+        }
+        return _ok(msg, sz, "pivo_ja_desligando");
     }
     if (!strcmp(verbo, "perc")) {
         char mot[32];
@@ -411,7 +420,14 @@ int pivo_cmd(const String& cmd, char* msg, size_t sz) {
         if (!_m->comandarCanhao(on, millis(), mot, sizeof(mot))) { snprintf(msg, sz, "pivo_canhao_%s", mot); return 0; }
         return _ok(msg, sz, on ? "pivo_canhao_on" : "pivo_canhao_off");
     }
-    if (!strcmp(verbo, "status")) { pivo_publicar_agora(); return _ok(msg, sz, "pivo_status"); }
+    if (!strcmp(verbo, "status")) {
+        // Estado no proprio ack (chega mesmo no satelite LoRa, onde o status so' sai no POLL):
+        // "pivo_st <estado> <passo> <permil> <falha|->" — estado 0 parado, 1 ligando, 2 irrigando, 3 desligando.
+        pivo_publicar_agora();
+        const char* f = _m->falha()[0] ? _m->falha() : (_falha_boot[0] ? _falha_boot : "-");
+        snprintf(msg, sz, "pivo_st %d %d %d %s", (int)_m->estado(), (int)_m->passo(), (int)_m->saidas().perc_pm, f);
+        return 1;
+    }
     if (!strcmp(verbo, "cfg")) {
         Serial.printf("[PIVO] cfg=%d BO %u %u %u %u %u %u | BI %u %u %u %u %u %u inv=0x%02X | tempos %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu | enc %lu inv=%d zero=%.1f\n",
             _cfg_ok, _bo[0], _bo[1], _bo[2], _bo[3], _bo[4], _bo[5], _bi[0], _bi[1], _bi[2], _bi[3], _bi[4], _bi[5], _inv,

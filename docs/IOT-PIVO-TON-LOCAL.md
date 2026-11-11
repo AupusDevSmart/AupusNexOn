@@ -1,6 +1,6 @@
 # Pivô controlado pela TON (sequência local, sem depender de internet)
 
-> **Status:** 11/11/2026 · Fase 1 (lib) e Fase 2 (firmware V1/V2) prontas e compiladas · Fases 3–5 pendentes.
+> **Status:** 11/11/2026 · Fases 1 (lib), 2 (firmware V1/V2) e 3 (backend) prontas · Fase 4 (tela, outro dev / NEXON-98) e 5 (bancada) em andamento.
 > **Substitui:** a sequência no servidor de [IOT-PIVO-LIGAR-BOMBA-CANHAO.md](IOT-PIVO-LIGAR-BOMBA-CANHAO.md) (pulsos, Ligar/Desligar do painel, pontos em qualquer TON).
 > **Reaproveita:** percentímetro local ([IOT-PIVO-PERCENTIMETRO-LAMINA.md](IOT-PIVO-PERCENTIMETRO-LAMINA.md)) e encoder ([IOT-PIVO-ENCODER-POSICAO.md](IOT-PIVO-ENCODER-POSICAO.md)).
 
@@ -147,3 +147,40 @@ io/tempos/enc ficam na NVS e só são aceitos com o pivô parado. Recusas voltam
 - Reinício por falta de broker, memória baixa, comando `reboot` e OTA são **recusados com o pivô ligado**.
 - Num reinício as saídas caem (`RELAYS_RESTORE_ON_SW_RESET = 0`) e a TON publica a falha `reinicio`.
 - **Pendente:** os comandos manuais `rN on/off/pulse` ainda atuam nas BOs do pivô durante a irrigação.
+
+## 10. Backend (Fase 3, implementado 11/11/2026)
+
+`aupus-nexon-api/src/modules/pivos/pivo-ton.service.ts` (testes em `pivo-ton.service.spec.ts`). A API `/pivos/:id/acionar`, `/percentimetro` e `/canhao` **não muda**: por dentro, `executar()` desvia para a TON quando ela é o alvo.
+
+**Quando a sequência vai para a TON** (`alvo()`):
+- Girar direita, girar esquerda e percentímetro ligados a BOs. Todas as BOs do pivô numa TON só.
+- A TON tem o firmware novo: já publicou `<base>/pivo`, ou responde `pivo status`. O resultado fica em cache por 30 min; firmware antigo, por 10 min.
+- Fora disso, a sequência antiga do servidor segue como antes.
+
+**Ligar:**
+1. Manda `pivo io/tempos/enc` só quando a configuração mudou. O mapa sai dos pontos por papel e o `invertido` da BI vira a polaridade. O encoder só vai se o tópico dele estiver debaixo do tópico da TON.
+2. Manda `pivo ligar <id8> …`. O id8 são os 8 últimos caracteres da sequência, para o comando caber no LoRa (menos de 60 caracteres).
+3. **Parada:**
+   - Por tempo: vai em segundos.
+   - Sem parada: 7 dias.
+   - Voltas ou ângulo **com encoder na TON**: a própria TON confere.
+   - Voltas ou ângulo **sem encoder**: tempo estimado (tempo de volta a 100 % ÷ percentímetro).
+   - Segmentos ainda não vão (não cabem no LoRa).
+4. Acompanha até a TON reportar **irrigando** (`e=2`), com três fontes:
+   - os eventos viram passos da sequência na ficha;
+   - a falha encerra com o motivo;
+   - a cada 8 s pergunta `pivo status` em silêncio (o ack traz o estado), porque o satélite só manda status no POLL.
+
+**Desligar:**
+- Manda `pivo desligar` e espera `e=0`.
+- Com a sequência local já parada, a TON desliga na hora todas as BOs do pivô (`pivo_ja_parado`). Isso vale também para saídas ligadas pelo fluxo antigo ou por `rN on`.
+
+**Reinício:** desliga, espera parar e liga com o plano novo.
+
+**Com o pivô ligado pela TON:**
+- Percentímetro e canhão viram `pivo perc` e `pivo canhao`.
+- O `naTon` gravado na irrigação faz a automação do servidor **não** mandar parada; quem para é a TON. O `parar_em` fica só para a ficha.
+- Parada feita pela TON sozinha (programada, segurança, falha, reinício) vai para a trilha do pivô.
+- `GET /pivos/:id/estado` traz `pivo.ton_local`: estado, passo, falha, ângulo, percorrido e alvo, como a TON reportou.
+
+**MQTT:** `<base>/pivo` e `<base>/pivo/evento` são assinados e roteados antes do posto (`/pivo/evento` também termina em `/evento`).
