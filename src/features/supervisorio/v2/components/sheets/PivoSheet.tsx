@@ -378,7 +378,9 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   // stop = desligar · start = ligar pelo Planejamento · restart = pivô ligado reinicia com as
   // novas opções · live = só o percentímetro mudou (a TON troca sem desligar).
   const [confirmKind, setConfirmKind] = useState<'stop' | 'start' | 'restart' | 'live'>('start');
-  const layout = usePivoLayout((x) => x.layout);
+  // Layout em teste só para quem configura (admin e analista): o cliente final fica no Modal.
+  const layoutSalvo = usePivoLayout((x) => x.layout);
+  const layout = perfil.tecnico ? layoutSalvo : 'modal';
   const [irrAba, setIrrAba] = useState<AbaIrrigacao>('simples');
   const [envio, setEnvio] = useState<EnvioIrrigacao | null>(null);
   // Última irrigação enviada por este navegador (a TON só recebe direção e liga/desliga).
@@ -978,7 +980,8 @@ const numOk = (v: string, min: number, max: number) => { const n = Number(String
 const secao = (t: string, mt: number) => <span style={{ ...s.label, marginTop: mt }}>{t}</span>;
 
 /** Layout da aba Operação (NEXON-98): três jeitos de editar com o pivô ligado, para testar. Fica
- *  neste navegador — não é configuração do pivô, não entra em "Revisar alterações". */
+ *  neste navegador — não é configuração do pivô, não entra em "Revisar alterações". Só aparece
+ *  para quem tem a configuração técnica (admin e analista): o cliente final não vê opção de teste. */
 function LayoutOperacao() {
   const layout = usePivoLayout((x) => x.layout);
   const setLayout = usePivoLayout((x) => x.setLayout);
@@ -1277,8 +1280,8 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
 
   return (
     <div style={{ padding: '20px 24px 28px 24px', ...col(10) }}>
-      <LayoutOperacao />
-      {secao('BOMBEAMENTO', 14)}
+      {perfil.tecnico && <LayoutOperacao />}
+      {secao('BOMBEAMENTO', perfil.tecnico ? 14 : 4)}
       <div style={{ ...s.card, padding: '0 16px' }}>
         {conj ? (
           <Linha first titulo="Bomba" sub="Sistema conjugado · um pivô por vez">
