@@ -126,7 +126,7 @@ Código: lib `firmware-libs/pivo_local/` (testes: `g++ -std=c++17 -o t test_pivo
 
 | Comando | Quando |
 |---|---|
-| `pivo io <bo1..bo6> <bi1..bi6> <inv>` | Mapa por papel. BO: bomba, válvula, dir, esq, percentímetro, canhão. BI: pressão, tensão, gir. dir, gir. esq, segurança, canhão. `0` = não ligado. `inv` = 6 dígitos (1 = BI ativa em baixo). Recusa BO repetida. **Sem esse comando a TON não liga** (`pivo_sem_config`). |
+| `pivo io <bo1..bo6> <bi1..bi6> <inv>` | Mapa por papel. BO: bomba, válvula, dir, esq, percentímetro, canhão. BI: pressão, tensão, gir. dir, gir. esq, segurança, canhão. `0` = não ligado. `inv` = 6 dígitos (1 = BI ativa em baixo). Recusa BO repetida. A TON já sai da gravação com o I/O padrão ativo (BO01–06 / BI01–06, ativo em alto); o NexON reenvia se o mapa for outro. |
 | `pivo tempos <tensão> <pressurização> <giro> <canhão> <bomba> <parada> <tolerância> <sem_posição> <janela_giro> <ciclo_perc>` | Segundos. Padrão `2 120 30 30 30 60 3 300 600 60`. |
 | `pivo enc <resolução> <inv 0/1> <zero°>` | `0` = sem encoder (só parada por tempo). |
 | `pivo ligar <id> <d/e> <água 0/1> <permil> <canhão 0/1> <v/a/t> <valor> [s <ini°>:<permil>:<canhão> …]` | `v` voltas, `a` ângulo final, `t` duração em s (o horário de parada vira duração no envio). Até 8 segmentos em ordem crescente. |
@@ -184,3 +184,9 @@ io/tempos/enc ficam na NVS e só são aceitos com o pivô parado. Recusas voltam
 - `GET /pivos/:id/estado` traz `pivo.ton_local`: estado, passo, falha, ângulo, percorrido e alvo, como a TON reportou.
 
 **MQTT:** `<base>/pivo` e `<base>/pivo/evento` são assinados e roteados antes do posto (`/pivo/evento` também termina em `/evento`).
+
+## 11. Tempo de resposta (11/11/2026, bancada)
+
+- O controle roda em `pivo_tick()`, chamado logo depois de ler as entradas (a cada 50 ms) e antes de qualquer envio pelo rádio. A BI muda e a BO bate no mesmo ciclo.
+- **No satélite LoRa, a TON não manda eventos.** Cada pacote travava o loop por 0,5–0,8 s esperando o rádio, e enquanto transmitia ela perdia comandos (`lora_no_ack`). O backend monta os passos pelo código de passo do status e pergunta `pivo status` a cada 5 s durante a sequência.
+- Continua passando pelo LoRa só o que vai e volta do NexON: o comando chegar à TON e o estado chegar à ficha (alguns segundos). A sequência em si não depende disso.

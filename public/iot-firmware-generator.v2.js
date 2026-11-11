@@ -7659,7 +7659,7 @@ void loop() {
         last_input_scan = now;
         bb_stage(BB_ENTRADAS);
         inputs_scan();
-${spec.has_relays ? '        relays_health_tick();   // C3 anti-travamento: confere os reles no I2C a cada 2 s\n        _relay_pulse_tick();    // pulso local: desliga o rele no fim do "rN pulse <ms>"\n' : ''}
+${spec.has_relays ? '        relays_health_tick();   // C3 anti-travamento: confere os reles no I2C a cada 2 s\n        _relay_pulse_tick();    // pulso local: desliga o rele no fim do "rN pulse <ms>"\n' : ''}${spec.pivo && spec.has_relays ? '        pivo_tick();            // pivo: controle logo apos ler as entradas, antes de qualquer radio\n' : ''}
         static bool _io_force = true;        // forca publicacao inicial (boot)
         static bool _mqtt_was_up = false;
         static uint8_t _prev_out = 0;

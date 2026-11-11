@@ -31,7 +31,8 @@ enum { BO_BOMBA = 0, BO_VALVULA, BO_DIR, BO_ESQ, BO_PERC, BO_CANHAO };
 enum { BI_PRESSAO = 0, BI_TENSAO, BI_GIR_DIR, BI_GIR_ESQ, BI_SEGURANCA, BI_CANHAO };
 #define PIVO_IO_MAX 8
 
-// ---- configuracao (NVS "pivo"); padrao = I/O padrao do pivo, mas so' liga depois do 1o "pivo io"
+// ---- configuracao (NVS "pivo"); sai da gravacao com o I/O PADRAO (BO01-06/BI01-06, ativo em alto):
+// a TON ja' liga/desliga sozinha logo apos gravar. O NexON sobrescreve com "pivo io" se o mapa for outro.
 static uint8_t  _bo[6] = {1, 2, 3, 4, 5, 6};
 static uint8_t  _bi[6] = {1, 2, 3, 4, 5, 6};
 static uint8_t  _inv = 0;                // bit k = BI do papel k ativa em baixo
@@ -40,7 +41,7 @@ static uint32_t _tp[10] = {2, 120, 30, 30, 30, 60, 3, 300, 600, 60};
 static uint32_t _enc_res = 0;            // 0 = sem encoder
 static bool     _enc_inv = false;
 static float    _enc_zero = 0;
-static bool     _cfg_ok = false;
+static bool     _cfg_ok = true;
 
 // ---- estado do glue
 static Maquina* _m = nullptr;
@@ -58,6 +59,7 @@ static bool     _ativo_nvs = false;
 // Satelite LoRa mestre-puxa: frame espontaneo colide com o POLL do gateway (e com as
 // entradas, que mudam no mesmo instante). O status vai so' na resposta ao POLL.
 static bool     _so_poll = false;
+static uint8_t  _bi_sem_atual = 0;       // entradas semanticas do ultimo pivo_tick()
 // percentimetro LEGADO (comando "perc" do servidor), so' com a sequencia local parada
 static uint8_t  _leg_bo = 0;
 static int16_t  _leg_pm = -1;            // -1 = desligado
@@ -152,7 +154,7 @@ void pivo_init() {
         _enc_res = pr.getUInt("er", 0);
         _enc_inv = pr.getBool("ei", false);
         _enc_zero = pr.getFloat("ez", 0);
-        _cfg_ok = pr.getBool("ok", false);
+        _cfg_ok = pr.getBool("ok", true);
         estava = pr.getBool("at", false);
         pr.getString("id", id, sizeof(id));
         pr.end();
@@ -247,7 +249,9 @@ void pivo_publicar(pivo_publish_fn publish) {
     _publicarStatus(publish);
 }
 
-void pivo_loop(pivo_publish_fn publish) {
+// Controle do pivo: entradas -> maquina -> saidas. Sem radio/MQTT: e' chamado logo apos o
+// inputs_scan() (a BO bate no mesmo ciclo em que a BI mudou) e de novo no pivo_loop().
+void pivo_tick() {
     if (!_m) return;
     unsigned long now = millis();
     uint8_t st = inputs_get_state();
@@ -290,10 +294,20 @@ void pivo_loop(pivo_publish_fn publish) {
         _perc_on = _percSaida(o.perc_pm, ladoOk, now);
         _setBo(BO_PERC, _perc_on);
     }
+    _bi_sem_atual = (in.pressao ? 1 : 0) | (in.tensao ? 2 : 0) | (in.gir_dir ? 4 : 0) | (in.gir_esq ? 8 : 0) | (in.desalinhado ? 16 : 0) | (in.canhao ? 32 : 0);
+}
+
+void pivo_loop(pivo_publish_fn publish) {
+    if (!_m) return;
+    pivo_tick();
+    unsigned long now = millis();
 
     // Publicacao: eventos na hora; status na mudanca (min 1 s) e a cada 30 s ligado / 60 s parado
-    uint8_t biSem = (in.pressao ? 1 : 0) | (in.tensao ? 2 : 0) | (in.gir_dir ? 4 : 0) | (in.gir_esq ? 8 : 0) | (in.desalinhado ? 16 : 0) | (in.canhao ? 32 : 0);
-    if (biSem != _bi_ant) { _bi_ant = biSem; _pub_agora = true; }
+    if (_bi_sem_atual != _bi_ant) { _bi_ant = _bi_sem_atual; _pub_agora = true; }
+    // Satelite LoRa: eventos NAO vao pelo radio (cada frame trava o loop ~0,5-0,8 s esperando o
+    // radio e ocupa o canal dos comandos). Estado/passo/falha vao no status do POLL e no ack do
+    // "pivo status". Descarta a fila.
+    if (_so_poll) _evn = 0;
     while (_evn && publish) {
         EvPivo& v = _evq[_evh];
         char ev[128];
