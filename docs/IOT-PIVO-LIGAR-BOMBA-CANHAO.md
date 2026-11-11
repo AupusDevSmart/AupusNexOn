@@ -59,7 +59,7 @@ Pulso no Desligar → confirma a parada (Girando em 0) → `perc off` → canhã
 ## 6. Canhão na ficha (com o pivô ligado)
 
 - Mostra o estado pelo Canhao_ligado.
-- Um switch de um toque na ficha (**Canhão final**), no lugar do botão Ativar/Desativar. **Só aparece com o pivô girando**; com o pivô desligado some — a não ser que o canhão tenha ficado ligado, quando aparece para dar como desligar (NEXON-98).
+- Um switch de um toque na ficha (**Canhão final**), no lugar do botão Ativar/Desativar. **Só aparece com o pivô girando**; com o pivô desligado não aparece, nem para desligar (pedido do dono, NEXON-98) — quem desliga o canhão aí é o Desligar do pivô, e a trilha avisa se não desligou. Sem texto de apoio: o switch já diz o estado.
 - No Planejamento o switch do canhão é o último controle da tela, depois da Parada.
 - Travas, igual ao pivô: não ativa se já está ativo, não desativa se já está desativado. Com estado desconhecido, só deixa desativar.
 - Confirmação pelo status, com o mesmo tempo da "Confirmação do giro".
