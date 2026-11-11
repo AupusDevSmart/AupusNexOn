@@ -15,6 +15,10 @@ import { ChartTooltip } from '@/components/charts/tooltip';
 import { COR as COR_GRAF, corSerie } from '@/components/graficos/cores';
 import { linhasDeBuckets } from '@/components/graficos/linhas-de-buckets';
 import { EixoTempo } from '@/components/graficos/eixo-tempo';
+import { BarChart } from '@/components/charts/bar-chart';
+import { Bar } from '@/components/charts/bar';
+import { BarXAxis } from '@/components/charts/bar-x-axis';
+import { diasEntre, mediasPorDia, linhasPorDia } from '@/components/graficos/barras-por-dia';
 import { useUserStore } from '@/store/useUserStore';
 import { MSG_SOMENTE_LEITURA } from '@/store/papeis';
 
@@ -205,7 +209,10 @@ export function GraficoNx({ equipamentoId, titulo = 'Gráfico', resumo, catalogo
   const N = per === 'hoje' ? 96 : per === 'semana' ? 168 : 180;
   const dados = useMemo(() => {
     if (!pts) return null;
-    const vals = ativos.map((id) => bucketize(pts, ini.getTime(), fimEixo.getTime(), N, byId.get(id)!.pick));
+    // Hoje = linha (média a cada 15 min); Semana e Mês = barras, uma por dia (NEXON-99).
+    const dias = per === 'hoje' ? [] : diasEntre(ini, fimEixo);
+    const porDia = per === 'hoje' ? null : mediasPorDia(pts, dias, Object.fromEntries(ativos.map((id) => [id, byId.get(id)!.pick])));
+    const vals = ativos.map((id) => (porDia ? porDia[id] : bucketize(pts, ini.getTime(), fimEixo.getTime(), N, byId.get(id)!.pick)));
     // Base por unidade: o bklit começa o eixo em 0 quando tudo é ≥ 0. Para V/Hz/FP o
     // traço é plotado como (valor − base) e eixo/tooltip somam a base de volta — é o
     // "zoom" no trecho lido que o SVG antigo fazia. kW/kvar/A (e qualquer unidade com
@@ -219,9 +226,14 @@ export function GraficoNx({ equipamentoId, titulo = 'Gráfico', resumo, catalogo
     });
     const series: Record<string, Array<number | null>> = {};
     ativos.forEach((id, k) => { const b = base[byId.get(id)!.unit]; series[id] = vals[k].map((v) => (v == null ? null : v - b)); });
+    if (porDia) {
+      const barras = linhasPorDia(dias, Object.fromEntries(ativos.map((id, k) => [id, vals[k]])), (id) => base[byId.get(id)!.unit]);
+      const comLeitura = barras.filter((l) => ativos.some((id) => l[`${id}Bruto`] != null));
+      return { linhas: comLeitura, barras, base, vazio: comLeitura.length === 0 };
+    }
     const linhas = linhasDeBuckets(ini.getTime(), fimEixo.getTime(), series);
-    return { linhas, base, vazio: linhas.length === 0 };
-  }, [pts, ativos.join(','), units.join(','), ini, fimEixo, N, byId]); // eslint-disable-line react-hooks/exhaustive-deps
+    return { linhas, barras: null, base, vazio: linhas.length === 0 };
+  }, [pts, ativos.join(","), units.join(","), ini, fimEixo, N, byId, per]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const dec = (u: string) => (u === 'FP' || u === 'Hz' ? 2 : u === 'V' ? 0 : 1);
   const uTxt = (u: string) => (u === 'FP' ? '' : ` ${u}`);
@@ -296,7 +308,9 @@ export function GraficoNx({ equipamentoId, titulo = 'Gráfico', resumo, catalogo
           {ultima && (
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, minHeight: 22 }}>
               <span style={{ fontSize: 13, color: NX.mudo, fontVariantNumeric: 'tabular-nums' }}>
-                Última leitura · {ultima.date.toLocaleString('pt-BR', per === 'hoje' ? { hour: '2-digit', minute: '2-digit' } : { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                {per === 'hoje'
+                  ? `Última leitura · ${ultima.date.toLocaleString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
+                  : `Média do dia · ${ultima.date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}`}
               </span>
               <span style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: '2px 14px' }}>
                 {ativos.map((id) => (
@@ -313,6 +327,20 @@ export function GraficoNx({ equipamentoId, titulo = 'Gráfico', resumo, catalogo
             <div style={{ height: 170, display: 'grid', placeItems: 'center', fontSize: 12, color: NX.mudo }}>Sem leituras no período</div>
           ) : (
             <div style={{ height: 170, display: 'flex', flexDirection: 'column' }} role="img" aria-label={titulo}>
+              {per !== 'hoje' ? (
+              <BarChart data={dados?.barras ?? []} xDataKey="rotulo" aspectRatio="auto" className="min-h-0 flex-1"
+                margin={{ top: 8, right: units[1] ? 56 : 12, bottom: 24, left: 56 }} barGap={0.25} animationDuration={0}>
+                <Grid horizontal numTicksRows={4} />
+                {ativos.map((id) => (
+                  <Bar key={id} dataKey={id} yAxisId={eixoDe(id)} fill={cor(id)} lineCap={3} />
+                ))}
+                <BarXAxis maxLabels={per === 'semana' ? 7 : 10} />
+                <YAxis numTicks={4} formatValue={rotuloEixo(units[0] ?? '')} />
+                {units[1] ? <YAxis yAxisId="right" orientation="right" numTicks={4} formatValue={rotuloEixo(units[1])} /> : null}
+                <ChartTooltip showDatePill={false} showCrosshair={false} showDots={false}
+                  rows={(p) => ativos.map((id) => ({ color: cor(id), label: `${byId.get(id)!.short} (média)`, value: valorTxt(valorEm(p, id), byId.get(id)!.unit) }))} />
+              </BarChart>
+              ) : (<>
               <LineChart data={dados?.linhas ?? []} xDomain={[ini, fimEixo]} aspectRatio="auto" className="min-h-0 flex-1"
                 margin={{ top: 8, right: units[1] ? 56 : 12, bottom: 6, left: 56 }} animationDuration={0}
                 status={loading || !dados ? 'loading' : 'ready'} loadingLabel="Carregando…">
@@ -328,7 +356,8 @@ export function GraficoNx({ equipamentoId, titulo = 'Gráfico', resumo, catalogo
                 {units[1] ? <YAxis yAxisId="right" orientation="right" numTicks={4} formatValue={rotuloEixo(units[1])} /> : null}
                 <ChartTooltip showDots rows={(p) => ativos.map((id) => ({ color: cor(id), label: byId.get(id)!.short, value: valorTxt(valorEm(p, id), byId.get(id)!.unit) }))} />
               </LineChart>
-              <EixoTempo ini={ini} fim={fimEixo} margemEsq={56} margemDir={units[1] ? 56 : 12} formato={per === 'hoje' ? 'hora' : 'dia'} />
+              <EixoTempo ini={ini} fim={fimEixo} margemEsq={56} margemDir={units[1] ? 56 : 12} formato="hora" />
+              </>)}
             </div>
           )}
         </div>

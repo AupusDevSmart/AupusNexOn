@@ -115,11 +115,11 @@
 
     --radius: 1rem;
 
-    --chart-1: #5AAE39;
+    --chart-1: #3D8B22; /* contraste ≥ 3:1 no branco (NEXON-99) */
     --chart-2: #2F6FED;
-    --chart-3: #E39A12;
+    --chart-3: #B87400;
     --chart-4: #7C5CE6;
-    --chart-5: #0FA3B1;
+    --chart-5: #0C8794;
 
     --sidebar-background: 0 0% 100%;
     --sidebar-foreground: 240 40% 14%;

@@ -16,6 +16,10 @@ import { ChartTooltip } from '@/components/charts/tooltip';
 import { corSerie } from '@/components/graficos/cores';
 import { linhasDeBuckets } from '@/components/graficos/linhas-de-buckets';
 import { EixoTempo } from '@/components/graficos/eixo-tempo';
+import { BarChart } from '@/components/charts/bar-chart';
+import { Bar } from '@/components/charts/bar';
+import { BarXAxis } from '@/components/charts/bar-x-axis';
+import { diasEntre, mediasPorDia, linhasPorDia, type LinhaDia } from '@/components/graficos/barras-por-dia';
 import {
   NX, s, NxShell, NxDialog, NxDialogButtons, NxSwitchRow, IcoChevron, IcoLixo, IcoCheck2, type NxTone,
 } from './nxMock';
@@ -226,11 +230,18 @@ function GraficoPotencia({ equipamentoId, resumo, titulo = 'Gráfico de potênci
   const N = per === 'hoje' ? 96 : per === 'semana' ? 168 : 180;
   const linhas = useMemo(() => {
     if (!pts) return null;
+    // Hoje = linha (média a cada 15 min); Semana e Mês = barras, uma por dia (NEXON-99).
+    if (per !== 'hoje') {
+      const dias = diasEntre(ini, fim);
+      const barras: LinhaDia[] = linhasPorDia(dias, mediasPorDia(pts, dias, Object.fromEntries(SERIES.map((x) => [x.id, x.pick]))));
+      const vazio = !barras.some((l) => SERIES.some((x) => l[`${x.id}Bruto`] != null));
+      return { rows: [], barras, vazio };
+    }
     const series: Record<string, Array<number | null>> = {};
     SERIES.forEach((x) => { series[x.id] = bucketize(pts, ini.getTime(), fim.getTime(), N, x.pick); });
     const rows = linhasDeBuckets(ini.getTime(), fim.getTime(), series);
-    return { rows, vazio: rows.length === 0 };
-  }, [pts, ini, fim, N]);
+    return { rows, barras: null, vazio: rows.length === 0 };
+  }, [pts, ini, fim, N, per]);
   const valorTxt = (p: Record<string, unknown>, id: string) => { const b = p[`${id}Bruto`]; return typeof b === 'number' ? `${fmt(b, 1)} kW` : '—'; };
   const aba = (sel: boolean): CSSProperties => ({ height: 30, padding: '0 12px', borderRadius: 9, fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', ...(sel ? { background: NX.card } : { color: NX.mudo }) });
 
@@ -263,6 +274,15 @@ function GraficoPotencia({ equipamentoId, resumo, titulo = 'Gráfico de potênci
             <div style={{ height: 170, display: 'grid', placeItems: 'center', fontSize: 13, color: NX.mudo }}>Sem leituras no período</div>
           ) : (
             <div style={{ height: 170, display: 'flex', flexDirection: 'column' }} role="img" aria-label="Potência do pivô e da bomba">
+              {per !== 'hoje' ? (
+              <BarChart data={linhas?.barras ?? []} xDataKey="rotulo" aspectRatio="auto" className="min-h-0 flex-1" margin={{ top: 8, right: 12, bottom: 24, left: 56 }} barGap={0.25} animationDuration={0}>
+                <Grid horizontal numTicksRows={4} />
+                {SERIES.map((x) => <Bar key={x.id} dataKey={x.id} fill={x.color} lineCap={3} />)}
+                <BarXAxis maxLabels={per === 'semana' ? 7 : 10} />
+                <YAxis numTicks={4} formatValue={(v) => `${fmt(v, Number.isInteger(v) ? 0 : 1)} kW`} />
+                <ChartTooltip showDatePill={false} showCrosshair={false} showDots={false} rows={(p) => SERIES.map((x) => ({ color: x.color, label: `${x.label} (média)`, value: valorTxt(p, x.id) }))} />
+              </BarChart>
+              ) : (<>
               <LineChart data={linhas?.rows ?? []} xDomain={[ini, fim]} aspectRatio="auto" className="min-h-0 flex-1" margin={{ top: 8, right: 12, bottom: 6, left: 56 }} animationDuration={0}
                 status={loading || !linhas ? 'loading' : 'ready'} loadingLabel="Carregando…">
                 <Grid horizontal numTicksRows={4} />
@@ -270,7 +290,8 @@ function GraficoPotencia({ equipamentoId, resumo, titulo = 'Gráfico de potênci
                 <YAxis numTicks={4} formatValue={(v) => `${fmt(v, Number.isInteger(v) ? 0 : 1)} kW`} />
                 <ChartTooltip showDots rows={(p) => SERIES.map((x) => ({ color: x.color, label: x.label, value: valorTxt(p, x.id) }))} />
               </LineChart>
-              <EixoTempo ini={ini} fim={fim} margemEsq={56} margemDir={12} formato={per === 'hoje' ? 'hora' : 'dia'} />
+              <EixoTempo ini={ini} fim={fim} margemEsq={56} margemDir={12} formato="hora" />
+              </>)}
             </div>
           )}
         </div>

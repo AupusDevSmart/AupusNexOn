@@ -14,6 +14,9 @@ import { NX, s, NxShell, type NxTone } from './nxMock';
 import { RotulosUnifilar } from './InversorSheet';
 import { ControleMedConfig, ControleMedResumo } from './ControleMed';
 import { ComposedChart } from '@/components/charts/composed-chart';
+import { LineChart } from '@/components/charts/line-chart';
+import { Area } from '@/components/charts/area';
+import { curveMonotoneX } from '@visx/curve';
 import { BarChart } from '@/components/charts/bar-chart';
 import { Bar } from '@/components/charts/bar';
 import { BarXAxis } from '@/components/charts/bar-x-axis';
@@ -260,38 +263,71 @@ function Fluxo({ v }: { v: Vista }) {
   linhas.forEach((l) => { l.teto = teto; });
   const util = new Date().getDay() !== 0 && new Date().getDay() !== 6;
   const [p0, p1] = horarios.ponta;
-  const ponta = per === 'hoje' && util && p1 > p0;
-  const vazio = (per === 'hoje' ? hoje : ciclo) != null && !linhas.some((l) => l.lido);
+  const ponta = (per as Per) === 'hoje' && util && p1 > p0;
+  const vazio = ((per as Per) === 'hoje' ? hoje : ciclo) != null && !linhas.some((l) => l.lido);
   const item: CSSProperties = { display: 'flex', alignItems: 'center', gap: 6 };
   return (
     <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
       {vazio ? (
         <div style={{ height: 160, display: 'grid', placeItems: 'center', fontSize: 12, color: NX.mudo }}>Sem leituras no período</div>
       ) : (
-        <div style={{ height: 160 }} role="img" aria-label={per === 'hoje' ? 'Fluxo na rede por intervalo de 15 minutos hoje' : 'Demanda máxima de 15 minutos por dia do ciclo'}>
-          <ComposedChart data={linhas} stacked={per === 'hoje'} aspectRatio="auto" className="h-full"
+        <div style={{ height: 160 }} role="img" aria-label={(per as Per) === 'hoje' ? 'Fluxo na rede por intervalo de 15 minutos hoje' : 'Demanda máxima de 15 minutos por dia do ciclo'}>
+          {per === 'hoje' ? (
+          // Hoje = linha (NEXON-99): só os intervalos lidos entram; o eixo cobre o dia inteiro pelo xDomain.
+          <LineChart data={linhas.filter((l) => l.lido)} xDomain={[new Date(dia0), new Date(dia0 + DIA)]} aspectRatio="auto" className="h-full"
             margin={{ top: 8, right: 12, bottom: 24, left: 56 }} animationDuration={0}>
             <Grid horizontal numTicksRows={4} highlightRowValues={contr != null ? [contr] : []} highlightRowStroke={COR.neutro} highlightRowStrokeDasharray="5,5" />
-            <SeriesBar dataKey="consumo" fill={VERDE} radius={1} animate={false} />
-            {gen ? <SeriesBar dataKey="injecao" fill={INJ} radius={1} animate={false} /> : null}
+            <Area dataKey="consumo" fill={VERDE} fillOpacity={0.2} stroke={VERDE} strokeWidth={2} curve={curveMonotoneX} animate={false} />
+            {gen ? <Area dataKey="injecao" fill={INJ} fillOpacity={0.2} stroke={INJ} strokeWidth={2} curve={curveMonotoneX} animate={false} /> : null}
             <Line dataKey="teto" {...LINHA_SO_DOMINIO} />
-            <XAxis numTicks={5} />
+            <XAxis numTicks={5} {...((per as Per) === 'hoje' ? { tickMode: 'domain' as const } : {})} />
             <YAxis numTicks={4} formatValue={(x) => `${n0(x)} kW`} />
             {ponta ? <ReferenceArea x1={new Date(dia0 + p0 * 3_600_000 - Q15 / 2)} x2={new Date(dia0 + p1 * 3_600_000 - Q15 / 2)} fill={VERM} fillOpacity={0.07} strokeWidth={0} fadeEdges={false} /> : null}
             {tol != null ? <ReferenceArea y1={tol} y2={teto * 2} fill={VERM} fillOpacity={0.05} stroke={VERM} strokeDasharray="2,4" fadeEdges={false} /> : null}
             <ChartTooltip showCrosshair={false} showDots={false} content={({ point }) => {
               const l = point as LinhaFluxo;
               const t = l.date.getTime();
-              const titulo = per === 'hoje' ? `${hhmm(t)}–${hhmm(t + Q15)}` : ddmm(t);
+              const titulo = (per as Per) === 'hoje' ? `${hhmm(t)}–${hhmm(t + Q15)}` : ddmm(t);
               if (!l.lido) return <TooltipDestaque titulo={titulo} valor="—" rotulo="Sem leitura" />;
               const injecao = gen && l.injecao > 0;
-              const principal = per === 'hoje' && injecao ? { v: l.injecao, r: 'Injeção' } : { v: l.consumo, r: per === 'hoje' ? 'Consumo' : 'Demanda máxima' };
+              const principal = (per as Per) === 'hoje' && injecao ? { v: l.injecao, r: 'Injeção' } : { v: l.consumo, r: (per as Per) === 'hoje' ? 'Consumo' : 'Demanda máxima' };
               return (
                 <TooltipDestaque
                   titulo={titulo}
                   valor={kwTxt(principal.v)} unidade="kW" rotulo={principal.r}
                   linhas={[
-                    ...(per === 'ciclo' && injecao ? [{ label: 'Injeção máxima', value: `${kwTxt(l.injecao)} kW`, cor: INJ }] : []),
+                    ...((per as Per) === 'ciclo' && injecao ? [{ label: 'Injeção máxima', value: `${kwTxt(l.injecao)} kW`, cor: INJ }] : []),
+                    ...(contr != null ? [{ label: 'Contratada', value: `${n0(contr)} kW` }] : []),
+                    ...(l.acima && tol != null ? [{ label: 'Acima da tolerância', value: `+${kwTxt(l.consumo - tol)} kW`, cor: VERM }] : []),
+                  ]}
+                />
+              );
+            }} />
+          </LineChart>
+          ) : (
+          <ComposedChart data={linhas} aspectRatio="auto" className="h-full"
+            margin={{ top: 8, right: 12, bottom: 24, left: 56 }} animationDuration={0}>
+            <Grid horizontal numTicksRows={4} highlightRowValues={contr != null ? [contr] : []} highlightRowStroke={COR.neutro} highlightRowStrokeDasharray="5,5" />
+            <SeriesBar dataKey="consumo" fill={VERDE} radius={1} animate={false} />
+            {gen ? <SeriesBar dataKey="injecao" fill={INJ} radius={1} animate={false} /> : null}
+            <Line dataKey="teto" {...LINHA_SO_DOMINIO} />
+            <XAxis numTicks={5} {...((per as Per) === 'hoje' ? { tickMode: 'domain' as const } : {})} />
+            <YAxis numTicks={4} formatValue={(x) => `${n0(x)} kW`} />
+            {ponta ? <ReferenceArea x1={new Date(dia0 + p0 * 3_600_000 - Q15 / 2)} x2={new Date(dia0 + p1 * 3_600_000 - Q15 / 2)} fill={VERM} fillOpacity={0.07} strokeWidth={0} fadeEdges={false} /> : null}
+            {tol != null ? <ReferenceArea y1={tol} y2={teto * 2} fill={VERM} fillOpacity={0.05} stroke={VERM} strokeDasharray="2,4" fadeEdges={false} /> : null}
+            <ChartTooltip showCrosshair={false} showDots={false} content={({ point }) => {
+              const l = point as LinhaFluxo;
+              const t = l.date.getTime();
+              const titulo = (per as Per) === 'hoje' ? `${hhmm(t)}–${hhmm(t + Q15)}` : ddmm(t);
+              if (!l.lido) return <TooltipDestaque titulo={titulo} valor="—" rotulo="Sem leitura" />;
+              const injecao = gen && l.injecao > 0;
+              const principal = (per as Per) === 'hoje' && injecao ? { v: l.injecao, r: 'Injeção' } : { v: l.consumo, r: (per as Per) === 'hoje' ? 'Consumo' : 'Demanda máxima' };
+              return (
+                <TooltipDestaque
+                  titulo={titulo}
+                  valor={kwTxt(principal.v)} unidade="kW" rotulo={principal.r}
+                  linhas={[
+                    ...((per as Per) === 'ciclo' && injecao ? [{ label: 'Injeção máxima', value: `${kwTxt(l.injecao)} kW`, cor: INJ }] : []),
                     ...(contr != null ? [{ label: 'Contratada', value: `${n0(contr)} kW` }] : []),
                     ...(l.acima && tol != null ? [{ label: 'Acima da tolerância', value: `+${kwTxt(l.consumo - tol)} kW`, cor: VERM }] : []),
                   ]}
@@ -299,6 +335,7 @@ function Fluxo({ v }: { v: Vista }) {
               );
             }} />
           </ComposedChart>
+          )}
         </div>
       )}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 14px', fontSize: 12, color: NX.mudo }}>
