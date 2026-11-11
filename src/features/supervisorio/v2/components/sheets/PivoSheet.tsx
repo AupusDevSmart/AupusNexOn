@@ -20,7 +20,7 @@ import {
   NX, s, NxShell, NxDialog, NxDialogButtons, NxSwitchRow, IcoChevron, IcoLixo, IcoCheck2, type NxTone,
 } from './nxMock';
 import {
-  IrrigacaoAvancada, CONFIG_PADRAO, arco, tituloEnvio, resumoConfig, previsao, textoProgramacao,
+  IrrigacaoAvancada, CONFIG_PADRAO, arco, resumoConfig, previsao, textoProgramacao, ehParado,
   type ConfigIrrigacao, type EnvioIrrigacao, type FaixaCanhao, type Parada, type Programacao, type NovaProgramacao, type AbaIrrigacao,
   DIRECAO_LABEL, fmtPct, paradaValida,
 } from './PivoIrrigacao';
@@ -76,7 +76,7 @@ interface Estado {
     encoder: { equipamento_id: string; resolucao: number | null; invertido: boolean; zero: number } | null;
   };
 }
-interface IrrigacaoSrv { modo: string; config: ConfigIrrigacao; parada: Parada | { tipo: 'porTempo'; minutos: number }; programacao?: { nome: string } | null }
+interface IrrigacaoSrv { modo: string; config: ConfigIrrigacao; parada: Parada; programacao?: { nome: string } | null }
 interface Janela { ativo: boolean; inicio: string; fim: string; dias: number[] }
 interface ParametrosPivo {
   pressao_minima: number | null; lamina_100: number | null; tempo_volta_100: number | null; percentimetro_ciclo_s?: number | null; correcao_angulo_zero: number | null;
@@ -397,7 +397,7 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
     if (!ultimaSrv?.config) return;
     setUltima({ ...CONFIG_PADRAO, ...ultimaSrv.config, faixasCanhao: ultimaSrv.config.faixasCanhao ?? [] });
     const p = ultimaSrv.parada;
-    if (p && p.tipo !== 'porTempo') setUltimaParada(p);
+    if (p) setUltimaParada(p);
   }, [ultimaSrv]);
   const [cfgPivo, setCfgPivo] = useState<PivoConfig | null>(null);
   const carregarCfg = useCallback(() => {
@@ -453,7 +453,8 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
     // Mostra o passo em que a partida está (ex.: "Aguardando pressurização (120s)").
     if (ligando) return { tone: 'ok', label: 'Normal', texto: seq?.passos?.at(-1)?.msg ?? 'Ligando…' };
     if (falha) return { tone: 'bad', label: 'Falha', texto: falhaPressao ? 'Falha de pressão · Parado' : falhaPermissivo ? 'Sem permissivo para ligar · Parado' : st?.erro === 1 ? 'Falha no painel · Parado' : 'Falha na partida · Parado' };
-    if (girando) return { tone: 'ok', label: 'Normal', texto: cfgGiro.semAgua ? `Girando · ${DIRECAO_LABEL[direcaoAtual]} · Seco` : `Irrigando · ${fmtPct(cfgGiro.percentual)}% · ${DIRECAO_LABEL[direcaoAtual]} · Molhado` };
+    if (girando) return { tone: 'ok', label: 'Normal', texto: cfgGiro.semAgua ? `Girando · ${DIRECAO_LABEL[direcaoAtual]} · Seco`
+      : ehParado(cfgGiro) ? 'Irrigando parado · no lugar · Molhado' : `Irrigando · ${fmtPct(cfgGiro.percentual)}% · ${DIRECAO_LABEL[direcaoAtual]} · Molhado` };
     if (pausaPonta) return { tone: 'ok', label: 'Normal', texto: `Pausado pelo horário de ponta · retoma às ${pausaPonta.retoma_as}` };
     if (emUsoPor) return { tone: 'ok', label: 'Normal', texto: `Parado · Bomba em uso pelo ${emUsoPor}` };
     if (st?.desligado === 1 || st?.direita === 0 || st?.esquerda === 0) return { tone: 'ok', label: 'Normal', texto: 'Parado · Painel energizado' };
@@ -636,6 +637,9 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
 
   // Botão principal
   const desligarOff = !estado?.pivo.comandos.desligar && !b;
+  // Ligar/deixar PARADO (0 %, irriga no lugar) só com o ponto Percentímetro na TON: sem ele o
+  // percentual é o do painel e o NexON não garante que o pivô não gire.
+  const podeParado = !!estado?.pivo.comandos.percentimetro;
   const lamina100 = cfgPivo?.parametros?.lamina_100 ?? 7.15;
   const busy = !!enviando || (executando && seq?.acao === 'desligar');
   const canhao = estado?.pivo.canhao;
@@ -675,9 +679,8 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   const notaParada = paradaAutomatica
     ? `Parada em curso mantida${irrSrv?.parar_em ? `: término previsto ${new Date(irrSrv.parar_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : ''}${irrSrv?.atual?.programacao ? ` · ${irrSrv.atual.programacao.nome}` : ''}.`
     : null;
-  // Mantém a parada em curso quando a Parada não foi mexida — a menos que o operador tenha
-  // pedido para tirá-la (só no Planejamento; a parada por tempo aparece como "Sem parar").
-  const mantemParada = (e: EnvioIrrigacao) => e.manterParada !== false && e.modo !== 'angulo' && mesmaParada(e.parada, paradaAtual);
+  // Mantém a parada em curso quando a Parada não foi mexida; escolher outra (ou "Sem parar") troca.
+  const mantemParada = (e: EnvioIrrigacao) => mesmaParada(e.parada, paradaAtual);
   const baseRapida: Rascunho = rascunhoDe(cfgBase, paradaAtual);
   const chaveBase = JSON.stringify(baseRapida);
   const [rasc, setRasc] = useState<Rascunho | null>(null);
@@ -688,7 +691,7 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   const rapidoNaFicha = on && layout !== 'modal';
   // Só o percentímetro mudou e a TON aceita trocar girando: não precisa reiniciar.
   const soPercentual = (e: EnvioIrrigacao) => {
-    if (!girando || !cfgAtual || cfgAtual.semAgua || !estado?.pivo.comandos.percentimetro || e.modo !== 'simples' || e.manterParada === false) return false;
+    if (!girando || !cfgAtual || cfgAtual.semAgua || !estado?.pivo.comandos.percentimetro || e.modo !== 'simples') return false;
     const m = mudancas(baseRapida, rascunhoDe(e.config, e.parada));
     return m.length === 1 && m[0].campo === 'percentual'
       && e.config.canhao === cfgAtual.canhao && JSON.stringify(e.config.faixasCanhao ?? []) === JSON.stringify(cfgAtual.faixasCanhao ?? []);
@@ -697,20 +700,20 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   const pedirModificar = (e: EnvioIrrigacao) => { setEnvio(e); setConfirmKind(soPercentual(e) ? 'live' : 'restart'); setConfirmOpen(true); };
 
   const confirmQ = confirmKind === 'stop' ? (desligaAgenda ? 'Cancelar o início agendado?' : `Desligar ${titulo}?`)
-    : confirmKind === 'live' && envio ? `Mudar o percentímetro para ${fmtPct(envio.config.percentual)}%?`
+    : confirmKind === 'live' && envio ? (ehParado(envio.config) ? `Deixar ${titulo} parado?` : `Mudar o percentímetro para ${fmtPct(envio.config.percentual)}%?`)
       : confirmKind === 'restart' ? `Reiniciar ${titulo} com as novas opções?`
-        : envio ? tituloEnvio(envio.modo) : `Ligar ${titulo}?`;
-  const paradaTxt = (p: Parada, e?: EnvioIrrigacao | null) => (e?.modo === 'angulo' ? `ângulo final ${e.anguloFinal ?? 0}°`
-    : p.tipo === 'porAngulo' ? `para em ${p.angulo}°` : p.tipo === 'porVoltas' ? `${p.voltas} volta${p.voltas > 1 ? 's' : ''}` : 'sem parada');
+        : envio?.inicio ? `Agendar o início de ${titulo}?` : envio && ehParado(envio.config) ? `Ligar ${titulo} parado?` : `Ligar ${titulo}?`;
+  const paradaTxt = (p: Parada) => (p.tipo === 'porAngulo' ? `para em ${p.angulo}°` : p.tipo === 'porVoltas' ? `${p.voltas} volta${p.voltas > 1 ? 's' : ''}`
+    : p.tipo === 'porTempo' ? `para em ${p.minutos} min` : 'sem parada');
   const partida = b ? ' A bomba liga e o pivô gira após a pressurização.' : '';
   const confirmNote = confirmKind === 'stop'
     ? desligaAgenda ? `${agendadaTxt}. O pivô não vai ligar sozinho.` : `O pivô para na posição atual (${angTxt})${b ? ' e a bomba desliga' : ''}.`
     : confirmKind === 'live' && envio
-      ? `Só o percentímetro muda (${fmtPct(cfgGiro.percentual)}% → ${fmtPct(envio.config.percentual)}%). Vale a partir do próximo ciclo da TON, sem desligar o pivô.`
+      ? `${ehParado(envio.config) ? 'O pivô para de girar e segue irrigando no lugar' : ehParado(cfgGiro) ? 'O pivô volta a girar' : 'Só o percentímetro muda'} (${fmtPct(cfgGiro.percentual)}% → ${fmtPct(envio.config.percentual)}%). Vale a partir do próximo ciclo da TON, sem desligar o pivô.`
       : confirmKind === 'restart' && envio
-        ? `O pivô desliga e liga de novo com: ${resumoConfig(envio.config)} · ${paradaAutomatica && mantemParada(envio) ? 'parada em curso mantida' : paradaTxt(envio.parada, envio)}.${b && !envio.config.semAgua ? ' A bomba religa e o pivô volta a girar após a pressurização.' : ''}`
+        ? `O pivô desliga e liga de novo com: ${resumoConfig(envio.config)} · ${paradaAutomatica && mantemParada(envio) ? 'parada em curso mantida' : paradaTxt(envio.parada)}.${b && !envio.config.semAgua ? ' A bomba religa e o pivô volta a girar após a pressurização.' : ''}`
         : envio
-          ? `Com esta configuração: ${resumoConfig(envio.config)} · ${paradaTxt(envio.parada, envio)}${envio.inicio ? ` · início ${envio.inicio.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : ''}.${partida}`
+          ? `Com esta configuração: ${resumoConfig(envio.config)} · ${paradaTxt(envio.parada)}${envio.inicio ? ` · início ${envio.inicio.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : ''}.${partida}`
           : '';
   const doConfirm = () => {
     if (confirmKind === 'stop') void acionar('desligar');
@@ -799,8 +802,8 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
               {perfil.comandar && rapidoNaFicha && (
                 <>
                   {layout === 'painel'
-                    ? <PainelRapido valor={rapido} base={baseRapida} onChange={setRasc} lamina100={lamina100} desabilitado={busy || executando} onMaisOpcoes={() => abrirIrr('simples')} aviso={avisoSemRegistro} notaParada={notaParada} />
-                    : <AtalhosRapidos valor={rapido} base={baseRapida} onChange={setRasc} lamina100={lamina100} desabilitado={busy || executando} onMaisOpcoes={() => abrirIrr('simples')} aviso={avisoSemRegistro} notaParada={notaParada} />}
+                    ? <PainelRapido valor={rapido} base={baseRapida} onChange={setRasc} lamina100={lamina100} desabilitado={busy || executando} onMaisOpcoes={() => abrirIrr('simples')} aviso={avisoSemRegistro} notaParada={notaParada} podeParado={podeParado} />
+                    : <AtalhosRapidos valor={rapido} base={baseRapida} onChange={setRasc} lamina100={lamina100} desabilitado={busy || executando} onMaisOpcoes={() => abrirIrr('simples')} aviso={avisoSemRegistro} notaParada={notaParada} podeParado={podeParado} />}
                   {alteracoes.length > 0 && (
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, fontSize: 13, color: NX.mudo }}>
                       <span>{alteracoes.map((m) => `${m.label}: ${m.de} → ${m.para}`).join(' · ')}</span>
@@ -912,7 +915,7 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
             enviando={!!enviando} abaInicial={irrAba} semCanhaoMotivo={semCanhaoMotivo}
             programacoes={prog.progs} onRemoverProgramacao={prog.remover} onSalvarProgramacao={prog.salvar}
             ligado={on} emCurso={on ? { config: cfgBase, parada: irrSrv?.atual?.parada ?? null } : null}
-            semRegistro={semRegistro} notaParada={notaParada} enviarOff={on && executando} semReinicio={soPercentual}
+            semRegistro={semRegistro} notaParada={notaParada} enviarOff={on && executando} semReinicio={soPercentual} podeParado={podeParado}
             onDesligar={pedirDesligar} desligarOff={busy || desligarOff}
             onEnviar={(e) => { if (on) pedirModificar(e); else { setEnvio(e); setConfirmKind('start'); setConfirmOpen(true); } }}
             onClose={() => setModal(null)}
