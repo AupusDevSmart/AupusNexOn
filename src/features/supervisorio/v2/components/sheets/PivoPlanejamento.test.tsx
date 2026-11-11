@@ -84,6 +84,20 @@ describe('Planejamento de irrigação', () => {
     expect(onEnviar.mock.calls[0][0].config).toMatchObject({ semAgua: true });
   });
 
+  it('parada: abre em 1 volta e não oferece "Sem parar"', () => {
+    const { onEnviar } = abrir();
+    expect((screen.getByLabelText('Parada') as HTMLSelectElement).value).toBe('porVoltas');
+    expect(screen.queryByRole('option', { name: 'Sem parar' })).toBeNull();
+    fireEvent.click(screen.getByText('Ligar'));
+    expect(onEnviar.mock.calls[0][0].parada).toEqual({ tipo: 'porVoltas', voltas: 1 });
+  });
+
+  it('irrigação em curso sem parada: "Sem parar" aparece só para mostrar o que está valendo', () => {
+    abrir({ ligado: true, emCurso: { config: EM_CURSO, parada: { tipo: 'semParar' } } });
+    expect((screen.getByLabelText('Parada') as HTMLSelectElement).value).toBe('semParar');
+    expect(screen.getByRole('option', { name: 'Sem parar' })).toBeTruthy();
+  });
+
   it('parado: o botão é Ligar e o envio sai simples, agora', () => {
     const { onEnviar } = abrir();
     expect(screen.queryByText('Desligar')).toBeNull();
