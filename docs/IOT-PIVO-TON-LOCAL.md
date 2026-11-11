@@ -128,7 +128,8 @@ Código: lib `firmware-libs/pivo_local/` (testes: `g++ -std=c++17 -o t test_pivo
 |---|---|
 | `pivo io <bo1..bo6> <bi1..bi6> <inv>` | Mapa por papel. BO: bomba, válvula, dir, esq, percentímetro, canhão. BI: pressão, tensão, gir. dir, gir. esq, segurança, canhão. `0` = não ligado. `inv` = 6 dígitos (1 = BI ativa em baixo). Recusa BO repetida. A TON já sai da gravação com o I/O padrão ativo (BO01–06 / BI01–06, ativo em alto); o NexON reenvia se o mapa for outro. |
 | `pivo tempos <tensão> <pressurização> <giro> <canhão> <bomba> <parada> <tolerância> <sem_posição> <janela_giro> <ciclo_perc>` | Segundos. Padrão `2 120 30 30 30 60 0 300 600 60` (tolerância 0 = queda desliga na hora; firmware anterior a 11/11 aceita só 1–60, e o backend manda 1 nesse caso). |
-| `pivo enc <resolução> <inv 0/1> <zero°>` | `0` = sem encoder (só parada por tempo). |
+| `pivo enc <resolução> <inv 0/1> <zero°>` | `0` = sem encoder (só parada por tempo). É também como a calibração do ângulo chega à placa (NEXON-103): sem calibração ativa o NexON manda `0`. |
+| `pivo encler` | Calibração: 5 leituras Modbus seguidas do encoder, só parado. Ack `pivo_el <v1> … <v5>` ou `pivo_el_erro <n>` (falhou depois de n leituras boas); `pivo_sem_encoder` se o firmware não tem encoder no RS485. |
 | `pivo ligar <id> <d/e> <água 0/1> <permil> <canhão 0/1> <v/a/t> <valor> [s <ini°>:<permil>:<canhão> …]` | `v` voltas, `a` ângulo final, `t` duração em s (o horário de parada vira duração no envio). Até 8 segmentos em ordem crescente. |
 | `pivo desligar [motivo]`, `pivo perc <permil>`, `pivo canhao <0/1>`, `pivo status`, `pivo cfg` | |
 

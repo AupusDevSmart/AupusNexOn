@@ -288,6 +288,12 @@ var FirmwareGeneratorTonV2 = class FirmwareGeneratorTonV2 {
         if (result.pivo && result.has_relays && !result.rs485_devices.some(d => d.type === 'encoder')) {
             result.warnings.push('Pivô sem Encoder no RS485 desta TON — só funciona a parada por tempo (voltas, ângulo e segmentos precisam do encoder na mesma TON).');
         }
+        {
+            const ser = this._rs485Serial(result);
+            if ((ser.baud !== 9600 || ser.stop !== 1) && result.rs485_devices.length > 1) {
+                result.warnings.push(`RS485 desta TON a ${ser.baud} baud, ${ser.stop} stop bit(s), por causa do Encoder: todos os dispositivos do mesmo barramento precisam estar nessa configuração.`);
+            }
+        }
         if (result.pivo && result.has_relays && typeof PivoLocalGen === 'undefined') {
             result.warnings.push('iot-firmware-pivo.js não carregou — recarregue a página antes de gerar o firmware do pivô.');
         }
@@ -403,6 +409,9 @@ var FirmwareGeneratorTonV2 = class FirmwareGeneratorTonV2 {
             modbus_address: other.props.modbus_address || 1,
             catalog_id: catalogId || null,
             catalog_device: this._mergeIoBo(this._catTransporte(dev, 'rtu'), other.props),
+            // Serial do barramento pedida por este dispositivo (hoje so' o Encoder expoe: NEXON-103)
+            serial_baud: Number(other.props.serial_baud) || null,
+            serial_stop_bits: Number(other.props.serial_stop_bits) === 2 ? 2 : (other.props.serial_stop_bits ? 1 : null),
             registros: dev ? dev.registros : [],
             current_scale_override: this._parseScaleOverride(other.props.current_scale_override),
             voltage_scale_override: this._parseScaleOverride(other.props.voltage_scale_override),
@@ -1892,6 +1901,18 @@ static void _publish_tcp_inv_${idx}(tcp_publish_fn publish) {
     }
 
     // ---- config.h (variável por projeto) ----
+    /**
+     * Serial do RS485 (NEXON-103): o barramento e' um so', entao vale o que o Encoder pede
+     * (velocidade e stop bits do codigo de compra — Hohner serie 67 sai em 9600 ou 19200).
+     * Sem encoder, ou encoder sem os campos: 9600 8N1, como sempre foi.
+     */
+    _rs485Serial(spec) {
+        const enc = (spec.rs485_devices || []).find(d => d.type === 'encoder' && (d.serial_baud || d.serial_stop_bits));
+        const baud = enc && [4800, 9600, 19200, 38400, 57600, 115200].includes(enc.serial_baud) ? enc.serial_baud : 9600;
+        const stop = enc && enc.serial_stop_bits === 2 ? 2 : 1;
+        return { baud, stop, config: stop === 2 ? 'SERIAL_8N2' : 'SERIAL_8N1' };
+    }
+
     _genConfigH(spec) {
         let h = `#ifndef CONFIG_H
 #define CONFIG_H
@@ -1917,8 +1938,8 @@ static void _publish_tcp_inv_${idx}(tcp_publish_fn publish) {
 
 // RS485
 #define RS485_UART_NUM      1
-#define RS485_BAUD          9600
-#define RS485_CONFIG        SERIAL_8N1
+#define RS485_BAUD          ${this._rs485Serial(spec).baud}
+#define RS485_CONFIG        ${this._rs485Serial(spec).config}
 `;
 
         if (spec.has_lora) {
@@ -5490,6 +5511,23 @@ bool modbus_exec_command(const char*, const char*, int, int32_t, bool) { return 
             cpp += this._genDeviceReader(dev, idx);
             cpp += this._genDeviceEventPoll(dev, idx);
         });
+
+        // Pivo (NEXON-103): leitura IMEDIATA do encoder para a calibracao ("pivo encler" faz 5 seguidas).
+        // Fura o cooldown (e' pedido do operador) e diz se a leitura foi boa; o valor chega ao pivo
+        // pelo pivo_encoder_bruto() de sempre.
+        {
+            const encIdx = this._pivoEnc ? devs.findIndex(d => d.type === 'encoder') : -1;
+            if (encIdx >= 0) {
+                cpp += `
+bool pivo_encoder_amostrar() {
+    _ds${encIdx}.cooldown_until = 0;
+    int antes = _ds${encIdx}.samples;
+    _sample_dev_${encIdx}();
+    return _ds${encIdx}.samples != antes;
+}
+`;
+            }
+        }
 
         // Round-robin sample: 1 device por chamada
         cpp += `

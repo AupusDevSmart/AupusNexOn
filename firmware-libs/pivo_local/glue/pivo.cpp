@@ -27,6 +27,10 @@
 
 using namespace pivo;
 
+// Leitura imediata do encoder (gerada em modbus_meter.cpp quando ha' Encoder no RS485 desta TON).
+// Fraca: firmware sem encoder nao define, e "pivo encler" responde pivo_sem_encoder.
+extern bool pivo_encoder_amostrar() __attribute__((weak));
+
 enum { BO_BOMBA = 0, BO_VALVULA, BO_DIR, BO_ESQ, BO_PERC, BO_CANHAO };
 enum { BI_PRESSAO = 0, BI_TENSAO, BI_GIR_DIR, BI_GIR_ESQ, BI_SEGURANCA, BI_CANHAO };
 #define PIVO_IO_MAX 8
@@ -458,6 +462,23 @@ int pivo_cmd(const String& cmd, char* msg, size_t sz) {
         pivo_publicar_agora();
         const char* f = _m->falha()[0] ? _m->falha() : (_falha_boot[0] ? _falha_boot : "-");
         snprintf(msg, sz, "pivo_st %d %d %d %s", (int)_m->estado(), (int)_m->passo(), (int)_m->saidas().perc_pm, f);
+        return 1;
+    }
+    if (!strcmp(verbo, "encler")) {
+        // Calibracao do angulo (NEXON-103): 5 leituras Modbus SEGUIDAS do encoder, so' com o pivo parado
+        // (a leitura bloqueia o loop). Tudo no proprio ack, que chega ate' pelo LoRa:
+        //   "pivo_el <v1> <v2> <v3> <v4> <v5>"  as 5 leituras boas (contagem crua)
+        //   "pivo_el_erro <n>"                  falhou depois de n leituras boas (erro ou timeout)
+        // Quem decide se vale (iguais ou +-1) e' o NexON. Devolve 1 nos dois casos: a TON respondeu.
+        if (_m->estado() != PARADO) return _erro(msg, sz, "pivo_ligado");
+        if (!pivo_encoder_amostrar) return _erro(msg, sz, "pivo_sem_encoder");
+        size_t n = (size_t)snprintf(msg, sz, "pivo_el");
+        for (int k = 0; k < 5; k++) {
+            if (k) delay(60);
+            _enc_novo = false;
+            if (!pivo_encoder_amostrar() || !_enc_novo) { snprintf(msg, sz, "pivo_el_erro %d", k); return 1; }
+            if (n < sz) n += (size_t)snprintf(msg + n, sz - n, " %lu", (unsigned long)lroundf(_enc_bruto));
+        }
         return 1;
     }
     if (!strcmp(verbo, "cfg")) {

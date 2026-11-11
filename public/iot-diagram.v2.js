@@ -471,11 +471,14 @@ var COMPONENT_TYPES = {
         icon: 'M12 3a9 9 0 100 18 9 9 0 000-18zm0 3v6l4 2',
         ports: ['top', 'bottom', 'left', 'right'],
         generates_firmware: false,
-        defaults: { name: 'Encoder', catalog_id: '', modbus_address: 1 },
+        defaults: { name: 'Encoder', catalog_id: '', modbus_address: 1, serial_baud: '9600', serial_stop_bits: '1' },
         fields: [
             { key: 'name', label: 'Nome', type: 'text' },
             { key: 'catalog_id', label: 'Modelo', type: 'device_select', device_type: 'encoder_posicao' },
             { key: 'modbus_address', label: 'Endereco Modbus (1 a 7, jumper no conector)', type: 'number' },
+            // Serial do codigo de compra (NEXON-103). Vale para o RS485 inteiro desta TON.
+            { key: 'serial_baud', label: 'Velocidade (baud)', type: 'select', options: [['9600', '9600'], ['19200', '19200']] },
+            { key: 'serial_stop_bits', label: 'Stop bits (8 bits, sem paridade)', type: 'select', options: [['1', '1 stop bit'], ['2', '2 stop bits']] },
         ]
     },
 
