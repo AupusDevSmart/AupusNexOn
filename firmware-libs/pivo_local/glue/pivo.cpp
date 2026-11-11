@@ -12,6 +12,9 @@
 //   pivo enc <resolucao> <inv 0|1> <zero_graus>      resolucao 0 = sem encoder
 //   pivo ligar <id> <d|e> <agua 0|1> <permil> <canhao 0|1> <v|a|t> <valor> [s <ini>:<permil>:<canhao> ...]
 //   pivo desligar [motivo] | pivo perc <permil> | pivo canhao <0|1> | pivo status | pivo cfg
+// Compatibilidade (sequencia ainda no servidor, ate' a Fase 3): com a sequencia local PARADA,
+//   perc <bo> <permil> <ciclo_s> <mascara> | perc off   (igual ao firmware anterior; mascara = DINs
+//   de "girando", bit0 = DIN1: o ciclo so' roda com alguma delas em 1). Nao fica na NVS.
 #include "pivo.h"
 #include "config.h"
 #include "pivo_local.h"
@@ -52,6 +55,13 @@ static unsigned long _ult_pub = 0;
 static uint8_t  _bi_ant = 0xFF;
 static char     _falha_boot[16] = "";    // "reinicio": desligou irrigando (queda de energia/reset)
 static bool     _ativo_nvs = false;
+// percentimetro LEGADO (comando "perc" do servidor), so' com a sequencia local parada
+static uint8_t  _leg_bo = 0;
+static int16_t  _leg_pm = -1;            // -1 = desligado
+static uint32_t _leg_ciclo_ms = 60000UL;
+static uint8_t  _leg_mask = 0;
+static unsigned long _leg_ini = 0;
+static int8_t   _leg_saida = -1;
 
 // ---- fila de eventos (o Ouvinte e' chamado dentro do tick; publica no loop)
 struct EvPivo { char t[12]; char x[24]; char id[ID_LEN]; char e[12]; };
@@ -252,8 +262,23 @@ void pivo_loop(pivo_publish_fn publish) {
     _setBo(BO_ESQ, o.esq);
     _setBo(BO_CANHAO, o.canhao);
     bool ladoOk = (o.dir && (!_bi[BI_GIR_DIR] || in.gir_dir)) || (o.esq && (!_bi[BI_GIR_ESQ] || in.gir_esq));
-    _perc_on = _percSaida(o.perc_pm, ladoOk, now);
-    _setBo(BO_PERC, _perc_on);
+    if (_m->estado() == PARADO && _leg_pm >= 0 && _leg_bo) {
+        // Percentimetro legado (servidor): ciclo na BO pedida, so' com DIN de girando em 1.
+        bool gir = !_leg_mask || (st & _leg_mask);
+        bool on = false;
+        if (!gir) _leg_ini = 0;
+        else {
+            if (!_leg_ini || now - _leg_ini >= _leg_ciclo_ms) _leg_ini = now ? now : 1;
+            on = (now - _leg_ini) < (uint32_t)(((uint64_t)_leg_ciclo_ms * (uint32_t)_leg_pm) / 1000ULL);
+        }
+        if (_leg_saida != (on ? 1 : 0)) { _leg_saida = on ? 1 : 0; relay_set(_leg_bo, on); }
+        _perc_on = on;
+        for (int k = 0; k < 6; k++) if (_bo[k] == _leg_bo) _apl[k] = -1;   // a sequencia local reescreve ao assumir
+    } else {
+        if (_leg_pm >= 0 && _m->estado() != PARADO) { _leg_pm = -1; _leg_saida = -1; }   // sequencia local assumiu
+        _perc_on = _percSaida(o.perc_pm, ladoOk, now);
+        _setBo(BO_PERC, _perc_on);
+    }
 
     // Publicacao: eventos na hora; status na mudanca (min 1 s) e a cada 30 s ligado / 60 s parado
     uint8_t biSem = (in.pressao ? 1 : 0) | (in.tensao ? 2 : 0) | (in.gir_dir ? 4 : 0) | (in.gir_esq ? 8 : 0) | (in.desalinhado ? 16 : 0) | (in.canhao ? 32 : 0);
@@ -318,7 +343,30 @@ static int _cmdLigar(char* args, char* msg, size_t sz) {
     return _ok(msg, sz, "pivo_ligando");
 }
 
+// "perc ..." do firmware anterior (sequencia no servidor). -1 = nao e' perc.
+static int _cmdPercLegado(const String& cmd, char* msg, size_t sz) {
+    if (!cmd.startsWith("perc")) return -1;
+    if (_m && _m->estado() != PARADO) return _erro(msg, sz, "perc_pivo_local_ligado");
+    if (cmd.indexOf("off") >= 0) {
+        if (_leg_bo) relay_set(_leg_bo, false);
+        _leg_pm = -1; _leg_ini = 0; _leg_saida = -1; _perc_on = false;
+        for (int k = 0; k < 6; k++) if (_bo[k] == _leg_bo) _apl[k] = -1;
+        return _ok(msg, sz, "perc_off");
+    }
+    int bo = 0, pm = -1, cy = 60, mk = 0;
+    if (sscanf(cmd.c_str(), "perc %d %d %d %d", &bo, &pm, &cy, &mk) < 2 || bo < 1 || bo > PIVO_IO_MAX || pm < 0 || pm > 1000 || cy < 5 || cy > 600 || mk < 0 || mk > 255)
+        return _erro(msg, sz, "perc_invalido");
+    if (_leg_bo && _leg_bo != bo) relay_set(_leg_bo, false);
+    bool emCiclo = _leg_pm >= 0 && _leg_bo == bo && _leg_ini;
+    _leg_bo = (uint8_t)bo; _leg_ciclo_ms = (uint32_t)cy * 1000UL; _leg_mask = (uint8_t)mk; _leg_pm = (int16_t)pm;
+    if (!emCiclo) { _leg_ini = 0; _leg_saida = -1; }
+    Serial.printf("[PIVO] perc legado: BO%d %d.%d%% ciclo %ds mascara 0x%02X\n", bo, pm / 10, pm % 10, cy, mk);
+    snprintf(msg, sz, "perc_%d_%d", bo, pm);
+    return 1;
+}
+
 int pivo_cmd(const String& cmd, char* msg, size_t sz) {
+    { int r = _cmdPercLegado(cmd, msg, sz); if (r >= 0) return r; }
     if (!cmd.startsWith("pivo ") && cmd != "pivo") return -1;
     if (!_m) return _erro(msg, sz, "pivo_nao_iniciado");
     char buf[200];
