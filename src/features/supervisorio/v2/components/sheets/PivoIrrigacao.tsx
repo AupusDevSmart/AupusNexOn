@@ -136,8 +136,18 @@ function faixaNoVao(fs: FaixaCanhao[], atual: number): FaixaCanhao | null {
   if (melhor.len < 2) return null;
   return faixaEm(fs, melhor.ini + Math.max(0, (melhor.len - 30) / 2));
 }
-export const textoFaixas = (fs: FaixaCanhao[]) =>
-  fs.length ? `Canhão final: ${fs.map((f) => `liga ${f.liga}° · desliga ${f.desliga}°`).join('; ')}` : 'Canhão final ligado a volta toda';
+/**
+ * A tela mostra o canhão LIGADO a volta toda e o operador marca os trechos onde NÃO irrigar; a
+ * API guarda o contrário (as faixas em que o canhão fica ligado). Uma lista é o complemento da
+ * outra na volta: o fim de um arco é o começo do próximo. Ids fixos (a assinatura do envio é JSON).
+ */
+export function complementoFaixas(fs: FaixaCanhao[]): FaixaCanhao[] {
+  const o = fs.filter((f) => comp(f) > 0).sort((a, b) => a.liga - b.liga);
+  return o.map((f, i) => ({ id: `c${i}`, liga: norm(f.desliga), desliga: norm(o[(i + 1) % o.length].liga) }))
+    .filter((f) => o.length === 1 || comp(f) > 0);   // trechos encostados não deixam faixa entre eles
+}
+export const textoZonas = (zs: FaixaCanhao[]) =>
+  zs.length ? `Não irriga: ${zs.map((z) => `${z.liga}°–${z.desliga}°`).join('; ')}` : 'Ligado a volta toda';
 
 // --------------------------------------------------------------- geometria
 const ponto = (cx: number, cy: number, r: number, g: number) => {
@@ -218,7 +228,7 @@ function AnelSegmentos({ sel, atual, onSel }: { sel: number; atual: number; onSe
   );
 }
 
-/** Aba Canhão: alças de liga/desliga sobre o círculo do pivô. */
+/** Canhão: o círculo inteiro é canhão ligado; os arcos (`faixas`) são os trechos onde NÃO irrigar, com alças de início e fim. */
 function DialCanhao({ atual, faixas, onChange }: { atual: number; faixas: FaixaCanhao[]; onChange: (fs: FaixaCanhao[]) => void }) {
   const VB = 290, cx = 145, cy = 145, r = 117;
   const arraste = useRef<{ i: number; alca: 'liga' | 'desliga' } | null>(null);
@@ -251,17 +261,18 @@ function DialCanhao({ atual, faixas, onChange }: { atual: number; faixas: FaixaC
     arraste.current = null; inicio.current = null;
   };
   return (
-    <svg viewBox={`0 0 ${VB} ${VB}`} width="260" height="260" role="img" aria-label={`Canhão final, ${faixas.length} faixa(s)`}
+    <svg viewBox={`0 0 ${VB} ${VB}`} width="260" height="260" role="img" aria-label={`Canhão final, ${faixas.length} trecho(s) sem irrigar`}
       style={{ touchAction: 'none', display: 'block', maxWidth: '100%' }} onPointerDown={down} onPointerMove={move} onPointerUp={up}>
-      <circle cx={cx} cy={cy} r={r} fill="rgba(46,139,71,0.08)" stroke={NX.borda} strokeWidth="2" />
+      <circle cx={cx} cy={cy} r={r} fill={NX.ok} fillOpacity="0.35" stroke={NX.ok} strokeWidth="5" />
       {[0, 90, 180, 270].map((g) => {
         const [x, y] = ponto(cx, cy, r + 16, g);
         return <text key={g} x={x} y={y + 4} fontSize="11" textAnchor="middle" fill={NX.mudo}>{g}°</text>;
       })}
       {faixas.map((f) => (
         <g key={f.id}>
-          <path d={arco(cx, cy, r, f.liga, comp(f), true)} fill={NX.ok} fillOpacity="0.4" />
-          <path d={arco(cx, cy, r, f.liga, comp(f))} fill="none" stroke={NX.ok} strokeWidth="5" />
+          <path d={arco(cx, cy, r, f.liga, comp(f), true)} fill={NX.card} />
+          <path d={arco(cx, cy, r, f.liga, comp(f), true)} fill={NX.bad} fillOpacity="0.25" />
+          <path d={arco(cx, cy, r, f.liga, comp(f))} fill="none" stroke={NX.bad} strokeWidth="5" />
         </g>
       ))}
       <line x1={cx} y1={cy} x2={ax} y2={ay} stroke={NX.texto} strokeWidth="3" strokeLinecap="round" />
@@ -269,9 +280,9 @@ function DialCanhao({ atual, faixas, onChange }: { atual: number; faixas: FaixaC
       {faixas.map((f, i) => (['liga', 'desliga'] as const).map((alca) => {
         const [hx, hy] = ponto(cx, cy, r, f[alca]);
         return (
-          <circle key={`${f.id}-${alca}`} cx={hx} cy={hy} r="12" fill={alca === 'liga' ? NX.ok : NX.card}
-            stroke={alca === 'liga' ? '#FFFFFF' : NX.ok} strokeWidth="2.5" style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.3))', cursor: 'grab' }}>
-            <title>{`Faixa ${i + 1}, ${alca} em ${f[alca]} graus`}</title>
+          <circle key={`${f.id}-${alca}`} cx={hx} cy={hy} r="12" fill={alca === 'liga' ? NX.bad : NX.card}
+            stroke={alca === 'liga' ? '#FFFFFF' : NX.bad} strokeWidth="2.5" style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.3))', cursor: 'grab' }}>
+            <title>{`Trecho ${i + 1} sem irrigar, ${alca === 'liga' ? 'começa' : 'termina'} em ${f[alca]} graus`}</title>
           </circle>
         );
       }))}
@@ -388,7 +399,11 @@ export function IrrigacaoAvancada({
   const base: ConfigIrrigacao = sanear(ligado && emCurso ? { ...CONFIG_PADRAO, ...emCurso.config, faixasCanhao: emCurso.config.faixasCanhao ?? [] } : ultima);
   const [aba, setAba] = useState<AbaIrrigacao>(abaInicial);
   const [cfg, setCfg] = useState<ConfigIrrigacao>({ ...base, canhao: ligado ? base.canhao : false });
-  const [faixas, setFaixas] = useState<FaixaCanhao[]>(base.faixasCanhao);
+  // Trechos onde NÃO irrigar (o complemento das faixas ligadas que a API guarda).
+  const [zonas, setZonasRaw] = useState<FaixaCanhao[]>(() => complementoFaixas(base.faixasCanhao));
+  // Sem mexer, vão as faixas como vieram (mesma ordem): o "só o percentímetro mudou" compara o JSON.
+  const [zonasTocadas, setZonasTocadas] = useState(false);
+  const setZonas = (z: FaixaCanhao[]) => { setZonasTocadas(true); setZonasRaw(z); };
   const [faixasAbertas, setFaixasAbertas] = useState(false);
   // Parada "Por segmento": o pivô para no fim do quarto de volta escolhido (vai como parada por ângulo).
   const [porSegmento, setPorSegmento] = useState(false);
@@ -493,7 +508,7 @@ export function IrrigacaoAvancada({
     modo: porSegmento ? 'segmentos' : 'simples', parada: paradaEf, inicio: ligado || inicioTipo === 'agora' ? null : inicio,
     ...(porSegmento ? { segmento: segSel + 1 } : {}),
     ...(ligado ? { manterParada: paradaIntacta } : {}),
-    config: { ...cfg, canhao: canhaoAtivo, faixasCanhao: canhaoAtivo ? faixas : [] },
+    config: { ...cfg, canhao: canhaoAtivo, faixasCanhao: canhaoAtivo ? (zonasTocadas ? complementoFaixas(zonas) : base.faixasCanhao) : [] },
   });
   const enviar = () => onEnviar(montar());
   // "Editado" = o que seria enviado mudou desde que o diálogo abriu. Fora da conta: o início (é
@@ -533,8 +548,8 @@ export function IrrigacaoAvancada({
   );
   const dica = (texto: string, cor: string = NX.mudo) => <span style={{ fontSize: 12, color: cor }}>{texto}</span>;
 
-  const nFaixas = faixas.length;
-  const podeAdd = nFaixas < 5 && !!faixaNoVao(faixas, atual);
+  const nZonas = zonas.length;
+  const podeAdd = nZonas < 5 && !!faixaNoVao(zonas, atual);
   const tempoInput: CSSProperties = { height: 38, borderRadius: 10, border: `1px solid ${NX.borda}`, padding: '0 10px', fontSize: 15, fontWeight: 700, color: NX.texto, background: NX.card };
 
   // Tamanho fixo: cabeçalho e rodapé parados, o meio rola. Trocar de aba não muda o diálogo.
@@ -669,44 +684,44 @@ export function IrrigacaoAvancada({
               style={{ ...linha, width: '100%', ...(semCanhao ? { opacity: 0.45 } : {}) }}>
               <span style={{ ...col(2), textAlign: 'left' }}>
                 <span style={titulo15}>Canhão final</span>
-                <span style={rotulo}>{semCanhaoMotivo ? semCanhaoMotivo : seco ? 'Indisponível girando sem água' : !cfg.canhao ? 'Começa desligado' : nFaixas ? textoFaixas(faixas) : 'Ligado a volta toda'}</span>
+                <span style={rotulo}>{semCanhaoMotivo ? semCanhaoMotivo : seco ? 'Indisponível girando sem água' : !cfg.canhao ? 'Começa desligado' : textoZonas(zonas)}</span>
               </span>
               <NxSwitch on={canhaoAtivo} />
             </button>
             {canhaoAtivo && !parado && (
               <button type="button" onClick={() => setFaixasAbertas((v) => !v)} style={{ alignSelf: 'flex-start', fontSize: 13, fontWeight: 800, color: NX.acao }}>
-                {faixasAbertas ? 'Fechar faixas' : nFaixas ? 'Editar faixas do canhão' : 'Ligar o canhão só em parte da volta'}
+                {faixasAbertas ? 'Fechar' : nZonas ? 'Editar onde não irrigar' : 'Marcar onde não irrigar'}
               </button>
             )}
             {canhaoAtivo && !parado && faixasAbertas && (
               <div style={{ border: `1px solid ${NX.borda}`, borderRadius: 14, padding: 12, ...col(10) }}>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-                  <DialCanhao atual={atual} faixas={faixas} onChange={setFaixas} />
-                  <span style={{ fontSize: 13, color: NX.mudo }}>Arraste as alças ou digite os ângulos · setor verde = canhão ligado</span>
-                  {dica('As faixas ficam salvas, mas o NexON ainda não liga e desliga o canhão pelo ângulo: ele fica ligado a volta toda.', NX.warn)}
+                  <DialCanhao atual={atual} faixas={zonas} onChange={setZonas} />
+                  <span style={{ fontSize: 13, color: NX.mudo }}>Verde = canhão ligado · toque no círculo para marcar onde não irrigar</span>
+                  {dica('O NexON ainda não desliga o canhão sozinho nesses trechos.', NX.warn)}
                 </div>
-                {faixas.map((f, i) => (
+                {zonas.map((f, i) => (
                   <div key={f.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr) 32px', gap: 8, alignItems: 'center' }}>
                     {(['liga', 'desliga'] as const).map((al) => (
                       <label key={al} style={{ height: 40, borderRadius: 10, background: NX.seg, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 14 }}>
-                        <span style={{ color: NX.mudo }}>{al === 'liga' ? 'Liga' : 'Desliga'}</span>
-                        <input inputMode="numeric" value={f[al]} aria-label={`Faixa ${i + 1}, ${al}`}
-                          onChange={(e) => { const v = Number(e.target.value); if (Number.isFinite(v)) setFaixas(moverAlca(faixas, i, al, v)); }}
+                        <span style={{ color: NX.mudo }}>{al === 'liga' ? 'De' : 'Até'}</span>
+                        <input inputMode="numeric" value={f[al]} aria-label={`Trecho ${i + 1} sem irrigar, ${al === 'liga' ? 'de' : 'até'}`}
+                          onChange={(e) => { const v = Number(e.target.value); if (Number.isFinite(v)) setZonas(moverAlca(zonas, i, al, v)); }}
                           style={{ width: '100%', minWidth: 0, background: 'transparent', border: 0, fontWeight: 800, textAlign: 'right', color: NX.texto, padding: 0 }} />
                         <span style={{ color: NX.mudo }}>°</span>
                       </label>
                     ))}
-                    <button type="button" aria-label={`Remover faixa ${i + 1}`} onClick={() => setFaixas(faixas.filter((x) => x.id !== f.id))}
+                    <button type="button" aria-label={`Remover trecho ${i + 1}`} onClick={() => setZonas(zonas.filter((x) => x.id !== f.id))}
                       style={{ width: 32, height: 32, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={NX.bad} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></svg>
                     </button>
                   </div>
                 ))}
-                <button type="button" disabled={!podeAdd} onClick={() => { const n = faixaNoVao(faixas, atual); if (n) setFaixas([...faixas, n]); }}
+                <button type="button" disabled={!podeAdd} onClick={() => { const n = faixaNoVao(zonas, atual); if (n) setZonas([...zonas, n]); }}
                   style={{ height: 44, borderRadius: 12, border: `1px dashed ${NX.off}`, fontSize: 14, fontWeight: 800, textAlign: 'center', color: podeAdd ? NX.acao : NX.desab }}>
-                  {nFaixas >= 5 ? 'Limite de 5 faixas' : '+ Adicionar faixa'}
+                  {nZonas >= 5 ? 'Limite de 5 trechos' : '+ Marcar trecho sem irrigar'}
                 </button>
-                {!nFaixas && dica('Sem faixas, o canhão fica ligado a volta toda.')}
+                {!nZonas && dica('Nada marcado: canhão ligado a volta toda.')}
               </div>
             )}
           </div>
