@@ -60,6 +60,10 @@ static bool     _ativo_nvs = false;
 // entradas, que mudam no mesmo instante). O status vai so' na resposta ao POLL.
 static bool     _so_poll = false;
 static uint8_t  _bi_sem_atual = 0;       // entradas semanticas do ultimo pivo_tick()
+// Satelite: mudanca de ESTADO (parado/ligando/irrigando/desligando) vai na hora (1 frame) + 1 repeticao
+// em 8 s (o 1o pode colidir). Rara: nao satura o radio como os eventos de cada passo.
+static int8_t   _e_pub = -1;             // ultimo estado publicado espontaneamente
+static unsigned long _e_reforco_ms = 0;  // 0 = sem repeticao pendente
 // percentimetro LEGADO (comando "perc" do servidor), so' com a sequencia local parada
 static uint8_t  _leg_bo = 0;
 static int16_t  _leg_pm = -1;            // -1 = desligado
@@ -247,6 +251,7 @@ void pivo_publicar(pivo_publish_fn publish) {
     _pub_agora = false;
     _ult_pub = millis() ? millis() : 1;
     _publicarStatus(publish);
+    _e_pub = (int8_t)_m->estado();   // o POLL ja' levou este estado
 }
 
 // Controle do pivo: entradas -> maquina -> saidas. Sem radio/MQTT: e' chamado logo apos o
@@ -316,7 +321,20 @@ void pivo_loop(pivo_publish_fn publish) {
         _evh = (_evh + 1) % 12; _evn--;
     }
     unsigned long periodo = _m->estado() == PARADO ? 60000UL : 30000UL;
-    if (_so_poll) return;   // satelite mestre-puxa: status em pivo_publicar() (POLL)
+    if (_so_poll) {
+        // satelite mestre-puxa: status no POLL; so' a MUDANCA DE ESTADO sai na hora
+        int8_t e = (int8_t)_m->estado();
+        if (_e_pub < 0) _e_pub = e;                        // boot: o 1o POLL leva o estado
+        if (e != _e_pub && publish) {
+            _e_pub = e;
+            _publicarStatus(publish);
+            _e_reforco_ms = now + 8000UL; if (!_e_reforco_ms) _e_reforco_ms = 1;
+        } else if (_e_reforco_ms && (long)(now - _e_reforco_ms) >= 0 && publish) {
+            _e_reforco_ms = 0;
+            _publicarStatus(publish);
+        }
+        return;
+    }
     if ((_pub_agora && now - _ult_pub >= 1000UL) || !_ult_pub || now - _ult_pub >= periodo) {
         _pub_agora = false;
         _ult_pub = now ? now : 1;
