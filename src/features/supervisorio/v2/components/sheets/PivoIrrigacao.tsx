@@ -3,9 +3,14 @@ import { fmt } from './sheetParts';
 import { NX, s, NxSwitch, NxDialogHead } from './nxMock';
 
 /**
- * Irrigação avançada do pivô no web — mockup "Web — Modal do Pivô" (diálogo de 520 px)
- * com as abas Ângulo, Segmentos e Agenda do app ("Equipamento — Pivô") e a aba Canhão
- * (faixas onde o canhão final liga e desliga). Estilos inline com as variáveis NX.
+ * Planejamento de irrigação do pivô no web (antiga "Irrigação avançada") — mockup "Web — Modal
+ * do Pivô" (diálogo de 520 px) com as abas Ângulo, Segmentos e Agenda do app ("Equipamento —
+ * Pivô") e a aba Canhão (faixas onde o canhão final liga e desliga). Estilos inline com as
+ * variáveis NX.
+ *
+ * NEXON-98: é este diálogo que o botão principal da ficha abre. Pivô parado → "Ligar". Pivô
+ * ligado → abre com a irrigação em curso, mostra "Desligar" e, ao editar qualquer opção, o
+ * botão vira "Salvar e enviar" (o pivô reinicia com as novas opções).
  */
 
 export type Direcao = 'Avanço' | 'Reverso';
@@ -266,7 +271,28 @@ interface Props {
   onSalvarProgramacao: (p: NovaProgramacao) => Promise<boolean>;
   onEnviar: (e: EnvioIrrigacao) => void;
   onClose: () => void;
+  /** Pivô girando (ou ligando): o diálogo passa a ser "desligar ou modificar". */
+  ligado?: boolean;
+  /** Irrigação em curso (config e parada que o servidor guardou) — ponto de partida da edição. */
+  emCurso?: { config: ConfigIrrigacao; parada?: Parada | { tipo: string } | null } | null;
+  /** Desligar pelo diálogo (o pai confirma com alerta). Sem ele o botão não aparece. */
+  onDesligar?: () => void;
+  /** Desligar indisponível (sem comando, sequência em andamento…). */
+  desligarOff?: boolean;
+  /** Enviar indisponível (sequência do pivô em andamento). */
+  enviarOff?: boolean;
+  /** Pivô ligado sem irrigação registrada pelo NexON (ligado no painel): as opções abaixo são um
+   *  palpite (última enviada + sentido lido), então o envio fica liberado mesmo sem edição. */
+  semRegistro?: boolean;
+  /** Parada automática em curso que o reinício mantém enquanto a Parada não for alterada. */
+  notaParada?: string | null;
+  /** A mudança sai sem reiniciar (só o percentímetro, e a TON troca girando)? Muda o aviso. */
+  semReinicio?: (e: EnvioIrrigacao) => boolean;
 }
+
+/** Parada da irrigação em curso → a que o formulário edita (porTempo, de programação, vira "sem parar"). */
+export const paradaValida = (p?: Parada | { tipo: string } | null): Parada =>
+  (p && (p.tipo === 'porAngulo' || p.tipo === 'porVoltas') ? (p as Parada) : { tipo: 'semParar' });
 
 const horaDe = (x: string) => { const [h, m] = x.split(':').map(Number); return (h || 0) + (m || 0) / 60; };
 const hTxt = (x: string) => (x.endsWith(':00') ? `${Number(x.slice(0, 2))}h` : x);
@@ -300,18 +326,21 @@ const tituloSub = (t: string, sub: string) => (
 export function IrrigacaoAvancada({
   nome, angulo, ultima, lamina100, tempoVolta100, ponta, enviando, semCanhaoMotivo = null, abaInicial = 'simples',
   programacoes, onRemoverProgramacao, onSalvarProgramacao, onEnviar, onClose,
+  ligado = false, emCurso = null, onDesligar, desligarOff = false, enviarOff = false, semRegistro = false, notaParada = null, semReinicio,
 }: Props) {
   const atual = angulo ?? 0;
+  // Ligado: parte da irrigação em curso (o que o operador vê girando), não da última enviada.
+  const base: ConfigIrrigacao = ligado && emCurso ? { ...CONFIG_PADRAO, ...emCurso.config, faixasCanhao: emCurso.config.faixasCanhao ?? [] } : ultima;
   const [aba, setAba] = useState<AbaIrrigacao>(abaInicial);
   const [modo, setModo] = useState<Modo>(abaInicial === 'angulo' || abaInicial === 'segmentos' ? abaInicial : 'simples');
-  const [cfg, setCfg] = useState<ConfigIrrigacao>({ ...ultima, canhao: false });
-  const [faixas, setFaixas] = useState<FaixaCanhao[]>(ultima.faixasCanhao);
-  const [segs, setSegs] = useState<ConfigIrrigacao[]>(() => Array.from({ length: 4 }, () => ({ ...ultima, canhao: false })));
+  const [cfg, setCfg] = useState<ConfigIrrigacao>({ ...base, canhao: ligado ? base.canhao : false });
+  const [faixas, setFaixas] = useState<FaixaCanhao[]>(base.faixasCanhao);
+  const [segs, setSegs] = useState<ConfigIrrigacao[]>(() => Array.from({ length: 4 }, () => ({ ...base, canhao: false })));
   const [segSel, setSegSel] = useState(0);
   const [anguloFinal, setAnguloFinal] = useState(0);
   const [inicioTipo, setInicioTipo] = useState<'agora' | 'data'>('agora');
   const [inicioData, setInicioData] = useState('');
-  const [parada, setParada] = useState<Parada>({ tipo: 'semParar' });
+  const [parada, setParada] = useState<Parada>(() => (ligado ? paradaValida(emCurso?.parada) : { tipo: 'semParar' }));
   const [carregada, setCarregada] = useState(false);
   const [aviso, setAviso] = useState(false);
   const [canhaoVisto, setCanhaoVisto] = useState(false);
@@ -390,11 +419,23 @@ export function IrrigacaoAvancada({
     ...(cfg.canhao ? [{ v: 'canhao' as const, label: 'Canhão' }] : []),
   ];
 
-  const enviar = () => onEnviar({
-    modo, parada: paradaEf, inicio: modo === 'angulo' || inicioTipo === 'agora' ? null : inicio,
+  // Ligado, o reinício é sempre agora: agendar início não faz sentido com o pivô girando.
+  const montar = (): EnvioIrrigacao => ({
+    modo, parada: paradaEf, inicio: ligado || modo === 'angulo' || inicioTipo === 'agora' ? null : inicio,
     anguloFinal: modo === 'angulo' ? anguloFinal : undefined, segmento: modo === 'segmentos' ? segSel + 1 : undefined,
     config: { ...efetiva, direcao: cfg.direcao, canhao: canhaoAtivo, faixasCanhao: canhaoAtivo ? faixas : [] },
   });
+  const enviar = () => onEnviar(montar());
+  // "Editado" = o que seria enviado mudou desde que o diálogo abriu. Fora da conta: o início (é
+  // sempre agora) e a lâmina digitada (o que vale é o percentual; redigitar o mesmo não é mudança).
+  const assinar = (e: EnvioIrrigacao) => JSON.stringify({ ...e, inicio: null, config: { ...e.config, lamina: null } });
+  const assinatura = assinar(montar());
+  const assinaturaInicial = useRef(assinatura);
+  const editado = assinatura !== assinaturaInicial.current;
+  const paradaInicial = useRef(JSON.stringify(parada));
+  const paradaIntacta = modo !== 'angulo' && JSON.stringify(parada) === paradaInicial.current;
+  const agendar = !ligado && modo !== 'angulo' && inicioTipo === 'data';
+  const rotuloEnviar = enviando ? 'Executando…' : ligado ? 'Salvar e enviar' : agendar ? 'Agendar início' : 'Ligar';
 
   const nProg = programacoes?.length ?? 0;
   const agendaCheia = nProg >= 5;
@@ -468,8 +509,8 @@ export function IrrigacaoAvancada({
     </div>
   );
   const inicioParada = (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
-      <span style={caixaCampo}>
+    <div style={{ display: 'grid', gridTemplateColumns: ligado ? 'minmax(0, 1fr)' : 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
+      <span style={{ ...caixaCampo, ...(ligado ? { display: 'none' } : {}) }}>
         <span style={rotulo}>Início</span>
         <select aria-label="Início" value={inicioTipo} onChange={(e) => setInicioTipo(e.target.value as 'agora' | 'data')} style={valorCaixa}>
           <option value="agora">Agora</option><option value="data">Data e hora</option>
@@ -517,13 +558,36 @@ export function IrrigacaoAvancada({
     </button>
   );
 
+  // Rodapé de comando: parado → Ligar; ligado → Desligar e, depois de editar, Salvar e enviar.
+  const rodapeComando = (
+    <>
+      {ligado && !editado && !semRegistro && (
+        <span style={{ fontSize: 13, color: NX.mudo }}>Pivô ligado com esta configuração. Edite qualquer opção para reiniciar com as novas.</span>
+      )}
+      {ligado && !editado && semRegistro && (
+        <span style={{ fontSize: 13, color: NX.warn }}>Pivô ligado fora do NexON (painel): não há irrigação registrada. Confira as opções — ao salvar, o pivô desliga e liga de novo com elas.</span>
+      )}
+      {ligado && editado && (semReinicio?.(montar())
+        ? <span style={{ fontSize: 13, color: NX.mudo }}>Só o percentímetro mudou: ao salvar, troca sem desligar o pivô.</span>
+        : <span style={{ fontSize: 13, color: NX.warn }}>Ao salvar, o pivô desliga e liga de novo com as novas opções.</span>
+      )}
+      {(!ligado || editado || semRegistro) && botaoEnviar(rotuloEnviar, enviar, enviando || enviarOff)}
+      {ligado && onDesligar && (
+        <button type="button" disabled={desligarOff || enviando} onClick={onDesligar}
+          style={{ height: 48, borderRadius: 12, border: `1.5px solid ${desligarOff || enviando ? NX.off : NX.bad}`, background: NX.card, color: desligarOff || enviando ? NX.desab : NX.bad, fontSize: 16, fontWeight: 800, textAlign: 'center' }}>
+          Desligar
+        </button>
+      )}
+    </>
+  );
+
   const nFaixas = faixas.length;
   const podeAdd = nFaixas < 5 && !!faixaNoVao(faixas, atual);
   const tempoInput: CSSProperties = { height: 38, borderRadius: 10, border: `1px solid ${NX.borda}`, padding: '0 10px', fontSize: 15, fontWeight: 700, color: NX.texto, background: NX.card };
 
   return (
     <div style={col(14)}>
-      <NxDialogHead title="Irrigação avançada" sub={`${nome} · ângulo atual ${angulo != null ? `${fmt(angulo, 1)}°` : '—'}`} onClose={onClose} />
+      <NxDialogHead title="Planejamento de irrigação" sub={`${nome} · ângulo atual ${angulo != null ? `${fmt(angulo, 1)}°` : '—'}`} onClose={onClose} />
       <div style={{ display: 'grid', gridTemplateColumns: `repeat(${abas.length}, minmax(0, 1fr))`, gap: 4, padding: 4, borderRadius: 12, background: NX.seg }}>
         {abas.map((a) => {
           const destaque = a.v === 'canhao' && !canhaoVisto && aba !== 'canhao';
@@ -542,7 +606,7 @@ export function IrrigacaoAvancada({
         })}
       </div>
 
-      {aba !== 'agenda' && aba !== 'canhao' && (
+      {aba !== 'agenda' && aba !== 'canhao' && !ligado && (
         <button type="button" onClick={carregarUltima} style={{ alignSelf: 'flex-start', fontSize: 14, fontWeight: 700, color: NX.acao }}>
           {carregada ? '✓ Última irrigação carregada' : '↺ Carregar última irrigação'}
         </button>
@@ -569,6 +633,7 @@ export function IrrigacaoAvancada({
           {avisoCanhao}
           {pctLam}
           {(aba === 'simples' || aba === 'segmentos') && inicioParada}
+          {ligado && notaParada && paradaIntacta && <span style={{ fontSize: 12, color: NX.mudo }}>{notaParada}</span>}
           {aba === 'angulo' && (
             <div style={{ ...caixaCampo, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', minHeight: 52, boxSizing: 'border-box' }}>
               <span style={{ fontSize: 15, fontWeight: 700 }}>Ângulo final</span>
@@ -576,7 +641,7 @@ export function IrrigacaoAvancada({
             </div>
           )}
           {caixaPrevisao(prev.texto, true)}
-          {botaoEnviar(enviando ? 'Executando…' : 'Enviar comando', enviar, enviando)}
+          {rodapeComando}
         </>
       )}
 
@@ -668,7 +733,7 @@ export function IrrigacaoAvancada({
             {nFaixas ? `As faixas vão junto com a irrigação ${MODO_TXT[modo]}.` : `Sem faixas, o canhão fica ligado a volta toda. Vai junto com a irrigação ${MODO_TXT[modo]}.`}
           </span>
           {caixaPrevisao(prev.texto, true)}
-          {botaoEnviar(enviando ? 'Executando…' : 'Enviar comando', enviar, enviando)}
+          {rodapeComando}
         </>
       )}
     </div>

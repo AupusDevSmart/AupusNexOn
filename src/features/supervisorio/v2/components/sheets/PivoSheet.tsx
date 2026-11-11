@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { iotApiService } from '@/services/iot.services';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -22,8 +22,10 @@ import {
 import {
   IrrigacaoAvancada, CONFIG_PADRAO, arco, tituloEnvio, resumoConfig, previsao, textoProgramacao,
   type ConfigIrrigacao, type EnvioIrrigacao, type FaixaCanhao, type Parada, type Programacao, type NovaProgramacao, type AbaIrrigacao,
-  DIRECAO_LABEL, fmtPct,
+  DIRECAO_LABEL, fmtPct, paradaValida,
 } from './PivoIrrigacao';
+import { usePivoLayout, PIVO_LAYOUTS } from './pivoLayout';
+import { PainelRapido, AtalhosRapidos, rascunhoDe, mudancas, envioDoRascunho, mesmaParada, type Rascunho } from './PivoRapido';
 
 /**
  * Modal do Pivô — cópia 1:1 do mockup "Web — Modal do Pivô" (NEXON-5), sobre a operação
@@ -371,7 +373,10 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   const [aba, setAba] = useState('op');
   const [modal, setModal] = useState<null | 'cost' | 'irr'>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [confirmKind, setConfirmKind] = useState<'quick' | 'stop' | 'start'>('quick');
+  // stop = desligar · start = ligar pelo Planejamento · restart = pivô ligado reinicia com as
+  // novas opções · live = só o percentímetro mudou (a TON troca sem desligar).
+  const [confirmKind, setConfirmKind] = useState<'stop' | 'start' | 'restart' | 'live'>('start');
+  const layout = usePivoLayout((x) => x.layout);
   const [irrAba, setIrrAba] = useState<AbaIrrigacao>('simples');
   const [envio, setEnvio] = useState<EnvioIrrigacao | null>(null);
   // Última irrigação enviada por este navegador (a TON só recebe direção e liga/desliga).
@@ -476,7 +481,12 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
     : null;
 
   const acaoDe = (c: ConfigIrrigacao): Acao => (c.direcao === 'Avanço' ? 'girar_direita' : 'girar_esquerda');
+  // Um comando por vez: duplo clique no Confirmar não manda dois pedidos (o estado só fecha o
+  // alerta no próximo render).
+  const ocupado = useRef(false);
   const acionar = async (acao: Acao, irrigacao?: EnvioIrrigacao) => {
+    if (ocupado.current) return;
+    ocupado.current = true;
     setModal(null); setConfirmOpen(false);
     setEnviando(acao);
     try {
@@ -499,6 +509,35 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
     } catch (e) {
       toast.error(`${ACAO_LABEL[acao]}: não iniciou`, { description: erroMsg(e) });
     } finally {
+      ocupado.current = false;
+      setEnviando(null);
+    }
+  };
+
+  // NEXON-98 — pivô ligado + opções novas: o servidor desliga (pivô, canhão, bomba), confirma a
+  // parada e liga de novo, numa sequência só (`reiniciar: true`). Se a parada não confirmar, não religa.
+  const reiniciar = async (irrigacao: EnvioIrrigacao) => {
+    if (ocupado.current) return;
+    ocupado.current = true;
+    const acao = acaoDe(irrigacao.config);
+    setModal(null); setConfirmOpen(false);
+    setEnviando(acao);
+    try {
+      // manterParada: a Parada não foi mexida → o servidor herda a parada automática em curso
+      // (o que falta do tempo/das voltas), em vez de recomeçar ou de apagar a da programação.
+      await api.post(`/pivos/${id}/acionar`, { acao, irrigacao: { ...irrigacao, inicio: null }, reiniciar: true, manterParada: mantemParada(irrigacao) });
+      setUltima(irrigacao.config); setUltimaParada(irrigacao.parada);
+      try {
+        localStorage.setItem(chaveUltima, JSON.stringify(irrigacao.config));
+        localStorage.setItem(chaveParada(id), JSON.stringify(irrigacao.parada));
+      } catch { /* sem storage */ }
+      toast.success('Reinício com as novas opções iniciado', { description: 'O pivô desliga e liga de novo — acompanhe em Registros.' });
+      setEnvio(null); setRasc(null);
+      await carregar();
+    } catch (e) {
+      toast.error('Não reiniciou — o pivô segue como estava', { description: erroMsg(e) });
+    } finally {
+      ocupado.current = false;
       setEnviando(null);
     }
   };
@@ -519,6 +558,8 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
 
   // Percentímetro com o pivô girando: a TON troca no próximo ciclo, sem desligar.
   const ajustarPerc = async (percentual: number) => {
+    if (ocupado.current) return;
+    ocupado.current = true;
     setPercEnv(true);
     try {
       await api.post(`/pivos/${id}/percentimetro`, { percentual });
@@ -527,6 +568,7 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
     } catch (e) {
       toast.error('Percentímetro não mudou', { description: erroMsg(e) });
     } finally {
+      ocupado.current = false;
       setPercEnv(false);
       await carregar();
     }
@@ -586,7 +628,8 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   const rotuloEnergia = fonteMedicao ? (b?.compartilhada_com.length ? 'Energia do bombeamento (compartilhado)' : 'Energia do bombeamento') : 'Energia do pivô';
 
   // Botão principal
-  const cmdOff = on ? !estado?.pivo.comandos.desligar && !b : !estado?.pivo.comandos[ultima.direcao === 'Avanço' ? 'direita' : 'esquerda'];
+  const desligarOff = !estado?.pivo.comandos.desligar && !b;
+  const lamina100 = cfgPivo?.parametros?.lamina_100 ?? 7.15;
   const busy = !!enviando || (executando && seq?.acao === 'desligar');
   const canhao = estado?.pivo.canhao;
   // Ativar só com o pivô girando com água; desativar sempre (o backend trava se já está desligado).
@@ -603,23 +646,68 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
       : !canhao.tem_status ? 'Falta o status Canhao_ligado numa BI: sem ele não dá para saber se o pulso liga ou desliga'
         : null;
   const desligaAgenda = !on && !!agendada;
-  const cmdLabel = emUsoPor && !on ? `Bomba em uso pelo ${emUsoPor}` : busy ? 'Executando…' : on || desligaAgenda ? (desligaAgenda ? 'Cancelar agendamento' : 'Desligar') : 'Ligar';
-  const cmdBloq = (!!emUsoPor && !on) || (cmdOff && !desligaAgenda);
+  // NEXON-98: o botão principal abre o Planejamento de irrigação. Parado → "Ligar" (as opções
+  // ficam no diálogo); ligado → "Desligar ou modificar". Só "Cancelar agendamento" confirma direto.
+  const semLigar = !estado?.pivo.comandos.direita && !estado?.pivo.comandos.esquerda;
+  const cmdLabel = emUsoPor && !on ? `Bomba em uso pelo ${emUsoPor}` : busy ? 'Executando…' : desligaAgenda ? 'Cancelar agendamento' : on ? 'Desligar ou modificar' : 'Ligar';
+  const cmdBloq = on ? false : (!!emUsoPor) || (semLigar && !desligaAgenda);
   const cmdStyle = s.cmd(busy || cmdBloq ? 'busy' : on || desligaAgenda ? 'outline' : 'primary');
+  const pedirDesligar = () => { setConfirmKind('stop'); setConfirmOpen(true); };
 
-  const confirmQ = confirmKind === 'stop' ? (desligaAgenda ? 'Cancelar o início agendado?' : `Desligar ${titulo}?`) : confirmKind === 'start' && envio ? tituloEnvio(envio.modo) : `Ligar ${titulo}?`;
+  // Edição rápida na ficha (layouts Painel e Atalhos): rascunho sobre a irrigação em curso.
+  const paradaAtual = paradaValida(irrSrv?.atual?.parada);
+  // Ligado sem irrigação registrada (ligado no painel, ou um reinício que não executou): a
+  // direção em curso é a que a TON lê, nunca a da última enviada — senão "mudar só a água"
+  // sairia invertendo o sentido sem o operador pedir.
+  const semRegistro = on && !cfgAtual;
+  const cfgBase: ConfigIrrigacao = on ? { ...cfgGiro, direcao: direcaoAtual as ConfigIrrigacao['direcao'] } : cfgGiro;
+  const avisoSemRegistro = semRegistro ? 'Pivô ligado fora do NexON: sem irrigação registrada. Confira as opções antes de enviar.' : null;
+  // Parada automática em curso (programação por tempo, voltas): o reinício mantém o que falta.
+  const paradaSrv = irrSrv?.atual?.parada;
+  const notaParada = on && irrSrv?.parar_em && paradaSrv && (paradaSrv.tipo === 'porTempo' || paradaSrv.tipo === 'porVoltas')
+    ? `Parada em curso mantida: término previsto ${new Date(irrSrv.parar_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}${irrSrv.atual?.programacao ? ` · ${irrSrv.atual.programacao.nome}` : ''}. Mude a Parada para trocar.`
+    : null;
+  const mantemParada = (e: EnvioIrrigacao) => e.modo !== 'angulo' && mesmaParada(e.parada, paradaAtual);
+  const baseRapida: Rascunho = rascunhoDe(cfgBase, paradaAtual);
+  const chaveBase = JSON.stringify(baseRapida);
+  const [rasc, setRasc] = useState<Rascunho | null>(null);
+  // A irrigação em curso mudou (outro operador, reinício, percentímetro): o rascunho velho cai.
+  useEffect(() => { setRasc(null); }, [chaveBase]);
+  const rapido = rasc ?? baseRapida;
+  const alteracoes = mudancas(baseRapida, rapido);
+  const rapidoNaFicha = on && layout !== 'modal';
+  // Só o percentímetro mudou e a TON aceita trocar girando: não precisa reiniciar.
+  const soPercentual = (e: EnvioIrrigacao) => {
+    if (!girando || !cfgAtual || cfgAtual.semAgua || !estado?.pivo.comandos.percentimetro || e.modo !== 'simples') return false;
+    const m = mudancas(baseRapida, rascunhoDe(e.config, e.parada));
+    return m.length === 1 && m[0].campo === 'percentual'
+      && e.config.canhao === cfgAtual.canhao && JSON.stringify(e.config.faixasCanhao ?? []) === JSON.stringify(cfgAtual.faixasCanhao ?? []);
+  };
+  /** Pedido de mudança com o pivô ligado (diálogo, painel ou atalhos) → alerta certo. */
+  const pedirModificar = (e: EnvioIrrigacao) => { setEnvio(e); setConfirmKind(soPercentual(e) ? 'live' : 'restart'); setConfirmOpen(true); };
+
+  const confirmQ = confirmKind === 'stop' ? (desligaAgenda ? 'Cancelar o início agendado?' : `Desligar ${titulo}?`)
+    : confirmKind === 'live' && envio ? `Mudar o percentímetro para ${fmtPct(envio.config.percentual)}%?`
+      : confirmKind === 'restart' ? `Reiniciar ${titulo} com as novas opções?`
+        : envio ? tituloEnvio(envio.modo) : `Ligar ${titulo}?`;
   const paradaTxt = (p: Parada, e?: EnvioIrrigacao | null) => (e?.modo === 'angulo' ? `ângulo final ${e.anguloFinal ?? 0}°`
     : p.tipo === 'porAngulo' ? `para em ${p.angulo}°` : p.tipo === 'porVoltas' ? `${p.voltas} volta${p.voltas > 1 ? 's' : ''}` : 'sem parada');
   const partida = b ? ' A bomba liga e o pivô gira após a pressurização.' : '';
   const confirmNote = confirmKind === 'stop'
     ? desligaAgenda ? `${agendadaTxt}. O pivô não vai ligar sozinho.` : `O pivô para na posição atual (${angTxt})${b ? ' e a bomba desliga' : ''}.`
-    : confirmKind === 'start' && envio
-      ? `Com esta configuração: ${resumoConfig(envio.config)} · ${paradaTxt(envio.parada, envio)}${envio.inicio ? ` · início ${envio.inicio.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : ''}.${partida}`
-      : `Com a última configuração: ${resumoConfig(ultima)} · sem parada.${partida}`;
+    : confirmKind === 'live' && envio
+      ? `Só o percentímetro muda (${fmtPct(cfgGiro.percentual)}% → ${fmtPct(envio.config.percentual)}%). Vale a partir do próximo ciclo da TON, sem desligar o pivô.`
+      : confirmKind === 'restart' && envio
+        ? `O pivô desliga e liga de novo com: ${resumoConfig(envio.config)} · ${notaParada && mantemParada(envio) ? 'parada em curso mantida' : paradaTxt(envio.parada, envio)}.${b && !envio.config.semAgua ? ' A bomba religa e o pivô volta a girar após a pressurização.' : ''}`
+        : envio
+          ? `Com esta configuração: ${resumoConfig(envio.config)} · ${paradaTxt(envio.parada, envio)}${envio.inicio ? ` · início ${envio.inicio.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : ''}.${partida}`
+          : '';
   const doConfirm = () => {
     if (confirmKind === 'stop') void acionar('desligar');
-    else if (confirmKind === 'start' && envio) void acionar(acaoDe(envio.config), envio);
-    else void acionar(acaoDe(ultima), { modo: 'simples', config: ultima, parada: { tipo: 'semParar' }, inicio: null });
+    else if (!envio) setConfirmOpen(false);
+    else if (confirmKind === 'live') { setModal(null); setConfirmOpen(false); setEnvio(null); void ajustarPerc(envio.config.percentual); }
+    else if (confirmKind === 'restart') void reiniciar(envio);
+    else void acionar(acaoDe(envio.config), envio);
   };
   const cancelConfirm = () => setConfirmOpen(false);
   const abrirIrr = (a: AbaIrrigacao = 'simples') => { setIrrAba(a); setModal('irr'); };
@@ -671,7 +759,7 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
                   )}
                 </div>
               )}
-              {girando && percAtual != null && estado?.pivo.comandos.percentimetro && (
+              {girando && percAtual != null && estado?.pivo.comandos.percentimetro && !rapidoNaFicha && (
                 <div style={{ ...s.card, padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                   <span style={col(2)}>
                     <span style={{ fontSize: 15, fontWeight: 700 }}>Percentímetro</span>
@@ -690,15 +778,35 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
                   )}
                 </div>
               )}
-              {perfil.comandar && (
-              <button type="button" disabled={busy || cmdBloq} style={cmdStyle}
-                onClick={() => { setConfirmKind(on || desligaAgenda ? 'stop' : 'quick'); setConfirmOpen(true); }}>{cmdLabel}</button>
+              {perfil.comandar && rapidoNaFicha && (
+                <>
+                  {layout === 'painel'
+                    ? <PainelRapido valor={rapido} base={baseRapida} onChange={setRasc} lamina100={lamina100} desabilitado={busy || executando} onMaisOpcoes={() => abrirIrr('simples')} aviso={avisoSemRegistro} notaParada={notaParada} />
+                    : <AtalhosRapidos valor={rapido} base={baseRapida} onChange={setRasc} lamina100={lamina100} desabilitado={busy || executando} onMaisOpcoes={() => abrirIrr('simples')} aviso={avisoSemRegistro} notaParada={notaParada} />}
+                  {alteracoes.length > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, fontSize: 13, color: NX.mudo }}>
+                      <span>{alteracoes.map((m) => `${m.label}: ${m.de} → ${m.para}`).join(' · ')}</span>
+                      <button type="button" onClick={() => setRasc(null)} style={{ fontWeight: 800, color: NX.acao, whiteSpace: 'nowrap' }}>Desfazer</button>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button type="button" disabled={busy || desligarOff} onClick={pedirDesligar}
+                      style={{ ...s.cmd(busy || desligarOff ? 'busy' : 'outline'), flex: 1 }}>{busy ? 'Executando…' : 'Desligar'}</button>
+                    <button type="button" disabled={busy || executando || !(alteracoes.length || semRegistro)} onClick={() => pedirModificar(envioDoRascunho(rapido, cfgBase))}
+                      style={{ ...s.cmd(busy || executando || !(alteracoes.length || semRegistro) ? 'busy' : 'primary'), flex: 1 }}>Salvar e enviar</button>
+                  </div>
+                </>
               )}
-              {perfil.comandar && (
+              {perfil.comandar && !rapidoNaFicha && (
+              <button type="button" disabled={busy || cmdBloq} style={cmdStyle}
+                onClick={() => (desligaAgenda ? pedirDesligar() : abrirIrr('simples'))}>{cmdLabel}</button>
+              )}
+              {/* Com início agendado o botão principal só cancela: o Planejamento segue acessível
+                  (trocar o agendamento, ver a Agenda). */}
+              {perfil.comandar && desligaAgenda && (
               <button type="button" onClick={() => abrirIrr('simples')}
-                style={{ alignSelf: 'center', height: 36, padding: '0 10px', display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 700, color: NX.mudo }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={NX.mudo} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12" /><circle cx="16" cy="6" r="2" /><circle cx="10" cy="12" r="2" /><circle cx="18" cy="18" r="2" /></svg>
-                Irrigação avançada
+                style={{ alignSelf: 'center', height: 36, padding: '0 10px', fontSize: 14, fontWeight: 700, color: NX.mudo }}>
+                Planejamento de irrigação
               </button>
               )}
             </div>
@@ -777,15 +885,18 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
         <NxDialogButtons onCancel={cancelConfirm} onConfirm={doConfirm} />
       </NxDialog>
 
-      {/* Irrigação avançada */}
-      <NxDialog open={modal === 'irr'} onClose={() => setModal(null)} label="Irrigação avançada" width={520}>
+      {/* Planejamento de irrigação (antiga Irrigação avançada) */}
+      <NxDialog open={modal === 'irr'} onClose={() => setModal(null)} label="Planejamento de irrigação" width={520}>
         {modal === 'irr' && (
           <IrrigacaoAvancada
-            key={irrAba}
-            nome={titulo} angulo={angulo} ultima={ultima} lamina100={cfgPivo?.parametros?.lamina_100 ?? 7.15} tempoVolta100={cfgPivo?.parametros?.tempo_volta_100 ?? 21} ponta={ponta}
+            key={`${irrAba}:${on}`}
+            nome={titulo} angulo={angulo} ultima={ultima} lamina100={lamina100} tempoVolta100={cfgPivo?.parametros?.tempo_volta_100 ?? 21} ponta={ponta}
             enviando={!!enviando} abaInicial={irrAba} semCanhaoMotivo={semCanhaoMotivo}
             programacoes={prog.progs} onRemoverProgramacao={prog.remover} onSalvarProgramacao={prog.salvar}
-            onEnviar={(e) => { setEnvio(e); setConfirmKind('start'); setConfirmOpen(true); }}
+            ligado={on} emCurso={on ? { config: cfgBase, parada: irrSrv?.atual?.parada ?? null } : null}
+            semRegistro={semRegistro} notaParada={notaParada} enviarOff={on && executando} semReinicio={soPercentual}
+            onDesligar={pedirDesligar} desligarOff={busy || desligarOff}
+            onEnviar={(e) => { if (on) pedirModificar(e); else { setEnvio(e); setConfirmKind('start'); setConfirmOpen(true); } }}
             onClose={() => setModal(null)}
           />
         )}
@@ -849,6 +960,26 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
 // ---------------------------------------------------------------------------
 const numOk = (v: string, min: number, max: number) => { const n = Number(String(v).replace(',', '.')); return v !== '' && Number.isFinite(n) && n >= min && n <= max; };
 const secao = (t: string, mt: number) => <span style={{ ...s.label, marginTop: mt }}>{t}</span>;
+
+/** Layout da aba Operação (NEXON-98): três jeitos de editar com o pivô ligado, para testar. Fica
+ *  neste navegador — não é configuração do pivô, não entra em "Revisar alterações". */
+function LayoutOperacao() {
+  const layout = usePivoLayout((x) => x.layout);
+  const setLayout = usePivoLayout((x) => x.setLayout);
+  return (
+    <>
+      {secao('LAYOUT DA OPERAÇÃO · TESTE', 4)}
+      <div style={{ ...s.card, padding: '12px 16px', ...col(8) }}>
+        <div role="radiogroup" aria-label="Layout da operação" style={{ display: 'grid', gridTemplateColumns: `repeat(${PIVO_LAYOUTS.length}, minmax(0, 1fr))`, gap: 4, padding: 4, borderRadius: 12, background: NX.seg }}>
+          {PIVO_LAYOUTS.map((l) => (
+            <button key={l.v} type="button" role="radio" aria-checked={layout === l.v} onClick={() => setLayout(l.v)} style={s.dTab(layout === l.v)}>{l.label}</button>
+          ))}
+        </div>
+        <span style={{ fontSize: 13, color: NX.mudo }}>{PIVO_LAYOUTS.find((l) => l.v === layout)?.sub} Vale só neste navegador.</span>
+      </div>
+    </>
+  );
+}
 
 /** Select nativo com a cara do chip do mockup ("Bomba 01 · TON 112 · Casa de bombas ⌄"). */
 function ChipSelect({ value, onChange, label, height = 38, disabled, children }: {
@@ -1130,7 +1261,8 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
 
   return (
     <div style={{ padding: '20px 24px 28px 24px', ...col(10) }}>
-      {secao('BOMBEAMENTO', 4)}
+      <LayoutOperacao />
+      {secao('BOMBEAMENTO', 14)}
       <div style={{ ...s.card, padding: '0 16px' }}>
         {conj ? (
           <Linha first titulo="Bomba" sub="Sistema conjugado · um pivô por vez">

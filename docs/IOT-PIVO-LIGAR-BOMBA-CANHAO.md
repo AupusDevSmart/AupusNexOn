@@ -70,6 +70,24 @@ Pulso no Desligar → confirma a parada (Girando em 0) → `perc off` → canhã
 - Atualiza a irrigação em curso. A parada por voltas ou ângulo é recalculada: o que falta percorrer anda na velocidade nova. A parada por tempo não muda.
 - Recusa com o pivô parado, sem água ou com o mesmo valor.
 
+## 6c. Planejamento de irrigação e modificar com o pivô ligado (NEXON-98, 11/11/2026)
+
+- A ficha não tem mais o link "Irrigação avançada". O botão principal abre o diálogo **Planejamento de irrigação** (o mesmo, renomeado).
+- **Parado:** botão **Ligar** → Planejamento → **Ligar** → alerta → `POST /pivos/:id/acionar`.
+- **Ligado:** botão **Desligar ou modificar** → Planejamento aberto com a irrigação em curso. Mostra **Desligar** (com alerta). Ao editar qualquer opção aparece **Salvar e enviar**, com alerta de que o pivô reinicia com as novas opções.
+- **Reinício:** `POST /pivos/:id/acionar {acao: girar_*, irrigacao, reiniciar: true}`. O servidor faz o Desligar inteiro (pivô, canhão, bomba), confirma a parada e liga com as novas opções, numa sequência só. Recusa (409) com o pivô parado. Se a parada ou a bomba não confirmarem, **não religa**: a sequência termina em falha e o pivô fica desligado.
+- **Parada em curso:** se a Parada não foi mexida, o pedido leva `manterParada: true` e o servidor herda a parada automática (o que falta do tempo da programação ou das voltas, na velocidade nova; por ângulo recalcula do ângulo atual). Mexeu na Parada, vale a nova do zero.
+- **Reinício que não chega ao pivô** (TON não responde ao primeiro comando): a sequência é cancelada e a irrigação anterior continua valendo, com a parada automática dela. Falha no meio da parada: o servidor completa o desligamento. As duas ficam na trilha com severidade ALTA.
+- **Ligado fora do NexON** (painel): não há irrigação registrada; a direção vem do status da TON e a ficha avisa para conferir as opções antes de enviar.
+- Reinício exige o ponto Desligar (ou saídas mantidas): sem como parar o pivô, a API recusa (400).
+- **Só o percentímetro mudou** (e o ponto Percentimetro está na TON): não reinicia; usa o `POST /percentimetro` da seção 6b e o alerta diz que vale sem desligar.
+- Trilha: `Reiniciar com novas opções · <antes> → <depois>`, com usuário e aparelho (`GET /logs-mqtt?tipo=comando&equipamentoId=…&search=Reiniciar`).
+- **Layout da operação (teste):** aba Configuração → "Layout da operação · teste", preferência do navegador (`nexon:pivo:layout`):
+  - **Modal** (padrão): um botão só, tudo no Planejamento.
+  - **Painel:** com o pivô ligado, direção, água, percentímetro/lâmina e parada ficam editáveis na ficha, com **Desligar** e **Salvar e enviar**.
+  - **Atalhos:** com o pivô ligado, direção, água e percentímetro (±1, ±10) em botões de um toque, com **Desligar** e **Salvar e enviar**.
+  - Nos três, parado é igual: **Ligar** abre o Planejamento.
+
 ## 7. Implementado (04/11/2026)
 
 - **Backend** (`pivo-sequencia.service.ts`):
