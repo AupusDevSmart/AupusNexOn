@@ -60,6 +60,8 @@ interface Estado {
   bomba_de?: null | { id: string; nome: string | null };
   sequencia_cfg: { pressurizacao_s: number; confirma_giro_s: number; confirma_bomba_s?: number; comandos_mantidos?: boolean };
   sequencia: null | { id: string; acao: string; status: string; passos: Passo[]; erro: string | null; created_at: string; finished_at: string | null; origem?: string };
+  /** Reinício (NEXON-98) que não executou: as novas opções NÃO valeram. Ausente em API antiga. */
+  reinicio_falhou?: null | { erro: string; em: string };
   /** Automação do servidor (programação, agendamento, parada, ponta). Ausente em API antiga. */
   irrigacao?: {
     ativa: boolean; atual: IrrigacaoSrv | null; parar_em: string | null; ultima: IrrigacaoSrv | null;
@@ -484,8 +486,11 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   // Um comando por vez: duplo clique no Confirmar não manda dois pedidos (o estado só fecha o
   // alerta no próximo render).
   const ocupado = useRef(false);
+  const aguarde = () => { toast.message('Aguarde o comando anterior terminar.'); };
   const acionar = async (acao: Acao, irrigacao?: EnvioIrrigacao) => {
-    if (ocupado.current) return;
+    // Desligar nunca fica preso atrás de outro comando (o servidor aceita e interrompe o que
+    // estiver rodando); só não repete o próprio Desligar em voo.
+    if (acao === 'desligar' ? enviando === 'desligar' : ocupado.current) { if (acao !== 'desligar') aguarde(); setConfirmOpen(false); return; }
     ocupado.current = true;
     setModal(null); setConfirmOpen(false);
     setEnviando(acao);
@@ -517,7 +522,7 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   // NEXON-98 — pivô ligado + opções novas: o servidor desliga (pivô, canhão, bomba), confirma a
   // parada e liga de novo, numa sequência só (`reiniciar: true`). Se a parada não confirmar, não religa.
   const reiniciar = async (irrigacao: EnvioIrrigacao) => {
-    if (ocupado.current) return;
+    if (ocupado.current) { aguarde(); setConfirmOpen(false); return; }
     ocupado.current = true;
     const acao = acaoDe(irrigacao.config);
     setModal(null); setConfirmOpen(false);
@@ -558,7 +563,7 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
 
   // Percentímetro com o pivô girando: a TON troca no próximo ciclo, sem desligar.
   const ajustarPerc = async (percentual: number) => {
-    if (ocupado.current) return;
+    if (ocupado.current) { aguarde(); return; }
     ocupado.current = true;
     setPercEnv(true);
     try {
@@ -664,10 +669,13 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   const avisoSemRegistro = semRegistro ? 'Pivô ligado fora do NexON: sem irrigação registrada. Confira as opções antes de enviar.' : null;
   // Parada automática em curso (programação por tempo, voltas): o reinício mantém o que falta.
   const paradaSrv = irrSrv?.atual?.parada;
-  const notaParada = on && irrSrv?.parar_em && paradaSrv && (paradaSrv.tipo === 'porTempo' || paradaSrv.tipo === 'porVoltas')
-    ? `Parada em curso mantida: término previsto ${new Date(irrSrv.parar_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}${irrSrv.atual?.programacao ? ` · ${irrSrv.atual.programacao.nome}` : ''}. Mude a Parada para trocar.`
+  const paradaAutomatica = on && !!paradaSrv && (paradaSrv.tipo === 'porTempo' || paradaSrv.tipo === 'porVoltas');
+  const notaParada = paradaAutomatica
+    ? `Parada em curso mantida${irrSrv?.parar_em ? `: término previsto ${new Date(irrSrv.parar_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : ''}${irrSrv?.atual?.programacao ? ` · ${irrSrv.atual.programacao.nome}` : ''}.`
     : null;
-  const mantemParada = (e: EnvioIrrigacao) => e.modo !== 'angulo' && mesmaParada(e.parada, paradaAtual);
+  // Mantém a parada em curso quando a Parada não foi mexida — a menos que o operador tenha
+  // pedido para tirá-la (só no Planejamento; a parada por tempo aparece como "Sem parar").
+  const mantemParada = (e: EnvioIrrigacao) => e.manterParada !== false && e.modo !== 'angulo' && mesmaParada(e.parada, paradaAtual);
   const baseRapida: Rascunho = rascunhoDe(cfgBase, paradaAtual);
   const chaveBase = JSON.stringify(baseRapida);
   const [rasc, setRasc] = useState<Rascunho | null>(null);
@@ -678,7 +686,7 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   const rapidoNaFicha = on && layout !== 'modal';
   // Só o percentímetro mudou e a TON aceita trocar girando: não precisa reiniciar.
   const soPercentual = (e: EnvioIrrigacao) => {
-    if (!girando || !cfgAtual || cfgAtual.semAgua || !estado?.pivo.comandos.percentimetro || e.modo !== 'simples') return false;
+    if (!girando || !cfgAtual || cfgAtual.semAgua || !estado?.pivo.comandos.percentimetro || e.modo !== 'simples' || e.manterParada === false) return false;
     const m = mudancas(baseRapida, rascunhoDe(e.config, e.parada));
     return m.length === 1 && m[0].campo === 'percentual'
       && e.config.canhao === cfgAtual.canhao && JSON.stringify(e.config.faixasCanhao ?? []) === JSON.stringify(cfgAtual.faixasCanhao ?? []);
@@ -698,14 +706,17 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
     : confirmKind === 'live' && envio
       ? `Só o percentímetro muda (${fmtPct(cfgGiro.percentual)}% → ${fmtPct(envio.config.percentual)}%). Vale a partir do próximo ciclo da TON, sem desligar o pivô.`
       : confirmKind === 'restart' && envio
-        ? `O pivô desliga e liga de novo com: ${resumoConfig(envio.config)} · ${notaParada && mantemParada(envio) ? 'parada em curso mantida' : paradaTxt(envio.parada, envio)}.${b && !envio.config.semAgua ? ' A bomba religa e o pivô volta a girar após a pressurização.' : ''}`
+        ? `O pivô desliga e liga de novo com: ${resumoConfig(envio.config)} · ${paradaAutomatica && mantemParada(envio) ? 'parada em curso mantida' : paradaTxt(envio.parada, envio)}.${b && !envio.config.semAgua ? ' A bomba religa e o pivô volta a girar após a pressurização.' : ''}`
         : envio
           ? `Com esta configuração: ${resumoConfig(envio.config)} · ${paradaTxt(envio.parada, envio)}${envio.inicio ? ` · início ${envio.inicio.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : ''}.${partida}`
           : '';
   const doConfirm = () => {
     if (confirmKind === 'stop') void acionar('desligar');
     else if (!envio) setConfirmOpen(false);
-    else if (confirmKind === 'live') { setModal(null); setConfirmOpen(false); setEnvio(null); void ajustarPerc(envio.config.percentual); }
+    else if (confirmKind === 'live') {
+      if (ocupado.current) { aguarde(); return; }   // não fecha nem descarta: a mudança segue na tela
+      setModal(null); setConfirmOpen(false); setEnvio(null); void ajustarPerc(envio.config.percentual);
+    }
     else if (confirmKind === 'restart') void reiniciar(envio);
     else void acionar(acaoDe(envio.config), envio);
   };
@@ -742,6 +753,11 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
                 {eta && <span style={{ fontSize: 13, color: NX.mudo }}>{eta}</span>}
                 {agendadaTxt && <span style={{ fontSize: 13, color: NX.mudo }}>{agendadaTxt}</span>}
                 {erro && <span style={{ fontSize: 13, color: NX.warn }}>{erro}</span>}
+                {estado?.reinicio_falhou && (
+                  <span style={{ fontSize: 13, color: NX.warn }}>
+                    Reinício não executou ({new Date(estado.reinicio_falhou.em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}): {estado.reinicio_falhou.erro.replace(/^Reinício não executou:\s*/, '')} — vale a irrigação anterior.
+                  </span>
+                )}
               </div>
               {canhao?.comando && canhao.tem_status && (
                 <div style={{ ...s.card, padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>

@@ -25,7 +25,11 @@ export interface ConfigIrrigacao { direcao: Direcao; percentual: number; lamina?
 export const fmtPct = (p: number) => (Number.isInteger(p) ? String(p) : p.toFixed(1).replace('.', ','));
 export type Parada = { tipo: 'semParar' } | { tipo: 'porAngulo'; angulo: number } | { tipo: 'porVoltas'; voltas: number };
 export type Modo = 'simples' | 'angulo' | 'segmentos';
-export interface EnvioIrrigacao { modo: Modo; config: ConfigIrrigacao; parada: Parada; inicio: Date | null; anguloFinal?: number; segmento?: number }
+export interface EnvioIrrigacao {
+  modo: Modo; config: ConfigIrrigacao; parada: Parada; inicio: Date | null; anguloFinal?: number; segmento?: number;
+  /** Só no reinício: o operador pediu para TIRAR a parada automática em curso (false). Ausente = decide pela Parada. */
+  manterParada?: boolean;
+}
 export type AbaIrrigacao = Modo | 'agenda' | 'canhao';
 
 export interface Programacao {
@@ -420,7 +424,9 @@ export function IrrigacaoAvancada({
   ];
 
   // Ligado, o reinício é sempre agora: agendar início não faz sentido com o pivô girando.
+  const [tirarParada, setTirarParada] = useState(false);
   const montar = (): EnvioIrrigacao => ({
+    ...(tirarParada ? { manterParada: false } : {}),
     modo, parada: paradaEf, inicio: ligado || modo === 'angulo' || inicioTipo === 'agora' ? null : inicio,
     anguloFinal: modo === 'angulo' ? anguloFinal : undefined, segmento: modo === 'segmentos' ? segSel + 1 : undefined,
     config: { ...efetiva, direcao: cfg.direcao, canhao: canhaoAtivo, faixasCanhao: canhaoAtivo ? faixas : [] },
@@ -428,7 +434,8 @@ export function IrrigacaoAvancada({
   const enviar = () => onEnviar(montar());
   // "Editado" = o que seria enviado mudou desde que o diálogo abriu. Fora da conta: o início (é
   // sempre agora) e a lâmina digitada (o que vale é o percentual; redigitar o mesmo não é mudança).
-  const assinar = (e: EnvioIrrigacao) => JSON.stringify({ ...e, inicio: null, config: { ...e.config, lamina: null } });
+  // No seco o percentual não vale (o servidor usa 100): Molhado → +10 → Seco de novo não é mudança.
+  const assinar = (e: EnvioIrrigacao) => JSON.stringify({ ...e, inicio: null, config: { ...e.config, lamina: null, percentual: e.config.semAgua ? null : e.config.percentual } });
   const assinatura = assinar(montar());
   const assinaturaInicial = useRef(assinatura);
   const editado = assinatura !== assinaturaInicial.current;
@@ -633,7 +640,12 @@ export function IrrigacaoAvancada({
           {avisoCanhao}
           {pctLam}
           {(aba === 'simples' || aba === 'segmentos') && inicioParada}
-          {ligado && notaParada && paradaIntacta && <span style={{ fontSize: 12, color: NX.mudo }}>{notaParada}</span>}
+          {ligado && notaParada && paradaIntacta && (
+            <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, fontSize: 12, color: tirarParada ? NX.warn : NX.mudo }}>
+              <span>{tirarParada ? 'A parada em curso será removida.' : notaParada}</span>
+              <button type="button" onClick={() => setTirarParada((v) => !v)} style={{ fontWeight: 800, color: NX.acao, whiteSpace: 'nowrap' }}>{tirarParada ? 'Manter a parada' : 'Tirar a parada'}</button>
+            </span>
+          )}
           {aba === 'angulo' && (
             <div style={{ ...caixaCampo, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', minHeight: 52, boxSizing: 'border-box' }}>
               <span style={{ fontSize: 15, fontWeight: 700 }}>Ângulo final</span>

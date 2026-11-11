@@ -76,6 +76,25 @@ describe('Planejamento de irrigação', () => {
     expect(screen.queryByText(/Parada em curso mantida/)).toBeNull();
   });
 
+  it('tirar a parada em curso: conta como edição e o envio vai com manterParada false', () => {
+    const { onEnviar } = abrir({ ligado: true, notaParada: 'Parada em curso mantida: término previsto 11/11 22:00.', emCurso: { config: EM_CURSO, parada: { tipo: 'porTempo' } } });
+    expect(screen.queryByText('Salvar e enviar')).toBeNull();
+    fireEvent.click(screen.getByText('Tirar a parada'));
+    expect(screen.getByText('A parada em curso será removida.')).toBeTruthy();
+    fireEvent.click(screen.getByText('Salvar e enviar'));
+    expect(onEnviar.mock.calls[0][0]).toMatchObject({ manterParada: false, parada: { tipo: 'semParar' } });
+  });
+
+  it('no seco o percentual não conta: Molhado → mexe no % → Seco de novo não é edição', () => {
+    abrir({ ligado: true, emCurso: { config: { ...EM_CURSO, semAgua: true }, parada: { tipo: 'semParar' } } });
+    const seco = screen.getByRole('switch', { name: /Girar sem água/ });
+    fireEvent.click(seco);
+    fireEvent.change((screen.getAllByRole('textbox') as HTMLInputElement[])[0], { target: { value: '80' } });
+    expect(screen.getByText('Salvar e enviar')).toBeTruthy();
+    fireEvent.click(seco);
+    expect(screen.queryByText('Salvar e enviar')).toBeNull();
+  });
+
   it('parada de programação (por tempo) vira "sem parar" no formulário', () => {
     expect(paradaValida({ tipo: 'porTempo' })).toEqual({ tipo: 'semParar' });
     expect(paradaValida({ tipo: 'porAngulo', angulo: 45 })).toEqual({ tipo: 'porAngulo', angulo: 45 });

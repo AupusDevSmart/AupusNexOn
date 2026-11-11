@@ -78,6 +78,9 @@ Pulso no Desligar → confirma a parada (Girando em 0) → `perc off` → canhã
 - **Reinício:** `POST /pivos/:id/acionar {acao: girar_*, irrigacao, reiniciar: true}`. O servidor faz o Desligar inteiro (pivô, canhão, bomba), confirma a parada e liga com as novas opções, numa sequência só. Recusa (409) com o pivô parado. Se a parada ou a bomba não confirmarem, **não religa**: a sequência termina em falha e o pivô fica desligado.
 - **Parada em curso:** se a Parada não foi mexida, o pedido leva `manterParada: true` e o servidor herda a parada automática (o que falta do tempo da programação ou das voltas, na velocidade nova; por ângulo recalcula do ângulo atual). Mexeu na Parada, vale a nova do zero.
 - **Reinício que não chega ao pivô** (TON não responde ao primeiro comando): a sequência é cancelada e a irrigação anterior continua valendo, com a parada automática dela. Falha no meio da parada: o servidor completa o desligamento. As duas ficam na trilha com severidade ALTA.
+- **Tirar a parada em curso:** a parada por tempo da programação aparece como "Sem parar" no formulário; o Planejamento tem "Tirar a parada", que manda `manterParada: false`.
+- **Reinício que não executou** aparece na ficha (`estado.reinicio_falhou`): "Reinício não executou (HH:MM): motivo — vale a irrigação anterior".
+- **Desligar direto no ponto** (apps, rota `equipamentos/:id/pontos/:pid/acionar`) com sequência em andamento: o servidor interrompe a sequência e roda o Desligar inteiro; antes ela seguia e o pivô ligava sozinho.
 - **Ligado fora do NexON** (painel): não há irrigação registrada; a direção vem do status da TON e a ficha avisa para conferir as opções antes de enviar.
 - Reinício exige o ponto Desligar (ou saídas mantidas): sem como parar o pivô, a API recusa (400).
 - **Só o percentímetro mudou** (e o ponto Percentimetro está na TON): não reinicia; usa o `POST /percentimetro` da seção 6b e o alerta diz que vale sem desligar.
