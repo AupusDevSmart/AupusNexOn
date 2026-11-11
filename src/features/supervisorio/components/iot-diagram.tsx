@@ -1064,7 +1064,7 @@ export function IoTDiagram({ unidadeId, unidadeNome }: IoTDiagramProps) {
   };
 
   // Aciona um ponto de comando (pulso ON->OFF) em modo SIM (TESTE/).
-  const acionarSimPonto = async (bo: any) => {
+  const acionarSimPonto = async (bo: any, ligar?: boolean) => {
     if (!cmdSimModal || !bo?.ponto) return;
     // Se há board(s) de bancada vivos mas nenhum escolhido, exige o remap antes de
     // acionar — senão o comando iria pro MAC cadastrado/placeholder e daria timeout.
@@ -1075,7 +1075,7 @@ export function IoTDiagram({ unidadeId, unidadeNome }: IoTDiagramProps) {
     setCmdSimModal((m) => m && ({ ...m, acting: bo.ponto.id, result: null }));
     try {
       const { acionarPontoApi } = await import('@/services/acionar-ponto.services');
-      const res: any = await acionarPontoApi.acionar(bo.ponto.equipamento_id, bo.ponto.id, true, cmdSimModal.testMac || undefined); // sim=true + remap
+      const res: any = await acionarPontoApi.acionar(bo.ponto.equipamento_id, bo.ponto.id, true, cmdSimModal.testMac || undefined, ligar); // sim=true + remap (+ ON/OFF)
       const lat = res?.latency_ms != null ? ` (${res.latency_ms}ms)` : '';
       setCmdSimModal((m) => m && ({ ...m, acting: null, result: { ok: true, text: `${res?.comando_semantico || bo.ponto.nome}: ${res?.status ?? 'ok'}${lat} [${res?.comando_tecnico || ('r' + bo.bo_numero)}]` } }));
     } catch (e: any) {
@@ -2605,7 +2605,22 @@ export function IoTDiagram({ unidadeId, unidadeNome }: IoTDiagramProps) {
                         <div key={dev} className="border rounded p-2">
                           <div className="text-xs text-muted-foreground mb-1">{dev}</div>
                           <div className="flex flex-wrap gap-1">
-                            {(list as any[]).map((bo: any) => (
+                            {(list as any[]).map((bo: any) => bo.pulso_ms === 0 ? (
+                              // Saída ON/OFF (alto permanente): liga e desliga separados
+                              <span key={bo.id || bo.bo_numero} className="inline-flex">
+                                <Button size="sm" variant="outline" className="h-7 rounded-r-none"
+                                  disabled={cmdSimModal.acting === bo.ponto.id}
+                                  onClick={() => acionarSimPonto(bo, true)}>
+                                  <Power className="h-3 w-3 mr-1" />
+                                  {bo.ponto.nome} ON<span className="opacity-50 ml-1">R{bo.bo_numero}</span>
+                                </Button>
+                                <Button size="sm" variant="outline" className="h-7 rounded-l-none border-l-0"
+                                  disabled={cmdSimModal.acting === bo.ponto.id}
+                                  onClick={() => acionarSimPonto(bo, false)}>
+                                  OFF
+                                </Button>
+                              </span>
+                            ) : (
                               <Button key={bo.id || bo.bo_numero} size="sm" variant="outline" className="h-7"
                                 disabled={cmdSimModal.acting === bo.ponto.id}
                                 onClick={() => acionarSimPonto(bo)}>

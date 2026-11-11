@@ -117,7 +117,7 @@ export function VinculosTonSheet({
     } catch (e: any) { setMsg(e?.response?.data?.message || 'Falha ao vincular'); }
   };
 
-  /** Duração do pulso da BO (a própria TON desliga o relé depois desse tempo). */
+  /** Duração do pulso da BO (a própria TON desliga o relé depois desse tempo); 0 = saída ON/OFF. */
   const salvarPulso = async (bo: TonBo, ms: number) => {
     setMsg(null);
     try {
@@ -163,18 +163,35 @@ export function VinculosTonSheet({
       <div className="flex items-center gap-2 px-3 py-1.5 border-t text-sm">
         <div className="flex-1 truncate">{ponto.nome}</div>
         {bo?.id && (
-          <label className="flex items-center gap-1 text-xs text-muted-foreground" title={`Duração do pulso: a TON desliga o relé depois desse tempo (50 a ${PULSO_TON_MAX} ms)`}>
-            <input key={bo.pulso_ms} type="number" min={50} max={PULSO_TON_MAX} step={50} defaultValue={bo.pulso_ms}
-              aria-label={`Pulso de ${ponto.nome} em ms`}
-              onKeyDown={(ev) => { if (ev.key === 'Enter') ev.currentTarget.blur(); }}
-              onBlur={(ev) => {
-                const n = Math.round(Number(ev.currentTarget.value));
-                if (!Number.isFinite(n) || n === bo.pulso_ms) { ev.currentTarget.value = String(bo.pulso_ms); return; }
-                void salvarPulso(bo, Math.max(50, Math.min(PULSO_TON_MAX, n)));
-              }}
-              className="h-8 w-20 rounded-md border border-input bg-background px-2 text-right text-sm tabular-nums" />
-            ms
-          </label>
+          // Modo da saída: Pulso (a TON desliga sozinha após N ms) ou ON/OFF (alto permanente, pulso_ms = 0)
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <select
+              aria-label={`Modo da saída de ${ponto.nome}`}
+              value={bo.pulso_ms === 0 ? 'onoff' : 'pulso'}
+              onChange={(ev) => void salvarPulso(bo, ev.target.value === 'onoff' ? 0 : 500)}
+              className="h-8 rounded-md border border-input bg-background px-1.5 text-xs"
+              title="Pulso: a TON desliga o relé sozinha depois do tempo. ON/OFF: o relé fica ligado até o comando de desligar."
+            >
+              <option value="pulso">Pulso</option>
+              <option value="onoff">ON/OFF</option>
+            </select>
+            {bo.pulso_ms === 0 ? (
+              <span className="w-[5.5rem] text-center text-[11px] leading-tight">alto permanente</span>
+            ) : (
+              <label className="flex items-center gap-1" title={`Duração do pulso: a TON desliga o relé depois desse tempo (50 a ${PULSO_TON_MAX} ms)`}>
+                <input key={bo.pulso_ms} type="number" min={50} max={PULSO_TON_MAX} step={50} defaultValue={bo.pulso_ms}
+                  aria-label={`Pulso de ${ponto.nome} em ms`}
+                  onKeyDown={(ev) => { if (ev.key === 'Enter') ev.currentTarget.blur(); }}
+                  onBlur={(ev) => {
+                    const n = Math.round(Number(ev.currentTarget.value));
+                    if (!Number.isFinite(n) || n === bo.pulso_ms) { ev.currentTarget.value = String(bo.pulso_ms); return; }
+                    void salvarPulso(bo, Math.max(50, Math.min(PULSO_TON_MAX, n)));
+                  }}
+                  className="h-8 w-16 rounded-md border border-input bg-background px-2 text-right text-sm tabular-nums" />
+                ms
+              </label>
+            )}
+          </div>
         )}
         <Select
           value={atual != null ? String(atual) : NONE}

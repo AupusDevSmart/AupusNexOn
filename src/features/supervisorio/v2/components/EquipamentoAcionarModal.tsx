@@ -78,17 +78,19 @@ export const EquipamentoAcionarModal: React.FC<EquipamentoAcionarModalProps> = (
     setPontoPendingConfirm(ponto);
   };
 
-  const handleConfirmar = useCallback(async () => {
+  const handleConfirmar = useCallback(async (ligar?: boolean) => {
     const ponto = pontoPendingConfirm;
     if (!ponto) return;
     setPontoPendingConfirm(null);
     setPending((s) => ({ ...s, [ponto.id]: true }));
     try {
-      const result = await acionarPontoApi.acionar(equipamento.id, ponto.id);
+      const result = await acionarPontoApi.acionar(equipamento.id, ponto.id, false, undefined, ponto.onoff ? ligar : undefined);
       const subtitle =
         result.status === 'duplicate'
           ? `TON ja havia executado (${result.latency_ms}ms)`
-          : `Pulso ${result.pulso_ms}ms · ack ${result.latency_ms}ms`;
+          : ponto.onoff
+            ? `${ligar ? 'Ligado (ON)' : 'Desligado (OFF)'} · ack ${result.latency_ms}ms`
+            : `Pulso ${result.pulso_ms}ms · ack ${result.latency_ms}ms`;
       toast.success(`${ponto.nome.toUpperCase()} executado`, {
         description: `${result.comando_semantico} · ${subtitle}`,
       });
@@ -185,6 +187,7 @@ export const EquipamentoAcionarModal: React.FC<EquipamentoAcionarModalProps> = (
                     <span className="text-xs font-mono normal-case">
                       {ponto.nome}
                     </span>
+                    {ponto.onoff && <span className="text-[10px] text-muted-foreground">ON/OFF</span>}
                   </Button>
                 );
               })}
@@ -210,7 +213,9 @@ export const EquipamentoAcionarModal: React.FC<EquipamentoAcionarModalProps> = (
               <span className="font-semibold">{equipamento.nome}</span>?
               <br />
               <span className="text-xs text-muted-foreground">
-                O TON mapeado vai executar o pulso no rele correspondente.
+                {pontoPendingConfirm?.onoff
+                  ? 'Saída ON/OFF: o relé fica no estado escolhido até o próximo comando.'
+                  : 'O TON mapeado vai executar o pulso no rele correspondente.'}
               </span>
             </DialogDescription>
           </DialogHeader>
@@ -223,9 +228,20 @@ export const EquipamentoAcionarModal: React.FC<EquipamentoAcionarModalProps> = (
             >
               Cancelar
             </Button>
-            <Button type="button" onClick={handleConfirmar} className="rounded">
-              Acionar
-            </Button>
+            {pontoPendingConfirm?.onoff ? (
+              <>
+                <Button type="button" variant="outline" onClick={() => handleConfirmar(false)} className="rounded">
+                  Desligar (OFF)
+                </Button>
+                <Button type="button" onClick={() => handleConfirmar(true)} className="rounded">
+                  Ligar (ON)
+                </Button>
+              </>
+            ) : (
+              <Button type="button" onClick={() => handleConfirmar()} className="rounded">
+                Acionar
+              </Button>
+            )}
           </div>
         </DialogContent>
       </Dialog>

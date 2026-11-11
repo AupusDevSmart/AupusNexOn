@@ -25,16 +25,19 @@ class AcionarPontoService {
     pontoId: string,
     sim = false,
     testMac?: string,
+    /** Saída ON/OFF (BO com pulso 0): true liga, false desliga. */
+    ligar?: boolean,
   ): Promise<AcionarPontoResult> {
     // sim=true: backend executa o pulso em TESTE/<topico>/cmd (firmware de
     // simulação), sem tocar o equipamento real. Usado pelo painel de teste do IoT.
     // testMac (remap de bancada): o backend reescreve .../satellite/<MAC> pro MAC do
     // board físico de bancada, roteando o teste pra ele sem tocar no cadastro.
-    const body = sim
+    const body: Record<string, unknown> = sim
       ? testMac
         ? { sim: true, testMac }
         : { sim: true }
       : {};
+    if (typeof ligar === 'boolean') body.ligar = ligar;
     const resp = await api.post<AcionarPontoResult>(
       `/equipamentos/${equipamentoId.trim()}/pontos/${pontoId.trim()}/acionar`,
       body,

@@ -16,6 +16,8 @@ export interface EquipamentoPonto {
   ativo: boolean;
   created_at: string;
   updated_at: string;
+  /** Comando numa BO ON/OFF (alto permanente): acionar pede Ligar ou Desligar. */
+  onoff?: boolean;
 }
 
 export interface CreateEquipamentoPontoInput {
