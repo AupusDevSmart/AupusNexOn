@@ -831,20 +831,18 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
                   </span>
                 )}
               </div>
-              {canhao?.comando && canhao.tem_status && (
-                <div style={{ ...s.card, padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                  <span style={col(2)}>
-                    <span style={{ fontSize: 15, fontWeight: 700 }}>Canhão final</span>
-                    <span style={{ fontSize: 12, color: canhao.ligado === 1 ? NX.ok : NX.mudo }}>
-                      {canhao.ligado === 1 ? 'Ligado' : canhao.ligado === 0 ? 'Desligado' : 'Sem leitura'}{canhaoSeco ? ' · girando sem água' : ''}
-                    </span>
-                  </span>
-                  {perfil.comandar && canhao.ligado !== null && (
-                    <button type="button" disabled={canhaoOff} onClick={() => comandarCanhao(canhao.ligado !== 1)}
-                      style={{ height: 36, padding: '0 14px', borderRadius: 10, border: `1px solid ${NX.borda}`, fontSize: 14, fontWeight: 700, color: canhaoOff ? NX.desab : NX.texto, background: NX.card, cursor: canhaoOff ? 'default' : 'pointer' }}>
-                      {canhaoEnv ? 'Enviando…' : canhao.ligado === 1 ? 'Desativar canhão' : 'Ativar canhão'}
-                    </button>
-                  )}
+              {/* Canhão na ficha: um toque, e só com o pivô girando. Com o pivô desligado some — a não ser
+                  que o canhão tenha ficado ligado: aí aparece para dar como desligar. */}
+              {canhao?.comando && canhao.tem_status && (girando || canhao.ligado === 1) && (
+                <div style={{ ...s.card, padding: '0 16px' }}>
+                  <NxSwitchRow first title="Canhão final" on={canhao.ligado === 1}
+                    sub={canhaoEnv ? 'Enviando…'
+                      : canhao.ligado === null ? 'Sem leitura do canhão'
+                        : !girando ? 'Ficou ligado com o pivô desligado · toque para desligar'
+                          : canhaoSeco ? `${canhao.ligado === 1 ? 'Ligado' : 'Desligado'} · girando sem água`
+                            : canhao.ligado === 1 ? 'Ligado · toque para desligar' : 'Desligado · toque para ligar'}
+                    disabled={!perfil.comandar || canhao.ligado === null || canhaoOff}
+                    onToggle={() => comandarCanhao(canhao.ligado !== 1)} />
                 </div>
               )}
               {girando && percAtual != null && estado?.pivo.comandos.percentimetro && !rapidoNaFicha && (

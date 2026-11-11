@@ -598,53 +598,6 @@ export function IrrigacaoAvancada({
             </div>
           )}
 
-          <div style={col(8)}>
-            <button type="button" role="switch" aria-checked={canhaoAtivo} disabled={semCanhao} onClick={() => setCfg((c) => ({ ...c, canhao: !c.canhao }))}
-              style={{ ...linha, width: '100%', ...(semCanhao ? { opacity: 0.45 } : {}) }}>
-              <span style={{ ...col(2), textAlign: 'left' }}>
-                <span style={titulo15}>Canhão final</span>
-                <span style={rotulo}>{semCanhaoMotivo ? semCanhaoMotivo : seco ? 'Indisponível girando sem água' : !cfg.canhao ? 'Começa desligado' : nFaixas ? textoFaixas(faixas) : 'Ligado a volta toda'}</span>
-              </span>
-              <NxSwitch on={canhaoAtivo} />
-            </button>
-            {canhaoAtivo && !parado && (
-              <button type="button" onClick={() => setFaixasAbertas((v) => !v)} style={{ alignSelf: 'flex-start', fontSize: 13, fontWeight: 800, color: NX.acao }}>
-                {faixasAbertas ? 'Fechar faixas' : nFaixas ? 'Editar faixas do canhão' : 'Ligar o canhão só em parte da volta'}
-              </button>
-            )}
-            {canhaoAtivo && !parado && faixasAbertas && (
-              <div style={{ border: `1px solid ${NX.borda}`, borderRadius: 14, padding: 12, ...col(10) }}>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-                  <DialCanhao atual={atual} faixas={faixas} onChange={setFaixas} />
-                  <span style={{ fontSize: 13, color: NX.mudo }}>Arraste as alças ou digite os ângulos · setor verde = canhão ligado</span>
-                  {dica('As faixas ficam salvas, mas o NexON ainda não liga e desliga o canhão pelo ângulo: ele fica ligado a volta toda.', NX.warn)}
-                </div>
-                {faixas.map((f, i) => (
-                  <div key={f.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr) 32px', gap: 8, alignItems: 'center' }}>
-                    {(['liga', 'desliga'] as const).map((al) => (
-                      <label key={al} style={{ height: 40, borderRadius: 10, background: NX.seg, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 14 }}>
-                        <span style={{ color: NX.mudo }}>{al === 'liga' ? 'Liga' : 'Desliga'}</span>
-                        <input inputMode="numeric" value={f[al]} aria-label={`Faixa ${i + 1}, ${al}`}
-                          onChange={(e) => { const v = Number(e.target.value); if (Number.isFinite(v)) setFaixas(moverAlca(faixas, i, al, v)); }}
-                          style={{ width: '100%', minWidth: 0, background: 'transparent', border: 0, fontWeight: 800, textAlign: 'right', color: NX.texto, padding: 0 }} />
-                        <span style={{ color: NX.mudo }}>°</span>
-                      </label>
-                    ))}
-                    <button type="button" aria-label={`Remover faixa ${i + 1}`} onClick={() => setFaixas(faixas.filter((x) => x.id !== f.id))}
-                      style={{ width: 32, height: 32, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={NX.bad} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></svg>
-                    </button>
-                  </div>
-                ))}
-                <button type="button" disabled={!podeAdd} onClick={() => { const n = faixaNoVao(faixas, atual); if (n) setFaixas([...faixas, n]); }}
-                  style={{ height: 44, borderRadius: 12, border: `1px dashed ${NX.off}`, fontSize: 14, fontWeight: 800, textAlign: 'center', color: podeAdd ? NX.acao : NX.desab }}>
-                  {nFaixas >= 5 ? 'Limite de 5 faixas' : '+ Adicionar faixa'}
-                </button>
-                {!nFaixas && dica('Sem faixas, o canhão fica ligado a volta toda.')}
-              </div>
-            )}
-          </div>
-
           <div style={{ display: 'grid', gridTemplateColumns: ligado ? 'minmax(0, 1fr)' : 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
             {!ligado && (
               <span style={caixaCampo}>
@@ -710,6 +663,54 @@ export function IrrigacaoAvancada({
               <span style={{ fontSize: 13, color: NX.mudo }}>Toque no segmento · o pivô para no fim do segmento {segSel + 1} ({paradaEf.tipo === 'porAngulo' ? paradaEf.angulo : 0}°)</span>
             </div>
           )}
+          {/* Canhão por último (pedido do dono): é o que menos se mexe ao ligar. */}
+          <div style={col(8)}>
+            <button type="button" role="switch" aria-checked={canhaoAtivo} disabled={semCanhao} onClick={() => setCfg((c) => ({ ...c, canhao: !c.canhao }))}
+              style={{ ...linha, width: '100%', ...(semCanhao ? { opacity: 0.45 } : {}) }}>
+              <span style={{ ...col(2), textAlign: 'left' }}>
+                <span style={titulo15}>Canhão final</span>
+                <span style={rotulo}>{semCanhaoMotivo ? semCanhaoMotivo : seco ? 'Indisponível girando sem água' : !cfg.canhao ? 'Começa desligado' : nFaixas ? textoFaixas(faixas) : 'Ligado a volta toda'}</span>
+              </span>
+              <NxSwitch on={canhaoAtivo} />
+            </button>
+            {canhaoAtivo && !parado && (
+              <button type="button" onClick={() => setFaixasAbertas((v) => !v)} style={{ alignSelf: 'flex-start', fontSize: 13, fontWeight: 800, color: NX.acao }}>
+                {faixasAbertas ? 'Fechar faixas' : nFaixas ? 'Editar faixas do canhão' : 'Ligar o canhão só em parte da volta'}
+              </button>
+            )}
+            {canhaoAtivo && !parado && faixasAbertas && (
+              <div style={{ border: `1px solid ${NX.borda}`, borderRadius: 14, padding: 12, ...col(10) }}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                  <DialCanhao atual={atual} faixas={faixas} onChange={setFaixas} />
+                  <span style={{ fontSize: 13, color: NX.mudo }}>Arraste as alças ou digite os ângulos · setor verde = canhão ligado</span>
+                  {dica('As faixas ficam salvas, mas o NexON ainda não liga e desliga o canhão pelo ângulo: ele fica ligado a volta toda.', NX.warn)}
+                </div>
+                {faixas.map((f, i) => (
+                  <div key={f.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr) 32px', gap: 8, alignItems: 'center' }}>
+                    {(['liga', 'desliga'] as const).map((al) => (
+                      <label key={al} style={{ height: 40, borderRadius: 10, background: NX.seg, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 14 }}>
+                        <span style={{ color: NX.mudo }}>{al === 'liga' ? 'Liga' : 'Desliga'}</span>
+                        <input inputMode="numeric" value={f[al]} aria-label={`Faixa ${i + 1}, ${al}`}
+                          onChange={(e) => { const v = Number(e.target.value); if (Number.isFinite(v)) setFaixas(moverAlca(faixas, i, al, v)); }}
+                          style={{ width: '100%', minWidth: 0, background: 'transparent', border: 0, fontWeight: 800, textAlign: 'right', color: NX.texto, padding: 0 }} />
+                        <span style={{ color: NX.mudo }}>°</span>
+                      </label>
+                    ))}
+                    <button type="button" aria-label={`Remover faixa ${i + 1}`} onClick={() => setFaixas(faixas.filter((x) => x.id !== f.id))}
+                      style={{ width: 32, height: 32, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={NX.bad} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></svg>
+                    </button>
+                  </div>
+                ))}
+                <button type="button" disabled={!podeAdd} onClick={() => { const n = faixaNoVao(faixas, atual); if (n) setFaixas([...faixas, n]); }}
+                  style={{ height: 44, borderRadius: 12, border: `1px dashed ${NX.off}`, fontSize: 14, fontWeight: 800, textAlign: 'center', color: podeAdd ? NX.acao : NX.desab }}>
+                  {nFaixas >= 5 ? 'Limite de 5 faixas' : '+ Adicionar faixa'}
+                </button>
+                {!nFaixas && dica('Sem faixas, o canhão fica ligado a volta toda.')}
+              </div>
+            )}
+          </div>
+
           <div style={{ background: NX.caixa, borderRadius: 12, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
             {/* Parada em curso intacta: o término que vale é o dela (o reinício herda o que falta), não um novo do zero. */}
             <span style={{ fontSize: 14, color: NX.caixaTx }}>{ligado && notaParada && paradaIntacta ? notaParada : prev.texto}</span>
