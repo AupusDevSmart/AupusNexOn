@@ -424,10 +424,13 @@ export function IrrigacaoAvancada({
   ];
 
   // Ligado, o reinício é sempre agora: agendar início não faz sentido com o pivô girando.
+  const paradaInicial = useRef(JSON.stringify(parada));
+  const paradaIntacta = modo !== 'angulo' && JSON.stringify(parada) === paradaInicial.current;
   const [tirarParada, setTirarParada] = useState(false);
   const montar = (): EnvioIrrigacao => ({
+    // Tirar a parada em curso: vai "sem parar" de verdade (voltas em curso não recomeçam do zero).
     ...(tirarParada ? { manterParada: false } : {}),
-    modo, parada: paradaEf, inicio: ligado || modo === 'angulo' || inicioTipo === 'agora' ? null : inicio,
+    modo, parada: tirarParada && paradaIntacta ? { tipo: 'semParar' } : paradaEf, inicio: ligado || modo === 'angulo' || inicioTipo === 'agora' ? null : inicio,
     anguloFinal: modo === 'angulo' ? anguloFinal : undefined, segmento: modo === 'segmentos' ? segSel + 1 : undefined,
     config: { ...efetiva, direcao: cfg.direcao, canhao: canhaoAtivo, faixasCanhao: canhaoAtivo ? faixas : [] },
   });
@@ -439,8 +442,6 @@ export function IrrigacaoAvancada({
   const assinatura = assinar(montar());
   const assinaturaInicial = useRef(assinatura);
   const editado = assinatura !== assinaturaInicial.current;
-  const paradaInicial = useRef(JSON.stringify(parada));
-  const paradaIntacta = modo !== 'angulo' && JSON.stringify(parada) === paradaInicial.current;
   const agendar = !ligado && modo !== 'angulo' && inicioTipo === 'data';
   const rotuloEnviar = enviando ? 'Executando…' : ligado ? 'Salvar e enviar' : agendar ? 'Agendar início' : 'Ligar';
 

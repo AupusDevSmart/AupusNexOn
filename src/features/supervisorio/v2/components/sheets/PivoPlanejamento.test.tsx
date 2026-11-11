@@ -85,6 +85,13 @@ describe('Planejamento de irrigação', () => {
     expect(onEnviar.mock.calls[0][0]).toMatchObject({ manterParada: false, parada: { tipo: 'semParar' } });
   });
 
+  it('tirar a parada por voltas em curso: vai sem parar, não recomeça as voltas', () => {
+    const { onEnviar } = abrir({ ligado: true, notaParada: 'Parada em curso mantida.', emCurso: { config: EM_CURSO, parada: { tipo: 'porVoltas', voltas: 3 } } });
+    fireEvent.click(screen.getByText('Tirar a parada'));
+    fireEvent.click(screen.getByText('Salvar e enviar'));
+    expect(onEnviar.mock.calls[0][0]).toMatchObject({ manterParada: false, parada: { tipo: 'semParar' } });
+  });
+
   it('no seco o percentual não conta: Molhado → mexe no % → Seco de novo não é edição', () => {
     abrir({ ligado: true, emCurso: { config: { ...EM_CURSO, semAgua: true }, parada: { tipo: 'semParar' } } });
     const seco = screen.getByRole('switch', { name: /Girar sem água/ });
