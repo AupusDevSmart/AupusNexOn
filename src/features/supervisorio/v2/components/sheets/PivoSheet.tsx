@@ -454,7 +454,7 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
     if (ligando) return { tone: 'ok', label: 'Normal', texto: seq?.passos?.at(-1)?.msg ?? 'Ligando…' };
     if (falha) return { tone: 'bad', label: 'Falha', texto: falhaPressao ? 'Falha de pressão · Parado' : falhaPermissivo ? 'Sem permissivo para ligar · Parado' : st?.erro === 1 ? 'Falha no painel · Parado' : 'Falha na partida · Parado' };
     if (girando) return { tone: 'ok', label: 'Normal', texto: cfgGiro.semAgua ? `Girando · ${DIRECAO_LABEL[direcaoAtual]} · Seco`
-      : ehParado(cfgGiro) ? 'Irrigando parado · no lugar · Molhado' : `Irrigando · ${fmtPct(cfgGiro.percentual)}% · ${DIRECAO_LABEL[direcaoAtual]} · Molhado` };
+      : ehParado(cfgGiro) && estado?.pivo.comandos.percentimetro ? 'Irrigando parado · no lugar · Molhado' : `Irrigando · ${fmtPct(cfgGiro.percentual)}% · ${DIRECAO_LABEL[direcaoAtual]} · Molhado` };
     if (pausaPonta) return { tone: 'ok', label: 'Normal', texto: `Pausado pelo horário de ponta · retoma às ${pausaPonta.retoma_as}` };
     if (emUsoPor) return { tone: 'ok', label: 'Normal', texto: `Parado · Bomba em uso pelo ${emUsoPor}` };
     if (st?.desligado === 1 || st?.direita === 0 || st?.esquerda === 0) return { tone: 'ok', label: 'Normal', texto: 'Parado · Painel energizado' };
@@ -510,7 +510,9 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
       if (res?.status === 'agendada' && res.inicio_em) {
         toast.success(`Irrigação agendada para ${new Date(res.inicio_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}`, { description: 'O servidor liga o pivô na hora — acompanhe em Registros.' });
       } else {
-        toast.success(`${ACAO_LABEL[acao]}: sequência iniciada`, { description: irrigacao?.config.semAgua ? 'Girando sem água: a bomba não liga.' : b ? 'Bomba, pressurização e giro — acompanhe em Registros.' : undefined });
+        toast.success(`${ACAO_LABEL[acao]}: sequência iniciada`, { description: irrigacao?.config.semAgua ? 'Girando sem água: a bomba não liga.'
+          : irrigacao && ehParado(irrigacao.config) ? 'Parado: a bomba liga e o pivô irriga no lugar — acompanhe em Registros.'
+            : b ? 'Bomba, pressurização e giro — acompanhe em Registros.' : undefined });
       }
       setEnvio(null);
       await carregar();
@@ -533,7 +535,8 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
     try {
       // manterParada: a Parada não foi mexida → o servidor herda a parada automática em curso
       // (o que falta do tempo/das voltas), em vez de recomeçar ou de apagar a da programação.
-      await api.post(`/pivos/${id}/acionar`, { acao, irrigacao: { ...irrigacao, inicio: null }, reiniciar: true, manterParada: mantemParada(irrigacao) });
+      const { manterParada: _tocada, ...irr } = irrigacao;   // sinal da tela, não faz parte da irrigação
+      await api.post(`/pivos/${id}/acionar`, { acao, irrigacao: { ...irr, inicio: null }, reiniciar: true, manterParada: mantemParada(irrigacao) });
       setUltima(irrigacao.config); setUltimaParada(irrigacao.parada);
       try {
         localStorage.setItem(chaveUltima, JSON.stringify(irrigacao.config));
@@ -671,7 +674,9 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   // direção em curso é a que a TON lê, nunca a da última enviada — senão "mudar só a água"
   // sairia invertendo o sentido sem o operador pedir.
   const semRegistro = on && !cfgAtual;
-  const cfgBase: ConfigIrrigacao = on ? { ...cfgGiro, direcao: direcaoAtual as ConfigIrrigacao['direcao'] } : cfgGiro;
+  // Sem o ponto Percentímetro o NexON não segura o pivô parado: 0 % registrado nunca vira "Parado".
+  const semParado = (c: ConfigIrrigacao): ConfigIrrigacao => (!podeParado && !(c.percentual > 0) ? { ...c, percentual: 100, lamina: null } : c);
+  const cfgBase: ConfigIrrigacao = semParado(on ? { ...cfgGiro, direcao: direcaoAtual as ConfigIrrigacao['direcao'] } : cfgGiro);
   const avisoSemRegistro = semRegistro ? 'Pivô ligado fora do NexON: sem irrigação registrada. Confira as opções antes de enviar.' : null;
   // Parada automática em curso (programação por tempo, voltas): o reinício mantém o que falta.
   const paradaSrv = irrSrv?.atual?.parada;
@@ -680,7 +685,9 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
     ? `Parada em curso mantida${irrSrv?.parar_em ? `: término previsto ${new Date(irrSrv.parar_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : ''}${irrSrv?.atual?.programacao ? ` · ${irrSrv.atual.programacao.nome}` : ''}.`
     : null;
   // Mantém a parada em curso quando a Parada não foi mexida; escolher outra (ou "Sem parar") troca.
-  const mantemParada = (e: EnvioIrrigacao) => mesmaParada(e.parada, paradaAtual);
+  // O Planejamento diz se a Parada foi mexida (mesmo valor redigitado = nova, do zero); os cartões
+  // da ficha decidem pelo valor.
+  const mantemParada = (e: EnvioIrrigacao) => e.manterParada ?? mesmaParada(e.parada, paradaAtual);
   const baseRapida: Rascunho = rascunhoDe(cfgBase, paradaAtual);
   const chaveBase = JSON.stringify(baseRapida);
   const [rasc, setRasc] = useState<Rascunho | null>(null);
@@ -691,7 +698,7 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   const rapidoNaFicha = on && layout !== 'modal';
   // Só o percentímetro mudou e a TON aceita trocar girando: não precisa reiniciar.
   const soPercentual = (e: EnvioIrrigacao) => {
-    if (!girando || !cfgAtual || cfgAtual.semAgua || !estado?.pivo.comandos.percentimetro || e.modo !== 'simples') return false;
+    if (!girando || !cfgAtual || cfgAtual.semAgua || !estado?.pivo.comandos.percentimetro || e.modo !== 'simples' || e.manterParada === false) return false;
     const m = mudancas(baseRapida, rascunhoDe(e.config, e.parada));
     return m.length === 1 && m[0].campo === 'percentual'
       && e.config.canhao === cfgAtual.canhao && JSON.stringify(e.config.faixasCanhao ?? []) === JSON.stringify(cfgAtual.faixasCanhao ?? []);
@@ -705,13 +712,14 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
         : envio?.inicio ? `Agendar o início de ${titulo}?` : envio && ehParado(envio.config) ? `Ligar ${titulo} parado?` : `Ligar ${titulo}?`;
   const paradaTxt = (p: Parada) => (p.tipo === 'porAngulo' ? `para em ${p.angulo}°` : p.tipo === 'porVoltas' ? `${p.voltas} volta${p.voltas > 1 ? 's' : ''}`
     : p.tipo === 'porTempo' ? `para em ${p.minutos} min` : 'sem parada');
-  const partida = b ? ' A bomba liga e o pivô gira após a pressurização.' : '';
+  const vaiParado = !!envio && ehParado(envio.config);
+  const partida = !b ? '' : vaiParado ? ' A bomba liga e o pivô fica parado, irrigando no lugar.' : ' A bomba liga e o pivô gira após a pressurização.';
   const confirmNote = confirmKind === 'stop'
     ? desligaAgenda ? `${agendadaTxt}. O pivô não vai ligar sozinho.` : `O pivô para na posição atual (${angTxt})${b ? ' e a bomba desliga' : ''}.`
     : confirmKind === 'live' && envio
       ? `${ehParado(envio.config) ? 'O pivô para de girar e segue irrigando no lugar' : ehParado(cfgGiro) ? 'O pivô volta a girar' : 'Só o percentímetro muda'} (${fmtPct(cfgGiro.percentual)}% → ${fmtPct(envio.config.percentual)}%). Vale a partir do próximo ciclo da TON, sem desligar o pivô.`
       : confirmKind === 'restart' && envio
-        ? `O pivô desliga e liga de novo com: ${resumoConfig(envio.config)} · ${paradaAutomatica && mantemParada(envio) ? 'parada em curso mantida' : paradaTxt(envio.parada)}.${b && !envio.config.semAgua ? ' A bomba religa e o pivô volta a girar após a pressurização.' : ''}`
+        ? `O pivô desliga e liga de novo com: ${resumoConfig(envio.config)} · ${paradaAutomatica && mantemParada(envio) ? 'parada em curso mantida' : paradaTxt(envio.parada)}.${b && !envio.config.semAgua ? (vaiParado ? ' A bomba religa e o pivô fica parado, irrigando no lugar.' : ' A bomba religa e o pivô volta a girar após a pressurização.') : ''}`
         : envio
           ? `Com esta configuração: ${resumoConfig(envio.config)} · ${paradaTxt(envio.parada)}${envio.inicio ? ` · início ${envio.inicio.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : ''}.${partida}`
           : '';

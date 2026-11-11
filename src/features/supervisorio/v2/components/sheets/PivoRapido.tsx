@@ -53,8 +53,15 @@ export const comMovimento = (r: Rascunho, m: Movimento, base: Rascunho): Rascunh
   if (m === 'Parado') {
     return { ...r, semAgua: false, percentual: 0, lamina: null, parada: r.parada.tipo === 'porAngulo' || r.parada.tipo === 'porVoltas' ? { tipo: 'semParar' } : r.parada };
   }
-  return { ...r, direcao: m, ...(ehParado(r) ? { percentual: base.percentual > 0 ? base.percentual : 100, lamina: null } : {}) };
+  if (!ehParado(r)) return { ...r, direcao: m };
+  // saindo do Parado: volta o percentual em curso e a parada por ângulo/voltas que o Parado tirou
+  const devolveParada = r.parada.tipo === 'semParar' && (base.parada.tipo === 'porAngulo' || base.parada.tipo === 'porVoltas');
+  return { ...r, direcao: m, percentual: base.percentual > 0 ? base.percentual : 100, lamina: null, parada: devolveParada ? base.parada : r.parada };
 };
+
+/** Seco → Molhado. Um rascunho seco com percentual 0 não pode virar "Parado" por tabela. */
+const molhado = (r: Rascunho, base: Rascunho): Rascunho =>
+  ({ ...r, semAgua: false, ...(r.percentual > 0 ? {} : { percentual: base.percentual > 0 ? base.percentual : 100, lamina: null }) });
 
 const col = (gap: number): CSSProperties => ({ display: 'flex', flexDirection: 'column', gap });
 const linha: CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 44 };
@@ -95,6 +102,7 @@ function Cabecalho({ titulo, sub, onMaisOpcoes }: { titulo: string; sub: string;
 export function PainelRapido({ valor, base, onChange, lamina100, desabilitado, onMaisOpcoes, aviso, notaParada, podeParado }: Props) {
   const [pctDig, setPctDig] = useState<string | null>(null);
   const [lamDig, setLamDig] = useState<string | null>(null);
+  const [minDig, setMinDig] = useState<string | null>(null);
   const seco = valor.semAgua;
   const parado = ehParado(valor);
   const mov = movimentoDe(valor);
@@ -133,7 +141,7 @@ export function PainelRapido({ valor, base, onChange, lamina100, desabilitado, o
       <div style={{ ...linha, ...(parado ? { opacity: 0.45 } : {}) }}>
         <span style={rotulo}>Água</span>
         <div role="radiogroup" aria-label="Água" style={segBox}>
-          <button type="button" role="radio" aria-checked={!seco} disabled={desabilitado || parado} onClick={() => onChange({ ...valor, semAgua: false })} style={s.seg(!seco)}>Molhado</button>
+          <button type="button" role="radio" aria-checked={!seco} disabled={desabilitado || parado} onClick={() => onChange(molhado(valor, base))} style={s.seg(!seco)}>Molhado</button>
           <button type="button" role="radio" aria-checked={seco} disabled={desabilitado || parado} onClick={() => onChange({ ...valor, semAgua: true })} style={s.seg(seco)}>Seco</button>
         </div>
       </div>
@@ -158,8 +166,8 @@ export function PainelRapido({ valor, base, onChange, lamina100, desabilitado, o
             onChange={(e) => onChange({ ...valor, parada: e.target.value === 'porAngulo' ? { tipo: 'porAngulo', angulo: 0 } : e.target.value === 'porVoltas' ? { tipo: 'porVoltas', voltas: 1 }
               : e.target.value === 'porTempo' ? { tipo: 'porTempo', minutos: 60 } : { tipo: 'semParar' } })}>
             <option value="semParar">Sem parar</option>
-            {!parado && <option value="porAngulo">Por ângulo</option>}
-            {!parado && <option value="porVoltas">Por voltas</option>}
+            {(!parado || p.tipo === 'porAngulo') && <option value="porAngulo">Por ângulo</option>}
+            {(!parado || p.tipo === 'porVoltas') && <option value="porVoltas">Por voltas</option>}
             <option value="porTempo">Por tempo</option>
           </select>
           {p.tipo === 'porAngulo' && (
@@ -172,12 +180,14 @@ export function PainelRapido({ valor, base, onChange, lamina100, desabilitado, o
               onChange={(e) => onChange({ ...valor, parada: { tipo: 'porVoltas', voltas: Math.min(10, Math.max(1, Number(e.target.value) || 1)) } })} />
           )}
           {p.tipo === 'porTempo' && (
-            <><input inputMode="numeric" aria-label="Minutos" disabled={desabilitado} value={p.minutos} style={s.campo(!!desabilitado, false, 68)}
-              onChange={(e) => onChange({ ...valor, parada: { tipo: 'porTempo', minutos: Math.min(10080, Math.max(1, Math.round(Number(e.target.value)) || 1)) } })} />
+            <><input inputMode="numeric" aria-label="Minutos" disabled={desabilitado} value={minDig ?? String(p.minutos)} style={s.campo(!!desabilitado, false, 68)}
+              onBlur={() => setMinDig(null)}
+              onChange={(e) => { setMinDig(e.target.value); const n = Number(e.target.value); if (Number.isInteger(n) && n >= 1 && n <= 10080) onChange({ ...valor, parada: { tipo: 'porTempo', minutos: n } }); }} />
               <span style={{ fontSize: 14, color: NX.mudo }}>min</span></>
           )}
         </span>
       </div>
+      {parado && p.tipo !== 'porTempo' && <span style={{ fontSize: 12, color: NX.warn }}>Parado só para por tempo: sem isso, irriga no mesmo lugar até alguém desligar.</span>}
       {notaParada && mesmaParada(valor.parada, base.parada) && <span style={{ fontSize: 12, color: NX.mudo }}>{notaParada}</span>}
     </div>
   );
@@ -223,7 +233,7 @@ export function AtalhosRapidos({ valor, base, onChange, desabilitado, onMaisOpco
         <div style={{ ...bloco(mudou('agua')), ...(parado ? { opacity: 0.45 } : {}) }}>
           <span style={titulo}>ÁGUA</span>
           <div style={{ display: 'flex', gap: 6 }}>
-            <button type="button" disabled={desabilitado || parado} aria-pressed={!seco} onClick={() => onChange({ ...valor, semAgua: false })} style={opcao(!seco)}>Molhado</button>
+            <button type="button" disabled={desabilitado || parado} aria-pressed={!seco} onClick={() => onChange(molhado(valor, base))} style={opcao(!seco)}>Molhado</button>
             <button type="button" disabled={desabilitado || parado} aria-pressed={seco} onClick={() => onChange({ ...valor, semAgua: true })} style={opcao(seco)}>Seco</button>
           </div>
         </div>
@@ -241,7 +251,7 @@ export function AtalhosRapidos({ valor, base, onChange, desabilitado, onMaisOpco
         </div>
       </div>
       {parado && <span style={{ fontSize: 12, color: NX.mudo }}>Parado: a água segue ligada sem girar — irriga no lugar onde está.</span>}
-      {notaParada && <span style={{ fontSize: 12, color: NX.mudo }}>{notaParada}</span>}
+      {notaParada && mesmaParada(valor.parada, base.parada) && <span style={{ fontSize: 12, color: NX.mudo }}>{notaParada}</span>}
     </div>
   );
 }

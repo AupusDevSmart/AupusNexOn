@@ -66,6 +66,62 @@ describe('Planejamento de irrigação', () => {
     expect(screen.getByText(/precisa do ponto Percentímetro/)).toBeTruthy();
   });
 
+  it('sem o ponto, uma última irrigação em 0 % não abre como Parado: sobe para 100 % girando', () => {
+    const { onEnviar } = abrir({ podeParado: false, ultima: { ...CONFIG_PADRAO, direcao: 'Avanço', percentual: 0 } });
+    expect(marcado('Parado')).toBe(false);
+    expect(marcado('Direita')).toBe(true);
+    fireEvent.click(screen.getByText('Ligar'));
+    expect(onEnviar.mock.calls[0][0].config).toMatchObject({ direcao: 'Avanço', percentual: 100, semAgua: false });
+  });
+
+  it('seco com percentual 0: voltar para Molhado não vira Parado por tabela', () => {
+    const { onEnviar } = abrir({ ultima: { ...CONFIG_PADRAO, semAgua: true, percentual: 0 } });
+    fireEvent.click(screen.getByRole('radio', { name: 'Molhado' }));
+    expect(marcado('Parado')).toBe(false);
+    fireEvent.click(screen.getByText('Ligar'));
+    expect(onEnviar.mock.calls[0][0].config.percentual).toBeGreaterThan(0);
+  });
+
+  it('Parado tira a parada por ângulo e a devolve ao voltar a girar', () => {
+    const { onEnviar } = abrir();
+    fireEvent.change(screen.getByLabelText('Parada'), { target: { value: 'porAngulo' } });
+    fireEvent.change(screen.getByLabelText('Ângulo de parada'), { target: { value: '90' } });
+    fireEvent.click(screen.getByRole('radio', { name: 'Parado' }));
+    expect((screen.getByLabelText('Parada') as HTMLSelectElement).value).toBe('semParar');
+    fireEvent.click(screen.getByRole('radio', { name: 'Esquerda' }));
+    fireEvent.click(screen.getByText('Ligar'));
+    expect(onEnviar.mock.calls[0][0].parada).toEqual({ tipo: 'porAngulo', angulo: 90 });
+  });
+
+  it('em curso parado com parada por ângulo: mostra a parada como é e avisa que só para por tempo', () => {
+    abrir({ ligado: true, emCurso: { config: { ...EM_CURSO, percentual: 0 }, parada: { tipo: 'porAngulo', angulo: 90 } } });
+    expect((screen.getByLabelText('Parada') as HTMLSelectElement).value).toBe('porAngulo');
+    expect(screen.getByText(/Parado só para por tempo/)).toBeTruthy();
+  });
+
+  it('minutos: dá para apagar e digitar de novo sem virar 190', () => {
+    const { onEnviar } = abrir();
+    fireEvent.change(screen.getByLabelText('Parada'), { target: { value: 'porTempo' } });
+    const campo = screen.getByLabelText('Minutos') as HTMLInputElement;
+    fireEvent.change(campo, { target: { value: '' } });
+    expect(campo.value).toBe('');
+    fireEvent.change(campo, { target: { value: '90' } });
+    fireEvent.click(screen.getByText('Ligar'));
+    expect(onEnviar.mock.calls[0][0].parada).toEqual({ tipo: 'porTempo', minutos: 90 });
+  });
+
+  it('ligado: redigitar os mesmos minutos conta como parada nova (não herda o resto)', () => {
+    const { onEnviar } = abrir({ ligado: true, notaParada: 'Parada em curso mantida: término previsto 11/11 22:00.', emCurso: { config: EM_CURSO, parada: { tipo: 'porTempo', minutos: 480 } } });
+    // intacta: a caixa mostra o término em curso, sem previsão nova
+    expect(screen.getByText(/Parada em curso mantida/)).toBeTruthy();
+    expect(screen.queryByText(/Término previsto (hoje|amanhã)/)).toBeNull();
+    // apaga um dígito e digita de novo: o valor é o mesmo, mas o operador mexeu
+    fireEvent.change(screen.getByLabelText('Minutos'), { target: { value: '48' } });
+    fireEvent.change(screen.getByLabelText('Minutos'), { target: { value: '480' } });
+    fireEvent.click(screen.getByText('Salvar e enviar'));
+    expect(onEnviar.mock.calls[0][0]).toMatchObject({ manterParada: false, parada: { tipo: 'porTempo', minutos: 480 } });
+  });
+
   it('percentímetro vai de 1 a 100: digitar 0 não zera, aponta o Parado', () => {
     const { onEnviar } = abrir();
     fireEvent.change(screen.getByLabelText('Percentímetro'), { target: { value: '0' } });
@@ -160,6 +216,17 @@ describe('Planejamento de irrigação', () => {
     expect(onSalvar).toHaveBeenCalledWith(expect.objectContaining({ sentido: 'horario', velocidade: 60, com_agua: true }));
   });
 
+  it('agenda não liga parado: com Movimento Parado o agendamento não salva', () => {
+    const onSalvar = vi.fn(async () => true);
+    abrir({ onSalvarProgramacao: onSalvar });
+    fireEvent.click(screen.getByRole('radio', { name: 'Parado' }));
+    fireEvent.click(screen.getByText('Agenda'));
+    fireEvent.click(screen.getByText('+ Adicionar horário'));
+    expect(screen.getByText(/A agenda não liga parado/)).toBeTruthy();
+    fireEvent.click(screen.getByText('Salvar agendamento'));
+    expect(onSalvar).not.toHaveBeenCalled();
+  });
+
   it('funções de apoio: parada, previsão e resumo', () => {
     expect(paradaValida({ tipo: 'porTempo', minutos: 30 } as never)).toEqual({ tipo: 'porTempo', minutos: 30 });
     expect(paradaValida({ tipo: 'outra' })).toEqual({ tipo: 'semParar' });
@@ -186,8 +253,8 @@ describe('edição rápida na ficha', () => {
     const p = comMovimento(comAngulo, 'Parado', comAngulo);
     expect(p).toMatchObject({ direcao: 'Avanço', semAgua: false, percentual: 0, parada: { tipo: 'semParar' } });
     expect(mudancas(base, comMovimento(base, 'Parado', base))).toEqual([{ campo: 'percentual', label: 'Percentímetro', de: '60%', para: 'Parado (0%)' }]);
-    // voltar a girar retoma o percentual em curso
-    expect(comMovimento(p, 'Reverso', base)).toMatchObject({ direcao: 'Reverso', percentual: 60 });
+    // voltar a girar retoma o percentual em curso e a parada que o Parado tirou
+    expect(comMovimento(p, 'Reverso', comAngulo)).toMatchObject({ direcao: 'Reverso', percentual: 60, parada: { tipo: 'porAngulo', angulo: 90 } });
   });
 
   it('envioDoRascunho mantém canhão e faixas em curso, e tira o canhão no seco', () => {
