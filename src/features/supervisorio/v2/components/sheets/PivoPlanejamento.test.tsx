@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { IrrigacaoAvancada, CONFIG_PADRAO, paradaValida, previsao, resumoConfig, type ConfigIrrigacao, type EnvioIrrigacao } from './PivoIrrigacao';
 import { AtalhosRapidos, PainelRapido, comMovimento, envioDoRascunho, mudancas, rascunhoDe, type Rascunho } from './PivoRapido';
+import { linhasParaItens, textoAgenda } from './pivoAgendaPlanilha';
 
 // NEXON-98 — o botão principal da ficha abre o "Planejamento de irrigação": uma tela só, com
 // Movimento (Direita, Esquerda ou Parado). Parado liga; ligado mostra Desligar e, ao editar,
@@ -80,10 +81,10 @@ describe('Planejamento de irrigação', () => {
     expect(onEnviar.mock.calls[0][0]).toMatchObject({ config: { direcao: 'Avanço', percentual: 60 } });
   });
 
-  it('sem o ponto Percentímetro na TON não dá para ligar parado', () => {
+  it('pivô sem percentímetro e sem bomba configurada não liga parado', () => {
     abrir({ podeParado: false });
     expect((screen.getByRole('radio', { name: 'Parado' }) as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByText(/precisa do ponto Percentímetro/)).toBeTruthy();
+    expect(screen.getByText(/precisa do percentímetro na TON ou de uma bomba configurada/)).toBeTruthy();
   });
 
   it('sem o ponto, uma última irrigação em 0 % não abre como Parado: sobe para 100 % girando', () => {
@@ -305,5 +306,51 @@ describe('edição rápida na ficha', () => {
     expect(screen.queryByLabelText('Percentímetro')).toBeNull();
     expect(screen.queryByRole('option', { name: 'Por ângulo' })).toBeNull();
     expect(screen.getByRole('option', { name: 'Por tempo' })).toBeTruthy();
+  });
+});
+
+describe('agenda por planilha', () => {
+  const CAB = ['Data', 'Início', 'Fim', 'Duração (min)', 'Sentido', 'Percentímetro (%)', 'Água'];
+
+  it('lê as linhas pelo cabeçalho, ignora linha em branco e guarda o número da linha do arquivo', () => {
+    const { itens, erro } = linhasParaItens([CAB, ['12/11/2026', '21:00', '05:00', '', 'Direita', '60', 'Sim'], ['', '', '', '', '', '', ''], ['13/11/2026', '21:00', '', '480', 'Esquerda', '80', '']]);
+    expect(erro).toBeNull();
+    expect(itens).toEqual([
+      { linha: 2, data: '12/11/2026', hora_inicio: '21:00', hora_fim: '05:00', duracao_min: '', sentido: 'Direita', percentual: '60', com_agua: 'Sim' },
+      { linha: 4, data: '13/11/2026', hora_inicio: '21:00', hora_fim: '', duracao_min: '480', sentido: 'Esquerda', percentual: '80', com_agua: '' },
+    ]);
+  });
+
+  it('aceita cabeçalho com outro nome e fora de ordem; sem coluna obrigatória, explica', () => {
+    const { itens } = linhasParaItens([['Sentido', 'Hora início', 'DATA', 'Percentimetro', 'Hora fim'], ['Direita', '08:00', '2026-11-12', '50', '10:00']]);
+    expect(itens[0]).toMatchObject({ data: '2026-11-12', hora_inicio: '08:00', hora_fim: '10:00', sentido: 'Direita', percentual: '50' });
+    expect(linhasParaItens([['Nome', 'Valor'], ['a', 'b']]).erro).toMatch(/coluna "Data"/);
+    expect(linhasParaItens([['Data', 'Início', 'Sentido'], ['12/11/2026', '21:00', 'Direita']]).erro).toMatch(/coluna "Fim"/);
+    expect(linhasParaItens([CAB]).erro).toMatch(/nenhuma linha/);
+  });
+
+  it('texto de uma irrigação agendada por data', () => {
+    expect(textoAgenda({ id: 'x', data: '2026-11-12', hora_inicio: '21:00', duracao_min: 480, sentido: 'horario', velocidade: 60, com_agua: true }))
+      .toEqual({ quando: '12/11/2026 · 21:00 → 05:00', det: '60% · Molhado · Direita' });
+    expect(textoAgenda({ id: 'x', data: '2026-11-12', hora_inicio: '08:00', duracao_min: 120, sentido: 'anti_horario', velocidade: null, com_agua: false }).det).toBe('Seco · Esquerda');
+  });
+
+  it('a Agenda mostra o modelo, o envio e o que já está agendado por data; apagar pede ao pai', () => {
+    const onLimpar = vi.fn(async () => undefined);
+    const onRemover = vi.fn();
+    abrir({
+      abaInicial: 'agenda', onLimparAgenda: onLimpar, onRemoverProgramacao: onRemover, onImportarAgenda: async () => null,
+      agenda: [{ id: 'A1', data: '2026-11-12', hora_inicio: '21:00', duracao_min: 480, sentido: 'horario', velocidade: 60, com_agua: true }],
+    });
+    expect(screen.getByText('Baixar modelo')).toBeTruthy();
+    expect(screen.getByText('Enviar planilha')).toBeTruthy();
+    expect(screen.getByText('12/11/2026 · 21:00 → 05:00')).toBeTruthy();
+    fireEvent.click(screen.getByLabelText('Remover 12/11/2026 · 21:00 → 05:00'));
+    expect(onRemover).toHaveBeenCalledWith('A1');
+    // dois toques para apagar tudo
+    fireEvent.click(screen.getByText('Apagar a agendada por data'));
+    expect(onLimpar).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText('Confirmar: apagar tudo'));
+    expect(onLimpar).toHaveBeenCalledTimes(1);
   });
 });
