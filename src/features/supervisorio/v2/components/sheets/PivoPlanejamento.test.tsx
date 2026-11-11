@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { IrrigacaoAvancada, CONFIG_PADRAO, paradaValida, previsao, resumoConfig, type ConfigIrrigacao, type EnvioIrrigacao } from './PivoIrrigacao';
+import { IrrigacaoAvancada, CONFIG_PADRAO, fimDoSegmento, paradaValida, segmentoDoGiro, previsao, resumoConfig, type ConfigIrrigacao, type EnvioIrrigacao } from './PivoIrrigacao';
 import { AtalhosRapidos, PainelRapido, comMovimento, envioDoRascunho, mudancas, rascunhoDe, type Rascunho } from './PivoRapido';
 import { linhasParaItens, textoAgenda } from './pivoAgendaPlanilha';
 
@@ -23,6 +23,9 @@ function abrir(props: Partial<Parameters<typeof IrrigacaoAvancada>[0]> = {}) {
   return { onEnviar, onDesligar };
 }
 const marcado = (nome: string) => screen.getByRole('radio', { name: nome }).getAttribute('aria-checked') === 'true';
+// Parado e Água são switches (o nome acessível começa pelo título da linha)
+const chave = (nome: 'Parado' | 'Água') => screen.getByRole('switch', { name: new RegExp(`^${nome}`) }) as HTMLButtonElement;
+const ligada = (nome: 'Parado' | 'Água') => chave(nome).getAttribute('aria-checked') === 'true';
 
 describe('Planejamento de irrigação', () => {
   it('uma tela só: sem as abas Ângulo e Segmentos, sem Carregar última', () => {
@@ -45,14 +48,40 @@ describe('Planejamento de irrigação', () => {
     expect(onEnviar.mock.calls[0][0]).toMatchObject({ modo: 'simples', parada: { tipo: 'porAngulo', angulo: 135 } });
   });
 
-  it('por segmentos: o anel aparece na própria tela e o envio leva o segmento escolhido e as opções dele', () => {
+  it('parada por segmento: o anel aparece na tela e o pivô para no fim do segmento escolhido', () => {
     const { onEnviar } = abrir();
+    expect(screen.queryByRole('switch', { name: /Por segmentos/ })).toBeNull();
     expect(screen.queryByRole('img', { name: 'Segmentos do pivô' })).toBeNull();
-    fireEvent.click(screen.getByRole('switch', { name: /Por segmentos/ }));
+    fireEvent.change(screen.getByLabelText('Parada'), { target: { value: 'porSegmento' } });
     expect(screen.getByRole('img', { name: 'Segmentos do pivô' })).toBeTruthy();
-    fireEvent.change(screen.getByLabelText('Percentímetro'), { target: { value: '35' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Segmento 3' }));
     fireEvent.click(screen.getByText('Ligar'));
-    expect(onEnviar.mock.calls[0][0]).toMatchObject({ modo: 'segmentos', segmento: 1, config: { percentual: 35, direcao: 'Reverso' } });
+    // Esquerda diminui o ângulo: o segmento 3 (180–270°) acaba em 180°
+    expect(onEnviar.mock.calls[0][0]).toMatchObject({ modo: 'segmentos', segmento: 3, parada: { tipo: 'porAngulo', angulo: 180 }, config: { direcao: 'Reverso' } });
+  });
+
+  it('parada por segmento segue a direção: trocar para Direita leva a parada para o outro lado do segmento', () => {
+    const { onEnviar } = abrir();
+    fireEvent.change(screen.getByLabelText('Parada'), { target: { value: 'porSegmento' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Segmento 3' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Direita' }));
+    fireEvent.click(screen.getByText('Ligar'));
+    expect(onEnviar.mock.calls[0][0].parada).toEqual({ tipo: 'porAngulo', angulo: 270 });
+    expect([fimDoSegmento(0, 'Avanço'), fimDoSegmento(3, 'Avanço'), fimDoSegmento(0, 'Reverso'), fimDoSegmento(3, 'Reverso')]).toEqual([90, 0, 0, 270]);
+    // em cima da divisa (90°): para a direita entra no segmento 2, para a esquerda no 1 — nunca distância zero
+    expect([segmentoDoGiro(90, 'Avanço'), segmentoDoGiro(90, 'Reverso'), segmentoDoGiro(0, 'Reverso'), segmentoDoGiro(359, 'Avanço')]).toEqual([1, 0, 3, 3]);
+  });
+
+  it('direção é só Direita ou Esquerda; Água é um switch', () => {
+    const { onEnviar } = abrir();
+    expect(screen.queryByRole('radio', { name: 'Parado' })).toBeNull();
+    expect(screen.queryByRole('radio', { name: 'Molhado' })).toBeNull();
+    expect(ligada('Água')).toBe(true);
+    fireEvent.click(chave('Água'));
+    expect(ligada('Água')).toBe(false);
+    expect(screen.queryByLabelText('Percentímetro')).toBeNull();
+    fireEvent.click(screen.getByText('Ligar'));
+    expect(onEnviar.mock.calls[0][0].config).toMatchObject({ semAgua: true });
   });
 
   it('parado: o botão é Ligar e o envio sai simples, agora', () => {
@@ -62,12 +91,14 @@ describe('Planejamento de irrigação', () => {
     expect(onEnviar.mock.calls[0][0]).toMatchObject({ modo: 'simples', inicio: null, config: { direcao: 'Reverso', percentual: 60, semAgua: false } });
   });
 
-  it('Movimento Parado: liga sem girar (0 %, com água), sem percentímetro nem parada por ângulo', () => {
+  it('Parado: liga sem girar (0 %, com água), sem percentímetro nem parada por ângulo', () => {
     const { onEnviar } = abrir();
-    fireEvent.click(screen.getByRole('radio', { name: 'Parado' }));
+    fireEvent.click(chave('Parado'));
     expect(screen.queryByLabelText('Percentímetro')).toBeNull();
     expect(screen.getByText(/irriga no lugar onde está/)).toBeTruthy();
     expect(screen.queryByRole('option', { name: 'Por ângulo' })).toBeNull();
+    expect(screen.queryByRole('option', { name: 'Por segmento' })).toBeNull();
+    expect((screen.getByRole('radio', { name: 'Direita' }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText(/irriga no mesmo lugar até alguém desligar/)).toBeTruthy();
     fireEvent.click(screen.getByText('Ligar parado'));
     expect(onEnviar.mock.calls[0][0]).toMatchObject({ config: { percentual: 0, semAgua: false }, parada: { tipo: 'semParar' } });
@@ -75,7 +106,8 @@ describe('Planejamento de irrigação', () => {
 
   it('Parado e de volta a girar: retoma o percentual que estava', () => {
     const { onEnviar } = abrir();
-    fireEvent.click(screen.getByRole('radio', { name: 'Parado' }));
+    fireEvent.click(chave('Parado'));
+    fireEvent.click(chave('Parado'));
     fireEvent.click(screen.getByRole('radio', { name: 'Direita' }));
     fireEvent.click(screen.getByText('Ligar'));
     expect(onEnviar.mock.calls[0][0]).toMatchObject({ config: { direcao: 'Avanço', percentual: 60 } });
@@ -83,13 +115,13 @@ describe('Planejamento de irrigação', () => {
 
   it('pivô sem percentímetro e sem bomba configurada não liga parado', () => {
     abrir({ podeParado: false });
-    expect((screen.getByRole('radio', { name: 'Parado' }) as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByText(/precisa do percentímetro na TON ou de uma bomba configurada/)).toBeTruthy();
+    expect(chave('Parado').disabled).toBe(true);
+    expect(screen.getByText(/não tem percentímetro na TON nem bomba configurada/)).toBeTruthy();
   });
 
   it('sem o ponto, uma última irrigação em 0 % não abre como Parado: sobe para 100 % girando', () => {
     const { onEnviar } = abrir({ podeParado: false, ultima: { ...CONFIG_PADRAO, direcao: 'Avanço', percentual: 0 } });
-    expect(marcado('Parado')).toBe(false);
+    expect(ligada('Parado')).toBe(false);
     expect(marcado('Direita')).toBe(true);
     fireEvent.click(screen.getByText('Ligar'));
     expect(onEnviar.mock.calls[0][0].config).toMatchObject({ direcao: 'Avanço', percentual: 100, semAgua: false });
@@ -97,8 +129,9 @@ describe('Planejamento de irrigação', () => {
 
   it('seco com percentual 0: voltar para Molhado não vira Parado por tabela', () => {
     const { onEnviar } = abrir({ ultima: { ...CONFIG_PADRAO, semAgua: true, percentual: 0 } });
-    fireEvent.click(screen.getByRole('radio', { name: 'Molhado' }));
-    expect(marcado('Parado')).toBe(false);
+    fireEvent.click(chave('Água'));
+    expect(ligada('Água')).toBe(true);
+    expect(ligada('Parado')).toBe(false);
     fireEvent.click(screen.getByText('Ligar'));
     expect(onEnviar.mock.calls[0][0].config.percentual).toBeGreaterThan(0);
   });
@@ -107,9 +140,9 @@ describe('Planejamento de irrigação', () => {
     const { onEnviar } = abrir();
     fireEvent.change(screen.getByLabelText('Parada'), { target: { value: 'porAngulo' } });
     fireEvent.change(screen.getByLabelText('Ângulo de parada'), { target: { value: '90' } });
-    fireEvent.click(screen.getByRole('radio', { name: 'Parado' }));
+    fireEvent.click(chave('Parado'));
     expect((screen.getByLabelText('Parada') as HTMLSelectElement).value).toBe('semParar');
-    fireEvent.click(screen.getByRole('radio', { name: 'Esquerda' }));
+    fireEvent.click(chave('Parado'));
     fireEvent.click(screen.getByText('Ligar'));
     expect(onEnviar.mock.calls[0][0].parada).toEqual({ tipo: 'porAngulo', angulo: 90 });
   });
@@ -146,7 +179,7 @@ describe('Planejamento de irrigação', () => {
   it('percentímetro vai de 1 a 100: digitar 0 não zera, aponta o Parado', () => {
     const { onEnviar } = abrir();
     fireEvent.change(screen.getByLabelText('Percentímetro'), { target: { value: '0' } });
-    expect(screen.getByText(/escolha Parado em Movimento/)).toBeTruthy();
+    expect(screen.getByText(/ligue o Parado/)).toBeTruthy();
     fireEvent.click(screen.getByText('Ligar'));
     expect(onEnviar.mock.calls[0][0].config.percentual).toBe(60);
   });
@@ -184,7 +217,7 @@ describe('Planejamento de irrigação', () => {
 
   it('irrigação em curso a 0 % abre como Parado e não conta como edição', () => {
     abrir({ ligado: true, emCurso: { config: { ...EM_CURSO, percentual: 0 }, parada: { tipo: 'semParar' } } });
-    expect(marcado('Parado')).toBe(true);
+    expect(ligada('Parado')).toBe(true);
     expect(screen.queryByText('Salvar e enviar')).toBeNull();
   });
 
@@ -252,10 +285,10 @@ describe('Planejamento de irrigação', () => {
     expect(onSalvar).toHaveBeenCalledWith(expect.objectContaining({ com_agua: true, canhao: true }));
   });
 
-  it('agenda não liga parado: com Movimento Parado o agendamento não salva', () => {
+  it('agenda não liga parado: com o Parado ligado o agendamento não salva', () => {
     const onSalvar = vi.fn(async () => true);
     abrir({ onSalvarProgramacao: onSalvar });
-    fireEvent.click(screen.getByRole('radio', { name: 'Parado' }));
+    fireEvent.click(chave('Parado'));
     fireEvent.click(screen.getByText('Agenda'));
     fireEvent.click(screen.getByText('+ Adicionar horário'));
     expect(screen.getByText(/A agenda não liga parado/)).toBeTruthy();
