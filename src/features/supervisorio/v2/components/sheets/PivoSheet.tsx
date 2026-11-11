@@ -915,7 +915,7 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
       </NxDialog>
 
       {/* Planejamento de irrigação (antiga Irrigação avançada) */}
-      <NxDialog open={modal === 'irr'} onClose={() => setModal(null)} label="Planejamento de irrigação" width={520}>
+      <NxDialog open={modal === 'irr'} onClose={() => setModal(null)} label="Planejamento de irrigação" width={520} altura={720}>
         {modal === 'irr' && (
           <IrrigacaoAvancada
             key={`${irrAba}:${on}`}

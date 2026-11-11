@@ -34,6 +34,26 @@ describe('Planejamento de irrigação', () => {
     expect(screen.getByText('Agenda')).toBeTruthy();
   });
 
+  it('parada por ângulo mostra o gráfico para escolher o ângulo final, na própria tela', () => {
+    const { onEnviar } = abrir();
+    expect(screen.queryByRole('img', { name: 'Ângulo final' })).toBeNull();
+    fireEvent.change(screen.getByLabelText('Parada'), { target: { value: 'porAngulo' } });
+    expect(screen.getByRole('img', { name: 'Ângulo final' })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Ângulo de parada'), { target: { value: '135' } });
+    fireEvent.click(screen.getByText('Ligar'));
+    expect(onEnviar.mock.calls[0][0]).toMatchObject({ modo: 'simples', parada: { tipo: 'porAngulo', angulo: 135 } });
+  });
+
+  it('por segmentos: o anel aparece na própria tela e o envio leva o segmento escolhido e as opções dele', () => {
+    const { onEnviar } = abrir();
+    expect(screen.queryByRole('img', { name: 'Segmentos do pivô' })).toBeNull();
+    fireEvent.click(screen.getByRole('switch', { name: /Por segmentos/ }));
+    expect(screen.getByRole('img', { name: 'Segmentos do pivô' })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Percentímetro'), { target: { value: '35' } });
+    fireEvent.click(screen.getByText('Ligar'));
+    expect(onEnviar.mock.calls[0][0]).toMatchObject({ modo: 'segmentos', segmento: 1, config: { percentual: 35, direcao: 'Reverso' } });
+  });
+
   it('parado: o botão é Ligar e o envio sai simples, agora', () => {
     const { onEnviar } = abrir();
     expect(screen.queryByText('Desligar')).toBeNull();
