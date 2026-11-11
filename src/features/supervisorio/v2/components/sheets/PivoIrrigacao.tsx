@@ -1,16 +1,18 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as RPointerEvent } from 'react';
+import { useMemo, useRef, useState, type CSSProperties, type PointerEvent as RPointerEvent } from 'react';
 import { fmt } from './sheetParts';
 import { NX, s, NxSwitch, NxDialogHead } from './nxMock';
 
 /**
- * Planejamento de irrigação do pivô no web (antiga "Irrigação avançada") — mockup "Web — Modal
- * do Pivô" (diálogo de 520 px) com as abas Ângulo, Segmentos e Agenda do app ("Equipamento —
- * Pivô") e a aba Canhão (faixas onde o canhão final liga e desliga). Estilos inline com as
- * variáveis NX.
+ * Planejamento de irrigação do pivô no web (antiga "Irrigação avançada"), diálogo de 520 px.
+ * Estilos inline com as variáveis NX.
  *
  * NEXON-98: é este diálogo que o botão principal da ficha abre. Pivô parado → "Ligar". Pivô
  * ligado → abre com a irrigação em curso, mostra "Desligar" e, ao editar qualquer opção, o
  * botão vira "Salvar e enviar" (o pivô reinicia com as novas opções).
+ *
+ * Redesenho (11/11/2026): uma tela só. As abas Ângulo e Segmentos saíram; o Movimento ganhou
+ * "Parado" (liga a água sem girar); as faixas do canhão ficam na própria tela; a Parada ganhou
+ * "Por tempo"; a Agenda usa as opções da tela em vez de repetir os campos.
  */
 
 export type Direcao = 'Avanço' | 'Reverso';
@@ -23,14 +25,16 @@ export interface ConfigIrrigacao { direcao: Direcao; percentual: number; lamina?
 
 /** 59.7 → "59,7"; 60 → "60". */
 export const fmtPct = (p: number) => (Number.isInteger(p) ? String(p) : p.toFixed(1).replace('.', ','));
-export type Parada = { tipo: 'semParar' } | { tipo: 'porAngulo'; angulo: number } | { tipo: 'porVoltas'; voltas: number };
+export type Parada = { tipo: 'semParar' } | { tipo: 'porAngulo'; angulo: number } | { tipo: 'porVoltas'; voltas: number } | { tipo: 'porTempo'; minutos: number };
 export type Modo = 'simples' | 'angulo' | 'segmentos';
 export interface EnvioIrrigacao {
   modo: Modo; config: ConfigIrrigacao; parada: Parada; inicio: Date | null; anguloFinal?: number; segmento?: number;
-  /** Só no reinício: o operador pediu para TIRAR a parada automática em curso (false). Ausente = decide pela Parada. */
+  /** Só no reinício pelo Planejamento: false = o operador mexeu na Parada (vale a nova, do zero,
+   *  mesmo com o mesmo valor); true = intacta, herda a parada em curso. Ausente = decide pelo valor. */
   manterParada?: boolean;
 }
-export type AbaIrrigacao = Modo | 'agenda' | 'canhao';
+/** Abas do Planejamento: a irrigação (uma tela só) e a agenda. */
+export type AbaIrrigacao = 'simples' | 'agenda';
 
 export interface Programacao {
   id: string; nome: string; ativo: boolean; hora_inicio: string; dias: number[]; modo: 'percurso' | 'tempo';
@@ -39,8 +43,6 @@ export interface Programacao {
 export type NovaProgramacao = Omit<Programacao, 'id'>;
 
 export const CONFIG_PADRAO: ConfigIrrigacao = { direcao: 'Reverso', percentual: 60, semAgua: false, canhao: false, faixasCanhao: [] };
-const MODO_TXT: Record<Modo, string> = { simples: 'simples', angulo: 'por ângulo', segmentos: 'por segmentos' };
-const VERDE = '#72BF4A';
 
 // ------------------------------------------------------------- programação
 const DIAS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
@@ -141,12 +143,6 @@ export function arco(cx: number, cy: number, r: number, a0: number, len: number,
   return setor ? `M${cx} ${cy} L${x0.toFixed(1)} ${y0.toFixed(1)} ${a} Z` : `M${x0.toFixed(1)} ${y0.toFixed(1)} ${a}`;
 }
 /** Anel (segmento) entre os raios ri e ro, de a0 a a1 graus. */
-function anel(cx: number, cy: number, ri: number, ro: number, a0: number, a1: number) {
-  const [x0, y0] = ponto(cx, cy, ro, a0), [x1, y1] = ponto(cx, cy, ro, a1);
-  const [x2, y2] = ponto(cx, cy, ri, a1), [x3, y3] = ponto(cx, cy, ri, a0);
-  const f = (n: number) => n.toFixed(1);
-  return `M${f(x0)} ${f(y0)} A${ro} ${ro} 0 0 1 ${f(x1)} ${f(y1)} L${f(x2)} ${f(y2)} A${ri} ${ri} 0 0 0 ${f(x3)} ${f(y3)} Z`;
-}
 const anguloDo = (e: RPointerEvent<SVGSVGElement>, cx: number, cy: number, vb: number) => {
   const r = e.currentTarget.getBoundingClientRect();
   const x = ((e.clientX - r.left) / r.width) * vb, y = ((e.clientY - r.top) / r.height) * vb;
@@ -155,48 +151,6 @@ const anguloDo = (e: RPointerEvent<SVGSVGElement>, cx: number, cy: number, vb: n
 
 // ------------------------------------------------------------------ dials
 /** Aba Ângulo: círculo de 220 px do app (toque escolhe o ângulo final). */
-function DialAngulo({ atual, final, direcao, onChange }: { atual: number; final: number; direcao: Direcao; onChange: (g: number) => void }) {
-  const [ini, len] = direcao === 'Reverso' ? [final, norm(atual - final)] : [atual, norm(final - atual)];
-  const [ax, ay] = ponto(110, 110, 100, atual), [fx, fy] = ponto(110, 110, 100, final);
-  const set = (e: RPointerEvent<SVGSVGElement>) => onChange(anguloDo(e, 110, 110, 220).g);
-  return (
-    <svg viewBox="0 0 220 220" width="220" height="220" role="img" aria-label="Ângulo final" style={{ touchAction: 'none', cursor: 'pointer' }}
-      onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); set(e); }}
-      onPointerMove={(e) => { if (e.buttons) set(e); }}>
-      <circle cx="110" cy="110" r="100" fill="#26301F" stroke={NX.borda} />
-      {len > 0 && <path d={arco(110, 110, 100, ini, len, true)} fill="rgba(114,191,74,0.35)" />}
-      <line x1="110" y1="110" x2={ax} y2={ay} stroke="#FFFFFF" strokeWidth="2.5" strokeLinecap="round" />
-      <line x1="110" y1="110" x2={fx} y2={fy} stroke={VERDE} strokeWidth="2.5" strokeDasharray="4 4" />
-      <circle cx={fx} cy={fy} r="9" fill={VERDE} />
-      <text x="110" y="24" fontSize="11" fill={NX.mudo} textAnchor="middle">0°</text>
-      <text x="200" y="114" fontSize="11" fill={NX.mudo} textAnchor="end">90°</text>
-      <text x="110" y="204" fontSize="11" fill={NX.mudo} textAnchor="middle">180°</text>
-      <text x="20" y="114" fontSize="11" fill={NX.mudo}>270°</text>
-    </svg>
-  );
-}
-
-/** Aba Segmentos: 4 segmentos fixos de 90° (anel do app). */
-function AnelSegmentos({ segs, sel, atual, onSel }: { segs: ConfigIrrigacao[]; sel: number; atual: number; onSel: (i: number) => void }) {
-  const [ax, ay] = ponto(110, 110, 100, atual);
-  return (
-    <svg viewBox="0 0 220 220" width="220" height="220" role="img" aria-label="Segmentos do pivô">
-      <circle cx="110" cy="110" r="100" fill="#26301F" />
-      {segs.map((sg, i) => (
-        <path key={i} d={anel(110, 110, 50, 100, i * 90 + 2, (i + 1) * 90 - 2)} stroke={NX.card} strokeWidth="3" style={{ cursor: 'pointer' }}
-          fill={sg.semAgua ? (i === sel ? '#9A9AB8' : '#4A4A6A') : (i === sel ? VERDE : 'rgba(114,191,74,0.45)')}
-          onClick={() => onSel(i)} />
-      ))}
-      <circle cx="110" cy="110" r="46" fill={NX.card} />
-      <line x1="110" y1="110" x2={ax} y2={ay} stroke={NX.texto} strokeWidth="2.5" strokeLinecap="round" />
-      {segs.map((_, i) => {
-        const [x, y] = ponto(110, 110, 74, i * 90 + 45);
-        return <text key={i} x={x} y={y + 4} fontSize="12" fontWeight="700" fill="#FFFFFF" textAnchor="middle" style={{ pointerEvents: 'none' }}>{i + 1}</text>;
-      })}
-    </svg>
-  );
-}
-
 /** Aba Canhão: alças de liga/desliga sobre o círculo do pivô. */
 function DialCanhao({ atual, faixas, onChange }: { atual: number; faixas: FaixaCanhao[]; onChange: (fs: FaixaCanhao[]) => void }) {
   const VB = 290, cx = 145, cy = 145, r = 117;
@@ -292,27 +246,40 @@ interface Props {
   notaParada?: string | null;
   /** A mudança sai sem reiniciar (só o percentímetro, e a TON troca girando)? Muda o aviso. */
   semReinicio?: (e: EnvioIrrigacao) => boolean;
+  /** A TON tem o ponto Percentímetro: dá para ligar PARADO (0 %, irriga no lugar). Sem ele o
+   *  percentual fica no painel do pivô e o NexON não garante que ele não gire. */
+  podeParado?: boolean;
 }
 
-/** Parada da irrigação em curso → a que o formulário edita (porTempo, de programação, vira "sem parar"). */
+/** Parada da irrigação em curso → a que o formulário edita (tipo desconhecido vira "sem parar"). */
 export const paradaValida = (p?: Parada | { tipo: string } | null): Parada =>
-  (p && (p.tipo === 'porAngulo' || p.tipo === 'porVoltas') ? (p as Parada) : { tipo: 'semParar' });
+  (p && (p.tipo === 'porAngulo' || p.tipo === 'porVoltas' || p.tipo === 'porTempo') ? (p as Parada) : { tipo: 'semParar' });
+
+/** Parado = ligado com água e percentímetro em 0 %: irriga no lugar, sem girar. */
+export const ehParado = (c: { semAgua: boolean; percentual: number }) => !c.semAgua && !(c.percentual > 0);
 
 const horaDe = (x: string) => { const [h, m] = x.split(':').map(Number); return (h || 0) + (m || 0) / 60; };
 const hTxt = (x: string) => (x.endsWith(':00') ? `${Number(x.slice(0, 2))}h` : x);
-
-export function previsao(config: ConfigIrrigacao, parada: Parada, direcao: Direcao, atual: number, tempoVolta100: number, inicio: Date) {
-  if (parada.tipo === 'semParar') return { texto: 'Sem previsão de término (sem parada)', fim: null as Date | null };
-  let delta = parada.tipo === 'porVoltas' ? 360 * parada.voltas : direcao === 'Reverso' ? norm(atual - parada.angulo) : norm(parada.angulo - atual);
-  if (delta <= 0) delta += 360;
-  // 0 % = parado irrigando: não chega (sem previsão por ângulo/voltas).
-  if (!config.semAgua && !(config.percentual > 0)) return { texto: 'Sem previsão de término (0 % = parado irrigando)', fim: null as Date | null };
-  const horas = (delta / 360) * tempoVolta100 * (config.semAgua ? 1 : 100 / config.percentual);
-  const fim = new Date(inicio.getTime() + horas * 3600000);
+const terminoTxt = (fim: Date, horas: number) => {
   const d0 = new Date(); d0.setHours(0, 0, 0, 0);
   const dias = Math.floor((new Date(fim).setHours(0, 0, 0, 0) - d0.getTime()) / 86400000);
   const quando = dias <= 0 ? 'hoje' : dias === 1 ? 'amanhã' : `em ${dias} dias`;
-  return { texto: `Término previsto ${quando} ${fim.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} · ${fmt(horas, 1)} h`, fim };
+  return `Término previsto ${quando} ${fim.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} · ${fmt(horas, 1)} h`;
+};
+
+export function previsao(config: ConfigIrrigacao, parada: Parada, direcao: Direcao, atual: number, tempoVolta100: number, inicio: Date) {
+  if (parada.tipo === 'semParar') return { texto: 'Sem previsão de término (sem parada)', fim: null as Date | null };
+  if (parada.tipo === 'porTempo') {
+    const fim = new Date(inicio.getTime() + parada.minutos * 60000);
+    return { texto: terminoTxt(fim, parada.minutos / 60), fim };
+  }
+  // Parado (0 %) não percorre ângulo nem volta: só para por tempo ou na mão.
+  if (ehParado(config)) return { texto: 'Sem previsão de término (parado não chega ao ângulo)', fim: null as Date | null };
+  let delta = parada.tipo === 'porVoltas' ? 360 * parada.voltas : direcao === 'Reverso' ? norm(atual - parada.angulo) : norm(parada.angulo - atual);
+  if (delta <= 0) delta += 360;
+  const horas = (delta / 360) * tempoVolta100 * (config.semAgua ? 1 : 100 / config.percentual);
+  const fim = new Date(inicio.getTime() + horas * 3600000);
+  return { texto: terminoTxt(fim, horas), fim };
 }
 
 // estilos do mockup
@@ -322,86 +289,90 @@ const caixaCampo: CSSProperties = { border: `1px solid ${NX.borda}`, borderRadiu
 const inputGrande: CSSProperties = { width: '100%', minWidth: 0, border: 0, fontSize: 20, fontWeight: 800, color: NX.texto, background: 'transparent', padding: 0 };
 const valorCaixa: CSSProperties = { fontSize: 15, fontWeight: 800, color: NX.texto, background: 'transparent', border: 0, padding: 0, appearance: 'none', WebkitAppearance: 'none', cursor: 'pointer' };
 const inputCaixa: CSSProperties = { fontSize: 15, fontWeight: 800, color: NX.texto, background: 'transparent', border: 0, padding: 0, minWidth: 0 };
-const linhaSwitch = (off = false): CSSProperties => ({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', minHeight: 44, width: '100%', ...(off ? { opacity: 0.45 } : {}) });
-const tituloSub = (t: string, sub: string) => (
-  <span style={col(2)}><span style={{ fontSize: 15, fontWeight: 700 }}>{t}</span><span style={rotulo}>{sub}</span></span>
-);
+const linha: CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 44 };
+const titulo15: CSSProperties = { fontSize: 15, fontWeight: 700 };
+const segBox: CSSProperties = { display: 'flex', padding: 3, borderRadius: 12, background: NX.seg };
 
+type Movimento = Direcao | 'Parado';
+
+/**
+ * Planejamento de irrigação — UMA tela (NEXON-98, redesenho): Movimento (Direita, Esquerda ou
+ * Parado), Água, percentímetro/lâmina, canhão (com as faixas no próprio lugar), início e parada.
+ * As abas Ângulo e Segmentos saíram: parar num ângulo é a Parada "Por ângulo". A Agenda usa as
+ * opções desta tela em vez de repetir os campos.
+ */
 export function IrrigacaoAvancada({
   nome, angulo, ultima, lamina100, tempoVolta100, ponta, enviando, semCanhaoMotivo = null, abaInicial = 'simples',
   programacoes, onRemoverProgramacao, onSalvarProgramacao, onEnviar, onClose,
   ligado = false, emCurso = null, onDesligar, desligarOff = false, enviarOff = false, semRegistro = false, notaParada = null, semReinicio,
+  podeParado = false,
 }: Props) {
   const atual = angulo ?? 0;
   // Ligado: parte da irrigação em curso (o que o operador vê girando), não da última enviada.
-  const base: ConfigIrrigacao = ligado && emCurso ? { ...CONFIG_PADRAO, ...emCurso.config, faixasCanhao: emCurso.config.faixasCanhao ?? [] } : ultima;
+  // Sem o ponto Percentímetro o NexON não segura o pivô parado: uma config em 0 % (última
+  // enviada, registro antigo) nunca abre como "Parado" — sobe para 100 % (o painel é quem manda).
+  const sanear = (c: ConfigIrrigacao): ConfigIrrigacao => (!podeParado && !(c.percentual > 0) ? { ...c, percentual: 100, lamina: null } : c);
+  const base: ConfigIrrigacao = sanear(ligado && emCurso ? { ...CONFIG_PADRAO, ...emCurso.config, faixasCanhao: emCurso.config.faixasCanhao ?? [] } : ultima);
   const [aba, setAba] = useState<AbaIrrigacao>(abaInicial);
-  const [modo, setModo] = useState<Modo>(abaInicial === 'angulo' || abaInicial === 'segmentos' ? abaInicial : 'simples');
   const [cfg, setCfg] = useState<ConfigIrrigacao>({ ...base, canhao: ligado ? base.canhao : false });
   const [faixas, setFaixas] = useState<FaixaCanhao[]>(base.faixasCanhao);
-  const [segs, setSegs] = useState<ConfigIrrigacao[]>(() => Array.from({ length: 4 }, () => ({ ...base, canhao: false })));
-  const [segSel, setSegSel] = useState(0);
-  const [anguloFinal, setAnguloFinal] = useState(0);
+  const [faixasAbertas, setFaixasAbertas] = useState(false);
   const [inicioTipo, setInicioTipo] = useState<'agora' | 'data'>('agora');
   const [inicioData, setInicioData] = useState('');
   const [parada, setParada] = useState<Parada>(() => (ligado ? paradaValida(emCurso?.parada) : { tipo: 'semParar' }));
-  const [carregada, setCarregada] = useState(false);
-  const [aviso, setAviso] = useState(false);
-  const [canhaoVisto, setCanhaoVisto] = useState(false);
-  const [pulso, setPulso] = useState(false);
   const [pctTxt, setPctTxt] = useState<string | null>(null);
   const [lamTxt, setLamTxt] = useState<string | null>(null);
+  const [minTxt, setMinTxt] = useState<string | null>(null);
+  // O operador mexeu na Parada (mesmo voltando ao mesmo valor): vale a nova, do zero.
+  const [paradaTocada, setParadaTocada] = useState(false);
+  const mudarParada = (p: Parada) => { setParadaTocada(true); setParada(p); };
+  // Parada que o Parado tirou (por ângulo/voltas), para devolver ao voltar a girar.
+  const paradaAntes = useRef<Parada | null>(null);
   const [nova, setNova] = useState<null | { grupo: string; ini: string; fim: string }>(null);
   const [salvandoProg, setSalvandoProg] = useState(false);
+  // Percentual para voltar a girar depois de escolher Parado.
+  const pctAntes = useRef(base.percentual > 0 ? base.percentual : 100);
 
-  useEffect(() => { if (aba === 'simples' || aba === 'angulo' || aba === 'segmentos') setModo(aba); if (aba === 'canhao') { setCanhaoVisto(true); setAviso(false); } }, [aba]);
-  useEffect(() => { if (!aviso) return; const t = setTimeout(() => setAviso(false), 6000); return () => clearTimeout(t); }, [aviso]);
-
-  const atualCfg = aba === 'segmentos' ? segs[segSel] : cfg;
-  const setAtual = (p: Partial<ConfigIrrigacao>) => {
-    if (aba === 'segmentos') setSegs((x) => x.map((y, i) => (i === segSel ? { ...y, ...p } : y)));
-    else setCfg((c) => ({ ...c, ...p }));
-  };
-  const efetiva = modo === 'segmentos' ? segs[segSel] : cfg;
-  const canhaoAtivo = cfg.canhao && !efetiva.semAgua && !semCanhaoMotivo;
-  const seco = atualCfg.semAgua;
+  const parado = ehParado(cfg);
+  const seco = cfg.semAgua;
+  const movimento: Movimento = parado ? 'Parado' : cfg.direcao;
   const semCanhao = seco || !!semCanhaoMotivo;
+  const canhaoAtivo = cfg.canhao && !semCanhao;
 
-  const toggleCanhao = () => {
-    const on = !cfg.canhao;
-    setCfg((c) => ({ ...c, canhao: on }));
-    if (on) {
-      setAviso(true); setCanhaoVisto(false);
-      if (!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) { setPulso(true); setTimeout(() => setPulso(false), 1300); }
-    } else if (aba === 'canhao') setAba('simples');
-  };
-  const carregarUltima = () => {
-    const base = { direcao: ultima.direcao, semAgua: ultima.semAgua, percentual: ultima.percentual, lamina: ultima.lamina ?? null };
-    setCfg((c) => ({ ...c, ...base }));
-    if (aba === 'segmentos') setSegs((x) => x.map((y, i) => (i === segSel ? { ...y, ...base } : y)));
-    setPctTxt(null); setLamTxt(null); setCarregada(true);
+  const setMovimento = (m: Movimento) => {
+    setPctTxt(null); setLamTxt(null);
+    if (m === 'Parado') {
+      if (!parado && cfg.percentual > 0) pctAntes.current = cfg.percentual;
+      setCfg((c) => ({ ...c, semAgua: false, percentual: 0, lamina: null }));
+      // parado não percorre ângulo nem volta: a parada sai, e volta se o operador voltar a girar
+      if (!parado && (parada.tipo === 'porAngulo' || parada.tipo === 'porVoltas')) { paradaAntes.current = parada; setParada({ tipo: 'semParar' }); }
+    } else {
+      if (parado && paradaAntes.current && parada.tipo === 'semParar') setParada(paradaAntes.current);
+      paradaAntes.current = null;
+      setCfg((c) => ({ ...c, direcao: m, ...(ehParado(c) ? { percentual: pctAntes.current, lamina: null } : {}) }));
+    }
   };
 
-  const pct = atualCfg.percentual;
+  const pct = cfg.percentual;
   const lam = pct > 0 ? (lamina100 * 100) / pct : null;
-  // % com 1 casa (0 = parado irrigando). Digitando a lâmina, ela vai junto e o servidor confere.
+  // % com 1 casa, de 1 a 100 (0 é o Movimento "Parado"). Digitando a lâmina, ela vai junto e o servidor confere.
   const onPct = (v: string) => {
     setPctTxt(v); setLamTxt(null);
     const p = Number(v.replace(',', '.'));
-    if (v.trim() !== '' && Number.isFinite(p) && p >= 0) setAtual({ percentual: Math.min(100, Math.round(p * 10) / 10), lamina: null });
+    if (v.trim() !== '' && Number.isFinite(p) && p >= 1) setCfg((c) => ({ ...c, percentual: Math.min(100, Math.round(p * 10) / 10), lamina: null }));
   };
   const onLam = (v: string) => {
     setLamTxt(v); setPctTxt(null);
     const l = Number(v.replace(',', '.'));
     if (!(l > 0) || !(lamina100 > 0)) return;
-    if (l < lamina100) { setAtual({ percentual: 100, lamina: null }); return; }   // abaixo do mínimo: fica em 100 % (aviso abaixo)
-    setAtual({ percentual: Math.min(100, Math.round(((lamina100 * 100) / l) * 10) / 10), lamina: Math.round(l * 100) / 100 });
+    if (l < lamina100) { setCfg((c) => ({ ...c, percentual: 100, lamina: null })); return; }   // abaixo do mínimo: fica em 100 % (aviso abaixo)
+    setCfg((c) => ({ ...c, percentual: Math.max(1, Math.min(100, Math.round(((lamina100 * 100) / l) * 10) / 10)), lamina: Math.round(l * 100) / 100 }));
   };
   const lamAbaixo = (() => { const l = Number((lamTxt ?? '').replace(',', '.')); return lamTxt != null && l > 0 && lamina100 > 0 && l < lamina100; })();
+  const pctAbaixo = (() => { const p = Number((pctTxt ?? '').replace(',', '.')); return pctTxt != null && pctTxt.trim() !== '' && Number.isFinite(p) && p < 1; })();
 
-  const paradaEf: Parada = modo === 'angulo' ? { tipo: 'porAngulo', angulo: anguloFinal } : parada;
-  const inicio = modo !== 'angulo' && inicioTipo === 'data' && inicioData ? new Date(inicioData) : new Date();
-  const prev = previsao(efetiva, paradaEf, cfg.direcao, atual, tempoVolta100, inicio);
+  const inicio = !ligado && inicioTipo === 'data' && inicioData ? new Date(inicioData) : new Date();
+  const prev = previsao(cfg, parada, cfg.direcao, atual, tempoVolta100, inicio);
   const pontaTxt = useMemo(() => {
     if (!ponta) return null;
     const p0 = horaDe(ponta.inicio), p1 = horaDe(ponta.fim);
@@ -418,21 +389,17 @@ export function IrrigacaoAvancada({
       : { aviso: true, txt: `Vai irrigar no horário de ponta (${hTxt(ponta.inicio)} às ${hTxt(ponta.fim)}). Bloqueio desligado.` };
   }, [ponta, prev.fim, inicio.getTime()]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const abas: Array<{ v: AbaIrrigacao; label: string }> = [
-    { v: 'simples', label: 'Simples' }, { v: 'angulo', label: 'Ângulo' }, { v: 'segmentos', label: 'Segmentos' }, { v: 'agenda', label: 'Agenda' },
-    ...(cfg.canhao ? [{ v: 'canhao' as const, label: 'Canhão' }] : []),
-  ];
-
-  // Ligado, o reinício é sempre agora: agendar início não faz sentido com o pivô girando.
   const paradaInicial = useRef(JSON.stringify(parada));
-  const paradaIntacta = modo !== 'angulo' && JSON.stringify(parada) === paradaInicial.current;
-  const [tirarParada, setTirarParada] = useState(false);
+  const paradaIntacta = !paradaTocada && JSON.stringify(parada) === paradaInicial.current;
+  // Parado só para por tempo; qualquer outra parada (ou nenhuma) deixa irrigando no lugar.
+  const paradoSemTempo = parado && parada.tipo !== 'porTempo';
+  // Parado sem o ponto na TON não sai daqui (o estado inicial já é saneado; isto é a segunda trava).
+  const paradoIndisponivel = parado && !podeParado;
+  // Ligado, o reinício é sempre agora: agendar início não faz sentido com o pivô girando.
   const montar = (): EnvioIrrigacao => ({
-    // Tirar a parada em curso: vai "sem parar" de verdade (voltas em curso não recomeçam do zero).
-    ...(tirarParada ? { manterParada: false } : {}),
-    modo, parada: tirarParada && paradaIntacta ? { tipo: 'semParar' } : paradaEf, inicio: ligado || modo === 'angulo' || inicioTipo === 'agora' ? null : inicio,
-    anguloFinal: modo === 'angulo' ? anguloFinal : undefined, segmento: modo === 'segmentos' ? segSel + 1 : undefined,
-    config: { ...efetiva, direcao: cfg.direcao, canhao: canhaoAtivo, faixasCanhao: canhaoAtivo ? faixas : [] },
+    modo: 'simples', parada, inicio: ligado || inicioTipo === 'agora' ? null : inicio,
+    ...(ligado ? { manterParada: paradaIntacta } : {}),
+    config: { ...cfg, canhao: canhaoAtivo, faixasCanhao: canhaoAtivo ? faixas : [] },
   });
   const enviar = () => onEnviar(montar());
   // "Editado" = o que seria enviado mudou desde que o diálogo abriu. Fora da conta: o início (é
@@ -442,13 +409,13 @@ export function IrrigacaoAvancada({
   const assinatura = assinar(montar());
   const assinaturaInicial = useRef(assinatura);
   const editado = assinatura !== assinaturaInicial.current;
-  const agendar = !ligado && modo !== 'angulo' && inicioTipo === 'data';
-  const rotuloEnviar = enviando ? 'Executando…' : ligado ? 'Salvar e enviar' : agendar ? 'Agendar início' : 'Ligar';
+  const agendar = !ligado && inicioTipo === 'data';
+  const rotuloEnviar = enviando ? 'Executando…' : ligado ? 'Salvar e enviar' : agendar ? 'Agendar início' : parado ? 'Ligar parado' : 'Ligar';
 
   const nProg = programacoes?.length ?? 0;
   const agendaCheia = nProg >= 5;
   const salvarAgendamento = async () => {
-    if (!nova) return;
+    if (!nova || parado) return;
     const g = GRUPOS_DIAS.find((x) => x.v === nova.grupo) ?? GRUPOS_DIAS[0];
     const [h0, m0] = nova.ini.split(':').map(Number), [h1, m1] = nova.fim.split(':').map(Number);
     const dur = ((h1 * 60 + m1) - (h0 * 60 + m0) + 1440) % 1440 || 1440;
@@ -462,199 +429,201 @@ export function IrrigacaoAvancada({
     if (ok) setNova(null);
   };
 
-  const direcaoRow = (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-      <span style={{ fontSize: 15, fontWeight: 700 }}>Direção</span>
-      <div style={{ display: 'flex', padding: 3, borderRadius: 12, background: NX.seg }}>
-        {(['Avanço', 'Reverso'] as const).map((d) => (
-          <button key={d} type="button" aria-pressed={cfg.direcao === d} onClick={() => setCfg((c) => ({ ...c, direcao: d }))} style={s.seg(cfg.direcao === d)}>{DIRECAO_LABEL[d]}</button>
-        ))}
-      </div>
-    </div>
-  );
-  const secoRow = (
-    <button type="button" role="switch" aria-checked={seco} onClick={() => setAtual({ semAgua: !seco })} style={linhaSwitch()}>
-      {tituloSub('Girar sem água', `${aba === 'segmentos' ? `Segmento ${segSel + 1} · ` : ''}${seco ? 'Sem água (a bomba não liga)' : 'Com água (molhado)'}`)}
-      <NxSwitch on={seco} />
-    </button>
-  );
-  const canhaoRow = (
-    <button type="button" role="switch" aria-checked={cfg.canhao && !semCanhao} disabled={semCanhao} onClick={toggleCanhao} style={linhaSwitch(semCanhao)}>
-      {tituloSub('Canhão final', semCanhaoMotivo ? semCanhaoMotivo : seco ? 'Indisponível girando sem água' : cfg.canhao ? 'Começa ligado' : 'Começa desligado')}
-      <NxSwitch on={cfg.canhao && !semCanhao} />
-    </button>
-  );
-  const avisoCanhao = aviso && cfg.canhao && (
-    <div style={{ borderRadius: 10, border: '1px solid rgba(46,139,71,0.4)', background: 'rgba(46,139,71,0.12)', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-      <span style={{ flex: 1 }}>Aba Canhão adicionada — marque onde o canhão liga e desliga</span>
-      <button type="button" onClick={() => setAba('canhao')} style={{ fontWeight: 800, color: NX.acao }}>Abrir</button>
-    </div>
-  );
-  const pctLam = (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
-      <label style={caixaCampo}>
-        <span style={rotulo}>Percentímetro</span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <input inputMode="decimal" disabled={seco} value={seco ? '—' : pctTxt ?? fmtPct(pct)} onChange={(e) => onPct(e.target.value)} onBlur={() => setPctTxt(null)} style={inputGrande} />
-          <span style={{ color: NX.mudo }}>%</span>
-        </span>
-      </label>
-      <label style={caixaCampo}>
-        <span style={rotulo}>Lâmina</span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <input inputMode="decimal" disabled={seco} value={seco ? '—' : lamTxt ?? (lam != null ? fmt(lam, 2) : '—')} onChange={(e) => onLam(e.target.value)} onBlur={() => setLamTxt(null)} style={inputGrande} />
-          <span style={{ color: NX.mudo }}>mm</span>
-        </span>
-      </label>
-      {!seco && lamAbaixo && (
-        <span style={{ gridColumn: '1 / -1', fontSize: 12, color: NX.warn }}>
-          Lâmina mínima deste pivô: {fmt(lamina100, 2)} mm (100 %).
-        </span>
-      )}
-      {!seco && pct === 0 && (
-        <span style={{ gridColumn: '1 / -1', fontSize: 12, color: NX.mudo }}>0 % = pivô parado irrigando no lugar.</span>
-      )}
-    </div>
-  );
-  const inicioParada = (
-    <div style={{ display: 'grid', gridTemplateColumns: ligado ? 'minmax(0, 1fr)' : 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
-      <span style={{ ...caixaCampo, ...(ligado ? { display: 'none' } : {}) }}>
-        <span style={rotulo}>Início</span>
-        <select aria-label="Início" value={inicioTipo} onChange={(e) => setInicioTipo(e.target.value as 'agora' | 'data')} style={valorCaixa}>
-          <option value="agora">Agora</option><option value="data">Data e hora</option>
-        </select>
-        {inicioTipo === 'data' && (
-          <input type="datetime-local" aria-label="Data e hora do início" value={inicioData} min={new Date().toISOString().slice(0, 16)} onChange={(e) => setInicioData(e.target.value)} style={inputCaixa} />
-        )}
-      </span>
-      <span style={caixaCampo}>
-        <span style={rotulo}>Parada</span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <select aria-label="Parada" value={parada.tipo} style={valorCaixa}
-            onChange={(e) => setParada(e.target.value === 'porAngulo' ? { tipo: 'porAngulo', angulo: 0 } : e.target.value === 'porVoltas' ? { tipo: 'porVoltas', voltas: 1 } : { tipo: 'semParar' })}>
-            <option value="semParar">Sem parar</option><option value="porAngulo">Por ângulo</option><option value="porVoltas">Por voltas</option>
-          </select>
-          {parada.tipo === 'porAngulo' && (
-            <><span style={{ fontSize: 15, fontWeight: 800 }}>·</span>
-              <input inputMode="numeric" aria-label="Ângulo de parada" value={parada.angulo} style={{ ...inputCaixa, width: 40, textAlign: 'right' }}
-                onChange={(e) => setParada({ tipo: 'porAngulo', angulo: Math.min(359, Math.max(0, Number(e.target.value) || 0)) })} />
-              <span style={{ fontSize: 15, fontWeight: 800 }}>°</span></>
-          )}
-          {parada.tipo === 'porVoltas' && (
-            <><span style={{ fontSize: 15, fontWeight: 800 }}>·</span>
-              <input inputMode="numeric" aria-label="Voltas" value={parada.voltas} style={{ ...inputCaixa, width: 28, textAlign: 'right' }}
-                onChange={(e) => setParada({ tipo: 'porVoltas', voltas: Math.min(10, Math.max(1, Number(e.target.value) || 1)) })} /></>
-          )}
-        </span>
-      </span>
-    </div>
-  );
-  const caixaPrevisao = (texto: string, comPonta: boolean) => (
-    <div style={{ background: NX.caixa, borderRadius: 12, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <span style={{ fontSize: 14, color: NX.caixaTx }}>{texto}</span>
-      {comPonta && pontaTxt && (
-        <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: pontaTxt.aviso ? NX.warn : NX.caixaTx }}>
-          <span style={{ width: 8, height: 8, borderRadius: 4, flex: 'none', background: pontaTxt.aviso ? NX.warn : NX.ok }} />{pontaTxt.txt}
-        </span>
-      )}
-    </div>
-  );
   const botaoEnviar = (label: string, onClick: () => void, off: boolean) => (
     <button type="button" disabled={off} onClick={onClick}
       style={{ height: 48, borderRadius: 12, background: off ? NX.acaoOff : NX.acao, color: '#FFFFFF', fontSize: 16, fontWeight: 800, textAlign: 'center' }}>
       {label}
     </button>
   );
-
-  // Rodapé de comando: parado → Ligar; ligado → Desligar e, depois de editar, Salvar e enviar.
-  const rodapeComando = (
-    <>
-      {ligado && !editado && !semRegistro && (
-        <span style={{ fontSize: 13, color: NX.mudo }}>Pivô ligado com esta configuração. Edite qualquer opção para reiniciar com as novas.</span>
-      )}
-      {ligado && !editado && semRegistro && (
-        <span style={{ fontSize: 13, color: NX.warn }}>Pivô ligado fora do NexON (painel): não há irrigação registrada. Confira as opções — ao salvar, o pivô desliga e liga de novo com elas.</span>
-      )}
-      {ligado && editado && (semReinicio?.(montar())
-        ? <span style={{ fontSize: 13, color: NX.mudo }}>Só o percentímetro mudou: ao salvar, troca sem desligar o pivô.</span>
-        : <span style={{ fontSize: 13, color: NX.warn }}>Ao salvar, o pivô desliga e liga de novo com as novas opções.</span>
-      )}
-      {(!ligado || editado || semRegistro) && botaoEnviar(rotuloEnviar, enviar, enviando || enviarOff)}
-      {ligado && onDesligar && (
-        <button type="button" disabled={desligarOff || enviando} onClick={onDesligar}
-          style={{ height: 48, borderRadius: 12, border: `1.5px solid ${desligarOff || enviando ? NX.off : NX.bad}`, background: NX.card, color: desligarOff || enviando ? NX.desab : NX.bad, fontSize: 16, fontWeight: 800, textAlign: 'center' }}>
-          Desligar
-        </button>
-      )}
-    </>
-  );
+  const dica = (texto: string, cor: string = NX.mudo) => <span style={{ fontSize: 12, color: cor }}>{texto}</span>;
 
   const nFaixas = faixas.length;
   const podeAdd = nFaixas < 5 && !!faixaNoVao(faixas, atual);
   const tempoInput: CSSProperties = { height: 38, borderRadius: 10, border: `1px solid ${NX.borda}`, padding: '0 10px', fontSize: 15, fontWeight: 700, color: NX.texto, background: NX.card };
+  const movimentos: Movimento[] = ['Avanço', 'Reverso', 'Parado'];
 
   return (
     <div style={col(14)}>
       <NxDialogHead title="Planejamento de irrigação" sub={`${nome} · ângulo atual ${angulo != null ? `${fmt(angulo, 1)}°` : '—'}`} onClose={onClose} />
-      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${abas.length}, minmax(0, 1fr))`, gap: 4, padding: 4, borderRadius: 12, background: NX.seg }}>
-        {abas.map((a) => {
-          const destaque = a.v === 'canhao' && !canhaoVisto && aba !== 'canhao';
-          const sel = aba === a.v;
-          return (
-            <button key={a.v} type="button" aria-pressed={sel} onClick={() => setAba(a.v)}
-              style={{
-                height: 34, borderRadius: 9, fontSize: 13, fontWeight: 800, textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                transition: 'background .3s',
-                ...(sel ? { background: NX.card, color: NX.texto } : { color: destaque ? NX.acao : NX.mudo }),
-                ...(destaque && pulso ? { background: 'rgba(46,139,71,0.25)' } : {}),
-              }}>
-              {destaque && <span style={{ width: 7, height: 7, borderRadius: 4, background: NX.ok }} />}{a.label}
-            </button>
-          );
-        })}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 4, padding: 4, borderRadius: 12, background: NX.seg }}>
+        {([{ v: 'simples', label: 'Irrigação' }, { v: 'agenda', label: `Agenda${nProg ? ` · ${nProg}` : ''}` }] as const).map((a) => (
+          <button key={a.v} type="button" aria-pressed={aba === a.v} onClick={() => setAba(a.v)} style={s.dTab(aba === a.v)}>{a.label}</button>
+        ))}
       </div>
 
-      {aba !== 'agenda' && aba !== 'canhao' && !ligado && (
-        <button type="button" onClick={carregarUltima} style={{ alignSelf: 'flex-start', fontSize: 14, fontWeight: 700, color: NX.acao }}>
-          {carregada ? '✓ Última irrigação carregada' : '↺ Carregar última irrigação'}
-        </button>
-      )}
-
-      {aba === 'angulo' && (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-          <DialAngulo atual={atual} final={anguloFinal} direcao={cfg.direcao} onChange={setAnguloFinal} />
-          <span style={{ fontSize: 13, color: NX.mudo }}>Toque no círculo para escolher o ângulo final</span>
-        </div>
-      )}
-      {aba === 'segmentos' && (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-          <AnelSegmentos segs={segs} sel={segSel} atual={atual} onSel={setSegSel} />
-          <span style={{ fontSize: 13, color: NX.mudo }}>Toque no segmento para editar · segmento {segSel + 1} selecionado</span>
-        </div>
-      )}
-
-      {(aba === 'simples' || aba === 'angulo' || aba === 'segmentos') && (
+      {aba === 'simples' && (
         <>
-          {direcaoRow}
-          {secoRow}
-          {canhaoRow}
-          {avisoCanhao}
-          {pctLam}
-          {(aba === 'simples' || aba === 'segmentos') && inicioParada}
-          {ligado && notaParada && paradaIntacta && (
-            <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, fontSize: 12, color: tirarParada ? NX.warn : NX.mudo }}>
-              <span>{tirarParada ? 'A parada em curso será removida.' : notaParada}</span>
-              <button type="button" onClick={() => setTirarParada((v) => !v)} style={{ fontWeight: 800, color: NX.acao, whiteSpace: 'nowrap' }}>{tirarParada ? 'Manter a parada' : 'Tirar a parada'}</button>
-            </span>
-          )}
-          {aba === 'angulo' && (
-            <div style={{ ...caixaCampo, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', minHeight: 52, boxSizing: 'border-box' }}>
-              <span style={{ fontSize: 15, fontWeight: 700 }}>Ângulo final</span>
-              <span style={{ fontSize: 20, fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{anguloFinal}°</span>
+          <div style={col(4)}>
+            <div style={linha}>
+              <span style={titulo15}>Movimento</span>
+              <div role="radiogroup" aria-label="Movimento" style={segBox}>
+                {movimentos.map((m) => {
+                  const off = m === 'Parado' && !podeParado && !parado;
+                  return (
+                    <button key={m} type="button" role="radio" aria-checked={movimento === m} disabled={off}
+                      title={off ? 'Precisa do ponto Percentímetro na TON' : undefined}
+                      onClick={() => setMovimento(m)} style={{ ...s.seg(movimento === m), ...(off ? { opacity: 0.45, cursor: 'default' } : {}) }}>
+                      {m === 'Parado' ? 'Parado' : DIRECAO_LABEL[m]}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div style={{ ...linha, ...(parado ? { opacity: 0.45 } : {}) }}>
+              <span style={titulo15}>Água</span>
+              <div role="radiogroup" aria-label="Água" style={segBox}>
+                <button type="button" role="radio" aria-checked={!seco} disabled={parado}
+                  onClick={() => setCfg((c) => ({ ...c, semAgua: false, ...(c.percentual > 0 ? {} : { percentual: pctAntes.current, lamina: null }) }))} style={s.seg(!seco)}>Molhado</button>
+                <button type="button" role="radio" aria-checked={seco} disabled={parado} onClick={() => { setPctTxt(null); setLamTxt(null); setCfg((c) => ({ ...c, semAgua: true })); }} style={s.seg(seco)}>Seco</button>
+              </div>
+            </div>
+            {parado && dica('Parado: liga a água sem girar — irriga no lugar onde está.')}
+            {seco && dica('Seco: gira sem água, a bomba não liga.')}
+            {!podeParado && !parado && dica('Ligar parado precisa do ponto Percentímetro na TON.')}
+          </div>
+
+          {!parado && !seco && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
+              <label style={caixaCampo}>
+                <span style={rotulo}>Percentímetro</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <input inputMode="decimal" aria-label="Percentímetro" value={pctTxt ?? fmtPct(pct)} onChange={(e) => onPct(e.target.value)} onBlur={() => setPctTxt(null)} style={inputGrande} />
+                  <span style={{ color: NX.mudo }}>%</span>
+                </span>
+              </label>
+              <label style={caixaCampo}>
+                <span style={rotulo}>Lâmina</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <input inputMode="decimal" aria-label="Lâmina" value={lamTxt ?? (lam != null ? fmt(lam, 2) : '—')} onChange={(e) => onLam(e.target.value)} onBlur={() => setLamTxt(null)} style={inputGrande} />
+                  <span style={{ color: NX.mudo }}>mm</span>
+                </span>
+              </label>
+              {lamAbaixo && <span style={{ gridColumn: '1 / -1', fontSize: 12, color: NX.warn }}>Lâmina mínima deste pivô: {fmt(lamina100, 2)} mm (100 %).</span>}
+              {pctAbaixo && <span style={{ gridColumn: '1 / -1', fontSize: 12, color: NX.mudo }}>De 1 a 100 %. Para não girar, escolha Parado em Movimento.</span>}
             </div>
           )}
-          {caixaPrevisao(prev.texto, true)}
-          {rodapeComando}
+
+          <div style={col(8)}>
+            <button type="button" role="switch" aria-checked={canhaoAtivo} disabled={semCanhao} onClick={() => setCfg((c) => ({ ...c, canhao: !c.canhao }))}
+              style={{ ...linha, width: '100%', ...(semCanhao ? { opacity: 0.45 } : {}) }}>
+              <span style={{ ...col(2), textAlign: 'left' }}>
+                <span style={titulo15}>Canhão final</span>
+                <span style={rotulo}>{semCanhaoMotivo ? semCanhaoMotivo : seco ? 'Indisponível girando sem água' : !cfg.canhao ? 'Começa desligado' : nFaixas ? textoFaixas(faixas) : 'Ligado a volta toda'}</span>
+              </span>
+              <NxSwitch on={canhaoAtivo} />
+            </button>
+            {canhaoAtivo && !parado && (
+              <button type="button" onClick={() => setFaixasAbertas((v) => !v)} style={{ alignSelf: 'flex-start', fontSize: 13, fontWeight: 800, color: NX.acao }}>
+                {faixasAbertas ? 'Fechar faixas' : nFaixas ? 'Editar faixas do canhão' : 'Ligar o canhão só em parte da volta'}
+              </button>
+            )}
+            {canhaoAtivo && !parado && faixasAbertas && (
+              <div style={{ border: `1px solid ${NX.borda}`, borderRadius: 14, padding: 12, ...col(10) }}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                  <DialCanhao atual={atual} faixas={faixas} onChange={setFaixas} />
+                  <span style={{ fontSize: 13, color: NX.mudo }}>Arraste as alças ou digite os ângulos · setor verde = canhão ligado</span>
+                </div>
+                {faixas.map((f, i) => (
+                  <div key={f.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr) 32px', gap: 8, alignItems: 'center' }}>
+                    {(['liga', 'desliga'] as const).map((al) => (
+                      <label key={al} style={{ height: 40, borderRadius: 10, background: NX.seg, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 14 }}>
+                        <span style={{ color: NX.mudo }}>{al === 'liga' ? 'Liga' : 'Desliga'}</span>
+                        <input inputMode="numeric" value={f[al]} aria-label={`Faixa ${i + 1}, ${al}`}
+                          onChange={(e) => { const v = Number(e.target.value); if (Number.isFinite(v)) setFaixas(moverAlca(faixas, i, al, v)); }}
+                          style={{ width: '100%', minWidth: 0, background: 'transparent', border: 0, fontWeight: 800, textAlign: 'right', color: NX.texto, padding: 0 }} />
+                        <span style={{ color: NX.mudo }}>°</span>
+                      </label>
+                    ))}
+                    <button type="button" aria-label={`Remover faixa ${i + 1}`} onClick={() => setFaixas(faixas.filter((x) => x.id !== f.id))}
+                      style={{ width: 32, height: 32, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={NX.bad} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></svg>
+                    </button>
+                  </div>
+                ))}
+                <button type="button" disabled={!podeAdd} onClick={() => { const n = faixaNoVao(faixas, atual); if (n) setFaixas([...faixas, n]); }}
+                  style={{ height: 44, borderRadius: 12, border: `1px dashed ${NX.off}`, fontSize: 14, fontWeight: 800, textAlign: 'center', color: podeAdd ? NX.acao : NX.desab }}>
+                  {nFaixas >= 5 ? 'Limite de 5 faixas' : '+ Adicionar faixa'}
+                </button>
+                {!nFaixas && dica('Sem faixas, o canhão fica ligado a volta toda.')}
+              </div>
+            )}
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: ligado ? 'minmax(0, 1fr)' : 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
+            {!ligado && (
+              <span style={caixaCampo}>
+                <span style={rotulo}>Início</span>
+                <select aria-label="Início" value={inicioTipo} onChange={(e) => setInicioTipo(e.target.value as 'agora' | 'data')} style={valorCaixa}>
+                  <option value="agora">Agora</option><option value="data">Data e hora</option>
+                </select>
+                {inicioTipo === 'data' && (
+                  <input type="datetime-local" aria-label="Data e hora do início" value={inicioData} min={new Date().toISOString().slice(0, 16)} onChange={(e) => setInicioData(e.target.value)} style={inputCaixa} />
+                )}
+              </span>
+            )}
+            <span style={caixaCampo}>
+              <span style={rotulo}>Parada</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <select aria-label="Parada" value={parada.tipo} style={valorCaixa}
+                  onChange={(e) => { setMinTxt(null); mudarParada(e.target.value === 'porAngulo' ? { tipo: 'porAngulo', angulo: 0 } : e.target.value === 'porVoltas' ? { tipo: 'porVoltas', voltas: 1 }
+                    : e.target.value === 'porTempo' ? { tipo: 'porTempo', minutos: 60 } : { tipo: 'semParar' }); }}>
+                  <option value="semParar">Sem parar</option>
+                  {/* parado não oferece ângulo/voltas — mas mostra a que já está em curso */}
+                  {(!parado || parada.tipo === 'porAngulo') && <option value="porAngulo">Por ângulo</option>}
+                  {(!parado || parada.tipo === 'porVoltas') && <option value="porVoltas">Por voltas</option>}
+                  <option value="porTempo">Por tempo</option>
+                </select>
+                {parada.tipo === 'porAngulo' && (
+                  <><span style={{ fontSize: 15, fontWeight: 800 }}>·</span>
+                    <input inputMode="numeric" aria-label="Ângulo de parada" value={parada.angulo} style={{ ...inputCaixa, width: 40, textAlign: 'right' }}
+                      onChange={(e) => mudarParada({ tipo: 'porAngulo', angulo: Math.min(359, Math.max(0, Number(e.target.value) || 0)) })} />
+                    <span style={{ fontSize: 15, fontWeight: 800 }}>°</span></>
+                )}
+                {parada.tipo === 'porVoltas' && (
+                  <><span style={{ fontSize: 15, fontWeight: 800 }}>·</span>
+                    <input inputMode="numeric" aria-label="Voltas" value={parada.voltas} style={{ ...inputCaixa, width: 28, textAlign: 'right' }}
+                      onChange={(e) => mudarParada({ tipo: 'porVoltas', voltas: Math.min(10, Math.max(1, Number(e.target.value) || 1)) })} /></>
+                )}
+                {parada.tipo === 'porTempo' && (
+                  <><span style={{ fontSize: 15, fontWeight: 800 }}>·</span>
+                    {/* texto livre enquanto digita (dá para apagar); só vale número inteiro de 1 a 10080 */}
+                    <input inputMode="numeric" aria-label="Minutos" value={minTxt ?? String(parada.minutos)} style={{ ...inputCaixa, width: 52, textAlign: 'right' }}
+                      onBlur={() => setMinTxt(null)}
+                      onChange={(e) => { setMinTxt(e.target.value); const n = Number(e.target.value); if (Number.isInteger(n) && n >= 1 && n <= 10080) mudarParada({ tipo: 'porTempo', minutos: n }); }} />
+                    <span style={{ fontSize: 15, fontWeight: 800 }}>min</span></>
+                )}
+              </span>
+            </span>
+          </div>
+          <div style={{ background: NX.caixa, borderRadius: 12, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {/* Parada em curso intacta: o término que vale é o dela (o reinício herda o que falta), não um novo do zero. */}
+            <span style={{ fontSize: 14, color: NX.caixaTx }}>{ligado && notaParada && paradaIntacta ? notaParada : prev.texto}</span>
+            {paradoSemTempo && (
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: NX.warn }}>
+                <span style={{ width: 8, height: 8, borderRadius: 4, flex: 'none', background: NX.warn }} />Parado só para por tempo: sem isso, irriga no mesmo lugar até alguém desligar.
+              </span>
+            )}
+            {pontaTxt && (
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: pontaTxt.aviso ? NX.warn : NX.caixaTx }}>
+                <span style={{ width: 8, height: 8, borderRadius: 4, flex: 'none', background: pontaTxt.aviso ? NX.warn : NX.ok }} />{pontaTxt.txt}
+              </span>
+            )}
+          </div>
+
+          {/* Rodapé: parado → Ligar; ligado → Desligar e, depois de editar, Salvar e enviar. */}
+          {ligado && !editado && !semRegistro && dica('Pivô ligado com esta configuração. Edite qualquer opção para reiniciar com as novas.', NX.mudo)}
+          {ligado && !editado && semRegistro && dica('Pivô ligado fora do NexON (painel): não há irrigação registrada. Confira as opções — ao salvar, o pivô desliga e liga de novo com elas.', NX.warn)}
+          {ligado && editado && (semReinicio?.(montar())
+            ? dica('Só o percentímetro mudou: ao salvar, troca sem desligar o pivô.')
+            : dica('Ao salvar, o pivô desliga e liga de novo com as novas opções.', NX.warn))}
+          {paradoIndisponivel && dica('Ligar parado precisa do ponto Percentímetro na TON: escolha Direita ou Esquerda.', NX.warn)}
+          {(!ligado || editado || semRegistro) && botaoEnviar(rotuloEnviar, enviar, enviando || enviarOff || paradoIndisponivel)}
+          {ligado && onDesligar && (
+            <button type="button" disabled={desligarOff || enviando} onClick={onDesligar}
+              style={{ height: 48, borderRadius: 12, border: `1.5px solid ${desligarOff || enviando ? NX.off : NX.bad}`, background: NX.card, color: desligarOff || enviando ? NX.desab : NX.bad, fontSize: 16, fontWeight: 800, textAlign: 'center' }}>
+              Desligar
+            </button>
+          )}
         </>
       )}
 
@@ -662,12 +631,13 @@ export function IrrigacaoAvancada({
         <>
           <div style={col(8)}>
             {programacoes == null && <span style={{ fontSize: 14, color: NX.mudo }}>Carregando…</span>}
+            {programacoes != null && !nProg && !nova && <span style={{ fontSize: 14, color: NX.mudo }}>Nenhum horário programado.</span>}
             {(programacoes ?? []).map((p) => {
               const t = textoProgramacao(p);
               return (
                 <div key={p.id} style={{ background: NX.caixa, borderRadius: 14, padding: '12px 8px 12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
                   <span style={{ flex: 1, ...col(2) }}>
-                    <span style={{ fontSize: 15, fontWeight: 700 }}>{t.quando}</span>
+                    <span style={titulo15}>{t.quando}</span>
                     <span style={{ fontSize: 13, color: NX.mudo }}>{t.det}</span>
                   </span>
                   <button type="button" aria-label="Remover agendamento" onClick={() => onRemoverProgramacao(p.id)} style={{ width: 44, height: 44, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -678,7 +648,7 @@ export function IrrigacaoAvancada({
             })}
             {nova ? (
               <div style={{ border: `1px solid ${NX.borda}`, borderRadius: 14, padding: 12, ...col(10) }}>
-                <div style={{ display: 'flex', padding: 3, borderRadius: 12, background: NX.seg, alignSelf: 'flex-start' }}>
+                <div style={{ ...segBox, alignSelf: 'flex-start' }}>
                   {GRUPOS_DIAS.map((g) => (
                     <button key={g.v} type="button" aria-pressed={nova.grupo === g.v} onClick={() => setNova({ ...nova, grupo: g.v })} style={s.seg(nova.grupo === g.v)}>{g.label}</button>
                   ))}
@@ -691,7 +661,13 @@ export function IrrigacaoAvancada({
                     </label>
                   ))}
                 </div>
-                {direcaoRow}
+                {/* As opções vêm da aba Irrigação: nada de repetir direção, água e percentímetro aqui. */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, fontSize: 13 }}>
+                  <span style={{ color: NX.mudo }}>Vai irrigar com: <b style={{ color: NX.texto }}>{resumoConfig(cfg)}</b></span>
+                  <button type="button" onClick={() => setAba('simples')} style={{ fontWeight: 800, color: NX.acao, whiteSpace: 'nowrap' }}>Mudar</button>
+                </div>
+                {/* A programação do servidor não liga parado (0 % vira 100 % girando): só com movimento. */}
+                {parado && dica('A agenda não liga parado: escolha Direita ou Esquerda em Irrigação.', NX.warn)}
                 <button type="button" onClick={() => setNova(null)} style={{ alignSelf: 'flex-start', fontSize: 13, fontWeight: 700, color: NX.mudo }}>Cancelar</button>
               </div>
             ) : (
@@ -701,57 +677,13 @@ export function IrrigacaoAvancada({
               </button>
             )}
           </div>
-          {nova && <>{secoRow}{pctLam}</>}
-          {caixaPrevisao(`${nProg} horário(s) programado(s)`, false)}
-          {botaoEnviar(salvandoProg ? 'Salvando…' : 'Salvar agendamento', salvarAgendamento, !nova || salvandoProg)}
-        </>
-      )}
-
-      {aba === 'canhao' && (
-        <>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-            <DialCanhao atual={atual} faixas={faixas} onChange={setFaixas} />
-            <span style={{ fontSize: 13, color: NX.mudo }}>Arraste as alças ou digite os ângulos</span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: NX.mudo }}>
-              <span style={{ width: 14, height: 14, borderRadius: 3, background: NX.ok, opacity: 0.6 }} />Setor verde = canhão ligado
-            </span>
-          </div>
-          {faixas.map((f, i) => (
-            <div key={f.id} style={{ ...s.card, padding: '12px 16px', ...col(8) }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 14, fontWeight: 700 }}>Faixa {i + 1} · liga {f.liga}° · desliga {f.desliga}°</span>
-                <button type="button" aria-label={`Remover faixa ${i + 1}`} onClick={() => setFaixas(faixas.filter((x) => x.id !== f.id))}
-                  style={{ width: 32, height: 32, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={NX.bad} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></svg>
-                </button>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
-                {(['liga', 'desliga'] as const).map((al) => (
-                  <label key={al} style={{ height: 40, borderRadius: 10, background: NX.seg, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 14 }}>
-                    <span style={{ color: NX.mudo }}>{al === 'liga' ? 'Liga' : 'Desliga'}</span>
-                    <input inputMode="numeric" value={f[al]} aria-label={`Faixa ${i + 1}, ${al}`}
-                      onChange={(e) => { const v = Number(e.target.value); if (Number.isFinite(v)) setFaixas(moverAlca(faixas, i, al, v)); }}
-                      style={{ width: '100%', minWidth: 0, background: 'transparent', border: 0, fontWeight: 800, textAlign: 'right', color: NX.texto, padding: 0 }} />
-                    <span style={{ color: NX.mudo }}>°</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-          ))}
-          <button type="button" disabled={!podeAdd} onClick={() => { const n = faixaNoVao(faixas, atual); if (n) setFaixas([...faixas, n]); }}
-            style={{ height: 48, borderRadius: 12, border: `1px dashed ${NX.off}`, fontSize: 14, fontWeight: 800, textAlign: 'center', color: podeAdd ? NX.acao : NX.desab }}>
-            {nFaixas >= 5 ? 'Limite de 5 faixas' : '+ Adicionar faixa'}
-          </button>
-          <span style={{ fontSize: 13, color: NX.mudo }}>
-            {nFaixas ? `As faixas vão junto com a irrigação ${MODO_TXT[modo]}.` : `Sem faixas, o canhão fica ligado a volta toda. Vai junto com a irrigação ${MODO_TXT[modo]}.`}
-          </span>
-          {caixaPrevisao(prev.texto, true)}
-          {rodapeComando}
+          {nova && botaoEnviar(salvandoProg ? 'Salvando…' : 'Salvar agendamento', salvarAgendamento, salvandoProg || parado)}
         </>
       )}
     </div>
   );
 }
 
-export const tituloEnvio = (m: Modo) => (m === 'simples' ? 'Iniciar irrigação simples?' : m === 'angulo' ? 'Iniciar irrigação por ângulo?' : 'Iniciar irrigação por segmentos?');
-export const resumoConfig = (c: ConfigIrrigacao) => (c.semAgua ? `${DIRECAO_LABEL[c.direcao]} · Seco` : `${DIRECAO_LABEL[c.direcao]} · ${fmtPct(c.percentual)}% · Molhado`);
+/** "Direita · 60% · Molhado" / "Direita · Seco" / "Parado · Molhado" (liga sem girar). */
+export const resumoConfig = (c: ConfigIrrigacao) => (c.semAgua ? `${DIRECAO_LABEL[c.direcao]} · Seco`
+  : ehParado(c) ? 'Parado · Molhado' : `${DIRECAO_LABEL[c.direcao]} · ${fmtPct(c.percentual)}% · Molhado`);
