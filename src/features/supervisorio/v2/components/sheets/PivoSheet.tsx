@@ -223,7 +223,9 @@ export function MapaPivo({ angulo: anguloLido, aviso, girando, falha, sentido, d
   const arm = pt(179, 150, 118, a);
   const setor = sentido === 'esquerda' ? setorD(179, 150, 118, a - 47, a) : setorD(179, 150, 118, a, a + 47);
   // Seta só com o comando de giro ativo: ponta 13° à frente do braço, no sentido do movimento.
-  const lado = girando && angulo != null ? (sentido === 'direita' ? 1 : sentido === 'esquerda' ? -1 : 0) : 0;
+  // (a cor do braço segue `girando`; o lado só decide a seta — pivô sem BI de sentido gira sem seta)
+  const emGiro = girando && angulo != null;
+  const lado = emGiro ? (sentido === 'direita' ? 1 : sentido === 'esquerda' ? -1 : 0) : 0;
   const seta = lado ? [pt(179, 150, 110, a + lado * 13), pt(179, 150, 118, a + lado * 3), pt(179, 150, 102, a + lado * 3)] : null;
   const avisoTxt = semCalibracao
     ? bruto != null ? `Sem calibração · leitura bruta ${bruto}` : `Sem calibração · ${aviso && !/^sem calibra/i.test(aviso) ? aviso : 'sem leitura atual do encoder'}`
@@ -232,7 +234,7 @@ export function MapaPivo({ angulo: anguloLido, aviso, girando, falha, sentido, d
     <div style={{ borderRadius: 16, overflow: 'hidden', position: 'relative', height: 300, background: '#26301F' }}>
       <svg viewBox="0 0 358 300" width="100%" height="300" preserveAspectRatio="xMidYMid slice" style={{ display: 'block' }} role="img"
         aria-label={angulo != null
-          ? `Mapa do pivô, ângulo atual ${fmt(angulo, 1)} graus, ${lado ? `girando no sentido ${lado > 0 ? 'horário' : 'anti-horário'}` : 'parado'}`
+          ? `Mapa do pivô, ângulo atual ${fmt(angulo, 1)} graus, ${lado ? `girando no sentido ${lado > 0 ? 'horário' : 'anti-horário'}` : emGiro ? 'girando' : 'parado'}`
           : semCalibracao ? 'Mapa do pivô, sem calibração do ângulo' : 'Mapa do pivô, ângulo não informado'}>
         <rect x="0" y="0" width="358" height="300" fill="#2B3523" />
         <path d="M0 230 C60 210 90 270 150 300 L0 300 Z" fill="#1F2A1A" />
@@ -242,7 +244,7 @@ export function MapaPivo({ angulo: anguloLido, aviso, girando, falha, sentido, d
         <circle cx="179" cy="150" r="118" fill="#5B5A3C" stroke="rgba(255,255,255,0.35)" strokeWidth="1.5" />
         <path d={(girando || falha) && angulo != null ? setor : 'M0 0'} fill={falha ? 'rgba(229,88,79,0.45)' : 'rgba(114,191,74,0.5)'} />
         {faixas.map((f) => <path key={f.id} d={arco(179, 150, 125, f.liga, ((f.desliga - f.liga) % 360 + 360) % 360)} fill="none" stroke="#70C04B" strokeWidth="3" strokeLinecap="round" />)}
-        {angulo != null && <line data-braco={lado ? 'girando' : 'parado'} x1="179" y1="150" x2={arm[0]} y2={arm[1]} stroke={lado ? '#FFFFFF' : '#A9ADBC'} strokeWidth="3" strokeLinecap="round" />}
+        {angulo != null && <line data-braco={emGiro ? 'girando' : 'parado'} x1="179" y1="150" x2={arm[0]} y2={arm[1]} stroke={emGiro ? '#FFFFFF' : '#A9ADBC'} strokeWidth="3" strokeLinecap="round" />}
         {seta && <path data-seta={lado > 0 ? 'direita' : 'esquerda'} d={`M${seta[0][0]} ${seta[0][1]} L${seta[1][0]} ${seta[1][1]} L${seta[2][0]} ${seta[2][1]} Z`} fill="#FFFFFF" stroke="#FFFFFF" strokeWidth="1.5" strokeLinejoin="round" />}
         <circle cx="179" cy="150" r="4" fill="#FFFFFF" />
         <path d="M173 22 L185 22 L179 32 Z" fill="#FFFFFF" />
@@ -514,9 +516,11 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   // velha (API antiga) também não vale: nunca o último valor como se fosse o atual.
   const pos = estado?.posicao;
   const semCalibracao = pos?.sem_calibracao === true;
-  const angulo = semCalibracao ? null : pos ? pos.angulo : tsInfo(ts).online ? num('angulo', 'posicao') : null;
+  const angulo = semCalibracao ? null : pos ? pos.angulo : num('angulo', 'posicao');
   const avisoPosicao = pos?.fonte === 'encoder' && angulo == null ? pos.motivo : null;
-  const brutoAtual = semCalibracao && pos?.bruto != null && tsInfo(pos.lido_em, 15 * 60 * 1000).online ? pos.bruto : null;
+  // (idade pela diferença simples: relógio do aparelho atrasado não pode esconder leitura fresca)
+  const brutoFresco = !!pos?.lido_em && Date.now() - new Date(pos.lido_em).getTime() < 15 * 60 * 1000;
+  const brutoAtual = semCalibracao && pos?.bruto != null && brutoFresco ? pos.bruto : null;
   const angTxt = angulo != null ? `${fmt(angulo, 1)}°` : '—°';
   const ligando = executando && seq?.acao !== 'desligar';
   const on = girando || ligando;
@@ -1302,6 +1306,7 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
     }
     for (const p of PARAMS_PAR) {
       if (calibrado && p.key === 'correcao_angulo_zero') continue;
+      if (!enc.id && p.key === 'travado_min') continue;   // campo só existe com encoder
       const antes = cfg?.parametros?.[p.key as keyof ParametrosPivo] as number | null | undefined;
       const agora = parNum(p.key);
       if ((antes ?? null) !== agora) add(p.label, antes == null ? '—' : `${fmtPar(antes, p.d)} ${p.unit}`, agora == null ? '—' : `${fmtPar(agora, p.d)} ${p.unit}`);
@@ -1325,7 +1330,7 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
   const bombaRuim = conj && !conjPivo;
   const seqRuim = (CHAVES_SEQ as ChaveSeq[]).some((k) => { const p = PARAMS.find((x) => x.key === k)!; return !numOk(seq[k], p.min, p.max); });
   const pontaRuim = !!ponta && !(/^\d{2}:\d{2}$/.test(ponta.inicio) && /^\d{2}:\d{2}$/.test(ponta.fim));
-  const parRuim = PARAMS_PAR.some((p) => { if (calibrado && p.key === 'correcao_angulo_zero') return false; const v = parNum(p.key); return v != null && (Number.isNaN(v) || v < p.min || v > p.max); });
+  const parRuim = PARAMS_PAR.some((p) => { if ((calibrado && p.key === 'correcao_angulo_zero') || (!enc.id && p.key === 'travado_min')) return false; const v = parNum(p.key); return v != null && (Number.isNaN(v) || v < p.min || v > p.max); });
   // Com encoder escolhido, a resolução é obrigatória (sem ela o servidor não calcula o ângulo).
   const encRuim = !!enc.id && (encRes == null || !Number.isInteger(encRes) || encRes < 16 || encRes > 16_777_216);
   const invalido = bombaRuim || seqRuim || pontaRuim || parRuim || encRuim;

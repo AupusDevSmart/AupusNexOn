@@ -131,6 +131,10 @@ describe('motivos pendentes do Salvar calibração', () => {
     expect(motivosPendentes({ ...tudoOk, ponta: { lat: '-95', lon: '-47,997' } })).toEqual(['Posição da ponta inválida: use graus decimais, como −16,1234567']);
     // 0,0003° de latitude ≈ 33 m
     expect(motivosPendentes({ ...tudoOk, ponta: { lat: '-15,9997', lon: '-48' } })).toEqual(['Pontos muito próximos: 33 m (mínimo 50 m)']);
+    // sinal de menos esquecido na latitude da ponta: 3 557 km — não pode liberar o Salvar
+    const longe = motivosPendentes({ ...tudoOk, ponta: { lat: '15,997', lon: '-47,997' } });
+    expect(longe).toHaveLength(1);
+    expect(longe[0]).toMatch(/^Pontos muito distantes: .* m \(máximo 2\.000 m\) — confira o sinal de menos/);
   });
 
   it('mostra todos os motivos de uma vez, na ordem da tela', () => {

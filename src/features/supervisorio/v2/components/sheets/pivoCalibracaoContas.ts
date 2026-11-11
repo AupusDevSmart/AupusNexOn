@@ -41,6 +41,7 @@ export interface CalibracaoTela {
   leitura: { bruto: number | null; lido_em: string | null; angulo: number | null; motivo: string | null };
   ultima_leitura_valida: LeituraValida | null;
   distancia_min_m: number;
+  distancia_max_m?: number;
   leituras_exigidas: number;
 }
 /** POST /pivos/:id/calibracao/ler-encoder */
@@ -49,6 +50,11 @@ export interface LeituraEncoder { valida: boolean; valor: number | null; leitura
 export interface CorpoCalibracao { bruto_cal: number; sentido: Sentido; centro_lat: number; centro_lon: number; ponta_lat: number; ponta_lon: number }
 
 export const DISTANCIA_MIN_M = 50;
+/**
+ * Nenhum lance de pivô chega perto disto. Centro e ponta mais longe = coordenada errada (sinal
+ * esquecido, latitude e longitude trocadas) — e o azimute sairia errado sem ninguém notar.
+ */
+export const DISTANCIA_MAX_M = 2000;
 export const VALIDADE_LEITURA_MIN = 10;
 
 const rad = (g: number) => (g * Math.PI) / 180;
@@ -149,6 +155,7 @@ export interface EntradaSalvar {
   centro: CampoPonto;
   ponta: CampoPonto;
   distanciaMinM?: number;
+  distanciaMaxM?: number;
 }
 
 const vazio = (c: CampoPonto) => c.lat.trim() === '' || c.lon.trim() === '';
@@ -170,7 +177,10 @@ export function motivosPendentes(e: EntradaSalvar): string[] {
   if (centro && ponta) {
     const min = e.distanciaMinM ?? DISTANCIA_MIN_M;
     const d = distanciaM(centro, ponta);
-    if (!(d > min)) out.push(`Pontos muito próximos: ${Math.round(d)} m (mínimo ${min} m)`);
+    const max = e.distanciaMaxM ?? DISTANCIA_MAX_M;
+    // 49,6 m não pode aparecer como "50 m (mínimo 50 m)": arredonda para baixo.
+    if (!(d > min)) out.push(`Pontos muito próximos: ${Math.floor(d)} m (mínimo ${min} m)`);
+    else if (d > max) out.push(`Pontos muito distantes: ${Math.round(d).toLocaleString('pt-BR')} m (máximo ${max.toLocaleString('pt-BR')} m) — confira o sinal de menos e se latitude e longitude não estão trocadas`);
   }
   return out;
 }

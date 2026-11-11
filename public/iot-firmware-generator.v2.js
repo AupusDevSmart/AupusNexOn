@@ -286,6 +286,9 @@ var FirmwareGenerator = class FirmwareGenerator {
         if (result.pivo && result.has_relays && !result.rs485_devices.some(d => d.type === 'encoder')) {
             result.warnings.push('Pivô sem Encoder no RS485 desta TON — só funciona a parada por tempo (voltas, ângulo e segmentos precisam do encoder na mesma TON).');
         }
+        if (result.pivo && result.has_relays && result.rs485_devices.filter(d => d.type === 'encoder').length > 1) {
+            result.warnings.push('Mais de um Encoder no RS485 da TON do pivô — a posição e a calibração do pivô usam o PRIMEIRO da lista. Deixe só o encoder do pivô nesta TON.');
+        }
         {
             const ser = this._rs485Serial(result);
             if ((ser.baud !== 9600 || ser.stop !== 1) && result.rs485_devices.length > 1) {

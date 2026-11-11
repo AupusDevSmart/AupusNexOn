@@ -141,7 +141,13 @@ export function PainelCalibracao({ pivoId, tela, podeEditar, acao, recusa, leitu
   const sentido: Sentido = sentidoEscolhido ?? vigente?.sentido ?? (invertido ? -1 : 1);
   const [geo, setGeo] = useState<{ centro: Geo; ponta: Geo }>({ centro: GEO0, ponta: GEO0 });
   const [confirmar, setConfirmar] = useState<null | 'salvar' | 'restaurar'>(null);
-  useEffect(() => { rascunhos.set(pivoId, { centro, ponta, sentido: sentidoEscolhido }); }, [pivoId, centro, ponta, sentidoEscolhido]);
+  // Rascunho só do que a pessoa DIGITOU: abrir a aba não pode congelar um centro vazio (outra
+  // pessoa calibra depois e o centro vigente tem de aparecer na volta).
+  useEffect(() => {
+    const base = centroVigente ?? VAZIO;
+    const mexeu = centro.lat !== base.lat || centro.lon !== base.lon || ponta.lat !== '' || ponta.lon !== '' || sentidoEscolhido != null;
+    if (mexeu) rascunhos.set(pivoId, { centro, ponta, sentido: sentidoEscolhido }); else rascunhos.delete(pivoId);
+  }, [pivoId, centro, ponta, sentidoEscolhido]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const localizar = (qual: 'centro' | 'ponta') => {
     if (!navigator.geolocation) return;
@@ -167,7 +173,7 @@ export function PainelCalibracao({ pivoId, tela, podeEditar, acao, recusa, leitu
   const pendPivo = pendenciasDoPivo(pre);
   const semLeituraPorque = recusa ? `Leitura do encoder recusada: ${recusa.motivo ?? 'leia de novo com o pivô parado'}`
     : leituraVenceu ? `A leitura do encoder venceu (vale ${VALIDADE_LEITURA_MIN} minutos): leia de novo` : null;
-  const motivos = motivosPendentes({ precondicoes: pre, leitura: lida, semLeituraPorque, centro, ponta, distanciaMinM: tela.distancia_min_m });
+  const motivos = motivosPendentes({ precondicoes: pre, leitura: lida, semLeituraPorque, centro, ponta, distanciaMinM: tela.distancia_min_m, distanciaMaxM: tela.distancia_max_m });
   const corpoReq = corpoCalibracao(lida, sentido, centro, ponta);
   const ocupado = acao != null;
   const salvarOff = motivos.length > 0 || !corpoReq || ocupado;
@@ -295,6 +301,7 @@ export function PainelCalibracao({ pivoId, tela, podeEditar, acao, recusa, leitu
           <span style={{ fontSize: 18, fontWeight: 800 }}>Confirmar calibração</span>
           <div>
             <Valor first titulo="Azimute calculado">{grausTxt(az)}</Valor>
+            <Valor titulo="Distância do centro à ponta">{dist != null ? `${Math.round(dist).toLocaleString('pt-BR')} m` : '—'}</Valor>
             <Valor titulo="Leitura do encoder">{lida?.valor ?? '—'}</Valor>
             <Valor titulo="Sentido do encoder">{sentidoTxt(sentido)}</Valor>
           </div>
