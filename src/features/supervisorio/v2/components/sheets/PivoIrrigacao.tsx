@@ -410,7 +410,9 @@ export function IrrigacaoAvancada({
   const [segSel, setSegSel] = useState(0);
   const [inicioTipo, setInicioTipo] = useState<'agora' | 'data'>('agora');
   const [inicioData, setInicioData] = useState('');
-  const [parada, setParada] = useState<Parada>(() => (ligado ? paradaValida(emCurso?.parada) : { tipo: 'semParar' }));
+  // Ligar novo: 1 volta por padrão. "Sem parar" não se escolhe mais (esquema do pivô, NEXON-98);
+  // só aparece quando é a parada da irrigação EM CURSO.
+  const [parada, setParada] = useState<Parada>(() => (ligado ? paradaValida(emCurso?.parada) : { tipo: 'porVoltas', voltas: 1 }));
   const [pctTxt, setPctTxt] = useState<string | null>(null);
   const [lamTxt, setLamTxt] = useState<string | null>(null);
   const [minTxt, setMinTxt] = useState<string | null>(null);
@@ -636,7 +638,7 @@ export function IrrigacaoAvancada({
                     if (seg) setSegSel(segmentoDoGiro(atual, cfg.direcao));   // começa no segmento onde o pivô está
                     mudarParada(seg ? { tipo: 'semParar' } : e.target.value === 'porAngulo' ? { tipo: 'porAngulo', angulo: 0 } : e.target.value === 'porVoltas' ? { tipo: 'porVoltas', voltas: 1 }
                     : e.target.value === 'porTempo' ? { tipo: 'porTempo', minutos: 60 } : { tipo: 'semParar' }); }}>
-                  <option value="semParar">Sem parar</option>
+                  {parada.tipo === 'semParar' && !porSegmento && <option value="semParar">Sem parar</option>}
                   {/* parado não oferece ângulo/voltas — mas mostra a que já está em curso */}
                   {(!parado || parada.tipo === 'porAngulo') && <option value="porAngulo">Por ângulo</option>}
                   {!parado && <option value="porSegmento">Por segmento</option>}
