@@ -27,7 +27,8 @@
 | BO06 | Ligar canhão | BI06 | Canhão ligado |
 
 - **Polaridade configurável por BI.** O padrão é ativo em alto (1 = condição presente). BI05 em 1 = **desalinhado**.
-- Ao ligar o pivô a uma TON, o NexON preenche esse mapa nas BOs e BIs livres. Dá para trocar em Configurar I/O.
+- **Pontos do pivô** (cadastro): Bombeamento, Valvula, Girar_direita, Girar_esquerda, Percentimetro, Canhao / Pressao_ok, Tensao_ok, Girando_direita, Girando_esquerda, Seguranca, Canhao_ligado (migração `2026-11-11_pivo_io_padrao.sql`).
+- Ao **salvar o diagrama IoT com o nó Pivô ligado a uma TON**, o NexON preenche esse mapa nas BOs e BIs livres (`ensurePivoIoPadrao` em `iot.service.ts`). Ponto que já tem BO/BI e BO/BI ocupada por outro ponto não são tocados. Dá para trocar em Configurar I/O; a polaridade é o "invertido" da BI.
 - O encoder fica no RS485 **da mesma TON**. A TON calcula o ângulo com resolução, sentido e zero enviados pelo NexON.
 
 ## 3. Sequências (na TON)
