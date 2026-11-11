@@ -119,13 +119,16 @@ export function NxSwitchRow({ title, sub, on, onToggle, disabled, first, minHeig
   );
 }
 
-export function NxSeg<T extends string>({ value, options, onChange, disabled }: {
+export function NxSeg<T extends string>({ value, options, onChange, disabled, toque }: {
   value: T; options: Array<{ v: NoInfer<T>; label: string }>; onChange: (v: NoInfer<T>) => void; disabled?: boolean;
+  /** Alvo de toque de 44 px ocupando a largura toda (formulário usado no celular). */
+  toque?: boolean;
 }) {
   return (
     <div style={{ display: 'flex', padding: 3, borderRadius: 12, background: NX.seg }}>
       {options.map((o) => (
-        <button key={o.v} type="button" disabled={disabled} aria-pressed={value === o.v} onClick={() => onChange(o.v)} style={s.seg(value === o.v)}>{o.label}</button>
+        <button key={o.v} type="button" disabled={disabled} aria-pressed={value === o.v} onClick={() => onChange(o.v)}
+          style={{ ...s.seg(value === o.v), ...(toque ? { height: 44, flex: 1, textAlign: 'center' } : {}) }}>{o.label}</button>
       ))}
     </div>
   );
@@ -175,7 +178,9 @@ export function NxShell({ title, subtitle, right, tabs, tab, onTab, onClose, chi
         {tabs && tabs.length > 1 && (
           <div style={{ display: 'grid', gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))`, gap: 4, margin: '16px 24px 0 24px', padding: 4, borderRadius: 14, background: NX.trilho }}>
             {tabs.map((t) => (
-              <button key={t.key} type="button" aria-pressed={tab === t.key} onClick={() => onTab?.(t.key)} style={s.tab(tab === t.key)}>{t.label}</button>
+              <button key={t.key} type="button" aria-pressed={tab === t.key} onClick={() => onTab?.(t.key)}
+                // Três abas (pivô) no celular: letra um ponto menor e nunca vazando para a aba vizinha.
+                style={{ ...s.tab(tab === t.key), ...(tabs.length > 2 ? { fontSize: 13, minWidth: 0, padding: '0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } : {}) }}>{t.label}</button>
             ))}
           </div>
         )}
