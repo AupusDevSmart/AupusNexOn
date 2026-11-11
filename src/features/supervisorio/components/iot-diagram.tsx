@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useState, useMemo, Fragment } from 'react';
+import { useEffect, useRef, useCallback, useState, useMemo, Fragment, useSyncExternalStore } from 'react';
 import { DiagramaSkeleton } from '@/features/supervisorio/sinoptico/components/SinopticoSkeleton';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,6 +20,8 @@ import { GuiaInstalacaoA966 } from './GuiaInstalacaoA966';
 import { InstrucoesInstalacaoModal, type ContextoInstalacao } from './InstrucoesInstalacaoModal';
 import { dominioDoTipo } from '../v2/utils/dominioEquipamento';
 import { AcompanhamentoOta } from './AcompanhamentoOta';
+import { EmuladorModal, type AlvosUnifilar } from './emulador/EmuladorModal';
+import { emuladorSessoes } from './emulador/emulador-sessao';
 
 /**
  * Resposta do OtaController.compileAndPublish (com envelope ResponseInterceptor):
@@ -213,7 +215,7 @@ function ensureIoTScripts(): Promise<void> {
     //
     // O catalogo de dispositivos foi movido pro backend (GET /iot-catalog/device-catalog.js)
     // — ele revalida sozinho via ETag. Os demais ainda sao estaticos.
-    const IOT_SCRIPTS_VERSION = '20261112i-watchdog';
+    const IOT_SCRIPTS_VERSION = '20261112j-wdt-emulador';
     const scripts = [
       `${BASE_URL}/iot-catalog/device-catalog.js`,
       // Pivo na TON (lib pivo_local + glue), usado pelos 2 geradores: gerado por tools/sync-pivo-lib.mjs
@@ -418,6 +420,14 @@ export function IoTDiagram({ unidadeId, unidadeNome }: IoTDiagramProps) {
   const [associarComp, setAssociarComp] = useState<any>(null);
   const [associarLista, setAssociarLista] = useState<Array<{ id: string; nome: string }>>([]);
   const [associarBusy, setAssociarBusy] = useState(false);
+
+  // Emulador Modbus RTU: nó do tipo real com props.emulado = true (o firmware não muda).
+  // comp = null → criando um novo pela paleta.
+  const [emuModal, setEmuModal] = useState<{ comp: { id: string; type: string; props: Record<string, any> } | null } | null>(null);
+  // O emulador escolhe o ativo do unifilar dentro do próprio modal — suprime o prompt de associação.
+  const suprimirAssociarRef = useRef(false);
+  const emuSessoesVersao = useSyncExternalStore(emuladorSessoes.subscribe, emuladorSessoes.versao);
+  const emuAtivas = useMemo(() => emuladorSessoes.ativas(), [emuSessoesVersao]);
 
   // Picker de equipamento NexOn para o campo `equipamento_id` dos componentes TON.
   // Substitui input de texto livre (CUID 26 chars) por um select com TONs da unidade.
@@ -740,10 +750,15 @@ export function IoTDiagram({ unidadeId, unidadeNome }: IoTDiagramProps) {
     }
   };
 
-  const openComponentProps = async (comp: any) => {
+  const openComponentProps = async (comp: any, forcarPadrao = false) => {
     if (!comp || !window.COMPONENT_TYPES) return;
     const def = window.COMPONENT_TYPES[comp.type];
     if (!def) return;
+    // Nó emulado: abre o modal do emulador (o editor padrão fica em "Propriedades avançadas").
+    if (comp.props?.emulado && !forcarPadrao) {
+      setEmuModal({ comp: { id: comp.id, type: comp.type, props: { ...comp.props } } });
+      return;
+    }
     setPropsComp({ ...comp, _def: def });
     setPropsValues({ ...comp.props });
     setPropsModalOpen(true);
@@ -857,6 +872,7 @@ export function IoTDiagram({ unidadeId, unidadeNome }: IoTDiagramProps) {
   // Abre o prompt de associação logo ao criar um inversor/medidor/TON.
   const abrirAssociar = async (comp: any) => {
     if (!comp || !unidadeId) return;
+    if (suprimirAssociarRef.current) return;
     const tipo = String(comp.type || '').toLowerCase();
     // TON e' iot-only e autossuficiente na tabela — NAO associa a unifilar (nao ha
     // TON no unifilar). O backend cria+associa o equipamento da TON no save
@@ -1114,6 +1130,105 @@ export function IoTDiagram({ unidadeId, unidadeNome }: IoTDiagramProps) {
     const cy = (c.clientHeight / 2 - editorRef.current.pan.y) / editorRef.current.zoom;
     editorRef.current.addComponent(type, Math.round(cx / 40) * 40, Math.round(cy / 40) * 40);
     setCompCount(editorRef.current.components.length);
+  };
+
+  // ---- Emulador Modbus RTU ----
+  // Cria (id null) ou atualiza o nó do tipo real com props.emulado e salva o diagrama.
+  const salvarEmulador = async ({ id, type, props }: { id: string | null; type: string; props: Record<string, any> }): Promise<string | null> => {
+    const ed = editorRef.current;
+    if (!ed) return null;
+    let nodeId = id;
+    if (!nodeId) {
+      const c = containerRef.current;
+      const cx = c ? (c.clientWidth / 2 - ed.pan.x) / ed.zoom : 200;
+      const cy = c ? (c.clientHeight / 2 - ed.pan.y) / ed.zoom : 200;
+      suprimirAssociarRef.current = true;
+      try {
+        const novo = ed.addComponent(type, Math.round(cx / 40) * 40, Math.round(cy / 40) * 40);
+        nodeId = novo?.id ?? null;
+      } finally {
+        suprimirAssociarRef.current = false;
+      }
+      if (!nodeId) return null;
+      setCompCount(ed.components.length);
+    }
+    const atual = (ed.components || []).find((c: any) => c.id === nodeId);
+    ed.updateComponentProps(nodeId, { ...(atual?.props ?? {}), ...props });
+    await saveCurrentDiagram();
+    await espelharModeloNoAtivo({ type, props });
+    const salvo = (ed.components || []).find((c: any) => c.id === nodeId);
+    if (salvo) setEmuModal((m) => (m ? { comp: { id: salvo.id, type: salvo.type, props: { ...salvo.props } } } : m));
+    return nodeId;
+  };
+
+  // Mesmo alvo de associação do fluxo normal (abrirAssociar): PM → disjuntor com SCS;
+  // medidor concessionária → EQTL001 do unifilar; demais → ativo da mesma família.
+  const carregarAlvosEmulador = async (type: string, compId: string | null): Promise<AlvosUnifilar> => {
+    const t = String(type).toLowerCase();
+    if (t === 'encoder') return { campo: 'equipamento_id', rotulo: 'Encoder (não associa ao unifilar)', lista: [], naoAssocia: true };
+    if (vinculaPorAlvo(t)) {
+      const lista = t === 'power_meter' ? await listarDisjuntoresScs().catch(() => []) : await listarMedidoresConcUnifilar().catch(() => []);
+      return {
+        campo: 'disjuntor_equipamento_id',
+        rotulo: t === 'power_meter' ? 'Disjuntor do unifilar que este medidor mede (com SCS)' : 'Medidor Concessionária do unifilar',
+        lista,
+      };
+    }
+    return { campo: 'equipamento_id', rotulo: 'Equipamento do unifilar', lista: await listarAtivosParaVinculo({ id: compId ?? '__emulador_novo__', type: t }) };
+  };
+
+  // Conflito de endereço no MESMO barramento RS485 (qualquer tipo de device, não só o mesmo
+  // tipo como no checkModbusConflict do editor). Barramento = tudo alcançável da(s) TON(s)
+  // do nó por conexões RS485, sem atravessar outra controladora.
+  const conflitoEnderecoEmulador = (compId: string | null, _type: string, endereco: number): string | null => {
+    const ed = editorRef.current;
+    if (!ed || !compId) return null;
+    const comps: any[] = ed.components || [];
+    const conns: any[] = (ed.connections || []).filter((c: any) => (c.style || 'rs485') === 'rs485');
+    const tonCaps = (window as any).TON_CAPS || {};
+    const vizinhos = (id: string) => conns
+      .filter((c) => c.from.componentId === id || c.to.componentId === id)
+      .map((c) => (c.from.componentId === id ? c.to.componentId : c.from.componentId));
+    const byId = new Map(comps.map((c) => [c.id, c]));
+    const isTon = (c: any) => !!tonCaps[c?.type];
+    const isController = (c: any) => window.COMPONENT_TYPES?.[c?.type]?.category === 'controller' || isTon(c);
+    // 1) TONs ligadas ao nó
+    const tons = new Set<string>();
+    const vis = new Set<string>([compId]);
+    const fila = [compId];
+    while (fila.length) {
+      const id = fila.shift()!;
+      for (const n of vizinhos(id)) {
+        if (vis.has(n)) continue;
+        vis.add(n);
+        const c = byId.get(n);
+        if (isTon(c)) tons.add(n);
+        else if (!isController(c)) fila.push(n);
+      }
+    }
+    if (!tons.size) return null;
+    // 2) devices no barramento dessas TONs
+    for (const tonId of tons) {
+      const v2 = new Set<string>([tonId]);
+      const f2 = [tonId];
+      while (f2.length) {
+        const id = f2.shift()!;
+        for (const n of vizinhos(id)) {
+          if (v2.has(n)) continue;
+          v2.add(n);
+          const c = byId.get(n);
+          if (!c || isController(c)) continue;
+          f2.push(n);
+          if (n === compId || c.type === 'medidor_ssu' || !('modbus_address' in (c.props || {}))) continue;
+          if (Number(c.props.modbus_address) === endereco) {
+            const label = window.COMPONENT_TYPES?.[c.type]?.label ?? c.type;
+            const ton = byId.get(tonId);
+            return `Endereço ${endereco} já é usado por "${c.props.name || label}" (${label}) no RS485 da TON "${ton?.props?.name || ton?.type}". Dois escravos com o mesmo endereço colidem no fio.`;
+          }
+        }
+      }
+    }
+    return null;
   };
 
   const [benchTestModal, setBenchTestModal] = useState<{
@@ -1800,8 +1915,14 @@ export function IoTDiagram({ unidadeId, unidadeNome }: IoTDiagramProps) {
               <span className="text-sm font-medium">Adicionar:</span>
               <select
                 className="h-8 px-3 py-1 text-sm border border-input bg-background rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-ring min-w-[220px]"
-                onChange={(e) => { if (e.target.value) { handleAddComponent(e.target.value); e.target.value = ''; } }}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  e.target.value = '';
+                  if (v === '__emulador__') setEmuModal({ comp: null });
+                  else if (v) handleAddComponent(v);
+                }}
                 defaultValue=""
+                data-testid="iot-add-select"
               >
                 <option value="" disabled>Selecione um equipamento</option>
                 {window.CATEGORIES?.map((cat: any) => (
@@ -1812,6 +1933,9 @@ export function IoTDiagram({ unidadeId, unidadeNome }: IoTDiagramProps) {
                     })}
                   </optgroup>
                 ))}
+                <optgroup label="Teste">
+                  <option value="__emulador__">Emulador (PC no RS485)</option>
+                </optgroup>
               </select>
             </div>
             {/* Zoom */}
@@ -1820,6 +1944,27 @@ export function IoTDiagram({ unidadeId, unidadeNome }: IoTDiagramProps) {
               <Button variant="outline" size="sm" onClick={toggleFullscreen}>{fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}</Button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Emulações ativas (continuam com o modal fechado) */}
+      {emuAtivas.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-orange-500/30 bg-orange-500/10 px-3 py-1.5 text-xs" data-testid="emu-ativas">
+          <span className="font-semibold text-orange-600 dark:text-orange-400">Emulando:</span>
+          {emuAtivas.map((s) => (
+            <button
+              key={s.nodeId}
+              type="button"
+              className="rounded border border-orange-500/40 px-2 py-0.5 hover:bg-orange-500/20"
+              onClick={() => {
+                const c = (editorRef.current?.components || []).find((x: any) => x.id === s.nodeId);
+                if (c) setEmuModal({ comp: { id: c.id, type: c.type, props: { ...c.props } } });
+              }}
+            >
+              {s.nome} · end. {s.endereco} · {s.leituras} leituras
+            </button>
+          ))}
+          <button type="button" className="ml-auto text-red-600 hover:underline" onClick={() => void emuladorSessoes.pararTodas()}>parar todas</button>
         </div>
       )}
 
@@ -1938,6 +2083,20 @@ export function IoTDiagram({ unidadeId, unidadeNome }: IoTDiagramProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <EmuladorModal
+        open={!!emuModal}
+        comp={emuModal?.comp ?? null}
+        onClose={() => setEmuModal(null)}
+        carregarAlvos={carregarAlvosEmulador}
+        conflitoEndereco={conflitoEnderecoEmulador}
+        onSalvar={salvarEmulador}
+        onAbrirPropriedades={(id) => {
+          const c = (editorRef.current?.components || []).find((x: any) => x.id === id);
+          setEmuModal(null);
+          if (c) void openComponentProps(c, true);
+        }}
+      />
 
       <Sheet open={propsModalOpen} onOpenChange={setPropsModalOpen}>
         <SheetContent side="right" className="w-full sm:max-w-xl p-0 flex flex-col gap-0">

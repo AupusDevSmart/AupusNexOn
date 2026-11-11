@@ -1474,6 +1474,23 @@ var DiagramEditor = class {
         iconG.appendChild(icon);
         g.appendChild(iconG);
 
+        // Emulador Modbus RTU (props.emulado): o nó é do tipo real, mas quem responde no
+        // RS485 é o PC. Borda tracejada laranja + selo "EMU" pra não confundir com o real.
+        if (comp.props && comp.props.emulado) {
+            const emuColor = '#F97316';
+            g.appendChild(svgEl('rect', {
+                x: '-3', y: '-3', width: s + 6, height: s + 6, rx: '12',
+                fill: 'none', stroke: emuColor, 'stroke-width': '2', 'stroke-dasharray': '5,3'
+            }));
+            g.appendChild(svgEl('rect', { x: '-6', y: '-10', width: '30', height: '14', rx: '4', fill: emuColor }));
+            const emuTxt = svgEl('text', {
+                x: '9', y: '1', 'text-anchor': 'middle', fill: '#fff',
+                'font-size': '9', 'font-weight': '800', 'font-family': 'system-ui, sans-serif'
+            });
+            emuTxt.textContent = 'EMU';
+            g.appendChild(emuTxt);
+        }
+
         // TON2 antenna — tall antenna sticking out from top of box
         if (def.has_lora) {
             const antColor = '#A855F7';
