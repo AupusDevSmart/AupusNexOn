@@ -453,6 +453,11 @@ export function IrrigacaoAvancada({
   const canhaoAtivo = cfg.canhao && !semCanhao;
   // Na Agenda o canhão segue a água: nunca no seco, nem em pivô sem o canhão configurado.
   const canhaoAgenda = cfg.canhao && !cfg.semAgua && !semCanhaoMotivo;
+  // Trechos marcados cobrindo a volta toda: não sobra onde o canhão ligar. Sem isto o complemento
+  // saía vazio e ia "canhão ligado a volta toda" — o contrário do que a tela mostrava.
+  const faixasLigadas = zonasTocadas ? complementoFaixas(zonas) : base.faixasCanhao;
+  const tudoMarcado = canhaoAtivo && zonasTocadas && zonas.length > 0 && faixasLigadas.length === 0;
+  const canhaoEnvio = canhaoAtivo && !tudoMarcado;
   // O que vai para o pivô: "Por segmento" é uma parada por ângulo no fim do segmento escolhido.
   const paradaEf: Parada = porSegmento ? { tipo: 'porAngulo', angulo: fimDoSegmento(segSel, cfg.direcao) } : parada;
 
@@ -510,7 +515,7 @@ export function IrrigacaoAvancada({
     modo: porSegmento ? 'segmentos' : 'simples', parada: paradaEf, inicio: ligado || inicioTipo === 'agora' ? null : inicio,
     ...(porSegmento ? { segmento: segSel + 1 } : {}),
     ...(ligado ? { manterParada: paradaIntacta } : {}),
-    config: { ...cfg, canhao: canhaoAtivo, faixasCanhao: canhaoAtivo ? (zonasTocadas ? complementoFaixas(zonas) : base.faixasCanhao) : [] },
+    config: { ...cfg, canhao: canhaoEnvio, faixasCanhao: canhaoEnvio ? faixasLigadas : [] },
   });
   const enviar = () => onEnviar(montar());
   // "Editado" = o que seria enviado mudou desde que o diálogo abriu. Fora da conta: o início (é
@@ -701,6 +706,7 @@ export function IrrigacaoAvancada({
                   <DialCanhao atual={atual} faixas={zonas} onChange={setZonas} />
                   <span style={{ fontSize: 13, color: NX.mudo }}>Verde = canhão ligado · toque no círculo para marcar onde não irrigar</span>
                   {dica('O NexON ainda não desliga o canhão sozinho nesses trechos.', NX.warn)}
+                  {tudoMarcado && dica('A volta toda está marcada: o canhão vai desligado.', NX.warn)}
                 </div>
                 {zonas.map((f, i) => (
                   <div key={f.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr) 32px', gap: 8, alignItems: 'center' }}>

@@ -752,6 +752,9 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   const rapidoNaFicha = on && layout !== 'modal';
   // Só o percentímetro mudou e a TON aceita trocar girando: não precisa reiniciar.
   const soPercentual = (e: EnvioIrrigacao) => {
+    // Irrigação em curso PARADA (0 % com água, ou só a bomba): voltar a girar é reinício, não troca de
+    // percentímetro — o pivô nunca recebeu giro, então o /percentimetro não teria o que mudar.
+    if (irrigandoParado || (cfgAtual && ehParado(cfgAtual))) return false;
     if (!girando || !cfgAtual || cfgAtual.semAgua || !estado?.pivo.comandos.percentimetro || e.modo !== 'simples' || e.manterParada === false) return false;
     const m = mudancas(baseRapida, rascunhoDe(e.config, e.parada));
     return m.length === 1 && m[0].campo === 'percentual'
