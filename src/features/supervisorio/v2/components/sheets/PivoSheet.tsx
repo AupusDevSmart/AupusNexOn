@@ -831,16 +831,12 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
                   </span>
                 )}
               </div>
-              {/* Canhão na ficha: um toque, e só com o pivô girando. Com o pivô desligado some — a não ser
-                  que o canhão tenha ficado ligado: aí aparece para dar como desligar. */}
-              {canhao?.comando && canhao.tem_status && (girando || canhao.ligado === 1) && (
+              {/* Canhão na ficha: um toque, e SÓ com o pivô girando. Com o pivô desligado não aparece,
+                  nem para desligar (pedido do dono): quem desliga o canhão aí é o Desligar do pivô. */}
+              {canhao?.comando && canhao.tem_status && girando && (
                 <div style={{ ...s.card, padding: '0 16px' }}>
-                  <NxSwitchRow first title="Canhão final" on={canhao.ligado === 1}
-                    sub={canhaoEnv ? 'Enviando…'
-                      : canhao.ligado === null ? 'Sem leitura do canhão'
-                        : !girando ? 'Ficou ligado com o pivô desligado · toque para desligar'
-                          : canhaoSeco ? `${canhao.ligado === 1 ? 'Ligado' : 'Desligado'} · girando sem água`
-                            : canhao.ligado === 1 ? 'Ligado · toque para desligar' : 'Desligado · toque para ligar'}
+                  <NxSwitchRow first minHeight={52} title="Canhão final" on={canhao.ligado === 1}
+                    sub={canhaoEnv ? 'Enviando…' : canhao.ligado === null ? 'Sem leitura' : canhaoSeco ? 'Sem água' : undefined}
                     disabled={!perfil.comandar || canhao.ligado === null || canhaoOff}
                     onToggle={() => comandarCanhao(canhao.ligado !== 1)} />
                 </div>
