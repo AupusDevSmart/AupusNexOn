@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { IrrigacaoAvancada, CONFIG_PADRAO, fimDoSegmento, paradaValida, segmentoDoGiro, previsao, resumoConfig, type ConfigIrrigacao, type EnvioIrrigacao } from './PivoIrrigacao';
+import { IrrigacaoAvancada, CONFIG_PADRAO, complementoFaixas, fimDoSegmento, paradaValida, segmentoDoGiro, previsao, resumoConfig, type ConfigIrrigacao, type EnvioIrrigacao } from './PivoIrrigacao';
 import { AtalhosRapidos, PainelRapido, comMovimento, envioDoRascunho, mudancas, rascunhoDe, type Rascunho } from './PivoRapido';
 import { linhasParaItens, textoAgenda } from './pivoAgendaPlanilha';
 
@@ -228,16 +228,35 @@ describe('Planejamento de irrigação', () => {
     expect(onEnviar.mock.calls[0][0].parada).toEqual({ tipo: 'semParar' });
   });
 
-  it('canhão: as faixas ficam na própria tela, sem aba', () => {
+  it('canhão: abre ligado a volta toda e o operador marca onde NÃO irrigar; vai para a API a faixa ligada', () => {
     const { onEnviar } = abrir();
     expect(screen.queryByText('Canhão')).toBeNull();
     fireEvent.click(screen.getByRole('switch', { name: /Canhão final/ }));
-    fireEvent.click(screen.getByText('Ligar o canhão só em parte da volta'));
-    fireEvent.click(screen.getByText('+ Adicionar faixa'));
+    expect(screen.getByText('Ligado a volta toda')).toBeTruthy();
+    fireEvent.click(screen.getByText('Marcar onde não irrigar'));
+    expect(screen.getByRole('img', { name: 'Canhão final, 0 trecho(s) sem irrigar' })).toBeTruthy();
+    fireEvent.click(screen.getByText('+ Marcar trecho sem irrigar'));
+    expect(screen.getByRole('img', { name: 'Canhão final, 1 trecho(s) sem irrigar' })).toBeTruthy();
+    const de = Number((screen.getByLabelText('Trecho 1 sem irrigar, de') as HTMLInputElement).value);
+    const ate = Number((screen.getByLabelText('Trecho 1 sem irrigar, até') as HTMLInputElement).value);
     fireEvent.click(screen.getByText('Ligar'));
     const cfg = onEnviar.mock.calls[0][0].config;
     expect(cfg.canhao).toBe(true);
-    expect(cfg.faixasCanhao).toHaveLength(1);
+    // o canhão fica ligado do fim do trecho marcado até o começo dele (o resto da volta)
+    expect(cfg.faixasCanhao).toEqual([expect.objectContaining({ liga: ate, desliga: de })]);
+  });
+
+  it('canhão sem nada marcado vai sem faixas (ligado a volta toda); faixas em curso não mexidas vão como vieram', () => {
+    const { onEnviar } = abrir();
+    fireEvent.click(screen.getByRole('switch', { name: /Canhão final/ }));
+    fireEvent.click(screen.getByText('Ligar'));
+    expect(onEnviar.mock.calls[0][0].config).toMatchObject({ canhao: true, faixasCanhao: [] });
+    const faixas = [{ id: 'a', liga: 10, desliga: 40 }, { id: 'b', liga: 200, desliga: 260 }];
+    expect(complementoFaixas(faixas).map(({ liga, desliga }) => [liga, desliga])).toEqual([[40, 200], [260, 10]]);
+    // o complemento do complemento são as mesmas faixas
+    expect(complementoFaixas(complementoFaixas(faixas)).map(({ liga, desliga }) => [liga, desliga]).sort((x, y) => x[0] - y[0])).toEqual([[10, 40], [200, 260]]);
+    expect(complementoFaixas([{ id: 'a', liga: 350, desliga: 20 }]).map(({ liga, desliga }) => [liga, desliga])).toEqual([[20, 350]]);
+    expect(complementoFaixas([])).toEqual([]);
   });
 
   it('agenda: usa as opções da aba Irrigação em vez de repetir os campos', async () => {
