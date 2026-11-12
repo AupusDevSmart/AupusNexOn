@@ -1,7 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { CabecalhoCalibracao, PainelCalibracao } from './PivoCalibracao';
-import { MapaPivo, SecaoEncoder } from './PivoSheet';
+import { CabecalhoCalibracao, PainelCalibracao, rascunhos } from './PivoCalibracao';
+import { MapaPivo, SecaoEncoder, rotuloEncoder } from './PivoSheet';
 import { corpoParametros, parametrosEmJogo } from './pivoConfigContas';
 import type { Calibracao, CalibracaoTela, CorpoCalibracao } from './pivoCalibracaoContas';
 
@@ -388,6 +388,42 @@ describe('Configuração → Posição do pivô', () => {
       const corpo = corpoParametros((k) => (k === 'travado_min' ? 12.4 : num(k)), { id: 'e1', res: 360 }, GRAVADOS, { travadoMudou: true, calibrado: true });
       expect(corpo).toMatchObject({ travado_min: 12 });
     });
+  });
+});
+
+describe('encoder na lista e rascunho da calibração', () => {
+  it('dois encoders com o mesmo nome: a lista diz de qual TON é cada um', () => {
+    const e = { id: 'a', nome: 'Emulador', bruto: null, lido_em: null };
+    expect(rotuloEncoder({ ...e, ton_nome: 'TON4v2', ton_removida: false, na_ton_do_pivo: true })).toBe('Emulador · TON4v2');
+    expect(rotuloEncoder({ ...e, ton_nome: 'TON4', ton_removida: false, na_ton_do_pivo: false })).toBe('Emulador · TON4 — não é a TON do pivô');
+    expect(rotuloEncoder({ ...e, ton_nome: null, ton_removida: false, na_ton_do_pivo: false })).toBe('Emulador · TON removida — não é a TON do pivô');
+    expect(rotuloEncoder(e)).toBe('Emulador');   // API antiga: sem a informação, só o nome
+  });
+
+  it('o que foi digitado na calibração sobrevive a recarregar a página (fica no navegador)', () => {
+    const guardado = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => guardado.get(k) ?? null, setItem: (k: string, v: string) => { guardado.set(k, v); }, removeItem: (k: string) => { guardado.delete(k); },
+    });
+    try {
+      const r = { centro: { lat: '-16', lon: '-48' }, ponta: { lat: '-15,997', lon: '-47,997' }, sentido: -1 as const };
+      rascunhos.set('pivo-recarga', r);
+      rascunhos.esquecerMemoria();                          // página recarregada
+      expect(rascunhos.get('pivo-recarga')).toEqual(r);     // é o que a tela lê ao abrir de novo
+      rascunhos.delete('pivo-recarga');                     // calibração salva
+      expect(rascunhos.get('pivo-recarga')).toBeUndefined();
+      guardado.set('nexon:pivo:calibracao:x', '{estragado');
+      expect(rascunhos.get('x')).toBeUndefined();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('sem armazenamento no navegador (navegação privada), o rascunho vale enquanto a página está aberta', () => {
+    const r = { centro: { lat: '-16', lon: '-48' }, ponta: { lat: '', lon: '' }, sentido: null };
+    rascunhos.set('pivo-privado', r);
+    expect(rascunhos.get('pivo-privado')).toEqual(r);
+    rascunhos.delete('pivo-privado');
   });
 });
 

@@ -20,7 +20,7 @@ export const erroMsg = (e: unknown): string => {
 export const col = (gap: number): CSSProperties => ({ display: 'flex', flexDirection: 'column', gap });
 export const secao = (t: string, mt: number) => <span style={{ ...s.label, marginTop: mt }}>{t}</span>;
 
-export function Linha({ titulo, sub, children, minHeight = 56, first }: { titulo: string; sub?: string; children: ReactNode; minHeight?: number; first?: boolean }) {
+export function Linha({ titulo, sub, children, minHeight = 56, first }: { titulo: string; sub?: ReactNode; children: ReactNode; minHeight?: number; first?: boolean }) {
   return (
     <div style={{ borderTop: first ? 'none' : `1px solid ${NX.linha}`, minHeight, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
       <span style={col(2)}>
