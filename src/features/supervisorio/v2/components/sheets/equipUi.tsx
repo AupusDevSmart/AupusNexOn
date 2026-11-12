@@ -280,6 +280,42 @@ export function useHistorico(equipamentoId: string | null | undefined, inicio: D
   return { pts, loading };
 }
 
+const diaISO = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+/**
+ * Energia (kWh) de cada dia de `dias`, do resumo diário da API (ADR 0003: inversor =
+ * MAX(daily_yield), medidor só com potência = média × horas cobertas). É a mesma conta do
+ * gráfico de mês do sinóptico. `null` no dia sem leitura. Abas fora do dia mostram energia,
+ * não potência média (NEXON-111).
+ */
+export function useEnergiaPorDia(equipamentoId: string | null | undefined, dias: Date[], enabled = true) {
+  const meses = useMemo(() => Array.from(new Set(dias.map((d) => diaISO(d).slice(0, 7)))), [dias]);
+  const [porDia, setPorDia] = useState<Map<string, number> | null>(null);
+  const [loading, setLoading] = useState(false);
+  const chave = meses.join(',');
+  useEffect(() => {
+    if (!equipamentoId || !enabled || !meses.length) { setPorDia(null); return; }
+    let vivo = true;
+    setLoading(true);
+    const id = equipamentoId.trim();
+    Promise.all(meses.map((mes) => equipamentosDadosService.getGraficoMesMultiplosInversores([{ id, sinal: 1 }], { mes })))
+      .then((rs) => {
+        if (!vivo) return;
+        const m = new Map<string, number>();
+        rs.forEach((r) => {
+          const pontos = ((r as { dados?: Array<{ data?: string; energia_kwh?: number; num_leituras?: number }> })?.dados ?? []);
+          pontos.forEach((p) => { if (p.data && Number(p.num_leituras ?? 1) > 0 && Number.isFinite(Number(p.energia_kwh))) m.set(p.data, Number(p.energia_kwh)); });
+        });
+        setPorDia(m);
+      })
+      .catch(() => { if (vivo) setPorDia(new Map()); })
+      .finally(() => { if (vivo) setLoading(false); });
+    return () => { vivo = false; };
+  }, [equipamentoId, chave, enabled]); // eslint-disable-line react-hooks/exhaustive-deps
+  const valores = useMemo(() => (porDia ? dias.map((d) => porDia.get(diaISO(d)) ?? null) : null), [porDia, dias]);
+  return { valores, loading };
+}
+
 export type Periodo = 'hoje' | 'semana' | 'mes';
 export function janela(p: Periodo): [Date, Date] {
   const fim = new Date();

@@ -4,7 +4,7 @@ import { api } from '@/config/api';
 import { acionarPontoApi } from '@/services/acionar-ponto.services';
 import { useDados, getPath, fmt, tsInfo } from './sheetParts';
 import { NX, s, COR, NxShell, NxDialog, NxDialogButtons, NxReview, NxSeg, IcoChevron, type NxTone } from './nxMock';
-import { Registros, useHistorico, bucketize, type Periodo } from './equipUi';
+import { Registros, useHistorico, useEnergiaPorDia, bucketize, type Periodo } from './equipUi';
 import { curveMonotoneX } from '@visx/curve';
 import { LineChart } from '@/components/charts/line-chart';
 import { Line } from '@/components/charts/line';
@@ -170,7 +170,13 @@ export interface GrandezaNx { id: string; label: string; short: string; pick: (d
 export interface GrupoGrandezaNx { label: string; unit: string; items: GrandezaNx[] }
 
 /** Unidades cujo eixo começa em zero; as outras (V, Hz, FP) ganham "zoom" no trecho lido. */
-const UNIDADES_DO_ZERO = ['kW', 'kvar', 'A'];
+const UNIDADES_DO_ZERO = ['kW', 'kWh', 'kvar', 'A'];
+
+/**
+ * Fora do dia, potência (kW) vira energia do dia (kWh): uma barra por dia com o que
+ * foi gerado/medido no dia, nunca a potência média (NEXON-111).
+ */
+const ENERGIA_DIA: GrandezaNx & { unit: string } = { id: 'energia', label: 'Energia do dia', short: 'Energia', unit: 'kWh', pick: () => null };
 
 /**
  * "Gráfico" recolhível (fechado por padrão, valor atual no cabeçalho, chevron).
@@ -194,8 +200,14 @@ export function GraficoNx({ equipamentoId, titulo = 'Gráfico', resumo, catalogo
     return m;
   }, [catalogo]);
   const ativos = sel.filter((id) => byId.has(id));
+  const info = (id: string) => (id === ENERGIA_DIA.id ? ENERGIA_DIA : byId.get(id)!);
+  const primeiroKw = ativos.find((id) => byId.get(id)!.unit === 'kW');
+  // Séries desenhadas: no dia, as escolhidas; na semana e no mês, as de kW viram uma só, a energia do dia.
+  const series = per === 'hoje' || !primeiroKw ? ativos : [...ativos.filter((id) => byId.get(id)!.unit !== 'kW'), ENERGIA_DIA.id];
+  const temEnergia = series.includes(ENERGIA_DIA.id);
+  const precisaHist = series.some((id) => id !== ENERGIA_DIA.id);
   const units: string[] = [];
-  ativos.forEach((id) => { const u = byId.get(id)!.unit; if (!units.includes(u)) units.push(u); });
+  series.forEach((id) => { const u = info(id).unit; if (!units.includes(u)) units.push(u); });
 
   const [ini, fimEixo, fimBusca] = useMemo(() => {
     const fim = new Date(agora);
@@ -204,15 +216,20 @@ export function GraficoNx({ equipamentoId, titulo = 'Gráfico', resumo, catalogo
     if (per === 'mes') i.setDate(1);
     return [i, per === 'hoje' ? new Date(i.getTime() + 86400000) : fim, fim] as const;
   }, [per, agora]);
-  const { pts, loading } = useHistorico(equipamentoId, ini, fimBusca, open && !!equipamentoId);
+  const hist = useHistorico(equipamentoId, ini, fimBusca, open && !!equipamentoId && precisaHist);
+  const dias = useMemo(() => (per === 'hoje' ? [] : diasEntre(ini, fimEixo)), [per, ini, fimEixo]);
+  const en = useEnergiaPorDia(equipamentoId, dias, open && temEnergia);
+  const loading = (precisaHist && hist.loading) || (temEnergia && en.loading);
 
   const N = per === 'hoje' ? 96 : per === 'semana' ? 168 : 180;
   const dados = useMemo(() => {
-    if (!pts) return null;
-    // Hoje = linha (média a cada 15 min); Semana e Mês = barras, uma por dia (NEXON-99).
-    const dias = per === 'hoje' ? [] : diasEntre(ini, fimEixo);
-    const porDia = per === 'hoje' ? null : mediasPorDia(pts, dias, Object.fromEntries(ativos.map((id) => [id, byId.get(id)!.pick])));
-    const vals = ativos.map((id) => (porDia ? porDia[id] : bucketize(pts, ini.getTime(), fimEixo.getTime(), N, byId.get(id)!.pick)));
+    const pts = precisaHist ? hist.pts : [];
+    if (!pts || (temEnergia && !en.valores)) return null;
+    // Hoje = linha (média a cada 15 min); Semana e Mês = barras, uma por dia (NEXON-99):
+    // energia do dia em kWh no lugar da potência; as demais grandezas, média do dia.
+    const outras = series.filter((id) => id !== ENERGIA_DIA.id);
+    const porDia = per === 'hoje' ? null : mediasPorDia(pts, dias, Object.fromEntries(outras.map((id) => [id, byId.get(id)!.pick])));
+    const vals = series.map((id) => (id === ENERGIA_DIA.id ? en.valores! : porDia ? porDia[id] : bucketize(pts, ini.getTime(), fimEixo.getTime(), N, byId.get(id)!.pick)));
     // Base por unidade: o bklit começa o eixo em 0 quando tudo é ≥ 0. Para V/Hz/FP o
     // traço é plotado como (valor − base) e eixo/tooltip somam a base de volta — é o
     // "zoom" no trecho lido que o SVG antigo fazia. kW/kvar/A (e qualquer unidade com
@@ -220,29 +237,29 @@ export function GraficoNx({ equipamentoId, titulo = 'Gráfico', resumo, catalogo
     const base: Record<string, number> = {};
     units.forEach((u) => {
       let lo = Infinity, hi = -Infinity;
-      ativos.forEach((id, k) => { if (byId.get(id)!.unit !== u) return; vals[k].forEach((v) => { if (v == null) return; lo = Math.min(lo, v); hi = Math.max(hi, v); }); });
+      series.forEach((id, k) => { if (info(id).unit !== u) return; vals[k].forEach((v) => { if (v == null) return; lo = Math.min(lo, v); hi = Math.max(hi, v); }); });
       if (!Number.isFinite(lo)) { lo = 0; hi = 1; }
       base[u] = UNIDADES_DO_ZERO.includes(u) || lo < 0 ? 0 : Math.max(0, lo - ((hi - lo) * 0.08 || 1));
     });
-    const series: Record<string, Array<number | null>> = {};
-    ativos.forEach((id, k) => { const b = base[byId.get(id)!.unit]; series[id] = vals[k].map((v) => (v == null ? null : v - b)); });
-    if (porDia) {
-      const barras = linhasPorDia(dias, Object.fromEntries(ativos.map((id, k) => [id, vals[k]])), (id) => base[byId.get(id)!.unit]);
-      const comLeitura = barras.filter((l) => ativos.some((id) => l[`${id}Bruto`] != null));
+    const desenho: Record<string, Array<number | null>> = {};
+    series.forEach((id, k) => { const b = base[info(id).unit]; desenho[id] = vals[k].map((v) => (v == null ? null : v - b)); });
+    if (per !== 'hoje') {
+      const barras = linhasPorDia(dias, Object.fromEntries(series.map((id, k) => [id, vals[k]])), (id) => base[info(id).unit]);
+      const comLeitura = barras.filter((l) => series.some((id) => l[`${id}Bruto`] != null));
       return { linhas: comLeitura, barras, base, vazio: comLeitura.length === 0 };
     }
-    const linhas = linhasDeBuckets(ini.getTime(), fimEixo.getTime(), series);
+    const linhas = linhasDeBuckets(ini.getTime(), fimEixo.getTime(), desenho);
     return { linhas, barras: null, base, vazio: linhas.length === 0 };
-  }, [pts, ativos.join(","), units.join(","), ini, fimEixo, N, byId, per]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [hist.pts, en.valores, series.join(","), units.join(","), ini, fimEixo, N, byId, per, dias]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const dec = (u: string) => (u === 'FP' || u === 'Hz' ? 2 : u === 'V' ? 0 : 1);
   const uTxt = (u: string) => (u === 'FP' ? '' : ` ${u}`);
-  const cor = (id: string) => corSerie(sel.indexOf(id));
-  const eixoDe = (id: string) => (units.indexOf(byId.get(id)!.unit) === 1 ? 'right' : 'left');
+  const cor = (id: string) => corSerie(sel.indexOf(id === ENERGIA_DIA.id ? primeiroKw ?? id : id));
+  const eixoDe = (id: string) => (units.indexOf(info(id).unit) === 1 ? 'right' : 'left');
   /** Valor real (base somada de volta) de uma grandeza numa linha; null sem leitura. */
   const valorEm = (linha: Record<string, unknown> | null, id: string) => {
     const b = linha?.[`${id}Bruto`];
-    return typeof b === 'number' && dados ? b + dados.base[byId.get(id)!.unit] : null;
+    return typeof b === 'number' && dados ? b + dados.base[info(id).unit] : null;
   };
   const valorTxt = (v: number | null, u: string) => (v == null ? '—' : `${fmt(v, dec(u))}${uTxt(u)}`);
   const rotuloEixo = (u: string) => (v: number) => { const x = v + (dados?.base[u] ?? 0); return `${fmt(x, Number.isInteger(x) ? 0 : dec(u))}${uTxt(u)}`; };
@@ -267,10 +284,10 @@ export function GraficoNx({ equipamentoId, titulo = 'Gráfico', resumo, catalogo
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <NxSeg<Periodo> value={per} onChange={(v) => { setPer(v); setAgora(Date.now()); }} options={[{ v: 'hoje', label: 'Hoje' }, { v: 'semana', label: 'Semana' }, { v: 'mes', label: 'Mês' }]} />
             <span style={{ display: 'flex', alignItems: 'center', gap: 14, fontSize: 13, color: NX.mudo, flexWrap: 'wrap' }}>
-              {ativos.map((id) => (
+              {series.map((id) => (
                 <span key={id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span style={{ width: 12, height: 0, borderTop: `3px ${eixoDe(id) === 'right' ? 'dashed' : 'solid'} ${cor(id)}`, borderRadius: 2 }} />
-                  {byId.get(id)!.short}
+                  {info(id).short}{id === ENERGIA_DIA.id ? ' (kWh)' : ''}
                 </span>
               ))}
               <button type="button" aria-label="Escolher grandezas do gráfico" aria-expanded={escolher} onClick={() => setEscolher((v) => !v)}
@@ -283,7 +300,7 @@ export function GraficoNx({ equipamentoId, titulo = 'Gráfico', resumo, catalogo
             <div style={{ background: NX.caixa, borderRadius: 12, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
               <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 <span style={{ fontSize: 15, fontWeight: 800 }}>Grandezas do gráfico</span>
-                <span style={{ fontSize: 12, color: NX.mudo }}>Até 2 unidades · {units.join(' · ')}</span>
+                <span style={{ fontSize: 12, color: NX.mudo }}>Até 2 unidades · {units.join(' · ')}{temEnergia ? ' · na semana e no mês, potência vira energia do dia' : ''}</span>
               </span>
               {catalogo.filter((g) => g.items.length).map((g) => (
                 <div key={g.label} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -310,14 +327,14 @@ export function GraficoNx({ equipamentoId, titulo = 'Gráfico', resumo, catalogo
               <span style={{ fontSize: 13, color: NX.mudo, fontVariantNumeric: 'tabular-nums' }}>
                 {per === 'hoje'
                   ? `Última leitura · ${ultima.date.toLocaleString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
-                  : `Média do dia · ${ultima.date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}`}
+                  : `${temEnergia ? 'Dia' : 'Média do dia'} · ${ultima.date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}`}
               </span>
               <span style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: '2px 14px' }}>
-                {ativos.map((id) => (
+                {series.map((id) => (
                   <span key={id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
                     <span style={{ width: 8, height: 8, borderRadius: 4, background: cor(id) }} />
-                    <span style={{ color: NX.mudo }}>{byId.get(id)!.short}</span>
-                    <span style={{ fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{valorTxt(valorEm(ultima, id), byId.get(id)!.unit)}</span>
+                    <span style={{ color: NX.mudo }}>{info(id).short}</span>
+                    <span style={{ fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{valorTxt(valorEm(ultima, id), info(id).unit)}</span>
                   </span>
                 ))}
               </span>
@@ -331,14 +348,14 @@ export function GraficoNx({ equipamentoId, titulo = 'Gráfico', resumo, catalogo
               <BarChart data={dados?.barras ?? []} xDataKey="rotulo" aspectRatio="auto" className="min-h-0 flex-1"
                 margin={{ top: 8, right: units[1] ? 56 : 12, bottom: 24, left: 56 }} barGap={0.25} animationDuration={0}>
                 <Grid horizontal numTicksRows={4} />
-                {ativos.map((id) => (
+                {series.map((id) => (
                   <Bar key={id} dataKey={id} yAxisId={eixoDe(id)} fill={cor(id)} lineCap={3} />
                 ))}
                 <BarXAxis maxLabels={per === 'semana' ? 7 : 10} />
                 <YAxis numTicks={4} formatValue={rotuloEixo(units[0] ?? '')} />
                 {units[1] ? <YAxis yAxisId="right" orientation="right" numTicks={4} formatValue={rotuloEixo(units[1])} /> : null}
                 <ChartTooltip showDatePill={false} showCrosshair={false} showDots={false}
-                  rows={(p) => ativos.map((id) => ({ color: cor(id), label: `${byId.get(id)!.short} (média)`, value: valorTxt(valorEm(p, id), byId.get(id)!.unit) }))} />
+                  rows={(p) => series.map((id) => ({ color: cor(id), label: id === ENERGIA_DIA.id ? 'Energia no dia' : `${info(id).short} (média)`, value: valorTxt(valorEm(p, id), info(id).unit) }))} />
               </BarChart>
               ) : (<>
               <LineChart data={dados?.linhas ?? []} xDomain={[ini, fimEixo]} aspectRatio="auto" className="min-h-0 flex-1"
