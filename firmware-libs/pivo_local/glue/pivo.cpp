@@ -454,6 +454,7 @@ int pivo_cmd(const String& cmd, char* msg, size_t sz) {
         char mot[32];
         bool on = resto && atoi(resto) != 0;
         if (!_m->comandarCanhao(on, millis(), mot, sizeof(mot))) { snprintf(msg, sz, "pivo_canhao_%s", mot); return 0; }
+        _apl[BO_CANHAO] = -1;   // reescreve a BO06 (alguem pode ter mexido no rele por fora)
         return _ok(msg, sz, on ? "pivo_canhao_on" : "pivo_canhao_off");
     }
     if (!strcmp(verbo, "status")) {

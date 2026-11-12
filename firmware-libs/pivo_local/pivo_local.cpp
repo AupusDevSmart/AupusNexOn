@@ -168,8 +168,9 @@ bool Maquina::comandarCanhao(bool on, uint32_t now, char* motivo, size_t msz) {
     if (!_plano.com_agua) { copia(motivo, "sem_agua", msz); return false; }
     if (!_cfg.tem_canhao) { copia(motivo, "sem_canhao", msz); return false; }
     if (_plano.nseg) { copia(motivo, "segmentos", msz); return false; }
-    if (_out.canhao == on) { copia(motivo, on ? "ja_ligado" : "ja_desligado", msz); return false; }
     _plano.canhao = on;
+    // Idempotente: pedir o estado em que ja' esta' e' sucesso (a tela pode ter lido uma BI06 presa).
+    if (_out.canhao == on) { if (motivo && msz) motivo[0] = 0; return true; }
     _canhao(on, now);
     if (motivo && msz) motivo[0] = 0;
     return true;
