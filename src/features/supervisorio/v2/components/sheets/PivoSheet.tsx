@@ -232,7 +232,11 @@ export function MapaPivo({ angulo: anguloLido, aviso, girando, falha, sentido, d
         <circle cx="179" cy="150" r="118" fill="#5B5A3C" stroke="rgba(255,255,255,0.35)" strokeWidth="1.5" />
         <path d={(girando || falha) && angulo != null ? setor : 'M0 0'} fill={falha ? 'rgba(229,88,79,0.45)' : 'rgba(114,191,74,0.5)'} />
         {faixas.map((f) => <path key={f.id} d={arco(179, 150, 125, f.liga, ((f.desliga - f.liga) % 360 + 360) % 360)} fill="none" stroke="#70C04B" strokeWidth="3" strokeLinecap="round" />)}
-        {angulo != null && <line data-braco={emGiro ? 'girando' : 'parado'} x1="179" y1="150" x2={arm[0]} y2={arm[1]} stroke={emGiro ? '#FFFFFF' : '#A9ADBC'} strokeWidth="3" strokeLinecap="round" />}
+        {/* Sem posição (sem encoder, sem leitura, sem calibração): o braço fica no norte, TRACEJADO e
+            apagado — é a posição padrão, não uma leitura (pedido do Lucas, NEXON-103). O rótulo segue "—°". */}
+        {angulo != null
+          ? <line data-braco={emGiro ? 'girando' : 'parado'} x1="179" y1="150" x2={arm[0]} y2={arm[1]} stroke={emGiro ? '#FFFFFF' : '#A9ADBC'} strokeWidth="3" strokeLinecap="round" />
+          : <line data-braco="padrao" x1="179" y1="150" x2={arm[0]} y2={arm[1]} stroke="#A9ADBC" strokeOpacity="0.75" strokeWidth="3" strokeDasharray="7 7" strokeLinecap="round" />}
         {seta && <path data-seta={lado > 0 ? 'direita' : 'esquerda'} d={`M${seta[0][0]} ${seta[0][1]} L${seta[1][0]} ${seta[1][1]} L${seta[2][0]} ${seta[2][1]} Z`} fill="#FFFFFF" stroke="#FFFFFF" strokeWidth="1.5" strokeLinejoin="round" />}
         <circle cx="179" cy="150" r="4" fill="#FFFFFF" />
         {/* Norte do pivô: a seta aponta o 0° e o "N" diz o que ela é (pedido do Lucas, NEXON-103) */}
