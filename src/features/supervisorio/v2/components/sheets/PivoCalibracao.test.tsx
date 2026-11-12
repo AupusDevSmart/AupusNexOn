@@ -227,6 +227,8 @@ describe('desenho do pivô', () => {
 
   it('parado: braço cinza e sem seta', () => {
     const { container } = render(<MapaPivo {...base} angulo={90} girando={false} sentido={null} />);
+    // o norte do pivô vem identificado: seta no topo com o "N" ao lado
+    expect(container.querySelector('[data-norte]')?.textContent).toBe('N');
     expect(braco(container)?.getAttribute('stroke')).toBe('#A9ADBC');
     expect(seta(container)).toBeNull();
     expect(screen.getByText(/90,0°/)).toBeTruthy();

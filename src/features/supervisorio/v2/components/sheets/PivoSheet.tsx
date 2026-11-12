@@ -247,7 +247,9 @@ export function MapaPivo({ angulo: anguloLido, aviso, girando, falha, sentido, d
         {angulo != null && <line data-braco={emGiro ? 'girando' : 'parado'} x1="179" y1="150" x2={arm[0]} y2={arm[1]} stroke={emGiro ? '#FFFFFF' : '#A9ADBC'} strokeWidth="3" strokeLinecap="round" />}
         {seta && <path data-seta={lado > 0 ? 'direita' : 'esquerda'} d={`M${seta[0][0]} ${seta[0][1]} L${seta[1][0]} ${seta[1][1]} L${seta[2][0]} ${seta[2][1]} Z`} fill="#FFFFFF" stroke="#FFFFFF" strokeWidth="1.5" strokeLinejoin="round" />}
         <circle cx="179" cy="150" r="4" fill="#FFFFFF" />
+        {/* Norte do pivô: a seta aponta o 0° e o "N" diz o que ela é (pedido do Lucas, NEXON-103) */}
         <path d="M173 22 L185 22 L179 32 Z" fill="#FFFFFF" />
+        <text data-norte x="190" y="30" fill="#FFFFFF" fontSize="13" fontWeight="800" fontFamily="inherit">N</text>
       </svg>
       <div style={{ position: 'absolute', top: 12, left: 12, height: 30, padding: '0 12px', borderRadius: 15, background: 'rgba(14,14,34,0.75)', color: '#FFFFFF', display: 'flex', alignItems: 'center', fontSize: 13, fontWeight: 700 }}>
         {angulo != null ? `${fmt(angulo, 1)}°` : '—°'} · {direcao}
