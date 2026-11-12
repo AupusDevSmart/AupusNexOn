@@ -135,6 +135,8 @@ Código: lib `firmware-libs/pivo_local/` (testes: `g++ -std=c++17 -o t test_pivo
 
 io/tempos/enc ficam na NVS e só são aceitos com o pivô parado. Recusas voltam no ack (`pivo_io_incompleto`, `pivo_sem_encoder`, `pivo_ja_ligado`, `pivo_pivo_girando`, `pivo_desalinhado`…).
 
+Comando repetido no satélite LoRa (mesmo `cmd_id`, reenvio do gateway): a TON responde de novo com o **resultado** do último comando executado, não só com `duplicate / already_seen` (firmware a partir de 12/11/2026). Antes, o ack com as leituras do `pivo encler` colidia com o reenvio e se perdia. Em placa com firmware anterior, o NexON tira a leitura da calibração das publicações automáticas do encoder (NEXON-103).
+
 **Status** `<base>/pivo` (na mudança, a cada 30 s ligado e 60 s parado; ≤ 120 B para o LoRa):
 `{"e":2,"p":0,"f":"","d":"D","a":1,"pm":1000,"an":123.4,"pc":95,"al":360,"sg":-1,"bi":15,"bo":95,"c":1}`
 - `e` 0 parado · 1 ligando · 2 irrigando · 3 desligando. `p` passo (1 tensão, 2 pressão, 3 lado, 4 bomba off, 5 lado off).
