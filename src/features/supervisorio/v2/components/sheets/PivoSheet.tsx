@@ -1136,8 +1136,12 @@ const ROT_TRAVADO = PARAMS.find((p) => p.key === 'travado_min')!.label;
 const AVISO_TROCA_ENCODER = 'Trocar o encoder ou a resolução desativa a calibração do ângulo: será preciso calibrar de novo';
 /** Mudanças que desativam a calibração vigente (a API desativa ao gravar). */
 const ROT_TROCA_ENCODER = ['Encoder', 'Resolução do encoder'];
-const MSG_SALVE_ENCODER = 'Salve o encoder e a resolução para calibrar';
-const MSG_SALVE_ALTERACOES = 'Salve as alterações desta tela para abrir a calibração';
+// Encoder (ou outra coisa) ainda não salvo: o próprio botão salva e abre a calibração — a pessoa
+// não tem de descobrir que o "Salvar" fica no fim da tela (pedido do Lucas, NEXON-103).
+const MSG_ENCODER_NAO_SALVO = 'Encoder ainda não salvo: o botão ao lado salva e abre a calibração';
+const MSG_ALTERACOES_NAO_SALVAS = 'Há alterações não salvas nesta tela: o botão ao lado salva e abre a calibração';
+const MSG_FALTA_RESOLUCAO = 'Escolha a resolução do encoder para calibrar';
+const MSG_VALOR_RUIM = 'Há valor fora da faixa nesta tela: corrija para salvar e calibrar';
 const MSG_SEM_CALIBRACAO = 'Sem calibração: o pivô mostra só a leitura bruta do encoder';
 
 /** Encoder e resolução no rascunho da Configuração (texto dos dois selects). */
@@ -1159,7 +1163,7 @@ const resumoCalibracao = (c: NonNullable<Posicao['calibracao']>) =>
  * Calibração do ângulo, que abre por esta seção (sub-tela da Configuração) — sem calibração o
  * pivô mostra só a leitura bruta. Pivô sem encoder mantém a "Correção do ângulo zero" antiga.
  */
-export function SecaoEncoder({ encs, enc, setEnc, encSel, encRes, encRuim, ro, zero, setZero, gravado, posicao, pendente = false, onCalibrar }: {
+export function SecaoEncoder({ encs, enc, setEnc, encSel, encRes, encRuim, ro, zero, setZero, gravado, posicao, pendente = false, invalido = false, onCalibrar, onSalvarECalibrar }: {
   encs: OpcaoEncoder[] | null; enc: EncRascunho; setEnc: (f: (e: EncRascunho) => EncRascunho) => void;
   encSel: OpcaoEncoder | null; encRes: number | null; encRuim: boolean; ro: boolean; zero: string; setZero: (v: string) => void;
   /** Encoder e resolução GRAVADOS (cfg.parametros): a calibração só abre para o que já está salvo. */
@@ -1168,7 +1172,11 @@ export function SecaoEncoder({ encs, enc, setEnc, encSel, encRes, encRuim, ro, z
   posicao: Posicao | null | undefined;
   /** Há outra alteração não salva na Configuração: abrir a sub-tela descartaria o rascunho. */
   pendente?: boolean;
+  /** Há valor fora da faixa na Configuração: não dá para salvar ainda. */
+  invalido?: boolean;
   onCalibrar: () => void;
+  /** Salva a Configuração (com a confirmação de sempre) e abre a calibração. */
+  onSalvarECalibrar?: () => void;
 }) {
   const zeroNum = zero.trim() === '' ? 0 : Number(zero.replace(',', '.'));
   const zeroRuim = zero.trim() !== '' && (Number.isNaN(zeroNum) || zeroNum < -180 || zeroNum > 180);
@@ -1177,9 +1185,13 @@ export function SecaoEncoder({ encs, enc, setEnc, encSel, encRes, encRuim, ro, z
   // A calibração é do encoder e da resolução GRAVADOS: escolheu ou trocou e não salvou (ou falta
   // a resolução) → salvar primeiro, senão a sub-tela responderia "Pivô sem encoder gravado".
   const naoGravado = !!enc.id && (encRes == null || enc.id !== (gravado.id ?? '') || encRes !== gravado.res);
-  const motivo = naoGravado ? MSG_SALVE_ENCODER : pendente ? MSG_SALVE_ALTERACOES : null;
-  const subCal = motivo ?? (posicao === undefined ? 'Carregando…' : cal ? resumoCalibracao(cal) : MSG_SEM_CALIBRACAO);
-  const atencao = !!motivo || (posicao !== undefined && !cal);
+  // Algo por salvar: o botão vira "Salvar e calibrar". Só trava quando não há como salvar
+  // (falta a resolução, valor fora da faixa) ou o perfil não salva — sempre com o motivo escrito.
+  const porSalvar = naoGravado || pendente;
+  const trava = !porSalvar ? null : encRes == null ? MSG_FALTA_RESOLUCAO : invalido ? MSG_VALOR_RUIM : !onSalvarECalibrar || ro ? MSG_SOMENTE_LEITURA : null;
+  const aviso = trava ?? (naoGravado ? MSG_ENCODER_NAO_SALVO : pendente ? MSG_ALTERACOES_NAO_SALVAS : null);
+  const subCal = aviso ?? (posicao === undefined ? 'Carregando…' : cal ? resumoCalibracao(cal) : MSG_SEM_CALIBRACAO);
+  const atencao = !!aviso || (posicao !== undefined && !cal);
   // Leitura agora: a do estado do pivô (relida a cada 10 s) quando é este o encoder gravado;
   // senão a da lista de encoders. O ângulo só existe com calibração vigente.
   const doEstado = !naoGravado && posicao?.encoder?.equipamento_id === enc.id && posicao.bruto != null && !!posicao.lido_em;
@@ -1211,9 +1223,9 @@ export function SecaoEncoder({ encs, enc, setEnc, encSel, encRes, encRuim, ro, z
               <span style={{ fontSize: 15, fontWeight: 700 }}>Calibração do ângulo</span>
               <span id="w-calibracao-sub" style={{ fontSize: 12, color: atencao ? NX.warn : NX.mudo }}>{subCal}</span>
             </span>
-            <button type="button" disabled={!!motivo} onClick={onCalibrar} aria-describedby="w-calibracao-sub"
-              style={{ flex: 'none', height: 44, minWidth: 44, padding: '0 16px', borderRadius: 10, border: `1.5px solid ${NX.off}`, background: NX.card, fontSize: 14, fontWeight: 800, textAlign: 'center', whiteSpace: 'nowrap', color: motivo ? NX.desab : NX.texto }}>
-              {ro ? 'Ver' : cal ? 'Recalibrar' : 'Calibrar'}
+            <button type="button" disabled={!!trava} onClick={porSalvar ? onSalvarECalibrar : onCalibrar} aria-describedby="w-calibracao-sub"
+              style={{ flex: 'none', height: 44, minWidth: 44, padding: '0 16px', borderRadius: 10, border: `1.5px solid ${NX.off}`, background: NX.card, fontSize: 14, fontWeight: 800, textAlign: 'center', whiteSpace: 'nowrap', color: trava ? NX.desab : NX.texto }}>
+              {porSalvar && !ro ? 'Salvar e calibrar' : ro ? 'Ver' : cal ? 'Recalibrar' : 'Calibrar'}
             </button>
           </div>
           <Linha titulo="Leitura agora" sub={subLeitura}>
@@ -1285,6 +1297,8 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
   const zeroGravado = cfg?.parametros?.correcao_angulo_zero;
   const [revisar, setRevisar] = useState(false);
   const [gravando, setGravando] = useState(false);
+  // "Salvar e calibrar": depois de gravar, abre a calibração (em vez de ficar na Configuração).
+  const [depoisCalibrar, setDepoisCalibrar] = useState(false);
 
   useEffect(() => {
     api.get(`/pivos/${pivoId}/bombeamento/opcoes`).then((r) => setOp(corpo<Opcoes>(r))).catch(() => setOp({ bombas: [] }));
@@ -1373,6 +1387,7 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
       // O gravado passa a ser o rascunho (não espera o refresh do estado).
       setBase({ bombaDe: bombaDeAgora, seq: seqNum, mantido });
       setRevisar(false); onSalvo();
+      if (depoisCalibrar) { setDepoisCalibrar(false); onCalibrar(); }
     } catch (e) {
       toast.error('Não salvou', { description: erroMsg(e) });
     } finally {
@@ -1450,7 +1465,8 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
         <SecaoEncoder encs={encs} enc={enc} setEnc={setEnc} encSel={encSel} encRes={encRes} encRuim={encRuim} ro={roTec}
           zero={calibrado ? fmtPar(zeroGravado, Number.isInteger(zeroGravado ?? 0) ? 0 : 2) : par.correcao_angulo_zero ?? ''} setZero={(v) => setPar((x) => ({ ...x, correcao_angulo_zero: v }))}
           gravado={{ id: cfg?.parametros?.encoder_equipamento_id ?? null, res: cfg?.parametros?.encoder_resolucao ?? null }}
-          posicao={estado ? estado.posicao ?? null : undefined} pendente={n > 0 && !somenteLeitura} onCalibrar={onCalibrar} />
+          posicao={estado ? estado.posicao ?? null : undefined} pendente={n > 0 && !somenteLeitura} invalido={invalido} onCalibrar={onCalibrar}
+          onSalvarECalibrar={somenteLeitura ? undefined : () => { setDepoisCalibrar(true); setRevisar(true); }} />
       </div>
       {/* Alarme de pivô travado: só faz sentido com encoder (é ele que diz que o ângulo parou). */}
       {enc.id && campoParam(PARAMS.find((p) => p.key === 'travado_min')!)}
@@ -1493,7 +1509,7 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
       </div>
 
       {!somenteLeitura && (
-        <button type="button" disabled={saveOff} onClick={() => setRevisar(true)} style={s.save(saveOff)}>
+        <button type="button" disabled={saveOff} onClick={() => { setDepoisCalibrar(false); setRevisar(true); }} style={s.save(saveOff)}>
           {invalido ? 'Valor fora da faixa' : n === 0 ? 'Salvar' : `Revisar ${n} ${n > 1 ? 'alterações' : 'alteração'}`}
         </button>
       )}
@@ -1502,7 +1518,7 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
         Os comandos do pivô (ligar, desligar, direção, sem água, canhão) e os status vêm dos pontos ligados às BO/BI da TON do pivô (Topologia → TON → Configurar BOs/BIs).
       </span>
 
-      <NxDialog open={revisar} onClose={() => { if (!gravando) setRevisar(false); }} label="Confirmar alterações" width={440}>
+      <NxDialog open={revisar} onClose={() => { if (!gravando) { setRevisar(false); setDepoisCalibrar(false); } }} label="Confirmar alterações" width={440}>
         <div style={col(10)}>
           <span style={{ fontSize: 18, fontWeight: 800 }}>Confirmar alterações</span>
           {mudancas.map((c) => (
@@ -1513,7 +1529,8 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
           {desativaCalibracao && <span role="alert" style={{ fontSize: 13, fontWeight: 700, color: NX.warn }}>{AVISO_TROCA_ENCODER}.</span>}
           {gravando
             ? <span style={{ fontSize: 14, color: NX.mudo, textAlign: 'center', padding: '6px 0' }}>Gravando e aguardando releitura da TON…</span>
-            : <NxDialogButtons onCancel={() => setRevisar(false)} onConfirm={gravar} cancelLabel="Voltar" marginTop={8} />}
+            : <NxDialogButtons onCancel={() => { setRevisar(false); setDepoisCalibrar(false); }} onConfirm={gravar} cancelLabel="Voltar"
+                confirmLabel={depoisCalibrar ? 'Salvar e calibrar' : 'Confirmar'} marginTop={8} />}
         </div>
       </NxDialog>
     </div>

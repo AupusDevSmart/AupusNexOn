@@ -282,22 +282,41 @@ describe('Configuração → Posição do pivô', () => {
     ['encoder escolhido e não salvo', { gravado: { id: null, res: null }, posicao: null }],
     ['encoder trocado e não salvo', { gravado: { id: 'e0', res: 360 } }],
     ['resolução trocada e não salva', { gravado: { id: 'e1', res: 4096 } }],
-    ['resolução vazia', { enc: { id: 'e1', res: '' }, encRes: null, encRuim: true }],
-  ] as Array<[string, Partial<Props>]>)('%s: botão desabilitado com o motivo no subtítulo', (_caso, props) => {
-    const { onCalibrar } = secaoEncoder(props);
-    expect(screen.getByText('Salve o encoder e a resolução para calibrar')).toBeTruthy();
-    const b = screen.getByRole('button', { name: /^(Calibrar|Recalibrar)$/ }) as HTMLButtonElement;
-    expect(b.disabled).toBe(true);
+  ] as Array<[string, Partial<Props>]>)('%s: o botão vira "Salvar e calibrar" e salva antes de abrir', (_caso, props) => {
+    const onSalvarECalibrar = vi.fn();
+    const { onCalibrar } = secaoEncoder({ ...props, onSalvarECalibrar });
+    expect(screen.getByText('Encoder ainda não salvo: o botão ao lado salva e abre a calibração')).toBeTruthy();
+    const b = botao('Salvar e calibrar');
+    expect(b.disabled).toBe(false);
     fireEvent.click(b);
-    expect(onCalibrar).not.toHaveBeenCalled();
+    expect(onSalvarECalibrar).toHaveBeenCalledTimes(1);
+    expect(onCalibrar).not.toHaveBeenCalled();   // só abre depois de salvar
     // sem encoder gravado igual ao da tela, o ângulo do estado não é deste encoder
     expect(screen.getByText('—°')).toBeTruthy();
   });
 
-  it('outra alteração não salva na Configuração: salvar antes (a sub-tela descartaria o rascunho)', () => {
-    secaoEncoder({ pendente: true });
-    expect(screen.getByText('Salve as alterações desta tela para abrir a calibração')).toBeTruthy();
-    expect(botao('Recalibrar').disabled).toBe(true);
+  it('resolução vazia: botão travado dizendo o que falta', () => {
+    const onSalvarECalibrar = vi.fn();
+    secaoEncoder({ enc: { id: 'e1', res: '' }, encRes: null, encRuim: true, onSalvarECalibrar });
+    expect(screen.getByText('Escolha a resolução do encoder para calibrar')).toBeTruthy();
+    const b = botao('Salvar e calibrar');
+    expect(b.disabled).toBe(true);
+    fireEvent.click(b);
+    expect(onSalvarECalibrar).not.toHaveBeenCalled();
+  });
+
+  it('outra alteração não salva na Configuração: o mesmo botão salva tudo e abre', () => {
+    const onSalvarECalibrar = vi.fn();
+    secaoEncoder({ pendente: true, onSalvarECalibrar });
+    expect(screen.getByText('Há alterações não salvas nesta tela: o botão ao lado salva e abre a calibração')).toBeTruthy();
+    fireEvent.click(botao('Salvar e calibrar'));
+    expect(onSalvarECalibrar).toHaveBeenCalledTimes(1);
+  });
+
+  it('valor fora da faixa na tela: não dá para salvar, e o botão diz por quê', () => {
+    secaoEncoder({ pendente: true, invalido: true, onSalvarECalibrar: vi.fn() });
+    expect(screen.getByText('Há valor fora da faixa nesta tela: corrija para salvar e calibrar')).toBeTruthy();
+    expect(botao('Salvar e calibrar').disabled).toBe(true);
   });
 
   it('perfil só leitura: o botão vira "Ver"', () => {
