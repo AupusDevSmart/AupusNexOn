@@ -29,5 +29,7 @@ int main() {
   ciclo(1300); rel("65 s depois");
   forceBI1zero = false;
   cmd("pivo ligar bbbb2222 d 1 500 1 t 43920"); ciclo(60); rel("depois de ligar DIREITA");
-  return 0;
+  bool ok = R[1] && R[3] && !R[4];
+  puts(ok ? "OK: so a direita ligada (esquerda desligada)" : "FALHOU: rele preso");
+  return ok ? 0 : 1;
 }
