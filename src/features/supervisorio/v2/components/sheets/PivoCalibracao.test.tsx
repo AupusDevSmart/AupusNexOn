@@ -388,6 +388,11 @@ describe('desenho do pivô', () => {
 
   it('parado: braço cinza e sem seta', () => {
     const { container } = render(<MapaPivo {...base} angulo={90} girando={false} sentido={null} />);
+    // sem ângulo: sem braço, "—°" e o motivo escrito no mapa
+    const semPos = render(<MapaPivo {...base} angulo={null} girando={false} sentido={null} aviso="pivô sem encoder. Escolha e salve o encoder em Configuração → Posição do pivô" />);
+    expect(semPos.container.querySelector('[data-braco]')).toBeNull();
+    expect(semPos.getByRole('status').textContent).toBe('Posição indisponível: pivô sem encoder. Escolha e salve o encoder em Configuração → Posição do pivô');
+    semPos.unmount();
     // o norte do pivô vem identificado: seta no topo com o "N" ao lado
     expect(container.querySelector('[data-norte]')?.textContent).toBe('N');
     expect(braco(container)?.getAttribute('stroke')).toBe('#A9ADBC');

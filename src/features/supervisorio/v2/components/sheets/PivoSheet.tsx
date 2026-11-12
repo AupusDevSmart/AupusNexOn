@@ -512,7 +512,11 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   const pos = estado?.posicao;
   const semCalibracao = pos?.sem_calibracao === true;
   const angulo = semCalibracao ? null : pos ? pos.angulo : num('angulo', 'posicao');
-  const avisoPosicao = pos?.fonte === 'encoder' && angulo == null ? pos.motivo : null;
+  // Sem ângulo o mapa fica sem braço: sempre com o motivo, para ninguém achar que o desenho quebrou.
+  // Com encoder, o motivo vem do servidor; sem encoder gravado, o pivô não tem de onde tirar a posição.
+  const avisoPosicao = angulo != null || !pos ? null
+    : pos.fonte === 'encoder' ? pos.motivo
+    : 'pivô sem encoder. Escolha e salve o encoder em Configuração → Posição do pivô';
   // (idade pela diferença simples: relógio do aparelho atrasado não pode esconder leitura fresca)
   const brutoFresco = !!pos?.lido_em && Date.now() - new Date(pos.lido_em).getTime() < 15 * 60 * 1000;
   const brutoAtual = semCalibracao && pos?.bruto != null && brutoFresco ? pos.bruto : null;
