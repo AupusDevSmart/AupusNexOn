@@ -8,6 +8,7 @@ import { ConfiguracaoDemandaModal } from "@/features/supervisorio/components/Con
 import { PanelCard } from "./PanelCard";
 import { useDemandaFluxo } from "../hooks/useDemandaFluxo";
 import { useConfiguracaoDemanda } from "../hooks/useConfiguracaoDemanda";
+import { useCapacidadesInstalacao, textoSemComunicacao, type CapacidadeChave } from "../hooks/useCapacidadesInstalacao";
 
 interface DemandaFluxoPanelProps {
   unidadeId: string;
@@ -34,7 +35,9 @@ function GaugeDemanda({
   pct,
   cor,
   contratada,
+  aviso,
 }: {
+  aviso?: string;
   rotulo: string;
   valor?: number | null;
   pct?: number;
@@ -60,9 +63,13 @@ function GaugeDemanda({
         rotulo={valor != null && pct != null ? `${Math.round(pct)}%` : undefined}
       />
 
+      {aviso ? (
+        <span className="text-center text-[10px] font-medium leading-tight text-amber-700 dark:text-amber-300">{aviso}</span>
+      ) : (
       <span className="text-center text-[10px] leading-tight text-muted-foreground opacity-70">
         {contratada ? `de ${contratada} kW contratada` : "contratada —"}
       </span>
+      )}
     </div>
   );
 }
@@ -78,9 +85,19 @@ export function DemandaFluxoPanel({ unidadeId }: DemandaFluxoPanelProps) {
   const redeImporta = (redeKw ?? 0) < 0;
   const redeAbs = redeKw == null ? null : Math.abs(redeKw);
   const redeContratada = redeImporta ? demandaCarga : demandaGeracao;
-  const colunas = temRede ? 'grid-cols-3' : 'grid-cols-2';
   const { configuracao, equipamentosDisponiveis, salvar } = useConfiguracaoDemanda(unidadeId);
   const [configOpen, setConfigOpen] = useState(false);
+  // NEXON-110: só os medidores que existem na instalação (Inversores → Geração, medidor de
+  // entrada → Carga, medidor da concessionária → Rede). Sem resposta da API, como antes.
+  const cap = useCapacidadesInstalacao(unidadeId);
+  const mostraCarga = cap.existe("carga");
+  const mostraGeracao = cap.existe("geracao");
+  const mostraRede = cap.capacidades ? cap.existe("rede") : temRede;
+  const n = [mostraCarga, mostraGeracao, mostraRede].filter(Boolean).length;
+  const colunas = n >= 3 ? 'grid-cols-3' : n === 2 ? 'grid-cols-2' : 'grid-cols-1';
+  const aviso = (k: CapacidadeChave) => (cap.semComunicacao(k) ? textoSemComunicacao(cap.get(k)) : undefined);
+
+  if (cap.carregando || n === 0) return null;
 
   return (
     <>
@@ -101,7 +118,7 @@ export function DemandaFluxoPanel({ unidadeId }: DemandaFluxoPanelProps) {
       >
         {loading ? (
         <div className={`grid ${colunas} gap-3`} role="status" aria-label="Carregando demanda">
-          {(temRede ? [0, 1, 2] : [0, 1]).map((i) => (
+          {Array.from({ length: n }, (_, i) => i).map((i) => (
             <div key={i} className="flex flex-col items-center gap-1">
               <Skeleton className="h-2.5 w-12 rounded-sm" />
               <Skeleton className="h-[100px] w-[100px] rounded-full" />
@@ -111,22 +128,29 @@ export function DemandaFluxoPanel({ unidadeId }: DemandaFluxoPanelProps) {
         </div>
         ) : (
         <div className={`grid ${colunas} gap-3`}>
+          {mostraCarga && (
           <GaugeDemanda
             rotulo="Carga"
             valor={cargaKw}
             pct={pctDe(cargaKw, demandaCarga)}
             cor={COR.potencia}
             contratada={fmt(demandaCarga)}
+            aviso={aviso("carga")}
           />
+          )}
+          {mostraGeracao && (
           <GaugeDemanda
             rotulo="Geração"
             valor={geracaoKw}
             pct={pctDe(geracaoKw, demandaGeracao)}
             cor={COR.geracao}
             contratada={fmt(demandaGeracao)}
+            aviso={aviso("geracao")}
           />
-          {temRede && (
+          )}
+          {mostraRede && (
             <GaugeDemanda
+              aviso={aviso("rede")}
               rotulo={redeKw == null ? 'Rede' : redeImporta ? 'Rede · importa' : 'Rede · exporta'}
               valor={redeAbs}
               pct={pctDe(redeAbs, redeContratada)}

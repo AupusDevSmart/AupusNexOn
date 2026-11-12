@@ -5,6 +5,7 @@ import { GrandezasEletricasPanel } from "./GrandezasEletricasPanel";
 import { DemandaFluxoPanel } from "./DemandaFluxoPanel";
 import { AlarmesAtivosPanel } from "./AlarmesAtivosPanel";
 import { GraficoConfiguravelPanel } from "./GraficoConfiguravelPanel";
+import { useCapacidadesInstalacao } from "../hooks/useCapacidadesInstalacao";
 
 interface SinopticoOverviewProps {
   unidadeId: string;
@@ -53,6 +54,9 @@ const ColunaPaineis = memo(function ColunaPaineis({
   unidadeId: string;
   unidadeNome?: string;
 }) {
+  // NEXON-110: cada painel some sozinho se a instalação não tem o medidor; a grade se ajusta.
+  const cap = useCapacidadesInstalacao(unidadeId);
+  const duas = cap.existe("grandezas_eletricas") && (cap.existe("carga") || cap.existe("geracao") || cap.existe("rede"));
   // Rola quando nao couber (telas baixas / notebook); em telas altas o grafico
   // (flex-1) preenche e nao aparece scroll.
   return (
@@ -60,7 +64,7 @@ const ColunaPaineis = memo(function ColunaPaineis({
       <KpiRow unidadeId={unidadeId} />
 
       {/* Grandezas e Demanda lado a lado */}
-      <div className="grid gap-1.5 sm:grid-cols-2">
+      <div className={`grid gap-1.5 empty:hidden ${duas ? "sm:grid-cols-2" : ""}`}>
         <GrandezasEletricasPanel unidadeId={unidadeId} />
         <DemandaFluxoPanel unidadeId={unidadeId} />
       </div>

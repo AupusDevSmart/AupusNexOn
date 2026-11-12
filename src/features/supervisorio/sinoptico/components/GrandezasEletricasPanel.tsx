@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { PanelCard } from "./PanelCard";
 import { ConfigGrandezasModal } from "./ConfigGrandezasModal";
 import { useGrandezasAgregadas } from "../hooks/useGrandezasAgregadas";
+import { useCapacidadesInstalacao } from "../hooks/useCapacidadesInstalacao";
+import { AvisoSemComunicacao } from "./AvisoSemComunicacao";
 import { useUserStore } from "@/store/useUserStore";
 
 interface GrandezasEletricasPanelProps {
@@ -57,8 +59,13 @@ export function GrandezasEletricasPanel({ unidadeId }: GrandezasEletricasPanelPr
   const [configOpen, setConfigOpen] = useState(false);
   // Escolher os medidores grava no diagrama (PATCH /diagramas/:id): cadastro técnico (NEXON-20).
   const podeConfigurar = useUserStore((s) => s.capacidades.cadastroTecnico);
+  const cap = useCapacidadesInstalacao(unidadeId);
   const t = grandezas?.tensoes;
   const c = grandezas?.correntes;
+
+  // NEXON-110: só com medidor de entrada que mede tensão/corrente. Tensão de inversor não
+  // entra aqui (não é o ponto de conexão).
+  if (cap.carregando || !cap.existe("grandezas_eletricas")) return null;
 
   return (
     <>
@@ -79,6 +86,7 @@ export function GrandezasEletricasPanel({ unidadeId }: GrandezasEletricasPanelPr
           ) : undefined
         }
       >
+      {cap.semComunicacao("grandezas_eletricas") && <AvisoSemComunicacao capacidade={cap.get("grandezas_eletricas")} />}
       <div className="grid grid-cols-2 gap-x-4 gap-y-2">
         <Bloco titulo="Tensões (L-N)">
           <Grandeza carregando={sk} rotulo="Van" valor={fmt(t?.AN, 0)} unidade="V" />

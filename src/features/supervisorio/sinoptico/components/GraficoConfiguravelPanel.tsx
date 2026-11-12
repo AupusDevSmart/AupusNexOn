@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/config/api";
+import { useCapacidadesInstalacao } from "../hooks/useCapacidadesInstalacao";
 import { SinopticoGraficosV2, PERCENTUAL_LIMITE_GERACAO } from "@/features/supervisorio/components/sinoptico-graficos-v2";
 
 interface GraficoConfiguravelPanelProps {
@@ -38,7 +39,11 @@ function Pilula({ ativo, onClick, children }: { ativo: boolean; onClick: () => v
  * então cabe sem scroll.
  */
 export function GraficoConfiguravelPanel({ unidadeId }: GraficoConfiguravelPanelProps) {
-  const [variavel, setVariavel] = useState<Variavel>("demanda");
+  const [escolhida, setVariavel] = useState<Variavel>("demanda");
+  // NEXON-110: Tensão e FP só com medidor de entrada que mede grandezas elétricas.
+  const cap = useCapacidadesInstalacao(unidadeId);
+  const variaveis = VARIAVEIS.filter((v) => v.id === "demanda" || cap.existe("grandezas_eletricas"));
+  const variavel: Variavel = variaveis.some((v) => v.id === escolhida) ? escolhida : "demanda";
 
   // Demanda contratada (fallback) — o próprio gráfico sobrepõe com a config salva.
   const { data: unidade } = useQuery({
@@ -56,7 +61,7 @@ export function GraficoConfiguravelPanel({ unidadeId }: GraficoConfiguravelPanel
 
   const toggles = (
     <div className="flex flex-wrap items-center gap-1">
-      {VARIAVEIS.map((v) => (
+      {variaveis.length > 1 && variaveis.map((v) => (
         <Pilula key={v.id} ativo={variavel === v.id} onClick={() => setVariavel(v.id)}>
           {v.label}
         </Pilula>
