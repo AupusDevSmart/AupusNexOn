@@ -2053,7 +2053,15 @@ extern char MQTT_CLIENT_ID[20];
 // Timing
 #define INPUT_SCAN_MS       50
 #define WATCHDOG_TIMEOUT_S  60      // Watchdog mais generoso (60s) para lidar com Modbus lento
-`;
+${spec.pivo && spec.has_relays && !spec.wifi ? `// Pivo sem internet (decisao 12/11): no loop o watchdog e' de PIVO_WDT_S; uma operacao longa no meio
+// do ciclo (radio, Modbus...) pode ESTENDER UMA VEZ (+PIVO_WDT_S). Travou alem disso -> reinicia, e o
+// pivo retoma a ordem (spec 6.7). Toda chamada a esp_task_wdt_reset() vira wdt_meio(); o inicio do
+// ciclo usa (esp_task_wdt_reset)() — entre parenteses a macro nao expande — e libera nova extensao.
+#define PIVO_WDT_S          30
+#include <esp_task_wdt.h>
+esp_err_t wdt_meio();
+#define esp_task_wdt_reset() wdt_meio()
+` : ''}`;
 
         // Modbus devices (RS485 ou TCP)
         if (spec.rs485_devices.length > 0 || spec.tcp_devices.length > 0) {
@@ -8549,6 +8557,15 @@ static void _publish_cmd_ack(const char* cmd_id, const char* status, const char*
         // TON tem relés (BO). Reusa inputs_get_state() (BI) e relay_set() (BO).
         if (spec.pivo && spec.has_relays) {
             cpp += `#include "pivo.h"   // pivo: sequencia local em src/pivo.cpp (lib pivo_local)\n`;
+            if (!spec.wifi) cpp += `// Watchdog do pivo sem internet (config.h): no setup alimenta sempre; no loop, 1 extensao por ciclo.
+static bool _wdt_loop_ativo = false;
+static bool _wdt_estendido = false;
+esp_err_t wdt_meio() {
+    if (_wdt_loop_ativo && _wdt_estendido) return ESP_OK;   // ja' estendeu neste ciclo: deixa o prazo correr
+    if (_wdt_loop_ativo) _wdt_estendido = true;
+    return (esp_task_wdt_reset)();
+}
+`;
         }
         if (spec.bomba && spec.has_relays) {
             cpp += this._genBomba(spec);
@@ -8906,7 +8923,9 @@ ${spec.bomba && spec.has_relays ? '    bomba_init();   // posto de combustivel: 
 
         cpp += `
     esp_task_wdt_reset();
-    Serial.println("\\nPronto!");
+${spec.pivo && spec.has_relays && !spec.wifi ? `    esp_task_wdt_init(PIVO_WDT_S, true);   // pivo sem internet: no loop, 30 s (+30 s uma vez por ciclo)
+    _wdt_loop_ativo = true;
+` : ''}    Serial.println("\\nPronto!");
 }
 `;
 
@@ -8991,8 +9010,10 @@ void lora_poll_respond(const char* gw_mac, const char* req_id) {
 
         cpp += `
 void loop() {
-    esp_task_wdt_reset();
-    diag_tick();  // atualiza min_free_heap a cada loop
+${spec.pivo && spec.has_relays && !spec.wifi ? `    (esp_task_wdt_reset)();     // inicio do ciclo: alimentacao REAL do watchdog
+    _wdt_estendido = false;     // ... e libera UMA extensao para este ciclo
+` : `    esp_task_wdt_reset();
+`}    diag_tick();  // atualiza min_free_heap a cada loop
     unsigned long now = millis();
 `;
 

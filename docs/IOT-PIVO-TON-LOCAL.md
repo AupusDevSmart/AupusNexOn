@@ -215,4 +215,17 @@ Fonte: `arquivos/Spec NexON - Automacao do pivo (protocolo e firmware).md`. **Va
 
 **Status** (`<base>/pivo`, ≤ 120 B): `{"o":id,"i":entradas,"et":etapa,"p":passo,"an":bruto,"gp":graus,"al":parada,"pm":permil,"mo":motivo,"at":alertas,"d","a","bo"}`. Etapa 0 parado · 1 aguardando pressão/giro · 2 girando. Motivo: 0 nenhuma · 1 concluída · 2 comando do operador · 3 queda de pressão · 4 pressão não subiu · 5 tensão · 6 segurança · 7 reinício da slave · 8 condição de partida · 9 não girou · 10 giro caiu · 11 falha de relés. Alertas: bit0 erro de posição · bit1 falha no canhão · bit2 reinícios repetidos.
 
-**Ainda não feito (próxima etapa):** log por ordem no NexON (linha do tempo por `id_ordem`, situação final e resumo), janela de 5 min do agendamento ("OI não iniciada"), protocolo master/slave da spec (NVS na master, quadros binários, consulta a cada 1 min configurável) — a estudar junto — e watchdog/retomada.
+**Ainda não feito (próxima etapa):** log por ordem no NexON (linha do tempo por `id_ordem`, situação final e resumo), janela de 5 min do agendamento ("OI não iniciada"), protocolo master/slave da spec (NVS na master, quadros binários, consulta a cada 1 min configurável) — a estudar junto — (watchdog e retomada: seção 13).
+
+## 13. Watchdog e retomada (decidido 12/11/2026)
+
+| Item | Como ficou |
+|---|---|
+| Prazo do watchdog | **TON de pivô sem internet:** 30 s no loop. Uma operação longa no meio do ciclo (rádio, Modbus) pode estender **uma vez** por mais 30 s; travou além disso, reinicia. TONs com internet: 60 s, como antes. O `setup()` continua com 60 s |
+| Reinício por watchdog | Saídas começam em LOW e a TON **retoma a ordem**: refaz a partida inteira (condição de partida, pressão, sentido) com o que falta (graus restantes; tempo restante no provisório sem encoder) |
+| Outras causas (energia, queda de tensão, reset manual) | Não retoma. Motivo "reinício da slave"; espera nova ordem |
+| Andamento | Ordem inteira na NVS ao ligar; graus percorridos a cada 10°; tempo girado a cada 60 s (provisório) |
+| Reinícios seguidos (só pivô) | 3 watchdogs em 1 h: não retoma, tudo desligado, alerta "reinícios repetidos". A hora conta o tempo ligado acumulado na RTC (sobrevive a reinício por software, zera em queda de energia), sem depender de relógio |
+| Reinício por falta de internet | Não se aplica: TON de pivô normalmente não tem internet configurada |
+
+Implementação: `config.h` (só pivô sem internet) define `PIVO_WDT_S 30` e transforma toda chamada `esp_task_wdt_reset()` em `wdt_meio()`; o início do `loop()` faz a alimentação real com `(esp_task_wdt_reset)()` e libera uma nova extensão. Retomada e contagem em `glue/pivo.cpp` (`pivo_init`, `pivo_tick`, `_salvarAndamento`).

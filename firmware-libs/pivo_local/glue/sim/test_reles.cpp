@@ -17,6 +17,8 @@ void relay_set(uint8_t n, bool on) {
   if (n == 1 && !on && mudou) perder = 4;   // a bomba ABRE -> pico -> as proximas 4 escritas se perdem
 }
 bool relays_io_fault() { return false; }
+#include <esp_system.h>
+esp_reset_reason_t esp_reset_reason() { return ESP_RST_POWERON; }
 static void pub(const char*, const char*) {}
 static void ciclo(int n=1) { for (int i=0;i<n;i++) { g_millis += 50; pivo_tick(); pivo_loop(pub); } }
 static void cmd(const char* c) { char m[96]; int r = pivo_cmd(String(c), m, sizeof m); printf("%7.1fs CMD \"%s\" -> %s\n", (g_millis-100000)/1000.0, c, m); }

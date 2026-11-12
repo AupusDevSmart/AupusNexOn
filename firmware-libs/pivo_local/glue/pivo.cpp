@@ -24,6 +24,8 @@
 #include "inputs.h"
 #include "relays.h"
 #include <Preferences.h>
+#include <esp_system.h>
+#include <esp_attr.h>
 #include <math.h>
 #include <string.h>
 #include <stdlib.h>
@@ -82,6 +84,25 @@ static uint8_t  _leg_mask = 0;
 static unsigned long _leg_ini = 0;
 static int8_t   _leg_saida = -1;
 
+// ---- retomada apos reinicio por WATCHDOG (spec 6.7) ----
+// A ordem (Plano) e o andamento (graus percorridos a cada 10 graus; tempo a cada 60 s no provisorio
+// sem encoder) ficam na NVS. Reinicio por watchdog: refaz a partida inteira com o que falta. Outra causa
+// (energia, tensao, reset manual): nao retoma ("reinicio da slave"). 3 watchdogs em 1 h: nao retoma
+// mais, tudo desligado, alerta "reinicios repetidos". A janela de 1 h conta o tempo LIGADO acumulado
+// na RTC (sobrevive a reinicio por software; zera em queda de energia) — nao depende de relogio.
+#define PIVO_WD_MAGIC 0x50574454UL
+RTC_NOINIT_ATTR static uint32_t _rtcWdMagic;
+RTC_NOINIT_ATTR static uint32_t _rtcWdCount;
+RTC_NOINIT_ATTR static uint32_t _rtcWdFirst;   // tempo acumulado no 1o watchdog da janela
+RTC_NOINIT_ATTR static uint32_t _rtcAcc;       // tempo ligado acumulado (ms) ate' agora
+static uint32_t _accBase = 0;
+static bool     _retomar = false;
+static unsigned long _retomar_em = 0;
+static Plano    _plano_salvo;
+static float    _gp_salvo = 0;                 // graus ja' percorridos gravados na NVS
+static uint32_t _ms_salvo = 0;                 // tempo ja' girado gravado (provisorio, por duracao)
+static unsigned long _ult_ms_salvo = 0;
+
 // ---- fila de eventos (o Ouvinte e' chamado dentro do tick; publica no loop)
 struct EvPivo { char t[12]; char x[24]; char id[ID_LEN]; char e[12]; };
 static EvPivo  _evq[12];
@@ -101,7 +122,26 @@ static void _salvarAtivo(bool ativo) {
     Preferences pr;
     if (!pr.begin("pivo", false)) return;
     pr.putBool("at", ativo);
-    if (ativo && _m) pr.putString("id", _m->plano().id);
+    if (ativo && _m) {
+        pr.putString("id", _m->plano().id);
+        pr.putBytes("pl", &_m->plano(), sizeof(Plano));   // a ordem inteira (retomada apos watchdog)
+        pr.putFloat("gp", 0); pr.putUInt("ms", 0);
+        _gp_salvo = 0; _ms_salvo = 0; _ult_ms_salvo = millis();
+    }
+    pr.end();
+}
+
+// Andamento: graus a cada 10 (poupa a flash, spec 6.7); tempo a cada 60 s (provisorio sem encoder).
+static void _salvarAndamento(unsigned long now) {
+    if (!_m || _m->estado() != GIRANDO) return;
+    float gp = _m->percorrido();
+    bool porGraus = gp - _gp_salvo >= 10.0f;
+    bool porTempo = _m->plano().parada == POR_DURACAO && now - _ult_ms_salvo >= 60000UL;
+    if (!porGraus && !porTempo) return;
+    Preferences pr;
+    if (!pr.begin("pivo", false)) return;
+    if (porGraus) { pr.putFloat("gp", gp); _gp_salvo = gp; }
+    if (porTempo) { _ms_salvo = _m->tempoGirandoMs(now); pr.putUInt("ms", _ms_salvo); _ult_ms_salvo = now; }
     pr.end();
 }
 
@@ -158,7 +198,11 @@ void pivo_init() {
     Preferences pr;
     char id[ID_LEN] = "";
     bool estava = false;
+    bool temPlano = false;
     if (pr.begin("pivo", true)) {
+        if (pr.getBytesLength("pl") == sizeof(Plano)) { pr.getBytes("pl", &_plano_salvo, sizeof(Plano)); temPlano = true; }
+        _gp_salvo = pr.getFloat("gp", 0);
+        _ms_salvo = pr.getUInt("ms", 0);
         if (pr.getBytesLength("bo") == sizeof(_bo)) pr.getBytes("bo", _bo, sizeof(_bo));
         if (pr.getBytesLength("bi") == sizeof(_bi)) pr.getBytes("bi", _bi, sizeof(_bi));
         _inv = pr.getUChar("inv", 0);
@@ -175,9 +219,33 @@ void pivo_init() {
     static Maquina m(_montarConfig(), &_ouv);
     _m = &m;
     // Reles do pivo ja' saem desligados (RELAYS_RESTORE_ON_SW_RESET = 0): reinicio = pivo parado.
+    // Contadores de watchdog na RTC: lixo depois de queda de energia -> zera.
+    if (_rtcWdMagic != PIVO_WD_MAGIC) { _rtcWdMagic = PIVO_WD_MAGIC; _rtcWdCount = 0; _rtcWdFirst = 0; _rtcAcc = 0; }
+    _accBase = _rtcAcc;
+    esp_reset_reason_t rr = esp_reset_reason();
+    bool porWatchdog = rr == ESP_RST_TASK_WDT || rr == ESP_RST_INT_WDT || rr == ESP_RST_WDT;
+    if (porWatchdog) {
+        if (_rtcWdCount == 0 || _accBase - _rtcWdFirst > 3600000UL) { _rtcWdCount = 1; _rtcWdFirst = _accBase; }
+        else _rtcWdCount++;
+    }
     if (estava) {
-        // Desligou no meio de uma irrigacao (queda de energia, reset): motivo "reinicio da slave" (spec 6.7).
         _m->marcarMotivo(M_REINICIO);
+        if (porWatchdog && temPlano && _rtcWdCount < 3) {
+            // Retoma: a partida inteira de novo, com o que falta (spec 6.7). Espera as entradas assentarem.
+            if (_plano_salvo.parada == POR_GRAUS) {
+                uint32_t feito = (uint32_t)lroundf(_gp_salvo);
+                _plano_salvo.graus = _plano_salvo.graus > feito + 1 ? _plano_salvo.graus - feito : 1;
+            } else {
+                uint32_t feito_s = _ms_salvo / 1000UL;
+                _plano_salvo.duracao_s = _plano_salvo.duracao_s > feito_s + 60 ? _plano_salvo.duracao_s - feito_s : 60;
+            }
+            _retomar = true;
+            _retomar_em = millis() + 5000UL;
+            Serial.printf("[PIVO] reinicio por WATCHDOG (%lu na ultima hora): retomando a ordem %s em 5 s\n", (unsigned long)_rtcWdCount, _plano_salvo.id);
+        } else if (porWatchdog && _rtcWdCount >= 3) {
+            _m->marcarAlerta(A_REINICIOS);
+            Serial.println("[PIVO] 3 reinicios por watchdog em 1 h: NAO retoma (reinicios repetidos)");
+        }
         _evPush("parado", "reinicio_slave");
         strncpy(_evq[(_evh + _evn - 1) % 12].id, id, ID_LEN - 1);
         _ativo_nvs = true;
@@ -267,6 +335,13 @@ void pivo_publicar(pivo_publish_fn publish) {
 void pivo_tick() {
     if (!_m) return;
     unsigned long now = millis();
+    _rtcAcc = _accBase + (uint32_t)now;              // tempo ligado acumulado (janela dos watchdogs)
+    if (_retomar && (long)(now - _retomar_em) >= 0) {
+        _retomar = false;
+        char mot[40];
+        if (_m->ligar(_plano_salvo, now, mot, sizeof(mot))) Serial.println("[PIVO] ordem retomada apos watchdog");
+        else { _m->marcarMotivo(M_REINICIO); Serial.printf("[PIVO] retomada recusada (%s)\n", mot); }
+    }
     uint8_t st = inputs_get_state();
     Entradas in;
     in.pressao     = _biPapel(st, BI_PRESSAO);
@@ -281,6 +356,7 @@ void pivo_tick() {
         if (_enc_res) _m->posicao(_anguloDe(_enc_bruto), now);
     }
     _m->tick(now, in);
+    _salvarAndamento(now);
 
     // Expansor de reles sem controle (I2C): o rele pode estar preso em qualquer estado. Pivo
     // ligado -> desliga com falha; parado -> recusa ligar (pivo_cmd). Nao da' para confiar na saida.

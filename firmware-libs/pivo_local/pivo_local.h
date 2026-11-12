@@ -127,6 +127,8 @@ public:
     bool ajustarPercentimetro(int16_t pm, char* motivo, size_t msz);
     bool ajustarCanhao(bool ligado, bool tem_faixa, uint16_t desliga_em, uint16_t liga_em, uint32_t now_ms, char* motivo, size_t msz);
     void marcarMotivo(uint8_t m) { _motivo = m; }       // glue: reinicio (boot)
+    void marcarAlerta(uint8_t a) { _alertas |= a; }     // glue: reinicios repetidos (watchdog)
+    uint32_t tempoGirandoMs(uint32_t now) const { return _st == PARADO ? 0 : now - _t_ligar; }
 
     // Observabilidade
     Estado      estado() const { return _st; }
