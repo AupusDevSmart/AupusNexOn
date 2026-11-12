@@ -105,10 +105,16 @@ Aplicar as mesmas regras da seção 5, lendo o mesmo endpoint. Nada de recalcula
 - Medidor desenhado no unifilar sem vínculo IoT: **não** existe.
 - Usuário de outro dono: 403/404 (isolamento por dono).
 
-## 8. Decisões em aberto
+## 8. Decisões (12/11/2026)
 
-1. **Grandezas sem medidor**: a proposta esconde o painel. A alternativa seria mostrar tensão/corrente dos
-   inversores com o rótulo "(inversor)".
-2. **"Pot." sem medidor**: a proposta troca por Geração. A alternativa seria tirar o KPI.
-3. **Medidor de consumo sem medição de entrada** (só cargas internas): conta como `carga`? A proposta diz
-   que não, porque a carga da instalação continua desconhecida.
+1. **Grandezas sem medidor: some.** Não usar tensão/corrente de inversor.
+2. **Faixa de KPIs (Pot. | Tensão | FP | Corr.) sem medidor: some inteira.** Os 4 cards vêm dos medidores
+   (`KpiRow.tsx`, "Potência líquida = soma dos medidores"); a potência de geração já está nos KPIs de resumo.
+3. **Quem fala de quê:**
+   - **Inversores → Geração.**
+   - **Power Meter → Carga.**
+   - **Medidor da concessionária → Rede.**
+
+   O Power Meter só entra como Carga da instalação se estiver marcado como **de entrada**: campo novo no
+   cadastro do medidor. PM num circuito interno (só o motor do pivô, só um quadro) aparece apenas na ficha
+   dele, para não esconder parte da carga real.
