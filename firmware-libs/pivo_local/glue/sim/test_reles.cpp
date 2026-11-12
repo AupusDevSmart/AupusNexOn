@@ -18,6 +18,7 @@ void relay_set(uint8_t n, bool on) {
 }
 bool relays_io_fault() { return false; }
 unsigned long relays_io_fault_ms() { return 0; }
+bool relay_get(uint8_t n) { return n >= 1 && n <= 8 && R[n]; }
 #include <esp_system.h>
 esp_reset_reason_t esp_reset_reason() { return ESP_RST_POWERON; }
 void esp_restart() { puts("esp_restart"); exit(1); }
@@ -35,5 +36,14 @@ int main() {
   cmd("pivo ligar bbbb2222 d 1 500 1 t 43920"); ciclo(60); rel("depois de ligar DIREITA");
   bool ok = R[1] && R[3] && !R[4];
   puts(ok ? "OK: so a direita ligada (esquerda desligada)" : "FALHOU: rele preso");
-  return ok ? 0 : 1;
+  if (!ok) return 1;
+  // Parado: comando manual (rN on) fica; direita+esquerda juntas caem (bancada 12/11)
+  cmd("pivo desligar"); ciclo(200); rel("10 s depois de desligar");
+  if (R[1] || R[3] || R[6]) { puts("FALHOU: saida ligada depois de desligar"); return 1; }
+  relay_set(2, true); relay_set(6, true); ciclo(200); rel("r2 on + r6 on, 10 s depois");
+  if (!R[2] || !R[6]) { puts("FALHOU: comando manual com o pivo parado voltou a OFF"); return 1; }
+  relay_set(3, true); relay_set(4, true); ciclo(2); rel("r3 on + r4 on");
+  if (R[3] || R[4]) { puts("FALHOU: direita e esquerda juntas"); return 1; }
+  puts("OK: parado, manual fica; direita+esquerda juntas caem");
+  return 0;
 }

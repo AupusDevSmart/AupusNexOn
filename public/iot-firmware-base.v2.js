@@ -192,6 +192,7 @@ void relay_set(uint8_t num, bool state);
 void relays_all_on();
 void relays_all_off();
 uint8_t relays_get_state();
+bool relay_get(uint8_t num);   // estado DESEJADO do rele num (1..N)
 // Anti-travamento (C3/C4): confere os reles no I2C; true = sem controle dos reles.
 bool relays_io_fault();
 void relays_health_tick();
@@ -350,6 +351,7 @@ void relay_set(uint8_t num, bool state) {
 void relays_all_on() { for (int i = 1; i <= RELAY_COUNT; i++) relay_set(i, true); }
 void relays_all_off() { for (int i = 1; i <= RELAY_COUNT; i++) relay_set(i, false); }
 uint8_t relays_get_state() { return _state; }
+bool relay_get(uint8_t num) { return num >= 1 && num <= RELAY_COUNT && ((_state >> _bitOf(num)) & 1); }
 `,
 
 // ================================================================

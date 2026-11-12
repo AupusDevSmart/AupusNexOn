@@ -394,11 +394,29 @@ void pivo_tick() {
             esp_restart();
         }
     }
-    // Reafirma TODAS as saidas do pivo a cada 1 s (nao confia no cache: escrita perdida ou rele
-    // mexido por fora volta ao estado que a sequencia quer em ate' 1 s).
-    if (now - _reafirma_ms >= 1000UL) {
-        _reafirma_ms = now ? now : 1;
-        for (int k = 0; k < 6; k++) _apl[k] = -1;
+    // Pivo em operacao: reafirma TODAS as saidas a cada 1 s (nao confia no cache: escrita perdida
+    // ou rele mexido por fora volta ao estado que a sequencia quer em ate' 1 s).
+    // PARADO: as saidas vao para OFF UMA vez (ao parar / no boot) e ficam livres para comando
+    // manual (rN on pela serial, aba Comando do NexON) — bancada 12/11: o "r1 on" voltava a OFF
+    // em menos de 1 s. So' o intertravamento direita/esquerda continua valendo.
+    // Ao PARAR (e no boot) reafirma o OFF por mais 5 s: e' justamente quando a bomba abre que o
+    // pico no I2C perde escritas (incidente 11/11, direita+esquerda presas).
+    static uint8_t _e_ant = 0xFF;
+    static unsigned long _parou_ms = 0;
+    if (_m->estado() == PARADO && _e_ant != PARADO) _parou_ms = now ? now : 1;
+    // Saiu de PARADO (ligar): a sequencia assume TODAS as saidas na hora (rele ligado a mao cai ja').
+    if (_m->estado() != PARADO && _e_ant == PARADO) for (int k = 0; k < 6; k++) _apl[k] = -1;
+    _e_ant = (uint8_t)_m->estado();
+    bool reafirmar = _m->estado() != PARADO || (now - _parou_ms) < 5000UL;
+    if (reafirmar) {
+        if (now - _reafirma_ms >= 1000UL) {
+            _reafirma_ms = now ? now : 1;
+            for (int k = 0; k < 6; k++) _apl[k] = -1;
+        }
+    } else if (_bo[BO_DIR] && _bo[BO_ESQ] && relay_get(_bo[BO_DIR]) && relay_get(_bo[BO_ESQ])) {
+        relay_set(_bo[BO_DIR], false); relay_set(_bo[BO_ESQ], false);
+        _apl[BO_DIR] = 0; _apl[BO_ESQ] = 0;
+        Serial.println("[PIVO] direita e esquerda ligadas juntas por comando manual - as duas em OFF");
     }
     // Saidas (mantidas) + ciclo do percentimetro. Ordem: DESLIGA antes de ligar, e os dois
     // sentidos nunca em alto juntos (intertravamento por software alem da lib).
