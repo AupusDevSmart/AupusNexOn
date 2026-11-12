@@ -24,8 +24,32 @@ import {
 type AcaoCal = 'ler' | 'salvar' | 'restaurar';
 interface Rascunho { centro: CampoPonto; ponta: CampoPonto; sentido: Sentido | null }
 /** O que foi digitado e ainda não gravado, por pivô: sair da tela (ex.: ir à Operação parar o
- *  pivô) não pode custar as coordenadas. Só nesta página, some ao salvar. */
-const rascunhos = new Map<string, Rascunho>();
+ *  pivô) ou RECARREGAR a página não pode custar as coordenadas. Fica neste navegador
+ *  (localStorage) e some ao salvar a calibração. */
+const CHAVE_RASCUNHO = 'nexon:pivo:calibracao:';
+const ehPonto = (p: unknown): p is CampoPonto => !!p && typeof (p as CampoPonto).lat === 'string' && typeof (p as CampoPonto).lon === 'string';
+const naMemoria = new Map<string, Rascunho>();   // vale mesmo sem localStorage (navegação privada)
+export const rascunhos = {
+  get(pivoId: string): Rascunho | undefined {
+    const m = naMemoria.get(pivoId);
+    if (m) return m;
+    try {
+      const r = JSON.parse(localStorage.getItem(CHAVE_RASCUNHO + pivoId) ?? 'null');
+      if (!r || !ehPonto(r.centro) || !ehPonto(r.ponta)) return undefined;
+      return { centro: r.centro, ponta: r.ponta, sentido: r.sentido === 1 || r.sentido === -1 ? r.sentido : null };
+    } catch { return undefined; }   // armazenamento bloqueado ou JSON estragado
+  },
+  set(pivoId: string, r: Rascunho) {
+    naMemoria.set(pivoId, r);
+    try { localStorage.setItem(CHAVE_RASCUNHO + pivoId, JSON.stringify(r)); } catch { /* segue só na memória */ }
+  },
+  delete(pivoId: string) {
+    naMemoria.delete(pivoId);
+    try { localStorage.removeItem(CHAVE_RASCUNHO + pivoId); } catch { /* nada a apagar */ }
+  },
+  /** Só para teste: simula a página recarregada (a memória some, o navegador guarda). */
+  esquecerMemoria() { naMemoria.clear(); },
+};
 const VAZIO: CampoPonto = { lat: '', lon: '' };
 
 const quando = (iso: string | null | undefined) => {

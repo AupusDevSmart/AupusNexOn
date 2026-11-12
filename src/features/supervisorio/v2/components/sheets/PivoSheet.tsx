@@ -96,7 +96,17 @@ interface Estado {
 interface IrrigacaoSrv { modo: string; config: ConfigIrrigacao; parada: Parada; programacao?: { nome: string } | null }
 interface Janela { ativo: boolean; inicio: string; fim: string; dias: number[] }
 /** Encoders da instalação (criados pelo diagrama IoT) com a última contagem lida. */
-interface OpcaoEncoder { id: string; nome: string; bruto: number | null; lido_em: string | null }
+interface OpcaoEncoder {
+  id: string; nome: string; bruto: number | null; lido_em: string | null;
+  /** TON que lê este encoder e se é a TON do pivô (API a partir de 12/11; ausentes = não sabe). */
+  ton_nome?: string | null; ton_removida?: boolean; na_ton_do_pivo?: boolean;
+}
+/** Nome do encoder na lista, com a TON: dois "Emulador" (TON trocada) têm de ser distinguíveis. */
+export function rotuloEncoder(x: OpcaoEncoder): string {
+  if (x.na_ton_do_pivo === undefined) return x.nome;
+  const ton = x.ton_nome ? `${x.ton_nome}${x.ton_removida ? ' (removida)' : ''}` : 'TON removida';
+  return `${x.nome} · ${ton}${x.na_ton_do_pivo ? '' : ' — não é a TON do pivô'}`;
+}
 /** Resoluções da Série 67 (código de compra): 9, 11, 12 e 13 bits. */
 const RESOLUCOES_ENCODER = [360, 2048, 4096, 8192];
 interface PivoConfig {
@@ -1157,10 +1167,12 @@ export function SecaoEncoder({ encs, enc, setEnc, encSel, encRes, encRuim, ro, z
     : 'Sem leitura do encoder ainda';
   return (
     <div style={{ ...s.card, padding: '0 16px' }}>
-      <Linha first titulo="Encoder" sub={encs && encs.length === 0 ? 'Nenhum encoder nesta instalação · ligue um nó Encoder à TON na Topologia IoT e salve' : 'Encoder absoluto no centro do pivô (Topologia IoT)'}>
+      <Linha first titulo="Encoder" sub={encs && encs.length === 0 ? 'Nenhum encoder nesta instalação · ligue um nó Encoder à TON na Topologia IoT e salve'
+        : encSel && encSel.na_ton_do_pivo === false ? <span role="alert" style={{ color: NX.bad }}>Este encoder não é lido pela TON do pivô: escolha na lista o que está na TON do pivô e salve</span>
+        : 'Encoder absoluto no centro do pivô (Topologia IoT)'}>
         <ChipSelect label="Encoder" disabled={ro || !encs} value={enc.id} onChange={(v) => setEnc((e) => ({ ...e, id: v }))}>
           <option value="">Sem encoder</option>
-          {(encs ?? []).map((x) => <option key={x.id} value={x.id}>{x.nome}</option>)}
+          {(encs ?? []).map((x) => <option key={x.id} value={x.id}>{rotuloEncoder(x)}</option>)}
           {enc.id && encs && !encs.some((x) => x.id === enc.id) && <option value={enc.id}>Encoder removido</option>}
         </ChipSelect>
       </Linha>
