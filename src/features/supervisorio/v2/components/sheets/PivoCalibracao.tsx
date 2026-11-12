@@ -11,7 +11,8 @@ import {
 } from './pivoCalibracaoContas';
 
 /**
- * Aba "Calibração" do modal do pivô (NEXON-103): associa UMA leitura do encoder ao azimute
+ * Calibração do ângulo do pivô (NEXON-103): sub-tela da aba Configuração, aberta pela linha
+ * "Calibração do ângulo" de Posição do pivô. Associa UMA leitura do encoder ao azimute
  * real do braço (centro → ponta, medido em campo). A TON lê o encoder ("Ler encoder"), a
  * pessoa informa o sentido e as duas posições, a tela calcula o azimute e a API envia para a
  * placa, espera a confirmação e só então grava. Quem não edita (proprietário, operador) vê a
@@ -22,7 +23,7 @@ import {
 
 type AcaoCal = 'ler' | 'salvar' | 'restaurar';
 interface Rascunho { centro: CampoPonto; ponta: CampoPonto; sentido: Sentido | null }
-/** O que foi digitado e ainda não gravado, por pivô: trocar de aba (ex.: ir à Operação parar o
+/** O que foi digitado e ainda não gravado, por pivô: sair da tela (ex.: ir à Operação parar o
  *  pivô) não pode custar as coordenadas. Só nesta página, some ao salvar. */
 const rascunhos = new Map<string, Rascunho>();
 const VAZIO: CampoPonto = { lat: '', lon: '' };
@@ -117,7 +118,7 @@ const geoDoNavegador = () => typeof navigator !== 'undefined' && !!navigator.geo
  * A tela em si (sem rede): recebe o que o GET devolveu e avisa o que a pessoa pediu.
  * `onSalvar`/`onRestaurar` devolvem true se gravou.
  */
-export function PainelCalibracao({ pivoId, tela, podeEditar, acao, recusa, leituraVenceu, invertido, erro, onLer, onSalvar, onRestaurar, geoDisponivel = geoDoNavegador() }: {
+export function PainelCalibracao({ pivoId, tela, podeEditar, acao, recusa, leituraVenceu, invertido, erro, onLer, onSalvar, onRestaurar, onVoltar, geoDisponivel = geoDoNavegador() }: {
   pivoId: string; tela: CalibracaoTela; podeEditar: boolean; acao: AcaoCal | null;
   /** Último "Ler encoder" que a TON respondeu e o servidor recusou (instável, falhou). */
   recusa?: LeituraEncoder | null;
@@ -127,6 +128,8 @@ export function PainelCalibracao({ pivoId, tela, podeEditar, acao, recusa, leitu
   invertido?: boolean | null;
   erro?: string | null;
   onLer: () => void; onSalvar: (c: CorpoCalibracao) => Promise<boolean>; onRestaurar: () => Promise<boolean>;
+  /** Volta para a Configuração (pivô sem encoder gravado: é lá que se escolhe e salva). */
+  onVoltar?: () => void;
   geoDisponivel?: boolean;
 }) {
   const { vigente, anterior, precondicoes: pre, leitura } = tela;
@@ -141,7 +144,7 @@ export function PainelCalibracao({ pivoId, tela, podeEditar, acao, recusa, leitu
   const sentido: Sentido = sentidoEscolhido ?? vigente?.sentido ?? (invertido ? -1 : 1);
   const [geo, setGeo] = useState<{ centro: Geo; ponta: Geo }>({ centro: GEO0, ponta: GEO0 });
   const [confirmar, setConfirmar] = useState<null | 'salvar' | 'restaurar'>(null);
-  // Rascunho só do que a pessoa DIGITOU: abrir a aba não pode congelar um centro vazio (outra
+  // Rascunho só do que a pessoa DIGITOU: abrir a tela não pode congelar um centro vazio (outra
   // pessoa calibra depois e o centro vigente tem de aparecer na volta).
   useEffect(() => {
     const base = centroVigente ?? VAZIO;
@@ -189,8 +192,8 @@ export function PainelCalibracao({ pivoId, tela, podeEditar, acao, recusa, leitu
     return (
       <div style={{ padding: '20px 24px 28px 24px', ...col(10) }}>
         <div role="status" style={{ ...s.card, padding: '14px 16px', ...col(4) }}>
-          <span style={{ fontSize: 15, fontWeight: 800 }}>Pivô sem encoder</span>
-          <span style={{ fontSize: 14, color: NX.mudo }}>Escolha o encoder e a resolução na aba Configuração (Posição do pivô). Depois volte aqui para calibrar o ângulo.</span>
+          <span style={{ fontSize: 14, fontWeight: 700 }}>Pivô sem encoder gravado: escolha o encoder e a resolução em Posição do pivô, salve e volte aqui.</span>
+          {onVoltar && <button type="button" onClick={onVoltar} style={{ ...botao(false), width: '100%', marginTop: 8 }}>Voltar para a Configuração</button>}
         </div>
       </div>
     );
@@ -334,14 +337,32 @@ export function PainelCalibracao({ pivoId, tela, podeEditar, acao, recusa, leitu
   );
 }
 
-/** A aba ligada na API: carrega, relê a cada 10 s e depois de cada ação. */
-export function CalibracaoPivo({ pivoId, tecnico, invertido, onSalvo }: {
+/** Topo da sub-tela: voltar para a Configuração (alvo de 44 px) e o título. */
+export function CabecalhoCalibracao({ onVoltar }: { onVoltar: () => void }) {
+  // Abre com a Configuração rolada até Posição do pivô: a sub-tela começa do topo.
+  const topo = useRef<HTMLDivElement>(null);
+  useEffect(() => { topo.current?.scrollIntoView?.({ block: 'start' }); }, []);
+  return (
+    <div ref={topo} style={{ padding: '8px 24px 0 24px', ...col(2) }}>
+      <button type="button" onClick={onVoltar}
+        style={{ alignSelf: 'flex-start', minHeight: 44, minWidth: 44, display: 'inline-flex', alignItems: 'center', gap: 6, paddingRight: 12, fontSize: 15, fontWeight: 800, color: NX.acao }}>
+        <span aria-hidden="true" style={{ fontSize: 20, lineHeight: 1 }}>‹</span>Configuração
+      </button>
+      <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: NX.texto }}>Calibração do ângulo</h2>
+    </div>
+  );
+}
+
+/** A sub-tela ligada na API: carrega, relê a cada 10 s e depois de cada ação. */
+export function CalibracaoPivo({ pivoId, tecnico, invertido, onSalvo, onVoltar }: {
   pivoId: string;
   /** Config técnica no perfil (admin e analistas). A API confere de novo em `pode_editar`. */
   tecnico: boolean;
   invertido?: boolean | null;
   /** Gravou ou restaurou: a ficha relê estado e configuração (o desenho passa a ter ângulo). */
   onSalvo: () => void;
+  /** "‹ Configuração": fecha a sub-tela e volta para a aba Configuração. */
+  onVoltar: () => void;
 }) {
   const [tela, setTela] = useState<CalibracaoTela | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -419,18 +440,20 @@ export function CalibracaoPivo({ pivoId, tecnico, invertido, onSalvo }: {
   const salvar = (c: CorpoCalibracao) => gravar('salvar', () => api.post(`/pivos/${pivoId}/calibracao`, c), 'Calibração salva', 'Calibração não salva');
   const restaurar = () => gravar('restaurar', () => api.post(`/pivos/${pivoId}/calibracao/restaurar`), 'Calibração anterior restaurada', 'Calibração não restaurada');
 
-  if (!tela) {
-    return (
-      <div style={{ padding: '20px 24px 28px 24px', ...col(10) }}>
-        <div role="status" style={{ ...s.card, padding: '14px 16px', fontSize: 14, color: NX.mudo }}>
-          {erro ? `Não foi possível carregar a calibração: ${erro}` : 'Carregando…'}
-        </div>
-      </div>
-    );
-  }
   return (
-    <PainelCalibracao key={versao} pivoId={pivoId} tela={tela} podeEditar={tecnico && tela.pode_editar === true} acao={acao}
-      recusa={recusa} leituraVenceu={tinhaLeitura && !lida && !recusa} invertido={invertido} erro={erro}
-      onLer={ler} onSalvar={salvar} onRestaurar={restaurar} />
+    <>
+      <CabecalhoCalibracao onVoltar={onVoltar} />
+      {!tela ? (
+        <div style={{ padding: '20px 24px 28px 24px', ...col(10) }}>
+          <div role="status" style={{ ...s.card, padding: '14px 16px', fontSize: 14, color: NX.mudo }}>
+            {erro ? `Não foi possível carregar a calibração: ${erro}` : 'Carregando…'}
+          </div>
+        </div>
+      ) : (
+        <PainelCalibracao key={versao} pivoId={pivoId} tela={tela} podeEditar={tecnico && tela.pode_editar === true} acao={acao}
+          recusa={recusa} leituraVenceu={tinhaLeitura && !lida && !recusa} invertido={invertido} erro={erro}
+          onLer={ler} onSalvar={salvar} onRestaurar={restaurar} onVoltar={onVoltar} />
+      )}
+    </>
   );
 }

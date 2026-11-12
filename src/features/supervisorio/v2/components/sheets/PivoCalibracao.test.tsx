@@ -1,10 +1,12 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { PainelCalibracao } from './PivoCalibracao';
-import { MapaPivo } from './PivoSheet';
+import { CabecalhoCalibracao, PainelCalibracao } from './PivoCalibracao';
+import { MapaPivo, SecaoEncoder } from './PivoSheet';
+import { corpoParametros, parametrosEmJogo } from './pivoConfigContas';
 import type { Calibracao, CalibracaoTela, CorpoCalibracao } from './pivoCalibracaoContas';
 
-// NEXON-103 — aba Calibração do pivô (sem rede: a PainelCalibracao recebe o que o GET devolveu)
+// NEXON-103 — Calibração do ângulo do pivô, sub-tela da Configuração (sem rede: a PainelCalibracao
+// recebe o que o GET devolveu), a linha que a abre em Posição do pivô, o que a Configuração grava
 // e o desenho do pivô (seta de sentido, parado em cinza, sem leitura, sem calibração).
 
 const CAL: Calibracao = {
@@ -48,13 +50,26 @@ function preencher() {
   digitar('Posição da ponta · longitude', '-47,9970000');
 }
 
-describe('aba Calibração', () => {
-  it('pivô sem encoder: explica onde escolher e não mostra o formulário', () => {
-    abrir({ encoder: null });
-    expect(screen.getByText('Pivô sem encoder')).toBeTruthy();
-    expect(screen.getByText(/Escolha o encoder e a resolução na aba Configuração/)).toBeTruthy();
+describe('Calibração do ângulo (sub-tela da Configuração)', () => {
+  it('topo da sub-tela: "‹ Configuração" volta e o título diz onde a pessoa está', () => {
+    const onVoltar = vi.fn();
+    render(<CabecalhoCalibracao onVoltar={onVoltar} />);
+    expect(screen.getByRole('heading', { name: 'Calibração do ângulo' })).toBeTruthy();
+    const voltar = screen.getByRole('button', { name: 'Configuração' });
+    expect(voltar.textContent).toBe('‹Configuração');
+    expect(voltar.style.minHeight).toBe('44px');
+    fireEvent.click(voltar);
+    expect(onVoltar).toHaveBeenCalledTimes(1);
+  });
+
+  it('pivô sem encoder gravado: diz o que fazer, volta para a Configuração e não mostra o formulário', () => {
+    const onVoltar = vi.fn();
+    abrir({ encoder: null }, { onVoltar });
+    expect(screen.getByText('Pivô sem encoder gravado: escolha o encoder e a resolução em Posição do pivô, salve e volte aqui.')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Salvar calibração' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Ler encoder' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Voltar para a Configuração' }));
+    expect(onVoltar).toHaveBeenCalledTimes(1);
   });
 
   it('sem calibração: avisa e mostra a leitura bruta', () => {
@@ -201,6 +216,152 @@ describe('aba Calibração', () => {
       fireEvent.click(screen.getAllByRole('button', { name: 'Usar localização atual' })[0]);
       expect(screen.getByRole('alert').textContent).toMatch(/Localização negada/);
       expect(campo('Posição do centro · latitude').value).toBe('');
+    });
+  });
+});
+
+describe('Configuração → Posição do pivô', () => {
+  // 21:05 no fuso de quem roda o teste: a linha mostra dia/mês e hora locais.
+  const GRAVADA_EM = new Date(2026, 10, 11, 21, 5).toISOString();
+  const LIDO_EM = new Date(2026, 10, 12, 8, 30).toISOString();
+  const ENC = { id: 'e1', nome: 'Encoder_1', bruto: 150, lido_em: LIDO_EM };
+  type Props = Parameters<typeof SecaoEncoder>[0];
+  const POS: NonNullable<Props['posicao']> = {
+    fonte: 'encoder', angulo: 46.9, angulo_sem_zero: null, bruto: 150, lido_em: LIDO_EM, motivo: null,
+    encoder: { equipamento_id: 'e1', resolucao: 360, invertido: false, zero: 0 }, sem_calibracao: false,
+    calibracao: { id: 'c1', az_cal: 43.87, bruto_cal: 147, sentido: 1, criado_em: GRAVADA_EM },
+  };
+  const SEM_CAL: NonNullable<Props['posicao']> = { ...POS, angulo: null, sem_calibracao: true, calibracao: null, motivo: 'Sem calibração: mostrando só a leitura bruta do encoder' };
+  function secaoEncoder(props: Partial<Props> = {}) {
+    const onCalibrar = vi.fn();
+    render(
+      <SecaoEncoder encs={[ENC]} enc={{ id: 'e1', res: '360' }} setEnc={() => {}} encSel={ENC} encRes={360} encRuim={false} ro={false}
+        zero="" setZero={() => {}} gravado={{ id: 'e1', res: 360 }} posicao={POS} onCalibrar={onCalibrar} {...props} />,
+    );
+    return { onCalibrar };
+  }
+  const botao = (nome: string) => screen.getByRole('button', { name: nome }) as HTMLButtonElement;
+
+  it('com calibração: resumo na linha, "Recalibrar" abre a sub-tela e a leitura mostra o ângulo calibrado', () => {
+    const { onCalibrar } = secaoEncoder();
+    expect(screen.getByText('Calibração do ângulo')).toBeTruthy();
+    expect(screen.getByText('Azimute 43,9° · leitura 147 · Horário · 11/11 21:05')).toBeTruthy();
+    expect(botao('Recalibrar').disabled).toBe(false);
+    fireEvent.click(botao('Recalibrar'));
+    expect(onCalibrar).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('46,9°')).toBeTruthy();
+    expect(screen.getByText('Contagem 150 · 12/11 08:30')).toBeTruthy();
+  });
+
+  it('sem calibração: avisa em cor de atenção, botão "Calibrar" e só a contagem bruta', () => {
+    secaoEncoder({ posicao: SEM_CAL });
+    const aviso = screen.getByText('Sem calibração: o pivô mostra só a leitura bruta do encoder');
+    expect(aviso.style.color).toBe('#B7791F');
+    expect(botao('Calibrar').disabled).toBe(false);
+    expect(screen.getByText('—°')).toBeTruthy();
+    expect(screen.getByText('Contagem 150 · 12/11 08:30')).toBeTruthy();
+  });
+
+  it('zero e sentido não ficam mais na Configuração de pivô com encoder', () => {
+    secaoEncoder();
+    expect(screen.queryByText('Sentido invertido')).toBeNull();
+    expect(screen.queryByText('Correção do ângulo zero')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Zerar aqui' })).toBeNull();
+    expect(screen.queryByText(/aba Calibração/)).toBeNull();
+  });
+
+  it('ordem: Encoder → Resolução → Calibração do ângulo → Leitura agora', () => {
+    secaoEncoder();
+    const texto = document.body.textContent ?? '';
+    const pos = ['Encoder absoluto', 'Resolução', 'Calibração do ângulo', 'Leitura agora'].map((r) => texto.indexOf(r));
+    expect(pos.every((i) => i >= 0)).toBe(true);
+    expect([...pos].sort((a, b) => a - b)).toEqual(pos);
+  });
+
+  it.each([
+    ['encoder escolhido e não salvo', { gravado: { id: null, res: null }, posicao: null }],
+    ['encoder trocado e não salvo', { gravado: { id: 'e0', res: 360 } }],
+    ['resolução trocada e não salva', { gravado: { id: 'e1', res: 4096 } }],
+    ['resolução vazia', { enc: { id: 'e1', res: '' }, encRes: null, encRuim: true }],
+  ] as Array<[string, Partial<Props>]>)('%s: botão desabilitado com o motivo no subtítulo', (_caso, props) => {
+    const { onCalibrar } = secaoEncoder(props);
+    expect(screen.getByText('Salve o encoder e a resolução para calibrar')).toBeTruthy();
+    const b = screen.getByRole('button', { name: /^(Calibrar|Recalibrar)$/ }) as HTMLButtonElement;
+    expect(b.disabled).toBe(true);
+    fireEvent.click(b);
+    expect(onCalibrar).not.toHaveBeenCalled();
+    // sem encoder gravado igual ao da tela, o ângulo do estado não é deste encoder
+    expect(screen.getByText('—°')).toBeTruthy();
+  });
+
+  it('outra alteração não salva na Configuração: salvar antes (a sub-tela descartaria o rascunho)', () => {
+    secaoEncoder({ pendente: true });
+    expect(screen.getByText('Salve as alterações desta tela para abrir a calibração')).toBeTruthy();
+    expect(botao('Recalibrar').disabled).toBe(true);
+  });
+
+  it('perfil só leitura: o botão vira "Ver"', () => {
+    const { onCalibrar } = secaoEncoder({ ro: true });
+    fireEvent.click(botao('Ver'));
+    expect(onCalibrar).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('button', { name: 'Recalibrar' })).toBeNull();
+  });
+
+  it('alvo de toque do botão: 44 px, sem encolher nem quebrar linha', () => {
+    secaoEncoder();
+    const b = botao('Recalibrar');
+    expect(b.style.height).toBe('44px');
+    expect(b.style.whiteSpace).toBe('nowrap');
+    expect(b.style.flex).toMatch(/^(none|0 0 auto)$/);
+  });
+
+  it('pivô sem encoder: a "Correção do ângulo zero" antiga continua, sem linha de calibração', () => {
+    const setZero = vi.fn();
+    secaoEncoder({ enc: { id: '', res: '' }, encSel: null, encRes: null, gravado: { id: null, res: null }, posicao: null, zero: '30', setZero });
+    const zero = screen.getByLabelText(/Correção do ângulo zero/) as HTMLInputElement;
+    expect(zero.value).toBe('30');
+    fireEvent.change(zero, { target: { value: '45' } });
+    expect(setZero).toHaveBeenCalledWith('45');
+    expect(screen.queryByText('Calibração do ângulo')).toBeNull();
+    expect(screen.queryByText('Leitura agora')).toBeNull();
+  });
+
+  describe('o que a Configuração grava (PUT /pivos/:id/config)', () => {
+    const DIGITADO: Record<string, number | null> = { pressao_minima: 2, lamina_100: 6.5, tempo_volta_100: 21, percentimetro_ciclo_s: 60, travado_min: 10, correcao_angulo_zero: 30 };
+    const num = (k: string) => DIGITADO[k] ?? null;
+    const GRAVADOS: Parameters<typeof corpoParametros>[2] = {
+      pressao_minima: 2, lamina_100: 6.5, tempo_volta_100: 21, correcao_angulo_zero: -103.13, direcionamento: 'fisico', valvula_ton_id: null, valvula_bo: null,
+      encoder_equipamento_id: 'e1', encoder_resolucao: 360, encoder_invertido: true,
+    };
+    const chaves = (enc: string, calibrado: boolean) => parametrosEmJogo(enc, calibrado).map((p) => p.key as string);
+
+    it.each([[false], [true]])('com encoder (calibração vigente: %s): zero e sentido não entram no diff nem no corpo', (calibrado) => {
+      expect(chaves('e1', calibrado)).not.toContain('correcao_angulo_zero');
+      expect(chaves('e1', calibrado)).toContain('travado_min');
+      const corpo = corpoParametros(num, { id: 'e1', res: 4096 }, GRAVADOS, { travadoMudou: false, calibrado });
+      expect(corpo).toEqual({ pressao_minima: 2, lamina_100: 6.5, tempo_volta_100: 21, percentimetro_ciclo_s: 60, encoder_equipamento_id: 'e1', encoder_resolucao: 4096 });
+      expect(corpo).not.toHaveProperty('correcao_angulo_zero');
+      expect(corpo).not.toHaveProperty('encoder_invertido');
+    });
+
+    it('sem encoder: o zero legado segue no diff e no corpo, como antes', () => {
+      expect(chaves('', false)).toContain('correcao_angulo_zero');
+      expect(chaves('', false)).not.toContain('travado_min');
+      expect(corpoParametros(num, { id: '', res: null }, { ...GRAVADOS, encoder_equipamento_id: null, encoder_invertido: false }, { travadoMudou: false, calibrado: false }))
+        .toEqual({ pressao_minima: 2, lamina_100: 6.5, tempo_volta_100: 21, percentimetro_ciclo_s: 60, encoder_equipamento_id: null, encoder_resolucao: 360, correcao_angulo_zero: 30, encoder_invertido: false });
+    });
+
+    it('tirando o encoder de um pivô calibrado: zero e sentido ficam fora (a API recusa com calibração vigente)', () => {
+      expect(chaves('', true)).not.toContain('correcao_angulo_zero');
+      const corpo = corpoParametros(num, { id: '', res: null }, GRAVADOS, { travadoMudou: false, calibrado: true });
+      expect(corpo).not.toHaveProperty('correcao_angulo_zero');
+      expect(corpo).not.toHaveProperty('encoder_invertido');
+      expect(corpo.encoder_equipamento_id).toBeNull();
+    });
+
+    it('"Alarme de pivô travado" só vai quando mudou, arredondado', () => {
+      const corpo = corpoParametros((k) => (k === 'travado_min' ? 12.4 : num(k)), { id: 'e1', res: 360 }, GRAVADOS, { travadoMudou: true, calibrado: true });
+      expect(corpo).toMatchObject({ travado_min: 12 });
     });
   });
 });
