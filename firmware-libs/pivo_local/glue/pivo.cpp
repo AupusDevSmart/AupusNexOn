@@ -316,7 +316,7 @@ static float _anguloDe(float bruto) {
 static void _publicarStatus(pivo_publish_fn pub) {
     const Saidas& o = _m->saidas();
     const Entradas& in = _m->entradas();
-    // Status (spec 7.3), compacto: o satelite LoRa aceita ate' ~120 B de conteudo.
+    // Status (spec 7.3), compacto: o satelite LoRa aceita ate' ~73 B de conteudo (ver abaixo).
     //   o = id da ordem · i = entradas (bit0 BI1 pressao, 1 BI2 tensao, 2 BI3 dir, 3 BI4 esq, 4 BI5 seguranca, 5 BI6 canhao)
     //   et = etapa (0 parado, 1 aguardando pressao/giro, 2 girando) · p = passo da partida (1 pressao, 2 giro)
     //   an = angulo BRUTO do encoder (null = sem leitura) · gp = graus percorridos · al = graus da parada
@@ -325,14 +325,19 @@ static void _publicarStatus(pivo_publish_fn pub) {
     uint8_t bi = (in.pressao ? 1 : 0) | (in.tensao ? 2 : 0) | (in.gir_dir ? 4 : 0) | (in.gir_esq ? 8 : 0) | (in.seguranca ? 16 : 0) | (in.canhao ? 32 : 0);
     uint8_t bo = (o.bomba ? 1 : 0) | (o.valvula ? 2 : 0) | (o.dir ? 4 : 0) | (o.esq ? 8 : 0) | (_perc_on ? 16 : 0) | (o.canhao ? 32 : 0);
     if (_m->girando(millis())) bo |= 64;
-    char an[8];
-    if (_m->temPosicao()) snprintf(an, sizeof(an), "%ld", (long)lroundf(_m->angulo())); else strcpy(an, "null");
+    char an[8] = "";                       // vazio = sem leitura do encoder
+    if (_m->temPosicao()) snprintf(an, sizeof(an), "%ld", (long)lroundf(_m->angulo()));
     const Plano& p = _m->plano();
-    char payload[160];
-    snprintf(payload, sizeof(payload),
-        "{\"o\":\"%s\",\"i\":%u,\"et\":%d,\"p\":%d,\"an\":%s,\"gp\":%ld,\"al\":%lu,\"pm\":%d,\"mo\":%u,\"at\":%u,\"d\":\"%c\",\"a\":%d,\"bo\":%u}",
-        _m->estado() == PARADO ? "" : p.id, bi, (int)_m->estado(), (int)_m->passo(), an, (long)lroundf(_m->percorrido()),
-        (unsigned long)_m->alvo(), (int)o.perc_pm, (unsigned)_m->motivo(), (unsigned)_m->alertas(), p.dir, p.com_agua ? 1 : 0, bo);
+    // POSICIONAL numa string so' (12/11, bancada): o envelope LoRa do satelite gasta ~127 B
+    // (to/from/type/cmd_id/subtopic/ttl) e sobram ~73 B de payload no MTU 200. O JSON com
+    // chaves (108 B) era DESCARTADO no satelite ("envelope montagem falhou") e o NexON so'
+    // via o pivo pela consulta de reserva. Pior caso deste formato: ~58 B.
+    //   s = "et,p,i,bo,an,gp,al,pm,mo,at,d,a,o"   (o backend aceita os dois formatos)
+    char payload[96];
+    snprintf(payload, sizeof(payload), "{\"s\":\"%d,%d,%u,%u,%s,%ld,%lu,%d,%u,%u,%c,%d,%s\"}",
+        (int)_m->estado(), (int)_m->passo(), bi, bo, an, (long)lroundf(_m->percorrido()),
+        (unsigned long)_m->alvo(), (int)o.perc_pm, (unsigned)_m->motivo(), (unsigned)_m->alertas(),
+        p.dir, p.com_agua ? 1 : 0, _m->estado() == PARADO ? "" : p.id);
     if (pub) pub("pivo", payload);
 }
 
@@ -378,6 +383,15 @@ void pivo_tick() {
         if (_m->estado() != PARADO) {
             _m->desligar(M_FALHA_RELES, now);
             Serial.println("[PIVO] FALHA: reles sem controle (I2C) - desligando o pivo");
+        }
+        // Sem controle por 10 s: o rele pode estar PRESO LIGADO (canhao/sentido) e o desligar nao
+        // chega nele. Reinicia a TON: no boot do firmware de pivo todos os reles voltam em OFF
+        // (RELAYS_RESTORE_ON_SW_RESET=0) e o I2C e' reinicializado do zero. Reinicio por software
+        // nao retoma a ordem (so' watchdog retoma) -> motivo "reinicio" no status.
+        if (relays_io_fault_ms() > 10000UL) {
+            Serial.println("[PIVO] reles sem controle ha' 10 s - reiniciando a TON (reles voltam em OFF)");
+            Serial.flush();
+            esp_restart();
         }
     }
     // Reafirma TODAS as saidas do pivo a cada 1 s (nao confia no cache: escrita perdida ou rele

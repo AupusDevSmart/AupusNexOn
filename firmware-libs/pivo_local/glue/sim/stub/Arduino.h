@@ -8,7 +8,7 @@
 extern unsigned long g_millis;
 inline unsigned long millis() { return g_millis; }
 inline void delay(unsigned long ms) { g_millis += ms; }
-struct SerialT { void printf(const char* f, ...) { va_list a; va_start(a, f); vprintf(f, a); va_end(a); } void println(const char* s) { ::printf("%s\n", s); } };
+struct SerialT { void printf(const char* f, ...) { va_list a; va_start(a, f); vprintf(f, a); va_end(a); } void println(const char* s) { ::printf("%s\n", s); } void flush() {} };
 extern SerialT Serial;
 class String {
 public:

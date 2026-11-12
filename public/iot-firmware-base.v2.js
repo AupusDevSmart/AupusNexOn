@@ -195,6 +195,7 @@ uint8_t relays_get_state();
 // Anti-travamento (C3/C4): confere os reles no I2C; true = sem controle dos reles.
 bool relays_io_fault();
 void relays_health_tick();
+unsigned long relays_io_fault_ms();
 
 #endif
 `,
@@ -237,6 +238,7 @@ static uint8_t _state = 0;
 uint32_t diag_i2c_resets = 0;
 static bool _ioFault = false;
 static unsigned long _lastHealth = 0;
+static unsigned long _faultDesde = 0;   // reles sem controle desde (0 = ok)
 static uint8_t _pinOf(uint8_t num) { return num; }
 static uint8_t _bitOf(uint8_t num) { return num; }
 // Le o LATCH de saida (OLAT, reg 0x0A do MCP23008): prova que a escrita chegou ao chip.
@@ -272,6 +274,7 @@ static void _i2cBusClear() {
     digitalWrite(I2C_SCL, HIGH); delayMicroseconds(5);
     digitalWrite(I2C_SDA, HIGH); delayMicroseconds(5);
     Wire.begin(I2C_SDA, I2C_SCL);
+    Wire.setTimeOut(50);
 }
 extern bool inputs_init();
 static bool _recuperar() {
@@ -289,12 +292,15 @@ static bool _recuperar() {
     bool ok = _conferir();
     if (ok != !_ioFault) {
         _ioFault = !ok;
+        if (!ok) _faultDesde = millis();
         Serial.println(ok ? "[I2C] reles de volta ao estado desejado" : "[I2C] FALHA: reles sem controle (io_falha)");
         bb_log(ok ? "i2c: reles recuperados" : "i2c: FALHA reles sem controle");
     }
     return ok;
 }
 bool relays_io_fault() { return _ioFault; }
+// ms seguidos com os reles sem controle (0 = ok) — o pivo reinicia a TON se nao voltar
+unsigned long relays_io_fault_ms() { return _ioFault ? millis() - _faultDesde : 0; }
 // Chamar a cada volta do laco: confere os reles a cada 2 s (1 transacao I2C).
 void relays_health_tick() {
     if (!_ok) return;
@@ -305,6 +311,7 @@ void relays_health_tick() {
 }
 
 bool relays_init() {
+    Wire.setTimeOut(50);   // I2C morto nao pode custar 1 s por leitura (default do core)
     if (!_mcp.begin_I2C(MCP_OUT_ADDR, &Wire)) return false;
     for (int i = 1; i <= RELAY_COUNT; i++) {
         _mcp.pinMode(i, OUTPUT);
@@ -330,8 +337,13 @@ void relay_set(uint8_t num, bool state) {
     if (!_ok || num < 1 || num > RELAY_COUNT) return;
     // estado DESEJADO primeiro: a recuperacao reaplica o que se quer, nao o que se leu
     if (state) _state |= (1 << _bitOf(num)); else _state &= ~(1 << _bitOf(num));
-    _mcp.digitalWrite(_pinOf(num), state ? HIGH : LOW);
     _rtcRelState = _state;
+    // Barramento em falha: NAO insiste aqui. Cada tentativa custa timeouts de I2C e, com varias
+    // saidas reafirmadas por segundo, o laco travava (LoRa/MQTT surdos, desligar nao chegava —
+    // bancada 12/11, rele do canhao). A recuperacao fica no relays_health_tick (1x a cada 2 s)
+    // e reaplica o estado DESEJADO quando o barramento voltar.
+    if (_ioFault) return;
+    _mcp.digitalWrite(_pinOf(num), state ? HIGH : LOW);
     if (!_conferir()) _recuperar();
 }
 
