@@ -30,17 +30,19 @@ O operador não sabe distinguir "não existe" de "existe e está sem leitura".
 1. **"Existe" = há uma fonte de dados configurada**, não "há um símbolo no unifilar".
 2. **Existe mas sem leitura recente continua na tela**, com "sem comunicação · última leitura há X".
    Esconder um medidor offline esconderia o defeito.
-3. **Carga só existe com medição de entrada.** Pelas fórmulas do COA, carga = geração + líquido do
-   medidor. Sem medidor, a carga é **desconhecida**, não zero.
+3. **Sem Power Meter, a carga é desconhecida**, não zero.
 4. **A regra é calculada uma vez no backend.** Web e app só leem o resultado.
+5. **Quem fala de quê não muda**: segue a prática de hoje, que já exibe certo. Inversores → Geração,
+   Power Meter → Carga, medidor da concessionária → Rede, pela categoria do equipamento (a mesma que
+   `useDemandaFluxo` usa). A mudança é só **esconder o que não tem fonte de dados**.
 
 | Capacidade | Existe quando |
 |---|---|
 | `geracao` | inversor(es) com ponto/tópico IoT **ou** fallback de nuvem configurado (Fusion, iSolar, Deye) |
-| `medicao_entrada` | medidor de entrada (`medidor_energia`, A966/SSU, M160, PD666…) ligado a uma TON/tópico |
-| `carga` | `medicao_entrada` existe |
-| `rede` | medidor de entrada **bidirecional** (hoje: categoria BIDIRECIONAL em `useDemandaFluxo`) |
-| `grandezas_eletricas` | medidor de entrada cujo catálogo tem tensões/correntes |
+| `medicao_entrada` | Power Meter ou medidor da concessionária (M160, PD666, A966/SSU…) ligado a uma TON/tópico |
+| `carga` | Power Meter com fonte de dados |
+| `rede` | medidor da concessionária com fonte de dados |
+| `grandezas_eletricas` | medidor (PM ou concessionária) cujo catálogo tem tensões/correntes |
 | `demanda_contratada` | unidade com `demanda_carga` ou `demanda_geracao` preenchida |
 
 Não usar a tensão/corrente dos inversores para preencher Grandezas elétricas: não é o ponto de conexão
@@ -83,8 +85,7 @@ Arquivos: `src/features/supervisorio/components/visao-geral/VisaoGeralUsina.tsx`
 `components/sinoptico-graficos-v2/GraficoDemanda.tsx`, `sinoptico/hooks/useDemandaFluxo.ts`.
 
 1. **`VisaoGeralUsina`**: trocar o `temTon` único por capacidades, bloco a bloco.
-2. **KPIs Tensão / FP / Corrente**: somem sem `medicao_entrada`. "Pot." vira a potência de geração,
-   com rótulo "Geração".
+2. **Faixa de KPIs (Pot. | Tensão | FP | Corr.)**: some inteira sem `medicao_entrada`.
 3. **Grandezas elétricas**: somem sem `grandezas_eletricas`.
 4. **Painel Demanda**: só os medidores que existem (CF → só "Geração"). O layout se ajusta a 1, 2 ou 3
    medidores, sem buraco.
@@ -115,6 +116,4 @@ Aplicar as mesmas regras da seção 5, lendo o mesmo endpoint. Nada de recalcula
    - **Power Meter → Carga.**
    - **Medidor da concessionária → Rede.**
 
-   O Power Meter só entra como Carga da instalação se estiver marcado como **de entrada**: campo novo no
-   cadastro do medidor. PM num circuito interno (só o motor do pivô, só um quadro) aparece apenas na ficha
-   dele, para não esconder parte da carga real.
+   Mantém a prática atual (categoria do equipamento), que já exibia certo. Nada de campo novo no cadastro.
