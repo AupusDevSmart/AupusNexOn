@@ -28,9 +28,8 @@ import {
   type ConfigIrrigacao, type EnvioIrrigacao, type FaixaCanhao, type Parada, type Programacao, type NovaProgramacao, type AbaIrrigacao,
   DIRECAO_LABEL, fmtPct, paradaValida,
 } from './PivoIrrigacao';
-import { usePivoLayout, PIVO_LAYOUTS } from './pivoLayout';
 import type { AgendaItem, ItemPlanilha } from './pivoAgendaPlanilha';
-import { PainelRapido, AtalhosRapidos, rascunhoDe, mudancas, envioDoRascunho, mesmaParada, type Rascunho } from './PivoRapido';
+import { rascunhoDe, mudancas, mesmaParada } from './PivoRapido';
 import { corpo, erroMsg, col, secao, Linha } from './pivoPartes';
 import { CalibracaoPivo } from './PivoCalibracao';
 import { grausTxt, sentidoTxt } from './pivoCalibracaoContas';
@@ -446,9 +445,6 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   // stop = desligar · start = ligar pelo Planejamento · restart = pivô ligado reinicia com as
   // novas opções · live = só o percentímetro mudou (a TON troca sem desligar).
   const [confirmKind, setConfirmKind] = useState<'stop' | 'start' | 'restart' | 'live'>('start');
-  // Layout em teste só para quem configura (admin e analista): o cliente final fica no Modal.
-  const layoutSalvo = usePivoLayout((x) => x.layout);
-  const layout = perfil.tecnico ? layoutSalvo : 'modal';
   const [irrAba, setIrrAba] = useState<AbaIrrigacao>('simples');
   const [envio, setEnvio] = useState<EnvioIrrigacao | null>(null);
   // Última irrigação enviada por este navegador (a TON só recebe direção e liga/desliga).
@@ -628,7 +624,7 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
         localStorage.setItem(chaveParada(id), JSON.stringify(irrigacao.parada));
       } catch { /* sem storage */ }
       toast.success('Reinício com as novas opções iniciado', { description: 'O pivô desliga e liga de novo — acompanhe em Registros.' });
-      setEnvio(null); setRasc(null);
+      setEnvio(null);
       await carregar();
     } catch (e) {
       toast.error('Não reiniciou — o pivô segue como estava', { description: erroMsg(e) });
@@ -763,7 +759,6 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   // Sem o ponto Percentímetro o NexON não segura o pivô parado: 0 % registrado nunca vira "Parado".
   const semParado = (c: ConfigIrrigacao): ConfigIrrigacao => (!podeParado && !(c.percentual > 0) ? { ...c, percentual: 100, lamina: null } : c);
   const cfgBase: ConfigIrrigacao = semParado(on ? { ...cfgGiro, direcao: direcaoAtual as ConfigIrrigacao['direcao'] } : cfgGiro);
-  const avisoSemRegistro = semRegistro ? 'Pivô ligado fora do NexON: sem irrigação registrada. Confira as opções antes de enviar.' : null;
   // Parada automática em curso (programação por tempo, voltas): o reinício mantém o que falta.
   const paradaSrv = irrSrv?.atual?.parada;
   const paradaAutomatica = on && !!paradaSrv && (paradaSrv.tipo === 'porTempo' || paradaSrv.tipo === 'porVoltas');
@@ -774,14 +769,7 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   // O Planejamento diz se a Parada foi mexida (mesmo valor redigitado = nova, do zero); os cartões
   // da ficha decidem pelo valor.
   const mantemParada = (e: EnvioIrrigacao) => e.manterParada ?? mesmaParada(e.parada, paradaAtual);
-  const baseRapida: Rascunho = rascunhoDe(cfgBase, paradaAtual);
-  const chaveBase = JSON.stringify(baseRapida);
-  const [rasc, setRasc] = useState<Rascunho | null>(null);
-  // A irrigação em curso mudou (outro operador, reinício, percentímetro): o rascunho velho cai.
-  useEffect(() => { setRasc(null); }, [chaveBase]);
-  const rapido = rasc ?? baseRapida;
-  const alteracoes = mudancas(baseRapida, rapido);
-  const rapidoNaFicha = on && layout !== 'modal';
+  const baseRapida = rascunhoDe(cfgBase, paradaAtual);
   // Só o percentímetro mudou e a TON aceita trocar girando: não precisa reiniciar.
   const soPercentual = (e: EnvioIrrigacao) => {
     // Irrigação em curso PARADA (0 % com água, ou só a bomba): voltar a girar é reinício, não troca de
@@ -876,7 +864,7 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
                     onToggle={() => comandarCanhao(canhao.ligado !== 1)} />
                 </div>
               )}
-              {girando && percAtual != null && estado?.pivo.comandos.percentimetro && !rapidoNaFicha && (
+              {girando && percAtual != null && estado?.pivo.comandos.percentimetro && (
                 <div style={{ ...s.card, padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                   <span style={col(2)}>
                     <span style={{ fontSize: 15, fontWeight: 700 }}>Percentímetro</span>
@@ -895,26 +883,7 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
                   )}
                 </div>
               )}
-              {perfil.comandar && rapidoNaFicha && (
-                <>
-                  {layout === 'painel'
-                    ? <PainelRapido valor={rapido} base={baseRapida} onChange={setRasc} lamina100={lamina100} desabilitado={busy || executando} onMaisOpcoes={() => abrirIrr('simples')} aviso={avisoSemRegistro} notaParada={notaParada} podeParado={podeParado} />
-                    : <AtalhosRapidos valor={rapido} base={baseRapida} onChange={setRasc} lamina100={lamina100} desabilitado={busy || executando} onMaisOpcoes={() => abrirIrr('simples')} aviso={avisoSemRegistro} notaParada={notaParada} podeParado={podeParado} />}
-                  {alteracoes.length > 0 && (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, fontSize: 13, color: NX.mudo }}>
-                      <span>{alteracoes.map((m) => `${m.label}: ${m.de} → ${m.para}`).join(' · ')}</span>
-                      <button type="button" onClick={() => setRasc(null)} style={{ fontWeight: 800, color: NX.acao, whiteSpace: 'nowrap' }}>Desfazer</button>
-                    </div>
-                  )}
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button type="button" disabled={busy || desligarOff} onClick={pedirDesligar}
-                      style={{ ...s.cmd(busy || desligarOff ? 'busy' : 'outline'), flex: 1 }}>{busy ? 'Executando…' : 'Desligar'}</button>
-                    <button type="button" disabled={busy || executando || !(alteracoes.length || semRegistro)} onClick={() => pedirModificar(envioDoRascunho(rapido, cfgBase))}
-                      style={{ ...s.cmd(busy || executando || !(alteracoes.length || semRegistro) ? 'busy' : 'primary'), flex: 1 }}>Salvar e enviar</button>
-                  </div>
-                </>
-              )}
-              {perfil.comandar && !rapidoNaFicha && (
+              {perfil.comandar && (
               <button type="button" disabled={busy || cmdBloq} style={cmdStyle}
                 onClick={() => (desligaAgenda ? pedirDesligar() : abrirIrr('simples'))}>{cmdLabel}</button>
               )}
@@ -1084,27 +1053,6 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
 // Configuração: bombeamento + partida + ponta + programação
 // ---------------------------------------------------------------------------
 const numOk = (v: string, min: number, max: number) => { const n = Number(String(v).replace(',', '.')); return v !== '' && Number.isFinite(n) && n >= min && n <= max; };
-
-/** Layout da aba Operação (NEXON-98): três jeitos de editar com o pivô ligado, para testar. Fica
- *  neste navegador — não é configuração do pivô, não entra em "Revisar alterações". Só aparece
- *  para quem tem a configuração técnica (admin e analista): o cliente final não vê opção de teste. */
-function LayoutOperacao() {
-  const layout = usePivoLayout((x) => x.layout);
-  const setLayout = usePivoLayout((x) => x.setLayout);
-  return (
-    <>
-      {secao('LAYOUT DA OPERAÇÃO · TESTE', 4)}
-      <div style={{ ...s.card, padding: '12px 16px', ...col(8) }}>
-        <div role="radiogroup" aria-label="Layout da operação" style={{ display: 'grid', gridTemplateColumns: `repeat(${PIVO_LAYOUTS.length}, minmax(0, 1fr))`, gap: 4, padding: 4, borderRadius: 12, background: NX.seg }}>
-          {PIVO_LAYOUTS.map((l) => (
-            <button key={l.v} type="button" role="radio" aria-checked={layout === l.v} onClick={() => setLayout(l.v)} style={s.dTab(layout === l.v)}>{l.label}</button>
-          ))}
-        </div>
-        <span style={{ fontSize: 13, color: NX.mudo }}>{PIVO_LAYOUTS.find((l) => l.v === layout)?.sub} Vale só neste navegador.</span>
-      </div>
-    </>
-  );
-}
 
 /** Select nativo com a cara do chip do mockup ("Bomba 01 · TON 112 · Casa de bombas ⌄"). */
 function ChipSelect({ value, onChange, label, height = 38, disabled, children }: {
@@ -1428,7 +1376,6 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
 
   return (
     <div style={{ padding: '20px 24px 28px 24px', ...col(10) }}>
-      {perfil.tecnico && <LayoutOperacao />}
       {secao('BOMBEAMENTO', perfil.tecnico ? 14 : 4)}
       <div style={{ ...s.card, padding: '0 16px' }}>
         {conj ? (
