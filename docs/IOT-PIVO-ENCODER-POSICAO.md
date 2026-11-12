@@ -45,7 +45,7 @@ Encoder ──RS485──▶ TON ──MQTT/LoRa──▶ <base>/Encoder_<end>/d
 3. **Endereço:** o encoder não pode ter o mesmo endereço de outro dispositivo no mesmo RS485.
 4. Diagrama IoT: adicionar o nó Encoder, ligar à TON, escolher o modelo e o endereço, salvar e gravar o firmware (ou fazer OTA).
 5. Pivô → **Configuração → Posição do pivô**: escolher o encoder, a resolução do código de compra e salvar.
-6. Abrir a aba **Calibração** do pivô e seguir a seção 5 abaixo. (O "Zerar aqui" da Configuração só vale para pivô sem calibração; com calibração ativa o zero e o sentido ficam travados ali.)
+6. Na mesma seção, depois de salvar o encoder e a resolução, tocar em **Calibrar** na linha "Calibração do ângulo" e seguir a seção 5 abaixo. (O zero e o sentido do encoder vêm só da calibração: "Sentido invertido", "Correção do ângulo zero" e "Zerar aqui" saíram da Configuração em 12/11/2026.)
 7. Girar em **Direita**: o ângulo tem de **aumentar**. Se diminuir, o NexON abre o alarme "Sentido invertido — recalibrar": refazer a calibração com o outro sentido.
 
 ## 4. Conferir na bancada
@@ -67,7 +67,7 @@ A contagem do encoder não é o azimute. A calibração associa **uma leitura** 
 Com o encoder de 360 posições o fator é 1. Na TON a mesma conta fica guardada como resolução + sentido + zero
 (`pivo enc <res> <inv> <zero>`, com `zero = az_cal − s·bruto_cal·360/res`): a placa calcula sozinha, sem internet.
 
-**Na tela (pivô → Calibração), só Admin e analistas:**
+**Na tela (pivô → Configuração → Posição do pivô → Calibrar), só Admin e analistas:**
 1. **Ler encoder** — a TON faz 5 leituras Modbus seguidas (`pivo encler`); só vale se todas vierem, iguais ou variando ±1.
 2. **Sentido** — Horário se a contagem aumenta com o pivô andando no horário (visto de cima); Anti-horário se diminui.
 3. **Centro** e **ponta** (a última torre), em graus decimais, digitados ou pela localização do aparelho. Distância mínima 50 m.
