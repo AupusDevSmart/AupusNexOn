@@ -775,7 +775,7 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   const cfgBase: ConfigIrrigacao = semParado(on ? { ...cfgGiro, direcao: direcaoAtual as ConfigIrrigacao['direcao'] } : cfgGiro);
   // Parada automática em curso (programação por tempo, voltas): o reinício mantém o que falta.
   const paradaSrv = irrSrv?.atual?.parada;
-  const paradaAutomatica = on && !!paradaSrv && (paradaSrv.tipo === 'porTempo' || paradaSrv.tipo === 'porVoltas');
+  const paradaAutomatica = on && !!paradaSrv && (paradaSrv.tipo === 'porTempo' || paradaSrv.tipo === 'porVoltas' || paradaSrv.tipo === 'porGraus');
   const notaParada = paradaAutomatica
     ? `Parada em curso mantida${irrSrv?.parar_em ? `: término previsto ${new Date(irrSrv.parar_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : ''}${irrSrv?.atual?.programacao ? ` · ${irrSrv.atual.programacao.nome}` : ''}.`
     : null;
@@ -801,7 +801,7 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
     : confirmKind === 'live' && envio ? (ehParado(envio.config) ? `Deixar ${titulo} parado?` : `Mudar o percentímetro para ${fmtPct(envio.config.percentual)}%?`)
       : confirmKind === 'restart' ? `Reiniciar ${titulo} com as novas opções?`
         : envio?.inicio ? `Agendar o início de ${titulo}?` : envio && ehParado(envio.config) ? `Ligar ${titulo} parado?` : `Ligar ${titulo}?`;
-  const paradaTxt = (p: Parada) => (p.tipo === 'porAngulo' ? `para em ${p.angulo}°` : p.tipo === 'porVoltas' ? `${p.voltas} volta${p.voltas > 1 ? 's' : ''}`
+  const paradaTxt = (p: Parada) => (p.tipo === 'porAngulo' ? `para em ${p.angulo}°` : p.tipo === 'porGraus' ? `anda ${p.graus}°` : p.tipo === 'porVoltas' ? `${p.voltas} volta${p.voltas > 1 ? 's' : ''}`
     : p.tipo === 'porTempo' ? `para em ${p.minutos} min` : 'sem parada');
   const vaiParado = !!envio && ehParado(envio.config);
   const partida = !b ? '' : vaiParado ? ' A bomba liga e o pivô fica parado, irrigando no lugar.' : ' A bomba liga e o pivô gira após a pressurização.';

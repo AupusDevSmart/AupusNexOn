@@ -20,10 +20,11 @@ export const rascunhoDe = (c: ConfigIrrigacao, parada: Parada): Rascunho => ({
 
 export const mesmaParada = (a: Parada, b: Parada) => a.tipo === b.tipo
   && (a.tipo !== 'porAngulo' || a.angulo === (b as typeof a).angulo)
+  && (a.tipo !== 'porGraus' || a.graus === (b as typeof a).graus)
   && (a.tipo !== 'porVoltas' || a.voltas === (b as typeof a).voltas)
   && (a.tipo !== 'porTempo' || a.minutos === (b as typeof a).minutos);
 
-const paradaTxt = (p: Parada) => (p.tipo === 'porAngulo' ? `para em ${p.angulo}°` : p.tipo === 'porVoltas' ? `${p.voltas} volta${p.voltas > 1 ? 's' : ''}`
+const paradaTxt = (p: Parada) => (p.tipo === 'porAngulo' ? `para em ${p.angulo}°` : p.tipo === 'porGraus' ? `anda ${p.graus}°` : p.tipo === 'porVoltas' ? `${p.voltas} volta${p.voltas > 1 ? 's' : ''}`
   : p.tipo === 'porTempo' ? `${p.minutos} min` : 'sem parar');
 const pctTxt = (p: number) => (p > 0 ? `${fmtPct(p)}%` : 'Parado (0%)');
 
@@ -164,16 +165,22 @@ export function PainelRapido({ valor, base, onChange, lamina100, desabilitado, o
         <span style={rotulo}>Parada</span>
         <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <select aria-label="Parada" disabled={desabilitado} value={p.tipo} style={s.select}
-            onChange={(e) => onChange({ ...valor, parada: e.target.value === 'porAngulo' ? { tipo: 'porAngulo', angulo: 0 } : e.target.value === 'porVoltas' ? { tipo: 'porVoltas', voltas: 1 }
+            onChange={(e) => onChange({ ...valor, parada: e.target.value === 'porGraus' ? { tipo: 'porGraus', graus: 30 } : e.target.value === 'porAngulo' ? { tipo: 'porAngulo', angulo: 0 } : e.target.value === 'porVoltas' ? { tipo: 'porVoltas', voltas: 1 }
               : e.target.value === 'porTempo' ? { tipo: 'porTempo', minutos: 60 } : { tipo: 'semParar' } })}>
             <option value="semParar">Sem parar</option>
-            {(!parado || p.tipo === 'porAngulo') && <option value="porAngulo">Por ângulo</option>}
+            {(!parado || p.tipo === 'porGraus') && <option value="porGraus">Andar X°</option>}
+            {(!parado || p.tipo === 'porAngulo') && <option value="porAngulo">Parar no ângulo</option>}
             {(!parado || p.tipo === 'porVoltas') && <option value="porVoltas">Por voltas</option>}
             <option value="porTempo">Por tempo</option>
           </select>
           {p.tipo === 'porAngulo' && (
             <><input inputMode="numeric" aria-label="Ângulo de parada" disabled={desabilitado} value={p.angulo} style={s.campo(!!desabilitado, false, 60)}
               onChange={(e) => onChange({ ...valor, parada: { tipo: 'porAngulo', angulo: Math.min(359, Math.max(0, Number(e.target.value) || 0)) } })} />
+              <span style={{ fontSize: 14, color: NX.mudo }}>°</span></>
+          )}
+          {p.tipo === 'porGraus' && (
+            <><input inputMode="numeric" aria-label="Graus a andar" disabled={desabilitado} value={p.graus} style={s.campo(!!desabilitado, false, 60)}
+              onChange={(e) => onChange({ ...valor, parada: { tipo: 'porGraus', graus: Math.min(3600, Math.max(1, Math.round(Number(e.target.value)) || 1)) } })} />
               <span style={{ fontSize: 14, color: NX.mudo }}>°</span></>
           )}
           {p.tipo === 'porVoltas' && (

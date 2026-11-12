@@ -31,7 +31,7 @@ export interface ConfigIrrigacao {
 
 /** 59.7 → "59,7"; 60 → "60". */
 export const fmtPct = (p: number) => (Number.isInteger(p) ? String(p) : p.toFixed(1).replace('.', ','));
-export type Parada = { tipo: 'semParar' } | { tipo: 'porAngulo'; angulo: number } | { tipo: 'porVoltas'; voltas: number } | { tipo: 'porTempo'; minutos: number };
+export type Parada = { tipo: 'semParar' } | { tipo: 'porAngulo'; angulo: number } | { tipo: 'porGraus'; graus: number } | { tipo: 'porVoltas'; voltas: number } | { tipo: 'porTempo'; minutos: number };
 export type Modo = 'simples' | 'angulo' | 'segmentos';
 export interface EnvioIrrigacao {
   modo: Modo; config: ConfigIrrigacao; parada: Parada; inicio: Date | null; anguloFinal?: number; segmento?: number;
@@ -337,7 +337,7 @@ interface Props {
 
 /** Parada da irrigação em curso → a que o formulário edita (tipo desconhecido vira "sem parar"). */
 export const paradaValida = (p?: Parada | { tipo: string } | null): Parada =>
-  (p && (p.tipo === 'porAngulo' || p.tipo === 'porVoltas' || p.tipo === 'porTempo') ? (p as Parada) : { tipo: 'semParar' });
+  (p && (p.tipo === 'porAngulo' || p.tipo === 'porGraus' || p.tipo === 'porVoltas' || p.tipo === 'porTempo') ? (p as Parada) : { tipo: 'semParar' });
 
 /** Parado = ligado com água e percentímetro em 0 %: irriga no lugar, sem girar. */
 export const ehParado = (c: { semAgua: boolean; percentual: number }) => !c.semAgua && !(c.percentual > 0);
@@ -359,7 +359,7 @@ export function previsao(config: ConfigIrrigacao, parada: Parada, direcao: Direc
   }
   // Parado (0 %) não percorre ângulo nem volta: só para por tempo ou na mão.
   if (ehParado(config)) return { texto: 'Sem previsão de término (parado não chega ao ângulo)', fim: null as Date | null };
-  let delta = parada.tipo === 'porVoltas' ? 360 * parada.voltas : direcao === 'Reverso' ? norm(atual - parada.angulo) : norm(parada.angulo - atual);
+  let delta = parada.tipo === 'porVoltas' ? 360 * parada.voltas : parada.tipo === 'porGraus' ? parada.graus : direcao === 'Reverso' ? norm(atual - parada.angulo) : norm(parada.angulo - atual);
   if (delta <= 0) delta += 360;
   const horas = (delta / 360) * tempoVolta100 * (config.semAgua ? 1 : 100 / config.percentual);
   const fim = new Date(inicio.getTime() + horas * 3600000);
@@ -641,11 +641,13 @@ export function IrrigacaoAvancada({
                     const seg = e.target.value === 'porSegmento';
                     setPorSegmento(seg);
                     if (seg) setSegSel(segmentoDoGiro(atual, cfg.direcao));   // começa no segmento onde o pivô está
-                    mudarParada(seg ? { tipo: 'semParar' } : e.target.value === 'porAngulo' ? { tipo: 'porAngulo', angulo: 0 } : e.target.value === 'porVoltas' ? { tipo: 'porVoltas', voltas: 1 }
+                    mudarParada(seg ? { tipo: 'semParar' } : e.target.value === 'porGraus' ? { tipo: 'porGraus', graus: 30 } : e.target.value === 'porAngulo' ? { tipo: 'porAngulo', angulo: 0 } : e.target.value === 'porVoltas' ? { tipo: 'porVoltas', voltas: 1 }
                     : e.target.value === 'porTempo' ? { tipo: 'porTempo', minutos: 60 } : { tipo: 'semParar' }); }}>
                   {parada.tipo === 'semParar' && !porSegmento && <option value="semParar">Sem parar</option>}
                   {/* parado não oferece ângulo/voltas — mas mostra a que já está em curso */}
-                  {(!parado || parada.tipo === 'porAngulo') && <option value="porAngulo">Por ângulo</option>}
+                  {/* "Andar X°": o valor é o quanto andar a partir de onde está (decisão 12/11) */}
+                  {(!parado || parada.tipo === 'porGraus') && <option value="porGraus">Andar X°</option>}
+                  {(!parado || parada.tipo === 'porAngulo') && <option value="porAngulo">Parar no ângulo</option>}
                   {!parado && <option value="porSegmento">Por segmento</option>}
                   {(!parado || parada.tipo === 'porVoltas') && <option value="porVoltas">Por voltas</option>}
                   <option value="porTempo">Por tempo</option>
@@ -655,6 +657,12 @@ export function IrrigacaoAvancada({
                   <><span style={{ fontSize: 15, fontWeight: 800 }}>·</span>
                     <input inputMode="numeric" aria-label="Ângulo de parada" value={parada.angulo} style={{ ...inputCaixa, width: 40, textAlign: 'right' }}
                       onChange={(e) => mudarParada({ tipo: 'porAngulo', angulo: Math.min(359, Math.max(0, Number(e.target.value) || 0)) })} />
+                    <span style={{ fontSize: 15, fontWeight: 800 }}>°</span></>
+                )}
+                {parada.tipo === 'porGraus' && (
+                  <><span style={{ fontSize: 15, fontWeight: 800 }}>·</span>
+                    <input inputMode="numeric" aria-label="Graus a andar" value={parada.graus} style={{ ...inputCaixa, width: 48, textAlign: 'right' }}
+                      onChange={(e) => mudarParada({ tipo: 'porGraus', graus: Math.min(3600, Math.max(1, Math.round(Number(e.target.value)) || 1)) })} />
                     <span style={{ fontSize: 15, fontWeight: 800 }}>°</span></>
                 )}
                 {parada.tipo === 'porVoltas' && (
