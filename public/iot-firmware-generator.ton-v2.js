@@ -4633,7 +4633,18 @@ static void lora_handle_rx(const char* raw) {
 
     // Dedup: gateway pode reenviar mesmo cmd_id se nosso ACK se perdeu.
     // Resposta correta e' re-enviar ack 'duplicate' (gateway libera pendente).
+    // Copia do ULTIMO comando executado: re-envia o RESULTADO dele (ok/erro + msg), nao so'
+    // "already_seen" — o ack original pode ter colidido no ar com o reenvio do gateway
+    // (comando demorado, ex.: "pivo encler" com 5 leituras) e o NexON ficava sem a resposta.
+    static char _ult_cmd_id[48] = {0};
+    static char _ult_msg[64] = {0};
+    static bool _ult_ok = false;
     if (cmd_id[0] && _sat_seen_or_add(cmd_id, env["type"] | "", from)) {
+        if (_ult_cmd_id[0] && strcmp(_ult_cmd_id, cmd_id) == 0) {
+            Serial.printf("[LORA-SAT] Duplicado cmd_id=%s — re-enviando o resultado (%s)\\n", cmd_id, _ult_msg);
+            lora_send_envelope(from, "ack", cmd_id, _ult_ok ? "ok" : "error", _ult_msg, nullptr, nullptr);
+            return;
+        }
         Serial.printf("[LORA-SAT] Duplicado cmd_id=%s — re-enviando ack 'duplicate'\\n", cmd_id);
         lora_send_envelope(from, "ack", cmd_id, "duplicate", "already_seen", nullptr, nullptr);
         return;
@@ -4657,6 +4668,9 @@ static void lora_handle_rx(const char* raw) {
     bool ok = _process_command_inner(effective, msg, sizeof(msg));
     Serial.printf("[LORA-SAT][CMD] %s -> %s (%s)\\n", effective, ok ? "OK" : "FAIL", msg);
     if (cmd_id[0]) {
+        snprintf(_ult_cmd_id, sizeof(_ult_cmd_id), "%s", cmd_id);
+        snprintf(_ult_msg, sizeof(_ult_msg), "%s", msg);
+        _ult_ok = ok;
         lora_send_envelope(from, "ack", cmd_id, ok ? "ok" : "error", msg, nullptr, nullptr);
     }
 }
