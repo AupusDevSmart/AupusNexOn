@@ -63,6 +63,7 @@ static bool     _ativo_nvs = false;
 // Satelite LoRa mestre-puxa: frame espontaneo colide com o POLL do gateway (e com as
 // entradas, que mudam no mesmo instante). O status vai so' na resposta ao POLL.
 static bool     _so_poll = false;
+static unsigned long _reafirma_ms = 0;   // ultima reafirmacao das saidas do pivo
 static uint8_t  _bi_sem_atual = 0;       // entradas semanticas do ultimo pivo_tick()
 // Satelite: mudanca de ESTADO (parado/ligando/irrigando/desligando) vai na hora (1 frame) + 1 repeticao
 // em 8 s (o 1o pode colidir). Rara: nao satura o radio como os eventos de cada passo.
@@ -278,13 +279,36 @@ void pivo_tick() {
     }
     _m->tick(now, in);
 
-    // Saidas (mantidas) + ciclo do percentimetro
+    // Expansor de reles sem controle (I2C): o rele pode estar preso em qualquer estado. Pivo
+    // ligado -> desliga com falha; parado -> recusa ligar (pivo_cmd). Nao da' para confiar na saida.
+    if (relays_io_fault()) {
+        if (_m->estado() == LIGANDO || _m->estado() == IRRIGANDO) {
+            _m->desligar("falha_reles", now);
+            strncpy(_falha_boot, "falha_reles", sizeof(_falha_boot) - 1);
+            Serial.println("[PIVO] FALHA: reles sem controle (I2C) - desligando o pivo");
+        }
+    }
+    // Reafirma TODAS as saidas do pivo a cada 1 s (nao confia no cache: escrita perdida ou rele
+    // mexido por fora volta ao estado que a sequencia quer em ate' 1 s).
+    if (now - _reafirma_ms >= 1000UL) {
+        _reafirma_ms = now ? now : 1;
+        for (int k = 0; k < 6; k++) _apl[k] = -1;
+    }
+    // Saidas (mantidas) + ciclo do percentimetro. Ordem: DESLIGA antes de ligar, e os dois
+    // sentidos nunca em alto juntos (intertravamento por software alem da lib).
     const Saidas& o = _m->saidas();
-    _setBo(BO_BOMBA, o.bomba);
-    _setBo(BO_VALVULA, o.valvula);
-    _setBo(BO_DIR, o.dir);
-    _setBo(BO_ESQ, o.esq);
-    _setBo(BO_CANHAO, o.canhao);
+    bool qDir = o.dir, qEsq = o.esq;
+    if (qDir && qEsq) { qDir = false; qEsq = false; Serial.println("[PIVO] BUG: dir e esq pedidos juntos - os dois em OFF"); }
+    if (!qDir) _setBo(BO_DIR, false);
+    if (!qEsq) _setBo(BO_ESQ, false);
+    if (!o.bomba) _setBo(BO_BOMBA, false);
+    if (!o.valvula) _setBo(BO_VALVULA, false);
+    if (!o.canhao) _setBo(BO_CANHAO, false);
+    if (qDir) _setBo(BO_DIR, true);   // o oposto ja' foi para OFF acima (e e' reafirmado a cada 1 s)
+    if (qEsq) _setBo(BO_ESQ, true);
+    if (o.bomba) _setBo(BO_BOMBA, true);
+    if (o.valvula) _setBo(BO_VALVULA, true);
+    if (o.canhao) _setBo(BO_CANHAO, true);
     bool ladoOk = (o.dir && (!_bi[BI_GIR_DIR] || in.gir_dir)) || (o.esq && (!_bi[BI_GIR_ESQ] || in.gir_esq));
     if (_m->estado() == PARADO && _leg_pm >= 0 && _leg_bo) {
         // Percentimetro legado (servidor): ciclo na BO pedida, so' com DIN de girando em 1.
@@ -353,6 +377,7 @@ static int _erro(char* msg, size_t sz, const char* m) { snprintf(msg, sz, "%s", 
 
 static int _cmdLigar(char* args, char* msg, size_t sz) {
     if (!_cfg_ok) return _erro(msg, sz, "pivo_sem_config");
+    if (relays_io_fault()) return _erro(msg, sz, "pivo_falha_reles");
     Plano p;
     char* sv = nullptr;
     char* tok = strtok_r(args, " ", &sv);
