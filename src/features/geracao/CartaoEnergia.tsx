@@ -30,6 +30,7 @@ import { linhasSelo } from './fonte';
 import { nf } from './formato';
 import { SeloFonte } from './SeloFonte';
 import { rotuloReferencia, useAnaliseGeracao } from './useAnaliseGeracao';
+import { useCapacidadesInstalacao } from '@/features/supervisorio/sinoptico/hooks/useCapacidadesInstalacao';
 
 /**
  * Cartão "Energia" da Visão Geral (NEXON-37): junta a análise de geração (NEXON-16) e o
@@ -108,13 +109,16 @@ export function CartaoEnergia({ unidadeId, fallback, semAcesso }: {
   const { demandaGeracao, demandaCarga } = useDemandasUnidade(unidadeId);
   const dem = useEquipamentosDemanda({ unidadeId, valorContratado: demandaGeracao ?? 0, percentualAdicional: PERCENTUAL_LIMITE_GERACAO });
   const { equipamentosM160 } = useDadosM160(unidadeId, '', false);
-  const temMedidor = equipamentosM160.length > 0;
+  // NEXON-110: abas Tensão/FP e série Carga só quando a instalação tem o medidor de verdade.
+  const capInst = useCapacidadesInstalacao(unidadeId);
+  const temMedidor = equipamentosM160.length > 0 && capInst.existe('grandezas_eletricas');
+  const temCarga = dem.temConsumo && capInst.existe('carga');
 
   const comFonte = a?.config.fonte != null && a.config.fonte !== 'nenhuma';
   const rotuloEsperado = comFonte ? `Esperado (${ROTULO_FONTE[a!.config.fonte]})` : 'Esperado';
   const periodoAtual = a?.periodo ?? periodo;
   // Total não tem agregado de consumo na API: Carga fica desabilitada com dica.
-  const disponivel: SeriesLigadas = { carga: dem.temConsumo && periodoAtual !== 'total', geracao: true, esperado: comFonte };
+  const disponivel: SeriesLigadas = { carga: temCarga && periodoAtual !== 'total', geracao: true, esperado: comFonte };
   const ef = seriesEfetivas(ligadas, disponivel);
 
   // Consumo do período (endpoints da Demanda). A semana pode precisar de dois meses.
@@ -236,7 +240,7 @@ export function CartaoEnergia({ unidadeId, fallback, semAcesso }: {
 
   return (
     <div className="space-y-3">
-      {aba !== 'energia' ? (
+      {aba !== 'energia' && temMedidor ? (
         // Tensão e FP: o mesmo gráfico do painel do sinóptico, com as abas no título.
         <div className="flex min-h-[240px] flex-col xl:h-[440px] xl:min-h-0">
           <SinopticoGraficosV2
@@ -315,7 +319,7 @@ export function CartaoEnergia({ unidadeId, fallback, semAcesso }: {
               </>
             )}
             <div className="ml-auto flex flex-wrap items-center gap-1" role="group" aria-label="Séries do gráfico">
-              {dem.temConsumo && botaoSerie('carga', 'Carga', periodoAtual === 'total' ? { disabled: true, title: 'Consumo não tem total por ano' } : undefined)}
+              {temCarga && botaoSerie('carga', 'Carga', periodoAtual === 'total' ? { disabled: true, title: 'Consumo não tem total por ano' } : undefined)}
               {botaoSerie('geracao', 'Geração', !disponivel.carga ? { disabled: true } : undefined)}
               {comFonte && botaoSerie('esperado', 'Esperado', !ef.geracao ? { disabled: true, title: 'O esperado é da geração' } : undefined)}
             </div>

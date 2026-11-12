@@ -1,6 +1,8 @@
 import { Activity, Gauge, Waves, Zap } from "lucide-react";
 import { KpiCard } from "./KpiCard";
 import { useGrandezasAgregadas } from "../hooks/useGrandezasAgregadas";
+import { useCapacidadesInstalacao } from "../hooks/useCapacidadesInstalacao";
+import { AvisoSemComunicacao } from "./AvisoSemComunicacao";
 
 interface KpiRowProps {
   unidadeId: string;
@@ -18,8 +20,14 @@ function fmt(v: number | null | undefined, dec = 0): string | undefined {
  */
 export function KpiRow({ unidadeId }: KpiRowProps) {
   const { grandezas, loading } = useGrandezasAgregadas(unidadeId);
+  const cap = useCapacidadesInstalacao(unidadeId);
+
+  // NEXON-110: os 4 cards vêm dos medidores; sem medição de entrada a faixa some inteira.
+  if (cap.carregando || !cap.existe("medicao_entrada")) return null;
 
   return (
+    <div className="space-y-1">
+    {cap.semComunicacao("medicao_entrada") && <AvisoSemComunicacao capacidade={cap.get("medicao_entrada")} />}
     <div className="grid grid-cols-4 gap-1.5">
       <KpiCard
         icon={Zap}
@@ -56,6 +64,7 @@ export function KpiRow({ unidadeId }: KpiRowProps) {
         legenda="Média das fases dos medidores"
         loading={loading}
       />
+    </div>
     </div>
   );
 }

@@ -9,6 +9,7 @@ import { GrandezasEletricasPanel } from '@/features/supervisorio/sinoptico/compo
 import { DemandaFluxoPanel } from '@/features/supervisorio/sinoptico/components/DemandaFluxoPanel';
 import { GraficoConfiguravelPanel } from '@/features/supervisorio/sinoptico/components/GraficoConfiguravelPanel';
 import { ElementosScsCards } from './ElementosScsCards';
+import { useCapacidadesInstalacao } from '@/features/supervisorio/sinoptico/hooks/useCapacidadesInstalacao';
 import { SeloFonte } from '@/features/geracao/SeloFonte';
 import { seloDaFonte } from '@/features/geracao/fonte';
 
@@ -80,7 +81,14 @@ export function VisaoGeralUsina({ unidadeId, unidadeNome }: { unidadeId: string;
 
   const s = u ? situacao(u) : null;
   // Tem TON ao vivo? (fonteDados='ton'). 'nuvem' = só fallback do fabricante (totais).
-  const temTon = u?.fonteDados === 'ton';
+  // NEXON-110: cada bloco aparece só se a instalação tem o que ele mostra (capacidades da API).
+  // Ter TON não quer dizer ter medidor: a CF tem TON só com inversores.
+  const cap = useCapacidadesInstalacao(unidadeId);
+  const temTon = cap.capacidades
+    ? cap.existe('medicao_entrada') || cap.get('geracao')?.fonte === 'ton'
+    : u?.fonteDados === 'ton';
+  const mostraGrandezas = cap.existe('grandezas_eletricas');
+  const mostraDemanda = cap.existe('carga') || cap.existe('geracao') || cap.existe('rede');
   // NEXON-37: de onde saiu a energia de hoje (só quando o COA manda).
   const seloHoje = seloDaFonte(u?.fonteGeracao, !!u?.fontesDivergem);
   // Altura DEFINIDA no xl: o gráfico usa xl:flex-1 (altura vem do pai). Só min-h
@@ -136,14 +144,23 @@ export function VisaoGeralUsina({ unidadeId, unidadeNome }: { unidadeId: string;
       {/* DATA-DRIVEN: com TON ao vivo mostra o quadro elétrico completo (grandezas,
           demanda carga/geração e o gráfico Demanda/Tensão/FP). Só-nuvem cai no
           histórico de geração + nota (a nuvem só entrega os totais da usina). */}
-      {temTon ? (
-        <>
-          {/* Grandezas agregadas dos medidores (mesma faixa que ficava em volta do unifilar). */}
-          <KpiRow unidadeId={unidadeId} />
+      {cap.carregando ? (
+        <div className="space-y-3" role="status" aria-label="Carregando painéis da instalação">
           <div className="grid gap-3 sm:grid-cols-2">
-            <GrandezasEletricasPanel unidadeId={unidadeId} />
-            <DemandaFluxoPanel unidadeId={unidadeId} />
+            {[0, 1].map((i) => <div key={i} className="h-[180px] animate-pulse rounded-lg border bg-black/5 dark:bg-white/5" />)}
           </div>
+          <div className="h-[240px] animate-pulse rounded-lg border bg-black/5 dark:bg-white/5" />
+        </div>
+      ) : temTon ? (
+        <>
+          {/* Grandezas agregadas dos medidores (some sem medição de entrada). */}
+          <KpiRow unidadeId={unidadeId} />
+          {(mostraGrandezas || mostraDemanda) && (
+            <div className={`grid gap-3 ${mostraGrandezas && mostraDemanda ? 'sm:grid-cols-2' : ''}`}>
+              <GrandezasEletricasPanel unidadeId={unidadeId} />
+              <DemandaFluxoPanel unidadeId={unidadeId} />
+            </div>
+          )}
           {/* Cartão Energia (NEXON-37): análise de geração + carga da Demanda num cartão só,
               Tensão/FP como abas. Sem análise (sem inversor com leitura, API fora ou sem
               permissão de ver geração) fica o painel Demanda/Tensão/FP de antes. */}

@@ -38,6 +38,7 @@ import { GraficoEnergia as GraficoEnergiaBase } from "./sinoptico-graficos-v2/Gr
 import { GraficoFases as GraficoFasesBase } from "./sinoptico-graficos-v2/GraficoFases";
 import { GraficoSkeleton } from "@/components/graficos/grafico-skeleton";
 import { ControlesFases } from "./sinoptico-graficos-v2/ControlesFases";
+import { useCapacidadesInstalacao } from '@/features/supervisorio/sinoptico/hooks/useCapacidadesInstalacao';
 
 // memo: os gráficos só redesenham quando os pontos/props mudam — abrir um modal,
 // trocar a pílula ou o poll de outro gráfico não refaz o SVG inteiro.
@@ -155,7 +156,13 @@ export function SinopticoGraficosV2({
   // todas desligadas.
   type Serie = 'carga' | 'geracao' | 'rede';
   const [ver, setVer] = useState<Record<Serie, boolean>>({ carga: true, geracao: true, rede: true });
-  const disponivel: Record<Serie, boolean> = { carga: temConsumo, geracao: temGeracao, rede: temRede };
+  // NEXON-110: série só se existe na instalação (medidor de entrada → Carga, concessionária → Rede).
+  const capInst = useCapacidadesInstalacao(unidadeId);
+  const disponivel: Record<Serie, boolean> = {
+    carga: temConsumo && capInst.existe('carga'),
+    geracao: temGeracao && capInst.existe('geracao'),
+    rede: temRede && capInst.existe('rede'),
+  };
   const nDisponiveis = (Object.keys(disponivel) as Serie[]).filter((k) => disponivel[k]).length;
   let mostraCarga = disponivel.carga && ver.carga;
   let mostraGeracao = disponivel.geracao && ver.geracao;
