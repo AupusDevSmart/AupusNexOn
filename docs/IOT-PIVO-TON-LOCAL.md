@@ -135,6 +135,8 @@ Código: lib `firmware-libs/pivo_local/` (testes: `g++ -std=c++17 -o t test_pivo
 
 io/tempos/enc ficam na NVS e só são aceitos com o pivô parado. Recusas voltam no ack (`pivo_io_incompleto`, `pivo_sem_encoder`, `pivo_ja_ligado`, `pivo_pivo_girando`, `pivo_desalinhado`…).
 
+Comando repetido (mesmo `cmd_id`, reenvio do backend ou do gateway LoRa): a TON responde de novo com o **resultado original** (anel dos 8 últimos resultados), não com `duplicate / already_seen` — só cai nesse ack quando o resultado já saiu do anel. Antes de 12/11/2026 o reenvio do gateway fazia o `pivo encler` perder as leituras no satélite (NEXON-103).
+
 **Status** `<base>/pivo` (na mudança, a cada 30 s ligado e 60 s parado; ≤ 120 B para o LoRa):
 `{"e":2,"p":0,"f":"","d":"D","a":1,"pm":1000,"an":123.4,"pc":95,"al":360,"sg":-1,"bi":15,"bo":95,"c":1}`
 - `e` 0 parado · 1 ligando · 2 irrigando · 3 desligando. `p` passo (1 tensão, 2 pressão, 3 lado, 4 bomba off, 5 lado off).

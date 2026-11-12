@@ -442,7 +442,11 @@ export function CalibracaoPivo({ pivoId, tecnico, invertido, onSalvo, onVoltar }
       if (r?.valida && r.valor != null) {
         setRecusa(null);
         setTela((t) => (t ? { ...t, ultima_leitura_valida: { valor: r.valor!, leituras: r.leituras ?? [], em: r.lido_em } } : t));
-        toast.success(`Encoder lido: ${r.valor}`, { description: `A leitura vale por ${VALIDADE_LEITURA_MIN} minutos.` });
+        toast.success(`Encoder lido: ${r.valor}`, {
+          description: r.origem === 'publicacao'
+            ? `Pela publicação automática da TON (a placa não devolveu a resposta do comando). Vale por ${VALIDADE_LEITURA_MIN} minutos.`
+            : `A leitura vale por ${VALIDADE_LEITURA_MIN} minutos.`,
+        });
       } else {
         setRecusa(r ?? null); setTinhaLeitura(false);
         setTela((t) => (t ? { ...t, ultima_leitura_valida: null } : t));

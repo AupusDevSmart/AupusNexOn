@@ -4634,8 +4634,16 @@ static void lora_handle_rx(const char* raw) {
     // Dedup: gateway pode reenviar mesmo cmd_id se nosso ACK se perdeu.
     // Resposta correta e' re-enviar ack 'duplicate' (gateway libera pendente).
     if (cmd_id[0] && _sat_seen_or_add(cmd_id, env["type"] | "", from)) {
-        Serial.printf("[LORA-SAT] Duplicado cmd_id=%s — re-enviando ack 'duplicate'\\n", cmd_id);
-        lora_send_envelope(from, "ack", cmd_id, "duplicate", "already_seen", nullptr, nullptr);
+        // O comando ja' foi executado: repete o RESULTADO dele (o ack de verdade pode ter colidido
+        // com este reenvio no radio). So' cai no "already_seen" se o resultado ja' saiu do anel.
+        bool _rok = false; const char* _rmsg = "";
+        if (_cmd_result_find(cmd_id, &_rok, &_rmsg)) {
+            Serial.printf("[LORA-SAT] Duplicado cmd_id=%s — repetindo o resultado (%s)\\n", cmd_id, _rmsg);
+            lora_send_envelope(from, "ack", cmd_id, _rok ? "ok" : "error", _rmsg, nullptr, nullptr);
+        } else {
+            Serial.printf("[LORA-SAT] Duplicado cmd_id=%s — re-enviando ack 'duplicate'\\n", cmd_id);
+            lora_send_envelope(from, "ack", cmd_id, "duplicate", "already_seen", nullptr, nullptr);
+        }
         return;
     }
 
@@ -4657,6 +4665,7 @@ static void lora_handle_rx(const char* raw) {
     bool ok = _process_command_inner(effective, msg, sizeof(msg));
     Serial.printf("[LORA-SAT][CMD] %s -> %s (%s)\\n", effective, ok ? "OK" : "FAIL", msg);
     if (cmd_id[0]) {
+        _cmd_result_save(cmd_id, ok, msg);
         lora_send_envelope(from, "ack", cmd_id, ok ? "ok" : "error", msg, nullptr, nullptr);
     }
 }
@@ -8541,6 +8550,36 @@ static bool _cmd_seen_or_add(const char* cmd_id) {
     return false;
 }
 
+// Resultado dos ultimos comandos, por cmd_id (NEXON-103). O reenvio de um comando ja' executado
+// (ack perdido no radio/rede) e' respondido com o RESULTADO ORIGINAL, nao com "already_seen":
+// comando que devolve dado no ack (ex.: "pivo encler", as 5 leituras do encoder) perdia a resposta
+// quando o ack de verdade colidia com o reenvio do gateway LoRa. Vale para MQTT e para o satelite.
+#define CMD_RESULT_SIZE 8
+static struct { char id[40]; bool ok; char msg[64]; } _cmdResult[CMD_RESULT_SIZE];
+static int _cmdResultIdx = 0;
+
+static void _cmd_result_save(const char* cmd_id, bool ok, const char* msg) {
+    if (!cmd_id || !cmd_id[0]) return;
+    strncpy(_cmdResult[_cmdResultIdx].id, cmd_id, sizeof(_cmdResult[0].id) - 1);
+    _cmdResult[_cmdResultIdx].id[sizeof(_cmdResult[0].id) - 1] = 0;
+    _cmdResult[_cmdResultIdx].ok = ok;
+    strncpy(_cmdResult[_cmdResultIdx].msg, msg ? msg : "", sizeof(_cmdResult[0].msg) - 1);
+    _cmdResult[_cmdResultIdx].msg[sizeof(_cmdResult[0].msg) - 1] = 0;
+    _cmdResultIdx = (_cmdResultIdx + 1) % CMD_RESULT_SIZE;
+}
+
+// true = achou (preenche ok e msg). false = resultado ja' saiu do anel (ou comando sem resultado).
+static bool _cmd_result_find(const char* cmd_id, bool* ok, const char** msg) {
+    if (!cmd_id || !cmd_id[0]) return false;
+    for (int i = 0; i < CMD_RESULT_SIZE; i++) {
+        if (_cmdResult[i].id[0] && strcmp(_cmdResult[i].id, cmd_id) == 0) {
+            *ok = _cmdResult[i].ok; *msg = _cmdResult[i].msg;
+            return true;
+        }
+    }
+    return false;
+}
+
 static void _publish_cmd_ack(const char* cmd_id, const char* status, const char* msg) {
     char topic[160];
     snprintf(topic, sizeof(topic), "%s/cmd/ack", MQTT_TOPIC_BASE);
@@ -8756,8 +8795,14 @@ static void process_command(const char* raw) {
                 strncpy(cmd_id, id, sizeof(cmd_id) - 1);
 
                 if (_cmd_seen_or_add(cmd_id)) {
-                    Serial.printf("[CMD] Duplicate cmd_id=%s ignorado\\n", cmd_id);
-                    _publish_cmd_ack(cmd_id, "duplicate", "already_seen");
+                    bool _rok = false; const char* _rmsg = "";
+                    if (_cmd_result_find(cmd_id, &_rok, &_rmsg)) {
+                        Serial.printf("[CMD] Duplicate cmd_id=%s — repetindo o resultado (%s)\\n", cmd_id, _rmsg);
+                        _publish_cmd_ack(cmd_id, _rok ? "ok" : "error", _rmsg);
+                    } else {
+                        Serial.printf("[CMD] Duplicate cmd_id=%s ignorado\\n", cmd_id);
+                        _publish_cmd_ack(cmd_id, "duplicate", "already_seen");
+                    }
                     return;
                 }
 
@@ -8784,6 +8829,7 @@ static void process_command(const char* raw) {
     Serial.printf("[CMD] %s -> %s (%s)\\n", effective, ok ? "OK" : "FAIL", msg);
 
     if (cmd_id[0]) {
+        _cmd_result_save(cmd_id, ok, msg);
         _publish_cmd_ack(cmd_id, ok ? "ok" : "error", msg);
     }
 }
