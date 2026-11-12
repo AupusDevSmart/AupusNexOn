@@ -38,8 +38,10 @@ int main() {
   forceBI1zero = false;
   int a0 = g_amostras;
   cmd("pivo ligar bbbb2222 d 1 500 1 t 43920"); ciclo(60); rel("depois de ligar DIREITA");
-  printf("   leituras do encoder no percentimetro 0->1: %d\n", g_amostras - a0);
-  if (g_amostras - a0 < 1) { puts("FALHOU: percentimetro ligou sem ler o encoder"); return 1; }
+  (void)a0;
+  int a1 = g_amostras; ciclo(400);   // 20 s
+  printf("   leituras do encoder em 20 s: %d\n", g_amostras - a1);
+  if (g_amostras - a1 < 4 || g_amostras - a1 > 5) { puts("FALHOU: encoder nao foi lido a cada 5 s"); return 1; }
   bool ok = R[1] && R[3] && !R[4];
   puts(ok ? "OK: so a direita ligada (esquerda desligada)" : "FALHOU: rele preso");
   if (!ok) return 1;

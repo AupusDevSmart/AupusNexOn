@@ -82,8 +82,7 @@ static bool     _ativo_nvs = false;
 // Satelite LoRa mestre-puxa: frame espontaneo colide com o POLL do gateway (e com as
 // entradas, que mudam no mesmo instante). O status vai so' na resposta ao POLL.
 static bool     _so_poll = false;
-static unsigned long _reafirma_ms = 0;
-static bool _ler_enc = false;           // percentimetro 0->1: ler o encoder na hora (pivo_loop)   // ultima reafirmacao das saidas do pivo
+static unsigned long _reafirma_ms = 0;   // ultima reafirmacao das saidas do pivo
 static uint8_t  _bi_sem_atual = 0;       // entradas semanticas do ultimo pivo_tick()
 // Satelite: mudanca de ESTADO (parado/ligando/irrigando/desligando) vai na hora (1 frame) + 1 repeticao
 // em 8 s (o 1o pode colidir). Rara: nao satura o radio como os eventos de cada passo.
@@ -449,13 +448,8 @@ void pivo_tick() {
         for (int k = 0; k < 6; k++) if (_bo[k] == _leg_bo) _apl[k] = -1;   // a sequencia local reescreve ao assumir
     } else {
         if (_leg_pm >= 0 && _m->estado() != PARADO) { _leg_pm = -1; _leg_saida = -1; }   // sequencia local assumiu
-        bool percAntes = _perc_on;
         _perc_on = _percSaida(o.perc_pm, ladoOk, now);
         _setBo(BO_PERC, _perc_on);
-        // BO do percentimetro 0 -> 1 (o pivo comeca a andar neste ciclo): le a posicao do encoder
-        // pelo RS485 NA HORA (pedido do usuario 12/11), sem esperar o ciclo de 4 s. A leitura e'
-        // feita no pivo_loop (fora do controle), e entra na sequencia pelo pivo_encoder_bruto().
-        if (!percAntes && _perc_on) _ler_enc = true;
     }
     _bi_sem_atual = (in.pressao ? 1 : 0) | (in.tensao ? 2 : 0) | (in.gir_dir ? 4 : 0) | (in.gir_esq ? 8 : 0) | (in.seguranca ? 16 : 0) | (in.canhao ? 32 : 0);
 }
@@ -463,9 +457,15 @@ void pivo_tick() {
 void pivo_loop(pivo_publish_fn publish) {
     if (!_m) return;
     pivo_tick();
-    if (_ler_enc) {
-        _ler_enc = false;
-        if (pivo_encoder_amostrar && pivo_encoder_amostrar()) pivo_tick();   // posicao nova ja' na sequencia
+    // Posicao do encoder pelo RS485 a cada 5 s, SEMPRE (ligado ou parado: o pivo pode ser girado
+    // a mao numa manutencao). Independe do rodizio dos outros devices do RS485. (decisao 12/11)
+    {
+        static unsigned long _enc_ms = 0;
+        unsigned long t = millis();
+        if (pivo_encoder_amostrar && (!_enc_ms || t - _enc_ms >= 5000UL)) {
+            _enc_ms = t ? t : 1;
+            if (pivo_encoder_amostrar()) pivo_tick();   // posicao nova ja' na sequencia
+        }
     }
     unsigned long now = millis();
 

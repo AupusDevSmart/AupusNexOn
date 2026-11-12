@@ -8980,7 +8980,33 @@ static void _sat_publicar_entradas() {
 }
 `;
             cpp += `
-// MESTRE-PUXA: responde um POLL do mestre. Le+publica a telemetria do device
+${(satReactive && spec.pivo && spec.has_relays) ? `// Satelite de PIVO (decisao 12/11): o mestre pergunta a cada 30 s, mas so' vai pelo radio o que
+// MUDOU desde o ultimo envio (status do pivo, encoder, entradas) + 1 envio a cada 5 min mesmo
+// sem mudanca (o NexON considera a leitura velha depois de 15 min). "timestamp"/"samples" nao contam.
+static uint32_t _pv_hash(const char* p) {
+    uint32_t h = 2166136261u;
+    while (*p) {
+        if (!strncmp(p, "timestamp", 9) || !strncmp(p, "samples", 7)) {
+            while (*p && *p != ',' && *p != '}') p++;   // pula a chave e o valor
+            continue;
+        }
+        h = (h ^ (uint8_t)*p++) * 16777619u;
+    }
+    return h;
+}
+static void _pivo_sat_pub(const char* sub, const char* payload) {
+    static uint32_t subs[8] = {0}, hs[8] = {0};
+    static unsigned long ms[8] = {0};
+    uint32_t hsub = _pv_hash(sub), h = _pv_hash(payload);
+    int k = 0;
+    for (; k < 8 && subs[k] && subs[k] != hsub; k++) {}
+    if (k == 8) k = 7;
+    if (subs[k] == hsub && hs[k] == h && millis() - ms[k] < 300000UL) return;   // igual e recente: nao envia
+    subs[k] = hsub; hs[k] = h; ms[k] = millis() ? millis() : 1;
+    lora_publish_data(sub, payload);
+}
+
+` : ''}// MESTRE-PUXA: responde um POLL do mestre. Le+publica a telemetria do device
 // (mesmo decode/escala/empacotamento do push antigo) e sinaliza fim com pollresp.
 void lora_poll_respond(const char* gw_mac, const char* req_id) {
     Serial.printf("[LORA-SAT] POLL req_id=%s -> lendo device e respondendo p/ %s\\n",
@@ -8988,7 +9014,7 @@ void lora_poll_respond(const char* gw_mac, const char* req_id) {
 `;
             if (satReactive && spec.rs485_devices.length > 0) {
                 cpp += `    // RS485: publica medias acumuladas (mesmo caminho do modo autonomo).
-    modbus_publish_all([](const char* sub, const char* payload){ lora_publish_data(sub, payload); });
+    modbus_publish_all([](const char* sub, const char* payload){ ${(spec.pivo && spec.has_relays) ? '_pivo_sat_pub' : 'lora_publish_data'}(sub, payload); });
 `;
             }
             const TCP_READABLE_TYPES = ['inversor', 'power_meter', 'medidor_comum', 'rele_protecao', 'encoder'];
@@ -8999,7 +9025,7 @@ void lora_poll_respond(const char* gw_mac, const char* req_id) {
             }
             if (satReactive && spec.pivo && spec.has_relays) {
                 cpp += `    // Pivo: status do pivo dentro da resposta (o satelite nao manda status sozinho).
-    pivo_publicar([](const char* sub, const char* payload){ lora_publish_data(sub, payload); });
+    pivo_publicar([](const char* sub, const char* payload){ _pivo_sat_pub(sub, payload); });
 `;
             }
             if (satReactive) {
@@ -9009,7 +9035,7 @@ void lora_poll_respond(const char* gw_mac, const char* req_id) {
         static int16_t _inPollAnt = -1;
         static unsigned long _inPollMs = 0;
         uint8_t s = inputs_get_state();
-        if ((int16_t)s != _inPollAnt || millis() - _inPollMs >= 30000UL) {
+        if ((int16_t)s != _inPollAnt || millis() - _inPollMs >= ${(spec.pivo && spec.has_relays) ? '300000UL' : '30000UL'}) {
             _sat_publicar_entradas();
             _inPollAnt = (int16_t)s;
             _inPollMs = millis();
