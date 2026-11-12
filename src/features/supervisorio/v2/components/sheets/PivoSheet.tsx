@@ -33,6 +33,8 @@ import type { AgendaItem, ItemPlanilha } from './pivoAgendaPlanilha';
 import { PainelRapido, AtalhosRapidos, rascunhoDe, mudancas, envioDoRascunho, mesmaParada, type Rascunho } from './PivoRapido';
 import { corpo, erroMsg, col, secao, Linha } from './pivoPartes';
 import { CalibracaoPivo } from './PivoCalibracao';
+import { grausTxt, sentidoTxt } from './pivoCalibracaoContas';
+import { PARAMS, PARAMS_PAR, CHAVES_SEQ, parametrosEmJogo, corpoParametros, type ChaveSeq, type ParametrosPivo } from './pivoConfigContas';
 
 /**
  * Modal do Pivô — cópia 1:1 do mockup "Web — Modal do Pivô" (NEXON-5), sobre a operação
@@ -88,29 +90,16 @@ interface Estado {
     encoder: { equipamento_id: string; resolucao: number | null; invertido: boolean; zero: number } | null;
     /** Pivô com encoder e nenhuma calibração ativa: `angulo` vem null e só o `bruto` vale (NEXON-103). Ausente em API antiga. */
     sem_calibracao?: boolean;
-    /** Calibração vigente (aba Calibração): zero e sentido do encoder vêm dela. Ausente em API antiga. */
+    /** Calibração vigente (Calibração do ângulo, na Configuração): zero e sentido do encoder vêm dela. Ausente em API antiga. */
     calibracao?: { id: string; az_cal: number; bruto_cal: number; sentido: 1 | -1; criado_em: string } | null;
   };
 }
 interface IrrigacaoSrv { modo: string; config: ConfigIrrigacao; parada: Parada; programacao?: { nome: string } | null }
 interface Janela { ativo: boolean; inicio: string; fim: string; dias: number[] }
-interface ParametrosPivo {
-  pressao_minima: number | null; lamina_100: number | null; tempo_volta_100: number | null; percentimetro_ciclo_s?: number | null; correcao_angulo_zero: number | null;
-  direcionamento: 'valvula' | 'fisico'; valvula_ton_id: string | null; valvula_bo: number | null;
-  encoder_equipamento_id?: string | null; encoder_resolucao?: number | null; encoder_invertido?: boolean;
-  /** Alarme de pivô travado (min): girando com o ângulo parado por este tempo. Vazio = 10. */
-  travado_min?: number | null;
-}
 /** Encoders da instalação (criados pelo diagrama IoT) com a última contagem lida. */
 interface OpcaoEncoder { id: string; nome: string; bruto: number | null; lido_em: string | null }
 /** Resoluções da Série 67 (código de compra): 9, 11, 12 e 13 bits. */
 const RESOLUCOES_ENCODER = [360, 2048, 4096, 8192];
-/** Contagem → ângulo antes do zero (mesma conta do servidor, pivo-posicao.util). */
-const anguloSemZero = (bruto: number, res: number, inv: boolean) => {
-  const g = ((((Math.round(bruto) % res) + res) % res) * 360) / res;
-  return inv ? (360 - g) % 360 : g;
-};
-const norm360 = (g: number) => ((g % 360) + 360) % 360;
 interface PivoConfig {
   bloqueio_ponta: Janela; reservado: Janela; origem_ponta: { numero_uc?: string; concessionaria?: string } | null;
   parametros?: ParametrosPivo; unidade_nome?: string | null; planta_nome?: string | null; proprietario_nome?: string | null;
@@ -448,6 +437,10 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   const { estado, erro, carregar, executando } = usePivoEstado(id);
   const prog = useProgramacoes(id);
   const [aba, setAba] = useState('op');
+  // Calibração do ângulo: sub-tela da Configuração (abre pela linha de Posição do pivô).
+  // Trocar de aba sai dela; `voltou` leva a Configuração de volta à seção de onde a pessoa saiu.
+  const [calibrando, setCalibrando] = useState(false);
+  const [voltou, setVoltou] = useState(false);
   const [modal, setModal] = useState<null | 'cost' | 'irr'>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   // stop = desligar · start = ligar pelo Planejamento · restart = pivô ligado reinicia com as
@@ -836,9 +829,9 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
       title={titulo}
       subtitle={[cfgPivo?.unidade_nome ?? custoDia?.unidade?.nome, cfgPivo?.planta_nome, perfil.verNomeProprietario ? cfgPivo?.proprietario_nome : null].filter(Boolean).join(' · ') || (info.hasTs ? info.label : 'Sem leitura de energia')}
       right={<span style={s.pill(tone)}><span style={s.pillDot(tone)} />{label}</span>}
-      tabs={[{ key: 'op', label: 'Operação' }, { key: 'cfg', label: 'Configuração' }, { key: 'cal', label: 'Calibração' }]}
+      tabs={[{ key: 'op', label: 'Operação' }, { key: 'cfg', label: 'Configuração' }]}
       tab={aba}
-      onTab={setAba}
+      onTab={(k) => { setAba(k); setCalibrando(false); setVoltou(false); }}
       onClose={onClose}
     >
       {aba === 'op' ? (
@@ -991,12 +984,15 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
 
           <RegistrosPivo equipamentoId={id} extra={regSeq} estreito={estreito} />
         </div>
-      ) : aba === 'cfg' ? (
-        <ConfigPivo pivoId={id} estado={estado} cfg={cfgPivo} perfil={perfil} onSalvo={() => { void carregar(); carregarCfg(); }}
-          progs={prog.progs} onRemoverProg={prog.remover} onAdicionarHorario={() => abrirIrr('agenda')} />
-      ) : (
+      ) : calibrando ? (
+        // A calibração muda zero e sentido: ao voltar, a Configuração relê estado e config.
         <CalibracaoPivo key={id} pivoId={id} tecnico={perfil.tecnico} invertido={estado?.posicao?.encoder?.invertido ?? null}
-          onSalvo={() => { void carregar(); carregarCfg(); }} />
+          onSalvo={() => { void carregar(); carregarCfg(); }}
+          onVoltar={() => { setCalibrando(false); setVoltou(true); void carregar(); carregarCfg(); }} />
+      ) : (
+        <ConfigPivo pivoId={id} estado={estado} cfg={cfgPivo} perfil={perfil} onSalvo={() => { void carregar(); carregarCfg(); }}
+          progs={prog.progs} onRemoverProg={prog.remover} onAdicionarHorario={() => abrirIrr('agenda')}
+          onCalibrar={() => setCalibrando(true)} focoPosicao={voltou} />
       )}
 
       {/* Confirmar comando */}
@@ -1118,17 +1114,6 @@ function ChipSelect({ value, onChange, label, height = 38, disabled, children }:
   );
 }
 
-const PARAMS = [
-  { key: 'pressurizacao_s', label: 'Tempo para pressurizar', hint: 'Com pressostato: espera máxima pela pressão; sem: espera fixa · faixa 10 a 600 s', unit: 's', min: 10, max: 600, real: true, d: 0 },
-  { key: 'confirma_giro_s', label: 'Confirmação do giro', hint: 'Tempo para o status "Irrigando" aparecer · faixa 5 a 120 s', unit: 's', min: 5, max: 120, real: true, d: 0 },
-  { key: 'confirma_bomba_s', label: 'Confirmação da bomba', hint: 'Tempo para o "Bomba ligada" aparecer · faixa 5 a 300 s', unit: 's', min: 5, max: 300, real: true, d: 0 },
-  { key: 'pressao_minima', label: 'Pressão mínima', hint: 'Abaixo dela: falha de pressão · faixa 0,5 a 6,0 bar', unit: 'bar', min: 0.5, max: 6, real: true, d: 1 },
-  { key: 'lamina_100', label: 'Lâmina d’água a 100%', hint: 'Faixa 2,00 a 20,00 mm', unit: 'mm', min: 2, max: 20, real: true, d: 2 },
-  { key: 'tempo_volta_100', label: 'Tempo de volta a 100%', hint: 'Base da previsão de término · faixa 6 a 72 h', unit: 'h', min: 6, max: 72, real: true, d: 1 },
-  { key: 'percentimetro_ciclo_s', label: 'Ciclo do percentímetro', hint: 'A TON liga o motor de movimento % deste tempo · padrão 60 s · faixa 5 a 600 s', unit: 's', min: 5, max: 600, real: true, d: 0 },
-  { key: 'correcao_angulo_zero', label: 'Correção do ângulo zero', hint: 'Faixa −180 a 180°', unit: '°', min: -180, max: 180, real: true, d: 0 },
-  { key: 'travado_min', label: 'Alarme de pivô travado', hint: 'Girando com o ângulo parado por este tempo · padrão 10 min · faixa 1 a 240 min', unit: 'min', min: 1, max: 240, real: true, d: 0 },
-] as const;
 /** Ficam na seção POSIÇÃO DO PIVÔ (zero junto do encoder; travado só com encoder), não em PARTIDA E IRRIGAÇÃO. */
 const PARAMS_POSICAO: readonly string[] = ['correcao_angulo_zero', 'travado_min'];
 /** Linha somente leitura: onde está o sinal (TON · fim do MAC · BO/BI) — muda na Topologia IoT. */
@@ -1142,44 +1127,63 @@ function SinalBomba({ titulo, s: sinal, vazio = '—' }: { titulo: string; s: Sa
   );
 }
 
-/** Tempos da sequência (PUT /bombeamento); o resto vai em pivo_config.parametros (PUT /config). */
-type ChaveSeq = 'pressurizacao_s' | 'confirma_giro_s' | 'confirma_bomba_s';
-const CHAVES_SEQ: readonly string[] = ['pressurizacao_s', 'confirma_giro_s', 'confirma_bomba_s'];
-const PARAMS_PAR = PARAMS.filter((p) => !CHAVES_SEQ.includes(p.key));
 const ROT_TRAVADO = PARAMS.find((p) => p.key === 'travado_min')!.label;
 
-const DICA_CALIBRACAO = 'Definido na aba Calibração';
 const AVISO_TROCA_ENCODER = 'Trocar o encoder ou a resolução desativa a calibração do ângulo: será preciso calibrar de novo';
 /** Mudanças que desativam a calibração vigente (a API desativa ao gravar). */
 const ROT_TROCA_ENCODER = ['Encoder', 'Resolução do encoder'];
+const MSG_SALVE_ENCODER = 'Salve o encoder e a resolução para calibrar';
+const MSG_SALVE_ALTERACOES = 'Salve as alterações desta tela para abrir a calibração';
+const MSG_SEM_CALIBRACAO = 'Sem calibração: o pivô mostra só a leitura bruta do encoder';
+
+/** Encoder e resolução no rascunho da Configuração (texto dos dois selects). */
+interface EncRascunho { id: string; res: string }
+const encDe = (pp: ParametrosPivo | undefined): EncRascunho => ({ id: pp?.encoder_equipamento_id ?? '', res: pp?.encoder_resolucao != null ? String(pp.encoder_resolucao) : '' });
+type Posicao = NonNullable<Estado['posicao']>;
+/** "11/11 21:05" (dia/mês e hora, sem a vírgula do toLocaleString). */
+const diaHora = (iso: string | null | undefined) => {
+  const d = iso ? new Date(iso) : null;
+  return d && !Number.isNaN(d.getTime()) ? d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(',', '') : null;
+};
+/** Calibração vigente em uma linha: "Azimute 43,9° · leitura 147 · Horário · 11/11 21:05". */
+const resumoCalibracao = (c: NonNullable<Posicao['calibracao']>) =>
+  [`Azimute ${grausTxt(c.az_cal)}`, `leitura ${c.bruto_cal}`, sentidoTxt(c.sentido), diaHora(c.criado_em)].filter(Boolean).join(' · ');
 
 /**
- * Posição do pivô pelo encoder absoluto: escolhe o encoder (nó Encoder do diagrama IoT,
- * mesma instalação), a resolução do código de compra, o sentido e o zero. "Zerar aqui"
- * faz a posição lida agora virar 0° (o braço apontando para o norte do mapa).
+ * Posição do pivô pelo encoder absoluto: escolhe o encoder (nó Encoder do diagrama IoT, mesma
+ * instalação) e a resolução do código de compra. Zero e sentido NÃO ficam aqui: vêm da
+ * Calibração do ângulo, que abre por esta seção (sub-tela da Configuração) — sem calibração o
+ * pivô mostra só a leitura bruta. Pivô sem encoder mantém a "Correção do ângulo zero" antiga.
  */
-function SecaoEncoder({ encs, enc, setEnc, encSel, encRes, encRuim, ro, somenteLeitura, zero, setZero, calibrado = false }: {
-  encs: OpcaoEncoder[] | null; enc: { id: string; res: string; inv: boolean }; setEnc: (f: (e: { id: string; res: string; inv: boolean }) => { id: string; res: string; inv: boolean }) => void;
-  encSel: OpcaoEncoder | null; encRes: number | null; encRuim: boolean; ro: boolean; somenteLeitura: boolean; zero: string; setZero: (v: string) => void;
-  /** Há calibração vigente (NEXON-103): sentido e zero vêm dela — aqui ficam só para leitura. */
-  calibrado?: boolean;
+export function SecaoEncoder({ encs, enc, setEnc, encSel, encRes, encRuim, ro, zero, setZero, gravado, posicao, pendente = false, onCalibrar }: {
+  encs: OpcaoEncoder[] | null; enc: EncRascunho; setEnc: (f: (e: EncRascunho) => EncRascunho) => void;
+  encSel: OpcaoEncoder | null; encRes: number | null; encRuim: boolean; ro: boolean; zero: string; setZero: (v: string) => void;
+  /** Encoder e resolução GRAVADOS (cfg.parametros): a calibração só abre para o que já está salvo. */
+  gravado: { id: string | null; res: number | null };
+  /** Posição no estado do pivô (calibração vigente, ângulo calibrado). `undefined` = estado ainda não chegou. */
+  posicao: Posicao | null | undefined;
+  /** Há outra alteração não salva na Configuração: abrir a sub-tela descartaria o rascunho. */
+  pendente?: boolean;
+  onCalibrar: () => void;
 }) {
-  // Com calibração, quem define sentido e zero é a aba Calibração (a API recusa mudar por aqui).
-  const roCal = ro || calibrado;
   const zeroNum = zero.trim() === '' ? 0 : Number(zero.replace(',', '.'));
   const zeroRuim = zero.trim() !== '' && (Number.isNaN(zeroNum) || zeroNum < -180 || zeroNum > 180);
-  const podeCalcular = !!encSel && encSel.bruto != null && encRes != null && !encRuim;
-  const semZero = podeCalcular ? anguloSemZero(encSel!.bruto!, encRes!, enc.inv) : null;
-  const previa = semZero != null && !zeroRuim ? norm360(semZero + zeroNum) : null;
-  const zerarAqui = () => {
-    if (semZero == null) return;
-    let z = -semZero;
-    if (z <= -180) z += 360;
-    z = Math.round(z * 10) / 10;
-    setZero((Object.is(z, -0) ? 0 : z).toLocaleString('pt-BR', { maximumFractionDigits: 1 }));
-  };
-  const hora = (iso: string | null) => (iso ? new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : null);
   const resOpcoes = encRes != null && !RESOLUCOES_ENCODER.includes(encRes) ? [...RESOLUCOES_ENCODER, encRes] : RESOLUCOES_ENCODER;
+  const cal = posicao?.calibracao ?? null;
+  // A calibração é do encoder e da resolução GRAVADOS: escolheu ou trocou e não salvou (ou falta
+  // a resolução) → salvar primeiro, senão a sub-tela responderia "Pivô sem encoder gravado".
+  const naoGravado = !!enc.id && (encRes == null || enc.id !== (gravado.id ?? '') || encRes !== gravado.res);
+  const motivo = naoGravado ? MSG_SALVE_ENCODER : pendente ? MSG_SALVE_ALTERACOES : null;
+  const subCal = motivo ?? (posicao === undefined ? 'Carregando…' : cal ? resumoCalibracao(cal) : MSG_SEM_CALIBRACAO);
+  const atencao = !!motivo || (posicao !== undefined && !cal);
+  // Leitura agora: a do estado do pivô (relida a cada 10 s) quando é este o encoder gravado;
+  // senão a da lista de encoders. O ângulo só existe com calibração vigente.
+  const doEstado = !naoGravado && posicao?.encoder?.equipamento_id === enc.id && posicao.bruto != null && !!posicao.lido_em;
+  const leitura = doEstado ? { bruto: posicao!.bruto, em: posicao!.lido_em } : { bruto: encSel?.bruto ?? null, em: encSel?.lido_em ?? null };
+  const angulo = cal && !naoGravado ? posicao?.angulo ?? null : null;
+  const subLeitura = leitura.em
+    ? [`Contagem ${leitura.bruto ?? '—'}`, diaHora(leitura.em), cal && doEstado && angulo == null ? posicao?.motivo : null].filter(Boolean).join(' · ')
+    : 'Sem leitura do encoder ainda';
   return (
     <div style={{ ...s.card, padding: '0 16px' }}>
       <Linha first titulo="Encoder" sub={encs && encs.length === 0 ? 'Nenhum encoder nesta instalação · ligue um nó Encoder à TON na Topologia IoT e salve' : 'Encoder absoluto no centro do pivô (Topologia IoT)'}>
@@ -1197,23 +1201,20 @@ function SecaoEncoder({ encs, enc, setEnc, encSel, encRes, encRuim, ro, somenteL
               {resOpcoes.map((r) => <option key={r} value={String(r)}>{r.toLocaleString('pt-BR')}</option>)}
             </ChipSelect>
           </Linha>
-          <NxSwitchRow title="Sentido invertido" sub={calibrado ? DICA_CALIBRACAO : 'Ligue se o ângulo diminui com o pivô em Avanço'} on={enc.inv} disabled={roCal}
-            onToggle={() => setEnc((e) => ({ ...e, inv: !e.inv }))} />
-          <div style={{ borderTop: `1px solid ${NX.linha}`, padding: '10px 0', display: 'flex', alignItems: 'center', gap: 12 }}>
-            <label htmlFor="w-correcao_angulo_zero" style={{ flex: 1, ...col(2) }}>
-              <span style={{ fontSize: 15, fontWeight: 700 }}>Correção do ângulo zero</span>
-              <span style={{ fontSize: 12, color: zeroRuim ? NX.bad : NX.mudo }}>{calibrado ? DICA_CALIBRACAO : ro && !somenteLeitura ? MSG_SOMENTE_LEITURA : 'Faixa −180 a 180° · 0° = norte do mapa'}</span>
-            </label>
-            <button type="button" disabled={roCal || semZero == null} onClick={zerarAqui} title={calibrado ? DICA_CALIBRACAO : undefined}
-              style={{ height: 38, padding: '0 12px', borderRadius: 10, border: `1px solid ${NX.borda}`, fontSize: 13, fontWeight: 800, color: roCal || semZero == null ? NX.desab : NX.texto }}>
-              Zerar aqui
+          {/* Zero e sentido saem daqui: quem define é a calibração (abre como sub-tela da Configuração). */}
+          <div style={{ borderTop: `1px solid ${NX.linha}`, padding: '10px 0', minHeight: 56, boxSizing: 'border-box', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ flex: 1, minWidth: 0, ...col(2) }}>
+              <span style={{ fontSize: 15, fontWeight: 700 }}>Calibração do ângulo</span>
+              <span id="w-calibracao-sub" style={{ fontSize: 12, color: atencao ? NX.warn : NX.mudo }}>{subCal}</span>
+            </span>
+            <button type="button" disabled={!!motivo} onClick={onCalibrar} aria-describedby="w-calibracao-sub"
+              style={{ flex: 'none', height: 44, minWidth: 44, padding: '0 16px', borderRadius: 10, border: `1.5px solid ${NX.off}`, background: NX.card, fontSize: 14, fontWeight: 800, textAlign: 'center', whiteSpace: 'nowrap', color: motivo ? NX.desab : NX.texto }}>
+              {ro ? 'Ver' : cal ? 'Recalibrar' : 'Calibrar'}
             </button>
-            <input id="w-correcao_angulo_zero" inputMode="decimal" value={zero} disabled={roCal} style={s.campo(roCal, zeroRuim)} onChange={(e) => setZero(e.target.value)} />
-            <span style={{ fontSize: 14, color: NX.mudo, width: 28 }}>°</span>
           </div>
-          <Linha titulo="Leitura agora" sub={encSel?.lido_em ? `Contagem ${encSel.bruto ?? '—'} · ${hora(encSel.lido_em)}` : 'Sem leitura do encoder ainda'}>
-            <span style={{ fontSize: 15, fontWeight: 800, color: previa != null ? NX.texto : NX.mudo, fontVariantNumeric: 'tabular-nums' }}>
-              {previa != null ? `${fmt(previa, 1)}°` : '—°'}
+          <Linha titulo="Leitura agora" sub={subLeitura}>
+            <span style={{ fontSize: 15, fontWeight: 800, color: angulo != null ? NX.texto : NX.mudo, fontVariantNumeric: 'tabular-nums' }}>
+              {angulo != null ? grausTxt(angulo) : '—°'}
             </span>
           </Linha>
         </>
@@ -1232,9 +1233,13 @@ function SecaoEncoder({ encs, enc, setEnc, encSel, encRes, encRuim, ro, somenteL
   );
 }
 
-function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg, onAdicionarHorario }: {
+function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg, onAdicionarHorario, onCalibrar, focoPosicao = false }: {
   pivoId: string; estado: Estado | null; cfg: PivoConfig | null; perfil: { tecnico: boolean; operacional: boolean }; onSalvo: () => void;
   progs: Programacao[] | null; onRemoverProg: (id: string) => void; onAdicionarHorario: () => void;
+  /** Abre a Calibração do ângulo (sub-tela desta aba). */
+  onCalibrar: () => void;
+  /** Voltou da calibração: a tela abre em Posição do pivô, de onde a pessoa saiu. */
+  focoPosicao?: boolean;
 }) {
   const [op, setOp] = useState<Opcoes | null>(null);
   // Base (gravado) × rascunho
@@ -1257,21 +1262,21 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
     });
   }, [cfg]);
   const parNum = (k: string) => { const t = (par[k] ?? '').trim(); return t === '' ? null : Number(t.replace(',', '.')); };
-  // Encoder de posição (técnico): equipamento, resolução e sentido. O zero é o correcao_angulo_zero.
+  // Encoder de posição (técnico): equipamento e resolução. Zero e sentido vêm da calibração.
   const [encs, setEncs] = useState<OpcaoEncoder[] | null>(null);
-  const [enc, setEnc] = useState<{ id: string; res: string; inv: boolean }>({ id: '', res: '', inv: false });
-  useEffect(() => {
-    const pp = cfg?.parametros;
-    setEnc({ id: pp?.encoder_equipamento_id ?? '', res: pp?.encoder_resolucao != null ? String(pp.encoder_resolucao) : '', inv: !!pp?.encoder_invertido });
-  }, [cfg]);
+  const [enc, setEnc] = useState<EncRascunho>(() => encDe(cfg?.parametros));
+  useEffect(() => { setEnc(encDe(cfg?.parametros)); }, [cfg]);
+  const secaoPosicao = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (focoPosicao) secaoPosicao.current?.scrollIntoView?.({ block: 'start' }); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     api.get(`/pivos/${pivoId}/encoder/opcoes`).then((r) => setEncs(corpo<OpcaoEncoder[]>(r) ?? [])).catch(() => setEncs([]));
   }, [pivoId]);
   const encRes = enc.res === '' ? null : Number(enc.res);
   const encSel = encs?.find((x) => x.id === enc.id) ?? null;
   const nomeEnc = (id: string | null | undefined) => (!id ? 'Sem encoder' : encs?.find((x) => x.id === id)?.nome ?? id);
-  // Calibração vigente (NEXON-103): zero e sentido do encoder vêm dela. Não entram no diff nem no
-  // PUT — a API recusa, e o zero gravado (duas casas) não pode virar "alteração" pelo arredondamento.
+  // Zero e sentido do encoder vêm da calibração (NEXON-103): com encoder escolhido ou calibração
+  // vigente não entram no diff nem no PUT (ver zeroForaDaConfig) — a API recusa mudar com
+  // calibração, e o zero gravado (duas casas) não pode virar "alteração" pelo arredondamento.
   const calibrado = !!estado?.posicao?.calibracao;
   const zeroGravado = cfg?.parametros?.correcao_angulo_zero;
   const [revisar, setRevisar] = useState(false);
@@ -1306,9 +1311,7 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
     for (const k of CHAVES_SEQ as ChaveSeq[]) {
       add(PARAMS.find((p) => p.key === k)!.label, `${base.seq[k]} s`, `${Number(seq[k])} s`);
     }
-    for (const p of PARAMS_PAR) {
-      if (calibrado && p.key === 'correcao_angulo_zero') continue;
-      if (!enc.id && p.key === 'travado_min') continue;   // campo só existe com encoder
+    for (const p of parametrosEmJogo(enc.id, calibrado)) {
       const antes = cfg?.parametros?.[p.key as keyof ParametrosPivo] as number | null | undefined;
       const agora = parNum(p.key);
       if ((antes ?? null) !== agora) add(p.label, antes == null ? '—' : `${fmtPar(antes, p.d)} ${p.unit}`, agora == null ? '—' : `${fmtPar(agora, p.d)} ${p.unit}`);
@@ -1317,7 +1320,6 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
       const pp = cfg.parametros;
       add('Encoder', nomeEnc(pp?.encoder_equipamento_id), nomeEnc(enc.id || null));
       add('Resolução do encoder', pp?.encoder_resolucao != null ? `${pp.encoder_resolucao}` : '—', encRes != null ? `${encRes}` : '—');
-      if (!calibrado) add('Encoder invertido', pp?.encoder_invertido ? 'Sim' : 'Não', enc.inv ? 'Sim' : 'Não');
     }
     if (cfg && ponta) {
       const a = cfg.bloqueio_ponta;
@@ -1332,7 +1334,7 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
   const bombaRuim = conj && !conjPivo;
   const seqRuim = (CHAVES_SEQ as ChaveSeq[]).some((k) => { const p = PARAMS.find((x) => x.key === k)!; return !numOk(seq[k], p.min, p.max); });
   const pontaRuim = !!ponta && !(/^\d{2}:\d{2}$/.test(ponta.inicio) && /^\d{2}:\d{2}$/.test(ponta.fim));
-  const parRuim = PARAMS_PAR.some((p) => { if ((calibrado && p.key === 'correcao_angulo_zero') || (!enc.id && p.key === 'travado_min')) return false; const v = parNum(p.key); return v != null && (Number.isNaN(v) || v < p.min || v > p.max); });
+  const parRuim = parametrosEmJogo(enc.id, calibrado).some((p) => { const v = parNum(p.key); return v != null && (Number.isNaN(v) || v < p.min || v > p.max); });
   // Com encoder escolhido, a resolução é obrigatória (sem ela o servidor não calcula o ângulo).
   const encRuim = !!enc.id && (encRes == null || !Number.isInteger(encRes) || encRes < 16 || encRes > 16_777_216);
   const invalido = bombaRuim || seqRuim || pontaRuim || parRuim || encRuim;
@@ -1342,8 +1344,7 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
   const gravar = async () => {
     setGravando(true);
     try {
-      const ROT_ENC = ['Encoder', 'Resolução do encoder', 'Encoder invertido'];
-      const daConfig = new Set(['Bloquear no horário de ponta', 'Horário de ponta · início', 'Horário de ponta · fim', ...PARAMS_PAR.map((p) => p.label), ...ROT_ENC]);
+      const daConfig = new Set(['Bloquear no horário de ponta', 'Horário de ponta · início', 'Horário de ponta · fim', ...PARAMS_PAR.map((p) => p.label), ...ROT_TROCA_ENCODER]);
       const bombaMudou = mudancas.some((m) => !daConfig.has(m.label));
       const seqNum = { pressurizacao_s: Number(seq.pressurizacao_s), confirma_giro_s: Number(seq.confirma_giro_s), confirma_bomba_s: Number(seq.confirma_bomba_s) };
       if (bombaMudou) {
@@ -1355,22 +1356,12 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
         });
       }
       const pontaMudou = cfg && ponta && (cfg.bloqueio_ponta.ativo !== ponta.ativo || cfg.bloqueio_ponta.inicio !== ponta.inicio || cfg.bloqueio_ponta.fim !== ponta.fim);
-      const parMudou = mudancas.some((m) => PARAMS_PAR.some((p) => p.label === m.label) || ROT_ENC.includes(m.label));
+      const parMudou = mudancas.some((m) => PARAMS_PAR.some((p) => p.label === m.label) || ROT_TROCA_ENCODER.includes(m.label));
       if (pontaMudou || parMudou) {
         await api.put(`/pivos/${pivoId}/config`, {
           ...(pontaMudou ? { bloqueio_ponta: ponta } : {}),
           ...(parMudou ? {
-            parametros: {
-              pressao_minima: parNum('pressao_minima'), lamina_100: parNum('lamina_100'),
-              tempo_volta_100: parNum('tempo_volta_100'),
-              percentimetro_ciclo_s: parNum('percentimetro_ciclo_s') == null ? null : Math.round(parNum('percentimetro_ciclo_s')!),
-              // Só quando mudou: a API anterior ao NEXON-103 recusa o campo que não conhece.
-              ...(mudancas.some((m) => m.label === ROT_TRAVADO) ? { travado_min: parNum('travado_min') == null ? null : Math.round(parNum('travado_min')!) } : {}),
-              encoder_equipamento_id: enc.id || null,
-              encoder_resolucao: enc.id ? encRes : cfg?.parametros?.encoder_resolucao ?? null,
-              // Com calibração vigente, zero e sentido vêm dela: não vão no PUT (a API recusa).
-              ...(calibrado ? {} : { correcao_angulo_zero: parNum('correcao_angulo_zero'), encoder_invertido: enc.inv }),
-            },
+            parametros: corpoParametros(parNum, { id: enc.id, res: encRes }, cfg?.parametros, { travadoMudou: mudancas.some((m) => m.label === ROT_TRAVADO), calibrado }),
           } : {}),
         });
       }
@@ -1450,9 +1441,13 @@ function ConfigPivo({ pivoId, estado, cfg, perfil, onSalvo, progs, onRemoverProg
       {secao('PARTIDA E IRRIGAÇÃO', 10)}
       {PARAMS.filter((p) => !PARAMS_POSICAO.includes(p.key)).map(campoParam)}
 
-      {secao('POSIÇÃO DO PIVÔ', 10)}
-      <SecaoEncoder encs={encs} enc={enc} setEnc={setEnc} encSel={encSel} encRes={encRes} encRuim={encRuim} ro={roTec} somenteLeitura={somenteLeitura} calibrado={calibrado}
-        zero={calibrado ? fmtPar(zeroGravado, Number.isInteger(zeroGravado ?? 0) ? 0 : 2) : par.correcao_angulo_zero ?? ''} setZero={(v) => setPar((x) => ({ ...x, correcao_angulo_zero: v }))} />
+      <div ref={secaoPosicao} style={col(10)}>
+        {secao('POSIÇÃO DO PIVÔ', 10)}
+        <SecaoEncoder encs={encs} enc={enc} setEnc={setEnc} encSel={encSel} encRes={encRes} encRuim={encRuim} ro={roTec}
+          zero={calibrado ? fmtPar(zeroGravado, Number.isInteger(zeroGravado ?? 0) ? 0 : 2) : par.correcao_angulo_zero ?? ''} setZero={(v) => setPar((x) => ({ ...x, correcao_angulo_zero: v }))}
+          gravado={{ id: cfg?.parametros?.encoder_equipamento_id ?? null, res: cfg?.parametros?.encoder_resolucao ?? null }}
+          posicao={estado ? estado.posicao ?? null : undefined} pendente={n > 0 && !somenteLeitura} onCalibrar={onCalibrar} />
+      </div>
       {/* Alarme de pivô travado: só faz sentido com encoder (é ele que diz que o ângulo parou). */}
       {enc.id && campoParam(PARAMS.find((p) => p.key === 'travado_min')!)}
 

@@ -3,8 +3,9 @@ import { unwrap } from './equipUi';
 import { NX, s } from './nxMock';
 
 /**
- * Peças comuns às abas do modal do pivô (Operação, Configuração e Calibração): saíram da
- * PivoSheet para a aba Calibração (PivoCalibracao.tsx) usar as mesmas, sem import circular.
+ * Peças comuns às telas do modal do pivô (Operação, Configuração e a Calibração do ângulo que
+ * abre de dentro da Configuração): saíram da PivoSheet para a PivoCalibracao.tsx usar as
+ * mesmas, sem import circular.
  */
 
 /** Resposta da API vem com envelope simples ou duplo ({data:{data}}). */

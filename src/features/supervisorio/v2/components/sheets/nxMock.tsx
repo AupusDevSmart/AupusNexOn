@@ -178,9 +178,7 @@ export function NxShell({ title, subtitle, right, tabs, tab, onTab, onClose, chi
         {tabs && tabs.length > 1 && (
           <div style={{ display: 'grid', gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))`, gap: 4, margin: '16px 24px 0 24px', padding: 4, borderRadius: 14, background: NX.trilho }}>
             {tabs.map((t) => (
-              <button key={t.key} type="button" aria-pressed={tab === t.key} onClick={() => onTab?.(t.key)}
-                // Três abas (pivô) no celular: letra um ponto menor e nunca vazando para a aba vizinha.
-                style={{ ...s.tab(tab === t.key), ...(tabs.length > 2 ? { fontSize: 13, minWidth: 0, padding: '0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } : {}) }}>{t.label}</button>
+              <button key={t.key} type="button" aria-pressed={tab === t.key} onClick={() => onTab?.(t.key)} style={s.tab(tab === t.key)}>{t.label}</button>
             ))}
           </div>
         )}

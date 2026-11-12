@@ -1,5 +1,5 @@
 /**
- * Calibração do ângulo do pivô (NEXON-103) — contas PURAS da aba Calibração, testadas em
+ * Calibração do ângulo do pivô (NEXON-103) — contas PURAS da tela de calibração, testadas em
  * pivoCalibracaoContas.test.ts. Mesmas fórmulas do servidor (pivo-calibracao.util da API):
  *
  *   azimute  = (graus(atan2(y, x)) + 360) mod 360        0° = norte verdadeiro, horário
