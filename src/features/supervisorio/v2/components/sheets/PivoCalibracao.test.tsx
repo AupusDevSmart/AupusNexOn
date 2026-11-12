@@ -413,9 +413,9 @@ describe('desenho do pivô', () => {
 
   it('parado: braço cinza e sem seta', () => {
     const { container } = render(<MapaPivo {...base} angulo={90} girando={false} sentido={null} />);
-    // sem ângulo: sem braço, "—°" e o motivo escrito no mapa
+    // sem ângulo: braço padrão no norte (tracejado), "—°" e o motivo escrito no mapa
     const semPos = render(<MapaPivo {...base} angulo={null} girando={false} sentido={null} aviso="pivô sem encoder. Escolha e salve o encoder em Configuração → Posição do pivô" />);
-    expect(semPos.container.querySelector('[data-braco]')).toBeNull();
+    expect(semPos.container.querySelector('[data-braco]')?.getAttribute('data-braco')).toBe('padrao');
     expect(semPos.getByRole('status').textContent).toBe('Posição indisponível: pivô sem encoder. Escolha e salve o encoder em Configuração → Posição do pivô');
     semPos.unmount();
     // o norte do pivô vem identificado: seta no topo com o "N" ao lado
@@ -425,17 +425,25 @@ describe('desenho do pivô', () => {
     expect(screen.getByText(/90,0°/)).toBeTruthy();
   });
 
-  it('sem leitura válida: "—°" e sem braço', () => {
+  // Braço padrão: do centro (179,150) reto para cima (norte), tracejado — não é leitura.
+  const noNorteTracejado = (b: Element | null) => {
+    expect(b?.getAttribute('data-braco')).toBe('padrao');
+    expect(Number(b?.getAttribute('x2'))).toBeCloseTo(179, 5);
+    expect(Number(b?.getAttribute('y2'))).toBeCloseTo(32, 5);
+    expect(b?.getAttribute('stroke-dasharray')).toBeTruthy();
+  };
+
+  it('sem leitura válida: "—°" e o braço padrão no norte, tracejado (nunca o último valor)', () => {
     const { container } = render(<MapaPivo {...base} angulo={null} aviso="Encoder sem leitura há mais de 15 min" girando sentido="direita" />);
-    expect(braco(container)).toBeNull();
+    noNorteTracejado(braco(container));
     expect(seta(container)).toBeNull();
     expect(screen.getByText(/—°/)).toBeTruthy();
     expect(screen.getByRole('status').textContent).toBe('Posição indisponível: Encoder sem leitura há mais de 15 min');
   });
 
-  it('sem calibração: sem braço, só a leitura bruta com aviso (mesmo se vier um ângulo)', () => {
+  it('sem calibração: braço padrão no norte, só a leitura bruta com aviso (mesmo se vier um ângulo)', () => {
     const { container } = render(<MapaPivo {...base} angulo={12} semCalibracao bruto={147} aviso="Sem calibração: mostrando só a leitura bruta do encoder" girando sentido="direita" />);
-    expect(braco(container)).toBeNull();
+    noNorteTracejado(braco(container));
     expect(seta(container)).toBeNull();
     expect(screen.getByText(/—°/)).toBeTruthy();
     expect(screen.getByRole('status').textContent).toBe('Sem calibração · leitura bruta 147');
