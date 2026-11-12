@@ -45,7 +45,11 @@ export interface CalibracaoTela {
   leituras_exigidas: number;
 }
 /** POST /pivos/:id/calibracao/ler-encoder */
-export interface LeituraEncoder { valida: boolean; valor: number | null; leituras: number[]; motivo: string | null; lido_em: string }
+export interface LeituraEncoder {
+  valida: boolean; valor: number | null; leituras: number[]; motivo: string | null; lido_em: string;
+  /** 'publicacao' = a TON não devolveu a resposta do comando e valeram as publicações automáticas dela. */
+  origem?: 'comando' | 'publicacao';
+}
 /** POST /pivos/:id/calibracao — a API recusa campo a mais (forbidNonWhitelisted). */
 export interface CorpoCalibracao { bruto_cal: number; sentido: Sentido; centro_lat: number; centro_lon: number; ponta_lat: number; ponta_lon: number }
 
