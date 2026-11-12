@@ -19,6 +19,9 @@ void relay_set(uint8_t n, bool on) {
 bool relays_io_fault() { return false; }
 unsigned long relays_io_fault_ms() { return 0; }
 bool relay_get(uint8_t n) { return n >= 1 && n <= 8 && R[n]; }
+int g_amostras = 0;   // leituras do encoder pedidas pelo glue (percentimetro 0->1)
+extern void pivo_encoder_bruto(float bruto);
+bool pivo_encoder_amostrar() { g_amostras++; pivo_encoder_bruto(130.0f); return true; }
 #include <esp_system.h>
 esp_reset_reason_t esp_reset_reason() { return ESP_RST_POWERON; }
 void esp_restart() { puts("esp_restart"); exit(1); }
@@ -33,7 +36,10 @@ int main() {
   puts("-- operador tira a pressao (BI1 = 0)"); forceBI1zero = true; ciclo(60); rel("3 s depois");
   ciclo(1300); rel("65 s depois");
   forceBI1zero = false;
+  int a0 = g_amostras;
   cmd("pivo ligar bbbb2222 d 1 500 1 t 43920"); ciclo(60); rel("depois de ligar DIREITA");
+  printf("   leituras do encoder no percentimetro 0->1: %d\n", g_amostras - a0);
+  if (g_amostras - a0 < 1) { puts("FALHOU: percentimetro ligou sem ler o encoder"); return 1; }
   bool ok = R[1] && R[3] && !R[4];
   puts(ok ? "OK: so a direita ligada (esquerda desligada)" : "FALHOU: rele preso");
   if (!ok) return 1;
