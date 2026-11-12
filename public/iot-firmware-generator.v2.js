@@ -160,6 +160,14 @@ var FirmwareGenerator = class FirmwareGenerator {
                 }
             }
             const targets = [];
+            // Satelite com PIVO na malha (direto do diagrama: o gerador V1 nao monta spec dos
+            // nos V2 e vice-versa) -> POLL a cada 30 s (posicao/estado do pivo na tela).
+            spec.poll_pivo = [...reachable].some((nid) => connections.some((k) => {
+                const a = k && k.from && k.from.componentId, b = k && k.to && k.to.componentId;
+                const outro = a === nid ? b : b === nid ? a : null;
+                const c = outro && components.find((x) => x.id === outro);
+                return !!c && String(c.type || '').toLowerCase() === 'pivo';
+            }));
             for (const nodeId of reachable) {
                 const ns = idToSpec[nodeId];
                 if (!ns) continue;
@@ -4434,7 +4442,7 @@ static void lora_handle_rx(const char* raw) {
                                      // MUDO por 10s (morto), nao por demorar a terminar.
 #define POLL_MAX_TIMEOUTS  3        // N timeouts seguidos -> marca satelite offline
 #define POLL_GAP_MS        200UL    // respiro entre o fim de um poll e o proximo TX
-#define POLL_MIN_INTERVAL_MS 60000UL // cadencia minima por alvo (casa com PUBLISH_INTERVAL_MS):
+#define POLL_MIN_INTERVAL_MS ${spec.poll_pivo ? '30000UL' : '60000UL'} // cadencia minima por alvo (60 s; 30 s com satelite de PIVO: posicao/estado na tela mais rapido):
                                      // o satelite zera o acumulador a cada POLL, entao espacar
                                      // os polls garante uma janela cheia de amostras (METER_CYCLE_MS)
                                      // e media com a MESMA qualidade do push antigo.
@@ -5363,7 +5371,7 @@ static void _tcp_evt_poll_dev_${idx}(tcp_publish_fn publish) {
                 if (factorVar) decoder = `(${decoder}) * ${factorVar}`;
             }
 
-            const mode = m.mode || 'avg';
+            const mode = m.mode || (dev && dev.type === 'encoder' ? 'last' : 'avg')   // encoder: posicao e' a ULTIMA leitura (media de angulo nao existe);
             const entry = { pid, decoder, clamp: !!m.clamp_negative, format: m.format || null };
             if (mode === 'last') lastFields.push(entry);
             else if (mode === 'delta') deltaFields.push(entry);
