@@ -13,7 +13,8 @@
 //   pivo ligar <id> <d|e> <agua 0|1> <permil> <canhao 0|1> <g|t> <valor> [f <desliga_em> <liga_em>]
 //        g = graus a percorrer (voltas = 360 x n, no NexON) · t = segundos (provisorio, pivo sem encoder)
 //        f = faixa do canhao (bruto 0..359): dentro de [desliga_em, liga_em] o canhao fica OFF
-//   pivo desligar | pivo perc <permil> | pivo canhao <0|1> [f <desliga_em> <liga_em>] | pivo status | pivo cfg
+//   pivo cfg <BOs 6 dig> <BIs 6 dig> <inv 6 dig> <9 tempos> <resolucao>   (tudo de uma vez; o ack do status traz k<CRC16>)
+//   pivo desligar | pivo perc <permil> | pivo canhao <0|1> [f <desliga_em> <liga_em>] | pivo status | pivo mostrar
 // Segurança (BI5): normal = 1 (spec); 0 ou sem sinal = atuou.
 // Compatibilidade (sequencia ainda no servidor, ate' a Fase 3): com a sequencia local PARADA,
 //   perc <bo> <permil> <ciclo_s> <mascara> | perc off   (igual ao firmware anterior; mascara = DINs
@@ -54,6 +55,17 @@ static uint32_t _enc_res = 0;            // 0 = sem encoder
 static bool     _enc_inv = false;
 static float    _enc_zero = 0;
 static bool     _cfg_ok = true;
+static uint16_t _cfg_ck = 0;             // CRC16 (Modbus) dos argumentos do ultimo "pivo cfg" aplicado; 0 = desconhecido
+
+// CRC16 Modbus (o NexON calcula igual sobre o mesmo texto e so' reenvia a config se mudou)
+static uint16_t _crc16(const char* s) {
+    uint16_t crc = 0xFFFF;
+    for (; *s; s++) {
+        crc ^= (uint8_t)*s;
+        for (int i = 0; i < 8; i++) crc = (crc & 1) ? (uint16_t)((crc >> 1) ^ 0xA001) : (uint16_t)(crc >> 1);
+    }
+    return crc;
+}
 
 // ---- estado do glue
 static Maquina* _m = nullptr;
@@ -191,6 +203,7 @@ static void _salvarCfg() {
     pr.putBool("ei", _enc_inv);
     pr.putFloat("ez", _enc_zero);
     pr.putBool("ok", _cfg_ok);
+    pr.putUShort("ck", _cfg_ck);
     pr.end();
 }
 
@@ -211,6 +224,7 @@ void pivo_init() {
         _enc_inv = pr.getBool("ei", false);
         _enc_zero = pr.getFloat("ez", 0);
         _cfg_ok = pr.getBool("ok", true);
+        _cfg_ck = pr.getUShort("ck", 0);
         estava = pr.getBool("at", false);
         pr.getString("id", id, sizeof(id));
         pr.end();
@@ -567,8 +581,8 @@ int pivo_cmd(const String& cmd, char* msg, size_t sz) {
         // + diagnostico: r<estado dos reles no driver, hex: bit n = Rn> i<recuperacoes do I2C dos reles> x<1 = reles sem controle> o<saidas pedidas: bit0 bomba..5 canhao>
         const Saidas& so = _m->saidas();
         uint8_t ob = (so.bomba ? 1 : 0) | (so.valvula ? 2 : 0) | (so.dir ? 4 : 0) | (so.esq ? 8 : 0) | (_perc_on ? 16 : 0) | (so.canhao ? 32 : 0);
-        snprintf(msg, sz, "pivo_st %d %d %d %s a%u r%02X i%lu x%d o%02X", (int)_m->estado(), (int)_m->passo(), (int)so.perc_pm, f,
-                 (unsigned)_m->alertas(), (unsigned)relays_get_state(), (unsigned long)diag_i2c_resets, relays_io_fault() ? 1 : 0, (unsigned)ob);
+        snprintf(msg, sz, "pivo_st %d %d %d %s a%u k%04X r%02X i%lu x%d o%02X", (int)_m->estado(), (int)_m->passo(), (int)so.perc_pm, f,
+                 (unsigned)_m->alertas(), (unsigned)_cfg_ck, (unsigned)relays_get_state(), (unsigned long)diag_i2c_resets, relays_io_fault() ? 1 : 0, (unsigned)ob);
         return 1;
     }
     if (!strcmp(verbo, "encler")) {
@@ -588,7 +602,7 @@ int pivo_cmd(const String& cmd, char* msg, size_t sz) {
         }
         return 1;
     }
-    if (!strcmp(verbo, "cfg")) {
+    if (!strcmp(verbo, "mostrar")) {   // imprime a configuracao na Serial
         Serial.printf("[PIVO] cfg=%d BO %u %u %u %u %u %u | BI %u %u %u %u %u %u inv=0x%02X | tempos %lu %lu %lu %lu %lu %lu %lu %lu %lu | enc %lu inv=%d zero=%.1f\n",
             _cfg_ok, _bo[0], _bo[1], _bo[2], _bo[3], _bo[4], _bo[5], _bi[0], _bi[1], _bi[2], _bi[3], _bi[4], _bi[5], _inv,
             (unsigned long)_tp[0], (unsigned long)_tp[1], (unsigned long)_tp[2], (unsigned long)_tp[3], (unsigned long)_tp[4],
@@ -598,9 +612,46 @@ int pivo_cmd(const String& cmd, char* msg, size_t sz) {
     }
 
     // Configuracao: so' com o pivo parado (trocar I/O com saida ligada deixaria rele preso).
-    bool cfgCmd = !strcmp(verbo, "io") || !strcmp(verbo, "tempos") || !strcmp(verbo, "enc");
+    bool cfgCmd = !strcmp(verbo, "cfg") || !strcmp(verbo, "io") || !strcmp(verbo, "tempos") || !strcmp(verbo, "enc");
     if (cfgCmd && _m->estado() != PARADO) return _erro(msg, sz, "pivo_ligado");
 
+    if (!strcmp(verbo, "cfg")) {
+        // Configuracao inteira num comando (cabe no LoRa): "pivo cfg <BOs> <BIs> <inv> <9 tempos> <resolucao>"
+        //   BOs/BIs = 6 digitos (0 = nao ligado; papeis na ordem do "pivo io"), inv = 6 digitos 0/1
+        //   tempos = os 9 do "pivo tempos"; resolucao do encoder (0 = sem encoder; angulo BRUTO).
+        // Guarda o CRC16 do texto: o "pivo status" devolve "k<crc>" e o NexON so' reenvia se mudou.
+        char bs[8] = "", is[8] = "", inv[8] = "";
+        unsigned long t[PIVO_NTP], res = 0;
+        if (!resto || sscanf(resto, "%7s %7s %7s %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu", bs, is, inv,
+                &t[0], &t[1], &t[2], &t[3], &t[4], &t[5], &t[6], &t[7], &t[8], &res) != 13
+            || strlen(bs) != 6 || strlen(is) != 6 || strlen(inv) != 6)
+            return _erro(msg, sz, "pivo_cfg_invalido");
+        static const unsigned long lo[PIVO_NTP] = {5,    5,   1,   0,  0,  0,  10,   30,   5};
+        static const unsigned long hi[PIVO_NTP] = {1800, 600, 120, 60, 60, 60, 3600, 3600, 600};
+        uint8_t nb[6], ni[6], m = 0;
+        for (int k = 0; k < 6; k++) {
+            if (bs[k] < '0' || bs[k] > '0' + PIVO_IO_MAX || is[k] < '0' || is[k] > '0' + PIVO_IO_MAX || (inv[k] != '0' && inv[k] != '1'))
+                return _erro(msg, sz, "pivo_cfg_faixa");
+            nb[k] = (uint8_t)(bs[k] - '0'); ni[k] = (uint8_t)(is[k] - '0');
+            for (int j = 0; j < k; j++) if (nb[k] && nb[k] == nb[j]) return _erro(msg, sz, "pivo_bo_repetida");
+            if (inv[k] == '1') m |= (1 << k);
+        }
+        for (int k = 0; k < PIVO_NTP; k++) if (t[k] < lo[k] || t[k] > hi[k]) return _erro(msg, sz, "pivo_cfg_faixa");
+        if (res != 0 && (res < 2 || res > 1000000UL)) return _erro(msg, sz, "pivo_cfg_faixa");
+        for (int k = 0; k < 6; k++) if (_bo[k] && _bo[k] != nb[k]) relay_set(_bo[k], false);   // mapa mudou: BO antiga em OFF
+        for (int k = 0; k < 6; k++) { _bo[k] = nb[k]; _bi[k] = ni[k]; _apl[k] = -1; }
+        _inv = m;
+        for (int k = 0; k < PIVO_NTP; k++) _tp[k] = (uint32_t)t[k];
+        _enc_res = (uint32_t)res; _enc_inv = false; _enc_zero = 0;
+        _cfg_ok = true;
+        String args = String(resto); args.trim();
+        _cfg_ck = _crc16(args.c_str());
+        _salvarCfg();
+        _m->configurar(_montarConfig());
+        pivo_publicar_agora();
+        snprintf(msg, sz, "pivo_cfg_ok k%04X", (unsigned)_cfg_ck);
+        return 1;
+    }
     if (!strcmp(verbo, "io")) {
         int b[6], i[6]; char inv[8] = "";
         if (!resto || sscanf(resto, "%d %d %d %d %d %d %d %d %d %d %d %d %7s",
@@ -617,6 +668,7 @@ int pivo_cmd(const String& cmd, char* msg, size_t sz) {
         for (int k = 0; k < 6; k++) { _bo[k] = (uint8_t)b[k]; _bi[k] = (uint8_t)i[k]; if (inv[k] == '1') m |= (1 << k); _apl[k] = -1; }
         _inv = m;
         _cfg_ok = true;
+        _cfg_ck = 0;   // mexeu por fora do "pivo cfg": o NexON reenvia a config inteira na proxima partida
         _salvarCfg();
         _m->configurar(_montarConfig());
         pivo_publicar_agora();
@@ -631,6 +683,7 @@ int pivo_cmd(const String& cmd, char* msg, size_t sz) {
         static const unsigned long hi[PIVO_NTP] = {1800, 600, 120,   60,  60,  60,  3600,  3600,  600};
         for (int k = 0; k < PIVO_NTP; k++) if (t[k] < lo[k] || t[k] > hi[k]) return _erro(msg, sz, "pivo_tempos_faixa");
         for (int k = 0; k < PIVO_NTP; k++) _tp[k] = (uint32_t)t[k];
+        _cfg_ck = 0;
         _salvarCfg();
         _m->configurar(_montarConfig());
         return _ok(msg, sz, "pivo_tempos_ok");
@@ -640,6 +693,7 @@ int pivo_cmd(const String& cmd, char* msg, size_t sz) {
         if (!resto || sscanf(resto, "%lu %d %f", &res, &inv, &zero) != 3 || (res != 0 && (res < 2 || res > 1000000UL)) || !(zero >= -360.0f && zero <= 360.0f))
             return _erro(msg, sz, "pivo_enc_invalido");
         _enc_res = (uint32_t)res; _enc_inv = inv != 0; _enc_zero = zero;
+        _cfg_ck = 0;
         _salvarCfg();
         return _ok(msg, sz, "pivo_enc_ok");
     }

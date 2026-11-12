@@ -25,7 +25,7 @@ static void cmd(const char* c) { char m[96]; int r = pivo_cmd(String(c), m, size
 static void rel(const char* q) { printf("   [%s] RELES: bomba=%d valv=%d DIR=%d ESQ=%d perc=%d canhao=%d\n", q, R[1],R[2],R[3],R[4],R[5],R[6]); }
 int main() {
   pivo_init(); pivo_so_no_poll(true); ciclo(5);
-  cmd("pivo io 1 2 3 4 5 6 1 2 3 4 5 6 000000"); cmd("pivo tempos 60 30 5 0 0 0 30 600 60");
+  cmd("pivo cfg 123456 123456 000000 60 30 5 0 0 0 30 600 60 0"); cmd("pivo status");
   cmd("pivo ligar aaaa1111 e 1 600 1 t 36600"); ciclo(100); rel("esquerda irrigando");
   puts("-- operador tira a pressao (BI1 = 0)"); forceBI1zero = true; ciclo(60); rel("3 s depois");
   ciclo(1300); rel("65 s depois");

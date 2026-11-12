@@ -229,3 +229,7 @@ Fonte: `arquivos/Spec NexON - Automacao do pivo (protocolo e firmware).md`. **Va
 | Reinício por falta de internet | Não se aplica: TON de pivô normalmente não tem internet configurada |
 
 Implementação: `config.h` (só pivô sem internet) define `PIVO_WDT_S 30` e transforma toda chamada `esp_task_wdt_reset()` em `wdt_meio()`; o início do `loop()` faz a alimentação real com `(esp_task_wdt_reset)()` e libera uma nova extensão. Retomada e contagem em `glue/pivo.cpp` (`pivo_init`, `pivo_tick`, `_salvarAndamento`).
+
+## 14. Configuração num comando só (12/11/2026)
+
+`pivo cfg <BOs 6 díg> <BIs 6 díg> <inv 6 díg> <9 tempos> <resolução>` substitui `pivo io` + `pivo tempos` + `pivo enc` (que continuam aceitos). A TON guarda o CRC16 (Modbus) do texto dos argumentos e o devolve no ack do `pivo status` (`k<CRC>`). O NexON calcula o mesmo CRC e **só manda a configuração se for diferente** — depois de um restart da API, a 1ª partida pergunta o status (que já era feito para conferir o firmware) e, se a TON já tem a config, vai direto para o `pivo ligar`. Primeira partida: 5 viagens pelo LoRa → 2 (ou 3 se a config mudou). O antigo `pivo cfg` (imprimir na Serial) virou `pivo mostrar`.
