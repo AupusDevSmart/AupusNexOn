@@ -529,12 +529,15 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   const falhaPermissivo = falhaSeq && /permissivo/i.test(seq?.erro ?? '');
   const falhaPressao = falhaSeq && !falhaPermissivo && /press/i.test(seq?.erro ?? '');
   const falha = st?.erro === 1 || falhaSeq;
+  const motivoFalha = (seq?.erro ?? '').replace(/^(A TON não ligou|Falha na TON|TON não aplicou "[^"]*"):\s*/i, '').trim();
 
   const { tone, label, texto } = ((): { tone: NxTone; label: string; texto: string } => {
     if (executando && seq?.acao === 'desligar') return { tone: 'ok', label: 'Normal', texto: 'Desligando…' };
     // Mostra o passo em que a partida está (ex.: "Aguardando pressurização (120s)").
     if (ligando) return { tone: 'ok', label: 'Normal', texto: seq?.passos?.at(-1)?.msg ?? 'Ligando…' };
-    if (falha) return { tone: 'bad', label: 'Falha', texto: falhaPressao ? 'Falha de pressão · Parado' : falhaPermissivo ? 'Sem permissivo para ligar · Parado' : st?.erro === 1 ? 'Falha no painel · Parado' : 'Falha na partida · Parado' };
+    // O motivo real da última partida/parada (vem da TON ou do servidor), sem o prefixo técnico.
+    if (falha) return { tone: 'bad', label: 'Falha', texto: falhaSeq && motivoFalha ? `${motivoFalha} · Parado`
+      : falhaPressao ? 'Falha de pressão · Parado' : falhaPermissivo ? 'Sem permissivo para ligar · Parado' : st?.erro === 1 ? 'Falha no painel · Parado' : 'Falha na partida · Parado' };
     if (girando) return { tone: 'ok', label: 'Normal', texto: cfgGiro.semAgua ? `Girando · ${DIRECAO_LABEL[direcaoAtual]} · Seco`
       : ehParado(cfgGiro) && (irrigandoParado || estado?.pivo.comandos.percentimetro) ? 'Irrigando parado · no lugar · Molhado' : `Irrigando · ${fmtPct(cfgGiro.percentual)}% · ${DIRECAO_LABEL[direcaoAtual]} · Molhado` };
     if (pausaPonta) return { tone: 'ok', label: 'Normal', texto: `Pausado pelo horário de ponta · retoma às ${pausaPonta.retoma_as}` };
