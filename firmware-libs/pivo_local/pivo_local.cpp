@@ -7,10 +7,9 @@ namespace pivo {
 
 const char* estadoNome(Estado e) {
     switch (e) {
-        case PARADO:     return "parado";
-        case LIGANDO:    return "ligando";
-        case IRRIGANDO:  return "irrigando";
-        case DESLIGANDO: return "desligando";
+        case PARADO:   return "parado";
+        case PARTINDO: return "aguardando_pressao";
+        case GIRANDO:  return "girando";
     }
     return "?";
 }
@@ -18,11 +17,26 @@ const char* estadoNome(Estado e) {
 const char* passoNome(Passo p) {
     switch (p) {
         case P_NENHUM:  return "";
-        case L_TENSAO:  return "tensao";
-        case L_PRESSAO: return "pressao";
-        case L_LADO:    return "lado";
-        case D_BOMBA:   return "bomba_off";
-        case D_LADO:    return "lado_off";
+        case P_PRESSAO: return "pressao";
+        case P_GIRO:    return "giro";
+    }
+    return "?";
+}
+
+const char* motivoNome(uint8_t m) {
+    switch (m) {
+        case M_NENHUMA: return "nenhuma";
+        case M_CONCLUIDA: return "concluida";
+        case M_COMANDO: return "comando_operador";
+        case M_QUEDA_PRESSAO: return "queda_pressao";
+        case M_PRESSAO_NAO_SUBIU: return "pressao_nao_subiu";
+        case M_TENSAO: return "tensao";
+        case M_SEGURANCA: return "seguranca";
+        case M_REINICIO: return "reinicio_slave";
+        case M_CONDICAO_PARTIDA: return "condicao_partida";
+        case M_NAO_GIROU: return "nao_girou";
+        case M_LADO_CAIU: return "lado_caiu";
+        case M_FALHA_RELES: return "falha_reles";
     }
     return "?";
 }
@@ -32,48 +46,31 @@ static float norm360(float g) {
     while (g < 0.0f) g += 360.0f;
     return g;
 }
-// Diferenca mais curta b - a, em (-180, 180].
-static float dif180(float a, float b) {
+static float dif180(float a, float b) {          // menor caminho b - a, em (-180, 180]
     float d = norm360(b - a);
     return d > 180.0f ? d - 360.0f : d;
 }
+static float absf(float x) { return x < 0 ? -x : x; }
 static void copia(char* dst, const char* src, size_t n) {
+    if (!dst || !n) return;
     if (!src) src = "";
     strncpy(dst, src, n - 1);
     dst[n - 1] = 0;
 }
-static float absf(float x) { return x < 0 ? -x : x; }
 
 static const float SALTO_MAX_GRAUS = 30.0f;   // leitura que pula mais que isso = glitch, nao conta
-static const float MUDOU_GRAUS     = 0.2f;    // abaixo disso e' ruido (para o "girando")
+static const float MUDOU_GRAUS     = 0.5f;    // abaixo disso nao conta como "angulo mudando"
 
 bool validarPlano(Plano& p, char* motivo, size_t msz) {
     if (p.dir != 'D' && p.dir != 'E') { copia(motivo, "direcao", msz); return false; }
     if (p.pm < 0 || p.pm > 1000) { copia(motivo, "percentimetro", msz); return false; }
-    switch (p.parada) {
-        case POR_VOLTAS:
-            if (!(p.voltas > 0.0f) || p.voltas > 50.0f) { copia(motivo, "voltas", msz); return false; }
-            break;
-        case POR_ANGULO:
-            if (!(p.angulo >= 0.0f) || p.angulo > 360.0f) { copia(motivo, "angulo", msz); return false; }
-            p.angulo = norm360(p.angulo);
-            break;
-        case POR_DURACAO:
-            if (p.duracao_s == 0 || p.duracao_s > 7UL * 86400UL) { copia(motivo, "duracao", msz); return false; }
-            break;
-        default:
-            copia(motivo, "parada", msz); return false;
-    }
-    if (p.nseg > MAX_SEG) { copia(motivo, "segmentos", msz); return false; }
-    for (int i = 0; i < p.nseg; i++) {
-        Segmento& s = p.seg[i];
-        if (!(s.ini_grau >= 0.0f) || s.ini_grau >= 360.0f || s.pm < 0 || s.pm > 1000) { copia(motivo, "segmento", msz); return false; }
-        if (i > 0 && !(s.ini_grau > p.seg[i - 1].ini_grau)) { copia(motivo, "segmento_ordem", msz); return false; }
-    }
-    if (!p.com_agua) {                       // sem agua: percentimetro 100 % e sem canhao
-        p.pm = 1000; p.canhao = false;
-        for (int i = 0; i < p.nseg; i++) { p.seg[i].pm = 1000; p.seg[i].canhao = false; }
-    }
+    if (p.parada == POR_GRAUS) {
+        if (p.graus == 0 || p.graus > 360UL * 50UL) { copia(motivo, "parada", msz); return false; }
+    } else if (p.parada == POR_DURACAO) {
+        if (p.duracao_s == 0 || p.duracao_s > 7UL * 86400UL) { copia(motivo, "duracao", msz); return false; }
+    } else { copia(motivo, "parada", msz); return false; }
+    if (p.tem_faixa && (p.desliga_em > 359 || p.liga_em > 359)) { copia(motivo, "faixa", msz); return false; }
+    if (!p.com_agua) { p.pm = 1000; p.canhao = false; }   // sem agua: 100 % e canhao LOW (spec 6.3)
     p.id[ID_LEN - 1] = 0;
     if (motivo && msz) motivo[0] = 0;
     return true;
@@ -81,27 +78,23 @@ bool validarPlano(Plano& p, char* motivo, size_t msz) {
 
 Maquina::Maquina(const Config& cfg, Ouvinte* ouv) : _cfg(cfg), _ouv(ouv) {}
 
-void Maquina::_ir(Estado e, uint32_t) {
+void Maquina::_ir(Estado e) {
     if (e == _st) return;
     Estado de = _st;
     _st = e;
     if (_ouv) _ouv->aoMudarEstado(de, e);
 }
 
-void Maquina::_passoPara(Passo p, uint32_t now, const char* nome) {
-    _passo = p;
-    _t_passo = now;
-    if (nome && _ouv) _ouv->aoEvento("passo", nome);
-}
-
-bool Maquina::_queda(bool ok, uint32_t& desde, uint32_t now) {
+bool Maquina::_queda(bool ok, uint32_t& desde, uint32_t tol, uint32_t now) {
     if (ok) { desde = 0; return false; }
     if (!desde) desde = now ? now : 1;
-    return (now - desde) >= _cfg.tolerancia_ms;
+    return (now - desde) >= tol;
 }
 
+float Maquina::percorrido() const { return absf(_soma); }
+
 bool Maquina::girando(uint32_t now) const {
-    return _out.perc_pm > 0 && _ang_mudou_ok && (now - _t_ang_mudou) < _cfg.janela_giro_ms;
+    return _st == GIRANDO && _out.perc_pm > 0 && _ang_mudou_ok && (now - _t_ang_mudou) < _cfg.janela_giro_ms;
 }
 
 // ---------------------------------------------------------------- comandos
@@ -109,287 +102,182 @@ bool Maquina::girando(uint32_t now) const {
 bool Maquina::ligar(const Plano& p, uint32_t now, char* motivo, size_t msz) {
     if (_st != PARADO) { copia(motivo, "ja_ligado", msz); return false; }
     Plano q = p;
-    char m[MOTIVO_LEN];
+    char m[24];
     if (!validarPlano(q, m, sizeof(m))) {
-        char t[MOTIVO_LEN + 16];
+        char t[40];
         snprintf(t, sizeof(t), "plano_invalido:%s", m);
         copia(motivo, t, msz);
         return false;
     }
+    // Condicao de partida (spec 6.2 item 1): tensao e seguranca ok, senao NAO executa.
+    if ((_cfg.tem_tensao && !_in.tensao) || (_cfg.tem_seguranca && !_in.seguranca)) {
+        _motivo = M_CONDICAO_PARTIDA;
+        _evento("parado", "condicao_partida");
+        copia(motivo, "condicao_partida", msz);
+        return false;
+    }
+    // Pivo ja' girando pelo painel (retorno de sentido ativo): nao parte por cima.
     if ((_cfg.tem_gir_dir && _in.gir_dir) || (_cfg.tem_gir_esq && _in.gir_esq)) { copia(motivo, "pivo_girando", msz); return false; }
-    if (_cfg.tem_seguranca && _in.desalinhado) { copia(motivo, "desalinhado", msz); return false; }
 
     _plano = q;
-    _falha[0] = 0; _motivo[0] = 0; _falha_desligar = false;
-    _percorrido = 0; _alvo = -1; _contando = false; _seg = -1;
-    _canhao_conf_ate = 0; _q_pressao = _q_tensao = _q_lado = 0;
-    _t_ligar = now; _now = now;
-    // Posicao recente: a referencia ja' e' o angulo atual. Senao, a primeira leitura vira a referencia.
-    if (_tem_pos && (now - _t_pos) < _cfg.sem_posicao_ms) {
-        _contando = true;
-        if (_plano.parada == POR_VOLTAS) _alvo = 360.0f * _plano.voltas;
-        else if (_plano.parada == POR_ANGULO) {
-            float d = _plano.dir == 'D' ? norm360(_plano.angulo - _ang) : norm360(_ang - _plano.angulo);
-            _alvo = d < 0.5f ? 360.0f : d;
-        }
+    _motivo = M_NENHUMA;
+    _alertas = 0;
+    _soma = 0; _contando = false;
+    _t_canhao_sem = 0; _q_pressao = _q_tensao = _q_lado = 0;
+    _t_ligar = now;
+    _out = Saidas();
+    _evento("ligar", _plano.id);
+    _ir(PARTINDO);
+    if (_plano.com_agua) {
+        _out.bomba = true;                       // spec 6.2 item 2: BO1 e BO2 juntas
+        _out.valvula = _cfg.tem_valvula;
+        _passo = P_PRESSAO; _t_passo = now;
+        _evento("passo", "bomba_ligada");
+    } else {
+        _acionarLado(now);                       // spec 6.3: sem agua nao liga bomba nem espera pressao
     }
-    if (_ouv) _ouv->aoEvento("ligar", _plano.id);
-    _ir(LIGANDO, now);
-    _passoPara(L_TENSAO, now, "tensao");
     if (motivo && msz) motivo[0] = 0;
     return true;
 }
 
-bool Maquina::desligar(const char* motivo, uint32_t now) {
-    if (_st == DESLIGANDO) return false;
-    if (_st == PARADO) {
-        // Garante tudo em OFF (ex.: comando de seguranca repetido); nao reabre a sequencia.
-        _out = Saidas();
-        return false;
-    }
-    _iniciarDesligar(motivo && *motivo ? motivo : "comando", false, now);
-    return true;
+void Maquina::desligar(uint8_t motivo, uint32_t now) {
+    (void)now;
+    bool estava = _st != PARADO;
+    _out = Saidas();                             // spec 6.6: BO1..BO6 LOW, percentimetro 0
+    _passo = P_NENHUM;
+    _contando = false;
+    _t_canhao_sem = 0;
+    _alertas &= (uint8_t)~(A_FALHA_CANHAO | A_ERRO_POSICAO);
+    if (estava || motivo != M_COMANDO) _motivo = motivo;
+    if (estava) _evento("parado", motivoNome(motivo));
+    _ir(PARADO);
 }
 
 bool Maquina::ajustarPercentimetro(int16_t pm, char* motivo, size_t msz) {
-    if (_st != IRRIGANDO) { copia(motivo, "nao_irrigando", msz); return false; }
+    if (_st != GIRANDO) { copia(motivo, "nao_girando", msz); return false; }
     if (!_plano.com_agua) { copia(motivo, "sem_agua", msz); return false; }
-    if (_plano.nseg) { copia(motivo, "segmentos", msz); return false; }
     if (pm < 0 || pm > 1000) { copia(motivo, "percentimetro", msz); return false; }
     _plano.pm = pm;
     _out.perc_pm = pm;
-    if (_ouv) _ouv->aoEvento("passo", "percentimetro");
+    _evento("passo", "percentimetro");
     if (motivo && msz) motivo[0] = 0;
     return true;
 }
 
-bool Maquina::comandarCanhao(bool on, uint32_t now, char* motivo, size_t msz) {
-    if (_st != IRRIGANDO) { copia(motivo, "nao_irrigando", msz); return false; }
+bool Maquina::ajustarCanhao(bool ligado, bool tem_faixa, uint16_t desliga_em, uint16_t liga_em, uint32_t now, char* motivo, size_t msz) {
+    if (_st != GIRANDO) { copia(motivo, "nao_girando", msz); return false; }
     if (!_plano.com_agua) { copia(motivo, "sem_agua", msz); return false; }
     if (!_cfg.tem_canhao) { copia(motivo, "sem_canhao", msz); return false; }
-    if (_plano.nseg) { copia(motivo, "segmentos", msz); return false; }
-    _plano.canhao = on;
-    // Idempotente: pedir o estado em que ja' esta' e' sucesso (a tela pode ter lido uma BI06 presa).
-    if (_out.canhao == on) { if (motivo && msz) motivo[0] = 0; return true; }
-    _canhao(on, now);
+    if (tem_faixa && (desliga_em > 359 || liga_em > 359)) { copia(motivo, "faixa", msz); return false; }
+    _plano.canhao = ligado;
+    _plano.tem_faixa = tem_faixa;
+    _plano.desliga_em = desliga_em;
+    _plano.liga_em = liga_em;
+    _avaliarCanhao(now);                         // idempotente: pedir o estado atual = sucesso
     if (motivo && msz) motivo[0] = 0;
     return true;
 }
 
 // ---------------------------------------------------------------- sequencia
 
-void Maquina::_ligarBomba(uint32_t now) {
-    _out.bomba = true;
-    _out.valvula = _cfg.tem_valvula;
-    _passoPara(L_PRESSAO, now, "bomba_ligada");
-}
-
 void Maquina::_acionarLado(uint32_t now) {
-    _out.dir = _plano.dir == 'D';
+    _out.dir = _plano.dir == 'D';               // nunca os dois (BO3 xor BO4)
     _out.esq = _plano.dir == 'E';
-    _passoPara(L_LADO, now, _plano.dir == 'D' ? "girar_direita" : "girar_esquerda");
+    _passo = P_GIRO; _t_passo = now;
+    _evento("passo", _plano.dir == 'D' ? "girar_direita" : "girar_esquerda");
 }
 
-void Maquina::_canhao(bool on, uint32_t now) {
-    _out.canhao = on;
-    _canhao_conf_ate = _cfg.tem_canhao_st ? (now ? now : 1) : 0;
-    if (_ouv) _ouv->aoEvento("passo", on ? "canhao_ligar" : "canhao_desligar");
-}
-
-void Maquina::_entrarIrrigando(uint32_t now) {
-    if (_ouv) _ouv->aoEvento("passo", "girando");
+void Maquina::_entrarGirando(uint32_t now) {
     _passo = P_NENHUM;
     _q_pressao = _q_tensao = _q_lado = 0;
-    _ir(IRRIGANDO, now);
-    _aplicarSegmento(now, true);              // percentimetro (passo 6) e canhao (passos 7-8)
-    if (_ouv) _ouv->aoEvento("irrigando", _plano.id);
+    _out.perc_pm = _plano.com_agua ? _plano.pm : 1000;   // percentimetro entra no loop
+    _ir(GIRANDO);
+    _evento("girando", _plano.id);
+    // Referencia dos graus percorridos (spec 6.2 item 6): leitura recente vale; senao a proxima.
+    _soma = 0;
+    _contando = _tem_pos && (now - _t_pos) < _cfg.sem_posicao_ms;
+    _avaliarCanhao(now);                         // canhao na hora (sem esperar BI6)
 }
 
-// Percentimetro e canhao do segmento em que o pivo esta (ou do plano, sem segmentos).
-void Maquina::_aplicarSegmento(uint32_t now, bool forcar) {
-    int16_t pm = _plano.pm;
-    bool can = _plano.canhao;
-    if (_plano.nseg && _tem_pos) {
-        int i = _plano.nseg - 1;                  // antes do primeiro ini = continua o ultimo (volta)
-        for (int k = 0; k < _plano.nseg; k++) if (_plano.seg[k].ini_grau <= _ang) i = k;
-        if (i != _seg) {
-            bool primeiro = _seg < 0;
-            _seg = i;
-            if (!primeiro || !forcar) {
-                char d[12]; snprintf(d, sizeof(d), "%d", i + 1);
-                if (_ouv) _ouv->aoEvento("segmento", d);
-            }
-            forcar = true;
-        }
-        pm = _plano.seg[_seg].pm;
-        can = _plano.seg[_seg].canhao;
-    } else if (_plano.nseg && _seg >= 0) {
-        pm = _plano.seg[_seg].pm;
-        can = _plano.seg[_seg].canhao;
+// Dentro de [desliga_em, liga_em] o canhao fica OFF; faixa que passa pelo zero (ex.: 340..20).
+bool Maquina::_canhaoNaFaixaOff() const {
+    if (!_plano.tem_faixa || !_tem_pos) return false;
+    int a = (int)(_ang + 0.5f) % 360;
+    int d = _plano.desliga_em, l = _plano.liga_em;
+    if (d <= l) return a >= d && a <= l;
+    return a >= d || a <= l;
+}
+
+void Maquina::_avaliarCanhao(uint32_t now) {
+    bool quer = _st == GIRANDO && _plano.com_agua && _plano.canhao && _cfg.tem_canhao && !_canhaoNaFaixaOff();
+    if (_out.canhao != quer) {
+        _out.canhao = quer;
+        _t_canhao_sem = 0;
+        _evento("passo", quer ? "canhao_ligar" : "canhao_desligar");
     }
-    if (!_plano.com_agua) { pm = 1000; can = false; }
-    if (!forcar) return;
-    if (_out.perc_pm != pm) {
-        _out.perc_pm = pm;
-        if (_ouv) _ouv->aoEvento("passo", "percentimetro");
-    }
-    bool querCanhao = can && _cfg.tem_canhao;
-    if (_out.canhao != querCanhao) _canhao(querCanhao, now);
-}
-
-void Maquina::_iniciarDesligar(const char* motivo, bool falha, uint32_t now) {
-    copia(_motivo, motivo, sizeof(_motivo));
-    _falha_desligar = falha;
-    if (falha) copia(_falha, motivo, sizeof(_falha));
-    if (_ouv) _ouv->aoEvento(falha ? "falha" : "desligar", motivo);
-    _canhao_conf_ate = 0;
-    _ir(DESLIGANDO, now);
-    if (_out.bomba || _out.valvula) {          // desligar 1: bombeamento (e valvula)
-        _out.bomba = false;
-        _out.valvula = false;
-        _passoPara(D_BOMBA, now, "bomba_desligada");
-    } else {
-        _depoisBomba(now);
-    }
-}
-
-void Maquina::_depoisBomba(uint32_t now) {
-    _out.perc_pm = -1;                          // desligar 3: percentimetro em 0
-    _out.dir = false;                           // desligar 4: lados e canhao
-    _out.esq = false;
-    _out.canhao = false;
-    _passoPara(D_LADO, now, "lados_desligados");
-}
-
-void Maquina::_terminar(uint32_t now) {
-    _passo = P_NENHUM;
-    _contando = false;
-    _out = Saidas();
-    if (_ouv) _ouv->aoEvento("parado", _motivo);
-    _ir(PARADO, now);
-}
-
-// Seguranca valida desde que algo foi acionado (ligar 2 em diante). true = mandou desligar.
-bool Maquina::_segurancaLigando(uint32_t now) {
-    if (_cfg.tem_seguranca && _in.desalinhado) { _iniciarDesligar("seguranca", true, now); return true; }
-    if (_cfg.tem_tensao && _queda(_in.tensao, _q_tensao, now)) { _iniciarDesligar("sem_tensao", true, now); return true; }
-    return false;
+    if (!quer) { _t_canhao_sem = 0; _alertas &= (uint8_t)~A_FALHA_CANHAO; }
+    (void)now;
 }
 
 void Maquina::tick(uint32_t now, const Entradas& in) {
-    _now = now;
     _in = in;
+    if (_st == PARADO) return;
+
+    // Seguranca (BI5): 0 ou sem sinal -> desliga NA HORA (spec 6.4), em qualquer etapa
+    if (_cfg.tem_seguranca && !in.seguranca) { desligar(M_SEGURANCA, now); return; }
+    if (_cfg.tem_tensao && _queda(in.tensao, _q_tensao, _cfg.tol_tensao_ms, now)) { desligar(M_TENSAO, now); return; }
     uint32_t dt = now - _t_passo;
 
-    switch (_st) {
-    case PARADO:
-        break;
-
-    case LIGANDO:
-        if (_passo == L_TENSAO) {
-            if (_cfg.tem_seguranca && in.desalinhado) {         // nada ligado ainda: so' registra
-                copia(_falha, "seguranca", sizeof(_falha)); copia(_motivo, "seguranca", sizeof(_motivo));
-                if (_ouv) _ouv->aoEvento("falha", "seguranca");
-                _out = Saidas(); _passo = P_NENHUM; _ir(PARADO, now);
-            } else if (!_cfg.tem_tensao || in.tensao) {
-                if (_plano.com_agua) _ligarBomba(now);
-                else _acionarLado(now);                         // sem agua: pula 2 e 3
-            } else if (dt >= _cfg.tensao_ms) {
-                copia(_falha, "sem_tensao", sizeof(_falha)); copia(_motivo, "sem_tensao", sizeof(_motivo));
-                if (_ouv) _ouv->aoEvento("falha", "sem_tensao");
-                _out = Saidas(); _passo = P_NENHUM; _ir(PARADO, now);
-            }
-            break;
+    if (_st == PARTINDO) {
+        if (_passo == P_PRESSAO) {
+            if (_cfg.tem_pressao ? in.pressao : dt >= _cfg.espera_pressao_ms) _acionarLado(now);
+            else if (_cfg.tem_pressao && dt >= _cfg.espera_pressao_ms) desligar(M_PRESSAO_NAO_SUBIU, now);
+        } else if (_passo == P_GIRO) {
+            if (!_temGir() || _gir()) _entrarGirando(now);          // confirmou: segue NA HORA
+            else if (dt >= _cfg.confirma_giro_ms) desligar(M_NAO_GIROU, now);
         }
-        if (_segurancaLigando(now)) break;
-        if (_passo == L_PRESSAO) {
-            if (_cfg.tem_pressao) {
-                if (in.pressao) _acionarLado(now);
-                else if (dt >= _cfg.pressurizacao_ms) _iniciarDesligar("sem_pressao", true, now);
-            } else if (dt >= _cfg.pressurizacao_ms) {
-                _acionarLado(now);                              // sem pressostato: espera fixa
-            }
-        } else if (_passo == L_LADO) {
-            if (!_temGir() || _gir()) _entrarIrrigando(now);
-            else if (dt >= _cfg.confirma_giro_ms) _iniciarDesligar("nao_girou", true, now);
-        }
-        break;
-
-    case IRRIGANDO: {
-        if (_cfg.tem_seguranca && in.desalinhado) { _iniciarDesligar("seguranca", true, now); break; }
-        if (_plano.com_agua && _cfg.tem_pressao && _queda(in.pressao, _q_pressao, now)) { _iniciarDesligar("sem_pressao", true, now); break; }
-        if (_cfg.tem_tensao && _queda(in.tensao, _q_tensao, now)) { _iniciarDesligar("sem_tensao", true, now); break; }
-        if (_temGir() && _queda(_gir(), _q_lado, now)) { _iniciarDesligar("lado_caiu", true, now); break; }
-        if (_plano.parada == POR_DURACAO) {
-            if ((now - _t_ligar) >= _plano.duracao_s * 1000UL) { _iniciarDesligar("concluido", false, now); break; }
-        } else {
-            uint32_t ult = (_tem_pos && (int32_t)(_t_pos - _t_ligar) > 0) ? _t_pos : _t_ligar;
-            if ((now - ult) >= _cfg.sem_posicao_ms) { _iniciarDesligar("sem_posicao", true, now); break; }
-        }
-        if (_canhao_conf_ate) {
-            if (in.canhao == _out.canhao) {
-                _canhao_conf_ate = 0;
-                if (_ouv) _ouv->aoEvento("passo", _out.canhao ? "canhao_ligado" : "canhao_desligado");
-            } else if ((now - _canhao_conf_ate) >= _cfg.confirma_canhao_ms) {
-                _canhao_conf_ate = 0;
-                if (_ouv) _ouv->aoEvento("aviso", _out.canhao ? "canhao_nao_ligou" : "canhao_nao_desligou");
-            }
-        }
-        break;
+        return;
     }
 
-    case DESLIGANDO:
-        if (_passo == D_BOMBA) {
-            if (!_cfg.tem_pressao || !in.pressao) _depoisBomba(now);
-            else if (dt >= _cfg.confirma_bomba_ms) {
-                if (_ouv) _ouv->aoEvento("aviso", "pressao_nao_caiu");
-                _depoisBomba(now);
-            }
-        } else if (_passo == D_LADO) {
-            bool parado = (!_cfg.tem_gir_dir || !in.gir_dir) && (!_cfg.tem_gir_esq || !in.gir_esq);
-            if (parado) _terminar(now);
-            else if (dt >= _cfg.confirma_parada_ms) {
-                if (!_falha[0]) copia(_falha, "nao_parou", sizeof(_falha));
-                if (_ouv) _ouv->aoEvento("falha", "nao_parou");
-                _terminar(now);
-            }
+    // GIRANDO
+    if (_plano.com_agua && _cfg.tem_pressao && _queda(in.pressao, _q_pressao, _cfg.tol_pressao_ms, now)) { desligar(M_QUEDA_PRESSAO, now); return; }
+    if (_temGir() && _queda(_gir(), _q_lado, _cfg.tol_lado_ms, now)) { desligar(M_LADO_CAIU, now); return; }
+    if (_plano.parada == POR_DURACAO && (now - _t_ligar) >= _plano.duracao_s * 1000UL) { desligar(M_CONCLUIDA, now); return; }
+
+    // Encoder sem leitura: mantem a operacao e sinaliza (spec 6.4); o operador decide.
+    if (_plano.parada == POR_GRAUS || _plano.tem_faixa) {
+        uint32_t ult = (_tem_pos && (int32_t)(_t_pos - _t_ligar) > 0) ? _t_pos : _t_ligar;
+        if ((now - ult) >= _cfg.sem_posicao_ms) _alertas |= A_ERRO_POSICAO;
+    }
+    // Canhao: ligado e a BI6 nao confirma -> alerta (nao para)
+    if (_out.canhao && _cfg.tem_canhao_st) {
+        if (in.canhao) { _t_canhao_sem = 0; _alertas &= (uint8_t)~A_FALHA_CANHAO; }
+        else {
+            if (!_t_canhao_sem) _t_canhao_sem = now ? now : 1;
+            if ((now - _t_canhao_sem) >= _cfg.confirma_canhao_ms) _alertas |= A_FALHA_CANHAO;
         }
-        break;
     }
 }
 
-void Maquina::posicao(float graus, uint32_t now) {
-    if (!(graus >= -720.0f && graus <= 720.0f)) return;       // NaN/lixo
-    graus = norm360(graus);
+void Maquina::posicao(float g, uint32_t now) {
+    if (!(g >= -720.0f && g <= 720.0f)) return;            // NaN/lixo
+    g = norm360(g);
     if (!_tem_pos) {
-        _tem_pos = true;
-        _ang = graus;
-        _t_pos = now;
-        _t_ang_mudou = now;
-        _ang_ref = graus;
+        _tem_pos = true; _ang = g; _ang_ref = g; _t_pos = now; _t_ang_mudou = now;
     } else {
-        float d = dif180(_ang, graus);
+        float d = dif180(_ang, g);
         bool salto = absf(d) > SALTO_MAX_GRAUS;
-        if (salto) _ang_ref = graus;
-        else if (absf(dif180(_ang_ref, graus)) >= MUDOU_GRAUS) { _t_ang_mudou = now; _ang_mudou_ok = true; _ang_ref = graus; }
-        if (_contando && !salto && (_st == LIGANDO || _st == IRRIGANDO))
-            _percorrido += _plano.dir == 'D' ? d : -d;
-        if (salto && _ouv && _st == IRRIGANDO) _ouv->aoEvento("aviso", "salto_posicao");
-        _ang = graus;
-        _t_pos = now;
+        if (!salto && absf(dif180(_ang_ref, g)) >= MUDOU_GRAUS) { _t_ang_mudou = now; _ang_mudou_ok = true; _ang_ref = g; }
+        if (salto) _ang_ref = g;
+        // Soma COM SINAL (o vai-e-volta de 1 grau do encoder se cancela); percorrido = |soma|.
+        if (_contando && !salto && _st == GIRANDO) _soma += d;
+        _ang = g; _t_pos = now;
     }
-    if ((_st == LIGANDO || _st == IRRIGANDO) && !_contando) {
-        _contando = true;
-        _percorrido = 0;
-        if (_plano.parada == POR_VOLTAS) _alvo = 360.0f * _plano.voltas;
-        else if (_plano.parada == POR_ANGULO) {
-            float d = _plano.dir == 'D' ? norm360(_plano.angulo - _ang) : norm360(_ang - _plano.angulo);
-            _alvo = d < 0.5f ? 360.0f : d;
-        }
-    }
-    if (_st != IRRIGANDO) return;
-    if (_alvo >= 0 && _percorrido >= _alvo) { _iniciarDesligar("concluido", false, now); return; }
-    _aplicarSegmento(now, false);
+    _alertas &= (uint8_t)~A_ERRO_POSICAO;
+    if (_st != GIRANDO) return;
+    if (!_contando) { _contando = true; _soma = 0; }        // 1a leitura depois de girar = referencia
+    if (_plano.parada == POR_GRAUS && absf(_soma) >= (float)_plano.graus) { desligar(M_CONCLUIDA, now); return; }
+    _avaliarCanhao(now);                                     // faixa do canhao a cada posicao
 }
 
 } // namespace pivo

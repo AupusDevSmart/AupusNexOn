@@ -191,3 +191,28 @@ io/tempos/enc ficam na NVS e só são aceitos com o pivô parado. Recusas voltam
 - O controle roda em `pivo_tick()`, chamado logo depois de ler as entradas (a cada 50 ms) e antes de qualquer envio pelo rádio. A BI muda e a BO bate no mesmo ciclo.
 - **No satélite LoRa, a TON não manda eventos.** Cada pacote travava o loop por 0,5–0,8 s esperando o rádio, e enquanto transmitia ela perdia comandos (`lora_no_ack`). O backend monta os passos pelo código de passo do status e pergunta `pivo status` a cada 5 s durante a sequência.
 - Continua passando pelo LoRa só o que vai e volta do NexON: o comando chegar à TON e o estado chegar à ficha (alguns segundos). A sequência em si não depende disso.
+
+## 12. Regras a partir de 12/11/2026 (spec "Automação do pivô" + decisões do usuário)
+
+Fonte: `arquivos/Spec NexON - Automacao do pivo (protocolo e firmware).md`. **Valem sobre as seções 3 a 5 e 9.**
+
+| Regra | Como ficou |
+|---|---|
+| Segurança (BI5) | Normal = **1**. Em 0 ou sem sinal, desliga na hora (`seguranca`) |
+| Condição de partida | Tensão (BI2) **e** segurança (BI5) em 1. Senão não executa (`condicao_partida`) |
+| Partida com água | BO1+BO2 → pressão (BI1) em até `espera_pressao` (padrão **60 s**, senão `pressao_nao_subiu`) → sentido → **giro confirmado (BI3/BI4) segue na hora** (30 s é só o limite, `nao_girou`) → percentímetro e canhão na hora |
+| Partida sem água | Sem BO1/BO2 e sem esperar pressão; 100 %; BO6 em LOW |
+| Canhão | Não espera a BI6. Ligado sem BI6 por 5 s gera o alerta `falha_canhao` no status |
+| Canhão por faixa | Dentro de [desliga_em, liga_em] (bruto 0–359, inclusive pelo zero) fica OFF |
+| Quedas | Pressão e tensão com tolerâncias **separadas**, configuráveis (`tol_pressao_s`/`tol_tensao_s` na sequência do pivô); padrão **0 = na hora**. O giro cair também desliga (`lado_caiu`) |
+| Desligar | **Tudo LOW de uma vez**, motivo gravado, confirmação no ack (`pivo_parada_executada`) |
+| Parada | A TON só entende **graus** (voltas = 360 × n no NexON; ângulo final vira graus no sentido). Não existe "sem parada" nem "por tempo". Sem encoder (provisório): tempo estimado |
+| Ângulo e graus | A TON usa o **valor bruto** do encoder (`pivo enc 360 0 0`); a calibração fica no NexON. Graus percorridos = deslocamento líquido em módulo (o vai-e-volta de 1° não soma) |
+| Encoder sem leitura | Continua girando e marca o alerta `erro_posicao` |
+| Ajuste em operação | Percentímetro e canhão (liga/desliga/faixa). Sentido, água e parada exigem Desligar e nova ordem; o NexON recusa "reiniciar com novas opções" quando quem executa é a TON |
+
+**Comandos:** `pivo tempos <espera_pressao> <confirma_giro> <confirma_canhao> <tol_pressao> <tol_tensao> <tol_lado> <sem_posicao> <janela_giro> <ciclo_perc>` · `pivo ligar <id8> <d|e> <agua> <permil> <canhao> <g|t> <valor> [f <desliga_em> <liga_em>]` · `pivo canhao <0|1> [f <desliga_em> <liga_em>]` · `pivo desligar`.
+
+**Status** (`<base>/pivo`, ≤ 120 B): `{"o":id,"i":entradas,"et":etapa,"p":passo,"an":bruto,"gp":graus,"al":parada,"pm":permil,"mo":motivo,"at":alertas,"d","a","bo"}`. Etapa 0 parado · 1 aguardando pressão/giro · 2 girando. Motivo: 0 nenhuma · 1 concluída · 2 comando do operador · 3 queda de pressão · 4 pressão não subiu · 5 tensão · 6 segurança · 7 reinício da slave · 8 condição de partida · 9 não girou · 10 giro caiu · 11 falha de relés. Alertas: bit0 erro de posição · bit1 falha no canhão · bit2 reinícios repetidos.
+
+**Ainda não feito (próxima etapa):** log por ordem no NexON (linha do tempo por `id_ordem`, situação final e resumo), janela de 5 min do agendamento ("OI não iniciada"), protocolo master/slave da spec (NVS na master, quadros binários, consulta a cada 1 min configurável) — a estudar junto — e watchdog/retomada.

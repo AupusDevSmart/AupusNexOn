@@ -8,10 +8,13 @@
 //   pivo io <bo1..bo6> <bi1..bi6> <inv>   papeis BO: bomba valvula dir esq perc canhao
 //                                         papeis BI: pressao tensao gir_dir gir_esq seguranca canhao
 //                                         0 = nao ligado; inv = 6 digitos 0/1 (1 = BI ativa em baixo)
-//   pivo tempos <tensao> <pressurizacao> <giro> <canhao> <bomba> <parada> <tolerancia> <sem_posicao> <janela_giro> <ciclo_perc>  (s)
-//   pivo enc <resolucao> <inv 0|1> <zero_graus>      resolucao 0 = sem encoder
-//   pivo ligar <id> <d|e> <agua 0|1> <permil> <canhao 0|1> <v|a|t> <valor> [s <ini>:<permil>:<canhao> ...]
-//   pivo desligar [motivo] | pivo perc <permil> | pivo canhao <0|1> | pivo status | pivo cfg
+//   pivo tempos <espera_pressao> <confirma_giro> <confirma_canhao> <tol_pressao> <tol_tensao> <tol_lado> <sem_posicao> <janela_giro> <ciclo_perc>  (s)
+//   pivo enc <resolucao> <inv 0|1> <zero_graus>      resolucao 0 = sem encoder (o NexON manda 360 0 0: valor BRUTO)
+//   pivo ligar <id> <d|e> <agua 0|1> <permil> <canhao 0|1> <g|t> <valor> [f <desliga_em> <liga_em>]
+//        g = graus a percorrer (voltas = 360 x n, no NexON) · t = segundos (provisorio, pivo sem encoder)
+//        f = faixa do canhao (bruto 0..359): dentro de [desliga_em, liga_em] o canhao fica OFF
+//   pivo desligar | pivo perc <permil> | pivo canhao <0|1> [f <desliga_em> <liga_em>] | pivo status | pivo cfg
+// Segurança (BI5): normal = 1 (spec); 0 ou sem sinal = atuou.
 // Compatibilidade (sequencia ainda no servidor, ate' a Fase 3): com a sequencia local PARADA,
 //   perc <bo> <permil> <ciclo_s> <mascara> | perc off   (igual ao firmware anterior; mascara = DINs
 //   de "girando", bit0 = DIN1: o ciclo so' roda com alguma delas em 1). Nao fica na NVS.
@@ -42,8 +45,9 @@ enum { BI_PRESSAO = 0, BI_TENSAO, BI_GIR_DIR, BI_GIR_ESQ, BI_SEGURANCA, BI_CANHA
 static uint8_t  _bo[6] = {1, 2, 3, 4, 5, 6};
 static uint8_t  _bi[6] = {1, 2, 3, 4, 5, 6};
 static uint8_t  _inv = 0;                // bit k = BI do papel k ativa em baixo
-// s: tensao, pressurizacao, giro, canhao, bomba, parada, tolerancia, sem_posicao, janela_giro, ciclo_perc
-static uint32_t _tp[10] = {2, 120, 30, 30, 30, 60, 0, 300, 600, 60};   // tolerancia 0 = queda desliga na hora
+// s: espera_pressao, confirma_giro, confirma_canhao, tol_pressao, tol_tensao, tol_lado, sem_posicao, janela_giro, ciclo_perc
+#define PIVO_NTP 9
+static uint32_t _tp[PIVO_NTP] = {60, 30, 5, 0, 0, 0, 30, 600, 60};   // tolerancias 0 = queda desliga na hora
 static uint32_t _enc_res = 0;            // 0 = sem encoder
 static bool     _enc_inv = false;
 static float    _enc_zero = 0;
@@ -60,7 +64,6 @@ static float    _enc_bruto = 0;
 static bool     _pub_agora = true;
 static unsigned long _ult_pub = 0;
 static uint8_t  _bi_ant = 0xFF;
-static char     _falha_boot[16] = "";    // "reinicio": desligou irrigando (queda de energia/reset)
 static bool     _ativo_nvs = false;
 // Satelite LoRa mestre-puxa: frame espontaneo colide com o POLL do gateway (e com as
 // entradas, que mudam no mesmo instante). O status vai so' na resposta ao POLL.
@@ -110,7 +113,6 @@ struct OuvinteGlue : Ouvinte {
     }
     void aoMudarEstado(Estado de, Estado para) override {
         Serial.printf("[PIVO] %s -> %s\n", estadoNome(de), estadoNome(para));
-        if (para != PARADO) _falha_boot[0] = 0;
         _salvarAtivo(para != PARADO);
         _pub_agora = true;
     }
@@ -127,15 +129,14 @@ static Config _montarConfig() {
     c.tem_gir_esq   = _bi[BI_GIR_ESQ] != 0;
     c.tem_seguranca = _bi[BI_SEGURANCA] != 0;
     c.tem_canhao_st = _bi[BI_CANHAO] != 0;
-    c.tensao_ms          = _tp[0] * 1000UL;
-    c.pressurizacao_ms   = _tp[1] * 1000UL;
-    c.confirma_giro_ms   = _tp[2] * 1000UL;
-    c.confirma_canhao_ms = _tp[3] * 1000UL;
-    c.confirma_bomba_ms  = _tp[4] * 1000UL;
-    c.confirma_parada_ms = _tp[5] * 1000UL;
-    c.tolerancia_ms      = _tp[6] * 1000UL;
-    c.sem_posicao_ms     = _tp[7] * 1000UL;
-    c.janela_giro_ms     = _tp[8] * 1000UL;
+    c.espera_pressao_ms  = _tp[0] * 1000UL;
+    c.confirma_giro_ms   = _tp[1] * 1000UL;
+    c.confirma_canhao_ms = _tp[2] * 1000UL;
+    c.tol_pressao_ms     = _tp[3] * 1000UL;
+    c.tol_tensao_ms      = _tp[4] * 1000UL;
+    c.tol_lado_ms        = _tp[5] * 1000UL;
+    c.sem_posicao_ms     = _tp[6] * 1000UL;
+    c.janela_giro_ms     = _tp[7] * 1000UL;
     return c;
 }
 
@@ -145,7 +146,7 @@ static void _salvarCfg() {
     pr.putBytes("bo", _bo, sizeof(_bo));
     pr.putBytes("bi", _bi, sizeof(_bi));
     pr.putUChar("inv", _inv);
-    pr.putBytes("tp", _tp, sizeof(_tp));
+    pr.putBytes("tp2", _tp, sizeof(_tp));   // "tp2": formato de 12/11 (o "tp" antigo e' ignorado)
     pr.putUInt("er", _enc_res);
     pr.putBool("ei", _enc_inv);
     pr.putFloat("ez", _enc_zero);
@@ -161,7 +162,7 @@ void pivo_init() {
         if (pr.getBytesLength("bo") == sizeof(_bo)) pr.getBytes("bo", _bo, sizeof(_bo));
         if (pr.getBytesLength("bi") == sizeof(_bi)) pr.getBytes("bi", _bi, sizeof(_bi));
         _inv = pr.getUChar("inv", 0);
-        if (pr.getBytesLength("tp") == sizeof(_tp)) pr.getBytes("tp", _tp, sizeof(_tp));
+        if (pr.getBytesLength("tp2") == sizeof(_tp)) pr.getBytes("tp2", _tp, sizeof(_tp));
         _enc_res = pr.getUInt("er", 0);
         _enc_inv = pr.getBool("ei", false);
         _enc_zero = pr.getFloat("ez", 0);
@@ -175,9 +176,9 @@ void pivo_init() {
     _m = &m;
     // Reles do pivo ja' saem desligados (RELAYS_RESTORE_ON_SW_RESET = 0): reinicio = pivo parado.
     if (estava) {
-        // Desligou no meio de uma irrigacao (queda de energia, reset): avisa o NexON uma vez.
-        strncpy(_falha_boot, "reinicio", sizeof(_falha_boot) - 1);
-        _evPush("falha", "reinicio");
+        // Desligou no meio de uma irrigacao (queda de energia, reset): motivo "reinicio da slave" (spec 6.7).
+        _m->marcarMotivo(M_REINICIO);
+        _evPush("parado", "reinicio_slave");
         strncpy(_evq[(_evh + _evn - 1) % 12].id, id, ID_LEN - 1);
         _ativo_nvs = true;
         _salvarAtivo(false);
@@ -213,7 +214,7 @@ static void _setBo(int papel, bool on) {
 static bool _percSaida(int16_t pm, bool ladoOk, unsigned long now) {
     if (pm < 0) { _perc_ini = 0; _perc_pm_ciclo = -1; return false; }
     if (!ladoOk) { _perc_ini = 0; return false; }
-    uint32_t ciclo = _tp[9] * 1000UL;
+    uint32_t ciclo = _tp[8] * 1000UL;
     if (!_perc_ini || now - _perc_ini >= ciclo) { _perc_ini = now ? now : 1; _perc_pm_ciclo = pm; }
     uint32_t on_ms = (uint32_t)(((uint64_t)ciclo * (uint32_t)_perc_pm_ciclo) / 1000ULL);
     return (now - _perc_ini) < on_ms;
@@ -233,23 +234,23 @@ static float _anguloDe(float bruto) {
 static void _publicarStatus(pivo_publish_fn pub) {
     const Saidas& o = _m->saidas();
     const Entradas& in = _m->entradas();
-    uint8_t bi = (in.pressao ? 1 : 0) | (in.tensao ? 2 : 0) | (in.gir_dir ? 4 : 0) | (in.gir_esq ? 8 : 0) | (in.desalinhado ? 16 : 0) | (in.canhao ? 32 : 0);
+    // Status (spec 7.3), compacto: o satelite LoRa aceita ate' ~120 B de conteudo.
+    //   o = id da ordem · i = entradas (bit0 BI1 pressao, 1 BI2 tensao, 2 BI3 dir, 3 BI4 esq, 4 BI5 seguranca, 5 BI6 canhao)
+    //   et = etapa (0 parado, 1 aguardando pressao/giro, 2 girando) · p = passo da partida (1 pressao, 2 giro)
+    //   an = angulo BRUTO do encoder (null = sem leitura) · gp = graus percorridos · al = graus da parada
+    //   pm = percentimetro em permil (-1 = desligado) · mo = motivo da ultima parada · at = alertas
+    //   (bit0 erro de posicao, 1 falha no canhao, 2 reinicios repetidos) · bo = saidas (bit0 bomba .. 5 canhao, 6 girando)
+    uint8_t bi = (in.pressao ? 1 : 0) | (in.tensao ? 2 : 0) | (in.gir_dir ? 4 : 0) | (in.gir_esq ? 8 : 0) | (in.seguranca ? 16 : 0) | (in.canhao ? 32 : 0);
     uint8_t bo = (o.bomba ? 1 : 0) | (o.valvula ? 2 : 0) | (o.dir ? 4 : 0) | (o.esq ? 8 : 0) | (_perc_on ? 16 : 0) | (o.canhao ? 32 : 0);
-    const char* f = _m->falha()[0] ? _m->falha() : _falha_boot;
-    char an[12];
-    if (_m->temPosicao()) snprintf(an, sizeof(an), "%.1f", _m->angulo()); else strcpy(an, "null");
-    const Plano& p = _m->plano();
-    // Compacto: o satelite LoRa aceita ate' ~120 B de conteudo (MTU 200 com o envelope).
-    // e = estado (0 parado, 1 ligando, 2 irrigando, 3 desligando); p = passo (pivo::Passo);
-    // f = falha; pc/al = graus percorridos/alvo (inteiros; al -1 = sem alvo); c = config recebida.
-    // bi: bit0 pressao, 1 tensao, 2 gir_dir, 3 gir_esq, 4 desalinhado, 5 canhao.
-    // bo: bit0 bomba, 1 valvula, 2 dir, 3 esq, 4 percentimetro (fase ON), 5 canhao, 6 GIRANDO (perc > 0 e angulo mudando).
     if (_m->girando(millis())) bo |= 64;
+    char an[8];
+    if (_m->temPosicao()) snprintf(an, sizeof(an), "%ld", (long)lroundf(_m->angulo())); else strcpy(an, "null");
+    const Plano& p = _m->plano();
     char payload[160];
     snprintf(payload, sizeof(payload),
-        "{\"e\":%d,\"p\":%d,\"f\":\"%s\",\"d\":\"%c\",\"a\":%d,\"pm\":%d,\"an\":%s,\"pc\":%ld,\"al\":%ld,\"sg\":%d,\"bi\":%u,\"bo\":%u,\"c\":%d}",
-        (int)_m->estado(), (int)_m->passo(), f, p.dir, p.com_agua ? 1 : 0, (int)o.perc_pm,
-        an, (long)lroundf(_m->percorrido()), (long)lroundf(_m->alvo()), _m->segmentoAtual(), bi, bo, _cfg_ok ? 1 : 0);
+        "{\"o\":\"%s\",\"i\":%u,\"et\":%d,\"p\":%d,\"an\":%s,\"gp\":%ld,\"al\":%lu,\"pm\":%d,\"mo\":%u,\"at\":%u,\"d\":\"%c\",\"a\":%d,\"bo\":%u}",
+        _m->estado() == PARADO ? "" : p.id, bi, (int)_m->estado(), (int)_m->passo(), an, (long)lroundf(_m->percorrido()),
+        (unsigned long)_m->alvo(), (int)o.perc_pm, (unsigned)_m->motivo(), (unsigned)_m->alertas(), p.dir, p.com_agua ? 1 : 0, bo);
     if (pub) pub("pivo", payload);
 }
 
@@ -272,7 +273,7 @@ void pivo_tick() {
     in.tensao      = _biPapel(st, BI_TENSAO);
     in.gir_dir     = _biPapel(st, BI_GIR_DIR);
     in.gir_esq     = _biPapel(st, BI_GIR_ESQ);
-    in.desalinhado = _biPapel(st, BI_SEGURANCA);
+    in.seguranca   = _biPapel(st, BI_SEGURANCA);   // 1 = ok (spec); 0 ou sem sinal = atuou
     in.canhao      = _biPapel(st, BI_CANHAO);
 
     if (_enc_novo) {
@@ -284,9 +285,8 @@ void pivo_tick() {
     // Expansor de reles sem controle (I2C): o rele pode estar preso em qualquer estado. Pivo
     // ligado -> desliga com falha; parado -> recusa ligar (pivo_cmd). Nao da' para confiar na saida.
     if (relays_io_fault()) {
-        if (_m->estado() == LIGANDO || _m->estado() == IRRIGANDO) {
-            _m->desligar("falha_reles", now);
-            strncpy(_falha_boot, "falha_reles", sizeof(_falha_boot) - 1);
+        if (_m->estado() != PARADO) {
+            _m->desligar(M_FALHA_RELES, now);
             Serial.println("[PIVO] FALHA: reles sem controle (I2C) - desligando o pivo");
         }
     }
@@ -329,7 +329,7 @@ void pivo_tick() {
         _perc_on = _percSaida(o.perc_pm, ladoOk, now);
         _setBo(BO_PERC, _perc_on);
     }
-    _bi_sem_atual = (in.pressao ? 1 : 0) | (in.tensao ? 2 : 0) | (in.gir_dir ? 4 : 0) | (in.gir_esq ? 8 : 0) | (in.desalinhado ? 16 : 0) | (in.canhao ? 32 : 0);
+    _bi_sem_atual = (in.pressao ? 1 : 0) | (in.tensao ? 2 : 0) | (in.gir_dir ? 4 : 0) | (in.gir_esq ? 8 : 0) | (in.seguranca ? 16 : 0) | (in.canhao ? 32 : 0);
 }
 
 void pivo_loop(pivo_publish_fn publish) {
@@ -396,23 +396,20 @@ static int _cmdLigar(char* args, char* msg, size_t sz) {
     p.com_agua = atoi(ag) != 0;
     p.pm = (int16_t)atoi(pm);
     p.canhao = atoi(cn) != 0;
-    if (pt[0] == 'v') { p.parada = POR_VOLTAS; p.voltas = atof(pv); }
-    else if (pt[0] == 'a') { p.parada = POR_ANGULO; p.angulo = atof(pv); }
+    if (pt[0] == 'g') { p.parada = POR_GRAUS; p.graus = (uint32_t)strtoul(pv, nullptr, 10); }
     else if (pt[0] == 't') { p.parada = POR_DURACAO; p.duracao_s = (uint32_t)strtoul(pv, nullptr, 10); }
     else return _erro(msg, sz, "pivo_parada_invalida");
-    const char* s = strtok_r(nullptr, " ", &sv);
-    if (s && s[0] == 's') {
-        while ((tok = strtok_r(nullptr, " ", &sv)) != nullptr && p.nseg < MAX_SEG) {
-            float ini = 0; int spm = 0, sc = 0;
-            if (sscanf(tok, "%f:%d:%d", &ini, &spm, &sc) < 2) return _erro(msg, sz, "pivo_segmento_invalido");
-            p.seg[p.nseg].ini_grau = ini; p.seg[p.nseg].pm = (int16_t)spm; p.seg[p.nseg].canhao = sc != 0;
-            p.nseg++;
-        }
+    const char* f = strtok_r(nullptr, " ", &sv);
+    if (f && f[0] == 'f') {
+        const char* fd = strtok_r(nullptr, " ", &sv);
+        const char* fl = strtok_r(nullptr, " ", &sv);
+        if (!fd || !fl) return _erro(msg, sz, "pivo_faixa_invalida");
+        p.tem_faixa = true; p.desliga_em = (uint16_t)atoi(fd); p.liga_em = (uint16_t)atoi(fl);
     }
     // I/O minimo para o plano
     if ((p.dir == 'D' && !_bo[BO_DIR]) || (p.dir == 'E' && !_bo[BO_ESQ]) || !_bo[BO_PERC] || (p.com_agua && !_bo[BO_BOMBA]))
         return _erro(msg, sz, "pivo_io_incompleto");
-    if ((p.parada != POR_DURACAO || p.nseg) && !_enc_res) return _erro(msg, sz, "pivo_sem_encoder");
+    if ((p.parada == POR_GRAUS || p.tem_faixa) && !_enc_res) return _erro(msg, sz, "pivo_sem_encoder");
     char mot[40];
     if (!_m->ligar(p, millis(), mot, sizeof(mot))) { snprintf(msg, sz, "pivo_%s", mot); return 0; }
     return _ok(msg, sz, "pivo_ligando");
@@ -455,20 +452,15 @@ int pivo_cmd(const String& cmd, char* msg, size_t sz) {
     if (!strcmp(verbo, "ligar")) return _cmdLigar(resto ? resto : (char*)"", msg, sz);
 
     if (!strcmp(verbo, "desligar")) {
-        char mot[20] = "comando";
-        if (resto && *resto) { strncpy(mot, resto, sizeof(mot) - 1); mot[sizeof(mot) - 1] = 0; for (char* c = mot; *c; c++) if (*c == ' ' || *c == '"' || *c == '\\') *c = '_'; }
+        // Parar = desligar: SEMPRE desliga (spec 2.3/6.6), tudo LOW de uma vez.
         Estado e = _m->estado();
-        if (_m->desligar(mot, millis())) return _ok(msg, sz, "pivo_desligando");
-        if (e == PARADO) {
-            // Sequencia local parada, mas as BOs podem ter sido ligadas por fora (rN on, sequencia
-            // antiga no servidor, percentimetro legado): desliga TODAS as BOs do pivo na hora.
-            for (int k = 0; k < 6; k++) if (_bo[k]) { relay_set(_bo[k], false); _apl[k] = 0; }
-            if (_leg_bo) relay_set(_leg_bo, false);
-            _leg_pm = -1; _leg_ini = 0; _leg_saida = -1; _perc_on = false;
-            pivo_publicar_agora();
-            return _ok(msg, sz, "pivo_ja_parado");
-        }
-        return _ok(msg, sz, "pivo_ja_desligando");
+        _m->desligar(M_COMANDO, millis());
+        // Alem da sequencia: BOs do pivo ligadas por fora (rN on, percentimetro legado) tambem caem.
+        for (int k = 0; k < 6; k++) if (_bo[k]) { relay_set(_bo[k], false); _apl[k] = 0; }
+        if (_leg_bo) relay_set(_leg_bo, false);
+        _leg_pm = -1; _leg_ini = 0; _leg_saida = -1; _perc_on = false;
+        pivo_publicar_agora();
+        return _ok(msg, sz, e == PARADO ? "pivo_ja_parado" : "pivo_parada_executada");
     }
     if (!strcmp(verbo, "perc")) {
         char mot[32];
@@ -478,22 +470,29 @@ int pivo_cmd(const String& cmd, char* msg, size_t sz) {
         return 1;
     }
     if (!strcmp(verbo, "canhao")) {
+        // "pivo canhao <0|1> [f <desliga_em> <liga_em>]" — ajuste em operacao (spec 2.2/6.5)
         char mot[32];
-        bool on = resto && atoi(resto) != 0;
-        if (!_m->comandarCanhao(on, millis(), mot, sizeof(mot))) { snprintf(msg, sz, "pivo_canhao_%s", mot); return 0; }
-        _apl[BO_CANHAO] = -1;   // reescreve a BO06 (alguem pode ter mexido no rele por fora)
+        int on = 0, fd = -1, fl = -1;
+        char fch = 0;
+        int n = resto ? sscanf(resto, "%d %c %d %d", &on, &fch, &fd, &fl) : 0;
+        bool faixa = n == 4 && fch == 'f';
+        if (n < 1) return _erro(msg, sz, "pivo_canhao_invalido");
+        if (!_m->ajustarCanhao(on != 0, faixa, faixa ? (uint16_t)fd : 0, faixa ? (uint16_t)fl : 0, millis(), mot, sizeof(mot))) {
+            snprintf(msg, sz, "pivo_canhao_%s", mot); return 0;
+        }
+        _apl[BO_CANHAO] = -1;   // reescreve a BO06
         return _ok(msg, sz, on ? "pivo_canhao_on" : "pivo_canhao_off");
     }
     if (!strcmp(verbo, "status")) {
         // Estado no proprio ack (chega mesmo no satelite LoRa, onde o status so' sai no POLL):
-        // "pivo_st <estado> <passo> <permil> <falha|->" — estado 0 parado, 1 ligando, 2 irrigando, 3 desligando.
+        // "pivo_st <etapa> <passo> <permil> <motivo> a<alertas> ..." — etapa 0 parado, 1 aguardando pressao/giro, 2 girando.
         pivo_publicar_agora();
-        const char* f = _m->falha()[0] ? _m->falha() : (_falha_boot[0] ? _falha_boot : "-");
+        const char* f = motivoNome(_m->motivo());
         // + diagnostico: r<estado dos reles no driver, hex: bit n = Rn> i<recuperacoes do I2C dos reles> x<1 = reles sem controle> o<saidas pedidas: bit0 bomba..5 canhao>
         const Saidas& so = _m->saidas();
         uint8_t ob = (so.bomba ? 1 : 0) | (so.valvula ? 2 : 0) | (so.dir ? 4 : 0) | (so.esq ? 8 : 0) | (_perc_on ? 16 : 0) | (so.canhao ? 32 : 0);
-        snprintf(msg, sz, "pivo_st %d %d %d %s r%02X i%lu x%d o%02X", (int)_m->estado(), (int)_m->passo(), (int)so.perc_pm, f,
-                 (unsigned)relays_get_state(), (unsigned long)diag_i2c_resets, relays_io_fault() ? 1 : 0, (unsigned)ob);
+        snprintf(msg, sz, "pivo_st %d %d %d %s a%u r%02X i%lu x%d o%02X", (int)_m->estado(), (int)_m->passo(), (int)so.perc_pm, f,
+                 (unsigned)_m->alertas(), (unsigned)relays_get_state(), (unsigned long)diag_i2c_resets, relays_io_fault() ? 1 : 0, (unsigned)ob);
         return 1;
     }
     if (!strcmp(verbo, "encler")) {
@@ -514,10 +513,10 @@ int pivo_cmd(const String& cmd, char* msg, size_t sz) {
         return 1;
     }
     if (!strcmp(verbo, "cfg")) {
-        Serial.printf("[PIVO] cfg=%d BO %u %u %u %u %u %u | BI %u %u %u %u %u %u inv=0x%02X | tempos %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu | enc %lu inv=%d zero=%.1f\n",
+        Serial.printf("[PIVO] cfg=%d BO %u %u %u %u %u %u | BI %u %u %u %u %u %u inv=0x%02X | tempos %lu %lu %lu %lu %lu %lu %lu %lu %lu | enc %lu inv=%d zero=%.1f\n",
             _cfg_ok, _bo[0], _bo[1], _bo[2], _bo[3], _bo[4], _bo[5], _bi[0], _bi[1], _bi[2], _bi[3], _bi[4], _bi[5], _inv,
             (unsigned long)_tp[0], (unsigned long)_tp[1], (unsigned long)_tp[2], (unsigned long)_tp[3], (unsigned long)_tp[4],
-            (unsigned long)_tp[5], (unsigned long)_tp[6], (unsigned long)_tp[7], (unsigned long)_tp[8], (unsigned long)_tp[9],
+            (unsigned long)_tp[5], (unsigned long)_tp[6], (unsigned long)_tp[7], (unsigned long)_tp[8],
             (unsigned long)_enc_res, _enc_inv, _enc_zero);
         return _ok(msg, sz, "pivo_cfg_printed");
     }
@@ -548,13 +547,14 @@ int pivo_cmd(const String& cmd, char* msg, size_t sz) {
         return _ok(msg, sz, "pivo_io_ok");
     }
     if (!strcmp(verbo, "tempos")) {
-        unsigned long t[10];
-        if (!resto || sscanf(resto, "%lu %lu %lu %lu %lu %lu %lu %lu %lu %lu", &t[0], &t[1], &t[2], &t[3], &t[4], &t[5], &t[6], &t[7], &t[8], &t[9]) != 10)
+        unsigned long t[PIVO_NTP];
+        if (!resto || sscanf(resto, "%lu %lu %lu %lu %lu %lu %lu %lu %lu", &t[0], &t[1], &t[2], &t[3], &t[4], &t[5], &t[6], &t[7], &t[8]) != PIVO_NTP)
             return _erro(msg, sz, "pivo_tempos_invalido");
-        static const unsigned long lo[10] = {1, 5, 5, 5, 5, 5, 0, 30, 30, 5};   // tolerancia aceita 0 (instantaneo)
-        static const unsigned long hi[10] = {60, 1800, 600, 600, 600, 600, 60, 3600, 3600, 600};
-        for (int k = 0; k < 10; k++) if (t[k] < lo[k] || t[k] > hi[k]) return _erro(msg, sz, "pivo_tempos_faixa");
-        for (int k = 0; k < 10; k++) _tp[k] = (uint32_t)t[k];
+        //                                       espera giro canhao tolP tolT tolL sempos janela ciclo
+        static const unsigned long lo[PIVO_NTP] = {5,    5,   1,     0,   0,   0,   10,    30,    5};
+        static const unsigned long hi[PIVO_NTP] = {1800, 600, 120,   60,  60,  60,  3600,  3600,  600};
+        for (int k = 0; k < PIVO_NTP; k++) if (t[k] < lo[k] || t[k] > hi[k]) return _erro(msg, sz, "pivo_tempos_faixa");
+        for (int k = 0; k < PIVO_NTP; k++) _tp[k] = (uint32_t)t[k];
         _salvarCfg();
         _m->configurar(_montarConfig());
         return _ok(msg, sz, "pivo_tempos_ok");

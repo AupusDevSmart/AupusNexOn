@@ -1,22 +1,19 @@
 // ============================================================================
-// pivo_local — maquina de estados do PIVO na TON (sequencia local, sem internet).
-// Spec: docs/IOT-PIVO-TON-LOCAL.md (11/11/2026).
-//
-// O NexON manda o PLANO (direcao, agua, percentimetro, canhao, parada, segmentos);
-// a TON liga, irriga, confere as paradas a cada posicao do encoder e desliga sozinha.
+// pivo_local — maquina de estados do PIVO na TON slave (sequencia local, sem internet).
+// Spec: arquivos/Spec NexON - Automacao do pivo (protocolo e firmware).md (v1.0, 11/11/2026)
+//       + decisoes do usuario em 12/11/2026 (docs/IOT-PIVO-TON-LOCAL.md).
 //
 // C++ PURO (sem Arduino): compila no host (test_pivo.cpp) e no ESP32 dentro do
 // firmware gerado. Quem le as BI, aciona reles, roda o ciclo do percentimetro,
-// publica MQTT e guarda NVS e' o glue gerado — esta lib so' decide.
+// publica e guarda NVS e' o glue (glue/pivo.cpp) — esta lib so' decide.
 // Fonte canonica: AupusNexOn/firmware-libs/pivo_local/. Os geradores (V1 e V2)
-// embutem uma COPIA identica (smoke confere byte a byte).
+// embutem uma COPIA identica (tools/sync-pivo-lib.mjs --check confere).
 //
-// I/O padrao (alteravel no NexON):
-//   BO01 bombeamento  BO02 valvula  BO03 girar dir  BO04 girar esq  BO05 percentimetro  BO06 canhao
-//   BI01 pressao ok   BI02 tensao ok BI03 girando dir BI04 girando esq BI05 seguranca     BI06 canhao ligado
-// ENTRADAS aqui sao SEMANTICAS: a polaridade de cada BI ja foi resolvida pelo glue
-// (configuravel por BI). desalinhado = true => seguranca atuou.
-// Direcao: 'D' = direita = Avanco = angulo do encoder CRESCENTE; 'E' = esquerda.
+// Saidas: BO1 bombeamento, BO2 valvula, BO3 direita, BO4 esquerda, BO5 percentimetro, BO6 canhao.
+// Entradas SEMANTICAS (polaridade ja' resolvida pelo glue):
+//   pressao (BI1, 1 = ok) · tensao (BI2, 1 = ok) · gir_dir/gir_esq (BI3/BI4, retorno do sentido)
+//   seguranca (BI5, 1 = ok; 0 ou sem sinal = atuou) · canhao (BI6, retorno do canhao)
+// Angulo: valor BRUTO do encoder, 0..359 (a calibracao fica no app).
 // ============================================================================
 #ifndef PIVO_LOCAL_H
 #define PIVO_LOCAL_H
@@ -26,86 +23,88 @@
 
 namespace pivo {
 
-enum Estado : uint8_t { PARADO = 0, LIGANDO, IRRIGANDO, DESLIGANDO };
+// Etapa (spec 7.3): parado · aguardando_pressao (partida: pressao ou giro) · girando
+enum Estado : uint8_t { PARADO = 0, PARTINDO = 1, GIRANDO = 2 };
 const char* estadoNome(Estado e);
 
-// Passo em curso (o que a sequencia esta esperando agora).
-enum Passo : uint8_t {
-    P_NENHUM = 0,
-    L_TENSAO,        // ligar 1: espera tensao (BI02)
-    L_PRESSAO,       // ligar 3: bomba ligada, espera pressao (BI01)
-    L_LADO,          // ligar 5: lado acionado, espera girando (BI03/BI04)
-    D_BOMBA,         // desligar 2: bomba desligada, espera pressao cair
-    D_LADO,          // desligar 5: lados desligados, espera girando cair
-};
+// Passo da partida (dentro de PARTINDO)
+enum Passo : uint8_t { P_NENHUM = 0, P_PRESSAO = 1, P_GIRO = 2 };
 const char* passoNome(Passo p);
 
-enum Parada : uint8_t { POR_VOLTAS = 0, POR_ANGULO, POR_DURACAO };
+// Motivo da ultima parada (spec 8.6) + extras desta implementacao (9..)
+enum Motivo : uint8_t {
+    M_NENHUMA = 0, M_CONCLUIDA = 1, M_COMANDO = 2, M_QUEDA_PRESSAO = 3, M_PRESSAO_NAO_SUBIU = 4,
+    M_TENSAO = 5, M_SEGURANCA = 6, M_REINICIO = 7, M_CONDICAO_PARTIDA = 8,
+    M_NAO_GIROU = 9,      // o sentido nao confirmou (BI3/BI4) no tempo
+    M_LADO_CAIU = 10,     // o retorno do sentido caiu com o pivo girando (parou sem comando)
+    M_FALHA_RELES = 11,   // expansor de reles sem controle (glue)
+};
+const char* motivoNome(uint8_t m);
 
-static const int MAX_SEG    = 8;
-static const int ID_LEN     = 28;
-static const int MOTIVO_LEN = 24;
+// Alertas (spec 8.6): bit0 erro de posicao · bit1 falha no canhao · bit2 reinicios repetidos (glue)
+enum Alerta : uint8_t { A_ERRO_POSICAO = 1, A_FALHA_CANHAO = 2, A_REINICIOS = 4 };
+
+enum Parada : uint8_t {
+    POR_GRAUS = 0,    // graus a percorrer a partir da posicao atual (voltas = 360 x n, no NexON)
+    POR_DURACAO = 1,  // PROVISORIO: pivo sem encoder (tempo estimado no NexON) — sai quando houver encoder de teste
+};
+
+static const int ID_LEN = 12;
 
 struct Config {
-    // Quais sinais estao ligados (BO/BI mapeados). Sinal ausente = o passo nao confere.
-    bool tem_valvula    = false;   // BO02
-    bool tem_canhao     = true;    // BO06
-    bool tem_pressao    = true;    // BI01
-    bool tem_tensao     = true;    // BI02
-    bool tem_gir_dir    = true;    // BI03
-    bool tem_gir_esq    = true;    // BI04
-    bool tem_seguranca  = true;    // BI05
-    bool tem_canhao_st  = true;    // BI06
-    uint32_t tensao_ms          = 2000;     // ligar 1: tensao tem de aparecer em ate
-    uint32_t pressurizacao_ms   = 120000;   // ligar 3: pressao em ate (sem BI01 = espera fixa)
-    uint32_t confirma_giro_ms   = 30000;    // ligar 5
-    uint32_t confirma_canhao_ms = 30000;    // ligar 8 (nao para a irrigacao, so' avisa)
-    uint32_t confirma_bomba_ms  = 30000;    // desligar 2 (nao bloqueia, so' avisa)
-    uint32_t confirma_parada_ms = 60000;    // desligar 5 (sem parar = falha "nao_parou")
-    uint32_t tolerancia_ms      = 0;        // queda de pressao/tensao/lado irrigando (0 = instantaneo; decidido 11/11)
-    uint32_t sem_posicao_ms     = 300000;   // parada por posicao sem leitura do encoder
-    uint32_t janela_giro_ms     = 600000;   // "girando" = angulo mudou dentro desta janela (encoder de 360 pos. anda em passos de 1 grau)
+    bool tem_valvula   = false;   // BO2
+    bool tem_canhao    = true;    // BO6
+    bool tem_pressao   = true;    // BI1
+    bool tem_tensao    = true;    // BI2
+    bool tem_gir_dir   = true;    // BI3
+    bool tem_gir_esq   = true;    // BI4
+    bool tem_seguranca = true;    // BI5
+    bool tem_canhao_st = true;    // BI6
+    uint32_t espera_pressao_ms  = 60000;    // partida: pressao tem de subir em ate' (sem BI1 = espera fixa)
+    uint32_t confirma_giro_ms   = 30000;    // partida: sentido confirmado (BI3/BI4) em ate'
+    uint32_t confirma_canhao_ms = 5000;     // canhao ligado sem BI6 por isto -> alerta falha_canhao
+    uint32_t tol_pressao_ms     = 0;        // girando: pressao em 0 por isto -> desliga (0 = na hora)
+    uint32_t tol_tensao_ms      = 0;        // girando: tensao em 0 por isto -> desliga (0 = na hora)
+    uint32_t tol_lado_ms        = 0;        // girando: retorno do sentido em 0 por isto -> desliga
+    uint32_t sem_posicao_ms     = 30000;    // sem leitura do encoder por isto -> alerta erro_posicao (nao para)
+    uint32_t janela_giro_ms     = 600000;   // "angulo mudando" dentro desta janela
 };
-
-// Faixa de angulo ABSOLUTO [ini_grau, ini do proximo) com o proprio percentimetro/canhao.
-struct Segmento { float ini_grau; int16_t pm; bool canhao; };
 
 struct Plano {
-    char     id[ID_LEN] = {0};        // id da irrigacao no NexON (casa os eventos)
-    char     dir        = 'D';        // 'D' | 'E'
+    char     id[ID_LEN] = {0};    // id da ordem (8 caracteres)
+    char     dir        = 'D';    // 'D' direita | 'E' esquerda
     bool     com_agua   = true;
-    int16_t  pm         = 1000;       // percentimetro em permil (0..1000). Sem agua => 1000
+    int16_t  pm         = 1000;   // percentimetro em permil (0..1000). Sem agua => 1000
     bool     canhao     = false;
-    Parada   parada     = POR_VOLTAS;
-    float    voltas     = 1.0f;       // POR_VOLTAS (>0)
-    float    angulo     = 0.0f;       // POR_ANGULO: angulo final absoluto (0..360)
-    uint32_t duracao_s  = 0;          // POR_DURACAO (>0); horario de parada vira duracao no NexON
-    uint8_t  nseg       = 0;          // 0 = sem segmentos
-    Segmento seg[MAX_SEG];
+    bool     tem_faixa  = false;  // faixa do canhao: dentro de [desliga_em, liga_em] o canhao fica OFF
+    uint16_t desliga_em = 0;      // 0..359 (bruto do encoder)
+    uint16_t liga_em    = 0;      // 0..359
+    Parada   parada     = POR_GRAUS;
+    uint32_t graus      = 360;    // POR_GRAUS (>0)
+    uint32_t duracao_s  = 0;      // POR_DURACAO (>0)
 };
-// Valida e normaliza; false + motivo se invalido.
 bool validarPlano(Plano& p, char* motivo, size_t msz);
 
 struct Entradas {
-    bool pressao     = false;   // BI01
-    bool tensao      = false;   // BI02
-    bool gir_dir     = false;   // BI03
-    bool gir_esq     = false;   // BI04
-    bool desalinhado = false;   // BI05 (seguranca atuou)
-    bool canhao      = false;   // BI06
+    bool pressao   = false;
+    bool tensao    = false;
+    bool gir_dir   = false;
+    bool gir_esq   = false;
+    bool seguranca = false;   // 1 = ok
+    bool canhao    = false;
 };
 
 struct Saidas {
-    bool    bomba   = false;    // BO01 (mantida)
-    bool    valvula = false;    // BO02
-    bool    dir     = false;    // BO03
-    bool    esq     = false;    // BO04
-    bool    canhao  = false;    // BO06
-    int16_t perc_pm = -1;       // BO05: ciclo local do percentimetro; -1 = desligado
+    bool    bomba   = false;
+    bool    valvula = false;
+    bool    dir     = false;
+    bool    esq     = false;
+    bool    canhao  = false;
+    int16_t perc_pm = -1;     // BO5: ciclo do percentimetro (glue); -1 = desligado
 };
 
-// Eventos para o NexON (glue: <base>/pivo/evento) e para o Serial.
-//   tipo: "ligar" | "passo" | "irrigando" | "segmento" | "aviso" | "desligar" | "parado" | "falha"
+// Eventos (glue: <base>/pivo/evento na TON com WiFi; o satelite LoRa nao manda).
+//   tipo: "ligar" | "passo" | "girando" | "alerta" | "parado"
 struct Ouvinte {
     virtual ~Ouvinte() {}
     virtual void aoEvento(const char* tipo, const char* detalhe) = 0;
@@ -118,51 +117,41 @@ public:
     void configurar(const Config& cfg) { _cfg = cfg; }
     const Config& config() const { return _cfg; }
 
-    // Chamar a cada volta do loop com as entradas lidas. Depois aplicar saidas().
     void tick(uint32_t now_ms, const Entradas& in);
     const Saidas& saidas() const { return _out; }
+    void posicao(float graus_bruto, uint32_t now_ms);   // cada leitura boa do encoder (0..359)
 
-    // Posicao do encoder (graus 0..360, ja com zero/sentido). Chamar a cada leitura nova.
-    void posicao(float graus, uint32_t now_ms);
-
-    // Comandos. Retornam false + motivo quando recusam.
+    // Comandos. false + motivo quando recusam.
     bool ligar(const Plano& p, uint32_t now_ms, char* motivo, size_t msz);
-    bool desligar(const char* motivo, uint32_t now_ms);    // motivo: "comando", "ponta", ...
+    void desligar(uint8_t motivo, uint32_t now_ms);     // SEMPRE desliga (tudo LOW, spec 6.6)
     bool ajustarPercentimetro(int16_t pm, char* motivo, size_t msz);
-    bool comandarCanhao(bool ligar, uint32_t now_ms, char* motivo, size_t msz);
+    bool ajustarCanhao(bool ligado, bool tem_faixa, uint16_t desliga_em, uint16_t liga_em, uint32_t now_ms, char* motivo, size_t msz);
+    void marcarMotivo(uint8_t m) { _motivo = m; }       // glue: reinicio (boot)
 
     // Observabilidade
     Estado      estado() const { return _st; }
     Passo       passo() const { return _passo; }
     const Plano& plano() const { return _plano; }
-    const char* falha() const { return _falha; }           // "" = sem falha (ultima parada normal)
-    const char* motivoParada() const { return _motivo; }   // por que desligou por ultimo
+    uint8_t     motivo() const { return _motivo; }      // motivo da ultima parada
+    uint8_t     alertas() const { return _alertas; }
     bool        temPosicao() const { return _tem_pos; }
     float       angulo() const { return _ang; }
-    float       percorrido() const { return _percorrido; } // graus no sentido do plano desde o ligar
-    float       alvo() const { return _alvo; }             // graus a percorrer (<0 = ainda sem posicao / por duracao)
-    int         segmentoAtual() const { return _seg; }     // -1 = sem segmentos
-    bool        girando(uint32_t now_ms) const;            // percentimetro > 0 e angulo mudando
-    uint32_t    duracaoMs(uint32_t now_ms) const { return _st == PARADO ? 0 : now_ms - _t_ligar; }
+    float       percorrido() const;                     // graus desde a partida (deslocamento liquido, modulo)
+    uint32_t    alvo() const { return _plano.parada == POR_GRAUS ? _plano.graus : 0; }
+    bool        girando(uint32_t now_ms) const;
     const Entradas& entradas() const { return _in; }
     bool        otaPermitida() const { return _st == PARADO; }
-    bool        reinicioPermitido() const { return _st == PARADO; }
 
 private:
-    void _ir(Estado e, uint32_t now);
-    void _passoPara(Passo p, uint32_t now, const char* nome);
-    void _ligarBomba(uint32_t now);
+    void _ir(Estado e);
+    void _evento(const char* t, const char* d) { if (_ouv) _ouv->aoEvento(t, d); }
     void _acionarLado(uint32_t now);
-    void _entrarIrrigando(uint32_t now);
-    void _iniciarDesligar(const char* motivo, bool falha, uint32_t now);
-    void _depoisBomba(uint32_t now);
-    void _terminar(uint32_t now);
-    bool _segurancaLigando(uint32_t now);
-    void _aplicarSegmento(uint32_t now, bool forcar);
-    void _canhao(bool on, uint32_t now);
+    void _entrarGirando(uint32_t now);
+    void _avaliarCanhao(uint32_t now);
+    bool _canhaoNaFaixaOff() const;
     bool _gir() const { return _plano.dir == 'D' ? _in.gir_dir : _in.gir_esq; }
     bool _temGir() const { return _plano.dir == 'D' ? _cfg.tem_gir_dir : _cfg.tem_gir_esq; }
-    bool _queda(bool ok, uint32_t& desde, uint32_t now);
+    bool _queda(bool ok, uint32_t& desde, uint32_t tol, uint32_t now);
 
     Config   _cfg;
     Ouvinte* _ouv;
@@ -171,26 +160,22 @@ private:
     Saidas   _out;
     Entradas _in;
     Plano    _plano;
-    uint32_t _now = 0;
+    uint8_t  _motivo = M_NENHUMA;
+    uint8_t  _alertas = 0;
     uint32_t _t_passo = 0;
     uint32_t _t_ligar = 0;
-    char     _falha[MOTIVO_LEN] = {0};
-    char     _motivo[MOTIVO_LEN] = {0};
-    bool     _falha_desligar = false;   // o desligar em curso foi por falha
     // posicao
     bool     _tem_pos = false;
     float    _ang = 0;
     uint32_t _t_pos = 0;
+    float    _ang_ref = 0;
     uint32_t _t_ang_mudou = 0;
-    float    _ang_ref = 0;               // ultimo angulo em que contou "mudou" (pivo lento anda <0,2 grau por leitura)
     bool     _ang_mudou_ok = false;
-    bool     _contando = false;          // ja' tem a referencia do ligar
-    float    _percorrido = 0;
-    float    _alvo = -1;
-    int      _seg = -1;
+    bool     _contando = false;
+    float    _soma = 0;            // soma dos deslocamentos (com sinal); percorrido = |soma|
     // canhao
-    uint32_t _canhao_conf_ate = 0;       // 0 = nada a confirmar
-    // quedas (0 = sinal ok)
+    uint32_t _t_canhao_sem = 0;    // desde quando o canhao esta' ligado sem BI6 (0 = ok)
+    // quedas (0 = ok)
     uint32_t _q_pressao = 0, _q_tensao = 0, _q_lado = 0;
 };
 

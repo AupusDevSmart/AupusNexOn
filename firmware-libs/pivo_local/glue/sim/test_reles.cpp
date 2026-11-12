@@ -7,7 +7,7 @@
 unsigned long g_millis = 100000; SerialT Serial;
 bool R[9] = {false}; bool forceBI1zero = false; int perder = 0;   // escritas a perder (glitch I2C)
 uint32_t diag_i2c_resets = 0;
-uint8_t inputs_get_state() { bool d1 = R[1] && !forceBI1zero; return (d1?1:0)|2|(R[3]?4:0)|(R[4]?8:0)|32; }
+uint8_t inputs_get_state() { bool d1 = R[1] && !forceBI1zero; return (d1?1:0)|2|(R[3]?4:0)|(R[4]?8:0)|16|32; }   // BI5 seguranca = 1 (normal)
 uint8_t relays_get_state() { uint8_t s=0; for (int n=1;n<=6;n++) if (R[n]) s |= 1<<n; return s; }
 void relay_set(uint8_t n, bool on) {
   if (perder > 0) { perder--; printf("   t=%6.1fs  R%u -> %s  ** ESCRITA PERDIDA (I2C) **\n", (g_millis-100000)/1000.0, n, on?"ON":"off"); return; }
@@ -23,7 +23,7 @@ static void cmd(const char* c) { char m[96]; int r = pivo_cmd(String(c), m, size
 static void rel(const char* q) { printf("   [%s] RELES: bomba=%d valv=%d DIR=%d ESQ=%d perc=%d canhao=%d\n", q, R[1],R[2],R[3],R[4],R[5],R[6]); }
 int main() {
   pivo_init(); pivo_so_no_poll(true); ciclo(5);
-  cmd("pivo io 1 2 3 4 5 6 1 2 3 4 5 6 000000"); cmd("pivo tempos 2 10 30 30 30 60 0 300 600 60");
+  cmd("pivo io 1 2 3 4 5 6 1 2 3 4 5 6 000000"); cmd("pivo tempos 60 30 5 0 0 0 30 600 60");
   cmd("pivo ligar aaaa1111 e 1 600 1 t 36600"); ciclo(100); rel("esquerda irrigando");
   puts("-- operador tira a pressao (BI1 = 0)"); forceBI1zero = true; ciclo(60); rel("3 s depois");
   ciclo(1300); rel("65 s depois");

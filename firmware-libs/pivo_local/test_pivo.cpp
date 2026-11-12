@@ -1,4 +1,4 @@
-// Testes no host da lib pivo_local — docs/IOT-PIVO-TON-LOCAL.md.
+// Testes no host da lib pivo_local — spec "Automacao do pivo (protocolo e firmware)" + decisoes 12/11.
 //   g++ -std=c++17 -O2 -Wall -Wextra -o test_pivo test_pivo.cpp pivo_local.cpp && ./test_pivo
 #include "pivo_local.h"
 #include <stdio.h>
@@ -12,27 +12,23 @@ static int falhas = 0, total = 0;
 #define CHECK(cond, msg) do { total++; if (cond) printf("ok   %s\n", msg); else { falhas++; printf("FALHOU %s  (%s:%d)\n", msg, __FILE__, __LINE__); } } while (0)
 
 struct Coletor : Ouvinte {
-    std::vector<std::string> ev, estados;
-    void aoEvento(const char* tipo, const char* det) override { ev.push_back(std::string(tipo) + ":" + det); }
-    void aoMudarEstado(Estado, Estado para) override { estados.push_back(estadoNome(para)); }
+    std::vector<std::string> ev;
+    void aoEvento(const char* t, const char* d) override { ev.push_back(std::string(t) + ":" + d); }
+    void aoMudarEstado(Estado, Estado) override {}
     bool tem(const std::string& s) const { for (auto& e : ev) if (e == s) return true; return false; }
-    int idx(const std::string& s) const { for (size_t i = 0; i < ev.size(); i++) if (ev[i] == s) return (int)i; return -1; }
 };
 
-// Painel simulado. Passo de 100 ms. Encoder publica a cada 5 s.
+// Painel simulado, passo de 100 ms, encoder a cada 5 s (valor bruto, 1 grau por contagem).
 struct Painel {
     Config cfg; Coletor col; Maquina m; Entradas in; uint32_t t = 100000;
-    // atrasos do painel
-    uint32_t atraso_pressao = 5000, atraso_pressao_off = 2000, atraso_giro = 1000, atraso_canhao = 1000;
-    bool quebra_pressao = false, quebra_giro = false, quebra_canhao = false, lado_preso = false, sem_encoder = false;
-    bool tensao = true, desalinhado = false;
-    float ang = 10.0f, graus_por_s_100 = 360.0f / 7200.0f;   // 1 volta em 2 h a 100 %
+    uint32_t atraso_pressao = 3000, atraso_giro = 1000, atraso_canhao = 1000;
+    bool quebra_pressao = false, quebra_giro = false, quebra_canhao = false, sem_encoder = false, jitter = false;
+    bool tensao = true, seguranca = true;
+    float ang = 10.0f, gps100 = 360.0f / 3600.0f;          // 1 volta em 1 h a 100 %
     uint32_t t_bomba = 0, t_dir = 0, t_esq = 0, t_can = 0, t_enc = 0;
     bool bAnt = false, dAnt = false, eAnt = false, cAnt = false;
-    // historico de saidas p/ conferir ordem
-    std::vector<std::string> ordem;
-    Saidas oAnt;
-    Painel(Config c = Config()) : cfg(c), m(c, &col) { in.tensao = true; }
+    int dirJuntas = 0;                                     // ciclos com dir e esq em alto juntos
+    Painel(Config c = Config()) : cfg(c), m(c, &col) { in.tensao = true; in.seguranca = true; m.tick(t, in); }
     void passo() {
         t += 100;
         const Saidas& o = m.saidas();
@@ -40,240 +36,205 @@ struct Painel {
         if (o.dir != dAnt) { t_dir = t; dAnt = o.dir; }
         if (o.esq != eAnt) { t_esq = t; eAnt = o.esq; }
         if (o.canhao != cAnt) { t_can = t; cAnt = o.canhao; }
-        in.pressao = quebra_pressao ? false : (o.bomba ? (t - t_bomba >= atraso_pressao) : (in.pressao && t - t_bomba < atraso_pressao_off));
-        in.gir_dir = lado_preso ? in.gir_dir || o.dir : (quebra_giro ? false : (o.dir && t - t_dir >= atraso_giro));
-        in.gir_esq = lado_preso ? in.gir_esq || o.esq : (quebra_giro ? false : (o.esq && t - t_esq >= atraso_giro));
-        in.canhao = quebra_canhao ? false : (o.canhao ? (t - t_can >= atraso_canhao) : false);
-        in.tensao = tensao;
-        in.desalinhado = desalinhado;
-        // movimento: lado confirmado e percentimetro (continuo, aproximado)
+        in.pressao = !quebra_pressao && o.bomba && t - t_bomba >= atraso_pressao;
+        in.gir_dir = !quebra_giro && o.dir && t - t_dir >= atraso_giro;
+        in.gir_esq = !quebra_giro && o.esq && t - t_esq >= atraso_giro;
+        in.canhao = !quebra_canhao && o.canhao && t - t_can >= atraso_canhao;
+        in.tensao = tensao; in.seguranca = seguranca;
         if ((in.gir_dir || in.gir_esq) && o.perc_pm > 0) {
-            float v = graus_por_s_100 * (o.perc_pm / 1000.0f) * 0.1f;
+            float v = gps100 * (o.perc_pm / 1000.0f) * 0.1f;
             ang += in.gir_dir ? v : -v;
             while (ang >= 360) ang -= 360;
             while (ang < 0) ang += 360;
         }
-        if (!sem_encoder && t - t_enc >= 5000) { t_enc = t; m.posicao(ang, t); }
+        if (!sem_encoder && t - t_enc >= 5000) {
+            t_enc = t;
+            float leitura = (float)(int)ang;                   // encoder de 360 posicoes: inteiro
+            if (jitter && (t / 5000) % 2) leitura += 1;        // vai-e-volta de 1 grau
+            m.posicao(leitura, t);
+        }
         m.tick(t, in);
-        const Saidas& n = m.saidas();
-        // mesmo tick: registra na ordem da spec (bomba, percentimetro, lados, canhao)
-        if (n.bomba != oAnt.bomba) ordem.push_back(n.bomba ? "bomba+" : "bomba-");
-        if (n.perc_pm != oAnt.perc_pm) ordem.push_back("perc" + std::to_string(n.perc_pm));
-        if (n.dir != oAnt.dir) ordem.push_back(n.dir ? "dir+" : "dir-");
-        if (n.esq != oAnt.esq) ordem.push_back(n.esq ? "esq+" : "esq-");
-        if (n.canhao != oAnt.canhao) ordem.push_back(n.canhao ? "canhao+" : "canhao-");
-        oAnt = n;
+        if (m.saidas().dir && m.saidas().esq) dirJuntas++;
     }
     void rodar(uint32_t ms) { for (uint32_t i = 0; i < ms / 100; i++) passo(); }
-    bool ate(Estado e, uint32_t ms_max) { for (uint32_t i = 0; i < ms_max / 100; i++) { passo(); if (m.estado() == e) return true; } return false; }
-    bool ligar(Plano p) { char mot[40]; m.posicao(ang, t); t_enc = t; return m.ligar(p, t, mot, sizeof(mot)); }
-    int pos(const std::string& s) const { for (size_t i = 0; i < ordem.size(); i++) if (ordem[i] == s) return (int)i; return -1; }
+    bool ate(Estado e, uint32_t ms) { for (uint32_t i = 0; i < ms / 100; i++) { passo(); if (m.estado() == e) return true; } return false; }
+    bool ligar(Plano p, char* mot = nullptr) { char x[40]; m.posicao((float)(int)ang, t); t_enc = t; return m.ligar(p, t, mot ? mot : x, 40); }
 };
 
-static Plano plano(char dir = 'D', bool agua = true, int16_t pm = 1000) {
-    Plano p; p.dir = dir; p.com_agua = agua; p.pm = pm; strcpy(p.id, "IRR1");
+static Plano plano(char dir = 'D', bool agua = true, int16_t pm = 1000, uint32_t graus = 360) {
+    Plano p; p.dir = dir; p.com_agua = agua; p.pm = pm; p.graus = graus; strcpy(p.id, "a1b2c3d4");
     return p;
 }
 
 int main() {
-    // 1) Com agua, 1 volta: ordem completa de ligar e desligar
+    // 1) Partida com agua: bomba+valvula -> pressao -> sentido -> giro -> percentimetro e canhao NA HORA
     {
-        Painel b; Plano p = plano('D', true, 1000); p.canhao = true;
+        Config c; c.tem_valvula = true; Painel b(c); Plano p = plano('D', true, 1000, 360); p.canhao = true;
         CHECK(b.ligar(p), "1 ligar aceito");
-        CHECK(b.ate(IRRIGANDO, 60000), "1 chegou a IRRIGANDO");
-        CHECK(b.pos("bomba+") >= 0 && b.pos("bomba+") < b.pos("dir+"), "1 bomba antes do lado");
-        CHECK(b.pos("dir+") < b.pos("perc1000"), "1 lado antes do percentimetro");
-        CHECK(b.pos("perc1000") < b.pos("canhao+"), "1 percentimetro antes do canhao");
-        b.rodar(3000);
-        CHECK(b.col.tem("passo:canhao_ligado"), "1 canhao confirmado (BI06)");
-        CHECK(b.ate(PARADO, 3 * 3600 * 1000), "1 parou sozinho");
-        CHECK(!strcmp(b.m.motivoParada(), "concluido") && b.m.falha()[0] == 0, "1 motivo concluido, sem falha");
+        CHECK(b.m.saidas().bomba && b.m.saidas().valvula && !b.m.saidas().dir, "1 bomba e valvula juntas, sentido ainda nao");
+        CHECK(b.m.estado() == PARTINDO && b.m.passo() == P_PRESSAO, "1 aguardando pressao");
+        b.rodar(2900); CHECK(!b.m.saidas().dir, "1 sem pressao ainda: sem sentido");
+        b.rodar(200);  CHECK(b.m.saidas().dir && !b.m.saidas().esq, "1 pressao ok -> direita na hora");
+        CHECK(b.m.saidas().perc_pm == -1 && !b.m.saidas().canhao, "1 percentimetro e canhao so' depois do giro");
+        b.rodar(1100); CHECK(b.m.estado() == GIRANDO, "1 giro confirmado (1 s) -> girando, sem esperar 30 s");
+        CHECK(b.m.saidas().perc_pm == 1000 && b.m.saidas().canhao, "1 percentimetro e canhao na hora");
+        CHECK(b.ate(PARADO, 2 * 3600 * 1000), "1 parou sozinho");
+        CHECK(b.m.motivo() == M_CONCLUIDA, "1 motivo concluida");
         CHECK(b.m.percorrido() >= 359.0f && b.m.percorrido() < 362.0f, "1 percorreu ~360 graus");
-        int bo = b.pos("bomba-"), pc = b.pos("perc-1"), dr = b.pos("dir-");
-        CHECK(bo >= 0 && bo < pc && pc <= dr, "1 desligar: bomba, depois percentimetro, depois lado");
-        CHECK(b.col.idx("passo:bomba_desligada") < b.col.idx("passo:lados_desligados"), "1 espera pressao cair antes dos lados");
         const Saidas& o = b.m.saidas();
-        CHECK(!o.bomba && !o.dir && !o.esq && !o.canhao && o.perc_pm == -1, "1 tudo desligado no fim");
+        CHECK(!o.bomba && !o.valvula && !o.dir && !o.esq && !o.canhao && o.perc_pm == -1, "1 tudo LOW no fim");
+        CHECK(b.dirJuntas == 0, "1 dir e esq nunca juntas");
     }
-    // 2) Sem agua: nao liga bomba, percentimetro 100 %, sem canhao
+    // 2) Sem agua: sem bomba, sem espera de pressao, 100 %, canhao LOW mesmo pedido
     {
         Painel b; Plano p = plano('E', false, 300); p.canhao = true;
         CHECK(b.ligar(p), "2 ligar sem agua");
-        CHECK(b.ate(IRRIGANDO, 10000), "2 irrigando (seco) rapido");
-        CHECK(b.pos("bomba+") < 0, "2 bomba nunca ligou");
-        CHECK(b.m.saidas().perc_pm == 1000, "2 percentimetro 100 %");
-        CHECK(!b.m.saidas().canhao, "2 canhao bloqueado");
-        CHECK(b.m.saidas().esq && !b.m.saidas().dir, "2 lado esquerdo");
+        CHECK(b.m.saidas().esq && !b.m.saidas().bomba, "2 sentido direto, sem bomba");
+        CHECK(b.ate(GIRANDO, 5000), "2 girando");
+        CHECK(b.m.saidas().perc_pm == 1000 && !b.m.saidas().canhao, "2 100 % e canhao LOW");
     }
-    // 3) Sem tensao: nada liga
+    // 3) Condicao de partida: sem tensao ou sem seguranca -> nao executa
     {
-        Painel b; b.tensao = false;
-        CHECK(b.ligar(plano()), "3 aceita o comando");
-        CHECK(b.ate(PARADO, 10000), "3 volta a PARADO");
-        CHECK(!strcmp(b.m.falha(), "sem_tensao"), "3 falha sem_tensao");
-        CHECK(b.ordem.empty(), "3 nenhuma saida acionada");
+        Painel b; b.tensao = false; b.passo(); char mot[40];
+        CHECK(!b.ligar(plano(), mot) && !strcmp(mot, "condicao_partida"), "3 sem tensao: recusa");
+        CHECK(b.m.motivo() == M_CONDICAO_PARTIDA && !b.m.saidas().bomba, "3 motivo condicao_partida, nada ligado");
+        Painel c; c.seguranca = false; c.passo();
+        CHECK(!c.ligar(plano(), mot) && !strcmp(mot, "condicao_partida"), "3 seguranca em 0: recusa");
     }
-    // 4) Sem pressao: desliga a bomba depois da pressurizacao
+    // 4) Pressao nao subiu no prazo (60 s padrao)
     {
-        Config c; c.pressurizacao_ms = 20000; Painel b(c); b.quebra_pressao = true;
-        b.ligar(plano());
-        CHECK(b.ate(PARADO, 60000), "4 parou");
-        CHECK(!strcmp(b.m.falha(), "sem_pressao"), "4 falha sem_pressao");
-        CHECK(b.pos("dir+") < 0 && b.pos("bomba-") > 0, "4 nao girou e desligou a bomba");
+        Painel b; b.quebra_pressao = true; b.ligar(plano());
+        b.rodar(59000); CHECK(b.m.estado() == PARTINDO, "4 ainda esperando aos 59 s");
+        CHECK(b.ate(PARADO, 3000) && b.m.motivo() == M_PRESSAO_NAO_SUBIU, "4 aos 60 s: pressao_nao_subiu");
+        CHECK(!b.m.saidas().bomba, "4 bomba desligada");
     }
-    // 5) Lado nao confirma
+    // 5) Sentido nao confirmou
     {
-        Config c; c.confirma_giro_ms = 10000; Painel b(c); b.quebra_giro = true;
-        b.ligar(plano());
-        CHECK(b.ate(PARADO, 60000), "5 parou");
-        CHECK(!strcmp(b.m.falha(), "nao_girou"), "5 falha nao_girou");
-        CHECK(b.pos("perc1000") < 0, "5 percentimetro nem ativou");
+        Config c; c.confirma_giro_ms = 10000; Painel b(c); b.quebra_giro = true; b.ligar(plano());
+        CHECK(b.ate(PARADO, 30000) && b.m.motivo() == M_NAO_GIROU, "5 nao_girou");
+        CHECK(b.m.saidas().perc_pm == -1, "5 percentimetro nem entrou");
     }
-    // 6) Seguranca atua irrigando: desliga na hora
+    // 6) Seguranca (BI5 -> 0) desliga na hora, tudo LOW de uma vez
     {
-        Painel b; b.ligar(plano());
-        b.ate(IRRIGANDO, 60000); b.rodar(10000);
-        b.desalinhado = true; b.passo();
-        CHECK(b.m.estado() == DESLIGANDO, "6 desligando no mesmo tick");
-        CHECK(!b.m.saidas().bomba, "6 bomba cortada na hora");
-        CHECK(b.ate(PARADO, 60000) && !strcmp(b.m.falha(), "seguranca"), "6 falha seguranca");
+        Painel b; Plano p = plano(); p.canhao = true; b.ligar(p); b.ate(GIRANDO, 10000); b.rodar(5000);
+        b.seguranca = false; b.passo();
+        const Saidas& o = b.m.saidas();
+        CHECK(b.m.estado() == PARADO && b.m.motivo() == M_SEGURANCA, "6 parado no mesmo ciclo, motivo seguranca");
+        CHECK(!o.bomba && !o.dir && !o.esq && !o.canhao && o.perc_pm == -1, "6 tudo LOW de uma vez");
     }
-    // 7) Queda de pressao com tolerancia configurada (3 s): 2 s tolera, 4 s desliga
+    // 7) Quedas com tolerancia 0 (padrao): pressao e tensao desligam no 1o ciclo
     {
-        Config c3; c3.tolerancia_ms = 3000;
-        Painel b(c3); b.ligar(plano()); b.ate(IRRIGANDO, 60000); b.rodar(10000);
-        b.quebra_pressao = true; b.rodar(2000); b.quebra_pressao = false; b.rodar(1000);
-        CHECK(b.m.estado() == IRRIGANDO, "7 queda de 2 s tolerada");
-        b.quebra_pressao = true; b.rodar(4000);
-        CHECK(b.m.estado() != IRRIGANDO && !strcmp(b.m.falha(), "sem_pressao"), "7 queda de 4 s desliga");
-    }
-    // 7a) Padrao (tolerancia 0): queda de pressao desliga no PRIMEIRO tick
-    {
-        Painel b; b.ligar(plano()); b.ate(IRRIGANDO, 60000); b.rodar(10000);
+        Painel b; b.ligar(plano()); b.ate(GIRANDO, 10000); b.rodar(3000);
         b.quebra_pressao = true; b.passo();
-        CHECK(b.m.estado() == DESLIGANDO && !strcmp(b.m.falha(), "sem_pressao"), "7a pressao caiu: desliga no mesmo tick");
-        CHECK(!b.m.saidas().bomba, "7a bomba cortada na hora");
+        CHECK(b.m.estado() == PARADO && b.m.motivo() == M_QUEDA_PRESSAO, "7 queda_pressao na hora");
+        Painel c; c.ligar(plano()); c.ate(GIRANDO, 10000); c.rodar(3000);
+        c.tensao = false; c.passo();
+        CHECK(c.m.motivo() == M_TENSAO, "7 tensao na hora");
     }
-    // 7b) Queda de tensao e lado (instantaneo)
+    // 7b) Tolerancias configuradas (spec: 10 s) separadas
     {
-        Painel b; b.ligar(plano()); b.ate(IRRIGANDO, 60000); b.rodar(5000);
-        b.tensao = false; b.passo();
-        CHECK(!strcmp(b.m.falha(), "sem_tensao"), "7b queda de tensao desliga");
-        Painel c; c.ligar(plano()); c.ate(IRRIGANDO, 60000); c.rodar(5000);
-        c.quebra_giro = true; c.passo();
-        CHECK(!strcmp(c.m.falha(), "lado_caiu"), "7b lado caiu = lado_caiu");
+        Config c; c.tol_pressao_ms = 10000; c.tol_tensao_ms = 10000;
+        Painel b(c); b.ligar(plano()); b.ate(GIRANDO, 10000); b.rodar(3000);
+        b.quebra_pressao = true; b.rodar(9000); b.quebra_pressao = false; b.rodar(5000);
+        CHECK(b.m.estado() == GIRANDO, "7b queda de 9 s tolerada");
+        b.quebra_pressao = true; b.rodar(10500);
+        CHECK(b.m.motivo() == M_QUEDA_PRESSAO, "7b queda de 10 s desliga");
     }
-    // 8) Por angulo, direita 10 -> 100
+    // 8) Desligar do operador: tudo LOW na hora, motivo comando_operador
     {
-        Painel b; b.ang = 10; Plano p = plano('D'); p.parada = POR_ANGULO; p.angulo = 100;
-        b.ligar(p);
-        CHECK(b.m.alvo() > 89.9f && b.m.alvo() < 90.1f, "8 alvo 90 graus");
-        CHECK(b.ate(PARADO, 3 * 3600 * 1000), "8 parou");
-        CHECK(b.ang >= 99.0f && b.ang < 102.0f, "8 parou perto de 100");
+        Painel b; Plano p = plano(); p.canhao = true; b.ligar(p); b.ate(GIRANDO, 10000); b.rodar(3000);
+        b.m.desligar(M_COMANDO, b.t);
+        const Saidas& o = b.m.saidas();
+        CHECK(b.m.estado() == PARADO && b.m.motivo() == M_COMANDO, "8 parado, comando_operador");
+        CHECK(!o.bomba && !o.valvula && !o.dir && !o.esq && !o.canhao && o.perc_pm == -1, "8 tudo LOW");
+        Painel c; c.ligar(plano()); c.rodar(1000); c.m.desligar(M_COMANDO, c.t);
+        CHECK(c.m.estado() == PARADO && !c.m.saidas().bomba, "8 desligar no meio da partida");
     }
-    // 8b) Esquerda 100 -> 10 e volta pelo zero (direita 350 -> 20)
+    // 9) Parada em graus maiores que uma volta (2 voltas = 720) e pela virada 359 -> 0
     {
-        Painel b; b.ang = 100; Plano p = plano('E'); p.parada = POR_ANGULO; p.angulo = 10;
-        b.ligar(p);
-        CHECK(b.m.alvo() > 89.9f && b.m.alvo() < 90.1f, "8b esquerda: alvo 90");
-        b.ate(PARADO, 3 * 3600 * 1000);
-        CHECK(b.ang >= 8.0f && b.ang <= 11.0f, "8b parou perto de 10");
-        Painel c; c.ang = 350; Plano q = plano('D'); q.parada = POR_ANGULO; q.angulo = 20;
-        c.ligar(q);
-        CHECK(c.m.alvo() > 29.9f && c.m.alvo() < 30.1f, "8b passa pelo zero: alvo 30");
-        c.ate(PARADO, 3 * 3600 * 1000);
-        CHECK(c.ang >= 19.0f && c.ang < 22.0f, "8b parou perto de 20");
+        Painel b; b.ang = 350; b.gps100 = 360.0f / 600.0f; b.ligar(plano('D', true, 1000, 720));
+        CHECK(b.ate(PARADO, 3600 * 1000) && b.m.motivo() == M_CONCLUIDA, "9 parou");
+        CHECK(b.m.percorrido() >= 719.0f && b.m.percorrido() < 724.0f, "9 percorreu ~720 graus");
+        Painel c; c.ang = 5; c.gps100 = 360.0f / 600.0f; c.ligar(plano('E', true, 1000, 30));
+        c.ate(PARADO, 3600 * 1000);
+        CHECK(c.m.percorrido() >= 29.0f && c.m.percorrido() < 33.0f, "9 esquerda pela virada 0 -> 359: 30 graus");
     }
-    // 9) Por duracao (horario convertido): 10 min
+    // 10) Jitter de 1 grau do encoder nao soma (pivo parado irrigando a 0 %)
     {
-        Painel b; Plano p = plano(); p.parada = POR_DURACAO; p.duracao_s = 600;
-        b.ligar(p); uint32_t t0 = b.t;
-        CHECK(b.ate(DESLIGANDO, 3600 * 1000), "9 desligou");
-        CHECK(b.t - t0 >= 600000 && b.t - t0 < 601000, "9 em 10 min");
-        CHECK(!strcmp(b.m.motivoParada(), "concluido"), "9 concluido");
+        Painel b; b.jitter = true; b.ligar(plano('D', true, 0, 30)); b.ate(GIRANDO, 10000);
+        b.rodar(30 * 60 * 1000);
+        CHECK(b.m.estado() == GIRANDO && b.m.percorrido() <= 1.5f, "10 30 min de vai-e-volta: nao parou nem somou");
     }
-    // 10) Sem encoder com parada por posicao: falha sem_posicao
+    // 11) Encoder parou de responder: segue girando com alerta erro_posicao
     {
-        Painel b; b.sem_encoder = true;
-        char mot[32]; CHECK(b.m.ligar(plano(), b.t, mot, sizeof(mot)), "10 liga sem posicao conhecida");
-        CHECK(b.ate(PARADO, 10 * 60 * 1000), "10 parou");
-        CHECK(!strcmp(b.m.falha(), "sem_posicao"), "10 falha sem_posicao");
-        Painel c; c.sem_encoder = true; Plano p = plano(); p.parada = POR_DURACAO; p.duracao_s = 900;
-        c.m.ligar(p, c.t, mot, sizeof(mot)); c.rodar(10 * 60 * 1000);
-        CHECK(c.m.estado() == IRRIGANDO, "10 por duracao nao precisa de encoder");
+        Painel b; b.ligar(plano()); b.ate(GIRANDO, 10000); b.rodar(10000);
+        b.sem_encoder = true; b.rodar(40000);
+        CHECK(b.m.estado() == GIRANDO, "11 continua girando");
+        CHECK(b.m.alertas() & A_ERRO_POSICAO, "11 alerta erro_posicao");
+        b.sem_encoder = false; b.rodar(6000);
+        CHECK(!(b.m.alertas() & A_ERRO_POSICAO), "11 leitura voltou: alerta some");
     }
-    // 11) Segmentos: percentimetro e canhao mudam ao cruzar
+    // 12) Canhao sem retorno: alerta falha_canhao em 5 s, segue girando
     {
-        Painel b; b.ang = 80; b.graus_por_s_100 = 360.0f / 3600.0f;
-        Plano p = plano('D'); p.parada = POR_ANGULO; p.angulo = 200; p.nseg = 4;
-        p.seg[0] = {0, 1000, false}; p.seg[1] = {90, 500, true}; p.seg[2] = {180, 1000, false}; p.seg[3] = {270, 250, false};
-        b.ligar(p); b.ate(IRRIGANDO, 60000);
-        CHECK(b.m.segmentoAtual() == 0 && b.m.saidas().perc_pm == 1000, "11 comeca no segmento 1 (100 %)");
-        b.ate(DESLIGANDO, 2 * 3600 * 1000);
-        CHECK(b.col.tem("segmento:2") && b.col.tem("segmento:3"), "11 cruzou os segmentos 2 e 3");
-        CHECK(b.pos("perc500") >= 0 && b.pos("canhao+") > b.pos("perc1000"), "11 segmento 2: 50 % e canhao");
-        CHECK(b.pos("canhao-") > b.pos("canhao+"), "11 segmento 3 desliga o canhao");
+        Painel b; b.quebra_canhao = true; Plano p = plano(); p.canhao = true; b.ligar(p); b.ate(GIRANDO, 10000);
+        b.rodar(4000); CHECK(!(b.m.alertas() & A_FALHA_CANHAO), "12 antes de 5 s sem alerta");
+        b.rodar(1500); CHECK(b.m.alertas() & A_FALHA_CANHAO, "12 alerta falha_canhao");
+        CHECK(b.m.estado() == GIRANDO, "12 segue girando");
     }
-    // 12) Canhao sem retorno: avisa e segue irrigando
+    // 13) Canhao por faixa: [100, 200] OFF; e faixa pelo zero [340, 20]
     {
-        Painel b; b.quebra_canhao = true; Plano p = plano(); p.canhao = true;
-        b.ligar(p); b.ate(IRRIGANDO, 60000); b.rodar(40000);
-        CHECK(b.col.tem("aviso:canhao_nao_ligou"), "12 aviso canhao");
-        CHECK(b.m.estado() == IRRIGANDO, "12 continua irrigando");
+        Painel b; b.ang = 80; b.gps100 = 360.0f / 600.0f; Plano p = plano('D', true, 1000, 180);
+        p.canhao = true; p.tem_faixa = true; p.desliga_em = 100; p.liga_em = 200;
+        b.ligar(p); b.ate(GIRANDO, 10000);
+        CHECK(b.m.saidas().canhao, "13 em 80 graus: canhao ligado");
+        while (b.ang < 120 && b.m.estado() == GIRANDO) b.passo();
+        b.rodar(6000); CHECK(!b.m.saidas().canhao, "13 em ~120 graus: canhao OFF (dentro da faixa)");
+        while (b.ang < 215 && b.m.estado() == GIRANDO) b.passo();
+        b.rodar(6000); CHECK(b.m.saidas().canhao, "13 em ~215 graus: canhao ligado de novo");
+        Plano q = plano(); q.tem_faixa = true; q.desliga_em = 340; q.liga_em = 20; q.canhao = true;
+        Painel c; c.ang = 350; c.ligar(q); c.ate(GIRANDO, 10000);
+        CHECK(!c.m.saidas().canhao, "13 faixa pelo zero: em 350 canhao OFF");
     }
-    // 13) Recusas
+    // 14) Ajustes: percentimetro e canhao (on/off/faixa); idempotente
+    {
+        Painel b; b.ligar(plano('D', true, 600)); b.ate(GIRANDO, 10000); char mot[32];
+        CHECK(b.m.ajustarPercentimetro(300, mot, sizeof mot) && b.m.saidas().perc_pm == 300, "14 percentimetro ajustado");
+        CHECK(b.m.ajustarCanhao(true, false, 0, 0, b.t, mot, sizeof mot) && b.m.saidas().canhao, "14 canhao ligado");
+        CHECK(b.m.ajustarCanhao(true, false, 0, 0, b.t, mot, sizeof mot), "14 ligar de novo = sucesso");
+        CHECK(b.m.ajustarCanhao(false, false, 0, 0, b.t, mot, sizeof mot) && !b.m.saidas().canhao, "14 canhao desligado");
+        Painel s; s.ligar(plano('D', false)); s.ate(GIRANDO, 5000);
+        CHECK(!s.m.ajustarCanhao(true, false, 0, 0, s.t, mot, sizeof mot) && !strcmp(mot, "sem_agua"), "14 sem agua: canhao recusado");
+    }
+    // 15) Recusas
     {
         Painel b; char mot[40];
-        b.in.gir_dir = true; b.m.tick(b.t, b.in);
-        CHECK(!b.m.ligar(plano(), b.t, mot, sizeof(mot)) && !strcmp(mot, "pivo_girando"), "13 recusa com o pivo girando pelo painel");
-        b.in.gir_dir = false; b.in.desalinhado = true; b.m.tick(b.t, b.in);
-        CHECK(!b.m.ligar(plano(), b.t, mot, sizeof(mot)) && !strcmp(mot, "desalinhado"), "13 recusa desalinhado");
-        b.in.desalinhado = false; b.m.tick(b.t, b.in);
-        Plano p = plano(); p.voltas = 0;
-        CHECK(!b.m.ligar(p, b.t, mot, sizeof(mot)) && !strncmp(mot, "plano_invalido", 14), "13 recusa plano invalido");
-        CHECK(b.m.ligar(plano(), b.t, mot, sizeof(mot)), "13 liga");
-        CHECK(!b.m.ligar(plano(), b.t, mot, sizeof(mot)) && !strcmp(mot, "ja_ligado"), "13 recusa ligar de novo");
-        Plano s; s.nseg = 2; s.seg[0] = {90, 1000, false}; s.seg[1] = {10, 1000, false};
-        CHECK(!validarPlano(s, mot, sizeof(mot)) && !strcmp(mot, "segmento_ordem"), "13 segmentos fora de ordem");
+        b.in.gir_esq = true; b.m.tick(b.t, b.in);
+        CHECK(!b.m.ligar(plano(), b.t, mot, sizeof mot) && !strcmp(mot, "pivo_girando"), "15 pivo girando pelo painel");
+        b.in.gir_esq = false; b.m.tick(b.t, b.in);
+        CHECK(!b.m.ligar(plano('D', true, 1000, 0), b.t, mot, sizeof mot) && !strncmp(mot, "plano_invalido", 14), "15 parada 0 graus invalida");
+        CHECK(b.m.ligar(plano(), b.t, mot, sizeof mot), "15 liga");
+        CHECK(!b.m.ligar(plano(), b.t, mot, sizeof mot) && !strcmp(mot, "ja_ligado"), "15 nova ordem com o pivo ligado: recusa");
     }
-    // 14) Glitch do encoder nao conta
+    // 16) Giro caiu com o pivo girando: desliga (lado_caiu)
     {
-        Painel b; b.ligar(plano()); b.ate(IRRIGANDO, 60000);
-        float antes = b.m.percorrido();
-        b.m.posicao(b.ang + 170, b.t); b.m.posicao(b.ang, b.t + 1);
-        CHECK(b.m.percorrido() - antes < 1.0f, "14 salto de 170 graus ignorado");
-        CHECK(b.col.tem("aviso:salto_posicao"), "14 aviso de salto");
+        Painel b; b.ligar(plano()); b.ate(GIRANDO, 10000); b.rodar(3000);
+        b.quebra_giro = true; b.passo();
+        CHECK(b.m.motivo() == M_LADO_CAIU && !b.m.saidas().bomba, "16 lado_caiu desliga");
     }
-    // 15) Desligar no meio do ligar (esperando pressao)
+    // 17) Sem encoder (provisorio): parada por duracao
     {
-        Painel b; b.ligar(plano()); b.rodar(2000);
-        CHECK(b.m.passo() == L_PRESSAO, "15 esperando pressao");
-        CHECK(b.m.desligar("comando", b.t), "15 desligar aceito");
-        CHECK(b.ate(PARADO, 60000) && b.m.falha()[0] == 0, "15 parado sem falha");
-        CHECK(!strcmp(b.m.motivoParada(), "comando"), "15 motivo comando");
+        Painel b; b.sem_encoder = true; Plano p = plano(); p.parada = POR_DURACAO; p.duracao_s = 600;
+        char mot[32]; CHECK(b.m.ligar(p, b.t, mot, sizeof mot), "17 liga por duracao");
+        uint32_t t0 = b.t;
+        CHECK(b.ate(PARADO, 3600 * 1000) && b.m.motivo() == M_CONCLUIDA, "17 concluida");
+        CHECK(b.t - t0 >= 600000 && b.t - t0 < 601000, "17 em 10 min");
     }
-    // 16) Lado nao cai no desligar
+    // 18) Sentido: ligar esquerda depois de direita nunca deixa os dois em alto
     {
-        Config c; c.confirma_parada_ms = 5000; Painel b(c); b.lado_preso = true;
-        b.ligar(plano()); b.ate(IRRIGANDO, 60000); b.rodar(5000);
-        b.m.desligar("comando", b.t);
-        CHECK(b.ate(PARADO, 60000), "16 termina");
-        CHECK(!strcmp(b.m.falha(), "nao_parou"), "16 falha nao_parou");
-    }
-    // 17) Girando: percentimetro > 0 e angulo mudando
-    {
-        Painel b; b.ligar(plano('D', true, 500)); b.ate(IRRIGANDO, 60000); b.rodar(30000);
-        CHECK(b.m.girando(b.t), "17 girando a 50 %");
-        char mot[32]; b.m.ajustarPercentimetro(0, mot, sizeof(mot)); b.rodar(700000);
-        CHECK(!b.m.girando(b.t), "17 0 % = parado irrigando (nao girando)");
-        CHECK(b.m.estado() == IRRIGANDO, "17 segue irrigando a 0 %");
-    }
-    // 18) Sem sinais opcionais (sem BI01: espera fixa; sem BI03/04: sem confirmacao)
-    {
-        Config c; c.tem_pressao = false; c.tem_gir_dir = c.tem_gir_esq = false; c.pressurizacao_ms = 15000;
-        Painel b(c); b.ligar(plano()); uint32_t t0 = b.t;
-        CHECK(b.ate(IRRIGANDO, 60000), "18 irrigando sem BI01/BI03/BI04");
-        CHECK(b.t - t0 >= 15000, "18 esperou a pressurizacao fixa");
+        Painel b; b.ligar(plano('D')); b.ate(GIRANDO, 10000); b.rodar(2000);
+        b.m.desligar(M_COMANDO, b.t); b.rodar(2000);
+        b.ligar(plano('E')); b.ate(GIRANDO, 10000); b.rodar(2000);
+        CHECK(b.m.saidas().esq && !b.m.saidas().dir && b.dirJuntas == 0, "18 so' a esquerda");
     }
 
     printf("\n%d/%d ok\n", total - falhas, total);
