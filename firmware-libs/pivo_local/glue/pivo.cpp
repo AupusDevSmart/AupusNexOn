@@ -27,6 +27,8 @@
 
 using namespace pivo;
 
+extern uint32_t diag_i2c_resets;   // relays.cpp: recuperacoes do barramento I2C dos reles
+
 // Leitura imediata do encoder (gerada em modbus_meter.cpp quando ha' Encoder no RS485 desta TON).
 // Fraca: firmware sem encoder nao define, e "pivo encler" responde pivo_sem_encoder.
 extern bool pivo_encoder_amostrar() __attribute__((weak));
@@ -487,7 +489,11 @@ int pivo_cmd(const String& cmd, char* msg, size_t sz) {
         // "pivo_st <estado> <passo> <permil> <falha|->" — estado 0 parado, 1 ligando, 2 irrigando, 3 desligando.
         pivo_publicar_agora();
         const char* f = _m->falha()[0] ? _m->falha() : (_falha_boot[0] ? _falha_boot : "-");
-        snprintf(msg, sz, "pivo_st %d %d %d %s", (int)_m->estado(), (int)_m->passo(), (int)_m->saidas().perc_pm, f);
+        // + diagnostico: r<estado dos reles no driver, hex: bit n = Rn> i<recuperacoes do I2C dos reles> x<1 = reles sem controle> o<saidas pedidas: bit0 bomba..5 canhao>
+        const Saidas& so = _m->saidas();
+        uint8_t ob = (so.bomba ? 1 : 0) | (so.valvula ? 2 : 0) | (so.dir ? 4 : 0) | (so.esq ? 8 : 0) | (_perc_on ? 16 : 0) | (so.canhao ? 32 : 0);
+        snprintf(msg, sz, "pivo_st %d %d %d %s r%02X i%lu x%d o%02X", (int)_m->estado(), (int)_m->passo(), (int)so.perc_pm, f,
+                 (unsigned)relays_get_state(), (unsigned long)diag_i2c_resets, relays_io_fault() ? 1 : 0, (unsigned)ob);
         return 1;
     }
     if (!strcmp(verbo, "encler")) {
