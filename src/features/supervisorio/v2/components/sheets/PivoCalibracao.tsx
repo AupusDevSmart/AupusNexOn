@@ -65,9 +65,11 @@ const GEO0: Geo = { buscando: false, precisao: null, erro: null };
 const PRECISAO_BAIXA_M = 20;
 
 /** Um ponto (centro ou ponta): latitude e longitude digitadas ou a localização do aparelho. */
-function CampoPosicao({ titulo, ajuda, valor, onChange, geo, geoDisponivel, onLocalizar, desabilitado }: {
+function CampoPosicao({ titulo, ajuda, valor, onChange, geo, geoDisponivel, noLocal, onLocalizar, desabilitado }: {
   titulo: string; ajuda?: string | null; valor: CampoPonto; onChange: (v: CampoPonto) => void;
   geo: Geo; geoDisponivel: boolean; onLocalizar: () => void; desabilitado?: boolean;
+  /** Aparelho de mão (celular/tablet): dá para estar no ponto e usar o GPS dele. No computador, não. */
+  noLocal: boolean;
 }) {
   const ruim = (eixo: 'lat' | 'lon') => valor[eixo].trim() !== '' && parseCoordenada(valor[eixo], eixo) == null;
   // "lat, lon" colado de uma vez (Google Maps) preenche os dois campos.
@@ -98,10 +100,21 @@ function CampoPosicao({ titulo, ajuda, valor, onChange, geo, geoDisponivel, onLo
           </label>
         ))}
       </div>
-      <button type="button" disabled={off} onClick={onLocalizar} style={{ ...botao(off), width: '100%' }}>
-        {geo.buscando ? 'Obtendo a localização…' : 'Usar localização atual'}
-      </button>
-      {semGeo && <span style={{ fontSize: 12, color: NX.mudo }}>Este navegador não informa a localização (a página precisa estar em HTTPS e o aparelho ter localização): digite a coordenada.</span>}
+      {/* A localização é a do APARELHO: só serve para quem está em pé no ponto, com o celular. No
+          computador o botão não aparece (a posição do computador não é a do pivô): cola-se do mapa. */}
+      {noLocal ? (
+        <>
+          <button type="button" disabled={off} onClick={onLocalizar} style={{ ...botao(off), width: '100%' }}>
+            {geo.buscando ? 'Obtendo a localização…' : 'Usar localização atual'}
+          </button>
+          <span style={{ fontSize: 12, color: NX.mudo }}>Usa o GPS deste aparelho: toque estando em pé neste ponto do pivô.</span>
+          {semGeo && <span style={{ fontSize: 12, color: NX.mudo }}>Este navegador não informa a localização (a página precisa estar em HTTPS e o aparelho ter localização): digite a coordenada.</span>}
+        </>
+      ) : (
+        <span data-dica-mapa style={{ fontSize: 12, color: NX.mudo }}>
+          No computador: abra o Google Maps, clique com o botão direito neste ponto do pivô, copie as coordenadas e cole aqui (preenche latitude e longitude de uma vez). Em campo, pelo celular, a tela oferece o GPS do aparelho.
+        </span>
+      )}
       {geo.erro && <span role="alert" style={{ fontSize: 12, color: NX.bad }}>{geo.erro}</span>}
       {geo.precisao != null && (
         <span style={{ fontSize: 12, color: geo.precisao > PRECISAO_BAIXA_M ? NX.warn : NX.mudo }}>
@@ -113,12 +126,14 @@ function CampoPosicao({ titulo, ajuda, valor, onChange, geo, geoDisponivel, onLo
 }
 
 const geoDoNavegador = () => typeof navigator !== 'undefined' && !!navigator.geolocation && typeof window !== 'undefined' && window.isSecureContext !== false;
+/** Celular ou tablet (toque como apontador principal): o único caso em que o GPS do aparelho é o ponto do pivô. */
+const aparelhoDeMao = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
 
 /**
  * A tela em si (sem rede): recebe o que o GET devolveu e avisa o que a pessoa pediu.
  * `onSalvar`/`onRestaurar` devolvem true se gravou.
  */
-export function PainelCalibracao({ pivoId, tela, podeEditar, acao, recusa, leituraVenceu, invertido, erro, onLer, onSalvar, onRestaurar, onVoltar, geoDisponivel = geoDoNavegador() }: {
+export function PainelCalibracao({ pivoId, tela, podeEditar, acao, recusa, leituraVenceu, invertido, erro, onLer, onSalvar, onRestaurar, onVoltar, geoDisponivel = geoDoNavegador(), noLocal = aparelhoDeMao() }: {
   pivoId: string; tela: CalibracaoTela; podeEditar: boolean; acao: AcaoCal | null;
   /** Último "Ler encoder" que a TON respondeu e o servidor recusou (instável, falhou). */
   recusa?: LeituraEncoder | null;
@@ -131,6 +146,7 @@ export function PainelCalibracao({ pivoId, tela, podeEditar, acao, recusa, leitu
   /** Volta para a Configuração (pivô sem encoder gravado: é lá que se escolhe e salva). */
   onVoltar?: () => void;
   geoDisponivel?: boolean;
+  noLocal?: boolean;
 }) {
   const { vigente, anterior, precondicoes: pre, leitura } = tela;
   const lida = tela.ultima_leitura_valida ?? null;
@@ -257,10 +273,10 @@ export function PainelCalibracao({ pivoId, tela, podeEditar, acao, recusa, leitu
             </div>
           </div>
 
-          <CampoPosicao titulo="Posição do centro" ajuda={centroHerdado ? 'Centro da calibração vigente: confira ou troque' : 'Latitude e longitude em graus decimais'}
-            valor={centro} onChange={digitar('centro')} geo={geo.centro} geoDisponivel={geoDisponivel} onLocalizar={() => localizar('centro')} desabilitado={ocupado} />
+          <CampoPosicao titulo="Posição do centro" ajuda={centroHerdado ? 'Centro da calibração vigente: confira ou troque' : 'Onde fica a torre central do pivô · latitude e longitude em graus decimais'}
+            valor={centro} onChange={digitar('centro')} geo={geo.centro} geoDisponivel={geoDisponivel} noLocal={noLocal} onLocalizar={() => localizar('centro')} desabilitado={ocupado} />
           <CampoPosicao titulo="Posição da ponta" ajuda="Use o ponto da última torre, não do meio do lance."
-            valor={ponta} onChange={digitar('ponta')} geo={geo.ponta} geoDisponivel={geoDisponivel} onLocalizar={() => localizar('ponta')} desabilitado={ocupado} />
+            valor={ponta} onChange={digitar('ponta')} geo={geo.ponta} geoDisponivel={geoDisponivel} noLocal={noLocal} onLocalizar={() => localizar('ponta')} desabilitado={ocupado} />
 
           <div style={{ ...s.card, padding: '0 16px' }}>
             <Linha first titulo="Azimute calculado" sub={`Do centro até a ponta · 0° = norte, sentido horário${dist != null ? ` · distância ${Math.round(dist).toLocaleString('pt-BR')} m` : ''}`}>
@@ -409,7 +425,11 @@ export function CalibracaoPivo({ pivoId, tecnico, invertido, onSalvo, onVoltar }
         toast.error('Leitura do encoder recusada', { description: r?.motivo ?? 'Leia de novo com o pivô parado.' });
       }
     } catch (e) {
-      toast.error('Encoder não lido', { description: erroMsg(e) });
+      // O erro fica ESCRITO no cartão da leitura (e em "Falta para salvar"): só o aviso que some
+      // deixava a pessoa achando que tinha calibrado.
+      const motivo = erroMsg(e);
+      setRecusa({ valida: false, valor: null, leituras: [], motivo, lido_em: new Date().toISOString() }); setTinhaLeitura(false);
+      toast.error('Encoder não lido', { description: motivo });
     } finally {
       ocupado.current = false; setAcao(null);
       await carregar();

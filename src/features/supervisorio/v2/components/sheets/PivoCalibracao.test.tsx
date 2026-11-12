@@ -35,7 +35,7 @@ function abrir(tela: Partial<CalibracaoTela> = {}, props: Partial<Parameters<typ
   const onSalvar = vi.fn<(c: CorpoCalibracao) => Promise<boolean>>(async () => true);
   const onRestaurar = vi.fn(async () => true);
   render(
-    <PainelCalibracao pivoId={`pivo-${++n}`} tela={{ ...TELA, ...tela }} podeEditar acao={null} geoDisponivel={false}
+    <PainelCalibracao pivoId={`pivo-${++n}`} tela={{ ...TELA, ...tela }} podeEditar acao={null} geoDisponivel={false} noLocal
       onLer={onLer} onSalvar={onSalvar} onRestaurar={onRestaurar} {...props} />,
   );
   return { onLer, onSalvar, onRestaurar };
@@ -177,6 +177,12 @@ describe('Calibração do ângulo (sub-tela da Configuração)', () => {
     expect(screen.queryByRole('button', { name: 'Salvar calibração' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Restaurar calibração anterior' })).toBeNull();
     expect(screen.queryByLabelText('Posição do centro · latitude')).toBeNull();
+  });
+
+  it('no computador não oferece o GPS (a posição do computador não é a do pivô): ensina a colar do mapa', () => {
+    abrir({}, { geoDisponivel: true, noLocal: false });
+    expect(screen.queryByRole('button', { name: 'Usar localização atual' })).toBeNull();
+    expect(screen.getAllByText(/No computador: abra o Google Maps/)).toHaveLength(2);
   });
 
   describe('Usar localização atual', () => {
