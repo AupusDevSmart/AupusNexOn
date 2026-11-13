@@ -25,8 +25,8 @@ export type EstadoStream = 'publicando' | 'aguardando' | 'offline';
 
 export type DispositivoAcionavel = 'refletor' | 'sirene';
 
-/** Chips da aba "Todas as notificações". */
-export type FiltroEventos = 'todas' | 'pessoas' | 'veiculos' | 'sistema';
+/** Chips de tipo da lista de eventos (`sistema` = sem sinal / voltou). */
+export type FiltroEventos = 'todas' | 'pessoas' | 'veiculos' | 'animais' | 'movimento' | 'sistema';
 
 export interface CameraStream {
   continuo: boolean;

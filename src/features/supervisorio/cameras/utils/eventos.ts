@@ -41,17 +41,55 @@ export function iconeEvento(tipo: TipoEvento): LucideIcon {
   return ICONE_EVENTO[tipo] ?? Activity;
 }
 
+/** Rótulo curto do tipo, para a etiqueta colorida da lista e do player. */
+export const ROTULO_TIPO: Record<TipoEvento, string> = {
+  pessoa: 'Pessoa',
+  veiculo: 'Veículo',
+  animal: 'Animal',
+  movimento: 'Movimento',
+  sem_sinal: 'Sem sinal',
+  sinal_restabelecido: 'Voltou',
+  foto: 'Foto',
+};
+
+/**
+ * Cor por tipo (texto + fundo do ícone). Paleta do Tailwind com par claro/escuro, não
+ * os tokens `--warning`/`--destructive`: no tema escuro do NexON eles são claros ou
+ * escuros demais para texto.
+ */
+export const COR_TIPO: Record<TipoEvento, string> = {
+  pessoa: 'bg-red-500/10 text-red-600 dark:text-red-400',
+  veiculo: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
+  animal: 'bg-sky-500/10 text-sky-600 dark:text-sky-400',
+  movimento: 'bg-muted text-foreground/80',
+  sem_sinal: 'bg-zinc-500/15 text-zinc-600 dark:text-zinc-300',
+  sinal_restabelecido: 'bg-nexon-verde/10 text-nexon-verde',
+  foto: 'bg-muted text-foreground/80',
+};
+
+export function rotuloTipo(tipo: TipoEvento): string {
+  return ROTULO_TIPO[tipo] ?? 'Evento';
+}
+
+export function corTipo(tipo: TipoEvento): string {
+  return COR_TIPO[tipo] ?? COR_TIPO.movimento;
+}
+
 export const FILTROS_EVENTOS: { valor: FiltroEventos; rotulo: string }[] = [
-  { valor: 'todas', rotulo: 'Todas' },
+  { valor: 'todas', rotulo: 'Todos' },
   { valor: 'pessoas', rotulo: 'Pessoas' },
   { valor: 'veiculos', rotulo: 'Veículos' },
-  { valor: 'sistema', rotulo: 'Sistema' },
+  { valor: 'animais', rotulo: 'Animais' },
+  { valor: 'movimento', rotulo: 'Movimento' },
+  { valor: 'sistema', rotulo: 'Sem sinal' },
 ];
 
 const TIPOS_DO_FILTRO: Record<FiltroEventos, TipoEvento[] | undefined> = {
   todas: undefined,
   pessoas: ['pessoa'],
   veiculos: ['veiculo'],
+  animais: ['animal'],
+  movimento: ['movimento'],
   sistema: ['sem_sinal', 'sinal_restabelecido'],
 };
 
@@ -93,6 +131,29 @@ export function subtituloResumo(resumo: Pick<ResumoCameras, 'armado' | 'armado_a
   let armamento = 'Desarmado';
   if (resumo.armado) armamento = resumo.armado_ate ? `Armado até ${horaCurta(resumo.armado_ate)}` : 'Armado';
   return `${armamento} · ${resumo.online} de ${resumo.total} online`;
+}
+
+/**
+ * Armamento em uma frase para a faixa de status: `Armado até 06:30`, `Armado pela
+ * agenda até 06:30`, `Desarmado · agenda ligada`, `Desarmado`.
+ */
+export function textoArmamento(resumo: Pick<ResumoCameras, 'armado' | 'armado_ate' | 'armamento_modo'>): string {
+  const agenda = resumo.armamento_modo === 'agenda';
+  if (resumo.armado) {
+    const base = agenda ? 'Armado pela agenda' : 'Armado';
+    return resumo.armado_ate ? `${base} até ${horaCurta(resumo.armado_ate)}` : base;
+  }
+  return agenda ? 'Desarmado · agenda ligada' : 'Desarmado';
+}
+
+/** `07/11 05:12` (hora local), para o cabeçalho do player num evento. */
+export function diaHoraCurta(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  return `${dd}/${mm} ${horaCurta(iso)}`;
 }
 
 function plural(n: number, um: string, varios: string): string {
