@@ -16,13 +16,15 @@ interface ConfigCamerasSheetProps {
   aberto: boolean;
   onFechar: () => void;
   abaInicial?: AbaConfigCameras;
+  /** Troca de aba pelo usuário (a aba vai para a URL). */
+  onAba?: (aba: AbaConfigCameras) => void;
 }
 
 /**
  * Painel lateral de configuração das câmeras da unidade: câmeras e aparelhos (agentes)
  * (`cadastroTecnico`), armamento/comandos/avisos (`configOperacional`).
  */
-export function ConfigCamerasSheet({ unidadeId, unidadeNome, aberto, onFechar, abaInicial }: ConfigCamerasSheetProps) {
+export function ConfigCamerasSheet({ unidadeId, unidadeNome, aberto, onFechar, abaInicial, onAba }: ConfigCamerasSheetProps) {
   const capacidades = useUserStore((s) => s.capacidades);
   const podeCadastrar = capacidades.cadastroTecnico;
   const podeConfigurar = capacidades.configOperacional;
@@ -50,7 +52,10 @@ export function ConfigCamerasSheet({ unidadeId, unidadeNome, aberto, onFechar, a
           </SheetDescription>
         </SheetHeader>
         {abas.length > 0 && (
-          <Tabs value={aba} onValueChange={(v) => setAba(v as AbaConfigCameras)} className="flex min-h-0 flex-1 flex-col">
+          <Tabs value={aba} onValueChange={(v) => {
+              setAba(v as AbaConfigCameras);
+              onAba?.(v as AbaConfigCameras);
+            }} className="flex min-h-0 flex-1 flex-col">
             <TabsList className="mx-4 mt-3 grid h-9 w-auto touch:h-10" style={{ gridTemplateColumns: `repeat(${abas.length}, minmax(0, 1fr))` }}>
               {abas.map((a) => (
                 <TabsTrigger key={a.valor} value={a.valor} className="truncate text-xs sm:text-sm">

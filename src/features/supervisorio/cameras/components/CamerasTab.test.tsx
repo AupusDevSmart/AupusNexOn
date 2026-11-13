@@ -1,5 +1,6 @@
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { renderWithProviders, sonnerMockFactory } from '@/test-utils';
@@ -133,11 +134,18 @@ function pronto<T>(data: T) {
   return { data, isPending: false, isError: false, error: null, refetch: vi.fn() };
 }
 
-function render() {
+/** Mostra a busca atual da URL para conferir o que a aba escreveu nela. */
+function Busca() {
+  return <output data-testid="busca">{useLocation().search}</output>;
+}
+
+function render(initialRoute = '/') {
   return renderWithProviders(
     <TooltipProvider>
       <CamerasTab unidadeId="u" unidadeNome="UFV Aupus II" />
+      <Busca />
     </TooltipProvider>,
+    { initialRoute },
   );
 }
 
@@ -260,6 +268,44 @@ describe('CamerasTab', () => {
     await usuario.keyboard('{Escape}');
     expect(screen.getByTestId('player')).toBeInTheDocument();
     expect(within(player).getByText('Ao vivo')).toBeInTheDocument();
+  });
+
+  it('F5: câmera, evento aberto e filtros voltam da URL', () => {
+    render('/?camera=por&evento=e5&filtro=veiculos&naoVistos=1&escopo=camera');
+    const player = screen.getByRole('region', { name: 'Câmera' });
+    expect(within(player).getByText('Veículo')).toBeInTheDocument();
+    expect(screen.queryByTestId('player')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Veículos' })).toHaveAttribute('aria-pressed', 'true');
+    // Restaurar não marca de novo como visto.
+    expect(CamerasService.marcarLido).not.toHaveBeenCalled();
+  });
+
+  it('F5 com câmera e sem evento abre aquela câmera ao vivo', () => {
+    render('/?camera=por');
+    const player = screen.getByRole('region', { name: 'Câmera' });
+    expect(within(player).getByRole('heading', { level: 2, name: 'Portão' })).toBeInTheDocument();
+    expect(within(player).getByText('Ao vivo')).toBeInTheDocument();
+  });
+
+  it('evento que não está na lista cai no ao vivo e sai da URL', () => {
+    render('/?camera=por&evento=sumiu&filtro=xpto');
+    const player = screen.getByRole('region', { name: 'Câmera' });
+    expect(within(player).getByText('Ao vivo')).toBeInTheDocument();
+    expect(screen.getByTestId('busca')).toHaveTextContent(/^\?camera=por&filtro=xpto$/);
+    // Filtro desconhecido = Todos.
+    expect(screen.getByRole('button', { name: 'Todos' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('abrir evento, trocar câmera e filtrar escrevem na URL', async () => {
+    const usuario = userEvent.setup();
+    render();
+    expect(screen.getByTestId('busca')).toBeEmptyDOMElement();
+    await usuario.click(screen.getByRole('button', { name: /^Pessoa detectada · Cabine \/ SSU · 05:12/ }));
+    expect(screen.getByTestId('busca')).toHaveTextContent('?camera=cab&evento=e1');
+    await usuario.click(screen.getByRole('button', { name: 'Portão — online' }));
+    expect(screen.getByTestId('busca')).toHaveTextContent(/^\?camera=por$/);
+    await usuario.click(screen.getByRole('button', { name: 'Pessoas' }));
+    expect(screen.getByTestId('busca')).toHaveTextContent('?camera=por&filtro=pessoas');
   });
 
   it('lista vazia com filtro oferece limpar filtros', async () => {

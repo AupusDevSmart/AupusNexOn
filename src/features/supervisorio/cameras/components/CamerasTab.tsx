@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Lightbulb, Loader2, RefreshCw, Settings, Shield, ShieldOff, Siren, type LucideIcon } from 'lucide-react';
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { paramFlag, paramOpcao, paramTexto, useEscreverParamsUrl, useParamUrl } from '@/hooks/useParamUrl';
 import { toast } from 'sonner';
 import {
   AlertDialog,
@@ -25,7 +26,7 @@ import { useTokenMidia } from '../hooks/useTokenMidia';
 import { CamerasService } from '../services/cameras.service';
 import type { CameraEvento, DispositivoAcionavel, FiltroEventos, ResumoCameras } from '../types';
 import { mensagemErro } from '../utils/erros';
-import { ehNaoLido, textoArmamento, textoNoite } from '../utils/eventos';
+import { FILTROS_EVENTOS, ehNaoLido, textoArmamento, textoNoite } from '../utils/eventos';
 import { CamerasSkeleton } from './CamerasSkeleton';
 import { ConfigCamerasSheet, type AbaConfigCameras } from './ConfigCamerasSheet';
 import { GradeCameras } from './GradeCameras';
@@ -34,6 +35,19 @@ import { PainelEventos, type EscopoEventos } from './PainelEventos';
 import { TutorialCameras } from './TutorialCameras';
 
 const PAGINA = 50;
+
+// Estado da aba na URL (NEXON-108: F5 na câmera não perde a tela). Nomes curtos e legíveis.
+const P_CAMERA = paramTexto();
+const P_EVENTO = paramTexto();
+const P_FILTRO = paramOpcao<FiltroEventos>(FILTROS_EVENTOS.map((f) => f.valor), 'todas');
+const P_NAO_VISTOS = paramFlag();
+const P_ESCOPO = paramOpcao<EscopoEventos>(['todas', 'camera'], 'todas');
+/** `?config=` = painel de configuração aberto, na aba dita (nome de tela, não o interno). */
+const ABA_CONFIG_URL = { cameras: 'cameras', agentes: 'aparelhos', unidade: 'armamento' } as const satisfies Record<AbaConfigCameras, string>;
+type AbaConfigUrl = (typeof ABA_CONFIG_URL)[AbaConfigCameras];
+const P_CONFIG = paramOpcao<AbaConfigUrl | ''>(['', ...Object.values(ABA_CONFIG_URL)], '');
+const abaDaUrl = (v: AbaConfigUrl | ''): AbaConfigCameras | undefined =>
+  (Object.keys(ABA_CONFIG_URL) as AbaConfigCameras[]).find((k) => ABA_CONFIG_URL[k] === v);
 
 interface CamerasTabProps {
   unidadeId: string;
@@ -83,13 +97,16 @@ export function CamerasTab({ unidadeId, unidadeNome }: CamerasTabProps) {
   const resumoQuery = useResumoCameras(unidadeId);
   const midia = useTokenMidia();
 
-  const [cameraSelId, setCameraSelId] = useState<string | null>(null);
-  const [eventoSel, setEventoSel] = useState<CameraEvento | null>(null);
-  const [filtro, setFiltro] = useState<FiltroEventos>('todas');
-  const [somenteNaoVistos, setSomenteNaoVistos] = useState(false);
-  const [escopo, setEscopo] = useState<EscopoEventos>('todas');
+  const escreverUrl = useEscreverParamsUrl();
+  const [cameraSelId] = useParamUrl('camera', P_CAMERA);
+  const [eventoId] = useParamUrl('evento', P_EVENTO);
+  const [filtro, setFiltro] = useParamUrl('filtro', P_FILTRO);
+  const [somenteNaoVistos, setSomenteNaoVistos] = useParamUrl('naoVistos', P_NAO_VISTOS);
+  const [escopo, setEscopo] = useParamUrl('escopo', P_ESCOPO);
+  const [configUrl, setConfigUrl] = useParamUrl('config', P_CONFIG);
+  // Último evento aberto: segura o player se um filtro novo tirar o evento da lista.
+  const [eventoAberto, setEventoAberto] = useState<CameraEvento | null>(null);
   const [limite, setLimite] = useState(PAGINA);
-  const [config, setConfig] = useState<{ aberta: boolean; aba?: AbaConfigCameras }>({ aberta: false });
   const [confirmarSirene, setConfirmarSirene] = useState(false);
   const [confirmarArmar, setConfirmarArmar] = useState(false);
   const [acionadoRecente, setAcionadoRecente] = useState<DispositivoAcionavel | null>(null);
@@ -111,16 +128,26 @@ export function CamerasTab({ unidadeId, unidadeNome }: CamerasTabProps) {
     lista.length > 0,
   );
   const listaEventos = eventos.data?.data ?? [];
+  // Evento da URL: o da lista carregada (ou o último aberto); fora dela, ao vivo.
+  const eventoSel = eventoId
+    ? listaEventos.find((e) => e.id === eventoId) ?? (eventoAberto?.id === eventoId ? eventoAberto : null)
+    : null;
+  const eventosCarregados = !!eventos.data && !eventos.isPending && !eventos.isFetching;
 
-  // Trocou de unidade: volta ao estado inicial.
+  // Link/F5 com evento que não está na lista: fica ao vivo e tira o id da URL.
   useEffect(() => {
-    setCameraSelId(null);
-    setEventoSel(null);
-    setFiltro('todas');
-    setSomenteNaoVistos(false);
-    setEscopo('todas');
+    if (eventoId && !eventoSel && eventosCarregados) escreverUrl({ evento: null });
+  }, [eventoId, eventoSel, eventosCarregados, escreverUrl]);
+
+  // Trocou de unidade: volta ao estado inicial (no primeiro render vale o que veio na URL).
+  const unidadeAnterior = useRef(unidadeId);
+  useEffect(() => {
+    if (unidadeAnterior.current === unidadeId) return;
+    unidadeAnterior.current = unidadeId;
+    escreverUrl({ camera: null, evento: null, filtro: null, naoVistos: null, escopo: null, config: null });
+    setEventoAberto(null);
     setLimite(PAGINA);
-  }, [unidadeId]);
+  }, [unidadeId, escreverUrl]);
 
   // Filtro novo começa da primeira página.
   useEffect(() => setLimite(PAGINA), [filtro, somenteNaoVistos, escopo]);
@@ -175,28 +202,27 @@ export function CamerasTab({ unidadeId, unidadeNome }: CamerasTabProps) {
     onSettled: () => void invalidarTudo(),
   });
 
-  const selecionarCamera = (id: string) => {
-    setCameraSelId(id);
-    setEventoSel(null);
-  };
+  const selecionarCamera = (id: string) => escreverUrl({ camera: id, evento: null }, 'push');
 
-  /** Abre o evento no player (câmera do evento), marca como visto e, no celular, sobe até o player. */
-  const abrirEvento = (ev: CameraEvento) => {
-    setCameraSelId(ev.camera_id);
-    setEventoSel(ev);
+  /**
+   * Abre o evento no player (câmera do evento), marca como visto e, no celular, sobe até o player.
+   * Abrir da lista cria entrada no histórico (voltar = ao vivo); ‹ › só troca a atual.
+   */
+  const abrirEvento = (ev: CameraEvento, historico: 'push' | 'replace' = 'push') => {
+    setEventoAberto(ev);
+    escreverUrl({ camera: ev.camera_id, evento: ev.id }, historico);
     if (ehNaoLido(ev)) marcarLido.mutate(ev);
     rolarAte(playerRef.current);
   };
 
-  const voltarAoVivo = () => setEventoSel(null);
+  const voltarAoVivo = () => escreverUrl({ evento: null });
 
   const indiceSel = eventoSel ? listaEventos.findIndex((e) => e.id === eventoSel.id) : -1;
   const eventoAnterior = indiceSel > 0 ? listaEventos[indiceSel - 1] : null;
   const eventoProximo = eventoSel ? (indiceSel >= 0 ? listaEventos[indiceSel + 1] : listaEventos[0]) ?? null : null;
 
   const verNaoVistos = () => {
-    setFiltro('todas');
-    setSomenteNaoVistos(true);
+    escreverUrl({ filtro: null, naoVistos: '1' });
     rolarAte(eventosRef.current);
   };
 
@@ -206,7 +232,10 @@ export function CamerasTab({ unidadeId, unidadeNome }: CamerasTabProps) {
     voltarAoVivo();
   };
 
-  const abrirConfig = (aba?: AbaConfigCameras) => setConfig({ aberta: true, aba });
+  // Configuração: aberta = `?config=<aba>`; sem aba pedida abre na primeira permitida.
+  const abaConfig = abaDaUrl(configUrl);
+  const abrirConfig = (aba?: AbaConfigCameras) =>
+    setConfigUrl(ABA_CONFIG_URL[aba ?? (podeCadastrar ? 'cameras' : 'unidade')], { historico: 'push' });
 
   if (cameras.isPending || (resumoQuery.isPending && !resumoQuery.isError)) {
     return <CamerasSkeleton />;
@@ -329,8 +358,8 @@ export function CamerasTab({ unidadeId, unidadeNome }: CamerasTabProps) {
               camera={cameraSel}
               evento={eventoSel}
               onVoltarAoVivo={voltarAoVivo}
-              onEventoAnterior={eventoAnterior ? () => abrirEvento(eventoAnterior) : undefined}
-              onEventoProximo={eventoProximo ? () => abrirEvento(eventoProximo) : undefined}
+              onEventoAnterior={eventoAnterior ? () => abrirEvento(eventoAnterior, 'replace') : undefined}
+              onEventoProximo={eventoProximo ? () => abrirEvento(eventoProximo, 'replace') : undefined}
               urlMidia={midia.url}
               podeComandar={podeComandar}
               onFoto={() => cameraSel && foto.mutate(cameraSel.id)}
@@ -360,7 +389,7 @@ export function CamerasTab({ unidadeId, unidadeNome }: CamerasTabProps) {
             cameraNome={cameraSel?.nome ?? null}
             naoVistos={resumo.nao_lidos}
             eventoSelId={eventoSel?.id ?? null}
-            onAbrirEvento={abrirEvento}
+            onAbrirEvento={(ev) => abrirEvento(ev)}
             onMarcarTodos={() => marcarTodos.mutate()}
             marcandoTodos={marcarTodos.isPending}
             onMostrarMais={() => setLimite((l) => l + PAGINA)}
@@ -405,9 +434,10 @@ export function CamerasTab({ unidadeId, unidadeNome }: CamerasTabProps) {
         <ConfigCamerasSheet
           unidadeId={unidadeId}
           unidadeNome={unidadeNome}
-          aberto={config.aberta}
-          abaInicial={config.aba}
-          onFechar={() => setConfig({ aberta: false })}
+          aberto={!!abaConfig}
+          abaInicial={abaConfig}
+          onAba={(aba) => setConfigUrl(ABA_CONFIG_URL[aba])}
+          onFechar={() => setConfigUrl('')}
         />
       )}
     </div>

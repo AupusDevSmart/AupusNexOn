@@ -4,6 +4,7 @@ import { COR } from '@/components/graficos/cores';
 import { useUserStore } from '@/store/useUserStore';
 import { formatEnergy } from '@/utils/formatEnergy';
 import { useDemandaAgregada, type PeriodoFiltro } from '@/hooks/useDemandaAgregada';
+import { paramOpcao, useParamUrl } from '@/hooks/useParamUrl';
 import { useDadosM160 } from '@/hooks/useDadosM160';
 import { ConfiguracaoDemandaModal } from '@/features/supervisorio/components/ConfiguracaoDemandaModal';
 import { SinopticoGraficosV2 } from '@/features/supervisorio/components/sinoptico-graficos-v2';
@@ -62,6 +63,8 @@ const SEM_PERIODO: PeriodoFiltro = { tipo: 'dia' };
 const COR_SERIE: Record<Serie, string> = { carga: COR.potencia, geracao: COR.geracao, esperado: COR.neutro };
 
 type Aba = 'energia' | 'tensao' | 'fp';
+// Aba na URL (NEXON-108): `?grafico=tensao`; Energia = ausente.
+const P_GRAFICO = paramOpcao<Aba>(['energia', 'tensao', 'fp'], 'energia');
 const ABAS: Array<{ k: Aba; rotulo: string }> = [
   { k: 'energia', rotulo: 'Energia' },
   { k: 'tensao', rotulo: 'Tensão' },
@@ -102,7 +105,7 @@ export function CartaoEnergia({ unidadeId, fallback, semAcesso }: {
   // Grupo "Usina" da configuração: só papéis globais (NEXON-20, capacidades.configUsina).
   const podeConfigurar = useUserStore((s) => s.capacidades.configUsina);
   const [configAberta, setConfigAberta] = useState(false);
-  const [aba, setAba] = useState<Aba>('energia');
+  const [aba, setAba] = useParamUrl('grafico', P_GRAFICO);
   const [ligadas, setLigadas] = useState<SeriesLigadas>({ carga: true, geracao: true, esperado: true });
 
   // Demanda: contratados da unidade e equipamentos de consumo da configuração de demanda.

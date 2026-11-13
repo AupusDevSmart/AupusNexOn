@@ -6,9 +6,10 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
 import { Activity, Settings, TrendingUp, Zap, AlertTriangle, Expand, ChevronLeft, ChevronRight } from "lucide-react";
-import { memo, useState, useEffect, useMemo } from "react";
+import { memo, useCallback, useState, useEffect, useMemo } from "react";
 import type { ReactNode } from "react";
-import { useDemandaAgregada, type PeriodoFiltro } from "@/hooks/useDemandaAgregada";
+import { useDemandaAgregada, type PeriodoFiltro, type PeriodoTipo } from "@/hooks/useDemandaAgregada";
+import { paramData, paramOpcao, paramTexto, useEscreverParamsUrl, useParamUrl } from "@/hooks/useParamUrl";
 import { useDadosM160 } from "@/hooks/useDadosM160";
 import { ConfiguracaoDemandaModal } from "./ConfiguracaoDemandaModal";
 import { useEquipamentosDemanda } from "./sinoptico-graficos-v2/use-equipamentos-demanda";
@@ -16,6 +17,7 @@ import {
   analisarQualidadeDados,
   deslocarPeriodo,
   ehDiaAtual,
+  hojeLocalISO,
   inicioISO,
   podeAvancarPeriodo,
   rotuloPeriodo,
@@ -74,6 +76,46 @@ const ALTURA_COMPACTA = 'h-[150px] xl:h-auto xl:flex-1 xl:min-h-0';
 const PERIODOS_PREFETCH: PeriodoFiltro[] = [{ tipo: 'dia' }, { tipo: 'mes' }, { tipo: 'ano' }];
 const SEM_DEMANDA = { pontos: [] as PontoDemanda[], dominio: undefined as Dominio | undefined };
 
+// Período do gráfico de Demanda na URL (NEXON-108): `?demanda=mes&demandaRef=2026-10`,
+// personalizado em `?demanda=custom&de=<ISO>&ate=<ISO>`. Dia de hoje = nada na URL.
+const P_DEMANDA = paramOpcao<PeriodoTipo>(['dia', 'mes', 'ano', 'custom'], 'dia');
+const P_REF: Record<'dia' | 'mes' | 'ano', ReturnType<typeof paramData>> = {
+  dia: paramData('dia'),
+  mes: paramData('mes'),
+  ano: paramData('ano'),
+};
+const P_ISO = paramTexto((v) => !Number.isNaN(Date.parse(v)));
+
+function usePeriodoDemandaUrl(): [PeriodoFiltro, (p: PeriodoFiltro) => void] {
+  const [tipo] = useParamUrl('demanda', P_DEMANDA);
+  const [refBruta] = useParamUrl('demandaRef', P_ISO);
+  const [de] = useParamUrl('de', P_ISO);
+  const [ate] = useParamUrl('ate', P_ISO);
+  const escrever = useEscreverParamsUrl();
+  const periodo = useMemo<PeriodoFiltro>(() => {
+    if (tipo === 'custom') {
+      // Personalizado sem intervalo válido volta para o dia.
+      return de && ate && Date.parse(ate) > Date.parse(de) ? { tipo, inicio: de, fim: ate } : { tipo: 'dia' };
+    }
+    const ref = refBruta ? P_REF[tipo].ler(refBruta) : null;
+    if (!ref) return { tipo };
+    return tipo === 'dia' ? { tipo, data: ref } : tipo === 'mes' ? { tipo, mes: ref } : { tipo, ano: ref };
+  }, [tipo, refBruta, de, ate]);
+  const definir = useCallback(
+    (p: PeriodoFiltro) =>
+      escrever({
+        demanda: P_DEMANDA.escrever(p.tipo),
+        demandaRef:
+          (p.tipo === 'dia' ? (p.data === hojeLocalISO() ? undefined : p.data) : p.tipo === 'mes' ? p.mes : p.tipo === 'ano' ? p.ano : undefined) ??
+          null,
+        de: p.tipo === 'custom' ? p.inicio ?? null : null,
+        ate: p.tipo === 'custom' ? p.fim ?? null : null,
+      }),
+    [escrever],
+  );
+  return [periodo, definir];
+}
+
 /** Limite acima do contratado (NEXON-14) — moram em dados.ts; reexportados para quem já importa daqui. */
 export { PERCENTUAL_LIMITE_GERACAO, PERCENTUAL_LIMITE_CARGA };
 
@@ -89,7 +131,7 @@ export function SinopticoGraficosV2({
   const [modalExpandidoOpen, setModalExpandidoOpen] = useState(false);
 
   // Período do gráfico de Demanda
-  const [periodo, setPeriodo] = useState<PeriodoFiltro>({ tipo: 'dia' });
+  const [periodo, setPeriodo] = usePeriodoDemandaUrl();
   const [customAberto, setCustomAberto] = useState(false);
   const [customInicio, setCustomInicio] = useState<string>(() => {
     const d = new Date();

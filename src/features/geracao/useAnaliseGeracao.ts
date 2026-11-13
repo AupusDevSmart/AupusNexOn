@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { paramData, paramOpcao, useParamUrl } from '@/hooks/useParamUrl';
 import { geracaoApi, type AnaliseGeracao, type PeriodoAnalise } from './api';
+
+// Período e dia na URL (NEXON-108): `?periodo=mes&data=2026-10-01`; dia de hoje = ausente.
+const P_PERIODO = paramOpcao<PeriodoAnalise>(['dia', 'semana', 'mes', 'ano', 'total'], 'dia');
+const P_DATA = paramData('dia');
 
 /**
  * Estado da análise de geração (NEXON-16) de uma unidade: período, data de referência,
@@ -38,8 +43,11 @@ export function useAnaliseGeracao(unidadeId: string) {
   const [semAcesso, setSemAcesso] = useState(false);
   // API sem o período "total" (antes do NEXON-37) responde 400: o botão some.
   const [semTotal, setSemTotal] = useState(false);
-  const [periodo, setPeriodo] = useState<PeriodoAnalise>('dia');
-  const [ref, setRef] = useState(hoje);
+  const [periodo, setPeriodo] = useParamUrl('periodo', P_PERIODO);
+  const [refUrl, setRefUrl] = useParamUrl('data', P_DATA);
+  // Sem data (ou data no futuro) = hoje.
+  const ref = refUrl && refUrl <= hoje ? refUrl : hoje;
+  const setRef = useCallback((d: string) => setRefUrl(d === hojeSP() ? null : d), [setRefUrl]);
   const [a, setA] = useState<AnaliseGeracao | null>(null);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
@@ -72,7 +80,7 @@ export function useAnaliseGeracao(unidadeId: string) {
     } finally {
       if (meu === pedido.current) setLoading(false);
     }
-  }, [unidadeId, periodo, ref]);
+  }, [unidadeId, periodo, ref, setPeriodo]);
 
   useEffect(() => { carregar(); }, [carregar]);
 
@@ -86,9 +94,9 @@ export function useAnaliseGeracao(unidadeId: string) {
   }, [incluiHoje, carregar]);
 
   /** Troca de período volta para hoje. */
-  const escolherPeriodo = useCallback((p: PeriodoAnalise) => { setPeriodo(p); setRef(hojeSP()); }, []);
+  const escolherPeriodo = useCallback((p: PeriodoAnalise) => { setPeriodo(p); setRef(hojeSP()); }, [setPeriodo, setRef]);
   /** Abre um período numa data (toque na barra, ‹ ›, campo de data). */
-  const abrir = useCallback((p: PeriodoAnalise, data: string) => { setPeriodo(p); setRef(data); }, []);
+  const abrir = useCallback((p: PeriodoAnalise, data: string) => { setPeriodo(p); setRef(data); }, [setPeriodo, setRef]);
 
   // A análise em tela é a do período pedido? (Erro de navegação deixa a anterior.)
   const aDoPedido = a != null && a.periodo === periodo && (periodo === 'total' || (ref >= a.inicio.slice(0, 10) && ref <= a.fim.slice(0, 10)));
