@@ -7,6 +7,7 @@
  * digita os valores dos pontos e liga o PC no RS485 da TON (Web Serial).
  */
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { type PlanoGiro, VELOCIDADE_MAX_GRAUS_S, grausDoGiro, posicaoDoGiro, validarGiro, velocidadeDoGiro } from './emulador-giro';
 import { AlertTriangle, Cable, CircleStop, Info, Loader2, Play, Plug, XCircle } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -91,6 +92,28 @@ export function EmuladorModal({ open, onClose, comp, carregarAlvos, conflitoEnde
   };
   const pendente = Object.keys({ ...valores, ...rascunho }).some((k) => String(valores[k] ?? '') !== String(rascunho[k] ?? ''));
   const aplicar = () => setValoresAplicados(rascunho);
+
+  // Simular giro (encoder): a posição anda sozinha de "de" até "até" no tempo escolhido.
+  const [giro, setGiro] = useState<{ de: string; ate: string; tempo: string; unidade: 's' | 'min'; sentido: PlanoGiro['sentido'] }>(
+    { de: '0', ate: '90', tempo: '60', unidade: 's', sentido: 'crescente' });
+  const [giroInicio, setGiroInicio] = useState<number | null>(null);
+  const planoGiro: PlanoGiro = {
+    de: Number(giro.de), ate: Number(giro.ate), sentido: giro.sentido,
+    segundos: Number(giro.tempo) * (giro.unidade === 'min' ? 60 : 1),
+  };
+  const erroGiro = validarGiro(planoGiro);
+  const velGiro = erroGiro ? null : velocidadeDoGiro(planoGiro);
+  useEffect(() => {
+    if (giroInicio == null) return;
+    const passo = () => {
+      const { posicao, fim } = posicaoDoGiro(planoGiro, Date.now() - giroInicio);
+      setValores((v) => ({ ...v, posicao }));
+      if (fim) setGiroInicio(null);
+    };
+    passo();
+    const t = setInterval(passo, 1000);
+    return () => clearInterval(t);
+  }, [giroInicio]); // eslint-disable-line react-hooks/exhaustive-deps
   const [bi, setBi] = useState<Record<string, boolean>>(comp?.props?.emulacao?.bi ?? {});
   const [cfg, setCfg] = useState<EmuladorConfig | null>(comp?.props?.emulacao?.cfg ?? null);
   const [salvando, setSalvando] = useState(false);
@@ -101,12 +124,16 @@ export function EmuladorModal({ open, onClose, comp, carregarAlvos, conflitoEnde
   // Reinicia o estado quando abre para outro nó.
   useEffect(() => {
     if (!open) return;
+    const mesmoNo = (comp?.id ?? null) === nodeId;
+    if (!mesmoNo) setGiroInicio(null);   // giro simulado é do nó anterior
     setNodeId(comp?.id ?? null);
     setTipo(comp?.type ?? 'power_meter');
     setCatalogId(comp?.props?.catalog_id ?? '');
     setNome(comp?.props?.name ?? 'Emulador');
     setEndereco(String(comp?.props?.modbus_address ?? '1'));
-    setValores(comp?.props?.emulacao?.valores ?? {});
+    // Reabrindo o mesmo nó com o giro rodando: mantém a posição atual (voltar ao valor salvo
+    // seria um salto que a TON descartaria).
+    if (!(mesmoNo && giroInicio != null)) setValores(comp?.props?.emulacao?.valores ?? {});
     setBi(comp?.props?.emulacao?.bi ?? {});
     setCfg(comp?.props?.emulacao?.cfg ?? null);
     setErroSerial(null);
@@ -412,6 +439,44 @@ export function EmuladorModal({ open, onClose, comp, carregarAlvos, conflitoEnde
                 <p className="mt-1 text-xs text-muted-foreground">Ocultos (calculados pela TON): {pontosAi.derivados.join(', ')}</p>
               )}
             </section>
+
+            {/* 3b. Simular giro (só encoder) */}
+            {pontosAi?.pontos.some((p) => p.pid === 'posicao') && (
+              <section className="rounded-md border p-3" data-testid="emu-giro">
+                <div className="mb-2 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold">Simular giro do encoder</h3>
+                  {giroInicio != null && <span className="text-xs tabular-nums text-muted-foreground">posição agora: {String(valores.posicao ?? '—')}</span>}
+                </div>
+                <div className="flex flex-wrap items-end gap-2">
+                  <div><Label className="text-xs">De</Label>
+                    <Input className="h-8 w-20" type="number" min={0} max={359} value={giro.de} disabled={giroInicio != null} onChange={(e) => setGiro({ ...giro, de: e.target.value })} /></div>
+                  <div><Label className="text-xs">Até</Label>
+                    <Input className="h-8 w-20" type="number" min={0} max={359} value={giro.ate} disabled={giroInicio != null} onChange={(e) => setGiro({ ...giro, ate: e.target.value })} /></div>
+                  <div><Label className="text-xs">Em</Label>
+                    <div className="flex gap-1">
+                      <Input className="h-8 w-20" type="number" min={1} value={giro.tempo} disabled={giroInicio != null} onChange={(e) => setGiro({ ...giro, tempo: e.target.value })} />
+                      <select className="h-8 rounded-md border border-input bg-background px-1 text-sm" value={giro.unidade} disabled={giroInicio != null}
+                        onChange={(e) => setGiro({ ...giro, unidade: e.target.value as 's' | 'min' })}>
+                        <option value="s">s</option><option value="min">min</option>
+                      </select>
+                    </div></div>
+                  <div><Label className="text-xs">Sentido</Label>
+                    <select className="h-8 rounded-md border border-input bg-background px-1 text-sm" value={giro.sentido} disabled={giroInicio != null}
+                      onChange={(e) => setGiro({ ...giro, sentido: e.target.value as PlanoGiro['sentido'] })}>
+                      <option value="crescente">Crescente (contagem sobe)</option>
+                      <option value="decrescente">Decrescente (contagem desce)</option>
+                    </select></div>
+                  {giroInicio == null
+                    ? <Button type="button" size="sm" disabled={!!erroGiro} onClick={() => setGiroInicio(Date.now())} data-testid="emu-giro-iniciar"><Play className="mr-1 h-3.5 w-3.5" />Iniciar</Button>
+                    : <Button type="button" size="sm" variant="destructive" onClick={() => setGiroInicio(null)} data-testid="emu-giro-parar"><CircleStop className="mr-1 h-3.5 w-3.5" />Parar</Button>}
+                </div>
+                <p className={`mt-2 text-xs ${velGiro != null && velGiro > VELOCIDADE_MAX_GRAUS_S ? 'text-amber-600' : 'text-muted-foreground'}`}>
+                  {erroGiro ?? `${grausDoGiro(planoGiro)}° em ${planoGiro.segundos} s = ${velGiro!.toFixed(1).replace('.', ',')}°/s · a posição muda a cada 1 s.`}
+                  {velGiro != null && velGiro > VELOCIDADE_MAX_GRAUS_S && ` Acima de ${VELOCIDADE_MAX_GRAUS_S}°/s a TON (lê a cada 5 s) vê saltos de mais de 30° e não conta o giro — aumente o tempo.`}
+                  {' '}Continua com o modal fechado (a emulação precisa estar ligada).
+                </p>
+              </section>
+            )}
 
             {/* 4. BI */}
             {pontosBi.length > 0 && (
