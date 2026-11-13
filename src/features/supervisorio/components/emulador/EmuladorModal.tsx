@@ -82,7 +82,15 @@ export function EmuladorModal({ open, onClose, comp, carregarAlvos, conflitoEnde
   const [endereco, setEndereco] = useState<string>(String(comp?.props?.modbus_address ?? '1'));
   const [alvos, setAlvos] = useState<AlvosUnifilar | null>(null);
   const [alvoId, setAlvoId] = useState<string>('');
-  const [valores, setValores] = useState<Record<string, number | string>>(comp?.props?.emulacao?.valores ?? {});
+  // valores = o que o PC RESPONDE para a TON; rascunho = o que está digitado. Só vira valor ao
+  // Aplicar / Enter / Salvar — senão, digitando 300, a TON lia 3, 30 e 300 (saltos no encoder).
+  const [valores, setValoresAplicados] = useState<Record<string, number | string>>(comp?.props?.emulacao?.valores ?? {});
+  const [rascunho, setRascunho] = useState<Record<string, number | string>>(comp?.props?.emulacao?.valores ?? {});
+  const setValores = (v: Record<string, number | string> | ((x: Record<string, number | string>) => Record<string, number | string>)) => {
+    setValoresAplicados(v); setRascunho(v);
+  };
+  const pendente = Object.keys({ ...valores, ...rascunho }).some((k) => String(valores[k] ?? '') !== String(rascunho[k] ?? ''));
+  const aplicar = () => setValoresAplicados(rascunho);
   const [bi, setBi] = useState<Record<string, boolean>>(comp?.props?.emulacao?.bi ?? {});
   const [cfg, setCfg] = useState<EmuladorConfig | null>(comp?.props?.emulacao?.cfg ?? null);
   const [salvando, setSalvando] = useState(false);
@@ -184,7 +192,7 @@ export function EmuladorModal({ open, onClose, comp, carregarAlvos, conflitoEnde
       modbus_address: end,
       _addr_manual: true,
       emulado: true,
-      emulacao: { valores, bi, cfg } satisfies EmulacaoProps,
+      emulacao: { valores: rascunho, bi, cfg } satisfies EmulacaoProps,
     };
     if (alvos && !alvos.naoAssocia) p[alvos.campo] = alvoId;
     return p;
@@ -192,6 +200,7 @@ export function EmuladorModal({ open, onClose, comp, carregarAlvos, conflitoEnde
 
   const salvar = async (): Promise<string | null> => {
     setSalvando(true);
+    aplicar();   // salvar também efetiva o que está digitado
     try {
       const id = await onSalvar({ id: nodeId, type: tipo, props: montarProps() });
       if (id) setNodeId(id);
@@ -351,6 +360,7 @@ export function EmuladorModal({ open, onClose, comp, carregarAlvos, conflitoEnde
                 <h3 className="text-sm font-semibold">Pontos analógicos (AI) — {pontosAi?.pontos.length ?? 0}</h3>
                 <div className="flex gap-2">
                   <Button type="button" size="sm" variant="outline" onClick={preencherTipicos} data-testid="emu-tipicos">Preencher típicos</Button>
+                  <Button type="button" size="sm" disabled={!pendente} onClick={aplicar} data-testid="emu-aplicar">{pendente ? 'Aplicar valores' : 'Valores aplicados'}</Button>
                   <Button type="button" size="sm" variant="ghost" onClick={() => setValores({})}>Limpar</Button>
                 </div>
               </div>
@@ -364,6 +374,7 @@ export function EmuladorModal({ open, onClose, comp, carregarAlvos, conflitoEnde
                       const lido = montagem?.leituras[p.pid];
                       const dig = Number(valores[p.pid]);
                       const difere = valores[p.pid] !== undefined && valores[p.pid] !== '' && lido !== undefined && Math.abs(lido - dig) > Math.max(1e-6, Math.abs(dig) * 1e-5);
+                      const naoAplicado = String(valores[p.pid] ?? '') !== String(rascunho[p.pid] ?? '');
                       const ehEstado = p.pid === 'work_state';
                       return (
                         <tr key={p.pid} className="border-t">
@@ -374,19 +385,21 @@ export function EmuladorModal({ open, onClose, comp, carregarAlvos, conflitoEnde
                           <td className="p-2">
                             {ehEstado ? (
                               <select className="h-8 w-full rounded-md border border-input bg-background px-1 text-sm" value={String(valores[p.pid] ?? 0)}
-                                onChange={(e) => setValores({ ...valores, [p.pid]: Number(e.target.value) })}>
+                                onChange={(e) => { const n = Number(e.target.value); setValores((v) => ({ ...v, [p.pid]: n })); }}>
                                 {WORK_STATE_CODES.map((w) => <option key={w.value} value={w.value}>{w.label} (0x{w.value.toString(16).padStart(4, '0')})</option>)}
                               </select>
                             ) : (
                               <div className="flex items-center gap-1">
-                                <Input className="h-8 w-32" type="number" step="any" value={valores[p.pid] ?? ''} placeholder="0"
-                                  onChange={(e) => setValores({ ...valores, [p.pid]: e.target.value })} data-testid={`emu-ai-${p.pid}`} />
+                                <Input className="h-8 w-32" type="number" step="any" value={rascunho[p.pid] ?? ''} placeholder="0"
+                                  onChange={(e) => setRascunho({ ...rascunho, [p.pid]: e.target.value })}
+                                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); aplicar(); } }} data-testid={`emu-ai-${p.pid}`} />
                                 <span className="text-xs text-muted-foreground">{p.unit}</span>
                               </div>
                             )}
                           </td>
                           <td className={`p-2 tabular-nums ${difere ? 'font-semibold text-amber-600' : 'text-muted-foreground'}`} data-testid={`emu-lido-${p.pid}`}>
                             {fmt(lido)} {difere && <span className="text-[11px]">(resolução do registrador)</span>}
+                            {naoAplicado && <span className="ml-1 text-[11px] text-amber-600">· não aplicado (Enter ou Aplicar)</span>}
                           </td>
                           <td className="p-2 text-[11px] text-muted-foreground">func 0{p.func} · {p.register} · {p.dataType}{p.scale !== 1 ? ` ÷${p.scale}` : ''}</td>
                         </tr>
