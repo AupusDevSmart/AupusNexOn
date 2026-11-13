@@ -5,6 +5,10 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 import { useStreamCamera } from '../hooks/useStreamCamera';
 
+const MAX_RECONEXOES = 6;
+/** Sem avançar o vídeo por este tempo = travado. */
+const TRAVADO_MS = 15_000;
+
 interface PlayerHlsProps {
   cameraId: string;
   className?: string;
@@ -22,6 +26,8 @@ export function PlayerHls({ cameraId, className }: PlayerHlsProps) {
   const [erroVideo, setErroVideo] = useState<string | null>(null);
   const [reproduzindo, setReproduzindo] = useState(false);
   const [tentativa, setTentativa] = useState(0);
+  /** Falhas seguidas sem tocar: até MAX_RECONEXOES o player tenta sozinho ("Reconectando…"). */
+  const [falhas, setFalhas] = useState(0);
 
   const estado = stream.data?.estado;
   const url = estado === 'publicando' ? (stream.data?.hls_url ?? null) : null;
@@ -33,9 +39,22 @@ export function PlayerHls({ cameraId, className }: PlayerHlsProps) {
     setReproduzindo(false);
 
     let hls: Hls | null = null;
-    const aoTocar = () => setReproduzindo(true);
+    let ultimoAvanco = Date.now();
+    const aoTocar = () => {
+      setReproduzindo(true);
+      setFalhas(0);
+      ultimoAvanco = Date.now();
+    };
+    const aoAvancar = () => {
+      ultimoAvanco = Date.now();
+    };
     const aoErroNativo = () => setErroVideo('Falha ao carregar o vídeo.');
     video.addEventListener('playing', aoTocar);
+    video.addEventListener('timeupdate', aoAvancar);
+    // Vídeo congelado (rede caiu, câmera reiniciou) sem erro do hls: reabre sozinho.
+    const vigia = window.setInterval(() => {
+      if (!video.paused && Date.now() - ultimoAvanco > TRAVADO_MS) setErroVideo('Vídeo parado');
+    }, 5_000);
 
     if (video.canPlayType('application/vnd.apple.mpegurl')) {
       // Safari / iOS tocam HLS direto no <video>.
@@ -50,11 +69,17 @@ export function PlayerHls({ cameraId, className }: PlayerHlsProps) {
       hls.attachMedia(video);
     } else {
       setErroVideo('Este navegador não reproduz vídeo HLS.');
-      return () => video.removeEventListener('playing', aoTocar);
+      return () => {
+        window.clearInterval(vigia);
+        video.removeEventListener('timeupdate', aoAvancar);
+        video.removeEventListener('playing', aoTocar);
+      };
     }
     video.play().catch(() => undefined);
 
     return () => {
+      window.clearInterval(vigia);
+      video.removeEventListener('timeupdate', aoAvancar);
       video.removeEventListener('playing', aoTocar);
       video.removeEventListener('error', aoErroNativo);
       hls?.destroy();
@@ -65,15 +90,33 @@ export function PlayerHls({ cameraId, className }: PlayerHlsProps) {
   }, [url, tentativa]);
 
   const tentarDeNovo = () => {
+    setFalhas(0);
     setTentativa((t) => t + 1);
     void stream.refetch();
   };
 
+  // Erro do vídeo (playlist ainda não existe, rede oscilou, câmera reiniciou): tenta de novo
+  // sozinho com espera crescente; só mostra o botão depois de várias falhas seguidas.
+  const reconectando = !!erroVideo && falhas < MAX_RECONEXOES;
+  useEffect(() => {
+    if (!erroVideo || falhas >= MAX_RECONEXOES) return undefined;
+    const espera = Math.min(15_000, 2_000 * 2 ** falhas);
+    const t = window.setTimeout(() => {
+      setFalhas((f) => f + 1);
+      setTentativa((n) => n + 1);
+      void stream.refetch();
+    }, espera);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [erroVideo, falhas]);
+
   let aviso: ReactNode = null;
   if (stream.isError) {
     aviso = <Aviso texto="Não foi possível pedir o vídeo" acao={tentarDeNovo} />;
+  } else if (reconectando) {
+    aviso = <Aviso carregando texto="Reconectando…" />;
   } else if (erroVideo) {
-    aviso = <Aviso texto="Falha no vídeo" detalhe={erroVideo} acao={tentarDeNovo} />;
+    aviso = <Aviso texto="Sem vídeo no momento" detalhe="A câmera ou a internet do local pode ter caído." acao={tentarDeNovo} />;
   } else if (estado === 'offline') {
     aviso = <Aviso icone={VideoOff} texto="Sem sinal" />;
   } else if (!url || !reproduzindo) {
