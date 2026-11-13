@@ -747,7 +747,7 @@ function MedidorPm({ equipamentoId, onStatus }: { equipamentoId: string; onStatu
   const fpAgora = dados ? fpDe(dados) : null;
   const qt = kw(n('Qt'));
   const kpis: Kpi[] = [
-    { k: 'Rede agora', v: ptAgora != null ? `${kwTxt(Math.abs(ptAgora))} kW` : '—', s: ptAgora == null ? '' : `${ptAgora < 0 ? 'injetando' : 'importando'} · última leitura` },
+    { k: 'Medidor bidirecional agora', v: ptAgora != null ? `${kwTxt(Math.abs(ptAgora))} kW` : '—', s: ptAgora == null ? '' : `${ptAgora < 0 ? 'injetando' : 'importando'} · última leitura` },
     { k: 'Reativo agora', v: qt != null ? `${kwTxt(Math.abs(qt))} kvar` : '—', s: qt == null ? '' : `${qt < 0 ? 'capacitivo' : 'indutivo'} · última leitura` },
     { k: 'FP último minuto', v: fpAgora != null ? fmt(fpAgora, 2) : '—', s: qt == null ? '' : qt < 0 ? 'capacitivo' : 'indutivo' },
     { k: 'FP do intervalo', v: fpInt != null ? fmt(fpInt, 2) : '—', s: 'intervalo em andamento' },
@@ -903,7 +903,7 @@ function MedidorSsu({ equipamentoId, onStatus, topo }: { equipamentoId: string; 
   const sq = noIntervalo.reduce((a, m) => a + (m.kvar_ind - m.kvar_cap), 0);
   const fpInt = noIntervalo.length ? fpPQ(sp, sq) : null;
   const kpis: Kpi[] = [
-    { k: 'Rede agora', v: rede != null ? `${kwTxt(Math.abs(rede))} kW` : '—', s: rede == null ? '' : `${rede < 0 ? 'injetando' : 'importando'} · média 1 min` },
+    { k: 'Medidor bidirecional agora', v: rede != null ? `${kwTxt(Math.abs(rede))} kW` : '—', s: rede == null ? '' : `${rede < 0 ? 'injetando' : 'importando'} · média 1 min` },
     { k: 'Reativo agora', v: kvar != null ? `${kwTxt(Math.abs(kvar))} kvar` : '—', s: kvar == null ? '' : `${kvar < 0 ? 'capacitivo' : 'indutivo'} · média 1 min` },
     { k: 'FP último minuto', v: fpMin != null ? fmt(fpMin, 2) : '—', s: natMin == null ? '' : natMin === 'cap' ? 'capacitivo' : 'indutivo' },
     { k: 'FP do intervalo', v: fpInt != null ? fmt(fpInt, 2) : '—', s: 'intervalo em andamento' },
