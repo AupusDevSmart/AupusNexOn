@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { IrrigacaoAvancada, CONFIG_PADRAO, complementoFaixas, fimDoSegmento, paradaValida, segmentoDoGiro, previsao, resumoConfig, type ConfigIrrigacao, type EnvioIrrigacao } from './PivoIrrigacao';
+import { IrrigacaoAvancada, CONFIG_PADRAO, complementoFaixas, grausDosSegmentos, paradaValida, previsao, resumoConfig, type ConfigIrrigacao, type EnvioIrrigacao } from './PivoIrrigacao';
 import { AtalhosRapidos, PainelRapido, comMovimento, envioDoRascunho, mudancas, rascunhoDe, type Rascunho } from './PivoRapido';
 import { linhasParaItens, textoAgenda } from './pivoAgendaPlanilha';
 
@@ -38,38 +38,36 @@ describe('Planejamento de irrigação', () => {
     expect(screen.getByText('Agenda')).toBeTruthy();
   });
 
-  it('parada por ângulo mostra o gráfico para escolher o ângulo final, na própria tela', () => {
+  it('"Parar no ângulo" saiu (12/11); "Andar X°" manda os graus a andar', () => {
     const { onEnviar } = abrir();
-    expect(screen.queryByRole('img', { name: 'Ângulo final' })).toBeNull();
-    fireEvent.change(screen.getByLabelText('Parada'), { target: { value: 'porAngulo' } });
-    expect(screen.getByRole('img', { name: 'Ângulo final' })).toBeTruthy();
-    fireEvent.change(screen.getByLabelText('Ângulo de parada'), { target: { value: '135' } });
+    const opcoes = Array.from((screen.getByLabelText('Parada') as HTMLSelectElement).options).map((o) => o.value);
+    expect(opcoes).not.toContain('porAngulo');
+    fireEvent.change(screen.getByLabelText('Parada'), { target: { value: 'porGraus' } });
+    fireEvent.change(screen.getByLabelText('Graus a andar'), { target: { value: '45' } });
     fireEvent.click(screen.getByText('Ligar'));
-    expect(onEnviar.mock.calls[0][0]).toMatchObject({ modo: 'simples', parada: { tipo: 'porAngulo', angulo: 135 } });
+    expect(onEnviar.mock.calls[0][0]).toMatchObject({ modo: 'simples', parada: { tipo: 'porGraus', graus: 45 } });
   });
 
-  it('parada por segmento: o anel aparece na tela e o pivô para no fim do segmento escolhido', () => {
+  it('parada por segmento: quartos de volta a partir de onde está; tocar no 3 seleciona 1-2-3 = 270°', () => {
     const { onEnviar } = abrir();
-    expect(screen.queryByRole('switch', { name: /Por segmentos/ })).toBeNull();
     expect(screen.queryByRole('img', { name: 'Segmentos do pivô' })).toBeNull();
     fireEvent.change(screen.getByLabelText('Parada'), { target: { value: 'porSegmento' } });
     expect(screen.getByRole('img', { name: 'Segmentos do pivô' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Segmento 3' }));
+    expect(['Segmento 1', 'Segmento 2', 'Segmento 3', 'Segmento 4'].map((n) => screen.getByRole('button', { name: n }).getAttribute('aria-pressed')))
+      .toEqual(['true', 'true', 'true', 'false']);
     fireEvent.click(screen.getByText('Ligar'));
-    // Esquerda diminui o ângulo: o segmento 3 (180–270°) acaba em 180°
-    expect(onEnviar.mock.calls[0][0]).toMatchObject({ modo: 'segmentos', segmento: 3, parada: { tipo: 'porAngulo', angulo: 180 }, config: { direcao: 'Reverso' } });
+    expect(onEnviar.mock.calls[0][0]).toMatchObject({ modo: 'segmentos', segmento: 3, parada: { tipo: 'porGraus', graus: 270 } });
   });
 
-  it('parada por segmento segue a direção: trocar para Direita leva a parada para o outro lado do segmento', () => {
+  it('parada por segmento independe da direção e da posição: 1 segmento = 90°, os 4 = 360°', () => {
     const { onEnviar } = abrir();
     fireEvent.change(screen.getByLabelText('Parada'), { target: { value: 'porSegmento' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Segmento 3' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Segmento 4' }));
     fireEvent.click(screen.getByRole('radio', { name: 'Direita' }));
     fireEvent.click(screen.getByText('Ligar'));
-    expect(onEnviar.mock.calls[0][0].parada).toEqual({ tipo: 'porAngulo', angulo: 270 });
-    expect([fimDoSegmento(0, 'Avanço'), fimDoSegmento(3, 'Avanço'), fimDoSegmento(0, 'Reverso'), fimDoSegmento(3, 'Reverso')]).toEqual([90, 0, 0, 270]);
-    // em cima da divisa (90°): para a direita entra no segmento 2, para a esquerda no 1 — nunca distância zero
-    expect([segmentoDoGiro(90, 'Avanço'), segmentoDoGiro(90, 'Reverso'), segmentoDoGiro(0, 'Reverso'), segmentoDoGiro(359, 'Avanço')]).toEqual([1, 0, 3, 3]);
+    expect(onEnviar.mock.calls[0][0].parada).toEqual({ tipo: 'porGraus', graus: 360 });
+    expect([1, 2, 3, 4].map(grausDosSegmentos)).toEqual([90, 180, 270, 360]);
   });
 
   it('direção é só Direita ou Esquerda; Água é um switch', () => {

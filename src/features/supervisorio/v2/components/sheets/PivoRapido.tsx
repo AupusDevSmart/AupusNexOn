@@ -169,7 +169,7 @@ export function PainelRapido({ valor, base, onChange, lamina100, desabilitado, o
               : e.target.value === 'porTempo' ? { tipo: 'porTempo', minutos: 60 } : { tipo: 'semParar' } })}>
             <option value="semParar">Sem parar</option>
             {(!parado || p.tipo === 'porGraus') && <option value="porGraus">Andar X°</option>}
-            {(!parado || p.tipo === 'porAngulo') && <option value="porAngulo">Parar no ângulo</option>}
+            {p.tipo === 'porAngulo' && <option value="porAngulo">Parar no ângulo</option>}
             {(!parado || p.tipo === 'porVoltas') && <option value="porVoltas">Por voltas</option>}
             <option value="porTempo">Por tempo</option>
           </select>

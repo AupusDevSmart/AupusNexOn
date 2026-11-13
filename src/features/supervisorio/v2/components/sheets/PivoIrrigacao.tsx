@@ -199,27 +199,23 @@ function DialAngulo({ atual, final, direcao, onChange }: { atual: number; final:
   );
 }
 
-/** Fim do segmento no sentido do giro: Direita cresce o ângulo, Esquerda diminui. */
-export const fimDoSegmento = (seg: number, direcao: Direcao) => (direcao === 'Reverso' ? seg * 90 : ((seg + 1) * 90) % 360);
-/** Segmento que o pivô vai percorrer a partir de `atual` (em cima da divisa, é o próximo no sentido do giro). */
-export const segmentoDoGiro = (atual: number, direcao: Direcao) => {
-  const a = direcao === 'Reverso' ? atual - 0.001 : atual;   // sem arredondar: `norm` devolveria a divisa
-  return Math.floor((((a % 360) + 360) % 360) / 90) % 4;
-};
-
-/** Parada por segmento: 4 quartos de volta (anel do app); o pivô para no fim do escolhido. */
-function AnelSegmentos({ sel, atual, onSel }: { sel: number; atual: number; onSel: (i: number) => void }) {
-  const [ax, ay] = ponto(110, 110, 100, atual);
+/**
+ * Parada por segmento (decisão 12/11): cada segmento é UM QUARTO DE VOLTA a partir de onde o pivô
+ * está (o 1 é sempre o primeiro quarto). Os quartos ficam fixos no desenho só para ficar bonito;
+ * tocar no N seleciona do 1 ao N (sempre seguidos) → o pivô gira N × 90°.
+ */
+export const grausDosSegmentos = (n: number) => Math.min(4, Math.max(1, Math.round(n))) * 90;
+function AnelSegmentos({ sel, onSel }: { sel: number; onSel: (n: number) => void }) {
   const segs = [0, 1, 2, 3];
   return (
     <svg viewBox="0 0 220 220" width="190" height="190" role="img" aria-label="Segmentos do pivô">
       <circle cx="110" cy="110" r="100" fill="#26301F" />
       {segs.map((i) => (
-        <path key={i} role="button" aria-label={`Segmento ${i + 1}`} aria-pressed={i === sel} d={anel(110, 110, 50, 100, i * 90 + 2, (i + 1) * 90 - 2)} stroke={NX.card} strokeWidth="3" style={{ cursor: 'pointer' }}
-          fill={i === sel ? VERDE : 'rgba(114,191,74,0.30)'} onClick={() => onSel(i)} />
+        <path key={i} role="button" aria-label={`Segmento ${i + 1}`} aria-pressed={i < sel} d={anel(110, 110, 50, 100, i * 90 + 2, (i + 1) * 90 - 2)} stroke={NX.card} strokeWidth="3" style={{ cursor: 'pointer' }}
+          fill={i < sel ? VERDE : 'rgba(114,191,74,0.30)'} onClick={() => onSel(i + 1)} />
       ))}
       <circle cx="110" cy="110" r="46" fill={NX.card} />
-      <line x1="110" y1="110" x2={ax} y2={ay} stroke={NX.texto} strokeWidth="2.5" strokeLinecap="round" />
+      <text x="110" y="115" fontSize="15" fontWeight="800" fill={NX.texto} textAnchor="middle" style={{ pointerEvents: 'none' }}>{grausDosSegmentos(sel)}°</text>
       {segs.map((i) => {
         const [x, y] = ponto(110, 110, 74, i * 90 + 45);
         return <text key={i} x={x} y={y + 4} fontSize="12" fontWeight="700" fill="#FFFFFF" textAnchor="middle" style={{ pointerEvents: 'none' }}>{i + 1}</text>;
@@ -407,7 +403,7 @@ export function IrrigacaoAvancada({
   const [faixasAbertas, setFaixasAbertas] = useState(false);
   // Parada "Por segmento": o pivô para no fim do quarto de volta escolhido (vai como parada por ângulo).
   const [porSegmento, setPorSegmento] = useState(false);
-  const [segSel, setSegSel] = useState(0);
+  const [segSel, setSegSel] = useState(1);   // quantos quartos de volta (1..4) a partir de onde está
   const [inicioTipo, setInicioTipo] = useState<'agora' | 'data'>('agora');
   const [inicioData, setInicioData] = useState('');
   // Ligar novo: 1 volta por padrão. "Sem parar" não se escolhe mais (esquema do pivô, NEXON-98);
@@ -459,7 +455,7 @@ export function IrrigacaoAvancada({
   const tudoMarcado = canhaoAtivo && zonasTocadas && zonas.length > 0 && faixasLigadas.length === 0;
   const canhaoEnvio = canhaoAtivo && !tudoMarcado;
   // O que vai para o pivô: "Por segmento" é uma parada por ângulo no fim do segmento escolhido.
-  const paradaEf: Parada = porSegmento ? { tipo: 'porAngulo', angulo: fimDoSegmento(segSel, cfg.direcao) } : parada;
+  const paradaEf: Parada = porSegmento ? { tipo: 'porGraus', graus: grausDosSegmentos(segSel) } : parada;
 
   // Parado (0 % com água) não se escolhe mais na tela; se a irrigação em curso é assim, escolher a
   // direção volta a girar com o percentual de antes.
@@ -513,7 +509,7 @@ export function IrrigacaoAvancada({
   // Ligado, o reinício é sempre agora: agendar início não faz sentido com o pivô girando.
   const montar = (): EnvioIrrigacao => ({
     modo: porSegmento ? 'segmentos' : 'simples', parada: paradaEf, inicio: ligado || inicioTipo === 'agora' ? null : inicio,
-    ...(porSegmento ? { segmento: segSel + 1 } : {}),
+    ...(porSegmento ? { segmento: segSel } : {}),
     ...(ligado ? { manterParada: paradaIntacta } : {}),
     config: { ...cfg, canhao: canhaoEnvio, faixasCanhao: canhaoEnvio ? faixasLigadas : [] },
   });
@@ -640,19 +636,20 @@ export function IrrigacaoAvancada({
                     setMinTxt(null);
                     const seg = e.target.value === 'porSegmento';
                     setPorSegmento(seg);
-                    if (seg) setSegSel(segmentoDoGiro(atual, cfg.direcao));   // começa no segmento onde o pivô está
+                    if (seg) setSegSel(1);   // começa em 1 quarto de volta
                     mudarParada(seg ? { tipo: 'semParar' } : e.target.value === 'porGraus' ? { tipo: 'porGraus', graus: 30 } : e.target.value === 'porAngulo' ? { tipo: 'porAngulo', angulo: 0 } : e.target.value === 'porVoltas' ? { tipo: 'porVoltas', voltas: 1 }
                     : e.target.value === 'porTempo' ? { tipo: 'porTempo', minutos: 60 } : { tipo: 'semParar' }); }}>
                   {parada.tipo === 'semParar' && !porSegmento && <option value="semParar">Sem parar</option>}
                   {/* parado não oferece ângulo/voltas — mas mostra a que já está em curso */}
                   {/* "Andar X°": o valor é o quanto andar a partir de onde está (decisão 12/11) */}
                   {(!parado || parada.tipo === 'porGraus') && <option value="porGraus">Andar X°</option>}
-                  {(!parado || parada.tipo === 'porAngulo') && <option value="porAngulo">Parar no ângulo</option>}
+                  {/* "Parar no ângulo" saiu (12/11); só aparece numa irrigação que já veio assim (programação) */}
+                  {parada.tipo === 'porAngulo' && <option value="porAngulo">Parar no ângulo</option>}
                   {!parado && <option value="porSegmento">Por segmento</option>}
                   {(!parado || parada.tipo === 'porVoltas') && <option value="porVoltas">Por voltas</option>}
                   <option value="porTempo">Por tempo</option>
                 </select>
-                {porSegmento && <span style={{ fontSize: 15, fontWeight: 800 }}>· {segSel + 1}</span>}
+                {porSegmento && <span style={{ fontSize: 15, fontWeight: 800 }}>· {grausDosSegmentos(segSel)}°</span>}
                 {parada.tipo === 'porAngulo' && (
                   <><span style={{ fontSize: 15, fontWeight: 800 }}>·</span>
                     <input inputMode="numeric" aria-label="Ângulo de parada" value={parada.angulo} style={{ ...inputCaixa, width: 40, textAlign: 'right' }}
@@ -689,8 +686,8 @@ export function IrrigacaoAvancada({
           )}
           {porSegmento && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-              <AnelSegmentos sel={segSel} atual={atual} onSel={(i) => { setParadaTocada(true); setSegSel(i); }} />
-              <span style={{ fontSize: 13, color: NX.mudo }}>Toque no segmento · o pivô para no fim do segmento {segSel + 1} ({paradaEf.tipo === 'porAngulo' ? paradaEf.angulo : 0}°)</span>
+              <AnelSegmentos sel={segSel} onSel={(n) => { setParadaTocada(true); setSegSel(n); }} />
+              <span style={{ fontSize: 13, color: NX.mudo }}>Toque no segmento · o pivô gira {grausDosSegmentos(segSel)}° a partir de onde está ({segSel === 1 ? '1 quarto' : `${segSel} quartos`} de volta)</span>
             </div>
           )}
           {/* Canhão por último (pedido do dono): é o que menos se mexe ao ligar. */}
