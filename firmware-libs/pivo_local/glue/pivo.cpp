@@ -38,6 +38,7 @@ extern uint32_t diag_i2c_resets;   // relays.cpp: recuperacoes do barramento I2C
 // Leitura imediata do encoder (gerada em modbus_meter.cpp quando ha' Encoder no RS485 desta TON).
 // Fraca: firmware sem encoder nao define, e "pivo encler" responde pivo_sem_encoder.
 extern bool pivo_encoder_amostrar() __attribute__((weak));
+extern void bb_marcar_reinicio(const char* por) __attribute__((weak));   // blackbox (firmware)
 
 enum { BO_BOMBA = 0, BO_VALVULA, BO_DIR, BO_ESQ, BO_PERC, BO_CANHAO };
 enum { BI_PRESSAO = 0, BI_TENSAO, BI_GIR_DIR, BI_GIR_ESQ, BI_SEGURANCA, BI_CANHAO };
@@ -391,6 +392,7 @@ void pivo_tick() {
         if (relays_io_fault_ms() > 10000UL) {
             Serial.println("[PIVO] reles sem controle ha' 10 s - reiniciando a TON (reles voltam em OFF)");
             Serial.flush();
+            if (bb_marcar_reinicio) bb_marcar_reinicio("reles");   // motivo no heartbeat apos o boot
             esp_restart();
         }
     }

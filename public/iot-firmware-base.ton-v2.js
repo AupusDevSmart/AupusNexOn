@@ -573,6 +573,7 @@ void ota_confirm_valid_if_needed();
 // ================================================================
 'src/ota.cpp': `#include "ota.h"
 #include "config.h"
+#include "blackbox.h"
 #include "mqtt.h"
 #include "eth.h"
 #include <WiFi.h>
@@ -897,6 +898,7 @@ void ota_handle_command(const char* payload) {
     _publishStatus("success", 100, "rebooting");
     mqtt_loop();
     delay(500);
+    bb_marcar_reinicio("ota");
     ESP.restart();
 }
 
@@ -1505,6 +1507,9 @@ void bb_init();                                   // cedo no setup (depois do Se
 void bb_log(const char* fmt, ...);                // evento curto (ate 43 caracteres)
 void bb_stage(uint8_t etapa);                     // marca a etapa atual do laco
 void bb_flush();                                  // grava no NVS o que estiver pendente
+// Motivo do ULTIMO reinicio (12/11): reset do ESP32 + quem pediu o reinicio por software
+void bb_marcar_reinicio(const char* por);           // chamar ANTES de ESP.restart() (ota, comando, rede, reles...)
+const char* bb_reset_curto();                       // "Power-on", "Brownout", "Watchdog", "Panic", "SW:ota"... (<= 23)
 const char* bb_stage_name(uint8_t etapa);
 uint32_t bb_boot_count();                        // numero do boot (vai no status: NexON registra cada boot 1x)
 
@@ -1548,6 +1553,15 @@ struct BbRtc {
 RTC_NOINIT_ATTR static BbRtc _bb;
 static uint8_t  _stageAtReset = 0;
 static const char* _resetTxt = "?";
+// Quem pediu o reinicio por software: sobrevive ao reset na RTC (some com tirar da tomada)
+RTC_NOINIT_ATTR static uint32_t _rstPorMagic;
+RTC_NOINIT_ATTR static char     _rstPor[16];
+static char _resetCurto[24] = "?";
+void bb_marcar_reinicio(const char* por) {
+    snprintf(_rstPor, sizeof(_rstPor), "%s", por && por[0] ? por : "sw");
+    _rstPorMagic = 0x52535450UL;
+}
+const char* bb_reset_curto() { return _resetCurto; }
 static unsigned long _lastNvs = 0;
 static bool _dirty = false;
 static bool _ok = false;
@@ -1625,6 +1639,17 @@ void bb_init() {
     bool travou = (r == ESP_RST_TASK_WDT || r == ESP_RST_INT_WDT || r == ESP_RST_WDT || r == ESP_RST_PANIC);
     if (travou) bb_log("boot %lu %s etapa=%s", (unsigned long)_bb.boots, _resetTxt, bb_stage_name(_stageAtReset));
     else        bb_log("boot %lu %s", (unsigned long)_bb.boots, _resetTxt);
+    // Reinicio por software: quem pediu (ota, comando, rede, reles...) — vai no heartbeat/diagnostico
+    if (r == ESP_RST_SW && _rstPorMagic == 0x52535450UL) {
+        _rstPor[sizeof(_rstPor) - 1] = 0;
+        // Curto (cabe no heartbeat LoRa): comando->cmd, sem_broker/rede->rede; o resto ate' 5 letras
+        const char* c = !strcmp(_rstPor, "comando") ? "cmd" : (strstr(_rstPor, "broker") || strstr(_rstPor, "rede") || strstr(_rstPor, "wifi")) ? "rede" : _rstPor;
+        snprintf(_resetCurto, sizeof(_resetCurto), "SW:%.5s", c);
+        bb_log("reinicio pedido por %s", _rstPor);
+    } else {
+        snprintf(_resetCurto, sizeof(_resetCurto), "%s", _resetTxt);
+    }
+    _rstPorMagic = 0;
     _nvsSave();
 }
 

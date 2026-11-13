@@ -2209,6 +2209,7 @@ void diag_publish_periodic() {
         }
     }
     doc["uptime_sec"]        = (uint32_t)((millis() - diag_boot_time_ms) / 1000);
+    doc["reset"]             = bb_reset_curto();   // motivo do ultimo reinicio (Brownout, Watchdog, SW:ota...)
     doc["free_heap"]         = ESP.getFreeHeap();
     doc["wifi_rssi"]         = WiFi.RSSI();
     doc["tcp_connected"]     = diag_tcp_connected;
@@ -2268,8 +2269,9 @@ void mqtt_loop() {}
 bool mqtt_publish(const char* t, const char* p) { return false; }
 bool mqtt_connected() { return false; }
 #include <Arduino.h>
+#include "blackbox.h"
 bool mqtt_restart_permitido() {${spec.pivo && spec.has_relays ? ` extern bool pivo_ocioso(); if (!pivo_ocioso()) return false;` : ''} return true; }
-void mqtt_request_restart(const char* reason, unsigned long delay_ms) { Serial.printf("[SYS] reinicio (%s)\\n", reason); delay(delay_ms > 3000 ? 3000 : delay_ms); ESP.restart(); }
+void mqtt_request_restart(const char* reason, unsigned long delay_ms) { Serial.printf("[SYS] reinicio (%s)\\n", reason); delay(delay_ms > 3000 ? 3000 : delay_ms); bb_marcar_reinicio(reason); ESP.restart(); }
 const char* mqtt_restart_cause() { return ""; }
 unsigned long mqtt_conn_age_ms() { return 0xFFFFFFFFUL; }
 `;
@@ -2775,6 +2777,7 @@ static bool _doRestart(const char* reason) {
     // Reinicio DIRETO: o ESP.restart() travou na bancada (24/09) desligando o WiFi enquanto o
     // radio procurava a rede sumida -> so' o watchdog tirou (60 s). Tudo que importa ja' foi
     // gravado acima (caixa-preta, ponteiro do SD, teto no NVS); a RTC sobrevive.
+    bb_marcar_reinicio(reason);   // motivo do reinicio vai no heartbeat/diagnostico depois do boot
     esp_reset_reason_set_hint(ESP_RST_SW);
     esp_restart_noos_dig();
     return true;
@@ -4027,6 +4030,7 @@ static void lora_publish_data(const char* subtopic, const char* payload_json) {
 // Heartbeat periodico pro gateway saber que satellite esta vivo.
 // Gateway re-publica em <BASE>/satellite/<MAC>/status (retain) — backend ve
 // presence. Sem heartbeat por 2*intervalo, backend pode marcar offline.
+extern const char* bb_reset_curto();   // blackbox: motivo do ultimo reinicio
 void lora_loop_tick() {
     unsigned long now = millis();
     if (now - _lastHeartbeat < LORA_SAT_HEARTBEAT_MS) return;
@@ -4035,9 +4039,9 @@ void lora_loop_tick() {
     // "poll":1 anuncia que este satelite e' POLLAVEL (reativo, tem device) — o
     // gateway usa isso pra DESCOBRIR o alvo sem precisar do MAC no diagrama.
     snprintf(payload, sizeof(payload),
-             "{\\"online\\":true,${this._simMode() ? ('\\"sim\\":\\"' + (spec.name || '').replace(/[^\w .:-]/g, '') + '\\",') : ''}${(role === 'satellite' && !this._loraAutonomousPush() && this._satelliteHasDevice(spec)) ? '\\"poll\\":1,' : ''}\\"version\\":\\"%s\\",\\"uptime\\":%lu,\\"free_heap\\":%u}",
+             "{\\"online\\":true,${this._simMode() ? ('\\"sim\\":\\"' + (spec.name || '').replace(/[^\w .:-]/g, '') + '\\",') : ''}${(role === 'satellite' && !this._loraAutonomousPush() && this._satelliteHasDevice(spec)) ? '\\"poll\\":1,' : ''}\\"version\\":\\"%s\\",\\"uptime\\":%lu,\\"free_heap\\":%u,\\"rr\\":\\"%.8s\\"}",
              FIRMWARE_VERSION, (unsigned long)(now/1000),
-             (unsigned)ESP.getFreeHeap());
+             (unsigned)ESP.getFreeHeap(), bb_reset_curto());   // rr = motivo do ultimo reinicio
     const char* gw = _ton2_gw_mac.length() ? _ton2_gw_mac.c_str() : "*";
     lora_send_envelope(gw, "status", nullptr, nullptr, nullptr, nullptr, payload);
 }
