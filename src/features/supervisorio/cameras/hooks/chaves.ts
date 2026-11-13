@@ -9,6 +9,8 @@ export const chavesCameras = {
   eventosDaUnidade: (unidadeId?: string) => ['cameras', 'eventos', { unidade_id: unidadeId?.trim() }] as const,
   config: (unidadeId?: string) => ['cameras', 'config', unidadeId?.trim()] as const,
   agentes: (unidadeId?: string) => ['cameras', 'agentes', unidadeId?.trim()] as const,
+  pareamentos: ['cameras', 'pareamentos'] as const,
+  descobertas: (agenteId?: string) => ['cameras', 'descobertas', agenteId?.trim()] as const,
   stream: (cameraId?: string) => ['cameras', 'stream', cameraId?.trim()] as const,
   tokenMidia: ['cameras', 'midia-token'] as const,
 };
