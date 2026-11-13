@@ -345,6 +345,7 @@ export function CamerasTab({ unidadeId, unidadeNome }: CamerasTabProps) {
       {podeAbrirConfig && (
         <ConfigCamerasSheet
           unidadeId={unidadeId}
+          unidadeNome={unidadeNome}
           aberto={config.aberta}
           abaInicial={config.aba}
           onFechar={() => setConfig({ aberta: false })}

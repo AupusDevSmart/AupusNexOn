@@ -1,6 +1,7 @@
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { CamerasService } from '../services/cameras.service';
 import type { Agente, CameraDescoberta, ConfigCameras, PedidoPareamento } from '../types';
+import { ipPrivadoValido } from '../utils/rede';
 import { chavesCameras } from './chaves';
 
 /** Configuração de armamento e comandos da unidade (sem polling: muda só por quem edita). */
@@ -40,7 +41,10 @@ export interface DescobertaDoAgente {
   descoberta: CameraDescoberta;
 }
 
-/** Câmeras achadas na rede pelos agentes informados (só os em contato), juntas. */
+/**
+ * Câmeras achadas na rede pelos agentes informados (só os em contato), juntas. Descarta as de
+ * IP que não seja IPv4 privado literal: o IP vira link e cadastro, e vem do aparelho.
+ */
 export function useDescobertasAgentes(agentes: Agente[]) {
   const consultas = useQueries({
     queries: agentes.map((a) => ({
@@ -51,7 +55,7 @@ export function useDescobertasAgentes(agentes: Agente[]) {
     })),
   });
   const itens: DescobertaDoAgente[] = consultas.flatMap((q, i) =>
-    (q.data ?? []).map((descoberta) => ({ agente: agentes[i], descoberta })),
+    (q.data ?? []).filter((d) => ipPrivadoValido(d.ip)).map((descoberta) => ({ agente: agentes[i], descoberta })),
   );
   return { itens, carregando: consultas.some((q) => q.isPending) };
 }

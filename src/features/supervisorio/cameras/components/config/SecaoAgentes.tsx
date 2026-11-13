@@ -29,7 +29,7 @@ import { DialogAdicionarAparelho } from './DialogAdicionarAparelho';
  * Aparelhos (agentes: Raspberry ou mini-PC) da unidade. O caminho normal é parear pelo
  * código (NEXON-108); criar com token copiado à mão fica em "Instalação manual".
  */
-export function SecaoAgentes({ unidadeId }: { unidadeId: string }) {
+export function SecaoAgentes({ unidadeId, unidadeNome }: { unidadeId: string; unidadeNome?: string }) {
   const agentes = useAgentesCameras(unidadeId);
   const queryClient = useQueryClient();
   const [adicionando, setAdicionando] = useState(false);
@@ -165,7 +165,7 @@ export function SecaoAgentes({ unidadeId }: { unidadeId: string }) {
         </Button>
       )}
 
-      <DialogAdicionarAparelho unidadeId={unidadeId} aberto={adicionando} onFechar={() => setAdicionando(false)} />
+      <DialogAdicionarAparelho unidadeId={unidadeId} unidadeNome={unidadeNome} aberto={adicionando} onFechar={() => setAdicionando(false)} />
 
       <AlertDialog open={!!gerarPara} onOpenChange={(o) => !o && setGerarPara(null)}>
         <AlertDialogContent>

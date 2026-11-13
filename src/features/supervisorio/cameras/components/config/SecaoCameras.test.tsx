@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders, sonnerMockFactory } from '@/test-utils';
 import { CamerasService } from '../../services/cameras.service';
 import type { Agente, Camera, CameraDescoberta } from '../../types';
+import { ipPrivadoValido } from '../../utils/rede';
 import { nivelSensibilidade } from '../../utils/sensibilidade';
 import { FormCamera } from './FormCamera';
 import { SecaoCameras } from './SecaoCameras';
@@ -95,8 +96,10 @@ describe('Câmeras encontradas', () => {
 
     await userEvent.click(within(secao).getByRole('button', { name: /Adicionar/ }));
 
-    // IP e portas já vêm da descoberta e ficam escondidos em "Avançado".
-    expect(screen.queryByLabelText('IP da câmera')).toBeNull();
+    // IP vem da descoberta, só leitura; portas ficam em "Avançado".
+    expect(screen.getByLabelText('IP da câmera')).toHaveValue('192.168.1.8');
+    expect(screen.getByLabelText('IP da câmera')).toHaveAttribute('readonly');
+    expect(screen.queryByLabelText('Porta RTSP')).toBeNull();
     expect(screen.getByLabelText('Usuário')).toHaveValue('admin');
     await userEvent.type(screen.getByLabelText('Nome'), 'Cabine');
     await userEvent.type(screen.getByLabelText('Senha'), 'segredo1');
@@ -123,6 +126,44 @@ describe('Câmeras encontradas', () => {
     renderWithProviders(<SecaoCameras unidadeId="u1" />);
     expect(await screen.findByText(/Crie a senha da câmera em/)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'http://192.168.1.8' })).toHaveAttribute('href', 'http://192.168.1.8');
+  });
+});
+
+describe('IP das câmeras encontradas', () => {
+  it('só aceita IPv4 privado literal', () => {
+    for (const ok of ['10.0.0.1', '172.16.0.5', '172.31.255.254', '192.168.1.8', '169.254.10.20']) {
+      expect(ipPrivadoValido(ok)).toBe(true);
+    }
+    for (const ruim of [
+      '8.8.8.8',
+      '172.15.0.1',
+      '172.32.0.1',
+      '192.169.0.1',
+      '192.168.1.256',
+      '192.168.01.8',
+      '192.168.1',
+      '192.168.1.8:80',
+      '192.168.1.8/x',
+      'admin@192.168.1.8',
+      'evil.com',
+      '192.168.1.8a',
+      ' 192.168.1.8',
+      '',
+      null,
+    ]) {
+      expect(ipPrivadoValido(ruim)).toBe(false);
+    }
+  });
+
+  it('descarta descoberta com IP fora da rede privada', async () => {
+    vi.mocked(CamerasService.descobertas).mockResolvedValue([
+      { ...DESCOBERTA, ip: 'evil.com@192.168.1.8', inicializada: false },
+      { ...DESCOBERTA, ip: '192.168.1.9', modelo: 'Boa' },
+    ]);
+    renderWithProviders(<SecaoCameras unidadeId="u1" />);
+    expect(await screen.findByText('Intelbras Boa · 192.168.1.9')).toBeInTheDocument();
+    expect(screen.queryByText(/evil/)).toBeNull();
+    expect(screen.queryByRole('link')).toBeNull();
   });
 });
 

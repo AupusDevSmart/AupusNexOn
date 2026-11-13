@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { toast } from 'sonner';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -30,9 +30,9 @@ const AGENTE: Agente = {
 };
 
 const PEDIDO: PedidoPareamento = {
-  codigo: '482913',
+  pedido_id: '01JD0000000000000000000000',
   host: 'nexon-pi',
-  mac: null,
+  mac: 'dc:a6:32:01:02:03',
   ip_local: '192.168.1.20',
   criado_em: '2026-11-13T10:00:00Z',
   expira_em: '2026-11-13T10:30:00Z',
@@ -40,6 +40,7 @@ const PEDIDO: PedidoPareamento = {
 
 describe('DialogAdicionarAparelho', () => {
   beforeEach(() => {
+    vi.mocked(toast.error).mockClear();
     vi.mocked(CamerasService.pareamentosProximos).mockReset().mockResolvedValue([]);
     vi.mocked(CamerasService.vincularPareamento).mockReset().mockResolvedValue({ agente: AGENTE });
   });
@@ -62,15 +63,40 @@ describe('DialogAdicionarAparelho', () => {
     expect(toast.success).toHaveBeenCalledWith('Aparelho nexon-pi vinculado', expect.anything());
   });
 
-  it('lista o aparelho encontrado nesta rede e vincula com um toque', async () => {
+  it('lista o aparelho próximo sem código e só vincula pelo pedido depois de confirmar', async () => {
     vi.mocked(CamerasService.pareamentosProximos).mockResolvedValue([PEDIDO]);
-    renderWithProviders(<DialogAdicionarAparelho unidadeId="u1" aberto onFechar={vi.fn()} />);
+    renderWithProviders(<DialogAdicionarAparelho unidadeId="u1" unidadeNome="UFV Aupus II" aberto onFechar={vi.fn()} />);
     expect(await screen.findByText('Aparelho encontrado nesta rede: nexon-pi')).toBeInTheDocument();
+    expect(screen.getByText('MAC dc:a6:32:01:02:03, IP 192.168.1.20')).toBeInTheDocument();
+    expect(screen.queryByText(/Código/)).toBeNull();
+
     await userEvent.type(screen.getByLabelText('Nome (opcional)'), 'Pi da cabine');
     await userEvent.click(screen.getByRole('button', { name: 'Vincular nexon-pi' }));
+    // Primeiro toque só pede confirmação.
+    expect(CamerasService.vincularPareamento).not.toHaveBeenCalled();
+    const confirmacao = screen.getByRole('group', { name: 'Confirmar vínculo' });
+    expect(confirmacao).toHaveTextContent('Vincular nexon-pi (MAC dc:a6:32:01:02:03, IP 192.168.1.20) a UFV Aupus II?');
+
+    await userEvent.click(within(confirmacao).getByRole('button', { name: 'Cancelar' }));
+    expect(screen.queryByRole('group', { name: 'Confirmar vínculo' })).toBeNull();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Vincular nexon-pi' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
     await waitFor(() =>
-      expect(CamerasService.vincularPareamento).toHaveBeenCalledWith({ codigo: '482913', unidade_id: 'u1', nome: 'Pi da cabine' }),
+      expect(CamerasService.vincularPareamento).toHaveBeenCalledWith({
+        pedido_id: '01JD0000000000000000000000',
+        unidade_id: 'u1',
+        nome: 'Pi da cabine',
+      }),
     );
+  });
+
+  it('429 pede para aguardar', async () => {
+    vi.mocked(CamerasService.vincularPareamento).mockRejectedValue({ response: { status: 429, data: { message: 'Too Many Requests' } } });
+    renderWithProviders(<DialogAdicionarAparelho unidadeId="u1" aberto onFechar={vi.fn()} />);
+    await userEvent.type(screen.getByLabelText('Ou digite o código de 6 dígitos'), '123456');
+    await userEvent.click(screen.getByRole('button', { name: 'Vincular pelo código' }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Muitas tentativas; aguarde alguns minutos'));
   });
 
   it('código errado ou expirado mostra o erro da API', async () => {

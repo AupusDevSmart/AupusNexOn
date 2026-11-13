@@ -95,8 +95,9 @@ export function FormCamera({ unidadeId, camera, sugestao, agentes, equipamentos,
   const queryClient = useQueryClient();
   const idBase = camera ? `cam-${camera.id}` : 'cam-nova';
   const campo = <K extends keyof Estado>(chave: K) => (valor: Estado[K]) => setF((s) => ({ ...s, [chave]: valor }));
-  // IP já conhecido (câmera encontrada ou edição) vai para "Avançado"; cadastro manual pede o IP à vista.
-  const ipNoAvancado = !!camera || !!sugestao;
+  // Câmera encontrada: IP fixo (validado na descoberta), só leitura. Edição: IP em "Avançado".
+  // Cadastro manual: IP à vista.
+  const ipNoAvancado = !!camera && !sugestao;
   const agenteNoAvancado = !!sugestao;
 
   const salvar = useMutation({
@@ -190,7 +191,13 @@ export function FormCamera({ unidadeId, camera, sugestao, agentes, equipamentos,
         <Campo rotulo="Nome" htmlFor={`${idBase}-nome`}>
           <Input id={`${idBase}-nome`} value={f.nome} onChange={(e) => campo('nome')(e.target.value)} placeholder="Cabine / SSU" autoFocus={!camera} />
         </Campo>
-        {!ipNoAvancado && campoIp}
+        {sugestao ? (
+          <Campo rotulo="IP da câmera" htmlFor={`${idBase}-ip`}>
+            <Input id={`${idBase}-ip`} value={f.ip} readOnly className="bg-muted font-mono text-muted-foreground" />
+          </Campo>
+        ) : (
+          !ipNoAvancado && campoIp
+        )}
         <div className="grid grid-cols-2 gap-3">
           <Campo rotulo="Usuário" htmlFor={`${idBase}-usuario`}>
             <Input id={`${idBase}-usuario`} value={f.usuario} onChange={(e) => campo('usuario')(e.target.value)} autoComplete="off" />

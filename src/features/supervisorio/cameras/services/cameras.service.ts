@@ -154,8 +154,13 @@ export const CamerasService = {
     return lista<PedidoPareamento>(data);
   },
 
-  /** Vincula o aparelho pelo código de 6 dígitos: cria o agente e entrega o token a ele. */
-  async vincularPareamento(body: { codigo: string; unidade_id: string; nome?: string }): Promise<{ agente: Agente }> {
+  /**
+   * Vincula o aparelho: pelo `pedido_id` (aparelho próximo, só da mesma rede) ou pelo código de
+   * 6 dígitos. Cria o agente e entrega o token a ele.
+   */
+  async vincularPareamento(
+    body: ({ pedido_id: string } | { codigo: string }) & { unidade_id: string; nome?: string },
+  ): Promise<{ agente: Agente }> {
     const { data } = await api.post('/cameras/pareamento/vincular', body);
     return unwrap<{ agente: Agente }>(data);
   },

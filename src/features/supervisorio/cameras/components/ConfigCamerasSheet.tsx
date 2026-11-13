@@ -11,6 +11,7 @@ export type AbaConfigCameras = 'cameras' | 'agentes' | 'unidade';
 
 interface ConfigCamerasSheetProps {
   unidadeId: string;
+  unidadeNome?: string;
   aberto: boolean;
   onFechar: () => void;
   abaInicial?: AbaConfigCameras;
@@ -20,7 +21,7 @@ interface ConfigCamerasSheetProps {
  * Painel lateral de configuração das câmeras da unidade: câmeras e aparelhos (agentes)
  * (`cadastroTecnico`), armamento/comandos/avisos (`configOperacional`).
  */
-export function ConfigCamerasSheet({ unidadeId, aberto, onFechar, abaInicial }: ConfigCamerasSheetProps) {
+export function ConfigCamerasSheet({ unidadeId, unidadeNome, aberto, onFechar, abaInicial }: ConfigCamerasSheetProps) {
   const capacidades = useUserStore((s) => s.capacidades);
   const podeCadastrar = capacidades.cadastroTecnico;
   const podeConfigurar = capacidades.configOperacional;
@@ -64,7 +65,7 @@ export function ConfigCamerasSheet({ unidadeId, aberto, onFechar, abaInicial }: 
               )}
               {podeCadastrar && (
                 <TabsContent value="agentes" className="mt-0">
-                  <SecaoAgentes unidadeId={unidadeId} />
+                  <SecaoAgentes unidadeId={unidadeId} unidadeNome={unidadeNome} />
                 </TabsContent>
               )}
               {podeConfigurar && (

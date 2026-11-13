@@ -8,11 +8,13 @@ import { Input } from '@/components/ui/input';
 import { chavesCameras } from '../../hooks/chaves';
 import { usePareamentosProximos } from '../../hooks/useConfigCameras';
 import { CamerasService } from '../../services/cameras.service';
+import type { PedidoPareamento } from '../../types';
 import { mensagemErro } from '../../utils/erros';
 import { Campo } from './Campo';
 
 interface Props {
   unidadeId: string;
+  unidadeNome?: string;
   aberto: boolean;
   onFechar: () => void;
 }
@@ -21,22 +23,40 @@ interface Props {
  * "Adicionar aparelho" (NEXON-108): lista os aparelhos pedindo pareamento nesta rede
  * (consulta a cada 5 s) e aceita o código de 6 dígitos da página do aparelho. Ninguém copia token.
  */
-export function DialogAdicionarAparelho({ unidadeId, aberto, onFechar }: Props) {
+type Alvo = { pedido_id: string } | { codigo: string };
+
+/** 429 da API (limite de tentativas) tem mensagem própria; o resto usa a da API. */
+function mensagemVincular(e: unknown): string {
+  if ((e as { response?: { status?: number } } | null)?.response?.status === 429) {
+    return 'Muitas tentativas; aguarde alguns minutos';
+  }
+  return mensagemErro(e, 'Código não encontrado ou expirado');
+}
+
+/** "MAC aa:bb…, IP 192.168.1.20" com o que vier. */
+function detalhes(p: PedidoPareamento): string {
+  return [p.mac ? `MAC ${p.mac}` : null, p.ip_local ? `IP ${p.ip_local}` : null].filter(Boolean).join(', ');
+}
+
+export function DialogAdicionarAparelho({ unidadeId, unidadeNome, aberto, onFechar }: Props) {
   const proximos = usePareamentosProximos(aberto);
   const queryClient = useQueryClient();
   const [codigo, setCodigo] = useState('');
   const [nome, setNome] = useState('');
+  // Aparelho próximo escolhido, esperando o "sim" antes de vincular.
+  const [confirmar, setConfirmar] = useState<PedidoPareamento | null>(null);
 
   useEffect(() => {
     if (!aberto) {
       setCodigo('');
       setNome('');
+      setConfirmar(null);
     }
   }, [aberto]);
 
   const vincular = useMutation({
-    mutationFn: (cod: string) =>
-      CamerasService.vincularPareamento({ codigo: cod, unidade_id: unidadeId, ...(nome.trim() ? { nome: nome.trim() } : {}) }),
+    mutationFn: (alvo: Alvo) =>
+      CamerasService.vincularPareamento({ ...alvo, unidade_id: unidadeId, ...(nome.trim() ? { nome: nome.trim() } : {}) }),
     onSuccess: (r) => {
       toast.success(r?.agente?.nome ? `Aparelho ${r.agente.nome} vinculado` : 'Aparelho vinculado', {
         description: 'Em alguns segundos ele fica online e começa a procurar as câmeras.',
@@ -45,15 +65,18 @@ export function DialogAdicionarAparelho({ unidadeId, aberto, onFechar }: Props) 
       void queryClient.invalidateQueries({ queryKey: chavesCameras.pareamentos });
       onFechar();
     },
-    onError: (e) => toast.error(mensagemErro(e, 'Código não encontrado ou expirado')),
+    onError: (e) => toast.error(mensagemVincular(e)),
   });
 
   const enviar = (e: FormEvent) => {
     e.preventDefault();
-    if (codigo.length === 6) vincular.mutate(codigo);
+    if (codigo.length === 6) vincular.mutate({ codigo });
   };
 
   const lista = proximos.data ?? [];
+  const nomeUnidade = unidadeNome?.trim() || 'esta usina';
+  const v = vincular.isPending ? vincular.variables : undefined;
+  const pendente = (alvo: string) => !!v && ('pedido_id' in v ? v.pedido_id : v.codigo) === alvo;
 
   return (
     <Dialog open={aberto} onOpenChange={(o) => !o && !vincular.isPending && onFechar()}>
@@ -77,28 +100,54 @@ export function DialogAdicionarAparelho({ unidadeId, aberto, onFechar }: Props) 
             </p>
           ) : (
             <ul className="flex flex-col gap-2">
-              {lista.map((p) => (
-                <li key={p.codigo} className="flex items-center gap-3 rounded-lg border border-border p-3">
-                  <Cpu className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">Aparelho encontrado nesta rede: {p.host}</p>
-                    <p className="truncate text-xs text-muted-foreground">
-                      Código {p.codigo}
-                      {p.ip_local ? ` · ${p.ip_local}` : ''}
-                    </p>
-                  </div>
-                  <Button
-                    type="button"
-                    size="sm"
-                    aria-label={`Vincular ${p.host}`}
-                    disabled={vincular.isPending}
-                    onClick={() => vincular.mutate(p.codigo)}
-                  >
-                    {vincular.isPending && vincular.variables === p.codigo && <Loader2 className="animate-spin" aria-hidden />}
-                    Vincular
-                  </Button>
-                </li>
-              ))}
+              {lista.map((p) => {
+                const info = detalhes(p);
+                const emConfirmacao = confirmar?.pedido_id === p.pedido_id;
+                return (
+                  <li key={p.pedido_id} className="flex flex-col gap-3 rounded-lg border border-border p-3">
+                    <div className="flex items-center gap-3">
+                      <Cpu className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">Aparelho encontrado nesta rede: {p.host}</p>
+                        {info && <p className="truncate font-mono text-xs text-muted-foreground">{info}</p>}
+                      </div>
+                      {!emConfirmacao && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          aria-label={`Vincular ${p.host}`}
+                          disabled={vincular.isPending}
+                          onClick={() => setConfirmar(p)}
+                        >
+                          Vincular
+                        </Button>
+                      )}
+                    </div>
+                    {emConfirmacao && (
+                      <div role="group" aria-label="Confirmar vínculo" className="flex flex-col gap-2 rounded-md bg-muted/60 p-3">
+                        <p className="text-xs">
+                          Vincular <strong>{p.host}</strong>
+                          {info ? ` (${info})` : ''} a <strong>{nomeUnidade}</strong>?
+                        </p>
+                        <div className="flex justify-end gap-2">
+                          <Button type="button" size="sm" variant="ghost" disabled={vincular.isPending} onClick={() => setConfirmar(null)}>
+                            Cancelar
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            disabled={vincular.isPending}
+                            onClick={() => vincular.mutate({ pedido_id: p.pedido_id })}
+                          >
+                            {pendente(p.pedido_id) && <Loader2 className="animate-spin" aria-hidden />}
+                            Confirmar
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </section>
@@ -116,7 +165,7 @@ export function DialogAdicionarAparelho({ unidadeId, aberto, onFechar }: Props) 
                 className="min-w-0 flex-1 font-mono text-base tracking-[0.3em]"
               />
               <Button type="submit" aria-label="Vincular pelo código" disabled={codigo.length !== 6 || vincular.isPending}>
-                {vincular.isPending && vincular.variables === codigo && <Loader2 className="animate-spin" aria-hidden />}
+                {pendente(codigo) && <Loader2 className="animate-spin" aria-hidden />}
                 Vincular
               </Button>
             </div>

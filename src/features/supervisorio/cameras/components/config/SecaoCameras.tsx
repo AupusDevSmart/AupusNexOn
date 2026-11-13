@@ -22,6 +22,7 @@ import { useEquipamentosUnidade } from '../../hooks/useEquipamentosPontos';
 import { CamerasService } from '../../services/cameras.service';
 import type { Camera } from '../../types';
 import { agenteEmContato } from '../../utils/agentes';
+import { ipPrivadoValido } from '../../utils/rede';
 import { mensagemErro } from '../../utils/erros';
 import { rotuloFabricante } from '../../utils/sensibilidade';
 import { FormCamera, type SugestaoCamera } from './FormCamera';
@@ -80,6 +81,7 @@ export function SecaoCameras({ unidadeId }: { unidadeId: string }) {
           </h3>
           <ul className="flex flex-col gap-2">
             {descobertas.itens.map(({ agente, descoberta: d }) => {
+              if (!ipPrivadoValido(d.ip)) return null;
               const titulo = [rotuloFabricante(d.fabricante) ?? 'Câmera', d.modelo].filter(Boolean).join(' ');
               return (
                 <li key={`${agente.id}-${d.ip}`} className="flex items-center gap-3 rounded-lg border border-border bg-card p-3">

@@ -169,7 +169,7 @@ export interface Agente {
  * `GET /cameras/pareamento/proximos`.
  */
 export interface PedidoPareamento {
-  codigo: string;
+  pedido_id: string;
   host: string;
   mac: string | null;
   ip_local: string | null;
