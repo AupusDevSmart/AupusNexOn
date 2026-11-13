@@ -61,6 +61,9 @@ import { useUserStore } from '@/store/useUserStore';
 
 // 🆕 V2: Imports do diagrama refatorado
 import { DiagramV2Wrapper } from '@/features/supervisorio/v2/DiagramV2Wrapper';
+import { useDiagramStore } from '@/features/supervisorio/v2/hooks/useDiagramStore';
+import { paramTexto, useEscreverParamsUrl, useParamUrl } from '@/hooks/useParamUrl';
+import { useAbaSinoptico } from '@/features/supervisorio/sinoptico/hooks/useAbaSinoptico';
 type V2ComponenteClick = NonNullable<React.ComponentProps<typeof DiagramV2Wrapper>["onComponenteClick"]>;
 type V2ConfigurarPontos = NonNullable<React.ComponentProps<typeof DiagramV2Wrapper>["onConfigurarPontos"]>;
 
@@ -1784,6 +1787,11 @@ function LandisGyrModalInline({
     </Dialog>
   );
 }
+// Estado da tela na URL (NEXON-108): F5, voltar/avançar e link abrem a mesma vista.
+// `?aba=cameras&camera=...` — os parâmetros de cada aba moram nos componentes dela.
+/** Equipamento do unifilar com o modal aberto (`?equipamento=<id>`). */
+const P_EQUIPAMENTO = paramTexto();
+
 export function SinopticoAtivoPage() {
   const { ativoId: ativoIdRaw } = useParams<{ ativoId?: string }>();
   const navigate = useNavigate();
@@ -1816,9 +1824,17 @@ export function SinopticoAtivoPage() {
   // Tab ativa: 'unifilar' ou 'iot'
   // Cliente (não-admin) não vê o unifilar por enquanto — abre na Visão Geral da usina,
   // que funciona com ou sem TON (cai para a integração de nuvem do fabricante).
-  const [sinopticoTab, setSinopticoTab] = useState<'visao' | 'unifilar' | 'alarmes' | 'iot' | 'comissionamento' | 'cameras'>(
-    () => abaInicial,
-  );
+  // Aba na URL (`?aba=`, NEXON-108); a aba inicial do papel fica fora dela. Inclui o
+  // defensivo de permissão (IoT/comissionamento/unifilar/alarmes sem acesso voltam).
+  const { aba: sinopticoTab, definirAba: setSinopticoTab, buscaDaAba } = useAbaSinoptico({
+    abaInicial,
+    podeVerIot,
+    podeVerUnifilar,
+    podeVerAlarmes,
+  });
+  const escreverUrl = useEscreverParamsUrl();
+  const setSinopticoTabRef = useRef(setSinopticoTab);
+  setSinopticoTabRef.current = setSinopticoTab;
 
   // Slot no header do shell (linha dos breadcrumbs) onde o toggle + nome da unidade
   // sao renderizados via portal, liberando o header da pagina pro diagrama.
@@ -1840,22 +1856,11 @@ export function SinopticoAtivoPage() {
       if (detail === 'unifilar' && !st.capacidades.verUnifilar) {
         return;
       }
-      setSinopticoTab(detail);
+      setSinopticoTabRef.current(detail);
     };
     window.addEventListener('sinoptico-tab-change', handler);
     return () => window.removeEventListener('sinoptico-tab-change', handler);
   }, []);
-
-  // Defensivo: se por qualquer motivo a aba IoT ficar ativa sem permissao,
-  // volta para o diagrama unifilar. A aba Câmeras não entra aqui: todo usuário
-  // que vê a unidade vê as câmeras (comandos e cadastro são gateados dentro dela).
-  useEffect(() => {
-    if ((sinopticoTab === 'iot' || sinopticoTab === 'comissionamento') && !podeVerIot) {
-      setSinopticoTab(abaInicial);
-    } else if ((sinopticoTab === 'unifilar' && !podeVerUnifilar) || (sinopticoTab === 'alarmes' && !podeVerAlarmes)) {
-      setSinopticoTab('visao');
-    }
-  }, [sinopticoTab, podeVerIot, podeVerUnifilar, podeVerAlarmes, abaInicial]);
 
   // ✅ IMPORTANTE: Atualizar título IMEDIATAMENTE quando recebe dados via state
   useEffect(() => {
@@ -2117,6 +2122,8 @@ export function SinopticoAtivoPage() {
 
   // Estados para modais
   const [modalAberto, setModalAberto] = useState<string | null>(null);
+  /** Id do equipamento cujo modal já foi aberto (clique ou URL), para não reabrir em loop. */
+  const equipamentoTratado = useRef<string | null>(null);
   const [componenteSelecionado, setComponenteSelecionado] =
     useState<ComponenteDU | null>(null);
   const [diagramaFullscreen, setDiagramaFullscreen] = useState(false);
@@ -3101,9 +3108,9 @@ export function SinopticoAtivoPage() {
     // Fechar modal após seleção
     setModalSelecionarUnidade(false);
 
-    // Atualizar URL com ID limpo
-    navigate(`/supervisorio/sinoptico-ativo/${unidadeIdLimpo}`, { replace: true });
-  }, [navigate]);
+    // Atualizar URL com ID limpo. Fica a aba aberta; o resto (câmera, evento, período) é da unidade anterior.
+    navigate(`/supervisorio/sinoptico-ativo/${unidadeIdLimpo}${buscaDaAba}`, { replace: true });
+  }, [navigate, buscaDaAba]);
 
   const toggleModoEdicao = () => {
     setModoEdicao(!modoEdicao);
@@ -3767,6 +3774,9 @@ if (import.meta.env.PROD) {
   // por fora: o DiagramV2Wrapper é memo e não re-renderiza a cada estado da página.
   const v2ClickRef = useRef<V2ComponenteClick>(() => {});
   v2ClickRef.current = (comp) => {
+                  // Modal do equipamento na URL (`?equipamento=<id>`): F5/link reabre.
+                  equipamentoTratado.current = comp.id;
+                  escreverUrl({ equipamento: comp.id }, 'push');
                   // ✅ Modo visualizar: apenas abre modal, sem seleção visual
 
                   const tag = comp.tag || '';
@@ -3897,6 +3907,38 @@ if (import.meta.env.PROD) {
                   }
                 };
   const handleV2ComponenteClick = useCallback<V2ComponenteClick>((comp) => v2ClickRef.current(comp), []);
+
+  // ---- Modal do equipamento <-> `?equipamento=` (NEXON-108) ----
+  const [equipamentoUrl] = useParamUrl('equipamento', P_EQUIPAMENTO);
+  const equipamentosDiagrama = useDiagramStore((st) => st.equipamentos);
+  const modalEquipamentoAberto = modalAberto !== null || inversorMqttModalOpen || pivoModalOpen || configPontos !== null;
+  const modalEstavaAberto = useRef(false);
+  // Fechou o modal: o equipamento sai da URL.
+  useEffect(() => {
+    const estava = modalEstavaAberto.current;
+    modalEstavaAberto.current = modalEquipamentoAberto;
+    if (estava && !modalEquipamentoAberto && equipamentoUrl) escreverUrl({ equipamento: null });
+  }, [modalEquipamentoAberto, equipamentoUrl, escreverUrl]);
+  // URL -> modal: F5/link/avançar reabre quando o diagrama carregar; voltar no navegador fecha.
+  useEffect(() => {
+    if (!equipamentoUrl) {
+      equipamentoTratado.current = null;
+      if (modalEquipamentoAberto) {
+        setModalAberto(null);
+        setComponenteSelecionado(null);
+        setInversorMqttModalOpen(false);
+        setPivoModalOpen(false);
+        setSelectedPivoId(null);
+        setConfigPontos(null);
+      }
+      return;
+    }
+    if (sinopticoTab !== 'unifilar' || modalEquipamentoAberto || equipamentoTratado.current === equipamentoUrl) return;
+    const eq = equipamentosDiagrama.find((e) => e.id === equipamentoUrl);
+    if (!eq) return; // diagrama ainda carregando (ou equipamento fora dele)
+    equipamentoTratado.current = equipamentoUrl;
+    v2ClickRef.current({ ...eq, posicao: { x: eq.posicaoX, y: eq.posicaoY } });
+  }, [equipamentoUrl, equipamentosDiagrama, sinopticoTab, modalEquipamentoAberto]);
   const handleConfigurarPontos = useCallback<V2ConfigurarPontos>((eq) => setConfigPontos(eq), []);
 
   if (!unidadeId) {

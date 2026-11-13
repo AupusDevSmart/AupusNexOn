@@ -13,6 +13,7 @@ import { COR } from '@/components/graficos/cores';
 import { TooltipDestaque } from '@/components/graficos/tooltip-destaque';
 import { coaApi, type PeriodoGeracao, type PontoGeracao, type SerieGeracao } from '@/features/coa/api/coa-api';
 import { formatEnergy } from '@/utils/formatEnergy';
+import { paramData, paramOpcao, useParamUrl } from '@/hooks/useParamUrl';
 
 /**
  * Gráfico de geração com histórico, no estilo do portal do fabricante: Dia / Mês /
@@ -102,10 +103,17 @@ function mensagemErro(e: unknown): string {
   return typeof msg === 'string' && msg ? msg : 'Não foi possível carregar o histórico de geração.';
 }
 
+// Período e dia na URL (NEXON-108): `?historico=mes&historicoData=2026-10-01`; hoje = ausente.
+const P_HISTORICO = paramOpcao<PeriodoGeracao>(['dia', 'mes', 'ano', 'total'], 'dia');
+const P_HISTORICO_DATA = paramData('dia');
+
 export function GeracaoHistoricoChart({ unidadeId }: { unidadeId: string }) {
   const hoje = useMemo(hojeSP, []);
-  const [periodo, setPeriodo] = useState<PeriodoGeracao>('dia');
-  const [ref, setRef] = useState<string>(hoje);
+  const [periodo, setPeriodo] = useParamUrl('historico', P_HISTORICO);
+  const [refUrl, setRefUrl] = useParamUrl('historicoData', P_HISTORICO_DATA);
+  // Dia no futuro (link velho/editado) não vale: fica em hoje.
+  const ref = refUrl && refUrl <= hoje ? refUrl : hoje;
+  const setRef = (d: string) => setRefUrl(d === hoje ? null : d);
   const [serie, setSerie] = useState<SerieGeracao | null>(null);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);

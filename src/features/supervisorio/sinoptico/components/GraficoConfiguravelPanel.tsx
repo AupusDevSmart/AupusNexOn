@@ -1,7 +1,7 @@
-import { useState } from "react";
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/config/api";
+import { paramOpcao, useParamUrl } from "@/hooks/useParamUrl";
 import { useCapacidadesInstalacao } from "../hooks/useCapacidadesInstalacao";
 import { SinopticoGraficosV2, PERCENTUAL_LIMITE_GERACAO } from "@/features/supervisorio/components/sinoptico-graficos-v2";
 
@@ -16,6 +16,8 @@ const VARIAVEIS: Array<{ id: Variavel; label: string }> = [
   { id: "tensao", label: "Tensão" },
   { id: "fp", label: "FP" },
 ];
+// Variável do gráfico na URL (NEXON-108): `?grafico=tensao`. Mesmo nome das abas do cartão Energia.
+const P_GRAFICO = paramOpcao<Variavel>(["demanda", "tensao", "fp"], "demanda");
 
 /** Botão-pílula de seleção da variável do gráfico (fica ao lado do título). */
 function Pilula({ ativo, onClick, children }: { ativo: boolean; onClick: () => void; children: ReactNode }) {
@@ -39,7 +41,7 @@ function Pilula({ ativo, onClick, children }: { ativo: boolean; onClick: () => v
  * então cabe sem scroll.
  */
 export function GraficoConfiguravelPanel({ unidadeId }: GraficoConfiguravelPanelProps) {
-  const [escolhida, setVariavel] = useState<Variavel>("demanda");
+  const [escolhida, setVariavel] = useParamUrl("grafico", P_GRAFICO);
   // NEXON-110: Tensão e FP só com medidor de entrada que mede grandezas elétricas.
   const cap = useCapacidadesInstalacao(unidadeId);
   const variaveis = VARIAVEIS.filter((v) => v.id === "demanda" || cap.existe("grandezas_eletricas"));
