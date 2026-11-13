@@ -182,23 +182,30 @@ describe('CamerasTab', () => {
     capacidades.configOperacional = true;
   });
 
-  it('cabeçalho, comandos, grade, último alerta e resumo da noite seguem o contrato', () => {
+  it('faixa de status, comandos e grade seguem o contrato', async () => {
+    const usuario = userEvent.setup();
     render();
-    expect(screen.getByText('Armado até 06:30 · 5 de 6 online')).toBeInTheDocument();
-    // Refletor tem ponto configurado; sirene não. Armado → botão "Desarmar" pressionado.
+    expect(screen.getByText('Armado pela agenda até 06:30')).toBeInTheDocument();
+    expect(screen.getByText(/5 de 6 online/)).toBeInTheDocument();
+    expect(screen.getByText('· 1 sem sinal')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /3\s*não vistos/ })).toBeInTheDocument();
+    expect(screen.getByText('Noite: 1 intrusão, 14 movimentos descartados. Arranjo IV3 sem sinal desde 05:30.')).toBeInTheDocument();
+
+    // Refletor tem ponto configurado; sirene não. Armado → "Desarmar", com confirmação.
     expect(screen.getByRole('button', { name: 'Refletores' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Sirene' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Desarmar' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: 'Configurar câmeras' })).toBeInTheDocument();
+    await usuario.click(screen.getByRole('button', { name: 'Desarmar' }));
+    const dialogo = screen.getByRole('alertdialog', { name: 'Desarmar as câmeras?' });
+    expect(CamerasService.armar).not.toHaveBeenCalled();
+    vi.mocked(CamerasService.armar).mockResolvedValue({ ...RESUMO, armado: false, armado_ate: null });
+    await usuario.click(within(dialogo).getByRole('button', { name: 'Desarmar' }));
+    expect(CamerasService.armar).toHaveBeenCalledWith('u', { armado: false });
 
-    const grade = screen.getByRole('region', { name: 'Grade de câmeras' });
-    expect(within(grade).getByRole('button', { name: 'Cabine / SSU — 2 alertas não lidos' })).toBeInTheDocument();
-    expect(within(grade).getByRole('button', { name: 'Portão — ao vivo' })).toBeInTheDocument();
+    const grade = screen.getByRole('region', { name: 'Câmeras da usina' });
+    expect(within(grade).getByRole('button', { name: 'Cabine / SSU — online, 2 eventos não vistos' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(grade).getByRole('button', { name: 'Portão — online' })).toBeInTheDocument();
     expect(within(grade).getByRole('button', { name: 'Arranjo IV3 — sem sinal' })).toBeInTheDocument();
-
-    expect(screen.getByText('Pessoa detectada · Cabine / SSU')).toBeInTheDocument();
-    expect(screen.getByText('05:12 · chamado CH-0412 aberto')).toBeInTheDocument();
-    expect(screen.getByText('Noite: 1 intrusão, 14 movimentos descartados. Arranjo IV3 sem sinal desde 05:30.')).toBeInTheDocument();
   });
 
   it('sem capacidade de comandar, os comandos somem e a tela segue visível', () => {
@@ -206,42 +213,63 @@ describe('CamerasTab', () => {
     capacidades.cadastroTecnico = false;
     capacidades.configOperacional = false;
     render();
-    expect(screen.getByText('Armado até 06:30 · 5 de 6 online')).toBeInTheDocument();
+    expect(screen.getByText('Armado pela agenda até 06:30')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Refletores' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Desarmar' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Configurar câmeras' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Foto' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Tirar foto agora' })).not.toBeInTheDocument();
   });
 
-  it('painel Câmera abre na primeira câmera, ao vivo, com os eventos do dia', () => {
-    render();
-    expect(screen.getByRole('heading', { level: 2, name: 'Cabine / SSU' })).toBeInTheDocument();
-    expect(screen.getByText('Ao vivo')).toBeInTheDocument();
-    expect(screen.getByTestId('player')).toBeInTheDocument();
-    // Controles indisponíveis ficam desabilitados por aria, com os demais ativos.
-    expect(screen.getByRole('button', { name: 'Áudio' })).toHaveAttribute('aria-disabled', 'true');
-    expect(screen.getByRole('button', { name: 'Foto' })).not.toHaveAttribute('aria-disabled');
-    expect(screen.getByRole('button', { name: 'Tela cheia' })).toBeInTheDocument();
-  });
-
-  it('Todas as notificações agrupa por dia e abrir um evento leva à câmera e marca lido', async () => {
+  it('abre na primeira câmera, ao vivo, e trocar de câmera troca o player', async () => {
     const usuario = userEvent.setup();
     render();
-    await usuario.click(screen.getByRole('tab', { name: /Todas as notificações/ }));
+    const player = screen.getByRole('region', { name: 'Câmera' });
+    expect(within(player).getByRole('heading', { level: 2, name: 'Cabine / SSU' })).toBeInTheDocument();
+    expect(within(player).getByText('Ao vivo')).toBeInTheDocument();
+    expect(screen.getByTestId('player')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Tirar foto agora' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Tela cheia' })).toBeInTheDocument();
 
-    expect(screen.getByText('3 não lidas')).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: rotuloDia(hoje) })).toBeInTheDocument();
-    const grupoOntem = screen.getByRole('region', { name: rotuloDia(ontem) });
-    expect(within(grupoOntem).getByText('Veículo detectado')).toBeInTheDocument();
-    expect(within(grupoOntem).getByText(/Portão · /)).toBeInTheDocument();
+    await usuario.click(screen.getByRole('button', { name: 'Arranjo IV3 — sem sinal' }));
+    expect(within(player).getByRole('heading', { level: 2, name: 'Arranjo IV3' })).toBeInTheDocument();
+    expect(within(player).getByText(/Sem sinal desde 05:30/)).toBeInTheDocument();
+    expect(screen.queryByTestId('player')).not.toBeInTheDocument();
+  });
 
-    const grupoHoje = screen.getByRole('region', { name: rotuloDia(hoje) });
-    await usuario.click(within(grupoHoje).getAllByRole('button')[0]);
+  it('eventos ao lado: agrupa por dia, abre no player, marca visto e volta ao vivo', async () => {
+    const usuario = userEvent.setup();
+    render();
+    const painel = screen.getByRole('region', { name: 'Eventos' });
+    expect(within(painel).getByRole('region', { name: rotuloDia(hoje) })).toBeInTheDocument();
+    const grupoOntem = within(painel).getByRole('region', { name: rotuloDia(ontem) });
+    expect(within(grupoOntem).getByRole('button', { name: /^Veículo detectado · Portão · / })).toBeInTheDocument();
 
-    // Voltou para a aba Câmera na câmera do evento, mostrando a gravação.
-    expect(screen.getByRole('heading', { level: 2, name: 'Cabine / SSU' })).toBeInTheDocument();
-    expect(screen.getByText('Gravação')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Ao vivo' })).toBeInTheDocument();
+    const grupoHoje = within(painel).getByRole('region', { name: rotuloDia(hoje) });
+    await usuario.click(within(grupoHoje).getByRole('button', { name: /^Pessoa detectada · Cabine \/ SSU · 05:12/ }));
+
+    const player = screen.getByRole('region', { name: 'Câmera' });
+    expect(within(player).getByText('Pessoa')).toBeInTheDocument();
+    expect(screen.queryByTestId('player')).not.toBeInTheDocument();
     expect(CamerasService.marcarLido).toHaveBeenCalledWith('e1');
+
+    // Anterior/próximo andam na lista; o primeiro não tem "mais novo".
+    expect(screen.getByRole('button', { name: 'Evento mais novo' })).toBeDisabled();
+    await usuario.click(screen.getByRole('button', { name: 'Evento mais antigo' }));
+    expect(CamerasService.marcarLido).toHaveBeenCalledWith('e2');
+
+    await usuario.keyboard('{Escape}');
+    expect(screen.getByTestId('player')).toBeInTheDocument();
+    expect(within(player).getByText('Ao vivo')).toBeInTheDocument();
+  });
+
+  it('lista vazia com filtro oferece limpar filtros', async () => {
+    const usuario = userEvent.setup();
+    eventosMock.mockReturnValue(pronto({ data: [], pagination: { page: 1, limit: 50, total: 0, totalPages: 0 } }));
+    render();
+    expect(screen.getByText('Nenhum evento ainda')).toBeInTheDocument();
+    await usuario.click(screen.getByRole('button', { name: 'Animais' }));
+    expect(screen.getByText('Nada com esse filtro')).toBeInTheDocument();
+    await usuario.click(screen.getByRole('button', { name: 'Limpar filtros' }));
+    expect(screen.getByRole('button', { name: 'Todos' })).toHaveAttribute('aria-pressed', 'true');
   });
 });

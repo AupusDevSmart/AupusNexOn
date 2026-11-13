@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { ChevronDown, Loader2 } from 'lucide-react';
+import { Check, ChevronDown, Loader2 } from 'lucide-react';
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils';
 import { chavesCameras } from '../../hooks/chaves';
 import type { EquipamentoResumido } from '../../hooks/useEquipamentosPontos';
 import { CamerasService } from '../../services/cameras.service';
-import type { Agente, Camera, CameraDescoberta, CameraPayload } from '../../types';
+import type { Agente, Camera, CameraDescoberta, CameraPayload, ClasseAlerta } from '../../types';
 import { mensagemErro } from '../../utils/erros';
 import { NIVEIS_SENSIBILIDADE, nivelSensibilidade, rotuloFabricante, type ValorSensibilidade } from '../../utils/sensibilidade';
 import { Campo, NENHUM, TituloBloco } from './Campo';
@@ -31,6 +31,7 @@ interface Estado {
   ordem: string;
   analise_ativa: boolean;
   sensibilidade: ValorSensibilidade;
+  classes_alerta: ClasseAlerta[];
   clipe_s: string;
   continuo: boolean;
 }
@@ -58,10 +59,22 @@ function estadoInicial(c: Camera | null, proximaOrdem: number, sugestao?: Sugest
     ordem: String(c?.ordem ?? proximaOrdem),
     analise_ativa: c?.analise?.ativa ?? true,
     sensibilidade: nivelSensibilidade(c?.analise?.sensibilidade),
+    classes_alerta: c?.analise?.classes_alerta?.length ? [...c.analise.classes_alerta] : [...CLASSES_PADRAO],
     clipe_s: String(c?.analise?.clipe_s ?? 12),
     continuo: c?.stream?.continuo ?? false,
   };
 }
+
+/** "Avisar quando aparecer": rótulo na tela → `analise.classes_alerta`. */
+const OPCOES_AVISO: { valor: ClasseAlerta; rotulo: string }[] = [
+  { valor: 'pessoa', rotulo: 'Pessoas' },
+  { valor: 'veiculo', rotulo: 'Veículos' },
+  { valor: 'animal', rotulo: 'Animais' },
+  { valor: 'movimento', rotulo: 'Qualquer movimento' },
+];
+
+/** Câmera nova avisa de pessoas, veículos e animais; "qualquer movimento" é escolha de quem configura. */
+const CLASSES_PADRAO: ClasseAlerta[] = ['pessoa', 'veiculo', 'animal'];
 
 function inteiro(texto: string, padrao: number, min?: number, max?: number): number {
   const n = Number.parseInt(texto, 10);
@@ -115,10 +128,10 @@ export function FormCamera({ unidadeId, camera, sugestao, agentes, equipamentos,
         equipamento_id: f.equipamento_id === NENHUM ? null : f.equipamento_id,
         ordem: inteiro(f.ordem, proximaOrdem, 0),
         stream: { continuo: f.continuo },
-        // Só movimento: as classes de alerta ficam com a API (NEXON-108).
         analise: {
           ativa: f.analise_ativa,
           sensibilidade: f.sensibilidade,
+          classes_alerta: OPCOES_AVISO.map((o) => o.valor).filter((v) => f.classes_alerta.includes(v)),
           clipe_s: inteiro(f.clipe_s, 12, 0, 120),
         },
       };
@@ -140,6 +153,10 @@ export function FormCamera({ unidadeId, camera, sugestao, agentes, equipamentos,
       setErro('Preencha nome, IP e usuário.');
       return;
     }
+    if (f.analise_ativa && f.classes_alerta.length === 0) {
+      setErro('Escolha pelo menos um aviso em "Avisar quando aparecer".');
+      return;
+    }
     if (!camera && !f.senha) {
       setErro('Informe a senha da câmera.');
       return;
@@ -147,6 +164,12 @@ export function FormCamera({ unidadeId, camera, sugestao, agentes, equipamentos,
     setErro(null);
     salvar.mutate();
   };
+
+  const alternarAviso = (valor: ClasseAlerta) =>
+    setF((s) => ({
+      ...s,
+      classes_alerta: s.classes_alerta.includes(valor) ? s.classes_alerta.filter((v) => v !== valor) : [...s.classes_alerta, valor],
+    }));
 
   const campoIp = (
     <Campo rotulo="IP da câmera" htmlFor={`${idBase}-ip`}>
@@ -221,10 +244,33 @@ export function FormCamera({ unidadeId, camera, sugestao, agentes, equipamentos,
         <label className="flex items-center justify-between gap-3 text-sm">
           <span>
             Detecção de movimento ativa
-            <span className="block text-[11px] text-muted-foreground">Com a usina armada, movimento na imagem gera alerta.</span>
+            <span className="block text-[11px] text-muted-foreground">Desligada, a câmera só mostra vídeo, sem alertas.</span>
           </span>
           <Switch checked={f.analise_ativa} onCheckedChange={campo('analise_ativa')} aria-label="Detecção de movimento ativa" />
         </label>
+        <Campo rotulo="Avisar quando aparecer" dica="Com a usina armada, só o que estiver marcado gera alerta.">
+          <div role="group" aria-label="Avisar quando aparecer" className="flex flex-wrap gap-1.5">
+            {OPCOES_AVISO.map((o) => {
+              const ativo = f.classes_alerta.includes(o.valor);
+              return (
+                <button
+                  key={o.valor}
+                  type="button"
+                  aria-pressed={ativo}
+                  disabled={!f.analise_ativa}
+                  onClick={() => alternarAviso(o.valor)}
+                  className={cn(
+                    'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition-colors disabled:opacity-40 touch:h-10',
+                    ativo ? 'border-foreground bg-foreground text-background' : 'border-border bg-card text-foreground/80 mouse:hover:bg-muted',
+                  )}
+                >
+                  {ativo && <Check className="h-3.5 w-3.5" aria-hidden />}
+                  {o.rotulo}
+                </button>
+              );
+            })}
+          </div>
+        </Campo>
         <Campo rotulo="Sensibilidade" dica="Alta pega movimentos menores, mas pode alertar com vento e bichos pequenos.">
           <div role="radiogroup" aria-label="Sensibilidade" className="grid grid-cols-3 gap-1 rounded-lg bg-muted p-1">
             {NIVEIS_SENSIBILIDADE.map((n) => {

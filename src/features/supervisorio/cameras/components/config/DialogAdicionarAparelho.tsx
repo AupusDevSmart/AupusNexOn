@@ -10,6 +10,7 @@ import { usePareamentosProximos } from '../../hooks/useConfigCameras';
 import { CamerasService } from '../../services/cameras.service';
 import type { PedidoPareamento } from '../../types';
 import { mensagemErro } from '../../utils/erros';
+import { AreaRolagem } from '../AreaRolagem';
 import { Campo } from './Campo';
 
 interface Props {
@@ -99,56 +100,58 @@ export function DialogAdicionarAparelho({ unidadeId, unidadeNome, aberto, onFech
               Procurando aparelhos nesta rede…
             </p>
           ) : (
-            <ul className="flex flex-col gap-2">
-              {lista.map((p) => {
-                const info = detalhes(p);
-                const emConfirmacao = confirmar?.pedido_id === p.pedido_id;
-                return (
-                  <li key={p.pedido_id} className="flex flex-col gap-3 rounded-lg border border-border p-3">
-                    <div className="flex items-center gap-3">
-                      <Cpu className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">Aparelho encontrado nesta rede: {p.host}</p>
-                        {info && <p className="truncate font-mono text-xs text-muted-foreground">{info}</p>}
-                      </div>
-                      {!emConfirmacao && (
-                        <Button
-                          type="button"
-                          size="sm"
-                          aria-label={`Vincular ${p.host}`}
-                          disabled={vincular.isPending}
-                          onClick={() => setConfirmar(p)}
-                        >
-                          Vincular
-                        </Button>
-                      )}
-                    </div>
-                    {emConfirmacao && (
-                      <div role="group" aria-label="Confirmar vínculo" className="flex flex-col gap-2 rounded-md bg-muted/60 p-3">
-                        <p className="text-xs">
-                          Vincular <strong>{p.host}</strong>
-                          {info ? ` (${info})` : ''} a <strong>{nomeUnidade}</strong>?
-                        </p>
-                        <div className="flex justify-end gap-2">
-                          <Button type="button" size="sm" variant="ghost" disabled={vincular.isPending} onClick={() => setConfirmar(null)}>
-                            Cancelar
-                          </Button>
+            <AreaRolagem classeViewport="max-h-[45dvh]">
+              <ul className="flex flex-col gap-2 pr-2.5">
+                {lista.map((p) => {
+                  const info = detalhes(p);
+                  const emConfirmacao = confirmar?.pedido_id === p.pedido_id;
+                  return (
+                    <li key={p.pedido_id} className="flex flex-col gap-3 rounded-lg border border-border p-3">
+                      <div className="flex items-center gap-3">
+                        <Cpu className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium">Aparelho encontrado nesta rede: {p.host}</p>
+                          {info && <p className="truncate font-mono text-xs text-muted-foreground">{info}</p>}
+                        </div>
+                        {!emConfirmacao && (
                           <Button
                             type="button"
                             size="sm"
+                            aria-label={`Vincular ${p.host}`}
                             disabled={vincular.isPending}
-                            onClick={() => vincular.mutate({ pedido_id: p.pedido_id })}
+                            onClick={() => setConfirmar(p)}
                           >
-                            {pendente(p.pedido_id) && <Loader2 className="animate-spin" aria-hidden />}
-                            Confirmar
+                            Vincular
                           </Button>
-                        </div>
+                        )}
                       </div>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
+                      {emConfirmacao && (
+                        <div role="group" aria-label="Confirmar vínculo" className="flex flex-col gap-2 rounded-md bg-muted/60 p-3">
+                          <p className="text-xs">
+                            Vincular <strong>{p.host}</strong>
+                            {info ? ` (${info})` : ''} a <strong>{nomeUnidade}</strong>?
+                          </p>
+                          <div className="flex justify-end gap-2">
+                            <Button type="button" size="sm" variant="ghost" disabled={vincular.isPending} onClick={() => setConfirmar(null)}>
+                              Cancelar
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              disabled={vincular.isPending}
+                              onClick={() => vincular.mutate({ pedido_id: p.pedido_id })}
+                            >
+                              {pendente(p.pedido_id) && <Loader2 className="animate-spin" aria-hidden />}
+                              Confirmar
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </AreaRolagem>
           )}
         </section>
 

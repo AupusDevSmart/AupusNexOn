@@ -5,6 +5,7 @@ import {
   iconeEvento,
   paramTipo,
   subtituloResumo,
+  textoArmamento,
   textoChamado,
   textoNoite,
   tiposDoFiltro,
@@ -31,6 +32,8 @@ describe('filtros', () => {
     expect(tiposDoFiltro('todas')).toBeUndefined();
     expect(tiposDoFiltro('pessoas')).toEqual(['pessoa']);
     expect(tiposDoFiltro('veiculos')).toEqual(['veiculo']);
+    expect(tiposDoFiltro('animais')).toEqual(['animal']);
+    expect(tiposDoFiltro('movimento')).toEqual(['movimento']);
     expect(tiposDoFiltro('sistema')).toEqual(['sem_sinal', 'sinal_restabelecido']);
   });
 
@@ -54,6 +57,15 @@ describe('textos do resumo', () => {
     expect(subtituloResumo({ armado: true, armado_ate: ate, online: 5, total: 6 })).toBe('Armado até 06:30 · 5 de 6 online');
     expect(subtituloResumo({ armado: true, armado_ate: null, online: 6, total: 6 })).toBe('Armado · 6 de 6 online');
     expect(subtituloResumo({ armado: false, armado_ate: null, online: 5, total: 6 })).toBe('Desarmado · 5 de 6 online');
+  });
+
+  it('armamento em uma frase (manual, agenda, desarmado)', () => {
+    const ate = new Date(2026, 10, 7, 6, 30).toISOString();
+    expect(textoArmamento({ armado: true, armado_ate: ate, armamento_modo: 'manual' })).toBe('Armado até 06:30');
+    expect(textoArmamento({ armado: true, armado_ate: ate, armamento_modo: 'agenda' })).toBe('Armado pela agenda até 06:30');
+    expect(textoArmamento({ armado: true, armado_ate: null, armamento_modo: 'manual' })).toBe('Armado');
+    expect(textoArmamento({ armado: false, armado_ate: null, armamento_modo: 'agenda' })).toBe('Desarmado · agenda ligada');
+    expect(textoArmamento({ armado: false, armado_ate: null, armamento_modo: 'desarmado' })).toBe('Desarmado');
   });
 
   it('resumo da noite com câmera sem sinal', () => {

@@ -167,29 +167,54 @@ describe('IP das câmeras encontradas', () => {
   });
 });
 
-describe('FormCamera — só movimento', () => {
+describe('FormCamera — avisos e sensibilidade', () => {
   beforeEach(() => {
     vi.mocked(CamerasService.editar).mockReset().mockResolvedValue(camera());
   });
 
-  it('não mostra classes de alerta e manda a sensibilidade do seletor, sem classes_alerta', async () => {
+  it('"Avisar quando aparecer" vira classes_alerta e a sensibilidade vai pelo seletor', async () => {
     renderWithProviders(
       <FormCamera unidadeId="u1" camera={camera({ sensibilidade: 50 })} agentes={[AGENTE]} equipamentos={[]} proximaOrdem={2} onSalvo={vi.fn()} onCancelar={vi.fn()} />,
     );
-    expect(screen.queryByRole('group', { name: 'Classes que geram alerta' })).toBeNull();
-    expect(screen.queryByText(/Pessoas|Veículos|Animais/)).toBeNull();
+    const avisos = screen.getByRole('group', { name: 'Avisar quando aparecer' });
+    // A câmera gravada avisa só de pessoas.
+    expect(within(avisos).getByRole('button', { name: 'Pessoas' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(avisos).getByRole('button', { name: 'Veículos' })).toHaveAttribute('aria-pressed', 'false');
+    await userEvent.click(within(avisos).getByRole('button', { name: 'Qualquer movimento' }));
+    await userEvent.click(within(avisos).getByRole('button', { name: 'Veículos' }));
 
     // 50 gravado → Média (55), o nível mais próximo.
     const grupo = screen.getByRole('radiogroup', { name: 'Sensibilidade' });
     expect(within(grupo).getByRole('radio', { name: 'Média' })).toHaveAttribute('aria-checked', 'true');
     await userEvent.click(within(grupo).getByRole('radio', { name: 'Alta' }));
-    expect(within(grupo).getByRole('radio', { name: 'Alta' })).toHaveAttribute('aria-checked', 'true');
 
     await userEvent.click(screen.getByRole('button', { name: 'Salvar' }));
     await waitFor(() => expect(CamerasService.editar).toHaveBeenCalled());
     const [, payload] = vi.mocked(CamerasService.editar).mock.calls[0];
-    expect(payload.analise).toEqual({ ativa: true, sensibilidade: 80, clipe_s: 12 });
-    expect(payload.analise).not.toHaveProperty('classes_alerta');
+    expect(payload.analise).toEqual({ ativa: true, sensibilidade: 80, classes_alerta: ['pessoa', 'veiculo', 'movimento'], clipe_s: 12 });
+    expect(screen.queryByText(/IA|YOLO|token/)).toBeNull();
+  });
+
+  it('câmera nova começa avisando de pessoas, veículos e animais; sem nenhum aviso não salva', async () => {
+    vi.mocked(CamerasService.criar).mockReset();
+    renderWithProviders(
+      <FormCamera unidadeId="u1" camera={null} agentes={[AGENTE]} equipamentos={[]} proximaOrdem={2} onSalvo={vi.fn()} onCancelar={vi.fn()} />,
+    );
+    const avisos = screen.getByRole('group', { name: 'Avisar quando aparecer' });
+    for (const nome of ['Pessoas', 'Veículos', 'Animais']) {
+      expect(within(avisos).getByRole('button', { name: nome })).toHaveAttribute('aria-pressed', 'true');
+    }
+    expect(within(avisos).getByRole('button', { name: 'Qualquer movimento' })).toHaveAttribute('aria-pressed', 'false');
+
+    for (const nome of ['Pessoas', 'Veículos', 'Animais']) {
+      await userEvent.click(within(avisos).getByRole('button', { name: nome }));
+    }
+    await userEvent.type(screen.getByLabelText('Nome'), 'Portão');
+    await userEvent.type(screen.getByLabelText('IP da câmera'), '192.168.0.20');
+    await userEvent.type(screen.getByLabelText('Senha'), 'segredo');
+    await userEvent.click(screen.getByRole('button', { name: 'Adicionar câmera' }));
+    expect(screen.getByRole('alert')).toHaveTextContent('Escolha pelo menos um aviso');
+    expect(CamerasService.criar).not.toHaveBeenCalled();
   });
 
   it('clipe e vídeo contínuo ficam em Avançado', async () => {

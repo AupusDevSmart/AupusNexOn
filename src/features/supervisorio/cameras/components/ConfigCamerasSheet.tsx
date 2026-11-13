@@ -3,6 +3,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { MSG_SOMENTE_LEITURA } from '@/store/papeis';
 import { useUserStore } from '@/store/useUserStore';
+import { AreaRolagem } from './AreaRolagem';
 import { SecaoAgentes } from './config/SecaoAgentes';
 import { SecaoCameras } from './config/SecaoCameras';
 import { SecaoUnidade } from './config/SecaoUnidade';
@@ -57,23 +58,25 @@ export function ConfigCamerasSheet({ unidadeId, unidadeNome, aberto, onFechar, a
                 </TabsTrigger>
               ))}
             </TabsList>
-            <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-4">
-              {podeCadastrar && (
-                <TabsContent value="cameras" className="mt-0">
-                  <SecaoCameras unidadeId={unidadeId} />
-                </TabsContent>
-              )}
-              {podeCadastrar && (
-                <TabsContent value="agentes" className="mt-0">
-                  <SecaoAgentes unidadeId={unidadeId} unidadeNome={unidadeNome} />
-                </TabsContent>
-              )}
-              {podeConfigurar && (
-                <TabsContent value="unidade" className="mt-0">
-                  <SecaoUnidade unidadeId={unidadeId} />
-                </TabsContent>
-              )}
-            </div>
+            <AreaRolagem className="mt-3 min-h-0 flex-1 border-t border-border">
+              <div className="px-4 py-4">
+                {podeCadastrar && (
+                  <TabsContent value="cameras" className="mt-0">
+                    <SecaoCameras unidadeId={unidadeId} />
+                  </TabsContent>
+                )}
+                {podeCadastrar && (
+                  <TabsContent value="agentes" className="mt-0">
+                    <SecaoAgentes unidadeId={unidadeId} unidadeNome={unidadeNome} />
+                  </TabsContent>
+                )}
+                {podeConfigurar && (
+                  <TabsContent value="unidade" className="mt-0">
+                    <SecaoUnidade unidadeId={unidadeId} />
+                  </TabsContent>
+                )}
+              </div>
+            </AreaRolagem>
           </Tabs>
         )}
       </SheetContent>
