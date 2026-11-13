@@ -66,9 +66,10 @@ interface Estado {
     /** Chave seletora CLP/TON ligada a uma BI (NEXON-103). 1 = modo TON; null = sem leitura. Ausentes em API antiga. */
     tem_modo_ton?: boolean; modo_ton?: 0 | 1 | null;
     /** Pressão OK (BI01) e Tensão OK (BI02), com a polaridade: 1 ok, 0 falta, null sem ponto/leitura (12/11). */
-    entradas?: { pressao: Bin; tensao: Bin };
-    /** Horas com o pivô ligado (histórico do NexON, 12/11). */
-    horimetro_h?: number | null;
+    entradas?: { pressao: Bin; tensao: Bin; alinhamento?: Bin };
+    /** Horas com o pivô ligado (histórico do NexON, 12/11): total, no mês e da irrigação atual/última. */
+    horimetro_h?: number | null; horimetro_mes_h?: number | null;
+    irrigacao_h?: { horas: number; em_curso: boolean } | null;
   };
   bombeamento: null | Bombeamento;
   /** Sistema conjugado: este pivô usa a bomba de outro */
@@ -685,6 +686,8 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   };
 
   const okTxt = (b: Bin | undefined, falta: string) => (b === 1 ? 'OK' : b === 0 ? falta : '—');
+  // Abaixo de 1 h em minutos (12/11); acima, horas com 1 casa
+  const horasTxt = (h: number) => (h < 1 ? `${Math.round(h * 60)} min` : `${fmt(h, 1)} h`);
   const media = (...ks: string[]) => { const v = ks.map((k) => numE(k)).filter((x): x is number => x != null); return v.length ? v.reduce((a, c) => a + c, 0) / v.length : null; };
   const tensao = media('Vab', 'Vbc', 'Vca') ?? media('Va', 'Vb', 'Vc');
   const corrente = media('Ia', 'Ib', 'Ic');
@@ -692,16 +695,16 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
     { k: 'Ângulo', v: angTxt, nota: semCalibracao ? (brutoAtual != null ? `Sem calibração · bruto ${brutoAtual}` : 'Sem calibração') : null },
     // Sem transdutor (bar), vale o pressostato da TON (BI01 Pressão OK).
     { k: 'Pressão', v: num('pressao') != null ? `${fmt(num('pressao'), 1)} bar` : okTxt(estado?.pivo.entradas?.pressao, 'Sem pressão') },
-    // Horímetro do painel, se houver; senão o do NexON (horas com o pivô ligado).
-    { k: 'Horímetro', v: num('horimetro') != null ? `${fmt(num('horimetro'), 0)} h`
-      : estado?.pivo.horimetro_h != null ? `${fmt(estado.pivo.horimetro_h, 1)} h` : '—' },
-    // Elétrica no card do pivô só quando NÃO há PM da bomba (aí ela fica no Bombeamento).
-    ...(fonteMedicao ? [] : [
-      // Sem medição (V), vale a BI02 Tensão OK da TON.
-      { k: 'Tensão', v: tensao != null ? `${fmt(tensao, 0)} V` : okTxt(estado?.pivo.entradas?.tensao, 'Sem tensão') },
-      { k: 'Potência total', v: ptKw != null ? `${fmt(ptKw, 1)} kW` : '—' },
-      { k: 'Corrente pivô', v: corrente != null ? `${fmt(corrente, 1)} A` : '—' },
-    ]),
+    // Horímetro do mês (horas com o pivô ligado, pelo NexON); sem isso, o do painel, se houver (12/11)
+    { k: 'Horímetro', v: estado?.pivo.horimetro_mes_h != null ? horasTxt(estado.pivo.horimetro_mes_h) : num('horimetro') != null ? `${fmt(num('horimetro'), 0)} h` : '—',
+      nota: estado?.pivo.horimetro_mes_h != null ? 'no mês' : null },
+    // Sem medição (V), vale a BI02 Tensão OK da TON.
+    { k: 'Tensão', v: tensao != null ? `${fmt(tensao, 0)} V` : okTxt(estado?.pivo.entradas?.tensao, 'Sem tensão') },
+    // Alinhamento = BI05 Segurança (1 = alinhado)
+    { k: 'Alinhamento', v: okTxt(estado?.pivo.entradas?.alinhamento, 'Desalinhado') },
+    // Horas da irrigação em curso, ou da última
+    { k: 'Irrigação', v: estado?.pivo.irrigacao_h ? horasTxt(estado.pivo.irrigacao_h.horas) : '—',
+      nota: estado?.pivo.irrigacao_h ? (estado.pivo.irrigacao_h.em_curso ? 'em curso' : 'última') : null },
   ];
   const bNum = (...ks: string[]) => numE(...ks.map((k) => `bomba.${k}`), ...ks.map((k) => `bomba_${k}`));
   // Sem medição própria da bomba (bomba.*), vale o PM vinculado ao pivô (mesmo das tensões).
