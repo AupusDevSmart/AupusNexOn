@@ -1681,7 +1681,7 @@ ${dpt ? `        _fDPT = _pow10i((int)_lDPT - ${dpt.base});\n` : ''}${dct ? `   
 
         // Log de debug — espelha a lista do RS485 _genDeviceReader.
         // Antes so' listava campos de inversor — power_meter ia silencioso (sem log de sample).
-        const preferredOrder = ['vab', 'vbc', 'vca', 'va', 'vb', 'vc',
+        const preferredOrder = ['posicao', 'vab', 'vbc', 'vca', 'va', 'vb', 'vc',
                                 'ia', 'ib', 'ic',
                                 'potencia_ativa', 'pa_total', 'dc_total_power',
                                 'freq_rede', 'freq', 'fator_potencia', 'fp', 'fp_total',
@@ -6329,7 +6329,7 @@ ${dpt ? `        _fDPT = _pow10i((int)_lDPT - ${dpt.base});\n` : ''}${dct ? `   
         cpp += `    Serial.printf("[MB] ${topicName} #%d: ", _ds${idx}.samples);\n`;
 
         // Priorizar campos mais informativos: V, I, P, e alguns "last" tipicos
-        const preferredOrder = ['vab', 'vbc', 'vca', 'va', 'vb', 'vc',
+        const preferredOrder = ['posicao', 'vab', 'vbc', 'vca', 'va', 'vb', 'vc',
                                 'ia', 'ib', 'ic',
                                 'potencia_ativa', 'pa_total', 'dc_total_power',
                                 'freq_rede', 'freq', 'fator_potencia', 'fp', 'fp_total',
@@ -6346,6 +6346,11 @@ ${dpt ? `        _fDPT = _pow10i((int)_lDPT - ${dpt.base});\n` : ''}${dct ? `   
                     logFields.push(pid);
                 }
             }
+        }
+        // Nenhum campo conhecido (encoder, sensor...): mostra os primeiros do mapa, p/ acompanhar na Serial.
+        if (!logFields.length) for (const pid of Object.keys(aiMap)) {
+            const m = aiMap[pid];
+            if (logFields.length < 6 && m && m.block !== undefined && m.offset !== undefined && m.block < blocks.length) logFields.push(pid);
         }
         logFields.forEach((pid, i) => {
             cpp += `    Serial.printf("${pid}=%.2f${i < logFields.length - 1 ? ' ' : ''}", v_${pid});\n`;
