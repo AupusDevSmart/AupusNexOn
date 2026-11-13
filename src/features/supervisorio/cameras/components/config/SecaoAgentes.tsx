@@ -22,14 +22,17 @@ import { useAgentesCameras } from '../../hooks/useConfigCameras';
 import { CamerasService } from '../../services/cameras.service';
 import type { Agente } from '../../types';
 import { mensagemErro } from '../../utils/erros';
-import { LIMITE_PARADO_MS } from '../../utils/agentes';
+import { agenteEmContato } from '../../utils/agentes';
+import { DialogAdicionarAparelho } from './DialogAdicionarAparelho';
 
-/** Agente sem contato há mais que isto aparece como parado. */
-
-/** Agentes da unidade: criar (mostra o token UMA vez), gerar token novo, remover. */
+/**
+ * Aparelhos (agentes: Raspberry ou mini-PC) da unidade. O caminho normal é parear pelo
+ * código (NEXON-108); criar com token copiado à mão fica em "Instalação manual".
+ */
 export function SecaoAgentes({ unidadeId }: { unidadeId: string }) {
   const agentes = useAgentesCameras(unidadeId);
   const queryClient = useQueryClient();
+  const [adicionando, setAdicionando] = useState(false);
   const [criando, setCriando] = useState(false);
   const [nome, setNome] = useState('');
   const [tokenNovo, setTokenNovo] = useState<{ agente: string; token: string } | null>(null);
@@ -46,7 +49,7 @@ export function SecaoAgentes({ unidadeId }: { unidadeId: string }) {
       setCriando(false);
       invalidar();
     },
-    onError: (e) => toast.error(mensagemErro(e, 'Não foi possível criar o agente')),
+    onError: (e) => toast.error(mensagemErro(e, 'Não foi possível criar o aparelho')),
   });
 
   const novoToken = useMutation({
@@ -62,11 +65,11 @@ export function SecaoAgentes({ unidadeId }: { unidadeId: string }) {
   const excluir = useMutation({
     mutationFn: (a: Agente) => CamerasService.removerAgente(a.id),
     onSuccess: () => {
-      toast.success('Agente removido');
+      toast.success('Aparelho removido');
       setRemover(null);
       void queryClient.invalidateQueries({ queryKey: chavesCameras.tudo });
     },
-    onError: (e) => toast.error(mensagemErro(e, 'Não foi possível remover o agente')),
+    onError: (e) => toast.error(mensagemErro(e, 'Não foi possível remover o aparelho')),
   });
 
   const enviarNovo = (e: FormEvent) => {
@@ -84,60 +87,37 @@ export function SecaoAgentes({ unidadeId }: { unidadeId: string }) {
 
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs text-muted-foreground">
-          {lista.length} {lista.length === 1 ? 'agente' : 'agentes'}
+          {lista.length} {lista.length === 1 ? 'aparelho' : 'aparelhos'}
         </p>
-        {!criando && (
-          <Button type="button" size="sm" onClick={() => setCriando(true)}>
-            <Plus aria-hidden />
-            Novo agente
-          </Button>
-        )}
+        <Button type="button" size="sm" onClick={() => setAdicionando(true)}>
+          <Plus aria-hidden />
+          Adicionar aparelho
+        </Button>
       </div>
 
-      {criando && (
-        <form onSubmit={enviarNovo} className="flex flex-col gap-2 rounded-lg border border-border p-3 sm:flex-row sm:items-end">
-          <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-            <label htmlFor="agente-nome" className="text-xs font-medium text-muted-foreground">
-              Nome do agente
-            </label>
-            <Input id="agente-nome" autoFocus value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Mini PC da cabine" />
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" size="sm" onClick={() => setCriando(false)} disabled={criar.isPending}>
-              Cancelar
-            </Button>
-            <Button type="submit" size="sm" disabled={!nome.trim() || criar.isPending}>
-              {criar.isPending && <Loader2 className="animate-spin" aria-hidden />}
-              Criar
-            </Button>
-          </div>
-        </form>
-      )}
-
       {agentes.isPending ? (
-        <div role="status" aria-label="Carregando agentes" className="flex flex-col gap-2">
+        <div role="status" aria-label="Carregando aparelhos" className="flex flex-col gap-2">
           {[0, 1].map((i) => (
             <Skeleton key={i} className="h-16 w-full rounded-lg" />
           ))}
         </div>
       ) : agentes.isError ? (
-        <p className="text-[13px] text-muted-foreground">{mensagemErro(agentes.error, 'Não foi possível carregar os agentes.')}</p>
+        <p className="text-[13px] text-muted-foreground">{mensagemErro(agentes.error, 'Não foi possível carregar os aparelhos.')}</p>
       ) : lista.length === 0 ? (
         <p className="rounded-lg border border-dashed border-border p-4 text-center text-[13px] text-muted-foreground">
-          Nenhum agente. Crie um e instale o <code className="font-mono text-xs">nexon-camera-agent</code> na rede das câmeras.
+          Nenhum aparelho. Ligue o Raspberry (ou mini-PC) com a imagem do NexON na rede das câmeras e toque em Adicionar aparelho.
         </p>
       ) : (
         <ul className="flex flex-col gap-2">
           {lista.map((a) => {
-            const contato = a.ultimo_contato_em ? Date.parse(a.ultimo_contato_em) : NaN;
-            const vivo = !Number.isNaN(contato) && Date.now() - contato < LIMITE_PARADO_MS;
+            const vivo = agenteEmContato(a);
             return (
               <li key={a.id} className="flex items-center gap-3 rounded-lg border border-border p-3">
-                <span aria-label={vivo ? 'em contato' : 'sem contato'} className={cn('h-2 w-2 shrink-0 rounded-full', vivo ? 'bg-nexon-verde' : 'bg-zinc-500')} />
+                <span role="img" aria-label={vivo ? 'online' : 'offline'} className={cn('h-2 w-2 shrink-0 rounded-full', vivo ? 'bg-nexon-verde' : 'bg-zinc-500')} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{a.nome}</p>
                   <p className="truncate text-xs text-muted-foreground">
-                    {a.ultimo_contato_em ? `Último contato ${tempoRelativo(a.ultimo_contato_em) ?? ''}` : 'Nunca se conectou'}
+                    {vivo ? 'Online' : a.ultimo_contato_em ? `Offline · último contato ${tempoRelativo(a.ultimo_contato_em) ?? ''}` : 'Nunca se conectou'}
                     {a.host ? ` · ${a.host}` : ''}
                     {a.versao ? ` · v${a.versao}` : ''}
                     {` · ${a.cameras ?? 0} ${a.cameras === 1 ? 'câmera' : 'câmeras'}`}
@@ -155,12 +135,44 @@ export function SecaoAgentes({ unidadeId }: { unidadeId: string }) {
         </ul>
       )}
 
+      {criando ? (
+        <div className="flex flex-col gap-2">
+          <p className="text-[11px] leading-snug text-muted-foreground">
+            Instalação manual: crie o aparelho, copie o token que aparece uma vez e cole em <code className="font-mono">NEXON_AGENTE_TOKEN</code> no{' '}
+            <code className="font-mono">.env</code> do <code className="font-mono">nexon-camera-agent</code>.
+          </p>
+          <form onSubmit={enviarNovo} className="flex flex-col gap-2 rounded-lg border border-border p-3 sm:flex-row sm:items-end">
+            <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+              <label htmlFor="agente-nome" className="text-xs font-medium text-muted-foreground">
+                Nome do aparelho
+              </label>
+              <Input id="agente-nome" autoFocus value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Mini PC da cabine" />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="ghost" size="sm" onClick={() => setCriando(false)} disabled={criar.isPending}>
+                Cancelar
+              </Button>
+              <Button type="submit" size="sm" disabled={!nome.trim() || criar.isPending}>
+                {criar.isPending && <Loader2 className="animate-spin" aria-hidden />}
+                Criar
+              </Button>
+            </div>
+        </form>
+        </div>
+      ) : (
+        <Button type="button" variant="link" size="sm" className="h-auto self-start px-0 text-xs text-muted-foreground" onClick={() => setCriando(true)}>
+          Instalação manual (avançado)
+        </Button>
+      )}
+
+      <DialogAdicionarAparelho unidadeId={unidadeId} aberto={adicionando} onFechar={() => setAdicionando(false)} />
+
       <AlertDialog open={!!gerarPara} onOpenChange={(o) => !o && setGerarPara(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Gerar token novo para {gerarPara?.nome}?</AlertDialogTitle>
             <AlertDialogDescription>
-              O token atual deixa de valer na hora: o agente para de mandar eventos até você trocar o <code>NEXON_AGENTE_TOKEN</code> na máquina dele.
+              O token atual deixa de valer na hora: o aparelho para de mandar eventos até você trocar o <code>NEXON_AGENTE_TOKEN</code> nele.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -181,8 +193,8 @@ export function SecaoAgentes({ unidadeId }: { unidadeId: string }) {
       <AlertDialog open={!!remover} onOpenChange={(o) => !o && setRemover(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remover o agente {remover?.nome}?</AlertDialogTitle>
-            <AlertDialogDescription>As câmeras dele ficam sem agente (sem vídeo e sem detecção) até serem ligadas a outro.</AlertDialogDescription>
+            <AlertDialogTitle>Remover o aparelho {remover?.nome}?</AlertDialogTitle>
+            <AlertDialogDescription>As câmeras dele ficam sem aparelho (sem vídeo e sem detecção) até serem ligadas a outro.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={excluir.isPending}>Cancelar</AlertDialogCancel>
@@ -216,9 +228,9 @@ function CaixaToken({ agente, token, onFechar }: { agente: string; token: string
   };
   return (
     <div role="alert" className="flex flex-col gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
-      <p className="text-sm font-semibold">Token do agente {agente}</p>
+      <p className="text-sm font-semibold">Token do aparelho {agente}</p>
       <p className="text-xs text-muted-foreground">
-        Guarde agora: ele não aparece de novo. Cole em <code className="font-mono">NEXON_AGENTE_TOKEN</code> no <code className="font-mono">.env</code> do agente.
+        Guarde agora: ele não aparece de novo. Cole em <code className="font-mono">NEXON_AGENTE_TOKEN</code> no <code className="font-mono">.env</code> do aparelho.
       </p>
       <div className="flex items-center gap-2">
         <code className="min-w-0 flex-1 select-all break-all rounded-md bg-background px-2 py-1.5 font-mono text-xs">{token}</code>

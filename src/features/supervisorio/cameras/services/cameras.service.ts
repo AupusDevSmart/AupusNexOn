@@ -2,6 +2,7 @@ import { api } from '@/config/api';
 import type {
   Agente,
   Camera,
+  CameraDescoberta,
   CameraEvento,
   CameraPayload,
   ConfigCameras,
@@ -9,6 +10,7 @@ import type {
   DispositivoAcionavel,
   ListarEventosParams,
   Paginado,
+  PedidoPareamento,
   ResumoCameras,
   StreamCamera,
   TokenMidia,
@@ -144,6 +146,24 @@ export const CamerasService = {
   async novoTokenAgente(id: string): Promise<{ token: string; agente?: Agente }> {
     const { data } = await api.post(`/cameras/agentes/${id.trim()}/token`);
     return unwrap<{ token: string; agente?: Agente }>(data);
+  },
+
+  /** Aparelhos aguardando pareamento na mesma rede (mesmo IP público) de quem pergunta. */
+  async pareamentosProximos(): Promise<PedidoPareamento[]> {
+    const { data } = await api.get('/cameras/pareamento/proximos');
+    return lista<PedidoPareamento>(data);
+  },
+
+  /** Vincula o aparelho pelo código de 6 dígitos: cria o agente e entrega o token a ele. */
+  async vincularPareamento(body: { codigo: string; unidade_id: string; nome?: string }): Promise<{ agente: Agente }> {
+    const { data } = await api.post('/cameras/pareamento/vincular', body);
+    return unwrap<{ agente: Agente }>(data);
+  },
+
+  /** Câmeras que o agente achou na rede e ainda não estão cadastradas. */
+  async descobertas(agenteId: string): Promise<CameraDescoberta[]> {
+    const { data } = await api.get(`/cameras/agentes/${agenteId.trim()}/descobertas`);
+    return lista<CameraDescoberta>(data);
   },
 
   async removerAgente(id: string): Promise<void> {

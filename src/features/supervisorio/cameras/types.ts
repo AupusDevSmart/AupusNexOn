@@ -158,8 +158,38 @@ export interface Agente {
   ultimo_contato_em: string | null;
   /** Nº de câmeras ligadas ao agente. */
   cameras: number;
+  /** Câmeras que o agente achou na rede e ainda não foram cadastradas (NEXON-108). */
+  descobertas_pendentes?: number;
   created_at: string;
   updated_at: string;
+}
+
+/**
+ * Aparelho (agente) pedindo pareamento na mesma rede de quem consulta (NEXON-108):
+ * `GET /cameras/pareamento/proximos`.
+ */
+export interface PedidoPareamento {
+  codigo: string;
+  host: string;
+  mac: string | null;
+  ip_local: string | null;
+  criado_em: string;
+  expira_em: string;
+}
+
+/** Câmera achada pelo agente na rede local e ainda não cadastrada: `GET /cameras/agentes/:id/descobertas`. */
+export interface CameraDescoberta {
+  ip: string;
+  mac: string | null;
+  /** Em minúsculas: "intelbras", "hikvision", "onvif". */
+  fabricante: string | null;
+  modelo: string | null;
+  serial: string | null;
+  porta_http: number | null;
+  porta_rtsp: number | null;
+  /** `false` = câmera de fábrica, sem senha criada. */
+  inicializada: boolean | null;
+  visto_em: string;
 }
 
 export interface StreamCamera {

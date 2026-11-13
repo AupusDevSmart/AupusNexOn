@@ -164,13 +164,13 @@ describe('CamerasTab', () => {
     // Sem câmera, a aba vira o tutorial de ligação (NEXON-88); o atalho de cadastro é só do cadastro técnico.
     const { unmount } = render();
     expect(screen.getByRole('heading', { name: /Ligue as câmeras de UFV Aupus II/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Cadastrar câmera' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Ver câmeras encontradas' })).toBeInTheDocument();
     unmount();
 
     capacidades.cadastroTecnico = false;
     const segundo = render();
     expect(screen.getByRole('heading', { name: /Ligue as câmeras/ })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Cadastrar câmera' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Ver câmeras encontradas' })).not.toBeInTheDocument();
     segundo.unmount();
 
     // Quem não cadastra nem configura (proprietário) vê só a explicação.

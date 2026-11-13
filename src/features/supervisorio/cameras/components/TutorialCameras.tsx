@@ -1,10 +1,9 @@
-import { Cctv, Check, Copy, Cpu, KeyRound, Plus, Settings, Video, type LucideIcon } from 'lucide-react';
+import { Cable, Cctv, Check, Clock, Cpu, Plus, Settings, Video, type LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useAgentesCameras } from '../hooks/useConfigCameras';
-import { COMANDOS_AGENTE, agenteEmContato, textoEnvAgente } from '../utils/agentes';
+import { agenteEmContato } from '../utils/agentes';
 import type { AbaConfigCameras } from './ConfigCamerasSheet';
 
 interface Props {
@@ -16,8 +15,8 @@ interface Props {
 }
 
 /**
- * Estado vazio da aba Câmeras (NEXON-88): em vez de "nenhuma câmera", o passo a passo
- * para ligar a primeira — com os atalhos de cadastro e o estado real do agente.
+ * Estado vazio da aba Câmeras (NEXON-88, simplificado no NEXON-108): o passo a passo para
+ * ligar a primeira câmera — aparelho pareado por código, câmera achada na rede, só movimento.
  * Quem não cadastra (proprietário) vê só a explicação.
  */
 export function TutorialCameras({ unidadeId, unidadeNome, podeCadastrar, podeConfigurar, onAbrirConfig }: Props) {
@@ -33,8 +32,8 @@ export function TutorialCameras({ unidadeId, unidadeNome, podeCadastrar, podeCon
         <Cctv className="h-8 w-8 text-muted-foreground" aria-hidden />
         <p className="text-sm font-medium">Nenhuma câmera nesta usina</p>
         <p className="max-w-sm text-xs text-muted-foreground">
-          A instalação é feita pela equipe da Aupus: câmera na rede {nome}, um pequeno computador com o agente NexON e o
-          cadastro aqui. Quando estiver pronta, o vídeo e os alertas aparecem nesta aba.
+          A instalação é feita pela equipe da Aupus: câmera e um pequeno aparelho do NexON na rede {nome}, e o cadastro
+          aqui. Quando estiver pronta, o vídeo e os alertas aparecem nesta aba.
         </p>
       </div>
     );
@@ -51,94 +50,77 @@ export function TutorialCameras({ unidadeId, unidadeNome, podeCadastrar, podeCon
             Ligue as câmeras {nome}
           </h2>
           <p className="text-xs text-muted-foreground">
-            Ainda não há câmera cadastrada. São cinco passos: os cadastros você faz aqui; o agente roda num computador na
-            rede da usina. A câmera nunca fica exposta na internet.
+            Cinco passos, sem copiar token nem digitar IP. A câmera nunca fica exposta na internet.
           </p>
         </div>
       </header>
 
       <ol className="flex flex-col divide-y divide-border">
-        <Passo numero={1} icone={Video} titulo="Prepare a câmera">
+        <Passo numero={1} icone={Cable} titulo="Ligue a câmera e o aparelho no switch PoE">
           <p className="text-xs text-muted-foreground">
-            IP fixo na rede da usina, senha do usuário <code className="font-mono">admin</code> trocada, RTSP ligado (porta
-            554) e o stream extra em H.264. Modelo homologado: Intelbras VIPC 1230 B G2.
+            Os dois no mesmo switch, por cabo de rede. O switch PoE já dá energia para a câmera.
           </p>
         </Passo>
 
-        <Passo numero={2} icone={KeyRound} titulo="Crie o agente e copie o token" feito={temAgente}>
+        <Passo numero={2} icone={Cpu} titulo="Grave o cartão do aparelho e ligue na tomada">
           <p className="text-xs text-muted-foreground">
-            Agentes › Novo, com um nome (ex.: "Mini-PC cabine"). O token aparece uma vez só: guarde para o passo 3.
+            Grave o cartão do Raspberry com a imagem do NexON, coloque no aparelho e ligue. Em uns 2 minutos ele mostra um
+            código de 6 dígitos.
           </p>
-          {temAgente ? (
+        </Passo>
+
+        <Passo numero={3} icone={Plus} titulo="Adicione o aparelho" feito={!!agenteVivo}>
+          <p className="text-xs text-muted-foreground">
+            Aparelhos › Adicionar aparelho. Na mesma rede, o código aparece sozinho; senão, digite o que está em
+            http://ip-do-aparelho:8080.
+          </p>
+          {agenteVivo ? (
+            <p className="text-xs">Aparelho online: {agenteVivo.nome}.</p>
+          ) : temAgente ? (
             <p className="text-xs">
-              {lista.length === 1 ? '1 agente criado' : `${lista.length} agentes criados`}: {lista.map((a) => a.nome).join(', ')}
+              {lista.length === 1 ? 'Aparelho vinculado' : `${lista.length} aparelhos vinculados`}, aguardando ficar online.
             </p>
           ) : (
             podeCadastrar && (
               <div>
                 <Button type="button" size="sm" onClick={() => onAbrirConfig('agentes')}>
                   <Plus aria-hidden />
-                  Criar agente
+                  Adicionar aparelho
                 </Button>
               </div>
             )
           )}
         </Passo>
 
-        <Passo numero={3} icone={Cpu} titulo="Instale o agente num computador da usina" feito={!!agenteVivo}>
+        <Passo numero={4} icone={Video} titulo="Adicione as câmeras encontradas">
           <p className="text-xs text-muted-foreground">
-            Mini-PC, Raspberry Pi 4/5 (4 GB) ou notebook com Docker, ligado na mesma rede da câmera e com saída para a
-            internet (HTTPS e porta 8322). Copie a pasta <code className="font-mono">nexon-camera-agent</code> do repositório
-            NexON para ele, crie o arquivo <code className="font-mono">.env</code> com o token e suba:
-          </p>
-          <BlocoCopiavel rotulo="Arquivo .env" texto={textoEnvAgente()} />
-          <BlocoCopiavel rotulo="Comandos" texto={COMANDOS_AGENTE} />
-          <p className="text-xs text-muted-foreground">
-            <code className="font-mono">NEXON_ANALISE=yolo</code> reconhece pessoa, veículo e animal (imagem de ~2 GB);{' '}
-            <code className="font-mono">movimento</code> é mais leve e só detecta movimento.
-          </p>
-          {agenteVivo ? (
-            <p className="text-xs">Agente conectado: {agenteVivo.nome}.</p>
-          ) : temAgente ? (
-            <p className="text-xs">Aguardando o agente se conectar: ele aparece com a bolinha verde em Agentes assim que ligar.</p>
-          ) : null}
-        </Passo>
-
-        <Passo numero={4} icone={Plus} titulo="Cadastre a câmera">
-          <p className="text-xs text-muted-foreground">
-            Câmeras › Nova: nome, IP, usuário e senha da câmera, portas 554/80, canal 1 e o agente do passo 2. Em até um
-            minuto aparece a miniatura; Ao vivo abre o vídeo (3 a 6 s de atraso).
+            Câmeras › Câmeras encontradas › Adicionar, com a senha da câmera. Câmera nova de fábrica: crie a senha antes
+            na página dela.
           </p>
           {podeCadastrar && (
             <div>
-              <Button type="button" size="sm" variant={temAgente ? 'default' : 'outline'} onClick={() => onAbrirConfig('cameras')}>
-                <Plus aria-hidden />
-                Cadastrar câmera
+              <Button type="button" size="sm" variant={agenteVivo ? 'default' : 'outline'} onClick={() => onAbrirConfig('cameras')}>
+                <Video aria-hidden />
+                Ver câmeras encontradas
               </Button>
             </div>
           )}
         </Passo>
 
-        <Passo numero={5} icone={Settings} titulo="Ajuste a proteção">
+        <Passo numero={5} icone={Clock} titulo="Arme por horário">
           <p className="text-xs text-muted-foreground">
-            Armamento (agenda 18:00 → 06:30 ou manual), refletor e sirene pelo ponto de comando do TON/relé, abertura
-            automática de chamado e e-mails de aviso.
+            Armamento e avisos: agenda (ex.: 18:00 → 06:30). Com a usina armada, movimento na câmera vira alerta.
           </p>
           {podeConfigurar && (
             <div>
               <Button type="button" size="sm" variant="outline" onClick={() => onAbrirConfig('unidade')}>
                 <Settings aria-hidden />
-                Configurar unidade
+                Configurar armamento
               </Button>
             </div>
           )}
         </Passo>
       </ol>
-
-      <footer className="border-t border-border px-4 py-3 text-xs text-muted-foreground sm:px-5">
-        Guia completo, com os problemas comuns: <code className="font-mono">NexON/docs/cameras/INSTALACAO.md</code> no
-        repositório.
-      </footer>
     </section>
   );
 }
@@ -178,33 +160,5 @@ function Passo({
         {children}
       </div>
     </li>
-  );
-}
-
-function BlocoCopiavel({ rotulo, texto }: { rotulo: string; texto: string }) {
-  const copiar = async () => {
-    try {
-      await navigator.clipboard.writeText(texto);
-      toast.success(`${rotulo} copiado`);
-    } catch {
-      toast.error('Não foi possível copiar: selecione o texto e copie manualmente.');
-    }
-  };
-  return (
-    <div className="relative min-w-0">
-      <pre className="overflow-x-auto rounded-lg bg-muted p-3 pr-12 font-mono text-xs leading-relaxed">
-        <code>{texto}</code>
-      </pre>
-      <Button
-        type="button"
-        size="sm"
-        variant="outline"
-        className="absolute right-2 top-2 h-7 px-2"
-        onClick={copiar}
-        aria-label={`Copiar ${rotulo.toLowerCase()}`}
-      >
-        <Copy aria-hidden />
-      </Button>
-    </div>
   );
 }

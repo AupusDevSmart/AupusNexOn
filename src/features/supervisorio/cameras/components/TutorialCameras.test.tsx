@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders, sonnerMockFactory } from '@/test-utils';
 import type { Agente } from '../types';
-import { COMANDOS_AGENTE, textoEnvAgente } from '../utils/agentes';
+import { textoEnvAgente } from '../utils/agentes';
 import { TutorialCameras } from './TutorialCameras';
 
 vi.mock('sonner', () => sonnerMockFactory());
@@ -31,34 +31,36 @@ describe('TutorialCameras', () => {
     agentesMock.mockReturnValue({ data: [] });
   });
 
-  it('mostra os cinco passos, o .env e os atalhos de cadastro para quem cadastra', async () => {
+  it('mostra os cinco passos do fluxo simples e os atalhos para quem cadastra', async () => {
     const abrir = vi.fn();
     renderWithProviders(
       <TutorialCameras unidadeId="u1" unidadeNome="UFV Aupus II" podeCadastrar podeConfigurar onAbrirConfig={abrir} />,
     );
     expect(screen.getByRole('heading', { name: /Ligue as câmeras de UFV Aupus II/ })).toBeInTheDocument();
     expect(screen.getAllByRole('listitem')).toHaveLength(5);
-    expect(screen.getByText(/NEXON_AGENTE_TOKEN=cole-aqui-o-token-do-agente/)).toBeInTheDocument();
-    expect(screen.getByText(/docker compose up -d --build/)).toBeInTheDocument();
+    expect(screen.getByText('Ligue a câmera e o aparelho no switch PoE')).toBeInTheDocument();
+    expect(screen.getByText('Grave o cartão do aparelho e ligue na tomada')).toBeInTheDocument();
+    expect(screen.getByText('Arme por horário')).toBeInTheDocument();
+    // Sem token, .env nem análise por IA na tela.
+    expect(screen.queryByText(/NEXON_AGENTE_TOKEN|NEXON_ANALISE|docker compose/)).toBeNull();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Criar agente' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Cadastrar câmera' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Configurar unidade' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Adicionar aparelho' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Ver câmeras encontradas' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Configurar armamento' }));
     expect(abrir.mock.calls.map((c) => c[0])).toEqual(['agentes', 'cameras', 'unidade']);
   });
 
-  it('marca o agente criado e conectado conforme o estado real', () => {
+  it('marca o aparelho online conforme o estado real', () => {
     agentesMock.mockReturnValue({ data: [agente({ ultimo_contato_em: new Date().toISOString() })] });
     renderWithProviders(<TutorialCameras unidadeId="u1" podeCadastrar podeConfigurar onAbrirConfig={vi.fn()} />);
-    expect(screen.getByText(/1 agente criado: Mini-PC cabine/)).toBeInTheDocument();
-    expect(screen.getByText(/Agente conectado: Mini-PC cabine/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Criar agente' })).toBeNull();
+    expect(screen.getByText(/Aparelho online: Mini-PC cabine/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Adicionar aparelho' })).toBeNull();
   });
 
-  it('agente criado sem contato pede para aguardar', () => {
+  it('aparelho vinculado sem contato pede para aguardar', () => {
     agentesMock.mockReturnValue({ data: [agente()] });
     renderWithProviders(<TutorialCameras unidadeId="u1" podeCadastrar podeConfigurar onAbrirConfig={vi.fn()} />);
-    expect(screen.getByText(/Aguardando o agente se conectar/)).toBeInTheDocument();
+    expect(screen.getByText(/Aparelho vinculado, aguardando ficar online/)).toBeInTheDocument();
   });
 
   it('quem não cadastra nem configura vê só a explicação, sem botões', () => {
@@ -70,17 +72,9 @@ describe('TutorialCameras', () => {
     expect(screen.queryByRole('button')).toBeNull();
   });
 
-  it('copia o .env para a área de transferência', async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
-    renderWithProviders(<TutorialCameras unidadeId="u1" podeCadastrar podeConfigurar onAbrirConfig={vi.fn()} />);
-    await userEvent.click(screen.getByRole('button', { name: 'Copiar arquivo .env' }));
-    expect(writeText).toHaveBeenCalledWith(textoEnvAgente());
-    await userEvent.click(screen.getByRole('button', { name: 'Copiar comandos' }));
-    expect(writeText).toHaveBeenLastCalledWith(COMANDOS_AGENTE);
-  });
-
   it('o .env aponta para a API informada, sem barra final', () => {
-    expect(textoEnvAgente('https://api.exemplo/api/v1')).toContain('NEXON_API_URL=https://api.exemplo/api/v1\n');
+    const env = textoEnvAgente('https://api.exemplo/api/v1');
+    expect(env).toContain('NEXON_API_URL=https://api.exemplo/api/v1\n');
+    expect(env).not.toContain('NEXON_ANALISE');
   });
 });

@@ -23,7 +23,6 @@ export function textoEnvAgente(apiUrl = urlApiParaAgente()): string {
   return [
     `NEXON_API_URL=${apiUrl}`,
     'NEXON_AGENTE_TOKEN=cole-aqui-o-token-do-agente',
-    'NEXON_ANALISE=yolo',
     'LOG_LEVEL=INFO',
   ].join('\n');
 }
