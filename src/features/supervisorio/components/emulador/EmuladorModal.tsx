@@ -451,7 +451,7 @@ export function EmuladorModal({ open, onClose, comp, carregarAlvos, conflitoEnde
                   <div><Label className="text-xs">De</Label>
                     <Input className="h-8 w-20" type="number" min={0} max={359} value={giro.de} disabled={giroInicio != null} onChange={(e) => setGiro({ ...giro, de: e.target.value })} /></div>
                   <div><Label className="text-xs">Até</Label>
-                    <Input className="h-8 w-20" type="number" min={0} max={359} value={giro.ate} disabled={giroInicio != null} onChange={(e) => setGiro({ ...giro, ate: e.target.value })} /></div>
+                    <Input className="h-8 w-20" type="number" min={0} max={giro.sentido === 'crescente' ? 3600 : 359} title="Crescente: acima de 359 conta voltas (360 = uma volta inteira)" value={giro.ate} disabled={giroInicio != null} onChange={(e) => setGiro({ ...giro, ate: e.target.value })} /></div>
                   <div><Label className="text-xs">Em</Label>
                     <div className="flex gap-1">
                       <Input className="h-8 w-20" type="number" min={1} value={giro.tempo} disabled={giroInicio != null} onChange={(e) => setGiro({ ...giro, tempo: e.target.value })} />
@@ -473,6 +473,7 @@ export function EmuladorModal({ open, onClose, comp, carregarAlvos, conflitoEnde
                 <p className={`mt-2 text-xs ${velGiro != null && velGiro > VELOCIDADE_MAX_GRAUS_S ? 'text-amber-600' : 'text-muted-foreground'}`}>
                   {erroGiro ?? `${grausDoGiro(planoGiro)}° em ${planoGiro.segundos} s = ${velGiro!.toFixed(1).replace('.', ',')}°/s · a posição muda a cada 1 s.`}
                   {velGiro != null && velGiro > VELOCIDADE_MAX_GRAUS_S && ` Acima de ${VELOCIDADE_MAX_GRAUS_S}°/s a TON (lê a cada 5 s) vê saltos de mais de 30° e não conta o giro — aumente o tempo.`}
+                  {' '}Crescente: "Até" acima de 359 conta voltas (0 → 360 = uma volta, 0 → 720 = duas).
                   {' '}Continua com o modal fechado (a emulação precisa estar ligada).
                 </p>
               </section>

@@ -21,8 +21,19 @@ describe('emulador — simular giro do encoder', () => {
     expect(posicaoDoGiro(d, 10_000).posicao).toBe(265);
   });
 
+  it('crescente com "Até" ≥ 360 conta voltas: 0 → 360 = uma volta inteira, passando pelo 0', () => {
+    const p = { de: 0, ate: 360, segundos: 360, sentido: 'crescente' as const };
+    expect(grausDoGiro(p)).toBe(360);
+    expect(posicaoDoGiro(p, 359_000).posicao).toBe(359);
+    expect(posicaoDoGiro(p, 360_000)).toEqual({ posicao: 0, fim: true });
+    expect(grausDoGiro({ de: 180, ate: 720, segundos: 1, sentido: 'crescente' })).toBe(540);
+    expect(validarGiro(p)).toBeNull();
+  });
+
   it('valida', () => {
-    expect(validarGiro({ de: 0, ate: 400, segundos: 10, sentido: 'crescente' })).toMatch(/0 a 359/);
+    expect(validarGiro({ de: 0, ate: 4000, segundos: 10, sentido: 'crescente' })).toMatch(/0 a 3600/);
+    expect(validarGiro({ de: 0, ate: 400, segundos: 10, sentido: 'decrescente' })).toMatch(/0 a 359/);
+    expect(validarGiro({ de: 400, ate: 10, segundos: 10, sentido: 'crescente' })).toMatch(/De/);
     expect(validarGiro({ de: 10, ate: 10, segundos: 10, sentido: 'crescente' })).toMatch(/nada a andar/);
     expect(validarGiro({ de: 0, ate: 30, segundos: 0, sentido: 'crescente' })).toMatch(/tempo/);
     expect(validarGiro({ de: 0, ate: 30, segundos: 60, sentido: 'crescente' })).toBeNull();

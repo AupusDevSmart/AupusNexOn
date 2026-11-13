@@ -10,7 +10,7 @@ export type SentidoGiro = 'crescente' | 'decrescente';
 
 export interface PlanoGiro {
   de: number;        // 0..359
-  ate: number;       // 0..359
+  ate: number;       // 0..359; crescente aceita até 3600 (360 = uma volta inteira a partir do "de")
   segundos: number;  // > 0
   sentido: SentidoGiro;
 }
@@ -20,8 +20,13 @@ export const VELOCIDADE_MAX_GRAUS_S = 5;
 
 const norm = (g: number) => ((g % 360) + 360) % 360;
 
+/** Teto do "Até" no sentido crescente: 10 voltas. */
+export const ATE_MAX = 3600;
+
 /** Graus a percorrer no sentido escolhido (0 = nada a andar). */
 export function grausDoGiro(p: PlanoGiro): number {
+  // Crescente com "Até" ≥ 360: conta as voltas (0 → 360 = uma volta inteira, passando pelo 0).
+  if (p.sentido === 'crescente' && p.ate >= 360) return Math.max(0, Math.round(p.ate - p.de));
   const d = p.sentido === 'crescente' ? norm(p.ate - p.de) : norm(p.de - p.ate);
   return Math.round(d);
 }
@@ -41,7 +46,11 @@ export function posicaoDoGiro(p: PlanoGiro, ms: number): { posicao: number; fim:
 
 /** Plano válido? Devolve o motivo quando não. */
 export function validarGiro(p: PlanoGiro): string | null {
-  for (const v of [p.de, p.ate]) if (!Number.isFinite(v) || v < 0 || v > 359) return 'Posições de 0 a 359';
+  if (!Number.isFinite(p.de) || p.de < 0 || p.de > 359) return '"De" vai de 0 a 359';
+  const ateMax = p.sentido === 'crescente' ? ATE_MAX : 359;
+  if (!Number.isFinite(p.ate) || p.ate < 0 || p.ate > ateMax) {
+    return p.sentido === 'crescente' ? `"Até" vai de 0 a ${ATE_MAX} (360 = uma volta)` : '"Até" vai de 0 a 359 no sentido decrescente';
+  }
   if (!(p.segundos > 0)) return 'Informe o tempo';
   if (grausDoGiro(p) === 0) return 'Início e fim iguais: nada a andar';
   return null;
