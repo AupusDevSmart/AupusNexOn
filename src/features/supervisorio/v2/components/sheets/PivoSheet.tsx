@@ -28,6 +28,7 @@ import {
   type ConfigIrrigacao, type EnvioIrrigacao, type FaixaCanhao, type Parada, type Programacao, type NovaProgramacao, type AbaIrrigacao,
   DIRECAO_LABEL, fmtPct, paradaValida, complementoFaixas, textoZonas,
 } from './PivoIrrigacao';
+import { tilesDoPivo, ATRIBUICAO_SATELITE, type GeoPivo } from './pivoSatelite';
 import type { AgendaItem, ItemPlanilha } from './pivoAgendaPlanilha';
 import { rascunhoDe, mudancas, mesmaParada } from './PivoRapido';
 import { corpo, erroMsg, col, secao, Linha } from './pivoPartes';
@@ -97,7 +98,7 @@ interface Estado {
     /** Pivô com encoder e nenhuma calibração ativa: `angulo` vem null e só o `bruto` vale (NEXON-103). Ausente em API antiga. */
     sem_calibracao?: boolean;
     /** Calibração vigente (Calibração do ângulo, na Configuração): zero e sentido do encoder vêm dela. Ausente em API antiga. */
-    calibracao?: { id: string; az_cal: number; bruto_cal: number; sentido: 1 | -1; criado_em: string } | null;
+    calibracao?: { id: string; az_cal: number; bruto_cal: number; sentido: 1 | -1; criado_em: string; geo?: GeoPivo | null } | null;
   };
 }
 interface IrrigacaoSrv { modo: string; config: ConfigIrrigacao; parada: Parada; programacao?: { nome: string } | null }
@@ -220,7 +221,9 @@ const setorD = (cx: number, cy: number, r: number, a0: number, a1: number) => {
  * (nunca o último valor). Sem calibração: sem braço, só a leitura bruta com aviso.
  * O braço é desenhado por coordenada, sem animação: a virada 359° → 0° não dá a volta.
  */
-export function MapaPivo({ angulo: anguloLido, aviso, girando, falha, sentido, direcao, faixas, semCalibracao = false, bruto = null }: {
+export function MapaPivo({ angulo: anguloLido, aviso, girando, falha, sentido, direcao, faixas, semCalibracao = false, bruto = null, geo = null }: {
+  /** Centro e ponta pelo GPS da calibração: com eles o fundo vira a imagem de satélite do pivô. */
+  geo?: GeoPivo | null;
   angulo: number | null; aviso?: string | null; girando: boolean; falha: boolean; sentido: 'direita' | 'esquerda' | null; direcao: string; faixas: FaixaCanhao[];
   /** Pivô com encoder e sem calibração ativa: não há ângulo, só a contagem do encoder. */
   semCalibracao?: boolean;
@@ -236,6 +239,7 @@ export function MapaPivo({ angulo: anguloLido, aviso, girando, falha, sentido, d
   const emGiro = girando && angulo != null;
   const lado = emGiro ? (sentido === 'direita' ? 1 : sentido === 'esquerda' ? -1 : 0) : 0;
   const seta = lado ? [pt(179, 150, 110, a + lado * 13), pt(179, 150, 118, a + lado * 3), pt(179, 150, 102, a + lado * 3)] : null;
+  const sat = useMemo(() => tilesDoPivo(geo), [geo?.centro.lat, geo?.centro.lon, geo?.ponta.lat, geo?.ponta.lon]); // eslint-disable-line react-hooks/exhaustive-deps
   const avisoTxt = semCalibracao
     ? bruto != null ? `Sem calibração · leitura bruta ${bruto}` : `Sem calibração · ${aviso && !/^sem calibra/i.test(aviso) ? aviso : 'sem leitura atual do encoder'}`
     : aviso ? `Posição indisponível: ${aviso}` : null;
@@ -246,11 +250,22 @@ export function MapaPivo({ angulo: anguloLido, aviso, girando, falha, sentido, d
           ? `Mapa do pivô, ângulo atual ${fmt(angulo, 1)} graus, ${lado ? `girando no sentido ${lado > 0 ? 'horário' : 'anti-horário'}` : emGiro ? 'girando' : 'parado'}`
           : semCalibracao ? 'Mapa do pivô, sem calibração do ângulo' : 'Mapa do pivô, ângulo não informado'}>
         <rect x="0" y="0" width="358" height="300" fill="#2B3523" />
-        <path d="M0 230 C60 210 90 270 150 300 L0 300 Z" fill="#1F2A1A" />
-        <path d="M250 0 C270 40 320 50 358 40 L358 0 Z" fill="#5A4E35" opacity="0.6" />
-        <circle cx="-10" cy="50" r="90" fill="#3A4730" />
-        <circle cx="365" cy="230" r="100" fill="#3E4B33" />
-        <circle cx="179" cy="150" r="118" fill="#5B5A3C" stroke="rgba(255,255,255,0.35)" strokeWidth="1.5" />
+        {sat ? (
+          <g data-satelite={sat.z}>
+            {sat.tiles.map((t) => <image key={t.url} href={t.url} x={t.x} y={t.y} width={t.size + 0.5} height={t.size + 0.5} preserveAspectRatio="none" />)}
+            {/* escurece em volta do pivô para o desenho e os rótulos lerem bem sobre a imagem */}
+            <path d="M0 0 H358 V300 H0 Z M179 32 A118 118 0 1 0 179.01 32 Z" fillRule="evenodd" fill="rgba(10,14,8,0.38)" />
+            <circle cx="179" cy="150" r="118" fill="rgba(10,14,8,0.08)" stroke="rgba(255,255,255,0.7)" strokeWidth="1.5" />
+          </g>
+        ) : (
+          <>
+            <path d="M0 230 C60 210 90 270 150 300 L0 300 Z" fill="#1F2A1A" />
+            <path d="M250 0 C270 40 320 50 358 40 L358 0 Z" fill="#5A4E35" opacity="0.6" />
+            <circle cx="-10" cy="50" r="90" fill="#3A4730" />
+            <circle cx="365" cy="230" r="100" fill="#3E4B33" />
+            <circle cx="179" cy="150" r="118" fill="#5B5A3C" stroke="rgba(255,255,255,0.35)" strokeWidth="1.5" />
+          </>
+        )}
         <path d={(girando || falha) && angulo != null ? setor : 'M0 0'} fill={falha ? 'rgba(229,88,79,0.45)' : 'rgba(114,191,74,0.5)'} />
         {faixas.map((f) => <path key={f.id} d={arco(179, 150, 125, f.liga, ((f.desliga - f.liga) % 360 + 360) % 360)} fill="none" stroke="#70C04B" strokeWidth="3" strokeLinecap="round" />)}
         {/* Sem posição (sem encoder, sem leitura, sem calibração): o braço fica no norte, TRACEJADO e
@@ -267,6 +282,11 @@ export function MapaPivo({ angulo: anguloLido, aviso, girando, falha, sentido, d
       <div style={{ position: 'absolute', top: 12, left: 12, height: 30, padding: '0 12px', borderRadius: 15, background: 'rgba(14,14,34,0.75)', color: '#FFFFFF', display: 'flex', alignItems: 'center', fontSize: 13, fontWeight: 700 }}>
         {angulo != null ? `${fmt(angulo, 1)}°` : '—°'} · {direcao}
       </div>
+      {sat && (
+        <span style={{ position: 'absolute', right: 8, top: 8, fontSize: 9, color: 'rgba(255,255,255,0.8)', textShadow: '0 1px 2px rgba(0,0,0,0.8)' }}>
+          {ATRIBUICAO_SATELITE}
+        </span>
+      )}
       {avisoTxt && (
         <div role="status" style={{ position: 'absolute', left: 12, right: 12, bottom: 12, padding: '8px 12px', borderRadius: 10, background: 'rgba(14,14,34,0.75)', color: '#FFFFFF', fontSize: 12, fontWeight: 600 }}>
           {avisoTxt}
@@ -897,7 +917,7 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
           <style>{'@keyframes nxPulso{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.25;transform:scale(.7)}}@media (prefers-reduced-motion:reduce){[style*="nxPulso"]{animation:none!important}}'}</style>
           <div style={{ display: 'grid', gridTemplateColumns: estreito ? 'minmax(0, 1fr)' : 'repeat(2, minmax(0, 1fr))', gap: 16, alignItems: 'start' }}>
             <div style={col(12)}>
-              <MapaPivo angulo={angulo} aviso={avisoPosicao} semCalibracao={semCalibracao} bruto={brutoAtual} girando={girando && !irrigandoParado && !desligando} falha={falha} sentido={sentido} direcao={DIRECAO_LABEL[direcaoAtual]} faixas={ultima.canhao ? ultima.faixasCanhao : []} />
+              <MapaPivo angulo={angulo} aviso={avisoPosicao} semCalibracao={semCalibracao} bruto={brutoAtual} girando={girando && !irrigandoParado && !desligando} falha={falha} sentido={sentido} direcao={DIRECAO_LABEL[direcaoAtual]} faixas={ultima.canhao ? ultima.faixasCanhao : []} geo={semCalibracao ? null : pos?.calibracao?.geo ?? null} />
               <div style={{ ...s.card, padding: '12px 16px', ...col(4) }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ ...s.stDot(tone), ...(desligando ? { animation: 'nxPulso 1s ease-in-out infinite' } : {}) }} />
