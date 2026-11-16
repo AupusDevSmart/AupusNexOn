@@ -38,12 +38,17 @@ export function TipoFormModal({ tipo, onClose }: Props) {
   const [tab, setTab] = useState<'form' | 'json'>('form');
   const [jsonDraft, setJsonDraft] = useState('');
   const [jsonError, setJsonError] = useState<string | null>(null);
+  // Intervalo de leitura Modbus deste tipo (s), em pontos.leitura_s — o gerador de firmware le
+  // cada equipamento do tipo nesse ritmo (iot-firmware-agenda.js). Vazio = rodizio padrao.
+  const [leituraS, setLeituraS] = useState('');
 
   useEffect(() => {
     if (tipo) {
       setCodigo(tipo.codigo);
       setNome(tipo.nome);
       setForm(pontosToForm(tipo.pontos));
+      const l = Number((tipo.pontos as Record<string, unknown> | undefined)?.leitura_s);
+      setLeituraS(Number.isFinite(l) && l > 0 ? String(l) : '');
     }
   }, [tipo]);
 
@@ -88,9 +93,14 @@ export function TipoFormModal({ tipo, onClose }: Props) {
     return formToPontos(form);
   };
 
+  const leituraN = leituraS.trim() === '' ? null : Number(leituraS);
+  const leituraInvalida = leituraN !== null && !(Number.isInteger(leituraN) && leituraN >= 1 && leituraN <= 3600);
+
   const handleSubmit = async () => {
-    const pontos = buildPontos();
-    if (!pontos) return;
+    const built = buildPontos();
+    if (!built) return;
+    const { leitura_s: _antigo, ...semLeitura } = built;
+    const pontos = leituraN !== null ? { ...semLeitura, leitura_s: leituraN } : semLeitura;
     try {
       if (tipo) {
         await update.mutateAsync({ id: tipo.id, payload: { codigo, nome, pontos } });
@@ -107,7 +117,7 @@ export function TipoFormModal({ tipo, onClose }: Props) {
 
   const loading = create.isPending || update.isPending;
   const hasError = tab === 'json' ? !!jsonError : false;
-  const canSubmit = !!codigo && !!nome && !hasError;
+  const canSubmit = !!codigo && !!nome && !hasError && !leituraInvalida;
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -117,7 +127,7 @@ export function TipoFormModal({ tipo, onClose }: Props) {
         </DialogHeader>
 
         <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="space-y-1">
               <Label htmlFor="codigo">
                 Codigo <span className="text-destructive">*</span>
@@ -143,6 +153,22 @@ export function TipoFormModal({ tipo, onClose }: Props) {
                 onChange={(e) => setNome(e.target.value)}
                 placeholder="Inversor Solar"
               />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="leitura_s">Intervalo de leitura (s)</Label>
+              <Input
+                id="leitura_s"
+                inputMode="numeric"
+                value={leituraS}
+                onChange={(e) => setLeituraS(e.target.value.replace(/[^0-9]/g, ''))}
+                placeholder="Padrão"
+                aria-invalid={leituraInvalida}
+              />
+              <p className={`text-xs ${leituraInvalida ? 'text-destructive' : 'text-muted-foreground'}`}>
+                {leituraInvalida
+                  ? 'De 1 a 3600 segundos.'
+                  : 'De quanto em quanto tempo a TON lê cada equipamento deste tipo. Vazio = rodízio padrão (4 s × nº de equipamentos). Vale ao gerar e gravar o firmware.'}
+              </p>
             </div>
           </div>
 

@@ -1222,6 +1222,14 @@ static bool _modbus_rtu_tcp_read(const char* ip, uint16_t port, uint32_t timeout
         });
 
         // Round-robin sample (1 inversor por chamada)
+        const _agendaTcp = (typeof AgendaLeituraGen !== 'undefined') ? AgendaLeituraGen.plano(invs, 4000) : null;
+        if (_agendaTcp) {
+            cpp += AgendaLeituraGen.gerar({ prefixo: '_agt', devs: invs, cicloMs: 4000, fnSample: 'inverter_tcp_sample_one', fnPublish: 'inverter_tcp_publish_all',
+                assinaturaPublish: 'tcp_publish_fn publish', sample: (i) => `_sample_tcp_inv_${i}()`, publish: (i) => `_publish_tcp_inv_${i}(publish)`,
+                nome: (i) => invs[i].name || `inv${i}` });
+            cpp += `
+`;
+        } else {
         cpp += `
 // =============================================================================
 // Despacho publico: round-robin sample + broadcast publish
@@ -1246,7 +1254,9 @@ void inverter_tcp_publish_all(tcp_publish_fn publish) {
             cpp += `    _publish_tcp_inv_${idx}(publish);\n`;
         });
         cpp += `}
-
+`;
+        }
+        cpp += `
 // Comandos (bo_map) de devices TCP diretos — write FC05/FC06 via MBAP.
 // Espelha modbus_exec_command (RS485): match por nome do device + cmd_id;
 // steps[] = multi-write sequencial (SBO). So devices MBAP (datalogger/direto);
@@ -4807,6 +4817,13 @@ bool pivo_encoder_amostrar() {
             }
         }
 
+        // Agenda por tipo (catalogo leitura_s) ou, sem nenhum intervalo, o rodizio de sempre (byte-identico)
+        const _agenda = (typeof AgendaLeituraGen !== 'undefined') ? AgendaLeituraGen.plano(devs, 4000) : null;
+        if (_agenda) {
+            cpp += AgendaLeituraGen.gerar({ prefixo: '_ag', devs, cicloMs: 4000, fnSample: 'modbus_sample_one', fnPublish: 'modbus_publish_all',
+                assinaturaPublish: 'modbus_publish_fn publish', sample: (i) => `_sample_dev_${i}()`, publish: (i) => `_publish_dev_${i}(publish)`,
+                nome: (i) => devs[i].name || `dev${i}` });
+        } else {
         // Round-robin sample: 1 device por chamada
         cpp += `
 static int _rr_idx = 0;
@@ -4828,7 +4845,9 @@ void modbus_publish_all(modbus_publish_fn publish) {
         devs.forEach((_, idx) => {
             cpp += `    _publish_dev_${idx}(publish);\n`;
         });
-        cpp += `}
+        cpp += `}`;
+        }
+        cpp += `
 
 // Legado: sample todos + publica (sem media)
 void modbus_read_all(modbus_publish_fn publish) {
@@ -7878,9 +7897,12 @@ ${spec.has_relays ? '        relays_health_tick();   // C3 anti-travamento: conf
                 : (spec.lora_role === 'satellite'
                     ? `modbus_publish_all([](const char* sub, const char* payload){ lora_publish_data(sub, payload); });`
                     : `modbus_publish_all([](const char* sub, const char* payload){ Serial.printf("[MB] %s %s\\n", sub, payload); });`);
+            // Agenda por tipo (iot-firmware-agenda.js): o loop chama a cada 1 s e a agenda escolhe quem le.
+            const _slotRs = (typeof AgendaLeituraGen !== 'undefined' && AgendaLeituraGen.plano(spec.rs485_devices.filter(d => d.catalog_device), 4000))
+                ? `${AgendaLeituraGen.SLOT_MS}UL` : 'METER_CYCLE_MS';
             cpp += `
     // Modbus: sample 1 device por ciclo (round-robin) a cada METER_CYCLE_MS
-    if (now - last_sample >= METER_CYCLE_MS) {
+    if (now - last_sample >= ${_slotRs}) {
         last_sample = now;
         bb_stage(BB_MODBUS_RTU);
         modbus_sample_one();
@@ -7950,10 +7972,12 @@ ${spec.has_relays ? '        relays_health_tick();   // C3 anti-travamento: conf
             const tcpPubCall = spec.wifi
                 ? `inverter_tcp_publish_all(mqtt_publish_sub);`
                 : `inverter_tcp_publish_all([](const char* sub, const char* payload){ Serial.printf("[TCP] %s %s\\n", sub, payload); });`;
+            const _slotTcp = (typeof AgendaLeituraGen !== 'undefined' && AgendaLeituraGen.plano((spec.tcp_devices || []).filter(d => TCP_READABLE_TYPES.includes(d.type) && d.gateway), 4000))
+                ? `${AgendaLeituraGen.SLOT_MS}UL` : 'METER_CYCLE_MS';
             cpp += `
     // Modbus TCP (Datalogger): sample round-robin 1 inversor por ciclo a cada METER_CYCLE_MS,
     // publica medias/last/delta a cada PUBLISH_INTERVAL_MS (igual padrao RS485).
-    if (now - last_sample_tcp >= METER_CYCLE_MS) {
+    if (now - last_sample_tcp >= ${_slotTcp}) {
         last_sample_tcp = now;
         bb_stage(BB_MODBUS_TCP);
         inverter_tcp_sample_one();
