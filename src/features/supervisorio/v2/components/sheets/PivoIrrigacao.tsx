@@ -50,6 +50,9 @@ export interface Programacao {
 }
 export type NovaProgramacao = Omit<Programacao, 'id'>;
 
+/** Trechos sem irrigar que a TON aceita por ordem (MAX_FAIXAS do firmware, cabe no pacote LoRa). */
+export const MAX_TRECHOS = 4;
+
 export const CONFIG_PADRAO: ConfigIrrigacao = { direcao: 'Reverso', percentual: 60, semAgua: false, canhao: false, faixasCanhao: [] };
 
 // ------------------------------------------------------------- programação
@@ -252,7 +255,7 @@ function DialCanhao({ atual, faixas, onChange }: { atual: number; faixas: FaixaC
     const ini = inicio.current;
     if (!arraste.current && ini && Math.hypot(p.x - ini.x, p.y - ini.y) < 10 && p.d <= r + 12) {
       const nova = faixaEm(faixas, p.g);
-      if (nova) onChange([...faixas, nova]);
+      if (nova && faixas.length < MAX_TRECHOS) onChange([...faixas, nova]);
     }
     arraste.current = null; inicio.current = null;
   };
@@ -552,7 +555,7 @@ export function IrrigacaoAvancada({
   const dica = (texto: string, cor: string = NX.mudo) => <span style={{ fontSize: 12, color: cor }}>{texto}</span>;
 
   const nZonas = zonas.length;
-  const podeAdd = nZonas < 5 && !!faixaNoVao(zonas, atual);
+  const podeAdd = nZonas < MAX_TRECHOS && !!faixaNoVao(zonas, atual);
   const tempoInput: CSSProperties = { height: 38, borderRadius: 10, border: `1px solid ${NX.borda}`, padding: '0 10px', fontSize: 15, fontWeight: 700, color: NX.texto, background: NX.card };
 
   // Tamanho fixo: cabeçalho e rodapé parados, o meio rola. Trocar de aba não muda o diálogo.
@@ -710,7 +713,7 @@ export function IrrigacaoAvancada({
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
                   <DialCanhao atual={atual} faixas={zonas} onChange={setZonas} />
                   <span style={{ fontSize: 13, color: NX.mudo }}>Verde = canhão ligado · toque no círculo para marcar onde não irrigar</span>
-                  {dica('O NexON ainda não desliga o canhão sozinho nesses trechos.', NX.warn)}
+                  {dica(`A TON desliga o canhão nesses trechos e religa ao sair deles (até ${MAX_TRECHOS} trechos).`)}
                   {tudoMarcado && dica('A volta toda está marcada: o canhão vai desligado.', NX.warn)}
                 </div>
                 {zonas.map((f, i) => (
@@ -760,7 +763,7 @@ export function IrrigacaoAvancada({
           {ligado && !editado && !semRegistro && dica('Pivô ligado com esta configuração. Edite qualquer opção para reiniciar com as novas.', NX.mudo)}
           {ligado && !editado && semRegistro && dica('Pivô ligado fora do NexON (painel): não há irrigação registrada. Confira as opções — ao salvar, o pivô desliga e liga de novo com elas.', NX.warn)}
           {ligado && editado && (semReinicio?.(montar())
-            ? dica('Só o percentímetro mudou: ao salvar, troca sem desligar o pivô.')
+            ? dica('Só o percentímetro e/ou o canhão mudaram: ao salvar, troca sem desligar o pivô.')
             : dica('Ao salvar, o pivô desliga e liga de novo com as novas opções.', NX.warn))}
           {paradoIndisponivel && dica('Este pivô não tem como ligar parado (sem percentímetro na TON e sem bomba configurada): escolha Direita ou Esquerda.', NX.warn)}
           {(!ligado || editado || semRegistro) && botaoEnviar(rotuloEnviar, enviar, enviando || enviarOff || paradoIndisponivel)}

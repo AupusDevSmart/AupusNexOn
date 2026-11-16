@@ -26,7 +26,7 @@ import {
 import {
   IrrigacaoAvancada, CONFIG_PADRAO, arco, resumoConfig, previsao, textoProgramacao, ehParado,
   type ConfigIrrigacao, type EnvioIrrigacao, type FaixaCanhao, type Parada, type Programacao, type NovaProgramacao, type AbaIrrigacao,
-  DIRECAO_LABEL, fmtPct, paradaValida,
+  DIRECAO_LABEL, fmtPct, paradaValida, complementoFaixas, textoZonas,
 } from './PivoIrrigacao';
 import type { AgendaItem, ItemPlanilha } from './pivoAgendaPlanilha';
 import { rascunhoDe, mudancas, mesmaParada } from './PivoRapido';
@@ -807,21 +807,40 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   // da ficha decidem pelo valor.
   const mantemParada = (e: EnvioIrrigacao) => e.manterParada ?? mesmaParada(e.parada, paradaAtual);
   const baseRapida = rascunhoDe(cfgBase, paradaAtual);
-  // Só o percentímetro mudou e a TON aceita trocar girando: não precisa reiniciar.
-  const soPercentual = (e: EnvioIrrigacao) => {
+  // Só o percentímetro e/ou o canhão (com os trechos sem irrigar) mudaram: a TON troca girando, sem
+  // reiniciar (16/11 — antes trecho novo caía no reinício, que a TON recusa).
+  const faixasSemId = (fs?: { liga: number; desliga: number }[]) => JSON.stringify((fs ?? []).map((f) => [f.liga, f.desliga]));
+  const ajusteAoVivo = (e: EnvioIrrigacao): null | { perc: boolean; canhao: boolean } => {
     // Irrigação em curso PARADA (0 % com água, ou só a bomba): voltar a girar é reinício, não troca de
     // percentímetro — o pivô nunca recebeu giro, então o /percentimetro não teria o que mudar.
-    if (irrigandoParado || (cfgAtual && ehParado(cfgAtual))) return false;
-    if (!girando || !cfgAtual || cfgAtual.semAgua || !estado?.pivo.comandos.percentimetro || e.modo !== 'simples' || e.manterParada === false) return false;
+    if (irrigandoParado || (cfgAtual && ehParado(cfgAtual))) return null;
+    if (!girando || !cfgAtual || cfgAtual.semAgua || e.modo !== 'simples' || e.manterParada === false) return null;
     const m = mudancas(baseRapida, rascunhoDe(e.config, e.parada));
-    return m.length === 1 && m[0].campo === 'percentual'
-      && e.config.canhao === cfgAtual.canhao && JSON.stringify(e.config.faixasCanhao ?? []) === JSON.stringify(cfgAtual.faixasCanhao ?? []);
+    const perc = m.length === 1 && m[0].campo === 'percentual';
+    if (m.length && !perc) return null;
+    if (perc && !estado?.pivo.comandos.percentimetro) return null;
+    const canhao = e.config.canhao !== cfgAtual.canhao || (e.config.canhao && faixasSemId(e.config.faixasCanhao) !== faixasSemId(cfgAtual.faixasCanhao));
+    if (canhao && !estado?.pivo.canhao?.comando) return null;
+    return perc || canhao ? { perc, canhao } : null;
+  };
+  // Canhão/trechos com o pivô girando: o /canhao leva os trechos novos (a TON troca sem desligar).
+  const ajustarCanhaoAoVivo = async (e: EnvioIrrigacao) => {
+    setCanhaoEnv(true);
+    try {
+      await api.post(`/pivos/${id}/canhao`, { ligar: e.config.canhao, ...(e.config.canhao ? { faixasCanhao: (e.config.faixasCanhao ?? []).map((f) => ({ liga: f.liga, desliga: f.desliga })) } : {}) });
+      toast.success(e.config.canhao ? 'Canhão atualizado' : 'Canhão desligado', { description: e.config.canhao ? 'Trechos sem irrigar valem a partir de agora, sem desligar o pivô.' : undefined });
+    } catch (err) {
+      toast.error('Canhão não mudou', { description: erroMsg(err) });
+    } finally {
+      setCanhaoEnv(false);
+      await carregar();
+    }
   };
   /** Pedido de mudança com o pivô ligado (diálogo, painel ou atalhos) → alerta certo. */
-  const pedirModificar = (e: EnvioIrrigacao) => { setEnvio(e); setConfirmKind(soPercentual(e) ? 'live' : 'restart'); setConfirmOpen(true); };
+  const pedirModificar = (e: EnvioIrrigacao) => { setEnvio(e); setConfirmKind(ajusteAoVivo(e) ? 'live' : 'restart'); setConfirmOpen(true); };
 
   const confirmQ = confirmKind === 'stop' ? (desligaAgenda ? 'Cancelar o início agendado?' : `Desligar ${titulo}?`)
-    : confirmKind === 'live' && envio ? (ehParado(envio.config) ? `Deixar ${titulo} parado?` : `Mudar o percentímetro para ${fmtPct(envio.config.percentual)}%?`)
+    : confirmKind === 'live' && envio ? (ehParado(envio.config) ? `Deixar ${titulo} parado?` : ajusteAoVivo(envio)?.perc ? `Mudar o percentímetro para ${fmtPct(envio.config.percentual)}%?` : envio.config.canhao ? 'Mudar o canhão final?' : 'Desligar o canhão final?')
       : confirmKind === 'restart' ? `Reiniciar ${titulo} com as novas opções?`
         : envio?.inicio ? `Agendar o início de ${titulo}?` : envio && ehParado(envio.config) ? `Ligar ${titulo} parado?` : `Ligar ${titulo}?`;
   const paradaTxt = (p: Parada) => (p.tipo === 'porAngulo' ? `para em ${p.angulo}°` : p.tipo === 'porGraus' ? `anda ${p.graus}°` : p.tipo === 'porVoltas' ? `${p.voltas} volta${p.voltas > 1 ? 's' : ''}`
@@ -830,8 +849,10 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   const partida = !b ? '' : vaiParado ? ' A bomba liga e o pivô fica parado, irrigando no lugar.' : ' A bomba liga e o pivô gira após a pressurização.';
   const confirmNote = confirmKind === 'stop'
     ? desligaAgenda ? `${agendadaTxt}. O pivô não vai ligar sozinho.` : `O pivô para na posição atual (${angTxt})${b ? ' e a bomba desliga' : ''}.`
+    : confirmKind === 'live' && envio && !ajusteAoVivo(envio)?.perc && ajusteAoVivo(envio)?.canhao
+      ? `${envio.config.canhao ? `Canhão ligado · ${textoZonas(complementoFaixas(envio.config.faixasCanhao ?? []))}` : 'O canhão desliga'}. Vale na hora, sem desligar o pivô.`
     : confirmKind === 'live' && envio
-      ? `${ehParado(envio.config) ? 'O pivô para de girar e segue irrigando no lugar' : ehParado(cfgGiro) ? 'O pivô volta a girar' : 'Só o percentímetro muda'} (${fmtPct(cfgGiro.percentual)}% → ${fmtPct(envio.config.percentual)}%). Vale a partir do próximo ciclo da TON, sem desligar o pivô.`
+      ? `${ehParado(envio.config) ? 'O pivô para de girar e segue irrigando no lugar' : ehParado(cfgGiro) ? 'O pivô volta a girar' : 'Só o percentímetro muda'} (${fmtPct(cfgGiro.percentual)}% → ${fmtPct(envio.config.percentual)}%)${ajusteAoVivo(envio)?.canhao ? `; canhão: ${envio.config.canhao ? textoZonas(complementoFaixas(envio.config.faixasCanhao ?? [])) : 'desliga'}` : ''}. Vale a partir do próximo ciclo da TON, sem desligar o pivô.`
       : confirmKind === 'restart' && envio
         ? `O pivô desliga e liga de novo com: ${resumoConfig(envio.config)} · ${paradaAutomatica && mantemParada(envio) ? 'parada em curso mantida' : paradaTxt(envio.parada)}.${b && !envio.config.semAgua ? (vaiParado ? ' A bomba religa e o pivô fica parado, irrigando no lugar.' : ' A bomba religa e o pivô volta a girar após a pressurização.') : ''}`
         : envio
@@ -842,7 +863,12 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
     else if (!envio) setConfirmOpen(false);
     else if (confirmKind === 'live') {
       if (ocupado.current) { aguarde(); return; }   // não fecha nem descarta: a mudança segue na tela
-      setModal(null); setConfirmOpen(false); setEnvio(null); void ajustarPerc(envio.config.percentual);
+      const a = ajusteAoVivo(envio);
+      setModal(null); setConfirmOpen(false); setEnvio(null);
+      void (async () => {
+        if (a?.perc || !a) await ajustarPerc(envio.config.percentual);
+        if (a?.canhao) await ajustarCanhaoAoVivo(envio);
+      })();
     }
     else if (confirmKind === 'restart') void reiniciar(envio);
     else void acionar(acaoDe(envio.config), envio);
@@ -1026,7 +1052,7 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
             programacoes={prog.progs} onRemoverProgramacao={prog.remover} onSalvarProgramacao={prog.salvar}
             agenda={prog.agenda} onImportarAgenda={prog.importarAgenda} onLimparAgenda={prog.limparAgenda}
             ligado={on} emCurso={on ? { config: cfgBase, parada: irrSrv?.atual?.parada ?? null } : null}
-            semRegistro={semRegistro} notaParada={notaParada} enviarOff={on && executando} semReinicio={soPercentual} podeParado={podeParado}
+            semRegistro={semRegistro} notaParada={notaParada} enviarOff={on && executando} semReinicio={(e) => !!ajusteAoVivo(e)} podeParado={podeParado}
             onDesligar={pedirDesligar} desligarOff={busy || desligarOff}
             onEnviar={(e) => { if (on) pedirModificar(e); else { setEnvio(e); setConfirmKind('start'); setConfirmOpen(true); } }}
             onClose={() => setModal(null)}

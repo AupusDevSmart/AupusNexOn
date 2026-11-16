@@ -69,7 +69,9 @@ bool validarPlano(Plano& p, char* motivo, size_t msz) {
     } else if (p.parada == POR_DURACAO) {
         if (p.duracao_s == 0 || p.duracao_s > 7UL * 86400UL) { copia(motivo, "duracao", msz); return false; }
     } else { copia(motivo, "parada", msz); return false; }
-    if (p.tem_faixa && (p.desliga_em > 359 || p.liga_em > 359)) { copia(motivo, "faixa", msz); return false; }
+    if (p.n_faixas > MAX_FAIXAS) { copia(motivo, "faixa", msz); return false; }
+    for (int i = 0; i < p.n_faixas; i++)
+        if (p.faixa_de[i] > 359 || p.faixa_ate[i] > 359) { copia(motivo, "faixa", msz); return false; }
     if (!p.com_agua) { p.pm = 1000; p.canhao = false; }   // sem agua: 100 % e canhao LOW (spec 6.3)
     p.id[ID_LEN - 1] = 0;
     if (motivo && msz) motivo[0] = 0;
@@ -164,15 +166,18 @@ bool Maquina::ajustarPercentimetro(int16_t pm, char* motivo, size_t msz) {
     return true;
 }
 
-bool Maquina::ajustarCanhao(bool ligado, bool tem_faixa, uint16_t desliga_em, uint16_t liga_em, uint32_t now, char* motivo, size_t msz) {
+bool Maquina::ajustarCanhao(bool ligado, int n_faixas, const uint16_t* de, const uint16_t* ate, uint32_t now, char* motivo, size_t msz) {
     if (_st != GIRANDO) { copia(motivo, "nao_girando", msz); return false; }
     if (!_plano.com_agua) { copia(motivo, "sem_agua", msz); return false; }
     if (!_cfg.tem_canhao) { copia(motivo, "sem_canhao", msz); return false; }
-    if (tem_faixa && (desliga_em > 359 || liga_em > 359)) { copia(motivo, "faixa", msz); return false; }
+    if (n_faixas > MAX_FAIXAS) { copia(motivo, "faixa", msz); return false; }
+    for (int i = 0; i < n_faixas; i++)
+        if (de[i] > 359 || ate[i] > 359) { copia(motivo, "faixa", msz); return false; }
     _plano.canhao = ligado;
-    _plano.tem_faixa = tem_faixa;
-    _plano.desliga_em = desliga_em;
-    _plano.liga_em = liga_em;
+    if (n_faixas >= 0) {                         // sem "f" no comando: os trechos seguem os mesmos
+        _plano.n_faixas = (uint8_t)n_faixas;
+        for (int i = 0; i < n_faixas; i++) { _plano.faixa_de[i] = de[i]; _plano.faixa_ate[i] = ate[i]; }
+    }
     _avaliarCanhao(now);                         // idempotente: pedir o estado atual = sucesso
     if (motivo && msz) motivo[0] = 0;
     return true;
@@ -199,13 +204,15 @@ void Maquina::_entrarGirando(uint32_t now) {
     _avaliarCanhao(now);                         // canhao na hora (sem esperar BI6)
 }
 
-// Dentro de [desliga_em, liga_em] o canhao fica OFF; faixa que passa pelo zero (ex.: 340..20).
+// Dentro de qualquer trecho [de, ate] o canhao fica OFF; trecho que passa pelo zero (ex.: 340..20).
 bool Maquina::_canhaoNaFaixaOff() const {
-    if (!_plano.tem_faixa || !_tem_pos) return false;
+    if (!_plano.temFaixa() || !_tem_pos) return false;
     int a = (int)(_ang + 0.5f) % 360;
-    int d = _plano.desliga_em, l = _plano.liga_em;
-    if (d <= l) return a >= d && a <= l;
-    return a >= d || a <= l;
+    for (int i = 0; i < _plano.n_faixas; i++) {
+        int d = _plano.faixa_de[i], l = _plano.faixa_ate[i];
+        if (d <= l ? (a >= d && a <= l) : (a >= d || a <= l)) return true;
+    }
+    return false;
 }
 
 void Maquina::_avaliarCanhao(uint32_t now) {
@@ -245,7 +252,7 @@ void Maquina::tick(uint32_t now, const Entradas& in) {
     if (_plano.parada == POR_DURACAO && (now - _t_ligar) >= _plano.duracao_s * 1000UL) { desligar(M_CONCLUIDA, now); return; }
 
     // Encoder sem leitura: mantem a operacao e sinaliza (spec 6.4); o operador decide.
-    if (_plano.parada == POR_GRAUS || _plano.tem_faixa) {
+    if (_plano.parada == POR_GRAUS || _plano.temFaixa()) {
         uint32_t ult = (_tem_pos && (int32_t)(_t_pos - _t_ligar) > 0) ? _t_pos : _t_ligar;
         if ((now - ult) >= _cfg.sem_posicao_ms) _alertas |= A_ERRO_POSICAO;
     }

@@ -70,15 +70,20 @@ struct Config {
     uint32_t janela_giro_ms     = 600000;   // "angulo mudando" dentro desta janela
 };
 
+static const int MAX_FAIXAS = 4;   // trechos sem canhao por ordem
+
 struct Plano {
     char     id[ID_LEN] = {0};    // id da ordem (8 caracteres)
     char     dir        = 'D';    // 'D' direita | 'E' esquerda
     bool     com_agua   = true;
     int16_t  pm         = 1000;   // percentimetro em permil (0..1000). Sem agua => 1000
     bool     canhao     = false;
-    bool     tem_faixa  = false;  // faixa do canhao: dentro de [desliga_em, liga_em] o canhao fica OFF
-    uint16_t desliga_em = 0;      // 0..359 (bruto do encoder)
-    uint16_t liga_em    = 0;      // 0..359
+    // Trechos sem canhao: dentro de [faixa_de[i], faixa_ate[i]] (graus do encoder 0..359, no sentido
+    // crescente; passa pelo 0 quando de > ate) o canhao fica OFF. Ate' MAX_FAIXAS (cabe no LoRa).
+    uint8_t  n_faixas   = 0;
+    uint16_t faixa_de[MAX_FAIXAS]  = {0};
+    uint16_t faixa_ate[MAX_FAIXAS] = {0};
+    bool temFaixa() const { return n_faixas > 0; }
     Parada   parada     = POR_GRAUS;
     uint32_t graus      = 360;    // POR_GRAUS (>0)
     uint32_t duracao_s  = 0;      // POR_DURACAO (>0)
@@ -125,7 +130,8 @@ public:
     bool ligar(const Plano& p, uint32_t now_ms, char* motivo, size_t msz);
     void desligar(uint8_t motivo, uint32_t now_ms);     // SEMPRE desliga (tudo LOW, spec 6.6)
     bool ajustarPercentimetro(int16_t pm, char* motivo, size_t msz);
-    bool ajustarCanhao(bool ligado, bool tem_faixa, uint16_t desliga_em, uint16_t liga_em, uint32_t now_ms, char* motivo, size_t msz);
+    // n_faixas < 0 = mantem os trechos atuais; 0 = sem trechos; >0 = troca pelos de/ate dados.
+    bool ajustarCanhao(bool ligado, int n_faixas, const uint16_t* de, const uint16_t* ate, uint32_t now_ms, char* motivo, size_t msz);
     void marcarMotivo(uint8_t m) { _motivo = m; }       // glue: reinicio (boot)
     void marcarAlerta(uint8_t a) { _alertas |= a; }     // glue: reinicios repetidos (watchdog)
     uint32_t tempoGirandoMs(uint32_t now) const { return _st == PARADO ? 0 : now - _t_ligar; }

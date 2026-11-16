@@ -184,26 +184,58 @@ int main() {
     // 13) Canhao por faixa: [100, 200] OFF; e faixa pelo zero [340, 20]
     {
         Painel b; b.ang = 80; b.gps100 = 360.0f / 600.0f; Plano p = plano('D', true, 1000, 180);
-        p.canhao = true; p.tem_faixa = true; p.desliga_em = 100; p.liga_em = 200;
+        p.canhao = true; p.n_faixas = 1; p.faixa_de[0] = 100; p.faixa_ate[0] = 200;
         b.ligar(p); b.ate(GIRANDO, 10000);
         CHECK(b.m.saidas().canhao, "13 em 80 graus: canhao ligado");
         while (b.ang < 120 && b.m.estado() == GIRANDO) b.passo();
         b.rodar(6000); CHECK(!b.m.saidas().canhao, "13 em ~120 graus: canhao OFF (dentro da faixa)");
         while (b.ang < 215 && b.m.estado() == GIRANDO) b.passo();
         b.rodar(6000); CHECK(b.m.saidas().canhao, "13 em ~215 graus: canhao ligado de novo");
-        Plano q = plano(); q.tem_faixa = true; q.desliga_em = 340; q.liga_em = 20; q.canhao = true;
+        Plano q = plano(); q.n_faixas = 1; q.faixa_de[0] = 340; q.faixa_ate[0] = 20; q.canhao = true;
         Painel c; c.ang = 350; c.ligar(q); c.ate(GIRANDO, 10000);
         CHECK(!c.m.saidas().canhao, "13 faixa pelo zero: em 350 canhao OFF");
+    }
+    // 13b) Varios trechos: [100, 140] e [300, 20] OFF; fora deles ligado
+    {
+        Painel b; b.ang = 80; b.gps100 = 360.0f / 600.0f; Plano p = plano('D', true, 1000, 330);
+        p.canhao = true; p.n_faixas = 2; p.faixa_de[0] = 100; p.faixa_ate[0] = 140; p.faixa_de[1] = 300; p.faixa_ate[1] = 20;
+        b.ligar(p); b.ate(GIRANDO, 10000);
+        CHECK(b.m.saidas().canhao, "13b em 80: ligado");
+        while (b.ang < 120 && b.m.estado() == GIRANDO) b.passo();
+        b.rodar(6000); CHECK(!b.m.saidas().canhao, "13b em ~120: OFF (1o trecho)");
+        while (b.ang < 200 && b.m.estado() == GIRANDO) b.passo();
+        b.rodar(6000); CHECK(b.m.saidas().canhao, "13b em ~200: ligado entre os trechos");
+        while (b.ang < 310 && b.m.estado() == GIRANDO) b.passo();
+        b.rodar(6000); CHECK(!b.m.saidas().canhao, "13b em ~310: OFF (2o trecho, passa pelo 0)");
+        Plano r = plano(); r.n_faixas = MAX_FAIXAS + 1; char mot[40];
+        Painel c; CHECK(!c.m.ligar(r, c.t, mot, sizeof mot), "13b mais trechos que MAX_FAIXAS: recusa");
+        Plano r2 = plano(); r2.n_faixas = 1; r2.faixa_de[0] = 360; r2.faixa_ate[0] = 10;
+        CHECK(!c.m.ligar(r2, c.t, mot, sizeof mot), "13b trecho fora de 0..359: recusa");
+    }
+    // 13c) Ajuste do canhao em operacao: sem trechos = mantem; com trechos = troca; "f" sozinho = limpa
+    {
+        Painel b; b.ang = 120; Plano p = plano('D', true, 1000, 90);
+        p.canhao = true; p.n_faixas = 1; p.faixa_de[0] = 100; p.faixa_ate[0] = 200;
+        b.ligar(p); b.ate(GIRANDO, 10000); b.rodar(6000); char mot[32];
+        CHECK(!b.m.saidas().canhao, "13c em 120 dentro do trecho: OFF");
+        CHECK(b.m.ajustarCanhao(true, -1, nullptr, nullptr, b.t, mot, sizeof mot) && !b.m.saidas().canhao, "13c ligar sem trechos mantem o trecho (segue OFF)");
+        uint16_t de[2] = {300, 10}, ate[2] = {310, 20};
+        CHECK(b.m.ajustarCanhao(true, 2, de, ate, b.t, mot, sizeof mot) && b.m.saidas().canhao, "13c trechos novos: em 120 liga");
+        uint16_t de2[1] = {110}, ate2[1] = {130};
+        CHECK(b.m.ajustarCanhao(true, 1, de2, ate2, b.t, mot, sizeof mot) && !b.m.saidas().canhao, "13c trecho novo sobre 120: OFF");
+        CHECK(b.m.ajustarCanhao(true, 0, nullptr, nullptr, b.t, mot, sizeof mot) && b.m.saidas().canhao, "13c sem trechos (f sozinho): ligado");
+        uint16_t de3[1] = {400}, ate3[1] = {10};
+        CHECK(!b.m.ajustarCanhao(true, 1, de3, ate3, b.t, mot, sizeof mot) && !strcmp(mot, "faixa"), "13c trecho invalido: recusa");
     }
     // 14) Ajustes: percentimetro e canhao (on/off/faixa); idempotente
     {
         Painel b; b.ligar(plano('D', true, 600)); b.ate(GIRANDO, 10000); char mot[32];
         CHECK(b.m.ajustarPercentimetro(300, mot, sizeof mot) && b.m.saidas().perc_pm == 300, "14 percentimetro ajustado");
-        CHECK(b.m.ajustarCanhao(true, false, 0, 0, b.t, mot, sizeof mot) && b.m.saidas().canhao, "14 canhao ligado");
-        CHECK(b.m.ajustarCanhao(true, false, 0, 0, b.t, mot, sizeof mot), "14 ligar de novo = sucesso");
-        CHECK(b.m.ajustarCanhao(false, false, 0, 0, b.t, mot, sizeof mot) && !b.m.saidas().canhao, "14 canhao desligado");
+        CHECK(b.m.ajustarCanhao(true, -1, nullptr, nullptr, b.t, mot, sizeof mot) && b.m.saidas().canhao, "14 canhao ligado");
+        CHECK(b.m.ajustarCanhao(true, -1, nullptr, nullptr, b.t, mot, sizeof mot), "14 ligar de novo = sucesso");
+        CHECK(b.m.ajustarCanhao(false, -1, nullptr, nullptr, b.t, mot, sizeof mot) && !b.m.saidas().canhao, "14 canhao desligado");
         Painel s; s.ligar(plano('D', false)); s.ate(GIRANDO, 5000);
-        CHECK(!s.m.ajustarCanhao(true, false, 0, 0, s.t, mot, sizeof mot) && !strcmp(mot, "sem_agua"), "14 sem agua: canhao recusado");
+        CHECK(!s.m.ajustarCanhao(true, -1, nullptr, nullptr, s.t, mot, sizeof mot) && !strcmp(mot, "sem_agua"), "14 sem agua: canhao recusado");
     }
     // 15) Recusas
     {

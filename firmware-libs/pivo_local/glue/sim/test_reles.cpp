@@ -27,7 +27,8 @@ esp_reset_reason_t esp_reset_reason() { return ESP_RST_POWERON; }
 void esp_restart() { puts("esp_restart"); exit(1); }
 static void pub(const char*, const char*) {}
 static void ciclo(int n=1) { for (int i=0;i<n;i++) { g_millis += 50; pivo_tick(); pivo_loop(pub); } }
-static void cmd(const char* c) { char m[96]; int r = pivo_cmd(String(c), m, sizeof m); printf("%7.1fs CMD \"%s\" -> %s\n", (g_millis-100000)/1000.0, c, m); }
+static char g_resp[96];
+static void cmd(const char* c) { char* m = g_resp; int r = pivo_cmd(String(c), m, sizeof g_resp); (void)r; printf("%7.1fs CMD \"%s\" -> %s\n", (g_millis-100000)/1000.0, c, m); }
 static void rel(const char* q) { printf("   [%s] RELES: bomba=%d valv=%d DIR=%d ESQ=%d perc=%d canhao=%d\n", q, R[1],R[2],R[3],R[4],R[5],R[6]); }
 int main() {
   pivo_init(); pivo_so_no_poll(true); ciclo(5);
@@ -53,5 +54,23 @@ int main() {
   relay_set(3, true); relay_set(4, true); ciclo(2); rel("r3 on + r4 on");
   if (R[3] || R[4]) { puts("FALHOU: direita e esquerda juntas"); return 1; }
   puts("OK: parado, manual fica; direita+esquerda juntas caem");
+  // Trechos sem canhao (16/11): encoder em 130 (bruto = graus com "enc 360")
+  for (int k = 1; k <= 6; k++) relay_set(k, false);
+  cmd("pivo enc 360 0 0");
+  cmd("pivo ligar cccc3333 d 1 1000 1 g 90 f 1 2 3"); if (strcmp(g_resp, "pivo_faixa_invalida")) { puts("FALHOU: par incompleto aceito"); return 1; }
+  cmd("pivo ligar cccc3333 d 1 1000 1 g 90 f 1 2 3 4 5 6 7 8 9 10"); if (strcmp(g_resp, "pivo_faixa_invalida")) { puts("FALHOU: 5 trechos aceitos"); return 1; }
+  cmd("pivo ligar cccc3333 d 1 1000 1 g 90 f 350 10 120 140"); ciclo(200); rel("girando em 130, trecho 120-140");
+  if (!R[3] || R[6]) { puts("FALHOU: canhao ligado dentro do trecho"); return 1; }
+  cmd("pivo canhao 1"); ciclo(40); rel("canhao 1 sem f (mantem trechos)");
+  if (R[6]) { puts("FALHOU: 'pivo canhao 1' apagou os trechos"); return 1; }
+  cmd("pivo canhao 1 f 300 310"); ciclo(40); rel("trechos trocados p/ 300-310");
+  if (!R[6]) { puts("FALHOU: canhao nao ligou fora do trecho novo"); return 1; }
+  cmd("pivo canhao 1 f 125 135 300 310"); ciclo(40); rel("trecho 125-135 de novo");
+  if (R[6]) { puts("FALHOU: canhao ligado dentro do trecho novo"); return 1; }
+  cmd("pivo canhao 1 f"); ciclo(40); rel("f sozinho limpa");
+  if (!R[6]) { puts("FALHOU: f sozinho nao limpou"); return 1; }
+  cmd("pivo canhao 1 f 400 10"); if (strcmp(g_resp, "pivo_faixa_invalida")) { puts("FALHOU: trecho fora de 0..359 aceito"); return 1; }
+  cmd("pivo desligar"); ciclo(40);
+  puts("OK: trechos sem canhao (ligar e ajuste)");
   return 0;
 }

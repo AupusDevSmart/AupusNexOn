@@ -10,11 +10,11 @@
 //                                         0 = nao ligado; inv = 6 digitos 0/1 (1 = BI ativa em baixo)
 //   pivo tempos <espera_pressao> <confirma_giro> <confirma_canhao> <tol_pressao> <tol_tensao> <tol_lado> <sem_posicao> <janela_giro> <ciclo_perc>  (s)
 //   pivo enc <resolucao> <inv 0|1> <zero_graus>      resolucao 0 = sem encoder (o NexON manda 360 0 0: valor BRUTO)
-//   pivo ligar <id> <d|e> <agua 0|1> <permil> <canhao 0|1> <g|t> <valor> [f <desliga_em> <liga_em>]
+//   pivo ligar <id> <d|e> <agua 0|1> <permil> <canhao 0|1> <g|t> <valor> [f <de> <ate> ...]
 //        g = graus a percorrer (voltas = 360 x n, no NexON) · t = segundos (provisorio, pivo sem encoder)
-//        f = faixa do canhao (bruto 0..359): dentro de [desliga_em, liga_em] o canhao fica OFF
+//        f = trechos sem canhao (graus do encoder 0..359, ate' 4 pares): dentro de [de, ate] o canhao fica OFF
 //   pivo cfg <BOs 6 dig> <BIs 6 dig> <inv 6 dig> <9 tempos> <resolucao>   (tudo de uma vez; o ack do status traz k<CRC16>)
-//   pivo desligar | pivo perc <permil> | pivo canhao <0|1> [f <desliga_em> <liga_em>] | pivo status | pivo mostrar
+//   pivo desligar | pivo perc <permil> | pivo canhao <0|1> [f <de> <ate> ...] (sem f = mantem os trechos) | pivo status | pivo mostrar
 // Segurança (BI5): normal = 1 (spec); 0 ou sem sinal = atuou.
 // Compatibilidade (sequencia ainda no servidor, ate' a Fase 3): com a sequencia local PARADA,
 //   perc <bo> <permil> <ciclo_s> <mascara> | perc off   (igual ao firmware anterior; mascara = DINs
@@ -511,6 +511,22 @@ void pivo_loop(pivo_publish_fn publish) {
 static int _ok(char* msg, size_t sz, const char* m) { snprintf(msg, sz, "%s", m); return 1; }
 static int _erro(char* msg, size_t sz, const char* m) { snprintf(msg, sz, "%s", m); return 0; }
 
+// Trechos sem canhao "<de> <ate> [<de> <ate> ...]" (depois do "f"), ate' MAX_FAIXAS pares 0..359.
+// Devolve quantos (0 = "f" sozinho, limpa) ou -1 se invalido.
+static int _lerFaixas(char*& sv, uint16_t* de, uint16_t* ate) {
+    int n = 0;
+    for (;;) {
+        const char* a = strtok_r(nullptr, " ", &sv);
+        if (!a) return n;
+        const char* b = strtok_r(nullptr, " ", &sv);
+        if (!b || n >= MAX_FAIXAS) return -1;
+        char *ea, *eb;
+        long va = strtol(a, &ea, 10), vb = strtol(b, &eb, 10);
+        if (*ea || *eb || va < 0 || va > 359 || vb < 0 || vb > 359) return -1;
+        de[n] = (uint16_t)va; ate[n] = (uint16_t)vb; n++;
+    }
+}
+
 static int _cmdLigar(char* args, char* msg, size_t sz) {
     if (!_cfg_ok) return _erro(msg, sz, "pivo_sem_config");
     if (relays_io_fault()) return _erro(msg, sz, "pivo_falha_reles");
@@ -535,15 +551,14 @@ static int _cmdLigar(char* args, char* msg, size_t sz) {
     else return _erro(msg, sz, "pivo_parada_invalida");
     const char* f = strtok_r(nullptr, " ", &sv);
     if (f && f[0] == 'f') {
-        const char* fd = strtok_r(nullptr, " ", &sv);
-        const char* fl = strtok_r(nullptr, " ", &sv);
-        if (!fd || !fl) return _erro(msg, sz, "pivo_faixa_invalida");
-        p.tem_faixa = true; p.desliga_em = (uint16_t)atoi(fd); p.liga_em = (uint16_t)atoi(fl);
+        int n = _lerFaixas(sv, p.faixa_de, p.faixa_ate);
+        if (n < 0) return _erro(msg, sz, "pivo_faixa_invalida");
+        p.n_faixas = (uint8_t)n;
     }
     // I/O minimo para o plano
     if ((p.dir == 'D' && !_bo[BO_DIR]) || (p.dir == 'E' && !_bo[BO_ESQ]) || !_bo[BO_PERC] || (p.com_agua && !_bo[BO_BOMBA]))
         return _erro(msg, sz, "pivo_io_incompleto");
-    if ((p.parada == POR_GRAUS || p.tem_faixa) && !_enc_res) return _erro(msg, sz, "pivo_sem_encoder");
+    if ((p.parada == POR_GRAUS || p.temFaixa()) && !_enc_res) return _erro(msg, sz, "pivo_sem_encoder");
     char mot[40];
     if (!_m->ligar(p, millis(), mot, sizeof(mot))) { snprintf(msg, sz, "pivo_%s", mot); return 0; }
     return _ok(msg, sz, "pivo_ligando");
@@ -604,14 +619,24 @@ int pivo_cmd(const String& cmd, char* msg, size_t sz) {
         return 1;
     }
     if (!strcmp(verbo, "canhao")) {
-        // "pivo canhao <0|1> [f <desliga_em> <liga_em>]" — ajuste em operacao (spec 2.2/6.5)
+        // "pivo canhao <0|1> [f <de> <ate> ...]" — ajuste em operacao (spec 2.2/6.5).
+        // Sem "f": os trechos sem canhao seguem os da ordem; "f" sozinho limpa.
         char mot[32];
-        int on = 0, fd = -1, fl = -1;
-        char fch = 0;
-        int n = resto ? sscanf(resto, "%d %c %d %d", &on, &fch, &fd, &fl) : 0;
-        bool faixa = n == 4 && fch == 'f';
-        if (n < 1) return _erro(msg, sz, "pivo_canhao_invalido");
-        if (!_m->ajustarCanhao(on != 0, faixa, faixa ? (uint16_t)fd : 0, faixa ? (uint16_t)fl : 0, millis(), mot, sizeof(mot))) {
+        char buf[96];
+        snprintf(buf, sizeof(buf), "%s", resto ? resto : "");
+        char* sv = nullptr;
+        const char* on_s = strtok_r(buf, " ", &sv);
+        if (!on_s || (strcmp(on_s, "0") && strcmp(on_s, "1"))) return _erro(msg, sz, "pivo_canhao_invalido");
+        int on = on_s[0] == '1';
+        int nf = -1;
+        uint16_t fde[MAX_FAIXAS], fate[MAX_FAIXAS];
+        const char* f = strtok_r(nullptr, " ", &sv);
+        if (f) {
+            if (strcmp(f, "f")) return _erro(msg, sz, "pivo_canhao_invalido");
+            nf = _lerFaixas(sv, fde, fate);
+            if (nf < 0) return _erro(msg, sz, "pivo_faixa_invalida");
+        }
+        if (!_m->ajustarCanhao(on != 0, nf, fde, fate, millis(), mot, sizeof(mot))) {
             snprintf(msg, sz, "pivo_canhao_%s", mot); return 0;
         }
         _apl[BO_CANHAO] = -1;   // reescreve a BO06
