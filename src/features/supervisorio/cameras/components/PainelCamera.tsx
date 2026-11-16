@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import type { Camera, CameraEvento } from '../types';
+import { miniaturaComVersao } from '../utils/midia';
 import { carimboDataHora, diaHoraCurta, horaCurta, textoChamado, tituloEvento } from '../utils/eventos';
 import { EtiquetaTipo } from './ItemEvento';
 import { PlayerHls } from './PlayerHls';
@@ -153,7 +154,7 @@ export const PainelCamera = forwardRef<HTMLElement, PainelCameraProps>(function 
             <span className="text-[13px]">Sem sinal{camera.status_em ? ` desde ${horaCurta(camera.status_em)}` : ''}</span>
           </div>
         ) : (
-          <PlayerHls cameraId={camera.id} />
+          <PlayerHls cameraId={camera.id} capa={miniaturaComVersao(urlMidia(camera.miniatura_url), camera.miniatura_em)} />
         )}
         {aoVivo && (
           <span className="pointer-events-none absolute bottom-2 left-2.5 text-[11px] tabular-nums text-white/70">{carimboDataHora(agora)}</span>

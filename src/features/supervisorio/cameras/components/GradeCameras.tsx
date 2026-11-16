@@ -2,6 +2,7 @@ import { Camera as CameraIcon } from 'lucide-react';
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { cn } from '@/lib/utils';
 import type { Camera } from '../types';
+import { miniaturaComVersao } from '../utils/midia';
 import { AreaRolagem } from './AreaRolagem';
 
 interface GradeCamerasProps {
@@ -59,13 +60,6 @@ export function GradeCameras({ cameras, selecionadaId, onSelecionar, urlMidia, c
   );
 }
 
-/** A miniatura muda de conteúdo na mesma URL; `v=` força o navegador a buscar a nova. */
-function miniaturaComVersao(url: string | null, miniaturaEm: string | null): string | null {
-  if (!url || !miniaturaEm) return url;
-  const t = Date.parse(miniaturaEm);
-  if (Number.isNaN(t)) return url;
-  return `${url}${url.includes('?') ? '&' : '?'}v=${t}`;
-}
 
 function TileCamera({
   camera,

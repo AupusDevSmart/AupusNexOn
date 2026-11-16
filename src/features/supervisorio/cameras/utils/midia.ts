@@ -43,3 +43,11 @@ export function urlMidia(
   const sep = resolvida.search ? '&' : '?';
   return `${texto}${sep}token=${encodeURIComponent(token)}`;
 }
+
+/** A miniatura muda de conteúdo na mesma URL; `v=` força o navegador a buscar a nova. */
+export function miniaturaComVersao(url: string | null, miniaturaEm: string | null): string | null {
+  if (!url || !miniaturaEm) return url;
+  const t = Date.parse(miniaturaEm);
+  if (Number.isNaN(t)) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}v=${t}`;
+}

@@ -5,13 +5,16 @@ import { chavesCameras } from './chaves';
 
 /** O servidor considera a câmera "assistida" por 90 s; o cliente repete a cada 30 s (folga para rede lenta). */
 export const INTERVALO_STREAM_MS = 30_000;
-/** Enquanto o agente ainda não publicou, pergunta mais rápido para pegar o início. */
-const INTERVALO_AGUARDANDO_MS = 5_000;
+/**
+ * Enquanto o vídeo ainda não chegou ao servidor, pergunta a cada 1 s: o estado vem do servidor de mídia
+ * (vídeo pronto de verdade) e o player abre no segundo em que ele existe.
+ */
+const INTERVALO_AGUARDANDO_MS = 1_000;
 const INTERVALO_OFFLINE_MS = 30_000;
 
 /**
  * Pede o vídeo ao vivo (`GET /cameras/:id/stream`) ao montar e repete enquanto
- * `ativo`: 30 s publicando, 5 s aguardando, 30 s offline. `staleTime: 0` +
+ * `ativo`: 30 s publicando, 1 s aguardando, 30 s offline. `staleTime: 0` +
  * `gcTime: 0`: remontar pede de novo na hora (o agente só publica sob demanda).
  */
 export function useStreamCamera(cameraId?: string | null, ativo = true) {
