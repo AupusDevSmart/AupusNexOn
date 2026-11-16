@@ -45,6 +45,8 @@ import { PARAMS, PARAMS_PAR, CHAVES_SEQ, parametrosEmJogo, corpoParametros, type
  */
 
 type Bin = 0 | 1 | null;
+/** Depois do Desligar, quanto tempo a ficha espera as entradas confirmarem o pivô parado (rádio). */
+const DESLIGANDO_MS = 90_000;
 type Acao = 'girar_direita' | 'girar_esquerda' | 'desligar';
 interface Passo { t: string; etapa: string; msg: string; ok: boolean | null }
 /** Onde está um sinal da bomba/válvula: "TON4v2 · 46:A8" + "BO5" (Topologia IoT). */
@@ -130,11 +132,15 @@ function usePivoEstado(id: string) {
   const carregar = useCallback(() =>
     api.get(`/pivos/${id}/estado`).then((r) => { setEstado(corpo<Estado>(r)); setErro(null); }).catch((e) => setErro(erroMsg(e))), [id]);
   const executando = estado?.sequencia?.status === 'executando';
+  // Logo depois de um Desligar (até 90 s) atualiza rápido: a confirmação do pivô (entradas) chega pelo rádio.
+  const sq = estado?.sequencia;
+  const posDesligar = sq?.acao === 'desligar' && Date.now() - new Date(sq.finished_at ?? sq.created_at).getTime() < DESLIGANDO_MS;
+  const rapido = executando || posDesligar;
   useEffect(() => {
     void carregar();
-    const t = setInterval(carregar, executando ? 1500 : 10000);
+    const t = setInterval(carregar, rapido ? 1500 : 10000);
     return () => clearInterval(t);
-  }, [carregar, executando]);
+  }, [carregar, rapido]);
   return { estado, erro, carregar, executando };
 }
 
@@ -537,6 +543,11 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   const brutoAtual = semCalibracao && pos?.bruto != null && brutoFresco ? pos.bruto : null;
   const angTxt = angulo != null ? `${fmt(angulo, 1)}°` : '—°';
   const ligando = executando && seq?.acao !== 'desligar';
+  // Desligar enviado e a TON confirmou, mas as entradas ainda dizem "girando" (chegam no próximo POLL
+  // do rádio): mostra "Desligando…" animado em vez de voltar para "Irrigando" (até 90 s).
+  const desligando = (executando && seq?.acao === 'desligar')
+    || (seq?.acao === 'desligar' && seq.status === 'concluida' && girando
+      && Date.now() - new Date(seq.finished_at ?? seq.created_at).getTime() < DESLIGANDO_MS);
   const on = girando || ligando;
   // Última partida que falhou (nas últimas 6 h) e o pivô parado: falha.
   const falhaSeq = !!seq?.erro && !executando && !girando && Date.now() - new Date(seq.finished_at ?? seq.created_at).getTime() < 6 * 3600000;
@@ -547,7 +558,7 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   const motivoFalha = (seq?.erro ?? '').replace(/^(A TON não ligou|Falha na TON|TON não aplicou "[^"]*"):\s*/i, '').trim();
 
   const { tone, label, texto } = ((): { tone: NxTone; label: string; texto: string } => {
-    if (executando && seq?.acao === 'desligar') return { tone: 'ok', label: 'Normal', texto: 'Desligando…' };
+    if (desligando) return { tone: 'ok', label: 'Normal', texto: executando ? 'Desligando…' : 'Desligando… aguardando o pivô confirmar' };
     // Mostra o passo em que a partida está (ex.: "Aguardando pressurização (120s)").
     if (ligando) return { tone: 'ok', label: 'Normal', texto: seq?.passos?.at(-1)?.msg ?? 'Ligando…' };
     // O motivo real da última partida/parada (vem da TON ou do servidor), sem o prefixo técnico.
@@ -857,12 +868,13 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
     >
       {aba === 'op' ? (
         <div style={{ padding: '20px 24px 28px 24px', ...col(16) }}>
+          <style>{'@keyframes nxPulso{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.25;transform:scale(.7)}}@media (prefers-reduced-motion:reduce){[style*="nxPulso"]{animation:none!important}}'}</style>
           <div style={{ display: 'grid', gridTemplateColumns: estreito ? 'minmax(0, 1fr)' : 'repeat(2, minmax(0, 1fr))', gap: 16, alignItems: 'start' }}>
             <div style={col(12)}>
-              <MapaPivo angulo={angulo} aviso={avisoPosicao} semCalibracao={semCalibracao} bruto={brutoAtual} girando={girando && !irrigandoParado} falha={falha} sentido={sentido} direcao={DIRECAO_LABEL[direcaoAtual]} faixas={ultima.canhao ? ultima.faixasCanhao : []} />
+              <MapaPivo angulo={angulo} aviso={avisoPosicao} semCalibracao={semCalibracao} bruto={brutoAtual} girando={girando && !irrigandoParado && !desligando} falha={falha} sentido={sentido} direcao={DIRECAO_LABEL[direcaoAtual]} faixas={ultima.canhao ? ultima.faixasCanhao : []} />
               <div style={{ ...s.card, padding: '12px 16px', ...col(4) }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={s.stDot(tone)} />
+                  <span style={{ ...s.stDot(tone), ...(desligando ? { animation: 'nxPulso 1s ease-in-out infinite' } : {}) }} />
                   <span style={s.stLabel(tone)}>{label}</span>
                   <span style={{ fontSize: 14, color: NX.mudo }}>{texto}</span>
                 </div>
