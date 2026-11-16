@@ -1,6 +1,6 @@
 // Build leve: sem legendas/áudio alternativo/DRM, ~230 kB a menos no chunk da aba (tipos em ../hls-light.d.ts).
 import Hls from 'hls.js/light';
-import { Loader2, RefreshCw, VideoOff, type LucideIcon } from 'lucide-react';
+import { ImageDown, Loader2, RefreshCw, SkipForward, VideoOff, type LucideIcon } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 import { useStreamCamera } from '../hooks/useStreamCamera';
@@ -8,9 +8,13 @@ import { useStreamCamera } from '../hooks/useStreamCamera';
 const MAX_RECONEXOES = 6;
 /** Sem avançar o vídeo por este tempo = travado. */
 const TRAVADO_MS = 15_000;
+/** Mais que isto atrás do ao vivo (aba ficou em segundo plano, rede lenta): mostra "Ir para o ao vivo". */
+const ATRASO_MAX_S = 6;
 
 interface PlayerHlsProps {
   cameraId: string;
+  /** Nome da câmera (arquivo da foto salva). */
+  cameraNome?: string;
   /** Última foto da câmera: aparece enquanto o vídeo conecta (a tela não fica preta). */
   capa?: string | null;
   className?: string;
@@ -22,7 +26,9 @@ interface PlayerHlsProps {
  * Estados: "Conectando…" (aguardando o agente publicar), "Sem sinal" (offline) e
  * erro do hls com "Tentar de novo". Ao desmontar, destrói o hls e solta o <video>.
  */
-export function PlayerHls({ cameraId, capa, className }: PlayerHlsProps) {
+export function PlayerHls({ cameraId, cameraNome, capa, className }: PlayerHlsProps) {
+  const hlsRef = useRef<Hls | null>(null);
+  const [atrasado, setAtrasado] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const stream = useStreamCamera(cameraId, true);
   const [erroVideo, setErroVideo] = useState<string | null>(null);
@@ -49,6 +55,9 @@ export function PlayerHls({ cameraId, capa, className }: PlayerHlsProps) {
     };
     const aoAvancar = () => {
       ultimoAvanco = Date.now();
+      const h = hlsRef.current;
+      const ao = h?.liveSyncPosition;
+      setAtrasado(!!h && typeof ao === 'number' && ao - video.currentTime > ATRASO_MAX_S);
     };
     const aoErroNativo = () => setErroVideo('Falha ao carregar o vídeo.');
     video.addEventListener('playing', aoTocar);
@@ -84,6 +93,7 @@ export function PlayerHls({ cameraId, capa, className }: PlayerHlsProps) {
       });
       hls.loadSource(url);
       hls.attachMedia(video);
+      hlsRef.current = hls;
     } else {
       setErroVideo('Este navegador não reproduz vídeo HLS.');
       return () => {
@@ -100,6 +110,8 @@ export function PlayerHls({ cameraId, capa, className }: PlayerHlsProps) {
       video.removeEventListener('playing', aoTocar);
       video.removeEventListener('error', aoErroNativo);
       hls?.destroy();
+      hlsRef.current = null;
+      setAtrasado(false);
       video.pause();
       video.removeAttribute('src');
       video.load();
@@ -140,8 +152,38 @@ export function PlayerHls({ cameraId, capa, className }: PlayerHlsProps) {
     aviso = <Aviso carregando texto="Conectando…" leve={!!capa} />;
   }
 
+  const irAoVivo = () => {
+    const video = videoRef.current;
+    const ao = hlsRef.current?.liveSyncPosition;
+    if (video && typeof ao === 'number') video.currentTime = ao;
+    void video?.play().catch(() => undefined);
+    setAtrasado(false);
+  };
+
+  /** Salva o quadro atual em JPG na máquina (o vídeo vem com CORS liberado: o canvas não fica bloqueado). */
+  const salvarFoto = () => {
+    const video = videoRef.current;
+    if (!video || !video.videoWidth) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d')?.drawImage(video, 0, 0);
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) return;
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = nomeFoto(cameraNome ?? 'camera');
+        a.click();
+        window.setTimeout(() => URL.revokeObjectURL(a.href), 5_000);
+      },
+      'image/jpeg',
+      0.92,
+    );
+  };
+
   return (
-    <div className={cn('relative h-full w-full bg-black', className)}>
+    <div className={cn('group relative h-full w-full bg-black', className)}>
       <video
         ref={videoRef}
         className="h-full w-full object-contain"
@@ -152,8 +194,45 @@ export function PlayerHls({ cameraId, capa, className }: PlayerHlsProps) {
         aria-label="Vídeo ao vivo"
       />
       {aviso}
+      {!aviso && reproduzindo && (
+        <div className="absolute right-2 top-2 flex items-center gap-1.5">
+          {atrasado && (
+            <button
+              type="button"
+              onClick={irAoVivo}
+              className="inline-flex h-8 items-center gap-1.5 rounded-full bg-black/60 px-3 text-xs font-medium text-white backdrop-blur transition-colors mouse:hover:bg-black/75 touch:h-10"
+            >
+              <SkipForward className="h-3.5 w-3.5" aria-hidden />
+              Ir para o ao vivo
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={salvarFoto}
+            aria-label="Salvar foto deste momento"
+            title="Salvar foto deste momento"
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-black/55 text-white opacity-0 backdrop-blur transition-opacity focus-visible:opacity-100 group-hover:opacity-100 touch:h-10 touch:w-10 touch:opacity-100"
+          >
+            <ImageDown className="h-4 w-4" aria-hidden />
+          </button>
+        </div>
+      )}
     </div>
   );
+}
+
+/** `portao_2026-11-16_14h32.jpg` (hora local de quem salva). */
+function nomeFoto(camera: string): string {
+  const d = new Date();
+  const dois = (n: number) => String(n).padStart(2, '0');
+  const nome =
+    camera
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'camera';
+  return `${nome}_${d.getFullYear()}-${dois(d.getMonth() + 1)}-${dois(d.getDate())}_${dois(d.getHours())}h${dois(d.getMinutes())}m${dois(d.getSeconds())}.jpg`;
 }
 
 function Aviso({

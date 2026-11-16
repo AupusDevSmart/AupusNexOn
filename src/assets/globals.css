@@ -659,3 +659,36 @@
     display: none;
   }
 }
+
+/* Barra de tempo dos players de câmera (PlayerVideo): trilho desenhado por baixo, aqui só o botão. */
+.barra-video::-webkit-slider-runnable-track {
+  height: 1rem;
+  background: transparent;
+}
+.barra-video::-moz-range-track {
+  height: 1rem;
+  background: transparent;
+}
+.barra-video::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  margin-top: 2px;
+  height: 12px;
+  width: 12px;
+  border-radius: 9999px;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgb(0 0 0 / 0.25);
+}
+.barra-video::-moz-range-thumb {
+  height: 12px;
+  width: 12px;
+  border: 0;
+  border-radius: 9999px;
+  background: #fff;
+}
+.barra-video:focus-visible {
+  outline: none;
+}
+.barra-video:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 4px rgb(255 255 255 / 0.45);
+}

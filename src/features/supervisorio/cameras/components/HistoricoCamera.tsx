@@ -8,6 +8,8 @@ import { useTrechoHistorico, type FaseTrecho } from '../hooks/useTrechoHistorico
 import type { Camera, CameraEvento, TipoEvento } from '../types';
 import { rotuloDia } from '../utils/agrupar-por-dia';
 import { rotuloTipo } from '../utils/eventos';
+import { paraBaixar } from '../utils/midia';
+import { PlayerVideo } from './PlayerVideo';
 import {
   TRECHO_S,
   deslocarTrecho,
@@ -127,7 +129,7 @@ export function HistoricoCamera({ camera, eventos, dias, dia, hora, onDia, onTre
 
 function TelaTrecho({ fase, url, mensagem, onTentar }: { fase: FaseTrecho; url: string | null; mensagem: string | null; onTentar: () => void }) {
   if (fase === 'pronto' && url) {
-    return <video key={url} className="h-full w-full object-contain" src={url} controls autoPlay playsInline />;
+    return <PlayerVideo key={url} src={url} baixarUrl={paraBaixar(url)} rotulo="Trecho gravado" />;
   }
   const centro = 'flex h-full flex-col items-center justify-center gap-2 px-4 text-center text-[13px] text-white/70';
   if (fase === 'buscando') {

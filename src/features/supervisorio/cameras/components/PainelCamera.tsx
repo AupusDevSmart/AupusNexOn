@@ -1,13 +1,15 @@
-import { Camera as CameraIcon, ChevronDown, ChevronUp, Loader2, Maximize, Radio, VideoOff, type LucideIcon } from 'lucide-react';
+import { Camera as CameraIcon, ChevronDown, ChevronUp, Download, Image as ImageIcon, Loader2, Maximize, Radio, Trash2, Video, VideoOff, type LucideIcon } from 'lucide-react';
 import { forwardRef, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import type { Camera, CameraEvento } from '../types';
-import { miniaturaComVersao } from '../utils/midia';
+import { miniaturaComVersao, paraBaixar } from '../utils/midia';
 import { carimboDataHora, diaHoraCurta, horaCurta, textoChamado, tituloEvento } from '../utils/eventos';
 import { EtiquetaTipo } from './ItemEvento';
 import { PlayerHls } from './PlayerHls';
+import { PlayerVideo } from './PlayerVideo';
 
 interface PainelCameraProps {
   camera: Camera | null;
@@ -26,6 +28,8 @@ interface PainelCameraProps {
   onModo?: (modo: ModoPlayer) => void;
   /** Vídeo + linha do tempo do histórico (no lugar do ao vivo quando `modo = historico`). */
   historico?: ReactNode;
+  /** Só admin: apaga o evento aberto (a aba confirma antes). */
+  onApagarEvento?: (evento: CameraEvento) => void;
 }
 
 export type ModoPlayer = 'aovivo' | 'historico';
@@ -49,6 +53,7 @@ export const PainelCamera = forwardRef<HTMLElement, PainelCameraProps>(function 
     modo = 'aovivo',
     onModo,
     historico,
+    onApagarEvento,
   },
   ref,
 ) {
@@ -123,6 +128,8 @@ export const PainelCamera = forwardRef<HTMLElement, PainelCameraProps>(function 
             <>
               <BotaoIcone rotulo="Evento mais novo" icone={ChevronUp} onClick={onEventoAnterior} desabilitado={!onEventoAnterior} />
               <BotaoIcone rotulo="Evento mais antigo" icone={ChevronDown} onClick={onEventoProximo} desabilitado={!onEventoProximo} />
+              <MenuBaixar evento={evento} urlMidia={urlMidia} />
+              {onApagarEvento && <BotaoIcone rotulo="Apagar evento" icone={Trash2} onClick={() => onApagarEvento(evento)} perigo />}
               <Button type="button" size="sm" className="ml-1 h-8 gap-1.5 touch:h-10" onClick={onVoltarAoVivo}>
                 <Radio className="h-3.5 w-3.5" aria-hidden />
                 Voltar ao vivo
@@ -134,7 +141,7 @@ export const PainelCamera = forwardRef<HTMLElement, PainelCameraProps>(function 
               <BotaoIcone rotulo="Tirar foto agora" icone={CameraIcon} onClick={onFoto} ocupado={fotoPendente} desabilitado={offline} />
             )
           )}
-          {!emHistorico && <BotaoIcone rotulo="Tela cheia" icone={Maximize} onClick={telaCheia} />}
+          {!emHistorico && !evento && <BotaoIcone rotulo="Tela cheia" icone={Maximize} onClick={telaCheia} />}
         </div>
       </div>
 
@@ -154,7 +161,7 @@ export const PainelCamera = forwardRef<HTMLElement, PainelCameraProps>(function 
             <span className="text-[13px]">Sem sinal{camera.status_em ? ` desde ${horaCurta(camera.status_em)}` : ''}</span>
           </div>
         ) : (
-          <PlayerHls cameraId={camera.id} capa={miniaturaComVersao(urlMidia(camera.miniatura_url), camera.miniatura_em)} />
+          <PlayerHls cameraId={camera.id} cameraNome={camera.nome} capa={miniaturaComVersao(urlMidia(camera.miniatura_url), camera.miniatura_em)} />
         )}
         {aoVivo && (
           <span className="pointer-events-none absolute bottom-2 left-2.5 text-[11px] tabular-nums text-white/70">{carimboDataHora(agora)}</span>
@@ -196,12 +203,55 @@ function MidiaEvento({ evento, urlMidia }: { evento: CameraEvento; urlMidia: Pai
   const clipe = urlMidia(evento.clipe_url);
   const foto = urlMidia(evento.snapshot_url);
   if (clipe) {
-    return <video key={clipe} className="h-full w-full object-contain" src={clipe} poster={foto ?? undefined} controls autoPlay playsInline />;
+    return <PlayerVideo key={clipe} src={clipe} poster={foto} baixarUrl={paraBaixar(clipe)} rotulo={`Clipe: ${tituloEvento(evento)}`} />;
   }
   if (foto) {
     return <img src={foto} alt={`${tituloEvento(evento)} em ${evento.camera_nome}`} className="h-full w-full object-contain" />;
   }
   return <div className="flex h-full items-center justify-center text-[13px] text-white/60">Este evento não tem imagem</div>;
+}
+
+/** Baixar o clipe ou a foto do evento (anexo com nome legível; a API registra quem baixou). */
+function MenuBaixar({ evento, urlMidia }: { evento: CameraEvento; urlMidia: PainelCameraProps['urlMidia'] }) {
+  const clipe = paraBaixar(urlMidia(evento.clipe_url));
+  const foto = paraBaixar(urlMidia(evento.snapshot_url));
+  if (!clipe && !foto) return null;
+  return (
+    <DropdownMenu>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-label="Baixar"
+              className="flex h-8 w-8 items-center justify-center rounded-md text-foreground/80 transition-colors mouse:hover:bg-muted touch:h-10 touch:w-10"
+            >
+              <Download className="h-4 w-4" aria-hidden />
+            </button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Baixar</TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent align="end">
+        {clipe && (
+          <DropdownMenuItem asChild>
+            <a href={clipe}>
+              <Video className="h-4 w-4" aria-hidden />
+              Vídeo (MP4)
+            </a>
+          </DropdownMenuItem>
+        )}
+        {foto && (
+          <DropdownMenuItem asChild>
+            <a href={foto}>
+              <ImageIcon className="h-4 w-4" aria-hidden />
+              Foto (JPG)
+            </a>
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }
 
 function BotaoIcone({
@@ -210,12 +260,14 @@ function BotaoIcone({
   onClick,
   desabilitado,
   ocupado,
+  perigo,
 }: {
   rotulo: string;
   icone: LucideIcon;
   onClick?: () => void;
   desabilitado?: boolean;
   ocupado?: boolean;
+  perigo?: boolean;
 }) {
   return (
     <Tooltip>
@@ -228,6 +280,7 @@ function BotaoIcone({
           onClick={onClick}
           className={cn(
             'flex h-8 w-8 items-center justify-center rounded-md text-foreground/80 transition-colors disabled:opacity-40 mouse:hover:bg-muted touch:h-10 touch:w-10',
+            perigo && 'text-red-500 mouse:hover:bg-red-500/10 mouse:hover:text-red-500',
           )}
         >
           {ocupado ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Icone className="h-4 w-4" aria-hidden />}

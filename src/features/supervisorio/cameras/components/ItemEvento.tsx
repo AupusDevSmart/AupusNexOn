@@ -1,3 +1,4 @@
+import { Check } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 import type { CameraEvento, TipoEvento } from '../types';
@@ -9,6 +10,8 @@ interface ItemEventoProps {
   /** Foto do evento já com origem e token de mídia (ou null). */
   miniatura: string | null;
   onClick: () => void;
+  /** Modo seleção (admin apagando em lote): `true/false` mostra a caixa; clique marca em vez de abrir. */
+  marcado?: boolean;
 }
 
 /** Ponto vermelho de "não visto" (alerta sem `lido_em`). */
@@ -28,7 +31,8 @@ export function EtiquetaTipo({ tipo, className }: { tipo: TipoEvento; className?
 }
 
 /** Linha da lista de eventos: foto, tipo colorido, câmera e hora; ponto vermelho se não visto. */
-export function ItemEvento({ evento, selecionado, miniatura, onClick }: ItemEventoProps) {
+export function ItemEvento({ evento, selecionado, miniatura, onClick, marcado }: ItemEventoProps) {
+  const emSelecao = marcado !== undefined;
   const [falhou, setFalhou] = useState(false);
   useEffect(() => setFalhou(false), [miniatura]);
   const Icone = iconeEvento(evento.tipo);
@@ -41,13 +45,31 @@ export function ItemEvento({ evento, selecionado, miniatura, onClick }: ItemEven
       <button
         type="button"
         onClick={onClick}
-        aria-current={selecionado ? 'true' : undefined}
-        aria-label={`${tituloEvento(evento)} · ${evento.camera_nome} · ${hora}${naoLido ? ' · não visto' : ''}`}
+        aria-current={!emSelecao && selecionado ? 'true' : undefined}
+        aria-pressed={emSelecao ? marcado : undefined}
+        aria-label={`${emSelecao ? (marcado ? 'Desmarcar ' : 'Marcar ') : ''}${tituloEvento(evento)} · ${evento.camera_nome} · ${hora}${naoLido ? ' · não visto' : ''}`}
         className={cn(
           'flex w-full items-center gap-3 rounded-lg p-1.5 pr-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-          selecionado ? 'bg-muted ring-1 ring-inset ring-foreground/25' : 'mouse:hover:bg-muted/60',
+          emSelecao
+            ? marcado
+              ? 'bg-red-500/10 ring-1 ring-inset ring-red-500/40'
+              : 'mouse:hover:bg-muted/60'
+            : selecionado
+              ? 'bg-muted ring-1 ring-inset ring-foreground/25'
+              : 'mouse:hover:bg-muted/60',
         )}
       >
+        {emSelecao && (
+          <span
+            aria-hidden
+            className={cn(
+              'flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors',
+              marcado ? 'border-red-500 bg-red-500 text-white' : 'border-muted-foreground/50',
+            )}
+          >
+            {marcado && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
+          </span>
+        )}
         <span className="relative flex aspect-video w-[72px] shrink-0 items-center justify-center overflow-hidden rounded-md bg-zinc-900 text-zinc-500">
           {miniatura && !falhou ? (
             <img src={miniatura} alt="" loading="lazy" onError={() => setFalhou(true)} className="absolute inset-0 h-full w-full object-cover" />

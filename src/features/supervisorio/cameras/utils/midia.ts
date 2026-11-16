@@ -51,3 +51,9 @@ export function miniaturaComVersao(url: string | null, miniaturaEm: string | nul
   if (Number.isNaN(t)) return url;
   return `${url}${url.includes('?') ? '&' : '?'}v=${t}`;
 }
+
+/** Mesma URL de mídia pedindo anexo (a API manda `Content-Disposition` com nome legível e registra o download). */
+export function paraBaixar(url: string | null | undefined): string | null {
+  if (!url) return null;
+  return `${url}${url.includes('?') ? '&' : '?'}baixar=1`;
+}
