@@ -283,8 +283,9 @@ export function MapaPivo({ angulo: anguloLido, aviso, girando, falha, sentido, d
         {angulo != null ? `${fmt(angulo, 1)}°` : '—°'} · {direcao}
       </div>
       {sat && (
-        <span style={{ position: 'absolute', right: 8, top: 8, fontSize: 9, color: 'rgba(255,255,255,0.8)', textShadow: '0 1px 2px rgba(0,0,0,0.8)' }}>
-          {ATRIBUICAO_SATELITE}
+        // Atribuição exigida pela Esri: discreta no rodapé, longe do N e do rótulo do ângulo
+        <span style={{ position: 'absolute', right: 6, bottom: avisoTxt ? 56 : 4, fontSize: 8, color: 'rgba(255,255,255,0.55)', textShadow: '0 1px 2px rgba(0,0,0,0.8)', pointerEvents: 'none' }}>
+          {ATRIBUICAO_SATELITE.replace('Imagem: ', '© ')}
         </span>
       )}
       {avisoTxt && (
