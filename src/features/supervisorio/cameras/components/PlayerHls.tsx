@@ -11,6 +11,8 @@ const TRAVADO_MS = 15_000;
 
 interface PlayerHlsProps {
   cameraId: string;
+  /** Última foto da câmera: aparece enquanto o vídeo conecta (a tela não fica preta). */
+  capa?: string | null;
   className?: string;
 }
 
@@ -20,7 +22,7 @@ interface PlayerHlsProps {
  * Estados: "Conectando…" (aguardando o agente publicar), "Sem sinal" (offline) e
  * erro do hls com "Tentar de novo". Ao desmontar, destrói o hls e solta o <video>.
  */
-export function PlayerHls({ cameraId, className }: PlayerHlsProps) {
+export function PlayerHls({ cameraId, capa, className }: PlayerHlsProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const stream = useStreamCamera(cameraId, true);
   const [erroVideo, setErroVideo] = useState<string | null>(null);
@@ -61,7 +63,22 @@ export function PlayerHls({ cameraId, className }: PlayerHlsProps) {
       video.addEventListener('error', aoErroNativo);
       video.src = url;
     } else if (Hls.isSupported()) {
-      hls = new Hls({ lowLatencyMode: true, liveSyncDurationCount: 3, enableWorker: true });
+      hls = new Hls({
+        lowLatencyMode: true,
+        enableWorker: true,
+        // começa pelo trecho mais novo e alcança o ao vivo acelerando um pouco, em vez de esperar 3 segmentos
+        liveSyncDurationCount: 2,
+        maxLiveSyncPlaybackRate: 1.5,
+        // playlist que ainda está nascendo no servidor: tenta de novo rápido antes de virar erro
+        manifestLoadPolicy: {
+          default: {
+            maxTimeToFirstByteMs: 10_000,
+            maxLoadTimeMs: 15_000,
+            timeoutRetry: { maxNumRetry: 2, retryDelayMs: 0, maxRetryDelayMs: 0 },
+            errorRetry: { maxNumRetry: 4, retryDelayMs: 500, maxRetryDelayMs: 2_000 },
+          },
+        },
+      });
       hls.on(Hls.Events.ERROR, (_evento, dados) => {
         if (dados.fatal) setErroVideo(dados.details || 'Falha no vídeo.');
       });
@@ -100,7 +117,7 @@ export function PlayerHls({ cameraId, className }: PlayerHlsProps) {
   const reconectando = !!erroVideo && falhas < MAX_RECONEXOES;
   useEffect(() => {
     if (!erroVideo || falhas >= MAX_RECONEXOES) return undefined;
-    const espera = Math.min(15_000, 2_000 * 2 ** falhas);
+    const espera = Math.min(15_000, 1_000 * 2 ** falhas);
     const t = window.setTimeout(() => {
       setFalhas((f) => f + 1);
       setTentativa((n) => n + 1);
@@ -120,12 +137,20 @@ export function PlayerHls({ cameraId, className }: PlayerHlsProps) {
   } else if (estado === 'offline') {
     aviso = <Aviso icone={VideoOff} texto="Sem sinal" />;
   } else if (!url || !reproduzindo) {
-    aviso = <Aviso carregando texto="Conectando…" />;
+    aviso = <Aviso carregando texto="Conectando…" leve={!!capa} />;
   }
 
   return (
     <div className={cn('relative h-full w-full bg-black', className)}>
-      <video ref={videoRef} className="h-full w-full object-contain" muted autoPlay playsInline aria-label="Vídeo ao vivo" />
+      <video
+        ref={videoRef}
+        className="h-full w-full object-contain"
+        poster={capa ?? undefined}
+        muted
+        autoPlay
+        playsInline
+        aria-label="Vídeo ao vivo"
+      />
       {aviso}
     </div>
   );
@@ -136,18 +161,24 @@ function Aviso({
   detalhe,
   acao,
   carregando,
+  leve,
   icone: Icone,
 }: {
   texto: string;
   detalhe?: string;
   acao?: () => void;
   carregando?: boolean;
+  /** Fundo mais claro: deixa a foto da câmera aparecer por trás. */
+  leve?: boolean;
   icone?: LucideIcon;
 }) {
   return (
     <div
       role="status"
-      className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/70 px-4 text-center text-white/80"
+      className={cn(
+        'absolute inset-0 flex flex-col items-center justify-center gap-2 px-4 text-center text-white/80',
+        leve ? 'bg-black/30' : 'bg-black/70',
+      )}
     >
       {carregando ? <Loader2 className="h-5 w-5 animate-spin" aria-hidden /> : Icone ? <Icone className="h-6 w-6" aria-hidden /> : null}
       <span className="text-sm">{texto}</span>
