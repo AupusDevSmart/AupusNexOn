@@ -139,6 +139,12 @@ export const CamerasService = {
     return unwrap<CameraEvento | void>(data);
   },
 
+  /** Só admin: apaga eventos (registro, foto e clipe). */
+  async excluirEventos(ids: string[]): Promise<{ excluidos: number }> {
+    const { data } = await api.post('/cameras/eventos/excluir', { ids });
+    return unwrap<{ excluidos: number }>(data);
+  },
+
   async marcarTodosLidos(body: { unidade_id: string; camera_id?: string }): Promise<void> {
     await api.post('/cameras/eventos/lidos', body);
   },

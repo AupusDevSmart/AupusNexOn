@@ -1,5 +1,5 @@
-import { CheckCheck, RefreshCw, ShieldCheck } from 'lucide-react';
-import { forwardRef, useMemo, type ReactNode } from 'react';
+import { CheckCheck, ListChecks, RefreshCw, ShieldCheck, Trash2, X } from 'lucide-react';
+import { forwardRef, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { CameraEvento, FiltroEventos, Paginado } from '../types';
@@ -34,6 +34,10 @@ interface PainelEventosProps {
   marcandoTodos: boolean;
   onMostrarMais: () => void;
   urlMidia: (caminho: string | null | undefined) => string | null;
+  /** Só admin: apaga os eventos marcados (a aba confirma antes). Sem ele, não há modo seleção. */
+  onApagar?: (eventos: CameraEvento[]) => void;
+  /** Muda depois de apagar: limpa a seleção. */
+  apagadosEm?: number;
   className?: string;
 }
 
@@ -58,14 +62,36 @@ export const PainelEventos = forwardRef<HTMLElement, PainelEventosProps>(functio
     marcandoTodos,
     onMostrarMais,
     urlMidia,
+    onApagar,
+    apagadosEm,
     className,
   },
   ref,
 ) {
+  const [selecionando, setSelecionando] = useState(false);
+  const [marcados, setMarcados] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    setMarcados(new Set());
+    setSelecionando(false);
+  }, [apagadosEm]);
   const grupos = useMemo(() => agruparPorDia(eventos.data?.data ?? [], (e) => e.inicio_em), [eventos.data]);
   const total = eventos.data?.pagination.total ?? 0;
   const carregados = eventos.data?.data.length ?? 0;
   const comFiltro = filtro !== 'todas' || somenteNaoVistos;
+
+  const lista = eventos.data?.data ?? [];
+  const sairDaSelecao = () => {
+    setSelecionando(false);
+    setMarcados(new Set());
+  };
+  const alternarMarcado = (id: string) =>
+    setMarcados((atual) => {
+      const novo = new Set(atual);
+      if (novo.has(id)) novo.delete(id);
+      else novo.add(id);
+      return novo;
+    });
+  const todosMarcados = lista.length > 0 && lista.every((e) => marcados.has(e.id));
 
   const limparFiltros = () => {
     onFiltro('todas');
@@ -75,20 +101,67 @@ export const PainelEventos = forwardRef<HTMLElement, PainelEventosProps>(functio
   return (
     <section ref={ref} aria-label="Eventos" className={cn('flex flex-col overflow-hidden rounded-xl border border-border bg-card', className)}>
       <div className="flex shrink-0 flex-col gap-2.5 border-b border-border p-3">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="text-[15px] font-semibold">Eventos</h2>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-8 gap-1.5 px-2 text-xs text-muted-foreground touch:h-10"
-            disabled={naoVistos === 0 || marcandoTodos}
-            onClick={onMarcarTodos}
-          >
-            <CheckCheck className="h-3.5 w-3.5" aria-hidden />
-            Marcar todos como vistos
-          </Button>
-        </div>
+        {selecionando ? (
+          <div className="flex items-center gap-1.5">
+            <Button type="button" variant="ghost" size="icon" className="h-8 w-8 touch:h-10 touch:w-10" aria-label="Cancelar seleção" onClick={sairDaSelecao}>
+              <X className="h-4 w-4" aria-hidden />
+            </Button>
+            <span className="text-[15px] font-semibold tabular-nums" aria-live="polite">
+              {marcados.size === 0 ? 'Marque os eventos' : `${marcados.size} marcado${marcados.size > 1 ? 's' : ''}`}
+            </span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="ml-auto h-8 px-2 text-xs touch:h-10"
+              disabled={lista.length === 0}
+              onClick={() => setMarcados(todosMarcados ? new Set() : new Set(lista.map((e) => e.id)))}
+            >
+              {todosMarcados ? 'Desmarcar todos' : `Marcar todos (${lista.length})`}
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              className="h-8 gap-1.5 px-2.5 text-xs touch:h-10"
+              disabled={marcados.size === 0}
+              onClick={() => onApagar?.(lista.filter((e) => marcados.has(e.id)))}
+            >
+              <Trash2 className="h-3.5 w-3.5" aria-hidden />
+              Apagar
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-[15px] font-semibold">Eventos</h2>
+            <div className="flex items-center gap-0.5">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 gap-1.5 px-2 text-xs text-muted-foreground touch:h-10"
+                disabled={naoVistos === 0 || marcandoTodos}
+                onClick={onMarcarTodos}
+              >
+                <CheckCheck className="h-3.5 w-3.5" aria-hidden />
+                {onApagar ? 'Marcar vistos' : 'Marcar todos como vistos'}
+              </Button>
+              {onApagar && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 gap-1.5 px-2 text-xs text-muted-foreground touch:h-10"
+                  disabled={lista.length === 0}
+                  onClick={() => setSelecionando(true)}
+                >
+                  <ListChecks className="h-3.5 w-3.5" aria-hidden />
+                  Selecionar
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
 
         <div role="radiogroup" aria-label="Câmeras da lista" className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1">
           <Segmento ativo={escopo === 'todas'} onClick={() => onEscopo('todas')}>
@@ -147,7 +220,8 @@ export const PainelEventos = forwardRef<HTMLElement, PainelEventosProps>(functio
                       evento={ev}
                       selecionado={eventoSelId === ev.id}
                       miniatura={urlMidia(ev.snapshot_url)}
-                      onClick={() => onAbrirEvento(ev)}
+                      marcado={selecionando ? marcados.has(ev.id) : undefined}
+                      onClick={() => (selecionando ? alternarMarcado(ev.id) : onAbrirEvento(ev))}
                     />
                   ))}
                 </ol>

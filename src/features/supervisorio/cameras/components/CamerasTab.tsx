@@ -94,7 +94,10 @@ function rolarAte(el: HTMLElement | null) {
  */
 export function CamerasTab({ unidadeId, unidadeNome }: CamerasTabProps) {
   const capacidades = useUserStore((s) => s.capacidades);
+  const papel = useUserStore((s) => s.papel);
   const podeComandar = capacidades.comandar;
+  // Apagar evento é só do admin (a API também confere).
+  const podeApagar = papel === 'admin';
   const podeCadastrar = capacidades.cadastroTecnico;
   const podeConfigurar = capacidades.configOperacional;
   const queryClient = useQueryClient();
@@ -117,6 +120,9 @@ export function CamerasTab({ unidadeId, unidadeNome }: CamerasTabProps) {
   const [eventoAberto, setEventoAberto] = useState<CameraEvento | null>(null);
   const [limite, setLimite] = useState(PAGINA);
   const [confirmarSirene, setConfirmarSirene] = useState(false);
+  /** Eventos esperando a confirmação para apagar (null = sem diálogo). */
+  const [paraApagar, setParaApagar] = useState<CameraEvento[] | null>(null);
+  const [apagadosEm, setApagadosEm] = useState(0);
   const [confirmarArmar, setConfirmarArmar] = useState(false);
   const [acionadoRecente, setAcionadoRecente] = useState<DispositivoAcionavel | null>(null);
   const playerRef = useRef<HTMLElement>(null);
@@ -214,6 +220,21 @@ export function CamerasTab({ unidadeId, unidadeNome }: CamerasTabProps) {
     onMutate: () => marcarTodosLidosNoCache(queryClient, unidadeId),
     onSuccess: () => toast.success('Eventos marcados como vistos'),
     onError: (e) => toast.error(mensagemErro(e, 'Não foi possível marcar como vistos')),
+    onSettled: () => void invalidarTudo(),
+  });
+
+  const apagar = useMutation({
+    mutationFn: (lista: CameraEvento[]) => CamerasService.excluirEventos(lista.map((e) => e.id)),
+    onSuccess: (r, lista) => {
+      toast.success(r.excluidos === 1 ? 'Evento apagado' : `${r.excluidos} eventos apagados`);
+      if (eventoSel && lista.some((e) => e.id === eventoSel.id)) {
+        setEventoAberto(null);
+        escreverUrl({ evento: null });
+      }
+      setApagadosEm(Date.now());
+      setParaApagar(null);
+    },
+    onError: (e) => toast.error(mensagemErro(e, 'Não foi possível apagar')),
     onSettled: () => void invalidarTudo(),
   });
 
@@ -391,6 +412,7 @@ export function CamerasTab({ unidadeId, unidadeNome }: CamerasTabProps) {
               podeComandar={podeComandar}
               onFoto={() => cameraSel && foto.mutate(cameraSel.id)}
               fotoPendente={foto.isPending}
+              onApagarEvento={podeApagar ? (ev) => setParaApagar([ev]) : undefined}
               modo={emHistorico ? 'historico' : 'aovivo'}
               onModo={cameraSel?.gravacao ? trocarModo : undefined}
               historico={
@@ -437,9 +459,38 @@ export function CamerasTab({ unidadeId, unidadeNome }: CamerasTabProps) {
             marcandoTodos={marcarTodos.isPending}
             onMostrarMais={() => setLimite((l) => l + PAGINA)}
             urlMidia={midia.url}
+            onApagar={podeApagar ? setParaApagar : undefined}
+            apagadosEm={apagadosEm}
           />
         </div>
       )}
+
+      <AlertDialog open={!!paraApagar} onOpenChange={(aberto) => !aberto && !apagar.isPending && setParaApagar(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {paraApagar?.length === 1 ? 'Apagar este evento?' : `Apagar ${paraApagar?.length ?? 0} eventos?`}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {paraApagar?.length === 1 ? 'A foto e o vídeo do evento' : 'As fotos e os vídeos desses eventos'} somem para todos os usuários e
+              não dá para recuperar. Se precisar guardar, baixe antes.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={apagar.isPending}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={apagar.isPending}
+              onClick={(e) => {
+                e.preventDefault();
+                if (paraApagar) apagar.mutate(paraApagar);
+              }}
+            >
+              {apagar.isPending ? 'Apagando…' : 'Apagar'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={confirmarArmar} onOpenChange={setConfirmarArmar}>
         <AlertDialogContent>

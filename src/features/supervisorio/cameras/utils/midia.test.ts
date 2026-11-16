@@ -54,3 +54,12 @@ describe('urlMidia', () => {
     );
   });
 });
+
+describe('paraBaixar', () => {
+  it('acrescenta baixar=1 respeitando a query', async () => {
+    const { paraBaixar } = await import('./midia');
+    expect(paraBaixar('https://a/x?token=t')).toBe('https://a/x?token=t&baixar=1');
+    expect(paraBaixar('https://a/x')).toBe('https://a/x?baixar=1');
+    expect(paraBaixar(null)).toBeNull();
+  });
+});
