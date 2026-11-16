@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Lightbulb, Loader2, RefreshCw, Settings, Shield, ShieldOff, Siren, type LucideIcon } from 'lucide-react';
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { paramFlag, paramOpcao, paramTexto, useEscreverParamsUrl, useParamUrl } from '@/hooks/useParamUrl';
+import { paramData, paramFlag, paramOpcao, paramTexto, useEscreverParamsUrl, useParamUrl } from '@/hooks/useParamUrl';
 import { toast } from 'sonner';
 import {
   AlertDialog,
@@ -27,10 +27,12 @@ import { CamerasService } from '../services/cameras.service';
 import type { CameraEvento, DispositivoAcionavel, FiltroEventos, ResumoCameras } from '../types';
 import { mensagemErro } from '../utils/erros';
 import { FILTROS_EVENTOS, ehNaoLido, textoArmamento, textoNoite } from '../utils/eventos';
+import { diaHoraDe, diasDisponiveis, horaDeSegundos, horaValida, inicioDoTrecho, segundosDeHora } from '../utils/historico';
 import { CamerasSkeleton } from './CamerasSkeleton';
 import { ConfigCamerasSheet, type AbaConfigCameras } from './ConfigCamerasSheet';
 import { GradeCameras } from './GradeCameras';
-import { PainelCamera } from './PainelCamera';
+import { HistoricoCamera } from './HistoricoCamera';
+import { PainelCamera, type ModoPlayer } from './PainelCamera';
 import { PainelEventos, type EscopoEventos } from './PainelEventos';
 import { TutorialCameras } from './TutorialCameras';
 
@@ -42,6 +44,10 @@ const P_EVENTO = paramTexto();
 const P_FILTRO = paramOpcao<FiltroEventos>(FILTROS_EVENTOS.map((f) => f.valor), 'todas');
 const P_NAO_VISTOS = paramFlag();
 const P_ESCOPO = paramOpcao<EscopoEventos>(['todas', 'camera'], 'todas');
+/** Histórico gravado no aparelho: `?modo=historico&dia=AAAA-MM-DD&hora=HH:MM:SS` (início do trecho). */
+const P_MODO = paramOpcao<ModoPlayer>(['aovivo', 'historico'], 'aovivo');
+const P_DIA = paramData('dia');
+const P_HORA = paramTexto(horaValida);
 /** `?config=` = painel de configuração aberto, na aba dita (nome de tela, não o interno). */
 const ABA_CONFIG_URL = { cameras: 'cameras', agentes: 'aparelhos', unidade: 'armamento' } as const satisfies Record<AbaConfigCameras, string>;
 type AbaConfigUrl = (typeof ABA_CONFIG_URL)[AbaConfigCameras];
@@ -104,6 +110,9 @@ export function CamerasTab({ unidadeId, unidadeNome }: CamerasTabProps) {
   const [somenteNaoVistos, setSomenteNaoVistos] = useParamUrl('naoVistos', P_NAO_VISTOS);
   const [escopo, setEscopo] = useParamUrl('escopo', P_ESCOPO);
   const [configUrl, setConfigUrl] = useParamUrl('config', P_CONFIG);
+  const [modo] = useParamUrl('modo', P_MODO);
+  const [diaUrl] = useParamUrl('dia', P_DIA);
+  const [horaUrl] = useParamUrl('hora', P_HORA);
   // Último evento aberto: segura o player se um filtro novo tirar o evento da lista.
   const [eventoAberto, setEventoAberto] = useState<CameraEvento | null>(null);
   const [limite, setLimite] = useState(PAGINA);
@@ -128,6 +137,12 @@ export function CamerasTab({ unidadeId, unidadeNome }: CamerasTabProps) {
     lista.length > 0,
   );
   const listaEventos = eventos.data?.data ?? [];
+
+  // Histórico (NEXON-108): dia da URL se o aparelho tem; senão o mais recente oferecido.
+  const emHistorico = modo === 'historico' && !!cameraSel?.gravacao;
+  const diasHistorico = diasDisponiveis(cameraSel?.gravacao);
+  const diaHistorico = diaUrl && diasHistorico.includes(diaUrl) ? diaUrl : diasHistorico[0];
+  const eventosDoDia = useEventosCameras({ unidadeId, cameraId: cameraSel?.id, dia: diaHistorico, limit: 100 }, emHistorico);
   // Evento da URL: o da lista carregada (ou o último aberto); fora dela, ao vivo.
   const eventoSel = eventoId
     ? listaEventos.find((e) => e.id === eventoId) ?? (eventoAberto?.id === eventoId ? eventoAberto : null)
@@ -144,7 +159,7 @@ export function CamerasTab({ unidadeId, unidadeNome }: CamerasTabProps) {
   useEffect(() => {
     if (unidadeAnterior.current === unidadeId) return;
     unidadeAnterior.current = unidadeId;
-    escreverUrl({ camera: null, evento: null, filtro: null, naoVistos: null, escopo: null, config: null });
+    escreverUrl({ camera: null, evento: null, filtro: null, naoVistos: null, escopo: null, config: null, modo: null, dia: null, hora: null });
     setEventoAberto(null);
     setLimite(PAGINA);
   }, [unidadeId, escreverUrl]);
@@ -209,6 +224,15 @@ export function CamerasTab({ unidadeId, unidadeNome }: CamerasTabProps) {
    * Abrir da lista cria entrada no histórico (voltar = ao vivo); ‹ › só troca a atual.
    */
   const abrirEvento = (ev: CameraEvento, historico: 'push' | 'replace' = 'push') => {
+    if (emHistorico) {
+      // No histórico, o evento leva a linha do tempo até a hora dele (trecho começa 10 s antes).
+      const { dia, hora } = diaHoraDe(ev.inicio_em);
+      const s = segundosDeHora(hora) ?? 0;
+      escreverUrl({ camera: ev.camera_id, evento: null, dia, hora: horaDeSegundos(inicioDoTrecho(s)) }, historico);
+      if (ehNaoLido(ev)) marcarLido.mutate(ev);
+      rolarAte(playerRef.current);
+      return;
+    }
     setEventoAberto(ev);
     escreverUrl({ camera: ev.camera_id, evento: ev.id }, historico);
     if (ehNaoLido(ev)) marcarLido.mutate(ev);
@@ -216,6 +240,9 @@ export function CamerasTab({ unidadeId, unidadeNome }: CamerasTabProps) {
   };
 
   const voltarAoVivo = () => escreverUrl({ evento: null });
+
+  const trocarModo = (m: ModoPlayer) =>
+    escreverUrl(m === 'historico' ? { modo: 'historico', evento: null } : { modo: null, dia: null, hora: null }, 'push');
 
   const indiceSel = eventoSel ? listaEventos.findIndex((e) => e.id === eventoSel.id) : -1;
   const eventoAnterior = indiceSel > 0 ? listaEventos[indiceSel - 1] : null;
@@ -364,6 +391,22 @@ export function CamerasTab({ unidadeId, unidadeNome }: CamerasTabProps) {
               podeComandar={podeComandar}
               onFoto={() => cameraSel && foto.mutate(cameraSel.id)}
               fotoPendente={foto.isPending}
+              modo={emHistorico ? 'historico' : 'aovivo'}
+              onModo={cameraSel?.gravacao ? trocarModo : undefined}
+              historico={
+                emHistorico && cameraSel ? (
+                  <HistoricoCamera
+                    camera={cameraSel}
+                    eventos={eventosDoDia.data?.data ?? []}
+                    dias={diasHistorico}
+                    dia={diaHistorico}
+                    hora={horaUrl}
+                    onDia={(d) => escreverUrl({ dia: d, hora: null })}
+                    onTrecho={(d, h) => escreverUrl({ dia: d, hora: h })}
+                    urlMidia={midia.url}
+                  />
+                ) : undefined
+              }
             />
             {lista.length > 1 && (
               <GradeCameras

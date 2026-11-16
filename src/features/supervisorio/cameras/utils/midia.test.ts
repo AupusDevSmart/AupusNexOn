@@ -47,4 +47,10 @@ describe('urlMidia', () => {
     expect(urlMidia(null, 'abc', origem)).toBeNull();
     expect(urlMidia('/api/v1/x', null, origem)).toBe('http://localhost:3001/api/v1/x');
   });
+
+  it('não repete o token quando a API já mandou um (trecho do histórico)', () => {
+    expect(urlMidia('/api/v1/cameras/trechos/k1/arquivo?token=da-api', 'abc', origem)).toBe(
+      'http://localhost:3001/api/v1/cameras/trechos/k1/arquivo?token=da-api',
+    );
+  });
 });

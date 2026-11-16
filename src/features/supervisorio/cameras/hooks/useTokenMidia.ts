@@ -72,6 +72,7 @@ export function useTokenMidia(habilitado = true) {
     usuarioAnterior.current = usuarioId;
     limparCacheTokenMidia();
     queryClient.removeQueries({ queryKey: chavesCameras.tudo });
+    queryClient.removeQueries({ queryKey: chavesCameras.historico });
   }, [usuarioId, queryClient]);
 
   const q = useQuery<string>({

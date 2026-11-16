@@ -46,6 +46,43 @@ export interface CameraAnalise {
   zonas: unknown[];
 }
 
+/** Qualidade gravada no aparelho: `secundario` = leve (sub-stream), `principal` = alta. */
+export type StreamGravacao = 'secundario' | 'principal';
+
+export interface GravacaoConfig {
+  ativa: boolean;
+  /** Dias guardados no disco do aparelho (1..30, padrão 7). */
+  dias: number;
+  stream: StreamGravacao;
+}
+
+/**
+ * Histórico gravado no aparelho (NEXON-108): último estado informado pelo agente
+ * (`ativa`, `de`/`ate` = gravação mais antiga/mais nova no disco) + a `config` pedida.
+ */
+export interface CameraGravacao {
+  ativa: boolean;
+  de: string | null;
+  ate: string | null;
+  uso_gb: number | null;
+  livre_gb: number | null;
+  /** Quando o aparelho informou. */
+  em: string | null;
+  config: GravacaoConfig;
+}
+
+export type EstadoTrecho = 'pendente' | 'pronto' | 'erro' | 'expirado';
+
+/** `GET /cameras/trechos/:comando_id` — `url` (já com `?token=`) só quando pronto. */
+export interface TrechoHistorico {
+  comando_id: string;
+  estado: EstadoTrecho;
+  inicio: string | null;
+  duracao_s: number | null;
+  erro?: string;
+  url?: string;
+}
+
 export interface Camera {
   id: string;
   unidade_id: string;
@@ -73,6 +110,8 @@ export interface Camera {
   ultimo_alerta_em: string | null;
   stream: CameraStream;
   analise: CameraAnalise;
+  /** Ausente em API antiga (sem histórico no aparelho). */
+  gravacao?: CameraGravacao;
   created_at: string;
   updated_at: string;
 }
@@ -231,6 +270,7 @@ export interface CameraPayload {
   equipamento_id?: string | null;
   stream?: Partial<Pick<CameraStream, 'continuo' | 'transcodificar'>>;
   analise?: Partial<CameraAnalise>;
+  gravacao?: Partial<GravacaoConfig>;
   ordem?: number;
 }
 

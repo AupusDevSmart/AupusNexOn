@@ -1,5 +1,5 @@
 import { Camera as CameraIcon, ChevronDown, ChevronUp, Loader2, Maximize, Radio, VideoOff, type LucideIcon } from 'lucide-react';
-import { forwardRef, useEffect, useRef, useState } from 'react';
+import { forwardRef, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
@@ -20,7 +20,14 @@ interface PainelCameraProps {
   podeComandar: boolean;
   onFoto: () => void;
   fotoPendente: boolean;
+  /** NEXON-108: "Ao vivo | Histórico". Sem `onModo` o seletor não aparece. */
+  modo?: ModoPlayer;
+  onModo?: (modo: ModoPlayer) => void;
+  /** Vídeo + linha do tempo do histórico (no lugar do ao vivo quando `modo = historico`). */
+  historico?: ReactNode;
 }
+
+export type ModoPlayer = 'aovivo' | 'historico';
 
 /**
  * Player principal: ao vivo da câmera escolhida ou a gravação do evento aberto.
@@ -28,14 +35,28 @@ interface PainelCameraProps {
  * a página); no celular é 16:9 na largura toda.
  */
 export const PainelCamera = forwardRef<HTMLElement, PainelCameraProps>(function PainelCamera(
-  { camera, evento, onVoltarAoVivo, onEventoAnterior, onEventoProximo, urlMidia, podeComandar, onFoto, fotoPendente },
+  {
+    camera,
+    evento,
+    onVoltarAoVivo,
+    onEventoAnterior,
+    onEventoProximo,
+    urlMidia,
+    podeComandar,
+    onFoto,
+    fotoPendente,
+    modo = 'aovivo',
+    onModo,
+    historico,
+  },
   ref,
 ) {
   const [agora, setAgora] = useState(() => new Date());
   const quadroRef = useRef<HTMLDivElement>(null);
 
   const offline = camera?.status === 'offline';
-  const aoVivo = !!camera && !offline && !evento;
+  const emHistorico = modo === 'historico' && !evento && !!historico;
+  const aoVivo = !!camera && !offline && !evento && !emHistorico;
 
   // Relógio do carimbo só enquanto o vídeo ao vivo está na tela.
   useEffect(() => {
@@ -82,7 +103,7 @@ export const PainelCamera = forwardRef<HTMLElement, PainelCameraProps>(function 
               <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{diaHoraCurta(evento.inicio_em)}</span>
               {chamado && <span className="hidden truncate text-xs text-muted-foreground sm:inline">· {chamado}</span>}
             </span>
-          ) : offline ? (
+          ) : emHistorico ? null : offline ? (
             <span className="inline-flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
               <span aria-hidden className="h-2 w-2 rounded-full bg-zinc-500" />
               Sem sinal
@@ -96,6 +117,7 @@ export const PainelCamera = forwardRef<HTMLElement, PainelCameraProps>(function 
         </div>
 
         <div role="group" aria-label="Controles da câmera" className="flex shrink-0 items-center gap-1">
+          {!evento && onModo && <SeletorModo modo={emHistorico ? 'historico' : 'aovivo'} onModo={onModo} />}
           {evento ? (
             <>
               <BotaoIcone rotulo="Evento mais novo" icone={ChevronUp} onClick={onEventoAnterior} desabilitado={!onEventoAnterior} />
@@ -106,13 +128,18 @@ export const PainelCamera = forwardRef<HTMLElement, PainelCameraProps>(function 
               </Button>
             </>
           ) : (
-            podeComandar && (
+            podeComandar &&
+            !emHistorico && (
               <BotaoIcone rotulo="Tirar foto agora" icone={CameraIcon} onClick={onFoto} ocupado={fotoPendente} desabilitado={offline} />
             )
           )}
-          <BotaoIcone rotulo="Tela cheia" icone={Maximize} onClick={telaCheia} />
+          {!emHistorico && <BotaoIcone rotulo="Tela cheia" icone={Maximize} onClick={telaCheia} />}
         </div>
       </div>
+
+      {emHistorico ? (
+        historico
+      ) : (
 
       <div
         ref={quadroRef}
@@ -132,9 +159,36 @@ export const PainelCamera = forwardRef<HTMLElement, PainelCameraProps>(function 
           <span className="pointer-events-none absolute bottom-2 left-2.5 text-[11px] tabular-nums text-white/70">{carimboDataHora(agora)}</span>
         )}
       </div>
+      )}
     </section>
   );
 });
+
+/** "Ao vivo | Histórico" (segmentado, dois botões com aria-pressed). */
+function SeletorModo({ modo, onModo }: { modo: ModoPlayer; onModo: (m: ModoPlayer) => void }) {
+  const opcoes: { valor: ModoPlayer; rotulo: string }[] = [
+    { valor: 'aovivo', rotulo: 'Ao vivo' },
+    { valor: 'historico', rotulo: 'Histórico' },
+  ];
+  return (
+    <div role="group" aria-label="Ver" className="mr-1 flex rounded-md border border-border p-0.5">
+      {opcoes.map((o) => (
+        <button
+          key={o.valor}
+          type="button"
+          aria-pressed={modo === o.valor}
+          onClick={() => modo !== o.valor && onModo(o.valor)}
+          className={cn(
+            'h-7 rounded px-2.5 text-xs font-medium transition-colors touch:h-9',
+            modo === o.valor ? 'bg-foreground text-background' : 'text-muted-foreground mouse:hover:text-foreground',
+          )}
+        >
+          {o.rotulo}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 /** Foto ou clipe do evento no lugar do vídeo ao vivo. */
 function MidiaEvento({ evento, urlMidia }: { evento: CameraEvento; urlMidia: PainelCameraProps['urlMidia'] }) {

@@ -25,6 +25,8 @@ vi.mock('../services/cameras.service', () => ({
     armar: vi.fn(),
     acionar: vi.fn(),
     foto: vi.fn(),
+    pedirTrecho: vi.fn(() => new Promise(() => undefined)),
+    trecho: vi.fn(),
   },
 }));
 
@@ -317,5 +319,78 @@ describe('CamerasTab', () => {
     expect(screen.getByText('Nada com esse filtro')).toBeInTheDocument();
     await usuario.click(screen.getByRole('button', { name: 'Limpar filtros' }));
     expect(screen.getByRole('button', { name: 'Todos' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  describe('histórico gravado no aparelho', () => {
+    const gravacao = {
+      ativa: true,
+      de: new Date(Date.now() - 6 * 86_400_000).toISOString(),
+      ate: new Date().toISOString(),
+      uso_gb: 98,
+      livre_gb: 120,
+      em: new Date().toISOString(),
+      config: { ativa: true, dias: 7, stream: 'secundario' as const },
+    };
+    const comGravacao = CAMERAS.map((c) => ({ ...c, gravacao }));
+
+    beforeEach(() => {
+      camerasMock.mockReturnValue(pronto(comGravacao));
+      vi.mocked(CamerasService.pedirTrecho).mockClear();
+    });
+
+    it('sem gravacao na câmera (API antiga) não mostra o seletor', () => {
+      camerasMock.mockReturnValue(pronto(CAMERAS));
+      render('/?modo=historico');
+      expect(screen.queryByRole('button', { name: 'Histórico' })).not.toBeInTheDocument();
+      expect(screen.getByTestId('player')).toBeInTheDocument();
+    });
+
+    it('Ao vivo | Histórico escreve modo=historico e mostra a linha do tempo e o disco', async () => {
+      const usuario = userEvent.setup();
+      render();
+      await usuario.click(screen.getByRole('button', { name: 'Histórico' }));
+      expect(screen.getByTestId('busca')).toHaveTextContent('?modo=historico');
+      expect(screen.getByRole('button', { name: 'Histórico' })).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.queryByTestId('player')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /^Linha do tempo de Hoje/ })).toBeInTheDocument();
+      expect(screen.getByText('Gravando · 6 dias guardados · 120 GB livres')).toBeInTheDocument();
+      expect(screen.getByText('Toque na linha do tempo para ver um horário')).toBeInTheDocument();
+      expect(CamerasService.pedirTrecho).not.toHaveBeenCalled();
+
+      await usuario.click(screen.getByRole('button', { name: 'Ao vivo' }));
+      expect(screen.getByTestId('busca')).toBeEmptyDOMElement();
+      expect(screen.getByTestId('player')).toBeInTheDocument();
+    });
+
+    it('F5 com dia e hora pede o trecho de 60 s e mostra "Buscando no aparelho…"', async () => {
+      render(`/?camera=cab&modo=historico&dia=${ontem}&hora=10:00:00`);
+      expect(await screen.findByText('Buscando no aparelho…')).toBeInTheDocument();
+      expect(CamerasService.pedirTrecho).toHaveBeenCalledWith('cab', { inicio: new Date(`${ontem}T10:00:00-03:00`).toISOString(), duracao_s: 60 });
+      expect(screen.getByText('10:00:00 – 10:01:00')).toBeInTheDocument();
+    });
+
+    it('no histórico, clicar num evento leva a linha do tempo até 10 s antes dele', async () => {
+      const usuario = userEvent.setup();
+      render('/?modo=historico');
+      await usuario.click(screen.getByRole('button', { name: /^Pessoa detectada · Cabine \/ SSU · 05:12/ }));
+      expect(screen.getByTestId('busca')).toHaveTextContent(`?camera=cab&dia=${hoje}&hora=05%3A11%3A50&modo=historico`);
+      expect(CamerasService.marcarLido).toHaveBeenCalledWith('e1');
+    });
+
+    it('‹ › andam 60 s na URL', async () => {
+      const usuario = userEvent.setup();
+      render(`/?camera=cab&modo=historico&dia=${ontem}&hora=00:00:30`);
+      await usuario.click(screen.getByRole('button', { name: '60 s depois' }));
+      expect(screen.getByTestId('busca')).toHaveTextContent(`hora=00%3A01%3A30`);
+      await usuario.click(screen.getByRole('button', { name: '60 s antes' }));
+      await usuario.click(screen.getByRole('button', { name: '60 s antes' }));
+      // Atravessa a meia-noite para o dia anterior.
+      expect(screen.getByTestId('busca')).toHaveTextContent(`dia=${deslocarDia(ontem, -1)}&hora=23%3A59%3A30`);
+    });
+
+    it('hora inválida na URL é ignorada', () => {
+      render('/?modo=historico&hora=25:00:00');
+      expect(screen.getByText('Toque na linha do tempo para ver um horário')).toBeInTheDocument();
+    });
   });
 });

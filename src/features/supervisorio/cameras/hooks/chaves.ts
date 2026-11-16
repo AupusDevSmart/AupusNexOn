@@ -13,6 +13,13 @@ export const chavesCameras = {
   descobertas: (agenteId?: string) => ['cameras', 'descobertas', agenteId?.trim()] as const,
   stream: (cameraId?: string) => ['cameras', 'stream', cameraId?.trim()] as const,
   tokenMidia: ['cameras', 'midia-token'] as const,
+  /**
+   * Histórico (NEXON-108) fica FORA do prefixo `['cameras']` de propósito: invalidar a aba
+   * (marcar lido, salvar config) não pode refazer o POST e pedir outro trecho ao aparelho.
+   */
+  historico: ['cameras-historico'] as const,
+  pedidoTrecho: (cameraId?: string | null, inicio?: string | null) => ['cameras-historico', 'pedido', cameraId?.trim(), inicio] as const,
+  trecho: (comandoId?: string | null) => ['cameras-historico', 'trecho', comandoId?.trim()] as const,
 };
 
 /** Polling padrão da aba: status, não lidos e eventos mudam a cada poucos segundos. */

@@ -38,6 +38,8 @@ export function urlMidia(
   const mesmaOrigem = origemApi !== '' && resolvida.origin === origemApi;
   const texto = resolvida.toString();
   if (!token || !mesmaOrigem) return texto;
+  // A API já mandou o token (trecho do histórico): um segundo `token=` viraria lista e seria recusado.
+  if (resolvida.searchParams.has('token')) return texto;
   const sep = resolvida.search ? '&' : '?';
   return `${texto}${sep}token=${encodeURIComponent(token)}`;
 }

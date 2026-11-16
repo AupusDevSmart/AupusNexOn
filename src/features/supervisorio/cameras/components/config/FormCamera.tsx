@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils';
 import { chavesCameras } from '../../hooks/chaves';
 import type { EquipamentoResumido } from '../../hooks/useEquipamentosPontos';
 import { CamerasService } from '../../services/cameras.service';
-import type { Agente, Camera, CameraDescoberta, CameraPayload, ClasseAlerta } from '../../types';
+import type { Agente, Camera, CameraDescoberta, CameraPayload, ClasseAlerta, StreamGravacao } from '../../types';
 import { mensagemErro } from '../../utils/erros';
 import { NIVEIS_SENSIBILIDADE, nivelSensibilidade, rotuloFabricante, type ValorSensibilidade } from '../../utils/sensibilidade';
 import { Campo, NENHUM, TituloBloco } from './Campo';
@@ -34,6 +34,9 @@ interface Estado {
   classes_alerta: ClasseAlerta[];
   clipe_s: string;
   continuo: boolean;
+  gravacao_ativa: boolean;
+  gravacao_dias: string;
+  gravacao_stream: StreamGravacao;
 }
 
 /** Câmera achada na rede pelo aparelho: pré-preenche a conexão (NEXON-108). */
@@ -62,6 +65,9 @@ function estadoInicial(c: Camera | null, proximaOrdem: number, sugestao?: Sugest
     classes_alerta: c?.analise?.classes_alerta?.length ? [...c.analise.classes_alerta] : [...CLASSES_PADRAO],
     clipe_s: String(c?.analise?.clipe_s ?? 12),
     continuo: c?.stream?.continuo ?? false,
+    gravacao_ativa: c?.gravacao?.config.ativa ?? true,
+    gravacao_dias: String(c?.gravacao?.config.dias ?? 7),
+    gravacao_stream: c?.gravacao?.config.stream ?? 'secundario',
   };
 }
 
@@ -128,6 +134,7 @@ export function FormCamera({ unidadeId, camera, sugestao, agentes, equipamentos,
         equipamento_id: f.equipamento_id === NENHUM ? null : f.equipamento_id,
         ordem: inteiro(f.ordem, proximaOrdem, 0),
         stream: { continuo: f.continuo },
+        gravacao: { ativa: f.gravacao_ativa, dias: inteiro(f.gravacao_dias, 7, 1, 30), stream: f.gravacao_stream },
         analise: {
           ativa: f.analise_ativa,
           sensibilidade: f.sensibilidade,
@@ -357,6 +364,30 @@ export function FormCamera({ unidadeId, camera, sugestao, agentes, equipamentos,
               marcado={f.continuo}
               onChange={campo('continuo')}
             />
+            <LinhaSwitch
+              titulo="Gravação contínua"
+              dica="O aparelho grava tudo no próprio disco; veja em Histórico."
+              marcado={f.gravacao_ativa}
+              onChange={campo('gravacao_ativa')}
+            />
+            {f.gravacao_ativa && (
+              <div className="grid grid-cols-2 gap-3">
+                <Campo rotulo="Dias guardados" htmlFor={`${idBase}-dias`} dica="De 1 a 30.">
+                  <Input id={`${idBase}-dias`} value={f.gravacao_dias} onChange={(e) => campo('gravacao_dias')(e.target.value)} inputMode="numeric" />
+                </Campo>
+                <Campo rotulo="Qualidade" dica="Alta ocupa bem mais disco.">
+                  <Select value={f.gravacao_stream} onValueChange={(v) => campo('gravacao_stream')(v as StreamGravacao)}>
+                    <SelectTrigger aria-label="Qualidade da gravação">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="secundario">Leve</SelectItem>
+                      <SelectItem value="principal">Alta</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Campo>
+              </div>
+            )}
           </div>
         </CollapsibleContent>
       </Collapsible>

@@ -14,6 +14,7 @@ import type {
   ResumoCameras,
   StreamCamera,
   TokenMidia,
+  TrechoHistorico,
 } from '../types';
 
 /** O interceptor do axios já desembrulha `{ success, data }`; isto cobre o caso de vir cru. */
@@ -83,6 +84,17 @@ export const CamerasService = {
   async foto(id: string): Promise<{ comando_id: string }> {
     const { data } = await api.post(`/cameras/${id.trim()}/foto`);
     return unwrap<{ comando_id: string }>(data);
+  },
+
+  /** Pede ao aparelho um trecho do histórico gravado (10..300 s). 409 aparelho offline, 429 pedidos demais. */
+  async pedirTrecho(id: string, body: { inicio: string; duracao_s: number }): Promise<{ comando_id: string; estado: 'pendente' }> {
+    const { data } = await api.post(`/cameras/${id.trim()}/trechos`, body);
+    return unwrap<{ comando_id: string; estado: 'pendente' }>(data);
+  },
+
+  async trecho(comandoId: string): Promise<TrechoHistorico> {
+    const { data } = await api.get(`/cameras/trechos/${comandoId.trim()}`);
+    return unwrap<TrechoHistorico>(data);
   },
 
   async resumo(unidadeId: string): Promise<ResumoCameras> {
