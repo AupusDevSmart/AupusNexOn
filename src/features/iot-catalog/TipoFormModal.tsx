@@ -38,8 +38,8 @@ export function TipoFormModal({ tipo, onClose }: Props) {
   const [tab, setTab] = useState<'form' | 'json'>('form');
   const [jsonDraft, setJsonDraft] = useState('');
   const [jsonError, setJsonError] = useState<string | null>(null);
-  // Intervalo de leitura Modbus deste tipo (s), em pontos.leitura_s — o gerador de firmware le
-  // cada equipamento do tipo nesse ritmo (iot-firmware-agenda.js). Vazio = rodizio padrao.
+  // Leituras Modbus por minuto de cada equipamento deste tipo, em pontos.leituras_min — o gerador
+  // de firmware le nesse ritmo (iot-firmware-agenda.js). Vazio = rodizio padrao.
   const [leituraS, setLeituraS] = useState('');
 
   useEffect(() => {
@@ -47,7 +47,7 @@ export function TipoFormModal({ tipo, onClose }: Props) {
       setCodigo(tipo.codigo);
       setNome(tipo.nome);
       setForm(pontosToForm(tipo.pontos));
-      const l = Number((tipo.pontos as Record<string, unknown> | undefined)?.leitura_s);
+      const l = Number((tipo.pontos as Record<string, unknown> | undefined)?.leituras_min);
       setLeituraS(Number.isFinite(l) && l > 0 ? String(l) : '');
     }
   }, [tipo]);
@@ -94,13 +94,13 @@ export function TipoFormModal({ tipo, onClose }: Props) {
   };
 
   const leituraN = leituraS.trim() === '' ? null : Number(leituraS);
-  const leituraInvalida = leituraN !== null && !(Number.isInteger(leituraN) && leituraN >= 1 && leituraN <= 3600);
+  const leituraInvalida = leituraN !== null && !(Number.isInteger(leituraN) && leituraN >= 1 && leituraN <= 60);
 
   const handleSubmit = async () => {
     const built = buildPontos();
     if (!built) return;
-    const { leitura_s: _antigo, ...semLeitura } = built;
-    const pontos = leituraN !== null ? { ...semLeitura, leitura_s: leituraN } : semLeitura;
+    const { leituras_min: _antigo, ...semLeitura } = built;
+    const pontos = leituraN !== null ? { ...semLeitura, leituras_min: leituraN } : semLeitura;
     try {
       if (tipo) {
         await update.mutateAsync({ id: tipo.id, payload: { codigo, nome, pontos } });
@@ -155,9 +155,9 @@ export function TipoFormModal({ tipo, onClose }: Props) {
               />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="leitura_s">Intervalo de leitura (s)</Label>
+              <Label htmlFor="leituras_min">Leituras por minuto</Label>
               <Input
-                id="leitura_s"
+                id="leituras_min"
                 inputMode="numeric"
                 value={leituraS}
                 onChange={(e) => setLeituraS(e.target.value.replace(/[^0-9]/g, ''))}
@@ -166,8 +166,10 @@ export function TipoFormModal({ tipo, onClose }: Props) {
               />
               <p className={`text-xs ${leituraInvalida ? 'text-destructive' : 'text-muted-foreground'}`}>
                 {leituraInvalida
-                  ? 'De 1 a 3600 segundos.'
-                  : 'De quanto em quanto tempo a TON lê cada equipamento deste tipo. Vazio = rodízio padrão (4 s × nº de equipamentos). Vale ao gerar e gravar o firmware.'}
+                  ? 'De 1 a 60 por minuto.'
+                  : leituraN
+                    ? `Cada equipamento deste tipo é lido ${leituraN}× por minuto (a cada ${Math.round(600 / leituraN) / 10} s). Vale ao gerar e gravar o firmware.`
+                    : 'Quantas vezes por minuto a TON lê cada equipamento deste tipo. Vazio = rodízio padrão (4 s × nº de equipamentos). Vale ao gerar e gravar o firmware.'}
               </p>
             </div>
           </div>

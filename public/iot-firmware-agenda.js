@@ -2,12 +2,13 @@
  * Agenda de leitura Modbus por TIPO de equipamento — compartilhado pelos geradores V1
  * (iot-firmware-generator.v2.js) e TON-V2 (iot-firmware-generator.ton-v2.js).
  *
- * De onde vem o intervalo de cada device (segundos):
- *   1. modelo do catálogo  — `leitura_s` no mapeamento do modelo (exceção de um modelo)
- *   2. tipo do catálogo    — `leitura_s` do tipo (inversor, power_meter, ...): o padrão
+ * Quantas leituras por minuto cada device recebe (`leituras_min`, inteiro 1..60):
+ *   1. modelo do catálogo  — `leituras_min` no mapeamento do modelo (exceção de um modelo)
+ *   2. tipo do catálogo    — `leituras_min` do tipo (inversor, medidor, ...): o padrão
  *   3. nenhum              — o rodízio de sempre (1 device a cada METER_CYCLE_MS)
+ * Intervalo entre leituras = 60 s / leituras_min (ex.: 12/min = a cada 5 s).
  *
- * Sem intervalo em NENHUM device o gerador emite o código antigo, byte a byte (regressão).
+ * Sem leituras_min em NENHUM device o gerador emite o código antigo, byte a byte (regressão).
  * Com algum intervalo: a cada AGENDA_SLOT_MS lê UM device (barramento compartilhado) — o
  * mais atrasado entre os que já venceram. Device sem intervalo fica com o ritmo de hoje
  * (METER_CYCLE_MS × quantidade de devices). A publicação só leva quem foi lido desde a
@@ -15,30 +16,30 @@
  */
 var AgendaLeituraGen = (function () {
     var SLOT_MS = 1000;          // ritmo do barramento com agenda: no máximo 1 leitura por segundo
-    var MIN_S = 1, MAX_S = 3600;
+    var MAX_POR_MIN = 60;
 
-    function segundos(v) {
+    function porMinuto(v) {
         var n = Number(v);
         if (!isFinite(n) || n <= 0) return null;
-        return Math.min(MAX_S, Math.max(MIN_S, Math.round(n)));
+        return Math.min(MAX_POR_MIN, Math.max(1, Math.round(n)));
     }
 
-    /** Intervalo do device em segundos (modelo > tipo) ou null. */
-    function intervaloS(dev) {
+    /** Leituras por minuto do device (modelo > tipo) ou null. */
+    function leiturasMin(dev) {
         var cat = (dev && dev.catalog_device) || {};
-        var doModelo = segundos(cat.leitura_s);
+        var doModelo = porMinuto(cat.leituras_min);
         if (doModelo) return doModelo;
         var tipo = cat.tipo || (dev && dev.type);
         var pts = (typeof DEVICE_POINTS !== 'undefined' && tipo) ? DEVICE_POINTS[tipo] : null;
-        return segundos(pts && pts.leitura_s);
+        return porMinuto(pts && pts.leituras_min);
     }
 
-    /** Intervalos (ms) por device, na ordem dada; null = ninguém tem intervalo (código antigo). */
+    /** Intervalos (ms) por device, na ordem dada; null = ninguém configurado (código antigo). */
     function plano(devs, cicloMs) {
-        var s = (devs || []).map(intervaloS);
+        var s = (devs || []).map(leiturasMin);
         if (!s.some(Boolean)) return null;
         var padrao = cicloMs * devs.length;
-        return s.map(function (x) { return x ? x * 1000 : padrao; });
+        return s.map(function (x) { return x ? Math.round(60000 / x) : padrao; });
     }
 
     /**
@@ -48,7 +49,7 @@ var AgendaLeituraGen = (function () {
     function gerar(o) {
         var ms = plano(o.devs, o.cicloMs);
         var n = o.devs.length, p = o.prefixo;
-        var cpp = '\n// Agenda de leitura por tipo de equipamento (catalogo: leitura_s do tipo ou do modelo).\n'
+        var cpp = '\n// Agenda de leitura por tipo de equipamento (catalogo: leituras_min do tipo ou do modelo).\n'
             + '// A cada ' + SLOT_MS + ' ms le UM device: o mais atrasado entre os que ja venceram.\n'
             + '// Intervalos (ms): ' + o.devs.map(function (d, i) { return (o.nome ? o.nome(i) : ('dev' + i)) + '=' + ms[i]; }).join(', ') + '\n'
             + 'static const uint32_t ' + p + '_int_ms[' + n + '] = {' + ms.map(function (x) { return x + 'UL'; }).join(', ') + '};\n'
@@ -83,6 +84,6 @@ var AgendaLeituraGen = (function () {
         return cpp;
     }
 
-    return { SLOT_MS: SLOT_MS, intervaloS: intervaloS, plano: plano, gerar: gerar };
+    return { SLOT_MS: SLOT_MS, leiturasMin: leiturasMin, plano: plano, gerar: gerar };
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports = { AgendaLeituraGen: AgendaLeituraGen };

@@ -4817,7 +4817,7 @@ bool pivo_encoder_amostrar() {
             }
         }
 
-        // Agenda por tipo (catalogo leitura_s) ou, sem nenhum intervalo, o rodizio de sempre (byte-identico)
+        // Agenda por tipo (catalogo leituras_min) ou, sem nenhum intervalo, o rodizio de sempre (byte-identico)
         const _agenda = (typeof AgendaLeituraGen !== 'undefined') ? AgendaLeituraGen.plano(devs, 4000) : null;
         if (_agenda) {
             cpp += AgendaLeituraGen.gerar({ prefixo: '_ag', devs, cicloMs: 4000, fnSample: 'modbus_sample_one', fnPublish: 'modbus_publish_all',
