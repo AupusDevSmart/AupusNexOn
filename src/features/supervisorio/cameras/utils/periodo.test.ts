@@ -73,3 +73,17 @@ describe('período dos eventos', () => {
     expect(segmentosHora(PERIODO_VAZIO)).toEqual([]);
   });
 });
+
+describe('interpretarHora', () => {
+  it('aceita digitado curto ou com dois pontos', async () => {
+    const { interpretarHora } = await import('./periodo');
+    expect(interpretarHora('8')).toBe('08:00');
+    expect(interpretarHora('18')).toBe('18:00');
+    expect(interpretarHora('830')).toBe('08:30');
+    expect(interpretarHora('1830')).toBe('18:30');
+    expect(interpretarHora('18:30')).toBe('18:30');
+    expect(interpretarHora('25')).toBeNull();
+    expect(interpretarHora('1875')).toBeNull();
+    expect(interpretarHora('')).toBeNull();
+  });
+});

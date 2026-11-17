@@ -199,3 +199,16 @@ export function resumoPeriodo(p: PeriodoEventos, hoje: string = chaveHoje()): st
   else horas = `até ${fimHora(p.horaAte!).replace(/^às /, 'as ').replace(/^à /, 'a ').replace(/^ao /, 'o ')}`;
   return `${dias ?? 'Todo dia'}, ${horas}`;
 }
+
+/** "8" → 08:00 · "18" → 18:00 · "830" → 08:30 · "1830" ou "18:30" → 18:30; inválido → null. */
+export function interpretarHora(texto: string): string | null {
+  const d = texto.replace(/\D/g, '').slice(0, 4);
+  if (!d) return null;
+  let h: number;
+  let m = 0;
+  if (d.length <= 2) h = Number(d);
+  else if (d.length === 3) [h, m] = [Number(d.slice(0, 1)), Number(d.slice(1))];
+  else [h, m] = [Number(d.slice(0, 2)), Number(d.slice(2))];
+  if (h > 23 || m > 59) return null;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}

@@ -4,13 +4,12 @@ import {
   Clock3,
   Moon,
   MoonStar,
-  SlidersHorizontal,
   Sun,
   Sunrise,
   X,
   type LucideIcon,
 } from 'lucide-react';
-import { useId, useState, type ReactNode } from 'react';
+import { useEffect, useId, useState, type ReactNode } from 'react';
 import { DayPicker, type DateRange } from 'react-day-picker';
 import { ptBR } from 'react-day-picker/locale';
 import { useIsMobile } from '@/core/hooks/use-mobile';
@@ -46,6 +45,7 @@ import {
   temPeriodo,
   type AtalhoHora,
   type PeriodoEventos,
+  interpretarHora,
 } from '../utils/periodo';
 
 interface FiltroPeriodoProps {
@@ -77,15 +77,6 @@ const paraChave = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 /** Opções de hora a cada 30 min (`8h`, `8h30`); inclui a hora da URL se for quebrada (ex. 08:45). */
-function opcoesHora(atual: string | null): string[] {
-  const lista: string[] = [];
-  for (let m = 0; m < 1440; m += 30) lista.push(`${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`);
-  if (atual && !lista.includes(atual)) {
-    lista.push(atual);
-    lista.sort();
-  }
-  return lista;
-}
 
 /**
  * Filtro de período da lista de eventos. A barra mostra o resumo em texto de gente
@@ -211,8 +202,7 @@ function ConteudoPeriodo({ layout, periodo, onPeriodo, hoje, resumo, resultado, 
   const atalhoDia = atalhoDiaAtual(periodo, hoje);
   const atalhoHora = atalhoHoraAtual(periodo);
   const temHora = !!(periodo.horaDe || periodo.horaAte);
-  const [escolhendo, setEscolhendo] = useState(temHora && !atalhoHora);
-  const personalizada = escolhendo || (temHora && !atalhoHora);
+  const personalizada = temHora && !atalhoHora;
   const ativo = temPeriodo(periodo);
   const lado = layout === 'lado';
 
@@ -248,7 +238,6 @@ function ConteudoPeriodo({ layout, periodo, onPeriodo, hoje, resumo, resultado, 
   const limpar = () => {
     setAncora(null);
     setCortado(false);
-    setEscolhendo(false);
     onPeriodo(PERIODO_VAZIO);
   };
 
@@ -305,28 +294,16 @@ function ConteudoPeriodo({ layout, periodo, onPeriodo, hoje, resumo, resultado, 
               titulo={a.rotulo}
               detalhe={a.de && a.ate ? faixaHoras(a.de, a.ate) : 'O dia todo'}
               onClick={() => {
-                setEscolhendo(false);
-                onPeriodo({ ...periodo, horaDe: a.de, horaAte: a.ate });
+                            onPeriodo({ ...periodo, horaDe: a.de, horaAte: a.ate });
               }}
             />
           );
         })}
-        <Bloco
-          ativo={personalizada}
-          icone={SlidersHorizontal}
-          titulo="Escolher"
-          detalhe={
-            temHora && !atalhoHora
-              ? `${horaCurtaTexto(periodo.horaDe ?? '00:00')}–${periodo.horaAte ? horaCurtaTexto(periodo.horaAte) : '24h'}`
-              : 'De … até'
-          }
-          onClick={() => setEscolhendo(true)}
-        />
       </div>
 
       <ReguaHoras periodo={periodo} />
 
-      {personalizada && <HorasPersonalizadas periodo={periodo} onTrocar={trocarHora} />}
+      <HorasPersonalizadas periodo={periodo} onTrocar={trocarHora} />
 
       {passaMeiaNoite(periodo) && (
         <p className="flex items-start gap-2.5 rounded-lg bg-muted px-3 py-2.5 text-[13px] leading-snug text-foreground">
@@ -480,32 +457,67 @@ function HorasPersonalizadas({
   );
 }
 
+/** Campo de hora digitável (HH:MM): aceita "18", "1830", "18:30"; confirma ao sair do campo ou com Enter. */
 function SeletorHora({ rotulo, valor, onTrocar }: { rotulo: string; valor: string | null; onTrocar: (v: string) => void }) {
   const id = useId();
+  const [texto, setTexto] = useState(valor ?? '');
+  const [invalido, setInvalido] = useState(false);
+  useEffect(() => {
+    setTexto(valor ?? '');
+    setInvalido(false);
+  }, [valor]);
+
+  const confirmar = () => {
+    if (!texto.trim()) {
+      setInvalido(false);
+      if (valor) onTrocar('');
+      return;
+    }
+    const h = interpretarHora(texto);
+    if (!h) {
+      setInvalido(true);
+      return;
+    }
+    setInvalido(false);
+    setTexto(h);
+    if (h !== valor) onTrocar(h);
+  };
+
+  const digitar = (v: string) => {
+    // máscara leve: 4 dígitos viram HH:MM enquanto digita
+    const d = v.replace(/\D/g, '').slice(0, 4);
+    setTexto(d.length > 2 ? `${d.slice(0, 2)}:${d.slice(2)}` : v.replace(/[^\d:]/g, '').slice(0, 5));
+    setInvalido(false);
+  };
+
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-1.5">
       <label htmlFor={id} className="text-xs font-medium text-muted-foreground">
         {rotulo}
       </label>
-      <div className="relative">
-        <select
-          id={id}
-          value={valor ?? ''}
-          onChange={(e) => onTrocar(e.target.value)}
-          className={cn(
-            'h-11 w-full appearance-none rounded-lg border border-border bg-background pl-3 pr-9 text-[15px] font-medium tabular-nums text-foreground transition-colors mouse:hover:border-[color-mix(in_srgb,var(--nx-verde)_50%,var(--border))] touch:h-12',
-            FOCO,
-          )}
-        >
-          <option value="">Qualquer</option>
-          {opcoesHora(valor).map((h) => (
-            <option key={h} value={h}>
-              {horaCurtaTexto(h)}
-            </option>
-          ))}
-        </select>
-        <ChevronDown aria-hidden className="pointer-events-none absolute right-3 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
-      </div>
+      <input
+        id={id}
+        type="text"
+        inputMode="numeric"
+        autoComplete="off"
+        placeholder="hh:mm"
+        value={texto}
+        aria-invalid={invalido || undefined}
+        onChange={(e) => digitar(e.target.value)}
+        onBlur={confirmar}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            confirmar();
+          }
+        }}
+        className={cn(
+          'h-11 w-full rounded-lg border bg-background px-3 text-[17px] font-semibold tabular-nums tracking-wide text-foreground placeholder:font-normal placeholder:text-muted-foreground transition-colors touch:h-12',
+          invalido ? 'border-red-500' : 'border-border mouse:hover:border-[color-mix(in_srgb,var(--nx-verde)_50%,var(--border))]',
+          FOCO,
+        )}
+      />
+      {invalido && <span className="text-xs text-red-500">Hora inválida (ex.: 18:30)</span>}
     </div>
   );
 }
