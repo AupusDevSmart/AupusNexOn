@@ -5,6 +5,11 @@ export const ETAPAS_ASSISTENTE = ['Gravar', 'Ligar', 'Conectar', 'Câmeras'] as 
 export type EtapaAssistente = 1 | 2 | 3 | 4;
 export type JeitoGravar = 'pc' | 'pendrive' | 'cartao';
 
+/** Quantas telas tem o guia de gravar de cada jeito (sem contar a tela de escolha). */
+export function totalPassosGravar(jeito: JeitoGravar): number {
+  return jeito === 'pc' ? 12 : jeito === 'pendrive' ? 8 : 6;
+}
+
 /** Depois disto sem aparecer, a etapa Conectar mostra "Não apareceu?". */
 export const ESPERA_ANTES_DE_AJUDA_MS = 20 * 60_000;
 /** Sessão guardada mais velha que isto recomeça do zero (a chave da usina vale 48 h). */
@@ -22,12 +27,14 @@ export interface SessaoAssistente {
   procurandoDesde: number | null;
   /** Itens marcados na etapa Ligar. */
   marcados: string[];
+  /** Tela dentro da etapa Gravar: 0 = escolher o jeito; 1..N = um passo por tela. */
+  subpasso: number;
 }
 
 const chave = (unidadeId: string) => `nexon.assistente-raspberry.${unidadeId.trim()}`;
 
 export function sessaoNova(jeito: JeitoGravar = 'pc', agora = Date.now()): SessaoAssistente {
-  return { etapa: 1, jeito, iniciadoEm: agora, idsIniciais: null, procurandoDesde: null, marcados: [] };
+  return { etapa: 1, jeito, iniciadoEm: agora, idsIniciais: null, procurandoDesde: null, marcados: [], subpasso: 0 };
 }
 
 function etapaValida(n: unknown): n is EtapaAssistente {
@@ -49,6 +56,7 @@ export function lerSessao(unidadeId: string, agora = Date.now()): SessaoAssisten
       idsIniciais: Array.isArray(s.idsIniciais) ? s.idsIniciais.filter((x): x is string => typeof x === 'string') : null,
       procurandoDesde: typeof s.procurandoDesde === 'number' ? s.procurandoDesde : null,
       marcados: Array.isArray(s.marcados) ? s.marcados.filter((x): x is string => typeof x === 'string') : [],
+      subpasso: typeof s.subpasso === 'number' && s.subpasso >= 0 ? Math.floor(s.subpasso) : 0,
     };
   } catch {
     return null;
