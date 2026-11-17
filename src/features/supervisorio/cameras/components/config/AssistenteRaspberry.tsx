@@ -147,7 +147,7 @@ export function AssistenteRaspberry({ unidadeId, unidadeNome, onFechar, onVincul
   return (
     <Dialog open onOpenChange={(o) => !o && onFechar()}>
       <DialogContent
-        className="w-full max-w-none gap-0 overflow-hidden p-0 sm:w-[min(720px,100vw)]"
+        className="w-full max-w-none gap-0 overflow-hidden p-0 sm:w-[min(840px,calc(100vw-2rem))]"
       >
         <DialogHeader className="gap-3 space-y-0 border-b border-border px-4 pb-4 pt-4 text-left sm:px-6 sm:pt-6">
           <div className="flex flex-col gap-1 pr-10">
