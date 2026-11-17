@@ -810,7 +810,7 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   const rem = estado?.pivo.remoto;
   const remotoTrava = !on && !desligaAgenda && !!rem?.tem && rem.valor !== 0;
   const cmdLabel = emUsoPor && !on ? `Bomba em uso pelo ${emUsoPor}` : busy ? 'Executando…' : desligaAgenda ? 'Cancelar agendamento' : on ? 'Desligar ou modificar'
-    : remotoTrava ? (rem!.valor === 1 ? 'Em REMOTO · liga só no painel' : 'Sem leitura Local/Remoto') : 'Ligar';
+    : remotoTrava ? (rem!.valor === 1 ? 'Travado no LOCAL' : 'Sem leitura Local/Remoto') : 'Ligar';
   const cmdBloq = on ? false : (!!emUsoPor) || (semLigar && !desligaAgenda) || remotoTrava;
   const cmdStyle = s.cmd(busy || cmdBloq ? 'busy' : on || desligaAgenda ? 'outline' : 'primary');
   const pedirDesligar = () => { setConfirmKind('stop'); setConfirmOpen(true); };
@@ -932,6 +932,17 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
                   <span style={s.stLabel(tone)}>{label}</span>
                   <span style={{ fontSize: 14, color: NX.mudo }}>{texto}</span>
                 </div>
+                {rem?.tem && rem.valor !== 0 && (
+                  // Chave Local/Remoto (BI07) fechada: o pivô é comandado no LOCAL (painel) e o NexON não liga.
+                  <span role="status" title="Chave Local/Remoto do painel (BI07). O NexON não liga o pivô nesta posição; Desligar continua valendo."
+                    style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 2, padding: '4px 10px', borderRadius: 999,
+                      fontSize: 13, fontWeight: 700, color: NX.warn, border: `1px solid ${NX.warn}`, background: 'transparent' }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" />
+                    </svg>
+                    {rem.valor === 1 ? 'Travado no LOCAL · liga só pelo painel' : 'Sem leitura da chave Local/Remoto · ligar travado'}
+                  </span>
+                )}
                 {eta && <span style={{ fontSize: 13, color: NX.mudo }}>{eta}</span>}
                 {agendadaTxt && <span style={{ fontSize: 13, color: NX.mudo }}>{agendadaTxt}</span>}
                 {erro && <span style={{ fontSize: 13, color: NX.warn }}>{erro}</span>}
