@@ -68,6 +68,8 @@ interface Estado {
     canhao?: { comando: boolean; tem_status: boolean; ligado: Bin };
     /** Chave seletora CLP/TON ligada a uma BI (NEXON-103). 1 = modo TON; null = sem leitura. Ausentes em API antiga. */
     tem_modo_ton?: boolean; modo_ton?: 0 | 1 | null;
+    /** Chave Local/Remoto (ponto Remoto, BI07, 17/11): valor 1 = REMOTO (a TON não liga), 0 = LOCAL, null = sem leitura. Ausente em API antiga. */
+    remoto?: { tem: boolean; valor: 0 | 1 | null };
     /** Pressão OK (BI01) e Tensão OK (BI02), com a polaridade: 1 ok, 0 falta, null sem ponto/leitura (12/11). */
     entradas?: { pressao: Bin; tensao: Bin; alinhamento?: Bin };
     /** Horas com o pivô ligado (histórico do NexON, 12/11): total, no mês e da irrigação atual/última. */
@@ -803,8 +805,13 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   // NEXON-98: o botão principal abre o Planejamento de irrigação. Parado → "Ligar" (as opções
   // ficam no diálogo); ligado → "Desligar ou modificar". Só "Cancelar agendamento" confirma direto.
   const semLigar = !estado?.pivo.comandos.direita && !estado?.pivo.comandos.esquerda;
-  const cmdLabel = emUsoPor && !on ? `Bomba em uso pelo ${emUsoPor}` : busy ? 'Executando…' : desligaAgenda ? 'Cancelar agendamento' : on ? 'Desligar ou modificar' : 'Ligar';
-  const cmdBloq = on ? false : (!!emUsoPor) || (semLigar && !desligaAgenda);
+  // Chave Local/Remoto (BI07): em REMOTO (ou sem leitura) a TON não liga. Ligado, o botão segue
+  // (Desligar sempre vale; a irrigação em curso continua se alguém mudar a chave).
+  const rem = estado?.pivo.remoto;
+  const remotoTrava = !on && !desligaAgenda && !!rem?.tem && rem.valor !== 0;
+  const cmdLabel = emUsoPor && !on ? `Bomba em uso pelo ${emUsoPor}` : busy ? 'Executando…' : desligaAgenda ? 'Cancelar agendamento' : on ? 'Desligar ou modificar'
+    : remotoTrava ? (rem!.valor === 1 ? 'Em REMOTO · liga só no painel' : 'Sem leitura Local/Remoto') : 'Ligar';
+  const cmdBloq = on ? false : (!!emUsoPor) || (semLigar && !desligaAgenda) || remotoTrava;
   const cmdStyle = s.cmd(busy || cmdBloq ? 'busy' : on || desligaAgenda ? 'outline' : 'primary');
   const pedirDesligar = () => { setConfirmKind('stop'); setConfirmOpen(true); };
 
@@ -970,6 +977,7 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
               )}
               {perfil.comandar && (
               <button type="button" disabled={busy || cmdBloq} style={cmdStyle}
+                title={remotoTrava ? (rem!.valor === 1 ? 'Chave do painel em REMOTO: a TON não liga o pivô. Passe para LOCAL.' : 'Sem leitura da chave Local/Remoto (BI07)') : undefined}
                 onClick={() => (desligaAgenda ? pedirDesligar() : abrirIrr('simples'))}>{cmdLabel}</button>
               )}
               {/* Com início agendado o botão principal só cancela: o Planejamento segue acessível
