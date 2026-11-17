@@ -3,7 +3,7 @@ import type { Agente } from '../types';
 /** Etapas do assistente "Adicionar Raspberry novo" (NEXON-108). */
 export const ETAPAS_ASSISTENTE = ['Gravar', 'Ligar', 'Conectar', 'Câmeras'] as const;
 export type EtapaAssistente = 1 | 2 | 3 | 4;
-export type JeitoGravar = 'pc' | 'pendrive';
+export type JeitoGravar = 'pc' | 'pendrive' | 'cartao';
 
 /** Depois disto sem aparecer, a etapa Conectar mostra "Não apareceu?". */
 export const ESPERA_ANTES_DE_AJUDA_MS = 20 * 60_000;
@@ -44,7 +44,7 @@ export function lerSessao(unidadeId: string, agora = Date.now()): SessaoAssisten
     if (agora - s.iniciadoEm > VALIDADE_SESSAO_MS) return null;
     return {
       etapa: s.etapa,
-      jeito: s.jeito === 'pendrive' ? 'pendrive' : 'pc',
+      jeito: s.jeito === 'pendrive' || s.jeito === 'cartao' ? s.jeito : 'pc',
       iniciadoEm: s.iniciadoEm,
       idsIniciais: Array.isArray(s.idsIniciais) ? s.idsIniciais.filter((x): x is string => typeof x === 'string') : null,
       procurandoDesde: typeof s.procurandoDesde === 'number' ? s.procurandoDesde : null,
