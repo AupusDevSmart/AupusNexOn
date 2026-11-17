@@ -74,7 +74,11 @@ export function AcoesAparelho({ agente, admin, online }: { agente: Agente; admin
     else if (tipo === 'reiniciar') toast.success('Aparelho reiniciando. Volta em cerca de 30 segundos.');
     else if (e.resultado?.ja_atualizado) toast.success('O aparelho já está na versão mais nova.');
     else toast.success(`Atualizando para a versão ${e.resultado?.para ?? ''}. Volta em cerca de 1 minuto.`);
-    if (tipo !== 'logs') window.setTimeout(() => void queryClient.invalidateQueries({ queryKey: chavesCameras.agentes(agente.unidade_id) }), 45_000);
+    if (tipo !== 'logs')
+      window.setTimeout(() => {
+        void queryClient.invalidateQueries({ queryKey: chavesCameras.agentes(agente.unidade_id) });
+        void queryClient.invalidateQueries({ queryKey: chavesCameras.agentesTodos });
+      }, 45_000);
   }, [estado.data, acompanhando, agente.unidade_id, queryClient]);
 
   const nova = disponivel.data?.versao;

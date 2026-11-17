@@ -16,7 +16,7 @@ import { useUserStore } from '@/store/useUserStore';
  * nao tem `featureKey` e ficam abertos sujeitos so a feature flag.
  */
 export function useFilteredNavigationLinks() {
-  const { acessivel, capacidades } = useUserStore();
+  const { acessivel, capacidades, papel } = useUserStore();
   // NEXON-20: "cliente" = quem não é da equipe Aupus (proprietário e operador).
   const cliente = !capacidades?.global;
 
@@ -24,6 +24,7 @@ export function useFilteredNavigationLinks() {
     // Cliente (proprietário) por ora só monitoramento — Cadastros e afins somem.
     if (cliente && link.hideForClient) return false;
     if (link.requerCadastrarUsuario && !(capacidades?.cadastra?.length > 0)) return false;
+    if (link.requerAdmin && papel !== 'admin') return false;
     if (link.featureFlag) {
       const isFlagEnabled = featureFlags[link.featureFlag];
       if (!isFlagEnabled) return false;

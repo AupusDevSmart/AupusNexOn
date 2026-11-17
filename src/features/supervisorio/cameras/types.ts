@@ -228,6 +228,15 @@ export interface Agente {
   updated_at: string;
 }
 
+/** Aparelho na lista de todas as usinas (administrador, NEXON-108). */
+export interface AgenteGlobal extends Agente {
+  planta_id?: string;
+  online?: boolean;
+  unidade_nome: string | null;
+  unidade_excluida?: boolean;
+  planta_nome: string | null;
+}
+
 /**
  * Aparelho (agente) pedindo pareamento na mesma rede de quem consulta (NEXON-108):
  * `GET /cameras/pareamento/proximos`.
