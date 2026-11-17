@@ -29,6 +29,7 @@ import { mensagemErro } from '../utils/erros';
 import { FILTROS_EVENTOS, ehNaoLido, textoArmamento, textoNoite } from '../utils/eventos';
 import { horaMinValida, type PeriodoEventos } from '../utils/periodo';
 import { diaHoraDe, diasDisponiveis, horaDeSegundos, horaValida, inicioDoTrecho, segundosDeHora } from '../utils/historico';
+import { AvisoCamerasNovas } from './AvisoCamerasNovas';
 import { CamerasSkeleton } from './CamerasSkeleton';
 import { ConfigCamerasSheet, type AbaConfigCameras } from './ConfigCamerasSheet';
 import { GradeCameras } from './GradeCameras';
@@ -412,6 +413,8 @@ export function CamerasTab({ unidadeId, unidadeNome }: CamerasTabProps) {
           />
         </div>
       ) : (
+        <>
+        {podeCadastrar && <AvisoCamerasNovas unidadeId={unidadeId} onAdicionar={() => abrirConfig('cameras')} />}
         <div className="grid gap-3 p-3 sm:p-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_minmax(340px,380px)] lg:grid-rows-[minmax(0,1fr)] xl:grid-cols-[minmax(0,1fr)_420px]">
           <div className="flex min-w-0 flex-col gap-3 lg:min-h-0">
             <PainelCamera
@@ -478,6 +481,7 @@ export function CamerasTab({ unidadeId, unidadeNome }: CamerasTabProps) {
             apagadosEm={apagadosEm}
           />
         </div>
+        </>
       )}
 
       <AlertDialog open={!!paraApagar} onOpenChange={(aberto) => !aberto && !apagar.isPending && setParaApagar(null)}>

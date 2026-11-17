@@ -121,11 +121,24 @@ describe('Câmeras encontradas', () => {
     });
   });
 
-  it('câmera de fábrica pede para criar a senha antes', async () => {
+  it('câmera de fábrica: a senha é criada no cadastro (usuário admin, senha forte)', async () => {
     vi.mocked(CamerasService.descobertas).mockResolvedValue([{ ...DESCOBERTA, inicializada: false }]);
+    vi.mocked(CamerasService.criar).mockReset().mockResolvedValue(camera());
     renderWithProviders(<SecaoCameras unidadeId="u1" />);
-    expect(await screen.findByText(/Crie a senha da câmera em/)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'http://192.168.1.8' })).toHaveAttribute('href', 'http://192.168.1.8');
+    expect(await screen.findByText(/Nova de fábrica, sem senha/)).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'http://192.168.1.8' })).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: /^Adicionar .*192\.168\.1\.8/ }));
+    expect(screen.getByLabelText('Usuário')).toHaveValue('admin');
+    await userEvent.type(screen.getByLabelText('Nome'), 'Portão');
+    await userEvent.type(screen.getByLabelText('Crie a senha'), '12345678');
+    await userEvent.click(screen.getByRole('button', { name: 'Adicionar câmera' }));
+    expect(await screen.findByText(/8 a 32 caracteres/)).toBeInTheDocument();
+    expect(CamerasService.criar).not.toHaveBeenCalled();
+    await userEvent.clear(screen.getByLabelText('Crie a senha'));
+    await userEvent.type(screen.getByLabelText('Crie a senha'), 'Aupus2026');
+    await userEvent.click(screen.getByRole('button', { name: 'Adicionar câmera' }));
+    await waitFor(() => expect(CamerasService.criar).toHaveBeenCalled());
+    expect(vi.mocked(CamerasService.criar).mock.calls[0][0]).toMatchObject({ usuario: 'admin', senha: 'Aupus2026' });
   });
 });
 
