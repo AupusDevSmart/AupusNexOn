@@ -69,36 +69,54 @@ describe('AssistenteRaspberry', () => {
     vi.useRealTimers();
   });
 
-  it('pede o comando com a usina, mostra o destino e copia o comando', async () => {
+  it('escolhe o jeito e guia uma coisa por tela até copiar o comando', async () => {
     const user = userEvent.setup();
     abrir();
-    expect(await screen.findByText(INSTALADOR.comando)).toBeInTheDocument();
-    expect(CamerasService.instalador).toHaveBeenCalledWith('u1');
     expect(screen.getByText(/Entra em/)).toHaveTextContent('Entra em UFV Aupus II');
-    // Escolha do jeito de gravar logo no início.
     expect(screen.getByRole('radio', { name: /Computador/ })).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByRole('radio', { name: /Cartão SD/ })).toBeInTheDocument();
+    await waitFor(() => expect(CamerasService.instalador).toHaveBeenCalledWith('u1'));
 
+    await user.click(screen.getByRole('button', { name: /Começar/ }));
+    expect(screen.getByText('Passo 1 de 12')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Separe o Raspberry e um cabo USB-C' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Feito, próximo/ }));
+    expect(screen.getByRole('heading', { name: 'Abra o Terminal' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Feito, próximo/ }));
+    expect(screen.getByRole('heading', { name: 'Copie o comando' })).toBeInTheDocument();
+    expect(await screen.findByText(INSTALADOR.comando)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Copiar comando' }));
     expect(await navigator.clipboard.readText()).toBe(INSTALADOR.comando);
-    expect(screen.getByRole('button', { name: /Copiado/ })).toBeInTheDocument();
+    expect(lerSessao('u1')?.subpasso).toBe(3);
 
-    // Windows: mesmo jeito, comando do PowerShell.
+    // Volta à escolha e troca para Windows: comando do PowerShell.
+    for (let i = 0; i < 3; i++) await user.click(screen.getByRole('button', { name: 'Voltar' }));
     await user.click(screen.getByRole('radio', { name: 'Windows' }));
+    await user.click(screen.getByRole('button', { name: /Começar/ }));
+    await user.click(screen.getByRole('button', { name: /Feito, próximo/ }));
+    expect(screen.getByRole('heading', { name: 'Abra o PowerShell' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Feito, próximo/ }));
     expect(screen.getByText(INSTALADOR.comando_windows!)).toBeInTheDocument();
-    expect(screen.getByText('PowerShell')).toBeInTheDocument();
+  });
 
+  it('cartão SD: 6 telas e depois a etapa Ligar', async () => {
+    const user = userEvent.setup();
+    abrir();
     await user.click(screen.getByRole('radio', { name: /Cartão SD/ }));
-    expect(screen.getByText('Grave no cartão SD (Pi Imager)')).toBeInTheDocument();
-    expect(screen.queryByText(INSTALADOR.comando_windows!)).toBeNull();
+    await user.click(screen.getByRole('button', { name: /Começar/ }));
+    expect(screen.getByText('Passo 1 de 6')).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: /Baixar o NexON/ })).toBeInTheDocument();
+    for (let i = 0; i < 5; i++) await user.click(screen.getByRole('button', { name: /Feito, próximo/ }));
+    expect(screen.getByRole('heading', { name: 'Pronto: o cartão está gravado' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Terminei de gravar/ }));
+    expect(screen.getByRole('heading', { name: 'Ligue no local' })).toBeInTheDocument();
   });
 
   it('avança pelas etapas, marca o checklist e guarda a etapa para reabrir', async () => {
     const user = userEvent.setup();
+    gravarSessao('u1', { ...sessaoNova('pc'), etapa: 2 });
     abrir();
-    await screen.findByText(INSTALADOR.comando);
-
-    await user.click(screen.getByRole('button', { name: /Próximo/ }));
     expect(screen.getByRole('heading', { name: 'Ligue no local' })).toBeInTheDocument();
     const etapas = screen.getByRole('list', { name: 'Etapas' });
     expect(within(etapas).getByRole('button', { current: 'step' })).toHaveTextContent('Ligar');
@@ -112,10 +130,10 @@ describe('AssistenteRaspberry', () => {
     // Sem aparelho novo, não dá para seguir para câmeras.
     expect(screen.getByRole('button', { name: 'Esperando…' })).toBeDisabled();
 
+    await waitFor(() => expect(lerSessao('u1')?.idsIniciais).toEqual(['a-velho']));
     const guardada = lerSessao('u1');
     expect(guardada?.etapa).toBe(3);
     expect(guardada?.marcados).toEqual(['fonte']);
-    expect(guardada?.idsIniciais).toEqual(['a-velho']);
     expect(guardada?.procurandoDesde).toEqual(expect.any(Number));
 
     await user.click(screen.getByRole('button', { name: 'Voltar' }));

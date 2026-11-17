@@ -18,11 +18,12 @@ import {
   limparSessao,
   sessaoNova,
   sistemaDoComputador,
+  totalPassosGravar,
   type EtapaAssistente,
   type SessaoAssistente,
 } from '../../utils/assistente-raspberry';
 import { VERDE_TEXTO } from '../estilo-filtro';
-import { CAIXA_VERDE, EtapaCameras, EtapaConectar, EtapaGravar, EtapaLigar } from './EtapasAssistente';
+import { CAIXA_VERDE, EtapaCameras, EtapaConectar, EtapaGravar, EtapaLigar, type SistemaPc } from './EtapasAssistente';
 
 interface Props {
   unidadeId: string;
@@ -46,7 +47,8 @@ export function AssistenteRaspberry({ unidadeId, unidadeNome, onFechar, onVincul
   const [sessao, setSessao] = useState<SessaoAssistente>(
     () => lerSessao(unidadeId) ?? sessaoNova('pc'),
   );
-  const { etapa } = sessao;
+  const { etapa, subpasso } = sessao;
+  const [so, setSo] = useState<SistemaPc>(sistema === 'windows' ? 'windows' : 'mac-linux');
   const atualizar = (m: Partial<SessaoAssistente>) => setSessao((s) => ({ ...s, ...m }));
 
   useEffect(() => {
@@ -118,7 +120,7 @@ export function AssistenteRaspberry({ unidadeId, unidadeNome, onFechar, onVincul
       return;
     }
     document.getElementById(tituloId)?.focus();
-  }, [etapa, tituloId]);
+  }, [etapa, subpasso, tituloId]);
 
   const concluir = () => {
     limparSessao(unidadeId);
@@ -135,9 +137,14 @@ export function AssistenteRaspberry({ unidadeId, unidadeNome, onFechar, onVincul
   // Câmeras só depois que o aparelho chegou; o resto fica livre para ir e voltar.
   const podeIr = (n: EtapaAssistente) => n < 4 || !!novo;
 
+  const totalGravar = totalPassosGravar(sessao.jeito);
   const proximo =
     etapa === 1
-      ? { rotulo: 'Próximo', acao: () => irPara(2), ativo: true }
+      ? subpasso === 0
+        ? { rotulo: 'Começar', acao: () => atualizar({ subpasso: 1 }), ativo: true }
+        : subpasso < totalGravar
+          ? { rotulo: 'Feito, próximo', acao: () => atualizar({ subpasso: subpasso + 1 }), ativo: true }
+          : { rotulo: 'Terminei de gravar', acao: () => irPara(2), ativo: true }
       : etapa === 2
         ? { rotulo: 'Próximo', acao: () => irPara(3), ativo: true }
         : etapa === 3
@@ -211,6 +218,9 @@ export function AssistenteRaspberry({ unidadeId, unidadeNome, onFechar, onVincul
               tituloId={tituloId}
               jeito={sessao.jeito}
               onJeito={(jeito) => atualizar({ jeito })}
+              so={so}
+              onSo={setSo}
+              subpasso={subpasso}
               sistema={sistema}
               instalador={instalador.data}
               carregando={instalador.isPending}
@@ -253,8 +263,13 @@ export function AssistenteRaspberry({ unidadeId, unidadeNome, onFechar, onVincul
 
         <div className="flex flex-col gap-2 border-t border-border px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 sm:px-6">
           <div className="flex items-center gap-2">
-            {etapa > 1 ? (
-              <Button type="button" variant="ghost" className="h-11 gap-1 px-3" onClick={() => irPara((etapa - 1) as EtapaAssistente)}>
+            {etapa > 1 || subpasso > 0 ? (
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-11 gap-1 px-3"
+                onClick={() => (etapa === 1 ? atualizar({ subpasso: subpasso - 1 }) : irPara((etapa - 1) as EtapaAssistente))}
+              >
                 <ChevronLeft aria-hidden />
                 Voltar
               </Button>

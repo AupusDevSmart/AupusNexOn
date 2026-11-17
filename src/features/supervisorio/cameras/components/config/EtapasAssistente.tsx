@@ -9,14 +9,11 @@ import {
   Cpu,
   Download,
   HardDrive,
-  Keyboard,
   Laptop,
   Loader2,
   Network,
   Plug,
-  Power,
   RefreshCw,
-  Terminal,
   Usb,
   Video,
 } from 'lucide-react';
@@ -31,6 +28,7 @@ import { mensagemErro } from '../../utils/erros';
 import { rotuloFabricante } from '../../utils/sensibilidade';
 import type { DescobertaDoAgente } from '../../hooks/useConfigCameras';
 import { VERDE_TEXTO } from '../estilo-filtro';
+import { ContarAteTres, DesenhoRaspberry, Quadro, Teclas, TelaTerminal } from './IlustracoesRaspberry';
 
 /* Estilos da marca. Opacidade em cor de tema (`bg-nexon-verde/15`) não gera CSS aqui: color-mix. */
 export const CAIXA_VERDE =
@@ -48,27 +46,6 @@ export function TituloEtapa({ id, children }: { id: string; children: ReactNode 
     <h3 id={id} tabIndex={-1} className="text-lg font-semibold outline-none">
       {children}
     </h3>
-  );
-}
-
-/** Passo com ícone grande e número: uma frase curta. */
-function Passo({ n, icone, children }: { n: number; icone: ReactNode; children: ReactNode }) {
-  return (
-    <li className="flex items-center gap-4">
-      <span className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-muted text-foreground [&_svg]:h-6 [&_svg]:w-6">
-        {icone}
-        <span
-          aria-hidden
-          className="absolute -left-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-nexon-verde text-xs font-bold tabular-nums text-nexon-azul"
-        >
-          {n}
-        </span>
-      </span>
-      <span className="min-w-0 flex-1 text-base font-medium">
-        <span className="sr-only">{n}. </span>
-        {children}
-      </span>
-    </li>
   );
 }
 
@@ -183,10 +160,155 @@ const JEITOS: { valor: JeitoGravar; titulo: string; detalhe: string; icone: Reac
   { valor: 'cartao', titulo: 'Cartão SD', detalhe: 'Leitor no PC', icone: <CreditCard aria-hidden /> },
 ];
 
+export type SistemaPc = 'mac-linux' | 'windows';
+
+interface PassoGuiado {
+  titulo: ReactNode;
+  /** Uma frase de ajuda, embaixo do título. */
+  ajuda?: ReactNode;
+  visual: ReactNode;
+  /** Botão ou peça extra (copiar comando, baixar imagem). */
+  extra?: ReactNode;
+}
+
+const LINHAS_INICIO = ['Instalador do NexON para Raspberry Pi 5', '[1/5] Imagem do NexON', 'OK: baixada e conferida.', '[2/5] Programa da Raspberry', 'OK: pronto.', '[3/5] Conectar o Raspberry'];
+
+function passosComputador(
+  win: boolean,
+  comando: ReactNode,
+): PassoGuiado[] {
+  const app = win ? 'PowerShell' : 'Terminal';
+  return [
+    {
+      titulo: 'Separe o Raspberry e um cabo USB-C',
+      ajuda: 'O cartão SD fica dentro do Raspberry. Use um cabo de celular. O cabo da fonte do Raspberry não serve.',
+      visual: <DesenhoRaspberry destaque={['sd', 'usbc']} />,
+    },
+    {
+      titulo: `Abra o ${app}`,
+      ajuda: win ? (
+        'Aperte a tecla Windows, escreva PowerShell e aperte Enter.'
+      ) : (
+        <>
+          Aperte as duas teclas juntas, escreva <strong>Terminal</strong> e aperte Enter. No Linux: Ctrl + Alt + T.
+        </>
+      ),
+      visual: win ? <Teclas teclas={['Windows', 'depois', 'PowerShell', 'depois', 'Enter']} /> : <Teclas teclas={['Cmd', '+', 'Espaço']} />,
+    },
+    {
+      titulo: 'Copie o comando',
+      ajuda: 'Clique no botão verde.',
+      visual: <Copy className="h-16 w-16 text-muted-foreground" aria-hidden />,
+      extra: comando,
+    },
+    {
+      titulo: `Cole no ${app} e aperte Enter`,
+      ajuda: win ? 'Vai abrir uma janela pedindo permissão: clique em Sim.' : 'Se pedir a senha do computador, digite e aperte Enter. Ela não aparece enquanto você digita.',
+      visual: <Teclas teclas={[win ? 'Ctrl' : 'Cmd', '+', 'V', 'depois', 'Enter']} />,
+    },
+    {
+      titulo: 'Espere aparecer esta frase',
+      ajuda: 'Na primeira vez pode levar alguns minutos. Não aperte nada ainda.',
+      visual: <TelaTerminal titulo={app} linhas={LINHAS_INICIO} destaque="Fez os 4 passos? Aperte Enter" />,
+    },
+    {
+      titulo: 'Deixe o Raspberry sem nenhum cabo',
+      ajuda: 'Se tiver fonte ou cabo ligado nele, tire e espere 5 segundos.',
+      visual: <DesenhoRaspberry />,
+    },
+    {
+      titulo: 'Aperte e segure o botão',
+      ajuda: 'É o botãozinho ao lado da entrada USB-C. Não solte ainda.',
+      visual: <DesenhoRaspberry destaque={['botao']} dedo />,
+    },
+    {
+      titulo: 'Segurando o botão, ligue o cabo',
+      ajuda: 'Uma ponta no Raspberry, a outra no computador. Direto no computador, sem adaptador.',
+      visual: <DesenhoRaspberry destaque={['botao', 'cabo']} dedo />,
+    },
+    {
+      titulo: 'Conte até 3 e solte o botão',
+      visual: <ContarAteTres />,
+    },
+    {
+      titulo: `Volte ao ${app} e aperte Enter`,
+      ajuda: 'Em até 2 minutos aparece "Achei o SD do Raspberry".',
+      visual: <Teclas teclas={['Enter']} />,
+    },
+    {
+      titulo: 'Escreva SIM e aperte Enter',
+      ajuda: 'Isso apaga o cartão e grava o NexON nele.',
+      visual: (
+        <TelaTerminal
+          titulo={app}
+          linhas={['Achei o SD do Raspberry (32 GB).', 'Tudo o que estiver nele será apagado.']}
+          destaque="Digite SIM para gravar o NexON: SIM"
+        />
+      ),
+    },
+    {
+      titulo: 'Espere aparecer "Pronto!"',
+      ajuda: 'Leva de 5 a 15 minutos. Depois tire o cabo: o Raspberry está pronto.',
+      visual: <TelaTerminal titulo={app} linhas={['[4/5] Gravando…', '[5/5] Conferindo', 'OK: chave da usina gravada.']} destaque="Pronto! Pode tirar o cabo do computador." />,
+    },
+  ];
+}
+
+function passosImagem(jeito: 'pendrive' | 'cartao', baixar: ReactNode): PassoGuiado[] {
+  const midia = jeito === 'pendrive' ? 'pendrive' : 'cartão SD';
+  const inicio: PassoGuiado[] = [
+    { titulo: 'Baixe o NexON', ajuda: 'É um arquivo grande (1 GB). Espere terminar.', visual: <Download className="h-16 w-16 text-muted-foreground" aria-hidden />, extra: baixar },
+    {
+      titulo: 'Instale o Raspberry Pi Imager',
+      ajuda: 'Programa grátis da Raspberry, para Mac, Windows e Linux.',
+      visual: <Laptop className="h-16 w-16 text-muted-foreground" aria-hidden />,
+      extra: (
+        <Button asChild variant="outline" className={BOTAO_GRANDE}>
+          <a href="https://www.raspberrypi.com/software/" target="_blank" rel="noreferrer">
+            Abrir o site do Imager
+          </a>
+        </Button>
+      ),
+    },
+    {
+      titulo: `Coloque o ${midia} no computador`,
+      ajuda: `Use um ${midia} de 16 GB ou mais. Tudo nele será apagado.`,
+      visual: jeito === 'pendrive' ? <Usb className="h-16 w-16 text-muted-foreground" aria-hidden /> : <CreditCard className="h-16 w-16 text-muted-foreground" aria-hidden />,
+    },
+    {
+      titulo: 'No Imager, grave o arquivo baixado',
+      ajuda: (
+        <>
+          Sistema: <strong>Usar personalizado</strong> e escolha o arquivo do NexON. Armazenamento: o {midia}. Clique em Próximo e,
+          em personalizar, <strong>Não</strong>.
+        </>
+      ),
+      visual: <Teclas teclas={['Usar personalizado', 'depois', 'Não']} />,
+    },
+  ];
+  if (jeito === 'cartao') {
+    return [
+      ...inicio,
+      { titulo: 'Coloque o cartão no Raspberry', ajuda: 'A entrada fica embaixo da placa, na ponta.', visual: <DesenhoRaspberry destaque={['sd']} /> },
+      { titulo: 'Pronto: o cartão está gravado', ajuda: 'Agora é só ligar o Raspberry no lugar dele.', visual: <Check className="h-16 w-16 text-[var(--nx-verde)]" aria-hidden /> },
+    ];
+  }
+  return [
+    ...inicio,
+    { titulo: 'Coloque o pendrive no Raspberry', ajuda: 'O cartão SD fica dentro do Raspberry.', visual: <DesenhoRaspberry destaque={['sd', 'rede']} /> },
+    { titulo: 'Ligue o cabo de rede e a fonte', visual: <DesenhoRaspberry destaque={['rede', 'fonte']} /> },
+    { titulo: 'Espere ele desligar sozinho', ajuda: 'Leva uns 10 minutos: ele copia tudo para o cartão SD e desliga.', visual: <Clock className="h-16 w-16 text-muted-foreground" aria-hidden /> },
+    { titulo: 'Tire o pendrive', ajuda: 'O Raspberry agora liga pelo cartão SD.', visual: <Usb className="h-16 w-16 text-muted-foreground" aria-hidden /> },
+  ];
+}
+
 export function EtapaGravar({
   tituloId,
   jeito,
   onJeito,
+  so,
+  onSo,
+  subpasso,
   sistema,
   instalador,
   carregando,
@@ -197,6 +319,9 @@ export function EtapaGravar({
   tituloId: string;
   jeito: JeitoGravar;
   onJeito: (j: JeitoGravar) => void;
+  so: SistemaPc;
+  onSo: (s: SistemaPc) => void;
+  subpasso: number;
   sistema: 'mac-linux' | 'windows' | 'celular';
   instalador: InstaladorAparelho | undefined;
   carregando: boolean;
@@ -204,196 +329,152 @@ export function EtapaGravar({
   onTentarDeNovo: () => void;
   gerando: boolean;
 }) {
-  const vencido = instalador ? Date.parse(instalador.valido_ate) <= Date.now() : false;
   const pc = jeito === 'pc';
-  const [so, setSo] = useState<'mac-linux' | 'windows'>(sistema === 'windows' ? 'windows' : 'mac-linux');
   const win = so === 'windows';
-  const comando = win ? instalador?.comando_windows : instalador?.comando;
+
+  if (subpasso === 0) {
+    return (
+      <div className="flex flex-col gap-6">
+        <TituloEtapa id={tituloId}>Como vai gravar?</TituloEtapa>
+        {sistema === 'celular' && (
+          <p className={cn('flex items-center gap-2 rounded-xl p-3 text-sm', CAIXA_AVISO)}>
+            <Laptop className="h-4 w-4 shrink-0" aria-hidden />
+            Abra no computador para gravar.
+          </p>
+        )}
+        <div role="radiogroup" aria-label="Jeito de gravar" className="grid grid-cols-3 gap-2 sm:gap-3">
+          {JEITOS.map((j) => {
+            const marcado = j.valor === jeito;
+            return (
+              <button
+                key={j.valor}
+                type="button"
+                role="radio"
+                aria-checked={marcado}
+                onClick={() => onJeito(j.valor)}
+                className={cn(
+                  'flex min-h-[104px] flex-col items-center justify-center gap-1.5 rounded-xl border-2 p-2 text-center transition-colors',
+                  marcado ? cn('border-nexon-verde', CAIXA_VERDE) : 'border-border mouse:hover:border-muted-foreground',
+                )}
+              >
+                <span className={cn('[&_svg]:h-7 [&_svg]:w-7', marcado ? VERDE_TEXTO : 'text-muted-foreground')}>{j.icone}</span>
+                <span className="text-sm font-semibold leading-tight">{j.titulo}</span>
+                <span className="text-xs leading-tight text-muted-foreground">{j.detalhe}</span>
+              </button>
+            );
+          })}
+        </div>
+        {pc && (
+          <div className="flex flex-col gap-2">
+            <p className="text-sm font-medium">Qual é o computador?</p>
+            <div role="radiogroup" aria-label="Sistema do computador" className="grid grid-cols-2 gap-1 rounded-xl bg-muted p-1">
+              {(['mac-linux', 'windows'] as const).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  role="radio"
+                  aria-checked={so === v}
+                  onClick={() => onSo(v)}
+                  className={cn(
+                    'min-h-11 rounded-lg text-sm font-semibold transition-colors',
+                    so === v ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground mouse:hover:text-foreground',
+                  )}
+                >
+                  {v === 'windows' ? 'Windows' : 'Mac ou Linux'}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        <p className="text-sm text-muted-foreground">Depois é uma coisa por tela. Clique em Começar.</p>
+      </div>
+    );
+  }
+
+  const comandoTexto = win ? instalador?.comando_windows : instalador?.comando;
+  const vencido = instalador ? Date.parse(instalador.valido_ate) <= Date.now() : false;
+  const pecaComando = carregando ? (
+    <div role="status" className="flex h-14 items-center justify-center gap-2 rounded-xl bg-background text-sm text-muted-foreground">
+      <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+      Preparando o comando…
+    </div>
+  ) : erro ? (
+    <div role="alert" className={cn('flex flex-col gap-3 rounded-xl p-4 text-sm', CAIXA_AVISO)}>
+      <p>{mensagemErro(erro, 'Não deu para preparar o comando.')}</p>
+      <Button type="button" variant="outline" className={cn(BOTAO_GRANDE, 'self-start')} onClick={onTentarDeNovo}>
+        <RefreshCw aria-hidden />
+        Tentar de novo
+      </Button>
+    </div>
+  ) : vencido ? (
+    <div className="flex flex-col gap-2">
+      <p role="alert" className="text-sm font-medium text-amber-600 dark:text-amber-400">
+        Este comando venceu. Gere outro.
+      </p>
+      <BotaoGerarOutro onClick={onTentarDeNovo} gerando={gerando} principal />
+    </div>
+  ) : comandoTexto ? (
+    <div className="flex flex-col gap-1">
+      <CaixaComando texto={comandoTexto} rotulo="Copiar comando" grande />
+      {instalador && <p className="text-xs text-muted-foreground">Vale até {validadeTexto(instalador.valido_ate)}, para um Raspberry.</p>}
+    </div>
+  ) : (
+    <p className={cn('rounded-xl p-3 text-sm', CAIXA_AVISO)}>Não tem comando para este computador. Volte e escolha Pendrive ou Cartão SD.</p>
+  );
+
+  const baixar = instalador ? (
+    <Button asChild className={BOTAO_PRINCIPAL}>
+      <a href={instalador.url_imagem} download>
+        <Download aria-hidden />
+        Baixar o NexON
+      </a>
+    </Button>
+  ) : (
+    pecaComando
+  );
+
+  const passos = pc ? passosComputador(win, pecaComando) : passosImagem(jeito, baixar);
+  const i = Math.min(subpasso, passos.length) - 1;
+  const p = passos[i];
 
   return (
-    <div className="flex flex-col gap-6">
-      <TituloEtapa id={tituloId}>Como vai gravar?</TituloEtapa>
-
-      <div role="radiogroup" aria-label="Jeito de gravar" className="grid grid-cols-3 gap-2">
-        {JEITOS.map((j) => {
-          const marcado = j.valor === jeito;
-          return (
-            <button
-              key={j.valor}
-              type="button"
-              role="radio"
-              aria-checked={marcado}
-              onClick={() => onJeito(j.valor)}
-              className={cn(
-                'flex min-h-[88px] flex-col items-center justify-center gap-1.5 rounded-xl border-2 p-2 text-center transition-colors',
-                marcado ? cn('border-nexon-verde', CAIXA_VERDE) : 'border-border mouse:hover:border-muted-foreground',
-              )}
-            >
-              <span className={cn('[&_svg]:h-6 [&_svg]:w-6', marcado ? VERDE_TEXTO : 'text-muted-foreground')}>{j.icone}</span>
-              <span className="text-sm font-semibold leading-tight">{j.titulo}</span>
-              <span className="text-xs leading-tight text-muted-foreground">{j.detalhe}</span>
-            </button>
-          );
-        })}
-      </div>
-
-      {sistema === 'celular' && (
-        <p className={cn('flex items-center gap-2 rounded-xl p-3 text-sm', CAIXA_AVISO)}>
-          <Laptop className="h-4 w-4 shrink-0" aria-hidden />
-          Abra no computador para gravar.
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-2">
+        <p className={cn('text-sm font-semibold tabular-nums', VERDE_TEXTO)}>
+          Passo {i + 1} de {passos.length}
         </p>
-      )}
-      {pc && (
-        <div role="radiogroup" aria-label="Sistema do computador" className="grid grid-cols-2 gap-1 rounded-xl bg-muted p-1">
-          {(['mac-linux', 'windows'] as const).map((v) => (
-            <button
-              key={v}
-              type="button"
-              role="radio"
-              aria-checked={so === v}
-              onClick={() => setSo(v)}
-              className={cn(
-                'min-h-11 rounded-lg text-sm font-semibold transition-colors',
-                so === v ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground mouse:hover:text-foreground',
-              )}
-            >
-              {v === 'windows' ? 'Windows' : 'Mac ou Linux'}
-            </button>
+        <div aria-hidden className="flex gap-1">
+          {passos.map((_, k) => (
+            <span key={k} className={cn('h-1 flex-1 rounded-full', k <= i ? 'bg-nexon-verde' : 'bg-muted')} />
           ))}
         </div>
-      )}
-
-      {carregando ? (
-        <div role="status" className="flex h-14 items-center justify-center gap-2 rounded-xl bg-muted text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-          Preparando o comando…
-        </div>
-      ) : erro ? (
-        <div role="alert" className={cn('flex flex-col gap-3 rounded-xl p-4 text-sm', CAIXA_AVISO)}>
-          <p>{mensagemErro(erro, 'Não deu para preparar o comando.')}</p>
-          <Button type="button" variant="outline" className={cn(BOTAO_GRANDE, 'self-start')} onClick={onTentarDeNovo}>
-            <RefreshCw aria-hidden />
-            Tentar de novo
-          </Button>
-        </div>
-      ) : instalador && pc && !comando ? (
-        <p className={cn('flex items-center gap-2 rounded-xl p-3 text-sm', CAIXA_AVISO)}>
-          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" aria-hidden />
-          Windows ainda não liberado. Use Pendrive ou Cartão SD.
-        </p>
-      ) : instalador && pc && comando ? (
-        <>
-          <div className="flex flex-col gap-2">
-            {vencido ? (
-              <>
-                <p role="alert" className="text-sm font-medium text-amber-600 dark:text-amber-400">
-                  Comando vencido.
-                </p>
-                <BotaoGerarOutro onClick={onTentarDeNovo} gerando={gerando} principal />
-              </>
-            ) : (
-              <CaixaComando texto={comando} rotulo="Copiar comando" grande />
-            )}
-            <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
-              <Clock className="h-4 w-4 shrink-0" aria-hidden />
-              Vale até {validadeTexto(instalador.valido_ate)}, um Raspberry só.
-            </p>
-            {!instalador.vinculo_automatico && <p className="text-sm text-muted-foreground">Sem chave da usina: vincule no passo 3.</p>}
-          </div>
-
-          <ol className="flex flex-col gap-4" aria-label="Passo a passo">
-            <Passo n={1} icone={<Terminal aria-hidden />}>
-              {win ? (
-                <>
-                  Cole no <strong>PowerShell</strong> e clique em <strong>Sim</strong>
-                </>
-              ) : (
-                <>
-                  Cole no <strong>Terminal</strong>
-                </>
-              )}
-            </Passo>
-            <Passo n={2} icone={<Power aria-hidden />}>
-              Segure o botão e ligue o cabo USB-C
-            </Passo>
-            <Passo n={3} icone={<Keyboard aria-hidden />}>
-              Digite <strong>SIM</strong>
-            </Passo>
-          </ol>
-          <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            <Clock className="h-4 w-4 shrink-0" aria-hidden />
-            Leva 5 a 15 min.
-          </p>
-        </>
-      ) : instalador ? (
-        <>
-          <Button asChild className={BOTAO_PRINCIPAL}>
-            <a href={instalador.url_imagem} download>
-              <Download aria-hidden />
-              Baixar imagem
-            </a>
-          </Button>
-          {jeito === 'cartao' ? (
-            <ol className="flex flex-col gap-4" aria-label="Passo a passo">
-              <Passo n={1} icone={<CreditCard aria-hidden />}>
-                Grave no cartão SD (Pi Imager)
-              </Passo>
-              <Passo n={2} icone={<Cpu aria-hidden />}>
-                Coloque o cartão no Raspberry
-              </Passo>
-            </ol>
-          ) : (
-            <ol className="flex flex-col gap-4" aria-label="Passo a passo">
-              <Passo n={1} icone={<Usb aria-hidden />}>
-                Grave no pendrive (Pi Imager)
-              </Passo>
-              <Passo n={2} icone={<Plug aria-hidden />}>
-                Ligue pendrive, rede e fonte
-              </Passo>
-              <Passo n={3} icone={<Clock aria-hidden />}>
-                Espere desligar (~10 min)
-              </Passo>
-              <Passo n={4} icone={<RefreshCw aria-hidden />}>
-                Tire o pendrive e religue
-              </Passo>
-            </ol>
-          )}
-          <p className="text-sm text-muted-foreground">No passo 3 você vincula.</p>
-        </>
-      ) : null}
-
-      <div className="flex flex-col gap-3">
-        <Expansivel titulo="Deu problema?">
-          {pc ? (
-            <ul className="flex flex-col gap-3">
-              {win ? (
-                <Dica titulo="Achar o PowerShell">Tecla Windows, digite PowerShell, Enter.</Dica>
-              ) : (
-                <>
-                  <Dica titulo="Achar o Terminal">Mac: Cmd + Espaço, digite Terminal. Linux: Ctrl + Alt + T.</Dica>
-                  <Dica titulo="Pediu o Homebrew (Mac)">
-                    <div className="mt-1">
-                      <CaixaComando texto={HOMEBREW} rotulo="Copiar Homebrew" />
-                    </div>
-                  </Dica>
-                </>
-              )}
-              <Dica titulo="Não achou o Raspberry">Segure o botão antes de ligar o cabo.</Dica>
-              <Dica titulo="Continua sem achar">Troque o cabo: precisa passar dados.</Dica>
-              <Dica titulo="Usa hub?">Ligue direto no computador.</Dica>
-              <Dica titulo="Comando venceu">
-                <BotaoGerarOutro onClick={onTentarDeNovo} gerando={gerando} />
-              </Dica>
-            </ul>
-          ) : (
-            <ul className="flex flex-col gap-3">
-              <Dica titulo="Pi Imager">raspberrypi.com/software</Dica>
-              <Dica titulo="Na gravação">Usar personalizado. Personalizar: Não.</Dica>
-              <Dica titulo={jeito === 'cartao' ? 'Cartão' : 'Pendrive'}>16 GB ou mais. Vai ser apagado.</Dica>
-            </ul>
-          )}
-        </Expansivel>
       </div>
+      <Quadro>{p.visual}</Quadro>
+      <div className="flex flex-col gap-2">
+        <h3 id={tituloId} tabIndex={-1} className="text-2xl font-semibold leading-tight outline-none">
+          {p.titulo}
+        </h3>
+        {p.ajuda && <p className="text-base text-muted-foreground">{p.ajuda}</p>}
+      </div>
+      {p.extra}
+      {pc && i >= 5 && (
+        <Expansivel titulo="Não deu certo?">
+          <ul className="flex flex-col gap-3">
+            <Dica titulo="Não apareceu o Raspberry">Tire o cabo, segure o botão antes de ligar o cabo de novo e só solte depois de 3 segundos.</Dica>
+            <Dica titulo="Continua sem aparecer">Troque o cabo: alguns só carregam e não passam dados. Ligue direto no computador.</Dica>
+            {!win && (
+              <Dica titulo="Pediu o Homebrew (Mac)">
+                <div className="mt-1">
+                  <CaixaComando texto={HOMEBREW} rotulo="Copiar Homebrew" />
+                </div>
+              </Dica>
+            )}
+            <Dica titulo="Comando venceu">
+              <BotaoGerarOutro onClick={onTentarDeNovo} gerando={gerando} />
+            </Dica>
+          </ul>
+        </Expansivel>
+      )}
     </div>
   );
 }
