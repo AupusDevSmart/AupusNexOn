@@ -259,9 +259,15 @@ function passosComputador(
       ),
     },
     {
-      titulo: 'Espere aparecer "Pronto!"',
-      ajuda: 'Leva de 5 a 15 minutos. Depois tire o cabo: o Raspberry está pronto.',
-      visual: <TelaTerminal titulo={app} linhas={['==== PASSO 4 de 5: Gravando ====', '==== PASSO 5 de 5: Conferindo ====', '✓ Chave da usina gravada.']} destaque="Pronto! Pode tirar o cabo do computador." />,
+      titulo: 'Espere a faixa verde "DEU TUDO CERTO!"',
+      ajuda: 'A barra enche de 0 a 100% (5 a 15 minutos). Se pedir a senha do computador, digite: ela não aparece. Se aparecer a faixa vermelha "DEU ERRO", rode o comando de novo.',
+      visual: (
+        <TelaTerminal
+          titulo={app}
+          linhas={['==== PASSO 4 de 5: Gravando o NexON no cartão ====', '  [##############################] 100%  gravado em 7 min', '  ✓ NexON gravado e conferido no cartão.', '  ✓ Chave da usina gravada.']}
+          destaque="   DEU TUDO CERTO! Pode tirar o cabo."
+        />
+      ),
     },
   ];
 }
