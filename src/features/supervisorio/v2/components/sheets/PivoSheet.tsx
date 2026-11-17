@@ -805,14 +805,25 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   // NEXON-98: o botão principal abre o Planejamento de irrigação. Parado → "Ligar" (as opções
   // ficam no diálogo); ligado → "Desligar ou modificar". Só "Cancelar agendamento" confirma direto.
   const semLigar = !estado?.pivo.comandos.direita && !estado?.pivo.comandos.esquerda;
-  // Chave Local/Remoto (BI07): em REMOTO (ou sem leitura) a TON não liga. Ligado, o botão segue
-  // (Desligar sempre vale; a irrigação em curso continua se alguém mudar a chave).
+  // Condições para LIGAR (mesmas do servidor/TON): qualquer uma não ok deixa o botão cinza e sem
+  // clique, com o motivo no lugar de "Ligar". Ligado, o botão segue (Desligar sempre vale; a
+  // irrigação em curso continua se a chave Local/Remoto mudar). Chave em remoto = "Local".
   const rem = estado?.pivo.remoto;
+  const ent = estado?.pivo.entradas;
   const remotoTrava = !on && !desligaAgenda && !!rem?.tem && rem.valor !== 0;
-  const cmdLabel = emUsoPor && !on ? `Bomba em uso pelo ${emUsoPor}` : busy ? 'Executando…' : desligaAgenda ? 'Cancelar agendamento' : on ? 'Desligar ou modificar'
-    : remotoTrava ? (rem!.valor === 1 ? 'Travado no LOCAL' : 'Sem leitura Local/Remoto') : 'Ligar';
-  const cmdBloq = on ? false : (!!emUsoPor) || (semLigar && !desligaAgenda) || remotoTrava;
-  const cmdStyle = s.cmd(busy || cmdBloq ? 'busy' : on || desligaAgenda ? 'outline' : 'primary');
+  const naoLiga: { label: string; dica: string } | null = on || desligaAgenda ? null
+    : remotoTrava ? (rem!.valor === 1
+      ? { label: 'Local', dica: 'Chave do painel em Local/Remoto (BI07) travando: o NexON não liga o pivô. Ligue pelo painel ou mude a chave.' }
+      : { label: 'Sem leitura Local/Remoto', dica: 'Sem leitura da chave Local/Remoto (BI07): não dá para confirmar que o NexON pode ligar.' })
+    : emUsoPor ? { label: `Bomba em uso pelo ${emUsoPor}`, dica: `Desligue o ${emUsoPor} antes de ligar este pivô.` }
+    : st?.erro === 1 ? { label: 'Falha no painel', dica: 'O painel sinaliza ERRO: verifique antes de ligar.' }
+    : ent?.tensao === 0 ? { label: 'Sem tensão', dica: 'Tensão OK (BI02) em falta: o pivô não parte.' }
+    : ent?.alinhamento === 0 ? { label: 'Desalinhado', dica: 'Segurança (BI05) atuou: alinhe o pivô antes de ligar.' }
+    : semLigar ? { label: 'Ligar', dica: 'O pivô não tem os comandos de giro ligados a BOs da TON.' }
+    : null;
+  const cmdLabel = busy ? 'Executando…' : desligaAgenda ? 'Cancelar agendamento' : on ? 'Desligar ou modificar' : naoLiga ? naoLiga.label : 'Ligar';
+  const cmdBloq = !on && !!naoLiga;
+  const cmdStyle: CSSProperties = { ...s.cmd(busy || cmdBloq ? 'busy' : on || desligaAgenda ? 'outline' : 'primary'), ...(cmdBloq ? { cursor: 'not-allowed' } : {}) };
   const pedirDesligar = () => { setConfirmKind('stop'); setConfirmOpen(true); };
 
   // Edição rápida na ficha (layouts Painel e Atalhos): rascunho sobre a irrigação em curso.
@@ -940,7 +951,7 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                       <rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" />
                     </svg>
-                    {rem.valor === 1 ? 'Travado no LOCAL · liga só pelo painel' : 'Sem leitura da chave Local/Remoto · ligar travado'}
+                    {rem.valor === 1 ? 'Local · liga só pelo painel' : 'Sem leitura da chave Local/Remoto · ligar travado'}
                   </span>
                 )}
                 {eta && <span style={{ fontSize: 13, color: NX.mudo }}>{eta}</span>}
@@ -988,8 +999,11 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
               )}
               {perfil.comandar && (
               <button type="button" disabled={busy || cmdBloq} style={cmdStyle}
-                title={remotoTrava ? (rem!.valor === 1 ? 'Chave do painel em REMOTO: a TON não liga o pivô. Passe para LOCAL.' : 'Sem leitura da chave Local/Remoto (BI07)') : undefined}
+                title={cmdBloq ? naoLiga?.dica : undefined} aria-disabled={busy || cmdBloq}
                 onClick={() => (desligaAgenda ? pedirDesligar() : abrirIrr('simples'))}>{cmdLabel}</button>
+              )}
+              {perfil.comandar && cmdBloq && naoLiga && (
+              <span style={{ fontSize: 13, color: NX.mudo, textAlign: 'center' }}>{naoLiga.dica}</span>
               )}
               {/* Com início agendado o botão principal só cancela: o Planejamento segue acessível
                   (trocar o agendamento, ver a Agenda). */}
