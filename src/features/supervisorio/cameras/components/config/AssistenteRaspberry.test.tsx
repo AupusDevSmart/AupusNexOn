@@ -73,9 +73,13 @@ describe('AssistenteRaspberry', () => {
     const user = userEvent.setup();
     abrir();
     expect(screen.getByText(/Entra em/)).toHaveTextContent('Entra em UFV Aupus II');
-    expect(screen.getByRole('radio', { name: /Computador/ })).toHaveAttribute('aria-checked', 'true');
-    expect(screen.getByRole('radio', { name: /Cartão SD/ })).toBeInTheDocument();
+    // O mais rápido vem marcado, com o porquê.
+    expect(screen.getByRole('radio', { name: /Cartão no computador/ })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByText('Mais rápido')).toBeInTheDocument();
+    expect(screen.getByText(/grava direto no cartão/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Por que Cabo USB-C?' })).toBeInTheDocument();
     await waitFor(() => expect(CamerasService.instalador).toHaveBeenCalledWith('u1'));
+    await user.click(screen.getByRole('radio', { name: /Cabo USB-C/ }));
 
     await user.click(screen.getByRole('button', { name: /Começar/ }));
     expect(screen.getByText('Passo 1 de 12')).toBeInTheDocument();
@@ -100,15 +104,17 @@ describe('AssistenteRaspberry', () => {
     expect(screen.getByText(INSTALADOR.comando_windows!)).toBeInTheDocument();
   });
 
-  it('cartão SD: 6 telas e depois a etapa Ligar', async () => {
+  it('cartão no computador: 11 telas, comando do Terminal e depois a etapa Ligar', async () => {
     const user = userEvent.setup();
     abrir();
-    await user.click(screen.getByRole('radio', { name: /Cartão SD/ }));
     await user.click(screen.getByRole('button', { name: /Começar/ }));
-    expect(screen.getByText('Passo 1 de 6')).toBeInTheDocument();
-    expect(await screen.findByRole('link', { name: /Baixar o NexON/ })).toBeInTheDocument();
-    for (let i = 0; i < 5; i++) await user.click(screen.getByRole('button', { name: /Feito, próximo/ }));
-    expect(screen.getByRole('heading', { name: 'Pronto: o cartão está gravado' })).toBeInTheDocument();
+    expect(screen.getByText('Passo 1 de 11')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Tire o cartão SD do Raspberry' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Feito, próximo/ }));
+    await user.click(screen.getByRole('button', { name: /Feito, próximo/ }));
+    expect(await screen.findByText(INSTALADOR.comando)).toBeInTheDocument();
+    for (let i = 0; i < 8; i++) await user.click(screen.getByRole('button', { name: /Feito, próximo/ }));
+    expect(screen.getByRole('heading', { name: 'Coloque o cartão de volta no Raspberry' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /Terminei de gravar/ }));
     expect(screen.getByRole('heading', { name: 'Ligue no local' })).toBeInTheDocument();
   });

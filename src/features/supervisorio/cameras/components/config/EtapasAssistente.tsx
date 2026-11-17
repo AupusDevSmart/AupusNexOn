@@ -8,6 +8,7 @@ import {
   CreditCard,
   Cpu,
   Download,
+  Info,
   HardDrive,
   Laptop,
   Loader2,
@@ -28,6 +29,7 @@ import { mensagemErro } from '../../utils/erros';
 import { rotuloFabricante } from '../../utils/sensibilidade';
 import type { DescobertaDoAgente } from '../../hooks/useConfigCameras';
 import { VERDE_TEXTO } from '../estilo-filtro';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { ContarAteTres, DesenhoRaspberry, Quadro, Teclas, TelaTerminal } from './IlustracoesRaspberry';
 
 /* Estilos da marca. Opacidade em cor de tema (`bg-nexon-verde/15`) não gera CSS aqui: color-mix. */
@@ -154,10 +156,36 @@ function BotaoGerarOutro({ onClick, gerando, principal = false }: { onClick: () 
 
 /* ------------------------------------------------------------------ 1 · Gravar */
 
-const JEITOS: { valor: JeitoGravar; titulo: string; detalhe: string; icone: ReactNode }[] = [
-  { valor: 'pc', titulo: 'Computador', detalhe: 'Cabo USB-C', icone: <Laptop aria-hidden /> },
-  { valor: 'pendrive', titulo: 'Pendrive', detalhe: 'Copia pro SD', icone: <Usb aria-hidden /> },
-  { valor: 'cartao', titulo: 'Cartão SD', detalhe: 'Leitor no PC', icone: <CreditCard aria-hidden /> },
+/** Jeitos de gravar, do mais rápido ao mais lento. `porque` aparece no tooltip e embaixo do escolhido. */
+const JEITOS: { valor: JeitoGravar; titulo: string; detalhe: string; tempo: string; recomendado?: boolean; porque: string; icone: ReactNode }[] = [
+  {
+    valor: 'cartao',
+    titulo: 'Cartão no computador',
+    detalhe: 'Entrada SD ou leitor USB',
+    tempo: '~5 min',
+    recomendado: true,
+    porque:
+      'O computador grava direto no cartão, na velocidade do leitor (dezenas de MB por segundo). Precisa de entrada de cartão SD no computador ou de um leitor USB. A chave da usina vai junto: o Raspberry entra sozinho no NexON.',
+    icone: <CreditCard aria-hidden />,
+  },
+  {
+    valor: 'pc',
+    titulo: 'Cabo USB-C',
+    detalhe: 'Sem tirar o cartão',
+    tempo: '10 a 30 min',
+    porque:
+      'O cartão fica dentro do Raspberry e a gravação passa pela entrada USB-C dele, que é bem mais lenta e depende do cabo e do cartão. Use quando não der para tirar o cartão. A chave da usina também vai junto.',
+    icone: <Laptop aria-hidden />,
+  },
+  {
+    valor: 'pendrive',
+    titulo: 'Pendrive',
+    detalhe: 'Computador longe do Raspberry',
+    tempo: '~25 min',
+    porque:
+      'Você grava um pendrive com o Raspberry Pi Imager e, no local, o Raspberry copia do pendrive para o cartão e desliga. Use quando o computador não está perto do Raspberry. O vínculo com a usina é feito depois, pelo código.',
+    icone: <Usb aria-hidden />,
+  },
 ];
 
 export type SistemaPc = 'mac-linux' | 'windows';
@@ -237,13 +265,13 @@ function passosComputador(
       visual: <ContarAteTres />,
     },
     {
-      titulo: 'Espere aparecer "Raspberry encontrado!"',
+      titulo: 'Espere aparecer "Encontrei o cartão!"',
       ajuda: 'Não precisa apertar nada: ele percebe sozinho. Se não aparecer em 3 minutos, o Terminal explica o que fazer.',
       visual: (
         <TelaTerminal
           titulo={app}
           linhas={['     … esperando o Raspberry (10 s)', '     … esperando o Raspberry (20 s)']}
-          destaque="✓ Raspberry encontrado! Pode soltar o botão."
+          destaque="✓ Encontrei o cartão! Pode soltar o botão (se ainda estiver segurando)."
         />
       ),
     },
@@ -272,8 +300,83 @@ function passosComputador(
   ];
 }
 
-function passosImagem(jeito: 'pendrive' | 'cartao', baixar: ReactNode): PassoGuiado[] {
-  const midia = jeito === 'pendrive' ? 'pendrive' : 'cartão SD';
+function passosCartao(win: boolean, comando: ReactNode): PassoGuiado[] {
+  const app = win ? 'PowerShell' : 'Terminal';
+  return [
+    {
+      titulo: 'Tire o cartão SD do Raspberry',
+      ajuda: 'Ele fica embaixo da placa, na ponta. Puxe com cuidado. O Raspberry precisa estar desligado.',
+      visual: <DesenhoRaspberry destaque={['sd']} />,
+    },
+    {
+      titulo: `Abra o ${app}`,
+      ajuda: win ? (
+        'Aperte a tecla Windows, escreva PowerShell e aperte Enter.'
+      ) : (
+        <>
+          Aperte as duas teclas juntas, escreva <strong>Terminal</strong> e aperte Enter. No Linux: Ctrl + Alt + T.
+        </>
+      ),
+      visual: win ? <Teclas teclas={['Windows', 'depois', 'PowerShell', 'depois', 'Enter']} /> : <Teclas teclas={['Cmd', '+', 'Espaço']} />,
+    },
+    { titulo: 'Copie o comando', ajuda: 'Clique no botão verde.', visual: <Copy className="h-16 w-16 text-muted-foreground" aria-hidden />, extra: comando },
+    {
+      titulo: `Cole no ${app} e aperte Enter`,
+      ajuda: win ? 'Vai abrir uma janela pedindo permissão: clique em Sim.' : 'Se pedir a senha do computador, digite e aperte Enter. Ela não aparece enquanto você digita.',
+      visual: <Teclas teclas={[win ? 'Ctrl' : 'Cmd', '+', 'V', 'depois', 'Enter']} />,
+    },
+    {
+      titulo: 'Espere aparecer esta frase e aperte Enter',
+      ajuda: 'Na primeira vez pode levar alguns minutos (ele baixa o NexON).',
+      visual: <TelaTerminal titulo={app} linhas={LINHAS_INICIO} destaque=">> Tire TODOS os cabos do Raspberry (fonte, rede, tudo)." />,
+    },
+    {
+      titulo: 'Coloque o cartão no computador',
+      ajuda: 'Na entrada de cartão SD ou num leitor USB. Se for microSD, use o adaptador. Não precisa ligar o Raspberry.',
+      visual: <CreditCard className="h-16 w-16 text-muted-foreground" aria-hidden />,
+    },
+    {
+      titulo: 'Espere ele achar o cartão',
+      ajuda: 'Não precisa apertar nada. Leva alguns segundos.',
+      visual: <TelaTerminal titulo={app} linhas={['     … esperando o Raspberry (4 s)']} destaque="✓ Encontrei o cartão!" />,
+    },
+    {
+      titulo: 'Escreva SIM e aperte Enter',
+      ajuda: 'Isso apaga o cartão e grava o NexON nele.',
+      visual: (
+        <TelaTerminal
+          titulo={app}
+          linhas={['  Achei o cartão SD do Raspberry (32 GB).', '  Tudo o que estiver nele será apagado.']}
+          destaque="  >> Escreva SIM e aperte Enter para gravar: SIM"
+        />
+      ),
+    },
+    {
+      titulo: 'Espere a faixa verde "DEU TUDO CERTO!"',
+      ajuda: 'A barra enche de 0 a 100% (uns 5 minutos). Se aparecer a faixa vermelha "DEU ERRO", rode o comando de novo.',
+      visual: (
+        <TelaTerminal
+          titulo={app}
+          linhas={['  [##############################] 100%  gravado em 4 min', '  ✓ NexON gravado e conferido no cartão.', '  ✓ Chave da usina gravada.']}
+          destaque="   DEU TUDO CERTO! Pode tirar o cabo."
+        />
+      ),
+    },
+    {
+      titulo: 'Tire o cartão do computador',
+      ajuda: 'No Mac, se aparecer aviso de disco não ejetado, pode ignorar: ele já foi ejetado.',
+      visual: <CreditCard className="h-16 w-16 text-muted-foreground" aria-hidden />,
+    },
+    {
+      titulo: 'Coloque o cartão de volta no Raspberry',
+      ajuda: 'Pronto. Agora é só levar o Raspberry para o lugar dele.',
+      visual: <DesenhoRaspberry destaque={['sd']} />,
+    },
+  ];
+}
+
+function passosImagem(baixar: ReactNode): PassoGuiado[] {
+  const midia = 'pendrive';
   const inicio: PassoGuiado[] = [
     { titulo: 'Baixe o NexON', ajuda: 'É um arquivo grande (1 GB). Espere terminar.', visual: <Download className="h-16 w-16 text-muted-foreground" aria-hidden />, extra: baixar },
     {
@@ -291,7 +394,7 @@ function passosImagem(jeito: 'pendrive' | 'cartao', baixar: ReactNode): PassoGui
     {
       titulo: `Coloque o ${midia} no computador`,
       ajuda: `Use um ${midia} de 16 GB ou mais. Tudo nele será apagado.`,
-      visual: jeito === 'pendrive' ? <Usb className="h-16 w-16 text-muted-foreground" aria-hidden /> : <CreditCard className="h-16 w-16 text-muted-foreground" aria-hidden />,
+      visual: <Usb className="h-16 w-16 text-muted-foreground" aria-hidden />,
     },
     {
       titulo: 'No Imager, grave o arquivo baixado',
@@ -304,13 +407,6 @@ function passosImagem(jeito: 'pendrive' | 'cartao', baixar: ReactNode): PassoGui
       visual: <Teclas teclas={['Usar personalizado', 'depois', 'Não']} />,
     },
   ];
-  if (jeito === 'cartao') {
-    return [
-      ...inicio,
-      { titulo: 'Coloque o cartão no Raspberry', ajuda: 'A entrada fica embaixo da placa, na ponta.', visual: <DesenhoRaspberry destaque={['sd']} /> },
-      { titulo: 'Pronto: o cartão está gravado', ajuda: 'Agora é só ligar o Raspberry no lugar dele.', visual: <Check className="h-16 w-16 text-[var(--nx-verde)]" aria-hidden /> },
-    ];
-  }
   return [
     ...inicio,
     { titulo: 'Coloque o pendrive no Raspberry', ajuda: 'O cartão SD fica dentro do Raspberry.', visual: <DesenhoRaspberry destaque={['sd', 'rede']} /> },
@@ -347,7 +443,7 @@ export function EtapaGravar({
   onTentarDeNovo: () => void;
   gerando: boolean;
 }) {
-  const pc = jeito === 'pc';
+  const pc = jeito !== 'pendrive';
   const win = so === 'windows';
 
   if (subpasso === 0) {
@@ -360,28 +456,65 @@ export function EtapaGravar({
             Abra no computador para gravar.
           </p>
         )}
-        <div role="radiogroup" aria-label="Jeito de gravar" className="grid grid-cols-3 gap-2 sm:gap-3">
+        <TooltipProvider delayDuration={150}>
+        <div role="radiogroup" aria-label="Jeito de gravar" className="grid gap-2 sm:grid-cols-3 sm:gap-3">
           {JEITOS.map((j) => {
             const marcado = j.valor === jeito;
             return (
-              <button
-                key={j.valor}
-                type="button"
-                role="radio"
-                aria-checked={marcado}
-                onClick={() => onJeito(j.valor)}
-                className={cn(
-                  'flex min-h-[104px] flex-col items-center justify-center gap-1.5 rounded-xl border-2 p-2 text-center transition-colors',
-                  marcado ? cn('border-nexon-verde', CAIXA_VERDE) : 'border-border mouse:hover:border-muted-foreground',
-                )}
-              >
-                <span className={cn('[&_svg]:h-7 [&_svg]:w-7', marcado ? VERDE_TEXTO : 'text-muted-foreground')}>{j.icone}</span>
-                <span className="text-sm font-semibold leading-tight">{j.titulo}</span>
-                <span className="text-xs leading-tight text-muted-foreground">{j.detalhe}</span>
-              </button>
+              <div key={j.valor} className="relative">
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={marcado}
+                  onClick={() => onJeito(j.valor)}
+                  className={cn(
+                    'flex min-h-[72px] w-full items-center gap-3 rounded-xl border-2 p-3 pr-11 text-left transition-colors sm:min-h-[148px] sm:flex-col sm:justify-center sm:pr-3 sm:text-center',
+                    marcado ? cn('border-nexon-verde', CAIXA_VERDE) : 'border-border mouse:hover:border-muted-foreground',
+                  )}
+                >
+                  <span className={cn('shrink-0 [&_svg]:h-7 [&_svg]:w-7', marcado ? VERDE_TEXTO : 'text-muted-foreground')}>{j.icone}</span>
+                  <span className="flex min-w-0 flex-col gap-0.5 sm:items-center">
+                    {j.recomendado && (
+                      <span className="w-fit rounded-full bg-nexon-verde px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-nexon-azul">
+                        Mais rápido
+                      </span>
+                    )}
+                    <span className="text-sm font-semibold leading-tight">{j.titulo}</span>
+                    <span className="text-xs leading-tight text-muted-foreground">{j.detalhe}</span>
+                    <span className={cn('text-xs font-semibold tabular-nums', marcado ? VERDE_TEXTO : 'text-foreground')}>{j.tempo}</span>
+                  </span>
+                </button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label={`Por que ${j.titulo}?`}
+                      className="absolute right-1.5 top-1.5 flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground mouse:hover:bg-muted mouse:hover:text-foreground"
+                    >
+                      <Info className="h-4 w-4" aria-hidden />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-[280px] text-sm leading-snug">
+                    {j.porque}
+                  </TooltipContent>
+                </Tooltip>
+              </div>
             );
           })}
         </div>
+        </TooltipProvider>
+        {(() => {
+          const j = JEITOS.find((x) => x.valor === jeito);
+          return j ? (
+            <p className="flex gap-2 rounded-xl bg-muted p-3 text-sm text-muted-foreground">
+              <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+              <span>
+                <strong className="text-foreground">Por quê: </strong>
+                {j.porque}
+              </span>
+            </p>
+          ) : null;
+        })()}
         {pc && (
           <div className="flex flex-col gap-2">
             <p className="text-sm font-medium">Qual é o computador?</p>
@@ -451,7 +584,7 @@ export function EtapaGravar({
     pecaComando
   );
 
-  const passos = pc ? passosComputador(win, pecaComando) : passosImagem(jeito, baixar);
+  const passos = jeito === 'cartao' ? passosCartao(win, pecaComando) : jeito === 'pc' ? passosComputador(win, pecaComando) : passosImagem(baixar);
   const i = Math.min(subpasso, passos.length) - 1;
   const p = passos[i];
 
@@ -475,7 +608,7 @@ export function EtapaGravar({
         {p.ajuda && <p className="text-base text-muted-foreground">{p.ajuda}</p>}
       </div>
       {p.extra}
-      {pc && i >= 5 && (
+      {jeito === 'pc' && i >= 5 && (
         <Expansivel titulo="Não deu certo?">
           <ul className="flex flex-col gap-3">
             <Dica titulo="Não apareceu o Raspberry">Tire o cabo, segure o botão antes de ligar o cabo de novo e só solte depois de 3 segundos.</Dica>
