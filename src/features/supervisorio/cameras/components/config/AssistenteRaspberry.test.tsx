@@ -41,6 +41,7 @@ const INSTALADOR: InstaladorAparelho = {
   valido_ate: '2099-01-01T12:00:00Z',
   url_imagem: 'https://exemplo/nexon.img.xz',
   comando: 'curl -fsSL https://exemplo/instalar | bash -s -- --chave abc123',
+  comando_windows: `powershell -ExecutionPolicy Bypass -Command "irm 'https://exemplo/instalar?so=windows' | iex"`,
   vinculo_automatico: { valido_ate: '2099-01-01T12:00:00Z' },
   usina: 'UFV Aupus II',
 };
@@ -82,9 +83,14 @@ describe('AssistenteRaspberry', () => {
     expect(await navigator.clipboard.readText()).toBe(INSTALADOR.comando);
     expect(screen.getByRole('button', { name: /Copiado/ })).toBeInTheDocument();
 
+    // Windows: mesmo jeito, comando do PowerShell.
+    await user.click(screen.getByRole('radio', { name: 'Windows' }));
+    expect(screen.getByText(INSTALADOR.comando_windows!)).toBeInTheDocument();
+    expect(screen.getByText('PowerShell')).toBeInTheDocument();
+
     await user.click(screen.getByRole('radio', { name: /Cartão SD/ }));
     expect(screen.getByText('Grave no cartão SD (Pi Imager)')).toBeInTheDocument();
-    expect(screen.queryByText(INSTALADOR.comando)).toBeNull();
+    expect(screen.queryByText(INSTALADOR.comando_windows!)).toBeNull();
   });
 
   it('avança pelas etapas, marca o checklist e guarda a etapa para reabrir', async () => {

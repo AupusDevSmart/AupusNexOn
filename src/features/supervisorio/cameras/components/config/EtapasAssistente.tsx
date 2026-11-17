@@ -206,6 +206,9 @@ export function EtapaGravar({
 }) {
   const vencido = instalador ? Date.parse(instalador.valido_ate) <= Date.now() : false;
   const pc = jeito === 'pc';
+  const [so, setSo] = useState<'mac-linux' | 'windows'>(sistema === 'windows' ? 'windows' : 'mac-linux');
+  const win = so === 'windows';
+  const comando = win ? instalador?.comando_windows : instalador?.comando;
 
   return (
     <div className="flex flex-col gap-6">
@@ -240,11 +243,24 @@ export function EtapaGravar({
           Abra no computador para gravar.
         </p>
       )}
-      {pc && sistema === 'windows' && (
-        <p className={cn('flex items-center gap-2 rounded-xl p-3 text-sm', CAIXA_AVISO)}>
-          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" aria-hidden />
-          Só funciona em Mac ou Linux.
-        </p>
+      {pc && (
+        <div role="radiogroup" aria-label="Sistema do computador" className="grid grid-cols-2 gap-1 rounded-xl bg-muted p-1">
+          {(['mac-linux', 'windows'] as const).map((v) => (
+            <button
+              key={v}
+              type="button"
+              role="radio"
+              aria-checked={so === v}
+              onClick={() => setSo(v)}
+              className={cn(
+                'min-h-11 rounded-lg text-sm font-semibold transition-colors',
+                so === v ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground mouse:hover:text-foreground',
+              )}
+            >
+              {v === 'windows' ? 'Windows' : 'Mac ou Linux'}
+            </button>
+          ))}
+        </div>
       )}
 
       {carregando ? (
@@ -260,7 +276,12 @@ export function EtapaGravar({
             Tentar de novo
           </Button>
         </div>
-      ) : instalador && pc ? (
+      ) : instalador && pc && !comando ? (
+        <p className={cn('flex items-center gap-2 rounded-xl p-3 text-sm', CAIXA_AVISO)}>
+          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" aria-hidden />
+          Windows ainda não liberado. Use Pendrive ou Cartão SD.
+        </p>
+      ) : instalador && pc && comando ? (
         <>
           <div className="flex flex-col gap-2">
             {vencido ? (
@@ -271,7 +292,7 @@ export function EtapaGravar({
                 <BotaoGerarOutro onClick={onTentarDeNovo} gerando={gerando} principal />
               </>
             ) : (
-              <CaixaComando texto={instalador.comando} rotulo="Copiar comando" grande />
+              <CaixaComando texto={comando} rotulo="Copiar comando" grande />
             )}
             <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
               <Clock className="h-4 w-4 shrink-0" aria-hidden />
@@ -282,7 +303,15 @@ export function EtapaGravar({
 
           <ol className="flex flex-col gap-4" aria-label="Passo a passo">
             <Passo n={1} icone={<Terminal aria-hidden />}>
-              Cole no Terminal do Mac
+              {win ? (
+                <>
+                  Cole no <strong>PowerShell</strong> e clique em <strong>Sim</strong>
+                </>
+              ) : (
+                <>
+                  Cole no <strong>Terminal</strong>
+                </>
+              )}
             </Passo>
             <Passo n={2} icone={<Power aria-hidden />}>
               Segure o botão e ligue o cabo USB-C
@@ -337,12 +366,18 @@ export function EtapaGravar({
         <Expansivel titulo="Deu problema?">
           {pc ? (
             <ul className="flex flex-col gap-3">
-              <Dica titulo="Achar o Terminal">Cmd + Espaço, digite Terminal.</Dica>
-              <Dica titulo="Pediu o Homebrew">
-                <div className="mt-1">
-                  <CaixaComando texto={HOMEBREW} rotulo="Copiar Homebrew" />
-                </div>
-              </Dica>
+              {win ? (
+                <Dica titulo="Achar o PowerShell">Tecla Windows, digite PowerShell, Enter.</Dica>
+              ) : (
+                <>
+                  <Dica titulo="Achar o Terminal">Mac: Cmd + Espaço, digite Terminal. Linux: Ctrl + Alt + T.</Dica>
+                  <Dica titulo="Pediu o Homebrew (Mac)">
+                    <div className="mt-1">
+                      <CaixaComando texto={HOMEBREW} rotulo="Copiar Homebrew" />
+                    </div>
+                  </Dica>
+                </>
+              )}
               <Dica titulo="Não achou o Raspberry">Segure o botão antes de ligar o cabo.</Dica>
               <Dica titulo="Continua sem achar">Troque o cabo: precisa passar dados.</Dica>
               <Dica titulo="Usa hub?">Ligue direto no computador.</Dica>

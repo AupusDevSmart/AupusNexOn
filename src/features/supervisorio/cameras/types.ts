@@ -205,6 +205,8 @@ export interface InstaladorAparelho {
   valido_ate: string;
   url_imagem: string;
   comando: string;
+  /** Mesmo instalador no Windows (PowerShell; pede administrador sozinho). */
+  comando_windows?: string;
   /** `null` = o comando não leva a chave (vincular depois pelo código). */
   vinculo_automatico: { valido_ate: string } | null;
   /** Nome da usina que a chave leva. */

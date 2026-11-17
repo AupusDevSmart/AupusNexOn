@@ -44,7 +44,7 @@ const INTERVALO_ESPERA_MS = 5_000;
 export function AssistenteRaspberry({ unidadeId, unidadeNome, onFechar, onVincular }: Props) {
   const sistema = useMemo(() => sistemaDoComputador(), []);
   const [sessao, setSessao] = useState<SessaoAssistente>(
-    () => lerSessao(unidadeId) ?? sessaoNova(sistema === 'windows' ? 'pendrive' : 'pc'),
+    () => lerSessao(unidadeId) ?? sessaoNova('pc'),
   );
   const { etapa } = sessao;
   const atualizar = (m: Partial<SessaoAssistente>) => setSessao((s) => ({ ...s, ...m }));
