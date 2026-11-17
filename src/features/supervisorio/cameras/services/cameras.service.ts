@@ -140,6 +140,12 @@ export const CamerasService = {
     return unwrap<CameraEvento | void>(data);
   },
 
+  /** Instalador do Raspberry novo: versão, link da imagem e comando do Terminal (token 2 h). */
+  async instalador(): Promise<{ versao: string; tamanho: number; publicado_em: string | null; valido_ate: string; url_imagem: string; comando: string }> {
+    const { data } = await api.get('/cameras/instalador');
+    return unwrap(data);
+  },
+
   /** Versão do programa do aparelho publicada (para atualizar pela web). */
   async atualizacaoDisponivel(): Promise<{ versao: string | null; publicado_em?: string | null; notas?: string | null }> {
     const { data } = await api.get('/cameras/atualizacao');

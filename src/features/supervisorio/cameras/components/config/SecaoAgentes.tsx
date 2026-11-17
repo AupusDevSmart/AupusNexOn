@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Check, Copy, KeyRound, Loader2, Plus, Trash2 } from 'lucide-react';
+import { Check, Copy, HardDriveDownload, KeyRound, Loader2, Plus, Trash2 } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
 import {
@@ -26,6 +26,7 @@ import { agenteEmContato } from '../../utils/agentes';
 import { useUserStore } from '@/store/useUserStore';
 import { AcoesAparelho } from './AcoesAparelho';
 import { DialogAdicionarAparelho } from './DialogAdicionarAparelho';
+import { DialogInstalarAparelho } from './DialogInstalarAparelho';
 
 /**
  * Aparelhos (agentes: Raspberry ou mini-PC) da unidade. O caminho normal é parear pelo
@@ -36,6 +37,7 @@ export function SecaoAgentes({ unidadeId, unidadeNome }: { unidadeId: string; un
   const admin = useUserStore((s) => s.papel) === 'admin';
   const queryClient = useQueryClient();
   const [adicionando, setAdicionando] = useState(false);
+  const [instalando, setInstalando] = useState(false);
   const [criando, setCriando] = useState(false);
   const [nome, setNome] = useState('');
   const [tokenNovo, setTokenNovo] = useState<{ agente: string; token: string } | null>(null);
@@ -86,16 +88,23 @@ export function SecaoAgentes({ unidadeId, unidadeNome }: { unidadeId: string; un
 
   return (
     <div className="flex flex-col gap-3">
+      <DialogInstalarAparelho aberto={instalando} onFechar={() => setInstalando(false)} />
       {tokenNovo && <CaixaToken agente={tokenNovo.agente} token={tokenNovo.token} onFechar={() => setTokenNovo(null)} />}
 
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs text-muted-foreground">
           {lista.length} {lista.length === 1 ? 'aparelho' : 'aparelhos'}
         </p>
-        <Button type="button" size="sm" onClick={() => setAdicionando(true)}>
-          <Plus aria-hidden />
-          Adicionar aparelho
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" size="sm" variant="outline" onClick={() => setInstalando(true)}>
+            <HardDriveDownload aria-hidden />
+            Instalar aparelho novo
+          </Button>
+          <Button type="button" size="sm" onClick={() => setAdicionando(true)}>
+            <Plus aria-hidden />
+            Adicionar aparelho
+          </Button>
+        </div>
       </div>
 
       {agentes.isPending ? (
