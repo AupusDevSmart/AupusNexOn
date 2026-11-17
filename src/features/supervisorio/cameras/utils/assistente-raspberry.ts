@@ -7,7 +7,7 @@ export type JeitoGravar = 'pc' | 'pendrive' | 'cartao';
 
 /** Quantas telas tem o guia de gravar de cada jeito (sem contar a tela de escolha). */
 export function totalPassosGravar(jeito: JeitoGravar): number {
-  return jeito === 'pc' ? 12 : jeito === 'pendrive' ? 8 : 6;
+  return jeito === 'pc' ? 12 : jeito === 'pendrive' ? 8 : 11;
 }
 
 /** Depois disto sem aparecer, a etapa Conectar mostra "Não apareceu?". */
@@ -33,7 +33,7 @@ export interface SessaoAssistente {
 
 const chave = (unidadeId: string) => `nexon.assistente-raspberry.${unidadeId.trim()}`;
 
-export function sessaoNova(jeito: JeitoGravar = 'pc', agora = Date.now()): SessaoAssistente {
+export function sessaoNova(jeito: JeitoGravar = 'cartao', agora = Date.now()): SessaoAssistente {
   return { etapa: 1, jeito, iniciadoEm: agora, idsIniciais: null, procurandoDesde: null, marcados: [], subpasso: 0 };
 }
 

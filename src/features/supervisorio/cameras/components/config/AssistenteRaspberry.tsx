@@ -45,7 +45,7 @@ const INTERVALO_ESPERA_MS = 5_000;
 export function AssistenteRaspberry({ unidadeId, unidadeNome, onFechar, onVincular }: Props) {
   const sistema = useMemo(() => sistemaDoComputador(), []);
   const [sessao, setSessao] = useState<SessaoAssistente>(
-    () => lerSessao(unidadeId) ?? sessaoNova('pc'),
+    () => lerSessao(unidadeId) ?? sessaoNova('cartao'),
   );
   const { etapa, subpasso } = sessao;
   const [so, setSo] = useState<SistemaPc>(sistema === 'windows' ? 'windows' : 'mac-linux');
@@ -86,7 +86,7 @@ export function AssistenteRaspberry({ unidadeId, unidadeNome, onFechar, onVincul
 
   const usina = instalador.data?.usina?.trim() || unidadeNome?.trim() || 'esta usina';
   // Sem o instalador em cache (reabriu na etapa 3), o jeito escolhido decide.
-  const automatico = sessao.jeito === 'pc' && (instalador.data ? instalador.data.vinculo_automatico !== null : true);
+  const automatico = sessao.jeito !== 'pendrive' && (instalador.data ? instalador.data.vinculo_automatico !== null : true);
 
   // Relógio da etapa Conectar.
   const [agora, setAgora] = useState(() => Date.now());
