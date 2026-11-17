@@ -46,8 +46,67 @@ export function TutorialCameras({ unidadeId, unidadeNome, podeCadastrar, podeCon
   const estado = (n: number): Estado => (n < passo ? 'feito' : n === passo ? 'atual' : 'depois');
   const continuar = !instalando && (etapaGuardada(unidadeId) ?? 1) > 1;
 
+  const PASSOS: { n: number; icone: LucideIcon; titulo: string; resumo?: string; dica: string }[] = [
+    { n: 1, icone: Cpu, titulo: 'Raspberry', resumo: vivo ? `${vivo.nome} online` : undefined, dica: 'O aparelho que liga as câmeras ao NexON.' },
+    { n: 2, icone: Video, titulo: 'Câmeras', dica: 'Câmera de fábrica entra sozinha. Com senha, pede a senha.' },
+    { n: 3, icone: Clock, titulo: 'Armar por horário', dica: 'Com a usina armada, movimento vira alerta.' },
+  ];
+  const atual = PASSOS[passo - 1];
+
+  let conteudo: ReactNode = null;
+  if (passo === 1) {
+    conteudo = esperando ? (
+      <>
+        <p className="flex items-center gap-2 text-base">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-hidden />
+          Esperando <strong>{esperando.nome}</strong> ligar…
+        </p>
+        {podeCadastrar && (
+          <Button type="button" variant="outline" className="h-11 self-start" onClick={() => setInstalando(true)}>
+            {continuar ? 'Continuar instalação' : 'Ver passo a passo'}
+          </Button>
+        )}
+      </>
+    ) : !podeCadastrar ? (
+      <p className="text-base text-muted-foreground">A equipe técnica instala o Raspberry.</p>
+    ) : (
+      <>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <Button type="button" className="h-12 px-6 text-base" onClick={() => setInstalando(true)}>
+            <Plus aria-hidden />
+            {continuar ? 'Continuar Raspberry novo' : 'Instalar Raspberry'}
+          </Button>
+          <button
+            type="button"
+            className="flex min-h-11 items-center gap-1.5 text-sm text-muted-foreground underline-offset-4 mouse:hover:underline"
+            onClick={() => onAbrirConfig('agentes')}
+          >
+            <Link2 className="h-4 w-4" aria-hidden />
+            Já está ligado? Vincular
+          </button>
+        </div>
+        <p className="text-sm text-muted-foreground">Pelo computador (Mac, Windows ou Linux), pendrive ou cartão SD.</p>
+      </>
+    );
+  } else {
+    conteudo = (
+      <>
+        <p className="flex items-center gap-2 text-base">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-hidden />
+          Procurando câmeras na rede…
+        </p>
+        {podeCadastrar && (
+          <Button type="button" className="h-12 self-start px-6 text-base" onClick={() => onAbrirConfig('cameras')}>
+            <Video aria-hidden />
+            Ver câmeras encontradas
+          </Button>
+        )}
+      </>
+    );
+  }
+
   return (
-    <section aria-labelledby="tutorial-cameras-titulo" className="mx-auto flex w-full max-w-2xl flex-col rounded-xl border border-border bg-card">
+    <section aria-labelledby="tutorial-cameras-titulo" className="mx-auto flex w-full max-w-5xl flex-col rounded-xl border border-border bg-card">
       {instalando && (
         <AssistenteRaspberry
           key={unidadeId}
@@ -61,83 +120,31 @@ export function TutorialCameras({ unidadeId, unidadeNome, podeCadastrar, podeCon
         />
       )}
 
-      <header className="flex flex-col gap-3 border-b border-border p-4 sm:p-5">
-        <div className="flex items-center justify-between gap-3">
-          <h2 id="tutorial-cameras-titulo" className="text-lg font-semibold">
-            Ligue as câmeras {nome}
-          </h2>
-          <span className="shrink-0 text-sm tabular-nums text-muted-foreground">Passo {passo} de 3</span>
-        </div>
-        <div aria-hidden className="grid grid-cols-3 gap-1.5">
-          {[1, 2, 3].map((n) => (
-            <span key={n} className={cn('h-1.5 rounded-full', n <= passo ? 'bg-nexon-verde' : 'bg-muted')} />
-          ))}
-        </div>
+      <header className="flex items-center justify-between gap-3 border-b border-border px-4 py-4 sm:px-6">
+        <h2 id="tutorial-cameras-titulo" className="text-lg font-semibold">
+          Ligue as câmeras {nome}
+        </h2>
+        <span className="shrink-0 text-sm tabular-nums text-muted-foreground">Passo {passo} de 3</span>
       </header>
 
-      <ol className="flex flex-col divide-y divide-border">
-        <Passo
-          numero={1}
-          icone={Cpu}
-          titulo="Raspberry"
-          estado={estado(1)}
-          resumo={vivo ? `${vivo.nome} online` : undefined}
-        >
-          {esperando ? (
-            <>
-              <p className="flex items-center gap-2 text-base">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-hidden />
-                Esperando <strong>{esperando.nome}</strong> ligar…
-              </p>
-              {podeCadastrar && (
-                <Button type="button" variant="outline" className="h-11 self-start" onClick={() => setInstalando(true)}>
-                  {continuar ? 'Continuar instalação' : 'Ver passo a passo'}
-                </Button>
-              )}
-            </>
-          ) : !podeCadastrar ? (
-            <p className="text-sm text-muted-foreground">A equipe técnica instala o Raspberry.</p>
-          ) : (
-            <>
-              <Button type="button" className="h-12 self-start px-6 text-base" onClick={() => setInstalando(true)}>
-                <Plus aria-hidden />
-                {continuar ? 'Continuar Raspberry novo' : 'Instalar Raspberry'}
-              </Button>
-              <p className="text-sm text-muted-foreground">Pelo computador, pendrive ou cartão SD.</p>
-              <button
-                type="button"
-                className="flex min-h-11 items-center gap-1.5 self-start text-sm text-muted-foreground underline-offset-4 mouse:hover:underline"
-                onClick={() => onAbrirConfig('agentes')}
-              >
-                <Link2 className="h-4 w-4" aria-hidden />
-                Já está ligado? Vincular
-              </button>
-            </>
-          )}
-        </Passo>
-
-        <Passo numero={2} icone={Video} titulo="Câmeras" estado={estado(2)}>
-          <p className="flex items-center gap-2 text-base">
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-hidden />
-            Procurando câmeras na rede…
-          </p>
-          <p className="text-sm text-muted-foreground">Câmera de fábrica entra sozinha. Com senha, pede a senha.</p>
-          {podeCadastrar && (
-            <Button type="button" className="h-12 self-start px-6 text-base" onClick={() => onAbrirConfig('cameras')}>
-              <Video aria-hidden />
-              Ver câmeras encontradas
-            </Button>
-          )}
-        </Passo>
-
-        <Passo numero={3} icone={Clock} titulo="Armar por horário" estado={estado(3)}>
-          {podeConfigurar && (
-            <Button type="button" className="h-12 self-start px-6 text-base" onClick={() => onAbrirConfig('unidade')}>
-              Configurar
-            </Button>
-          )}
-        </Passo>
+      <ol aria-label="Passos" className="grid grid-cols-3 border-b border-border">
+        {PASSOS.map((p) => (
+          <Passo key={p.n} numero={p.n} icone={p.icone} titulo={p.titulo} estado={estado(p.n)} resumo={p.resumo} />
+        ))}
       </ol>
+
+      <div className="flex gap-4 px-4 py-6 sm:gap-6 sm:px-6 sm:py-8">
+        <span className="hidden h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-muted sm:flex">
+          <atual.icone className={cn('h-7 w-7', VERDE_TEXTO)} aria-hidden />
+        </span>
+        <div className="flex min-w-0 flex-1 flex-col gap-4">
+          <div className="flex flex-col gap-1">
+            <h3 className="text-xl font-semibold">{atual.titulo}</h3>
+            <p className="text-sm text-muted-foreground">{atual.dica}</p>
+          </div>
+          {conteudo}
+        </div>
+      </div>
     </section>
   );
 }
@@ -148,38 +155,40 @@ function Passo({
   titulo,
   estado,
   resumo,
-  children,
 }: {
   numero: number;
   icone: LucideIcon;
   titulo: string;
   estado: Estado;
   resumo?: string;
-  children: ReactNode;
 }) {
   const atual = estado === 'atual';
   return (
-    <li aria-current={atual ? 'step' : undefined} className={cn('flex gap-3 p-4 sm:gap-4 sm:p-5', estado === 'depois' && 'opacity-50')}>
+    <li
+      aria-current={atual ? 'step' : undefined}
+      className={cn(
+        'flex min-w-0 flex-col gap-2 border-b-2 px-3 py-3 sm:flex-row sm:items-center sm:gap-3 sm:px-6 sm:py-4',
+        estado === 'feito' || atual ? 'border-nexon-verde' : 'border-transparent',
+        estado === 'depois' && 'opacity-50',
+      )}
+    >
       <span
         aria-hidden
         className={cn(
-          'flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold',
+          'flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold',
           estado === 'feito' ? 'bg-nexon-verde text-white' : atual ? 'border-2 border-nexon-verde text-foreground' : 'bg-muted text-muted-foreground',
         )}
       >
-        {estado === 'feito' ? <Check className="h-5 w-5" strokeWidth={3} /> : numero}
+        {estado === 'feito' ? <Check className="h-4 w-4" strokeWidth={3} /> : numero}
       </span>
-      <div className="flex min-w-0 flex-1 flex-col gap-3 pt-1">
-        <p className="flex items-center gap-2 text-base font-semibold">
-          <Icone className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden />
-          <span>
-            {titulo}
-            {estado === 'feito' && <span className="sr-only"> (feito)</span>}
-          </span>
-          {resumo && <span className={cn('truncate text-sm font-medium', VERDE_TEXTO)}>· {resumo}</span>}
-        </p>
-        {atual && children}
-      </div>
+      <span className="flex min-w-0 flex-col">
+        <span className={cn('flex items-center gap-1.5 truncate text-sm', atual ? 'font-semibold' : 'font-medium')}>
+          <Icone className="hidden h-4 w-4 shrink-0 text-muted-foreground md:block" aria-hidden />
+          <span className="truncate">{titulo}</span>
+          {estado === 'feito' && <span className="sr-only"> (feito)</span>}
+        </span>
+        {resumo && <span className={cn('truncate text-xs font-medium', VERDE_TEXTO)}>{resumo}</span>}
+      </span>
     </li>
   );
 }
