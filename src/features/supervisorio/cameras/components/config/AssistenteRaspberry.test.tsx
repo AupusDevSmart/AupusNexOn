@@ -73,12 +73,18 @@ describe('AssistenteRaspberry', () => {
     abrir();
     expect(await screen.findByText(INSTALADOR.comando)).toBeInTheDocument();
     expect(CamerasService.instalador).toHaveBeenCalledWith('u1');
-    expect(screen.getByText(/Este Raspberry vai entrar em:/)).toHaveTextContent('Este Raspberry vai entrar em: UFV Aupus II');
-    expect(screen.getByText(/Ele já leva a chave de UFV Aupus II/)).toBeInTheDocument();
+    expect(screen.getByText(/Entra em/)).toHaveTextContent('Entra em UFV Aupus II');
+    // Escolha do jeito de gravar logo no início.
+    expect(screen.getByRole('radio', { name: /Computador/ })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('radio', { name: /Cartão SD/ })).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Copiar comando de instalação' }));
+    await user.click(screen.getByRole('button', { name: 'Copiar comando' }));
     expect(await navigator.clipboard.readText()).toBe(INSTALADOR.comando);
-    expect(screen.getByRole('button', { name: 'Copiar comando de instalação' })).toHaveTextContent('Copiado');
+    expect(screen.getByRole('button', { name: /Copiado/ })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('radio', { name: /Cartão SD/ }));
+    expect(screen.getByText('Grave no cartão SD (Pi Imager)')).toBeInTheDocument();
+    expect(screen.queryByText(INSTALADOR.comando)).toBeNull();
   });
 
   it('avança pelas etapas, marca o checklist e guarda a etapa para reabrir', async () => {
@@ -86,19 +92,19 @@ describe('AssistenteRaspberry', () => {
     abrir();
     await screen.findByText(INSTALADOR.comando);
 
-    await user.click(screen.getByRole('button', { name: /Já gravei, próximo/ }));
-    expect(screen.getByRole('heading', { name: 'Ligue o Raspberry no local' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Próximo/ }));
+    expect(screen.getByRole('heading', { name: 'Ligue no local' })).toBeInTheDocument();
     const etapas = screen.getByRole('list', { name: 'Etapas' });
     expect(within(etapas).getByRole('button', { current: 'step' })).toHaveTextContent('Ligar');
 
-    const fonte = screen.getByRole('checkbox', { name: /Fonte oficial de 27 W/ });
+    const fonte = screen.getByRole('checkbox', { name: /Fonte/ });
     await user.click(fonte);
     expect(fonte).toHaveAttribute('aria-checked', 'true');
 
-    await user.click(screen.getByRole('button', { name: /Liguei tudo, próximo/ }));
-    expect(screen.getByRole('heading', { name: 'Esperando o Raspberry chegar' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Próximo/ }));
+    expect(screen.getByRole('heading', { name: 'Procurando o Raspberry…' })).toBeInTheDocument();
     // Sem aparelho novo, não dá para seguir para câmeras.
-    expect(screen.getByRole('button', { name: 'Esperando o Raspberry…' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Esperando…' })).toBeDisabled();
 
     const guardada = lerSessao('u1');
     expect(guardada?.etapa).toBe(3);
@@ -107,7 +113,7 @@ describe('AssistenteRaspberry', () => {
     expect(guardada?.procurandoDesde).toEqual(expect.any(Number));
 
     await user.click(screen.getByRole('button', { name: 'Voltar' }));
-    expect(screen.getByRole('heading', { name: 'Ligue o Raspberry no local' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Ligue no local' })).toBeInTheDocument();
   });
 
   it('detecta ao vivo o aparelho que não existia quando abriu e comemora', async () => {
@@ -124,7 +130,7 @@ describe('AssistenteRaspberry', () => {
       await vi.advanceTimersByTimeAsync(5_000);
     });
 
-    expect(await screen.findByText('Raspberry ‘nexon-cam’ conectado!')).toBeInTheDocument();
+    expect(await screen.findByText('Conectado!')).toBeInTheDocument();
     expect(toast.success).toHaveBeenCalledWith("Raspberry 'nexon-cam' conectado!");
     expect(screen.getByRole('button', { name: /Ver câmeras/ })).toBeEnabled();
   });

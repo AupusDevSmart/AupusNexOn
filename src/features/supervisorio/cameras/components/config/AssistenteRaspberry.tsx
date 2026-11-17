@@ -137,11 +137,11 @@ export function AssistenteRaspberry({ unidadeId, unidadeNome, onFechar, onVincul
 
   const proximo =
     etapa === 1
-      ? { rotulo: 'Já gravei, próximo', acao: () => irPara(2), ativo: true }
+      ? { rotulo: 'Próximo', acao: () => irPara(2), ativo: true }
       : etapa === 2
-        ? { rotulo: 'Liguei tudo, próximo', acao: () => irPara(3), ativo: true }
+        ? { rotulo: 'Próximo', acao: () => irPara(3), ativo: true }
         : etapa === 3
-          ? { rotulo: novo ? 'Ver câmeras' : 'Esperando o Raspberry…', acao: () => irPara(4), ativo: !!novo }
+          ? { rotulo: novo ? 'Ver câmeras' : 'Esperando…', acao: () => irPara(4), ativo: !!novo }
           : { rotulo: 'Concluir', acao: concluir, ativo: true };
 
   return (
@@ -155,8 +155,8 @@ export function AssistenteRaspberry({ unidadeId, unidadeNome, onFechar, onVincul
             <DialogDescription asChild>
               <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
                 <MapPin className="h-4 w-4 shrink-0" aria-hidden />
-                <span className="min-w-0">
-                  Este Raspberry vai entrar em: <strong className="text-foreground">{usina}</strong>
+                <span className="min-w-0 truncate">
+                  Entra em <strong className="text-foreground">{usina}</strong>
                 </span>
               </p>
             </DialogDescription>
@@ -197,7 +197,7 @@ export function AssistenteRaspberry({ unidadeId, unidadeNome, onFechar, onVincul
           <div role="status" className={cn('mx-4 mt-4 flex items-center gap-3 rounded-xl p-3 text-sm sm:mx-6', CAIXA_VERDE)}>
             <Cpu className={cn('h-5 w-5 shrink-0', VERDE_TEXTO)} aria-hidden />
             <span className="min-w-0 flex-1">
-              Raspberry &lsquo;{novo.nome}&rsquo; já conectou.
+              {novo.nome} já conectou.
             </span>
             <Button type="button" variant="outline" className="h-11 shrink-0" onClick={() => irPara(4)}>
               Ver câmeras
@@ -217,7 +217,6 @@ export function AssistenteRaspberry({ unidadeId, unidadeNome, onFechar, onVincul
               erro={instalador.isError ? instalador.error : null}
               onTentarDeNovo={() => void instalador.refetch()}
               gerando={instalador.isFetching}
-              usina={usina}
             />
           )}
           {etapa === 2 && (
@@ -271,7 +270,7 @@ export function AssistenteRaspberry({ unidadeId, unidadeNome, onFechar, onVincul
             </Button>
           </div>
           <div className="flex flex-wrap items-center justify-between gap-x-3 text-sm text-muted-foreground">
-            <span>Pode fechar: o assistente volta onde parou.</span>
+            <span>Pode fechar: ele lembra onde parou.</span>
             {etapa > 1 && (
               <button type="button" className="min-h-11 underline-offset-4 mouse:hover:underline" onClick={recomecar}>
                 Recomeçar
