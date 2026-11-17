@@ -15,6 +15,8 @@ import type { Agente, Camera, CameraDescoberta, CameraPayload, ClasseAlerta, Str
 import { mensagemErro } from '../../utils/erros';
 import { NIVEIS_SENSIBILIDADE, nivelSensibilidade, rotuloFabricante, type ValorSensibilidade } from '../../utils/sensibilidade';
 import { Campo, NENHUM, TituloBloco } from './Campo';
+import { CLIPE_ANTES_PADRAO, CLIPE_DEPOIS_PADRAO, OPCOES_ANTES, OPCOES_DEPOIS, opcaoMaisProxima } from '../../utils/clipe';
+import { ClipeEvento } from './ClipeEvento';
 
 interface Estado {
   nome: string;
@@ -32,7 +34,9 @@ interface Estado {
   analise_ativa: boolean;
   sensibilidade: ValorSensibilidade;
   classes_alerta: ClasseAlerta[];
-  clipe_s: string;
+  clipe_ativo: boolean;
+  clipe_antes: number;
+  clipe_depois: number;
   continuo: boolean;
   gravacao_ativa: boolean;
   gravacao_dias: string;
@@ -63,7 +67,9 @@ function estadoInicial(c: Camera | null, proximaOrdem: number, sugestao?: Sugest
     analise_ativa: c?.analise?.ativa ?? true,
     sensibilidade: nivelSensibilidade(c?.analise?.sensibilidade),
     classes_alerta: c?.analise?.classes_alerta?.length ? [...c.analise.classes_alerta] : [...CLASSES_PADRAO],
-    clipe_s: String(c?.analise?.clipe_s ?? 12),
+    clipe_ativo: (c?.analise?.clipe_s ?? CLIPE_DEPOIS_PADRAO) > 0,
+    clipe_antes: opcaoMaisProxima(c?.analise?.pre_s, OPCOES_ANTES, CLIPE_ANTES_PADRAO),
+    clipe_depois: c?.analise?.clipe_s ? opcaoMaisProxima(c.analise.clipe_s, OPCOES_DEPOIS, CLIPE_DEPOIS_PADRAO) : CLIPE_DEPOIS_PADRAO,
     continuo: c?.stream?.continuo ?? false,
     gravacao_ativa: c?.gravacao?.config.ativa ?? true,
     gravacao_dias: String(c?.gravacao?.config.dias ?? 7),
@@ -139,7 +145,8 @@ export function FormCamera({ unidadeId, camera, sugestao, agentes, equipamentos,
           ativa: f.analise_ativa,
           sensibilidade: f.sensibilidade,
           classes_alerta: OPCOES_AVISO.map((o) => o.valor).filter((v) => f.classes_alerta.includes(v)),
-          clipe_s: inteiro(f.clipe_s, 12, 0, 120),
+          clipe_s: f.clipe_ativo ? f.clipe_depois : 0,
+          pre_s: f.clipe_antes,
         },
       };
       if (f.senha) payload.senha = f.senha;
@@ -208,7 +215,7 @@ export function FormCamera({ unidadeId, camera, sugestao, agentes, equipamentos,
   return (
     <form onSubmit={enviar} className="flex flex-col gap-5" aria-label={camera ? `Editar ${camera.nome}` : 'Nova câmera'}>
       {d && sugestao && (
-        <div className="rounded-lg border border-border bg-muted/40 p-3">
+        <div className="rounded-lg border border-border bg-[color-mix(in_srgb,var(--muted)_40%,transparent)] p-3">
           <p className="truncate text-sm font-medium">
             {tituloSugestao} · {d.ip}
           </p>
@@ -268,7 +275,7 @@ export function FormCamera({ unidadeId, camera, sugestao, agentes, equipamentos,
                   onClick={() => alternarAviso(o.valor)}
                   className={cn(
                     'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition-colors disabled:opacity-40 touch:h-10',
-                    ativo ? 'border-foreground bg-foreground text-background' : 'border-border bg-card text-foreground/80 mouse:hover:bg-muted',
+                    ativo ? 'border-foreground bg-foreground text-background' : 'border-border bg-card text-[color-mix(in_srgb,var(--foreground)_80%,transparent)] mouse:hover:bg-muted',
                   )}
                 >
                   {ativo && <Check className="h-3.5 w-3.5" aria-hidden />}
@@ -300,6 +307,19 @@ export function FormCamera({ unidadeId, camera, sugestao, agentes, equipamentos,
             })}
           </div>
         </Campo>
+      </div>
+
+      <div className="flex flex-col gap-3">
+        <TituloBloco>Vídeo do evento</TituloBloco>
+        <ClipeEvento
+          ativo={f.clipe_ativo}
+          antes={f.clipe_antes}
+          depois={f.clipe_depois}
+          desabilitado={!f.analise_ativa}
+          onAtivo={campo('clipe_ativo')}
+          onAntes={campo('clipe_antes')}
+          onDepois={campo('clipe_depois')}
+        />
       </div>
 
       <Collapsible open={avancado} onOpenChange={setAvancado}>
@@ -355,9 +375,6 @@ export function FormCamera({ unidadeId, camera, sugestao, agentes, equipamentos,
                 <Input id={`${idBase}-ordem`} value={f.ordem} onChange={(e) => campo('ordem')(e.target.value)} inputMode="numeric" />
               </Campo>
             </div>
-            <Campo rotulo="Clipe (segundos)" htmlFor={`${idBase}-clipe`} dica="Vídeo guardado em cada alerta. 0 desliga o clipe." className="max-w-[160px]">
-              <Input id={`${idBase}-clipe`} value={f.clipe_s} onChange={(e) => campo('clipe_s')(e.target.value)} inputMode="numeric" />
-            </Campo>
             <LinhaSwitch
               titulo="Vídeo contínuo"
               dica="Publica sempre, não só quando alguém assiste. Gasta banda da usina."

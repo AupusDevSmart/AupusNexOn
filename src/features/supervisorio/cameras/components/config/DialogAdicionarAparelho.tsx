@@ -126,7 +126,7 @@ export function DialogAdicionarAparelho({ unidadeId, unidadeNome, aberto, onFech
                         )}
                       </div>
                       {emConfirmacao && (
-                        <div role="group" aria-label="Confirmar vínculo" className="flex flex-col gap-2 rounded-md bg-muted/60 p-3">
+                        <div role="group" aria-label="Confirmar vínculo" className="flex flex-col gap-2 rounded-md bg-[color-mix(in_srgb,var(--muted)_60%,transparent)] p-3">
                           <p className="text-xs">
                             Vincular <strong>{p.host}</strong>
                             {info ? ` (${info})` : ''} a <strong>{nomeUnidade}</strong>?

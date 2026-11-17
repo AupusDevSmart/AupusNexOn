@@ -1,4 +1,4 @@
-import { chaveHoje, deslocarDia, diaCurto } from './agrupar-por-dia';
+import { chaveHoje, deslocarDia, diaCurto, semanaCurta } from './agrupar-por-dia';
 
 /** Filtro de período da lista de eventos (datas e horas em Brasília). `null` = sem limite. */
 export interface PeriodoEventos {
@@ -21,11 +21,11 @@ export const horaMinValida = (s: string) => RE_HHMM.test(s);
 
 export type AtalhoDia = 'qualquer' | 'hoje' | 'ontem' | '7dias' | '30dias';
 export const ATALHOS_DIA: { valor: AtalhoDia; rotulo: string }[] = [
-  { valor: 'qualquer', rotulo: 'Qualquer dia' },
   { valor: 'hoje', rotulo: 'Hoje' },
   { valor: 'ontem', rotulo: 'Ontem' },
   { valor: '7dias', rotulo: 'Últimos 7 dias' },
   { valor: '30dias', rotulo: 'Últimos 30 dias' },
+  { valor: 'qualquer', rotulo: 'Qualquer dia' },
 ];
 
 export type AtalhoHora = 'qualquer' | 'madrugada' | 'manha' | 'tarde' | 'noite';
@@ -72,7 +72,7 @@ export function temPeriodo(p: PeriodoEventos): boolean {
 }
 
 /** `18:00` → `18h`; `08:30` → `8h30`. */
-function horaCurtaTexto(h: string): string {
+export function horaCurtaTexto(h: string): string {
   const [hh, mm] = h.split(':');
   return `${Number(hh)}h${mm === '00' ? '' : mm}`;
 }
@@ -106,4 +106,96 @@ export function paramsPeriodo(p: PeriodoEventos): { de?: string; ate?: string; h
   if (p.horaDe) r.hora_de = p.horaDe;
   if (p.horaAte) r.hora_ate = p.horaAte;
   return r;
+}
+
+/** Faixa curta de um atalho de hora: `18h–6h`. */
+export function faixaHoras(de: string, ate: string): string {
+  return `${horaCurtaTexto(de)}–${horaCurtaTexto(ate)}`;
+}
+
+/** Fim antes (ou igual) do início: a faixa atravessa a meia-noite (a API lê assim). */
+export function passaMeiaNoite(p: Pick<PeriodoEventos, 'horaDe' | 'horaAte'>): boolean {
+  return !!(p.horaDe && p.horaAte && p.horaAte <= p.horaDe);
+}
+
+const minutos = (h: string) => Number(h.slice(0, 2)) * 60 + Number(h.slice(3, 5));
+
+/** Trechos do dia cobertos pela faixa de hora, em minutos [início, fim) (para a régua de 24h). */
+export function segmentosHora(p: Pick<PeriodoEventos, 'horaDe' | 'horaAte'>): [number, number][] {
+  const de = p.horaDe ? minutos(p.horaDe) : null;
+  const ate = p.horaAte ? minutos(p.horaAte) : null;
+  if (de === null && ate === null) return [];
+  if (ate === null) return [[de!, 1440]];
+  if (de === null) return [[0, ate]];
+  if (ate > de) return [[de, ate]];
+  if (ate === 0) return [[de, 1440]];
+  return [
+    [0, ate],
+    [de, 1440],
+  ];
+}
+
+const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+
+/** `14 de nov` (com ano quando não é o ano de hoje). */
+function diaMes(chave: string, hoje: string, comMes = true): string {
+  const [a, m, d] = chave.split('-').map(Number);
+  let t = String(d);
+  if (comMes) t += ` de ${MESES[m - 1]}`;
+  if (comMes && chave.slice(0, 4) !== hoje.slice(0, 4)) t += ` de ${a}`;
+  return t;
+}
+
+/** `das 18h` / `da 1h` / `da meia-noite` / `do meio-dia`. */
+function inicioHora(h: string): string {
+  if (h === '00:00') return 'da meia-noite';
+  if (h === '12:00') return 'do meio-dia';
+  return `${h.startsWith('01:') ? 'da' : 'das'} ${horaCurtaTexto(h)}`;
+}
+
+/** `às 6h` / `à 1h` / `à meia-noite` / `ao meio-dia`. */
+function fimHora(h: string): string {
+  if (h === '00:00') return 'à meia-noite';
+  if (h === '12:00') return 'ao meio-dia';
+  return `${h.startsWith('01:') ? 'à' : 'às'} ${horaCurtaTexto(h)}`;
+}
+
+const TODO_ATALHO: Record<Exclude<AtalhoHora, 'qualquer'>, string> = {
+  madrugada: 'Toda madrugada',
+  manha: 'Toda manhã',
+  tarde: 'Toda tarde',
+  noite: 'Toda noite',
+};
+
+/** Só a parte dos dias, em texto de gente: "Ontem", "Sex, 14 de nov", "10 a 12 de nov", "28 de out a 3 de nov". */
+export function resumoDias(p: PeriodoEventos, hoje: string = chaveHoje()): string | null {
+  if (!p.de) return null;
+  const atalho = atalhoDiaAtual(p, hoje);
+  if (atalho && atalho !== 'qualquer') return ATALHOS_DIA.find((a) => a.valor === atalho)!.rotulo;
+  if (!p.ate || p.ate === p.de) {
+    const sem = semanaCurta(p.de);
+    return `${sem ? `${sem.charAt(0).toUpperCase()}${sem.slice(1)}, ` : ''}${diaMes(p.de, hoje)}`;
+  }
+  const mesmoMes = p.de.slice(0, 7) === p.ate.slice(0, 7);
+  return `${diaMes(p.de, hoje, !mesmoMes)} a ${diaMes(p.ate, hoje)}`;
+}
+
+/**
+ * Resumo completo para ler de relance: "Todo o período", "Ontem", "Ontem · Noite, 18h–6h",
+ * "10 a 12 de nov, das 8h30 às 12h", "Toda noite, 18h–6h", "Todo dia, a partir das 18h".
+ */
+export function resumoPeriodo(p: PeriodoEventos, hoje: string = chaveHoje()): string {
+  const dias = resumoDias(p, hoje);
+  if (!p.horaDe && !p.horaAte) return dias ?? 'Todo o período';
+  const a = atalhoHoraAtual(p);
+  if (a && a !== 'qualquer') {
+    const atalho = ATALHOS_HORA.find((x) => x.valor === a)!;
+    const faixa = faixaHoras(atalho.de!, atalho.ate!);
+    return dias ? `${dias} · ${atalho.rotulo}, ${faixa}` : `${TODO_ATALHO[a]}, ${faixa}`;
+  }
+  let horas: string;
+  if (p.horaDe && p.horaAte) horas = `${inicioHora(p.horaDe)} ${fimHora(p.horaAte)}`;
+  else if (p.horaDe) horas = `a partir ${inicioHora(p.horaDe)}`;
+  else horas = `até ${fimHora(p.horaAte!).replace(/^às /, 'as ').replace(/^à /, 'a ').replace(/^ao /, 'o ')}`;
+  return `${dias ?? 'Todo dia'}, ${horas}`;
 }

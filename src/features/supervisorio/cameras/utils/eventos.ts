@@ -61,10 +61,10 @@ export const COR_TIPO: Record<TipoEvento, string> = {
   pessoa: 'bg-red-500/10 text-red-600 dark:text-red-400',
   veiculo: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
   animal: 'bg-sky-500/10 text-sky-600 dark:text-sky-400',
-  movimento: 'bg-muted text-foreground/80',
+  movimento: 'bg-muted text-[color-mix(in_srgb,var(--foreground)_80%,transparent)]',
   sem_sinal: 'bg-zinc-500/15 text-zinc-600 dark:text-zinc-300',
-  sinal_restabelecido: 'bg-nexon-verde/10 text-nexon-verde',
-  foto: 'bg-muted text-foreground/80',
+  sinal_restabelecido: 'bg-[color-mix(in_srgb,var(--nx-verde)_10%,transparent)] text-nexon-verde',
+  foto: 'bg-muted text-[color-mix(in_srgb,var(--foreground)_80%,transparent)]',
 };
 
 export function rotuloTipo(tipo: TipoEvento): string {

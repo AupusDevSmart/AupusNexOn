@@ -43,6 +43,8 @@ export interface CameraAnalise {
   classificar: boolean;
   classes_alerta: ClasseAlerta[];
   clipe_s: number;
+  /** Segundos gravados antes do movimento (0–30). */
+  pre_s?: number;
   zonas: unknown[];
 }
 

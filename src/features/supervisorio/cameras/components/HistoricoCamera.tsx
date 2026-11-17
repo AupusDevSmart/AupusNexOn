@@ -31,10 +31,10 @@ const COR_MARCA: Record<TipoEvento, string> = {
   pessoa: 'bg-red-500',
   veiculo: 'bg-amber-500',
   animal: 'bg-sky-500',
-  movimento: 'bg-foreground/50',
+  movimento: 'bg-[color-mix(in_srgb,var(--foreground)_50%,transparent)]',
   sem_sinal: 'bg-zinc-500',
   sinal_restabelecido: 'bg-nexon-verde',
-  foto: 'bg-foreground/40',
+  foto: 'bg-[color-mix(in_srgb,var(--foreground)_40%,transparent)]',
 };
 
 const MARCAS_HORA = [0, 6, 12, 18, 24];
@@ -221,7 +221,7 @@ function LinhaDoTempo({
           <span
             aria-hidden
             data-testid="faixa-gravada"
-            className="absolute inset-y-0 bg-nexon-verde/25"
+            className="absolute inset-y-0 bg-[color-mix(in_srgb,var(--nx-verde)_25%,transparent)]"
             style={{ left: `${faixa.inicioPct}%`, width: `${faixa.fimPct - faixa.inicioPct}%` }}
           />
         )}
@@ -242,7 +242,7 @@ function LinhaDoTempo({
           <span
             aria-hidden
             data-testid="cursor-trecho"
-            className="absolute inset-y-0 bg-foreground/80"
+            className="absolute inset-y-0 bg-[color-mix(in_srgb,var(--foreground)_80%,transparent)]"
             style={{ left: `${pctDoDia(cursor)}%`, width: `max(2px, ${pctDoDia(TRECHO_S)}%)` }}
           />
         )}
@@ -272,7 +272,7 @@ function BotaoTrecho({ rotulo, icone, desabilitado, onClick }: { rotulo: string;
           aria-label={rotulo}
           disabled={desabilitado}
           onClick={onClick}
-          className="flex h-8 w-8 items-center justify-center rounded-md text-foreground/80 transition-colors disabled:opacity-40 mouse:hover:bg-muted touch:h-10 touch:w-10"
+          className="flex h-8 w-8 items-center justify-center rounded-md text-[color-mix(in_srgb,var(--foreground)_80%,transparent)] transition-colors disabled:opacity-40 mouse:hover:bg-muted touch:h-10 touch:w-10"
         >
           <Icone className="h-4 w-4" aria-hidden />
         </button>

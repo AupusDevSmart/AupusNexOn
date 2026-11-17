@@ -97,7 +97,54 @@ describe('PainelEventos · período', () => {
     const onPeriodo = vi.fn();
     montar(undefined, onPeriodo);
     await userEvent.click(screen.getByRole('button', { name: /filtrar por período/i }));
-    await userEvent.click(await screen.findByRole('button', { name: 'Noite' }));
+    await userEvent.click(await screen.findByRole('button', { name: /^noite/i }));
     expect(onPeriodo).toHaveBeenCalledWith(expect.objectContaining({ horaDe: '18:00', horaAte: '06:00' }));
+  });
+
+  it('mostra o resumo do período e limpa pelo X', async () => {
+    const onPeriodo = vi.fn();
+    render(
+      <PainelEventos
+        eventos={{ data: { data: [], pagination: { total: 0, page: 1, limit: 50, pages: 0 } } as never, isPending: false, isError: false, refetch: vi.fn() }}
+        filtro="todas"
+        onFiltro={vi.fn()}
+        somenteNaoVistos={false}
+        onSomenteNaoVistos={vi.fn()}
+        escopo="todas"
+        onEscopo={vi.fn()}
+        cameraNome="Portão"
+        naoVistos={0}
+        eventoSelId={null}
+        onAbrirEvento={vi.fn()}
+        onMarcarTodos={vi.fn()}
+        marcandoTodos={false}
+        onMostrarMais={vi.fn()}
+        urlMidia={() => null}
+        periodo={{ de: null, ate: null, horaDe: '18:00', horaAte: '06:00' }}
+        onPeriodo={onPeriodo}
+      />,
+    );
+    expect(screen.getByRole('button', { name: /filtrar por período: toda noite, 18h–6h/i })).toBeInTheDocument();
+    expect(screen.getByText('Nada neste período')).toBeInTheDocument();
+    expect(screen.getByText('Nenhum evento neste período')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Ver todo o período' }));
+    expect(onPeriodo).toHaveBeenLastCalledWith({ de: null, ate: null, horaDe: null, horaAte: null });
+    onPeriodo.mockClear();
+    await userEvent.click(screen.getByRole('button', { name: 'Limpar período' }));
+    expect(onPeriodo).toHaveBeenCalledWith({ de: null, ate: null, horaDe: null, horaAte: null });
+  });
+
+  it('dois cliques no calendário formam o intervalo', async () => {
+    const onPeriodo = vi.fn();
+    montar(undefined, onPeriodo);
+    await userEvent.click(screen.getByRole('button', { name: /filtrar por período/i }));
+    const dias = (await screen.findAllByRole('gridcell')).map((c) => c.querySelector('button')).filter((b): b is HTMLButtonElement => !!b && !b.disabled);
+    await userEvent.click(dias[0]);
+    expect(onPeriodo).toHaveBeenLastCalledWith(expect.objectContaining({ ate: null }));
+    const primeiro = onPeriodo.mock.lastCall![0].de as string;
+    await userEvent.click(dias[2]);
+    const ultimo = onPeriodo.mock.lastCall![0];
+    expect(ultimo.de).toBe(primeiro);
+    expect(ultimo.ate! > primeiro).toBe(true);
   });
 });
