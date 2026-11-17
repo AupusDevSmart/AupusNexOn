@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Lightbulb, Loader2, RefreshCw, Settings, Shield, ShieldOff, Siren, type LucideIcon } from 'lucide-react';
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { paramData, paramFlag, paramOpcao, paramTexto, useEscreverParamsUrl, useParamUrl } from '@/hooks/useParamUrl';
 import { toast } from 'sonner';
 import {
@@ -27,6 +27,7 @@ import { CamerasService } from '../services/cameras.service';
 import type { CameraEvento, DispositivoAcionavel, FiltroEventos, ResumoCameras } from '../types';
 import { mensagemErro } from '../utils/erros';
 import { FILTROS_EVENTOS, ehNaoLido, textoArmamento, textoNoite } from '../utils/eventos';
+import { horaMinValida, type PeriodoEventos } from '../utils/periodo';
 import { diaHoraDe, diasDisponiveis, horaDeSegundos, horaValida, inicioDoTrecho, segundosDeHora } from '../utils/historico';
 import { CamerasSkeleton } from './CamerasSkeleton';
 import { ConfigCamerasSheet, type AbaConfigCameras } from './ConfigCamerasSheet';
@@ -48,6 +49,9 @@ const P_ESCOPO = paramOpcao<EscopoEventos>(['todas', 'camera'], 'todas');
 const P_MODO = paramOpcao<ModoPlayer>(['aovivo', 'historico'], 'aovivo');
 const P_DIA = paramData('dia');
 const P_HORA = paramTexto(horaValida);
+// Período da lista de eventos (de/até e faixa de hora): separado do `dia`/`hora` do histórico.
+const P_EV_DATA = paramData('dia');
+const P_EV_HORA = paramTexto(horaMinValida);
 /** `?config=` = painel de configuração aberto, na aba dita (nome de tela, não o interno). */
 const ABA_CONFIG_URL = { cameras: 'cameras', agentes: 'aparelhos', unidade: 'armamento' } as const satisfies Record<AbaConfigCameras, string>;
 type AbaConfigUrl = (typeof ABA_CONFIG_URL)[AbaConfigCameras];
@@ -115,6 +119,14 @@ export function CamerasTab({ unidadeId, unidadeNome }: CamerasTabProps) {
   const [configUrl, setConfigUrl] = useParamUrl('config', P_CONFIG);
   const [modo] = useParamUrl('modo', P_MODO);
   const [diaUrl] = useParamUrl('dia', P_DIA);
+  const [evDe] = useParamUrl('de', P_EV_DATA);
+  const [evAte] = useParamUrl('ate', P_EV_DATA);
+  const [evHoraDe] = useParamUrl('hDe', P_EV_HORA);
+  const [evHoraAte] = useParamUrl('hAte', P_EV_HORA);
+  const periodo = useMemo<PeriodoEventos>(
+    () => ({ de: evDe, ate: evDe ? evAte : null, horaDe: evHoraDe, horaAte: evHoraAte }),
+    [evDe, evAte, evHoraDe, evHoraAte],
+  );
   const [horaUrl] = useParamUrl('hora', P_HORA);
   // Último evento aberto: segura o player se um filtro novo tirar o evento da lista.
   const [eventoAberto, setEventoAberto] = useState<CameraEvento | null>(null);
@@ -138,6 +150,7 @@ export function CamerasTab({ unidadeId, unidadeNome }: CamerasTabProps) {
       cameraId: escopo === 'camera' ? cameraSel?.id : undefined,
       filtro,
       somenteNaoLidos: somenteNaoVistos,
+      periodo,
       limit: limite,
     },
     lista.length > 0,
@@ -460,6 +473,8 @@ export function CamerasTab({ unidadeId, unidadeNome }: CamerasTabProps) {
             onMostrarMais={() => setLimite((l) => l + PAGINA)}
             urlMidia={midia.url}
             onApagar={podeApagar ? setParaApagar : undefined}
+            periodo={periodo}
+            onPeriodo={(p) => escreverUrl({ de: p.de, ate: p.de ? p.ate : null, hDe: p.horaDe, hAte: p.horaAte, evento: null })}
             apagadosEm={apagadosEm}
           />
         </div>

@@ -279,6 +279,11 @@ export interface ListarEventosParams {
   camera_id?: string;
   /** AAAA-MM-DD em America/Sao_Paulo. */
   dia?: string;
+  /** Período (AAAA-MM-DD, inclusive) e faixa de hora (HH:MM) de cada dia. */
+  de?: string;
+  ate?: string;
+  hora_de?: string;
+  hora_ate?: string;
   /** Lista separada por vírgula (`pessoa,veiculo`). */
   tipo?: string;
   somente_nao_lidos?: 0 | 1;

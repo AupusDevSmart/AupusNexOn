@@ -29,7 +29,7 @@ const ev = (id: string): CameraEvento => ({
   created_at: agora,
 });
 
-function montar(onApagar?: (l: CameraEvento[]) => void) {
+function montar(onApagar?: (l: CameraEvento[]) => void, onPeriodo?: (p: unknown) => void) {
   const onAbrirEvento = vi.fn();
   render(
     <PainelEventos
@@ -49,6 +49,7 @@ function montar(onApagar?: (l: CameraEvento[]) => void) {
       onMostrarMais={vi.fn()}
       urlMidia={() => null}
       onApagar={onApagar}
+      onPeriodo={onPeriodo}
     />,
   );
   return { onAbrirEvento };
@@ -80,5 +81,23 @@ describe('PainelEventos · apagar em lote', () => {
     await userEvent.click(screen.getByRole('button', { name: /marcar todos \(2\)/i }));
     await userEvent.click(screen.getByRole('button', { name: /^apagar$/i }));
     expect(onApagar.mock.calls[0][0].map((e: CameraEvento) => e.id)).toEqual(['e1', 'e2']);
+  });
+});
+
+describe('PainelEventos · período', () => {
+  it('atalho "Ontem" aplica o período', async () => {
+    const onPeriodo = vi.fn();
+    montar(undefined, onPeriodo);
+    await userEvent.click(screen.getByRole('button', { name: /filtrar por período/i }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Ontem' }));
+    expect(onPeriodo).toHaveBeenCalledWith(expect.objectContaining({ de: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), ate: null }));
+  });
+
+  it('faixa "Noite" vai das 18h às 6h', async () => {
+    const onPeriodo = vi.fn();
+    montar(undefined, onPeriodo);
+    await userEvent.click(screen.getByRole('button', { name: /filtrar por período/i }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Noite' }));
+    expect(onPeriodo).toHaveBeenCalledWith(expect.objectContaining({ horaDe: '18:00', horaAte: '06:00' }));
   });
 });
