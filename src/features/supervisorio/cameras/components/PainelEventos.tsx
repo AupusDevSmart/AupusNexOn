@@ -1,11 +1,11 @@
-import { CheckCheck, ListChecks, RefreshCw, ShieldCheck, Trash2, X } from 'lucide-react';
+import { CalendarX2, CheckCheck, ListChecks, RefreshCw, ShieldCheck, Trash2, X } from 'lucide-react';
 import { forwardRef, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { CameraEvento, FiltroEventos, Paginado } from '../types';
 import { agruparPorDia } from '../utils/agrupar-por-dia';
 import { FILTROS_EVENTOS } from '../utils/eventos';
-import { PERIODO_VAZIO, temPeriodo, type PeriodoEventos } from '../utils/periodo';
+import { PERIODO_VAZIO, resumoPeriodo, temPeriodo, type PeriodoEventos } from '../utils/periodo';
 import { AreaRolagem } from './AreaRolagem';
 import { EventosSkeleton } from './CamerasSkeleton';
 import { FiltroPeriodo } from './FiltroPeriodo';
@@ -19,6 +19,8 @@ interface PainelEventosProps {
     data?: Paginado<CameraEvento>;
     isPending: boolean;
     isError: boolean;
+    /** Lista anterior na tela enquanto o filtro novo carrega (não vale como contagem). */
+    isPlaceholderData?: boolean;
     refetch: () => unknown;
   };
   filtro: FiltroEventos;
@@ -84,7 +86,10 @@ export const PainelEventos = forwardRef<HTMLElement, PainelEventosProps>(functio
   const grupos = useMemo(() => agruparPorDia(eventos.data?.data ?? [], (e) => e.inicio_em), [eventos.data]);
   const total = eventos.data?.pagination.total ?? 0;
   const carregados = eventos.data?.data.length ?? 0;
-  const comFiltro = filtro !== 'todas' || somenteNaoVistos || temPeriodo(periodo);
+  const comPeriodo = temPeriodo(periodo);
+  const comFiltro = filtro !== 'todas' || somenteNaoVistos || comPeriodo;
+  const contando = eventos.isPending || !!eventos.isPlaceholderData;
+  const resultado = contando || eventos.isError ? null : total;
 
   const lista = eventos.data?.data ?? [];
   const sairDaSelecao = () => {
@@ -180,8 +185,9 @@ export const PainelEventos = forwardRef<HTMLElement, PainelEventosProps>(functio
           </Segmento>
         </div>
 
+        {onPeriodo && <FiltroPeriodo periodo={periodo} onPeriodo={onPeriodo} resultado={resultado} />}
+
         <div role="group" aria-label="Filtrar eventos" className="flex flex-wrap gap-1.5">
-          {onPeriodo && <FiltroPeriodo periodo={periodo} onPeriodo={onPeriodo} />}
           <Chip ativo={somenteNaoVistos} onClick={() => onSomenteNaoVistos(!somenteNaoVistos)}>
             Não vistos
             {naoVistos > 0 && <span className="tabular-nums opacity-80">{naoVistos > 99 ? '99+' : naoVistos}</span>}
@@ -193,6 +199,24 @@ export const PainelEventos = forwardRef<HTMLElement, PainelEventosProps>(functio
             </Chip>
           ))}
         </div>
+
+        {comFiltro && (
+          <div className="flex min-h-6 items-center justify-between gap-2 text-xs">
+            <p aria-live="polite" className="tabular-nums text-muted-foreground">
+              {resultado === null ? (eventos.isError ? '' : 'Procurando…') : textoResultado(resultado, comPeriodo)}
+            </p>
+            {/* lista vazia já traz o botão de limpar no meio da tela */}
+            {!!resultado && (
+              <button
+                type="button"
+                onClick={limparFiltros}
+                className="-mr-1 h-6 rounded px-1 font-medium text-foreground underline-offset-2 mouse:hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch:h-10"
+              >
+                Limpar filtros
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       <AreaRolagem className="min-h-0 flex-1">
@@ -210,6 +234,9 @@ export const PainelEventos = forwardRef<HTMLElement, PainelEventosProps>(functio
           </div>
         ) : grupos.length === 0 ? (
           <Vazio
+            periodo={comPeriodo ? resumoPeriodo(periodo) : null}
+            onVerTodoPeriodo={() => onPeriodo?.(PERIODO_VAZIO)}
+            outrosFiltros={filtro !== 'todas' || somenteNaoVistos}
             comFiltro={comFiltro}
             somenteNaoVistos={somenteNaoVistos && filtro === 'todas'}
             cameraNome={escopo === 'camera' ? cameraNome : null}
@@ -250,17 +277,56 @@ export const PainelEventos = forwardRef<HTMLElement, PainelEventosProps>(functio
   );
 });
 
+/** "12 eventos neste período" · "1 evento com esse filtro" · "Nenhum evento neste período". */
+function textoResultado(n: number, comPeriodo: boolean): string {
+  const onde = comPeriodo ? 'neste período' : 'com esse filtro';
+  if (n === 0) return `Nenhum evento ${onde}`;
+  return `${n} evento${n > 1 ? 's' : ''} ${onde}`;
+}
+
 function Vazio({
+  periodo,
+  onVerTodoPeriodo,
+  outrosFiltros,
   comFiltro,
   somenteNaoVistos,
   cameraNome,
   onLimpar,
 }: {
+  /** Resumo do período filtrado (vazio próprio do período); `null` = sem período. */
+  periodo: string | null;
+  onVerTodoPeriodo: () => void;
+  outrosFiltros: boolean;
   comFiltro: boolean;
   somenteNaoVistos: boolean;
   cameraNome: string | null;
   onLimpar: () => void;
 }) {
+  if (periodo) {
+    return (
+      <div role="status" className="flex flex-col items-center gap-2 px-6 py-10 text-center">
+        <CalendarX2 className="h-8 w-8 text-muted-foreground" aria-hidden />
+        <p className="text-sm font-semibold">Nada neste período</p>
+        <p className="max-w-[280px] text-[13px] font-medium text-foreground">
+          {periodo}
+          {cameraNome && <span className="text-muted-foreground"> · {cameraNome}</span>}
+        </p>
+        <p className="max-w-[260px] text-[13px] text-muted-foreground">
+          {outrosFiltros ? 'Nenhum evento com esses filtros. Tente um período maior.' : 'Tente um período maior.'}
+        </p>
+        <div className="mt-1 flex flex-wrap justify-center gap-2">
+          <Button type="button" variant="outline" size="sm" className="touch:h-10" onClick={onVerTodoPeriodo}>
+            Ver todo o período
+          </Button>
+          {outrosFiltros && (
+            <Button type="button" variant="ghost" size="sm" className="touch:h-10" onClick={onLimpar}>
+              Limpar filtros
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  }
   let titulo = 'Nenhum evento ainda';
   let texto = 'Quando alguém ou algo aparecer nas câmeras, o evento chega aqui com foto e hora.';
   if (somenteNaoVistos) {
@@ -274,7 +340,7 @@ function Vazio({
   }
   return (
     <div role="status" className="flex flex-col items-center gap-2 px-6 py-10 text-center">
-      <ShieldCheck className="h-8 w-8 text-muted-foreground/60" aria-hidden />
+      <ShieldCheck className="h-8 w-8 text-[color-mix(in_srgb,var(--muted-foreground)_60%,transparent)]" aria-hidden />
       <p className="text-sm font-semibold">{titulo}</p>
       <p className="max-w-[260px] text-[13px] text-muted-foreground">{texto}</p>
       {comFiltro && (
@@ -294,7 +360,7 @@ function Chip({ ativo, onClick, children }: { ativo: boolean; onClick: () => voi
       onClick={onClick}
       className={cn(
         'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition-colors touch:h-9',
-        ativo ? 'border-foreground bg-foreground text-background' : 'border-border bg-card text-foreground/80 mouse:hover:bg-muted',
+        ativo ? 'border-foreground bg-foreground text-background' : 'border-border bg-card text-[color-mix(in_srgb,var(--foreground)_80%,transparent)] mouse:hover:bg-muted',
       )}
     >
       {children}

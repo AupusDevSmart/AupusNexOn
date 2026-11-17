@@ -53,10 +53,10 @@ export function ItemEvento({ evento, selecionado, miniatura, onClick, marcado }:
           emSelecao
             ? marcado
               ? 'bg-red-500/10 ring-1 ring-inset ring-red-500/40'
-              : 'mouse:hover:bg-muted/60'
+              : 'mouse:hover:bg-[color-mix(in_srgb,var(--muted)_60%,transparent)]'
             : selecionado
-              ? 'bg-muted ring-1 ring-inset ring-foreground/25'
-              : 'mouse:hover:bg-muted/60',
+              ? 'bg-muted ring-1 ring-inset ring-[color-mix(in_srgb,var(--foreground)_25%,transparent)]'
+              : 'mouse:hover:bg-[color-mix(in_srgb,var(--muted)_60%,transparent)]',
         )}
       >
         {emSelecao && (
@@ -64,7 +64,7 @@ export function ItemEvento({ evento, selecionado, miniatura, onClick, marcado }:
             aria-hidden
             className={cn(
               'flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors',
-              marcado ? 'border-red-500 bg-red-500 text-white' : 'border-muted-foreground/50',
+              marcado ? 'border-red-500 bg-red-500 text-white' : 'border-[color-mix(in_srgb,var(--muted-foreground)_50%,transparent)]',
             )}
           >
             {marcado && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
@@ -83,7 +83,7 @@ export function ItemEvento({ evento, selecionado, miniatura, onClick, marcado }:
             {naoLido && <PontoNaoLido />}
             <span className="ml-auto shrink-0 text-xs font-medium tabular-nums text-muted-foreground">{hora}</span>
           </span>
-          <span className="truncate text-[13px] text-foreground/90">
+          <span className="truncate text-[13px] text-[color-mix(in_srgb,var(--foreground)_90%,transparent)]">
             {evento.camera_nome}
             {chamado && <span className="text-muted-foreground"> · {chamado}</span>}
           </span>

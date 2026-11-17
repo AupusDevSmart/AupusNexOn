@@ -224,7 +224,7 @@ function MenuBaixar({ evento, urlMidia }: { evento: CameraEvento; urlMidia: Pain
             <button
               type="button"
               aria-label="Baixar"
-              className="flex h-8 w-8 items-center justify-center rounded-md text-foreground/80 transition-colors mouse:hover:bg-muted touch:h-10 touch:w-10"
+              className="flex h-8 w-8 items-center justify-center rounded-md text-[color-mix(in_srgb,var(--foreground)_80%,transparent)] transition-colors mouse:hover:bg-muted touch:h-10 touch:w-10"
             >
               <Download className="h-4 w-4" aria-hidden />
             </button>
@@ -279,7 +279,7 @@ function BotaoIcone({
           disabled={desabilitado || ocupado}
           onClick={onClick}
           className={cn(
-            'flex h-8 w-8 items-center justify-center rounded-md text-foreground/80 transition-colors disabled:opacity-40 mouse:hover:bg-muted touch:h-10 touch:w-10',
+            'flex h-8 w-8 items-center justify-center rounded-md text-[color-mix(in_srgb,var(--foreground)_80%,transparent)] transition-colors disabled:opacity-40 mouse:hover:bg-muted touch:h-10 touch:w-10',
             perigo && 'text-red-500 mouse:hover:bg-red-500/10 mouse:hover:text-red-500',
           )}
         >

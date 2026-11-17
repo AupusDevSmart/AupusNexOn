@@ -191,7 +191,7 @@ describe('FormCamera — avisos e sensibilidade', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Salvar' }));
     await waitFor(() => expect(CamerasService.editar).toHaveBeenCalled());
     const [, payload] = vi.mocked(CamerasService.editar).mock.calls[0];
-    expect(payload.analise).toEqual({ ativa: true, sensibilidade: 80, classes_alerta: ['pessoa', 'veiculo', 'movimento'], clipe_s: 12 });
+    expect(payload.analise).toEqual({ ativa: true, sensibilidade: 80, classes_alerta: ['pessoa', 'veiculo', 'movimento'], clipe_s: 10, pre_s: 10 });
     expect(screen.queryByText(/IA|YOLO|token/)).toBeNull();
   });
 
@@ -217,14 +217,32 @@ describe('FormCamera — avisos e sensibilidade', () => {
     expect(CamerasService.criar).not.toHaveBeenCalled();
   });
 
-  it('clipe e vídeo contínuo ficam em Avançado', async () => {
+  it('vídeo do evento: escolhe antes/depois e desliga o clipe', async () => {
+    const editar = vi.mocked(CamerasService.editar).mockReset().mockResolvedValue(camera());
+    renderWithProviders(
+      <FormCamera unidadeId="u1" camera={camera({ clipe_s: 12, pre_s: 10 })} agentes={[AGENTE]} equipamentos={[]} proximaOrdem={2} onSalvo={vi.fn()} onCancelar={vi.fn()} />,
+    );
+    // 12 s de cadastro antigo cai na opção mais próxima (10 s)
+    expect(within(screen.getByRole('radiogroup', { name: 'Depois do movimento' })).getByRole('radio', { name: '10 segundos' })).toHaveAttribute('aria-checked', 'true');
+    await userEvent.click(within(screen.getByRole('radiogroup', { name: 'Antes do movimento' })).getByRole('radio', { name: '20 segundos' }));
+    await userEvent.click(within(screen.getByRole('radiogroup', { name: 'Depois do movimento' })).getByRole('radio', { name: '30 segundos' }));
+    expect(screen.getByText('50 s')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /salvar/i }));
+    await waitFor(() => expect(editar).toHaveBeenCalledTimes(1));
+    expect(editar.mock.calls[0][1].analise).toMatchObject({ clipe_s: 30, pre_s: 20 });
+
+    await userEvent.click(screen.getByRole('switch', { name: 'Guardar vídeo de cada evento' }));
+    await userEvent.click(screen.getByRole('button', { name: /salvar/i }));
+    await waitFor(() => expect(editar).toHaveBeenCalledTimes(2));
+    expect(editar.mock.calls[1][1].analise).toMatchObject({ clipe_s: 0 });
+  });
+
+  it('vídeo contínuo fica em Avançado', async () => {
     renderWithProviders(
       <FormCamera unidadeId="u1" camera={camera()} agentes={[AGENTE]} equipamentos={[]} proximaOrdem={2} onSalvo={vi.fn()} onCancelar={vi.fn()} />,
     );
-    expect(screen.getByRole('switch', { name: 'Detecção de movimento ativa' })).toBeInTheDocument();
-    expect(screen.queryByLabelText('Clipe (segundos)')).toBeNull();
+    expect(screen.queryByRole('switch', { name: 'Vídeo contínuo' })).toBeNull();
     await userEvent.click(screen.getByRole('button', { name: 'Avançado' }));
-    expect(screen.getByLabelText('Clipe (segundos)')).toHaveValue('12');
     expect(screen.getByRole('switch', { name: 'Vídeo contínuo' })).toBeInTheDocument();
   });
 

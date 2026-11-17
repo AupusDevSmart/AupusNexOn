@@ -494,7 +494,7 @@ export function CamerasTab({ unidadeId, unidadeNome }: CamerasTabProps) {
           <AlertDialogFooter>
             <AlertDialogCancel disabled={apagar.isPending}>Cancelar</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className="bg-destructive text-destructive-foreground hover:bg-[color-mix(in_srgb,var(--destructive)_90%,transparent)]"
               disabled={apagar.isPending}
               onClick={(e) => {
                 e.preventDefault();
