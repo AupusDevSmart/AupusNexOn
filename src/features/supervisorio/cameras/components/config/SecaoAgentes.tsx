@@ -23,6 +23,8 @@ import { CamerasService } from '../../services/cameras.service';
 import type { Agente } from '../../types';
 import { mensagemErro } from '../../utils/erros';
 import { agenteEmContato } from '../../utils/agentes';
+import { useUserStore } from '@/store/useUserStore';
+import { AcoesAparelho } from './AcoesAparelho';
 import { DialogAdicionarAparelho } from './DialogAdicionarAparelho';
 
 /**
@@ -31,6 +33,7 @@ import { DialogAdicionarAparelho } from './DialogAdicionarAparelho';
  */
 export function SecaoAgentes({ unidadeId, unidadeNome }: { unidadeId: string; unidadeNome?: string }) {
   const agentes = useAgentesCameras(unidadeId);
+  const admin = useUserStore((s) => s.papel) === 'admin';
   const queryClient = useQueryClient();
   const [adicionando, setAdicionando] = useState(false);
   const [criando, setCriando] = useState(false);
@@ -112,7 +115,8 @@ export function SecaoAgentes({ unidadeId, unidadeNome }: { unidadeId: string; un
           {lista.map((a) => {
             const vivo = agenteEmContato(a);
             return (
-              <li key={a.id} className="flex items-center gap-3 rounded-lg border border-border p-3">
+              <li key={a.id} className="flex flex-col gap-3 rounded-lg border border-border p-3">
+                <div className="flex items-center gap-3">
                 <span role="img" aria-label={vivo ? 'online' : 'offline'} className={cn('h-2 w-2 shrink-0 rounded-full', vivo ? 'bg-nexon-verde' : 'bg-zinc-500')} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{a.nome}</p>
@@ -129,6 +133,8 @@ export function SecaoAgentes({ unidadeId, unidadeNome }: { unidadeId: string; un
                 <Button type="button" variant="ghost" size="icon" aria-label={`Remover ${a.nome}`} title="Remover" onClick={() => setRemover(a)}>
                   <Trash2 aria-hidden />
                 </Button>
+                </div>
+                <AcoesAparelho agente={a} admin={admin} online={vivo} />
               </li>
             );
           })}

@@ -18,6 +18,8 @@ import { senhaForteCamera } from '../../utils/rede';
 import { Campo, NENHUM, TituloBloco } from './Campo';
 import { CLIPE_ANTES_PADRAO, CLIPE_DEPOIS_PADRAO, OPCOES_ANTES, OPCOES_DEPOIS, opcaoMaisProxima } from '../../utils/clipe';
 import { ClipeEvento } from './ClipeEvento';
+import { VerSenha } from './VerSenha';
+import { useUserStore } from '@/store/useUserStore';
 
 interface Estado {
   nome: string;
@@ -126,6 +128,7 @@ export function FormCamera({ unidadeId, camera, sugestao, agentes, equipamentos,
   const ipNoAvancado = !!camera && !sugestao;
   // Câmera nova de fábrica (sem senha): a senha digitada aqui é criada nela pelo aparelho.
   const deFabrica = !camera && sugestao?.descoberta.inicializada === false;
+  const admin = useUserStore((st) => st.papel) === 'admin';
   const agenteNoAvancado = !!sugestao;
 
   const salvar = useMutation({
@@ -271,6 +274,7 @@ export function FormCamera({ unidadeId, camera, sugestao, agentes, equipamentos,
               autoComplete="new-password"
               placeholder={camera ? '••••••••' : ''}
             />
+            {camera && admin && <VerSenha cameraId={camera.id} />}
           </Campo>
         </div>
         {!agenteNoAvancado && campoAgente}

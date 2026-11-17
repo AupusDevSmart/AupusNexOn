@@ -8,6 +8,8 @@ import { FILTROS_EVENTOS } from '../utils/eventos';
 import { PERIODO_VAZIO, resumoPeriodo, temPeriodo, type PeriodoEventos } from '../utils/periodo';
 import { AreaRolagem } from './AreaRolagem';
 import { EventosSkeleton } from './CamerasSkeleton';
+import { ChipFiltro } from './ChipFiltro';
+import { BOTAO_SECUNDARIO, DESABILITADO, FOCO, ITEM_ATIVO } from './estilo-filtro';
 import { FiltroPeriodo } from './FiltroPeriodo';
 import { ItemEvento } from './ItemEvento';
 
@@ -113,20 +115,20 @@ export const PainelEventos = forwardRef<HTMLElement, PainelEventosProps>(functio
 
   return (
     <section ref={ref} aria-label="Eventos" className={cn('flex flex-col overflow-hidden rounded-xl border border-border bg-card', className)}>
-      <div className="flex shrink-0 flex-col gap-2.5 border-b border-border p-3">
+      <div className="flex shrink-0 flex-col gap-3 border-b border-border p-4">
         {selecionando ? (
           <div className="flex items-center gap-1.5">
-            <Button type="button" variant="ghost" size="icon" className="h-8 w-8 touch:h-10 touch:w-10" aria-label="Cancelar seleção" onClick={sairDaSelecao}>
-              <X className="h-4 w-4" aria-hidden />
-            </Button>
-            <span className="text-[15px] font-semibold tabular-nums" aria-live="polite">
+            <button type="button" className={cn(BOTAO_SECUNDARIO, '-ml-2 h-10 w-10 touch:h-11 touch:w-11')} aria-label="Cancelar seleção" onClick={sairDaSelecao}>
+              <X className="h-5 w-5" aria-hidden />
+            </button>
+            <span className="text-base font-semibold tabular-nums" aria-live="polite">
               {marcados.size === 0 ? 'Marque os eventos' : `${marcados.size} marcado${marcados.size > 1 ? 's' : ''}`}
             </span>
             <Button
               type="button"
               variant="ghost"
               size="sm"
-              className="ml-auto h-8 px-2 text-xs touch:h-10"
+              className="ml-auto h-10 px-3 text-sm touch:h-11"
               disabled={lista.length === 0}
               onClick={() => setMarcados(todosMarcados ? new Set() : new Set(lista.map((e) => e.id)))}
             >
@@ -136,47 +138,46 @@ export const PainelEventos = forwardRef<HTMLElement, PainelEventosProps>(functio
               type="button"
               variant="destructive"
               size="sm"
-              className="h-8 gap-1.5 px-2.5 text-xs touch:h-10"
+              className="h-10 gap-2 px-3.5 text-sm touch:h-11"
               disabled={marcados.size === 0}
               onClick={() => onApagar?.(lista.filter((e) => marcados.has(e.id)))}
             >
-              <Trash2 className="h-3.5 w-3.5" aria-hidden />
+              <Trash2 className="h-[18px] w-[18px]" aria-hidden />
               Apagar
             </Button>
           </div>
         ) : (
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="text-[15px] font-semibold">Eventos</h2>
-            <div className="flex items-center gap-0.5">
-              <Button
+          <div className="flex min-h-10 items-center justify-between gap-2">
+            <h2 className="text-lg font-semibold leading-tight">Eventos</h2>
+            {/* no painel estreito (lg, 340 px) as ações ficam só com ícone; nome continua no leitor de tela e no title */}
+            <div className="-mr-2 flex items-center gap-1">
+              <button
                 type="button"
-                variant="ghost"
-                size="sm"
-                className="h-8 gap-1.5 px-2 text-xs text-muted-foreground touch:h-10"
+                title={onApagar ? 'Marcar vistos' : 'Marcar todos como vistos'}
+                className={cn(BOTAO_SECUNDARIO, 'h-10 min-w-10 px-2.5 text-sm touch:h-11')}
                 disabled={naoVistos === 0 || marcandoTodos}
                 onClick={onMarcarTodos}
               >
-                <CheckCheck className="h-3.5 w-3.5" aria-hidden />
-                {onApagar ? 'Marcar vistos' : 'Marcar todos como vistos'}
-              </Button>
+                <CheckCheck className="h-[18px] w-[18px] shrink-0" aria-hidden />
+                <span className={cn(onApagar && 'lg:max-xl:sr-only')}>{onApagar ? 'Marcar vistos' : 'Marcar todos como vistos'}</span>
+              </button>
               {onApagar && (
-                <Button
+                <button
                   type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 gap-1.5 px-2 text-xs text-muted-foreground touch:h-10"
+                  title="Selecionar"
+                  className={cn(BOTAO_SECUNDARIO, 'h-10 min-w-10 px-2.5 text-sm touch:h-11')}
                   disabled={lista.length === 0}
                   onClick={() => setSelecionando(true)}
                 >
-                  <ListChecks className="h-3.5 w-3.5" aria-hidden />
-                  Selecionar
-                </Button>
+                  <ListChecks className="h-[18px] w-[18px] shrink-0" aria-hidden />
+                  <span className="lg:max-xl:sr-only">Selecionar</span>
+                </button>
               )}
             </div>
           </div>
         )}
 
-        <div role="radiogroup" aria-label="Câmeras da lista" className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1">
+        <div role="radiogroup" aria-label="Câmeras da lista" className="grid grid-cols-2 gap-1 rounded-xl border border-border p-1">
           <Segmento ativo={escopo === 'todas'} onClick={() => onEscopo('todas')}>
             Todas as câmeras
           </Segmento>
@@ -187,21 +188,30 @@ export const PainelEventos = forwardRef<HTMLElement, PainelEventosProps>(functio
 
         {onPeriodo && <FiltroPeriodo periodo={periodo} onPeriodo={onPeriodo} resultado={resultado} />}
 
-        <div role="group" aria-label="Filtrar eventos" className="flex flex-wrap gap-1.5">
-          <Chip ativo={somenteNaoVistos} onClick={() => onSomenteNaoVistos(!somenteNaoVistos)}>
+        <div role="group" aria-label="Filtrar eventos" className="flex flex-wrap gap-2">
+          <ChipFiltro ativo={somenteNaoVistos} onClick={() => onSomenteNaoVistos(!somenteNaoVistos)} className="pr-2 touch:pr-2.5">
             Não vistos
-            {naoVistos > 0 && <span className="tabular-nums opacity-80">{naoVistos > 99 ? '99+' : naoVistos}</span>}
-          </Chip>
-          <span aria-hidden className="mx-0.5 w-px self-stretch bg-border" />
+            {naoVistos > 0 && (
+              <span
+                className={cn(
+                  'flex h-6 min-w-6 items-center justify-center rounded-full px-1.5 text-xs font-semibold tabular-nums',
+                  somenteNaoVistos ? 'bg-nexon-verde text-nexon-azul' : 'bg-muted text-foreground',
+                )}
+              >
+                {naoVistos > 99 ? '99+' : naoVistos}
+              </span>
+            )}
+          </ChipFiltro>
+          <span aria-hidden className="my-1.5 w-px self-stretch bg-border" />
           {FILTROS_EVENTOS.map((f) => (
-            <Chip key={f.valor} ativo={filtro === f.valor} onClick={() => onFiltro(f.valor)}>
+            <ChipFiltro key={f.valor} ativo={filtro === f.valor} onClick={() => onFiltro(f.valor)}>
               {f.rotulo}
-            </Chip>
+            </ChipFiltro>
           ))}
         </div>
 
         {comFiltro && (
-          <div className="flex min-h-6 items-center justify-between gap-2 text-xs">
+          <div className="-mb-1 flex min-h-10 items-center justify-between gap-2 text-sm">
             <p aria-live="polite" className="tabular-nums text-muted-foreground">
               {resultado === null ? (eventos.isError ? '' : 'Procurando…') : textoResultado(resultado, comPeriodo)}
             </p>
@@ -210,8 +220,9 @@ export const PainelEventos = forwardRef<HTMLElement, PainelEventosProps>(functio
               <button
                 type="button"
                 onClick={limparFiltros}
-                className="-mr-1 h-6 rounded px-1 font-medium text-foreground underline-offset-2 mouse:hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring touch:h-10"
+                className={cn(BOTAO_SECUNDARIO, '-mr-2 h-10 shrink-0 px-2.5 text-sm text-foreground touch:h-11')}
               >
+                <X className="h-[18px] w-[18px]" aria-hidden />
                 Limpar filtros
               </button>
             )}
@@ -221,13 +232,13 @@ export const PainelEventos = forwardRef<HTMLElement, PainelEventosProps>(functio
 
       <AreaRolagem className="min-h-0 flex-1">
         {eventos.isPending ? (
-          <div className="p-3">
+          <div className="p-4">
             <EventosSkeleton linhas={6} />
           </div>
         ) : eventos.isError ? (
-          <div role="alert" className="flex flex-col items-center gap-3 px-4 py-10 text-center">
-            <p className="text-[13px] text-muted-foreground">Não foi possível carregar os eventos.</p>
-            <Button type="button" variant="outline" size="sm" onClick={() => void eventos.refetch()}>
+          <div role="alert" className="flex flex-col items-center gap-4 px-6 py-12 text-center">
+            <p className="text-sm text-muted-foreground">Não foi possível carregar os eventos.</p>
+            <Button type="button" variant="outline" className="h-10 text-sm touch:h-11" onClick={() => void eventos.refetch()}>
               <RefreshCw aria-hidden />
               Tentar de novo
             </Button>
@@ -246,7 +257,7 @@ export const PainelEventos = forwardRef<HTMLElement, PainelEventosProps>(functio
           <div className="pb-3">
             {grupos.map((g) => (
               <section key={g.chave || 'sem-data'} aria-label={g.rotulo}>
-                <h3 className="sticky top-0 z-10 bg-card px-3 pb-1.5 pt-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <h3 className="sticky top-0 z-10 bg-card px-4 pb-2 pt-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   {g.rotulo}
                 </h3>
                 <ol className="flex flex-col gap-0.5 px-1.5">
@@ -264,8 +275,8 @@ export const PainelEventos = forwardRef<HTMLElement, PainelEventosProps>(functio
               </section>
             ))}
             {carregados < total && (
-              <div className="px-3 pt-3">
-                <Button type="button" variant="outline" size="sm" className="w-full" onClick={onMostrarMais}>
+              <div className="px-4 pt-3">
+                <Button type="button" variant="outline" className="h-10 w-full text-sm touch:h-11" onClick={onMostrarMais}>
                   Mostrar mais ({total - carregados})
                 </Button>
               </div>
@@ -304,22 +315,22 @@ function Vazio({
 }) {
   if (periodo) {
     return (
-      <div role="status" className="flex flex-col items-center gap-2 px-6 py-10 text-center">
-        <CalendarX2 className="h-8 w-8 text-muted-foreground" aria-hidden />
-        <p className="text-sm font-semibold">Nada neste período</p>
-        <p className="max-w-[280px] text-[13px] font-medium text-foreground">
+      <div role="status" className="flex flex-col items-center gap-2 px-6 py-12 text-center">
+        <CalendarX2 className="mb-1 h-10 w-10 text-muted-foreground" aria-hidden />
+        <p className="text-base font-semibold">Nada neste período</p>
+        <p className="max-w-[300px] text-sm font-medium text-foreground">
           {periodo}
           {cameraNome && <span className="text-muted-foreground"> · {cameraNome}</span>}
         </p>
-        <p className="max-w-[260px] text-[13px] text-muted-foreground">
+        <p className="max-w-[280px] text-sm text-muted-foreground">
           {outrosFiltros ? 'Nenhum evento com esses filtros. Tente um período maior.' : 'Tente um período maior.'}
         </p>
-        <div className="mt-1 flex flex-wrap justify-center gap-2">
-          <Button type="button" variant="outline" size="sm" className="touch:h-10" onClick={onVerTodoPeriodo}>
+        <div className="mt-2 flex flex-wrap justify-center gap-2">
+          <Button type="button" variant="outline" className="h-10 text-sm touch:h-11" onClick={onVerTodoPeriodo}>
             Ver todo o período
           </Button>
           {outrosFiltros && (
-            <Button type="button" variant="ghost" size="sm" className="touch:h-10" onClick={onLimpar}>
+            <Button type="button" variant="ghost" className="h-10 text-sm touch:h-11" onClick={onLimpar}>
               Limpar filtros
             </Button>
           )}
@@ -339,32 +350,16 @@ function Vazio({
     texto = `Nada registrado em ${cameraNome} até agora.`;
   }
   return (
-    <div role="status" className="flex flex-col items-center gap-2 px-6 py-10 text-center">
-      <ShieldCheck className="h-8 w-8 text-[color-mix(in_srgb,var(--muted-foreground)_60%,transparent)]" aria-hidden />
-      <p className="text-sm font-semibold">{titulo}</p>
-      <p className="max-w-[260px] text-[13px] text-muted-foreground">{texto}</p>
+    <div role="status" className="flex flex-col items-center gap-2 px-6 py-12 text-center">
+      <ShieldCheck className="mb-1 h-10 w-10 text-[color-mix(in_srgb,var(--muted-foreground)_60%,transparent)]" aria-hidden />
+      <p className="text-base font-semibold">{titulo}</p>
+      <p className="max-w-[280px] text-sm text-muted-foreground">{texto}</p>
       {comFiltro && (
-        <Button type="button" variant="outline" size="sm" className="mt-1" onClick={onLimpar}>
+        <Button type="button" variant="outline" className="mt-2 h-10 text-sm touch:h-11" onClick={onLimpar}>
           Limpar filtros
         </Button>
       )}
     </div>
-  );
-}
-
-function Chip({ ativo, onClick, children }: { ativo: boolean; onClick: () => void; children: ReactNode }) {
-  return (
-    <button
-      type="button"
-      aria-pressed={ativo}
-      onClick={onClick}
-      className={cn(
-        'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition-colors touch:h-9',
-        ativo ? 'border-foreground bg-foreground text-background' : 'border-border bg-card text-[color-mix(in_srgb,var(--foreground)_80%,transparent)] mouse:hover:bg-muted',
-      )}
-    >
-      {children}
-    </button>
   );
 }
 
@@ -387,8 +382,10 @@ function Segmento({
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        'flex h-8 min-w-0 items-center justify-center rounded-md px-2 text-xs font-semibold transition-colors disabled:opacity-40 touch:h-10',
-        ativo ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground mouse:hover:text-foreground',
+        'flex h-10 min-w-0 items-center justify-center rounded-lg border px-3 text-sm font-semibold transition-colors touch:h-11',
+        ativo ? ITEM_ATIVO : 'border-transparent text-muted-foreground mouse:hover:bg-muted mouse:hover:text-foreground',
+        DESABILITADO,
+        FOCO,
       )}
     >
       {children}

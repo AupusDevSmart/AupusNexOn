@@ -72,3 +72,12 @@ describe('senhaForteCamera', () => {
     expect(senhaForteCamera('abc12')).toBe(false);
   });
 });
+
+describe('versaoMaior', () => {
+  it('compara por parte numérica', async () => {
+    const { versaoMaior } = await import('./agentes');
+    expect(versaoMaior('0.10.0', '0.9.1')).toBe(true);
+    expect(versaoMaior('0.4.0', '0.4.0')).toBe(false);
+    expect(versaoMaior('0.3.9', '0.4.0')).toBe(false);
+  });
+});

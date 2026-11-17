@@ -17,6 +17,17 @@ import { useIsMobile } from '@/core/hooks/use-mobile';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
+import { ChipFiltro } from './ChipFiltro';
+import {
+  BOTAO_PRIMARIO,
+  BOTAO_SECUNDARIO,
+  FOCO,
+  ITEM_ATIVO,
+  ITEM_INATIVO,
+  VERDE_FUNDO,
+  VERDE_FUNDO_LEVE,
+  VERDE_TEXTO,
+} from './estilo-filtro';
 import { chaveHoje, deslocarDia } from '../utils/agrupar-por-dia';
 import {
   ATALHOS_DIA,
@@ -43,11 +54,6 @@ interface FiltroPeriodoProps {
   /** Quantos eventos o filtro achou (botão "Ver 12 eventos"); `null` enquanto carrega. */
   resultado?: number | null;
 }
-
-// Tailwind 3 não aplica opacidade em cor `var(...)`: o tom claro do verde sai por color-mix.
-const VERDE_FAIXA = 'bg-[color-mix(in_srgb,var(--nx-verde)_18%,transparent)]';
-const VERDE_BORDA = 'border-[color-mix(in_srgb,var(--nx-verde)_55%,transparent)]';
-const FOCO = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background';
 
 const ICONE_HORA: Record<AtalhoHora, LucideIcon> = {
   qualquer: Clock3,
@@ -92,22 +98,22 @@ export function FiltroPeriodo({ periodo, onPeriodo, resultado = null }: FiltroPe
     <button
       type="button"
       aria-label={`Filtrar por período: ${resumo}`}
-      className={cn('flex min-w-0 flex-1 items-center gap-2.5 rounded-[inherit] py-1.5 pl-1.5 text-left', ativo ? 'pr-1' : 'pr-2.5', FOCO)}
+      className={cn('flex min-w-0 flex-1 items-center gap-3 self-stretch rounded-[inherit] py-1.5 pl-2 text-left', ativo ? 'pr-1' : 'pr-3', FOCO)}
     >
       <span
         aria-hidden
         className={cn(
-          'flex h-8 w-8 shrink-0 items-center justify-center rounded-md',
-          ativo ? `${VERDE_FAIXA} text-nexon-verde` : 'bg-muted text-muted-foreground',
+          'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg touch:h-10 touch:w-10',
+          ativo ? `${VERDE_FUNDO} ${VERDE_TEXTO}` : 'bg-muted text-muted-foreground',
         )}
       >
-        <CalendarDays className="h-4 w-4" />
+        <CalendarDays className="h-5 w-5" />
       </span>
       <span className="flex min-w-0 flex-col">
-        <span className="text-[11px] font-medium leading-tight text-muted-foreground">Período</span>
-        <span className="truncate text-[13px] font-semibold leading-snug text-foreground">{resumo}</span>
+        <span className="text-xs font-medium leading-tight text-muted-foreground">Período</span>
+        <span className="truncate text-[15px] font-semibold leading-snug text-foreground">{resumo}</span>
       </span>
-      {!ativo && <ChevronDown aria-hidden className="ml-auto h-4 w-4 shrink-0 text-muted-foreground" />}
+      {!ativo && <ChevronDown aria-hidden className="ml-auto h-5 w-5 shrink-0 text-muted-foreground" />}
     </button>
   );
 
@@ -126,8 +132,8 @@ export function FiltroPeriodo({ periodo, onPeriodo, resultado = null }: FiltroPe
   return (
     <div
       className={cn(
-        'flex min-h-11 items-center rounded-lg border bg-card transition-colors touch:min-h-12',
-        ativo ? VERDE_BORDA : 'border-border mouse:hover:border-muted-foreground',
+        'flex min-h-12 items-center rounded-xl border transition-colors touch:min-h-14',
+        ativo ? `border-nexon-verde ${VERDE_FUNDO_LEVE}` : ITEM_INATIVO,
       )}
     >
       {celular ? (
@@ -146,7 +152,7 @@ export function FiltroPeriodo({ periodo, onPeriodo, resultado = null }: FiltroPe
           <PopoverContent
             align="end"
             collisionPadding={16}
-            className="flex max-h-[min(640px,var(--radix-popover-content-available-height))] w-[600px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl p-0"
+            className="flex max-h-[min(720px,var(--radix-popover-content-available-height))] w-[680px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl border-border bg-card p-0 shadow-xl"
           >
             {conteudo('lado')}
           </PopoverContent>
@@ -158,11 +164,11 @@ export function FiltroPeriodo({ periodo, onPeriodo, resultado = null }: FiltroPe
           aria-label="Limpar período"
           onClick={() => onPeriodo(PERIODO_VAZIO)}
           className={cn(
-            'mr-1.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground mouse:hover:bg-muted mouse:hover:text-foreground touch:h-10 touch:w-10',
+            'mr-1.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors mouse:hover:bg-muted mouse:hover:text-foreground touch:h-11 touch:w-11',
             FOCO,
           )}
         >
-          <X className="h-4 w-4" aria-hidden />
+          <X className="h-5 w-5" aria-hidden />
         </button>
       )}
     </div>
@@ -234,10 +240,10 @@ function ConteudoPeriodo({ layout, periodo, onPeriodo, hoje, resumo, resultado, 
       : 'Escolha um dia, ou dois para um intervalo.';
 
   const secaoDia = (
-    <Secao titulo="Dia" className={lado ? 'w-[312px] p-4 touch:w-[340px]' : 'px-4 pb-4'}>
-      <div role="group" aria-label="Atalhos de dia" className="flex flex-wrap gap-1.5">
+    <Secao titulo="Dia" className={lado ? 'w-[348px] p-5' : 'px-4 pb-5'}>
+      <div role="group" aria-label="Atalhos de dia" className="flex flex-wrap gap-2">
         {ATALHOS_DIA.map((a) => (
-          <Pilula
+          <ChipFiltro
             key={a.valor}
             ativo={atalhoDia === a.valor}
             onClick={() => {
@@ -247,7 +253,7 @@ function ConteudoPeriodo({ layout, periodo, onPeriodo, hoje, resumo, resultado, 
             }}
           >
             {a.rotulo}
-          </Pilula>
+          </ChipFiltro>
         ))}
       </div>
       <DayPicker
@@ -258,18 +264,18 @@ function ConteudoPeriodo({ layout, periodo, onPeriodo, hoje, resumo, resultado, 
         defaultMonth={intervalo?.to ?? paraData(hoje)}
         disabled={{ after: paraData(hoje) }}
         endMonth={paraData(hoje)}
-        className="mt-2"
+        className="mt-1"
         classNames={CLASSES_CALENDARIO}
       />
-      <p aria-live="polite" className={cn('text-center text-[11px]', cortado ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground')}>
+      <p aria-live="polite" className={cn('text-center text-[13px]', cortado ? 'font-medium text-amber-700 dark:text-amber-400' : 'text-muted-foreground')}>
         {dicaCalendario}
       </p>
     </Secao>
   );
 
   const secaoHora = (
-    <Secao titulo="Hora" className={lado ? 'p-4' : 'border-t border-border p-4'}>
-      <div role="group" aria-label="Faixa de hora" className={cn('grid gap-1.5', lado ? 'grid-cols-2' : 'grid-cols-3')}>
+    <Secao titulo="Hora" className={lado ? 'p-5' : 'border-t border-border px-4 py-5'}>
+      <div role="group" aria-label="Faixa de hora" className="grid grid-cols-2 gap-2">
         {ATALHOS_HORA.map((a) => {
           const Icone = ICONE_HORA[a.valor];
           return (
@@ -304,8 +310,8 @@ function ConteudoPeriodo({ layout, periodo, onPeriodo, hoje, resumo, resultado, 
       {personalizada && <HorasPersonalizadas periodo={periodo} onTrocar={trocarHora} />}
 
       {passaMeiaNoite(periodo) && (
-        <p className="flex items-start gap-2 rounded-lg bg-muted px-3 py-2 text-xs leading-snug text-foreground">
-          <Moon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+        <p className="flex items-start gap-2.5 rounded-lg bg-muted px-3 py-2.5 text-[13px] leading-snug text-foreground">
+          <Moon className={cn('mt-px h-[18px] w-[18px] shrink-0', VERDE_TEXTO)} aria-hidden />
           {periodo.horaDe === periodo.horaAte
             ? 'Início e fim iguais: pega as 24 horas.'
             : `Passa da meia-noite: das ${horaCurtaTexto(periodo.horaDe!)} de cada dia até ${horaCurtaTexto(periodo.horaAte!)} do dia seguinte.`}
@@ -318,20 +324,20 @@ function ConteudoPeriodo({ layout, periodo, onPeriodo, hoje, resumo, resultado, 
 
   return (
     <>
-      <header className={cn('flex shrink-0 items-start gap-3 border-b border-border px-4', lado ? 'py-3' : 'pb-3 pt-2')}>
+      <header className={cn('flex shrink-0 items-start gap-3 border-b border-border', lado ? 'px-5 py-4' : 'px-4 pb-4 pt-2')}>
         <div className="min-w-0 flex-1">
           {!lado && <span aria-hidden className="mx-auto mb-3 block h-1 w-10 rounded-full bg-border" />}
           {lado ? (
-            <p className="text-[11px] font-medium text-muted-foreground">Mostrando</p>
+            <p className="text-xs font-medium text-muted-foreground">Mostrando</p>
           ) : (
-            <SheetTitle className="text-base">Período</SheetTitle>
+            <SheetTitle className="text-lg font-semibold">Período</SheetTitle>
           )}
           {lado ? (
-            <p aria-live="polite" className="truncate text-sm font-semibold">
+            <p aria-live="polite" className="truncate text-base font-semibold">
               {resumo}
             </p>
           ) : (
-            <SheetDescription aria-live="polite" className="truncate text-[13px] font-medium text-foreground">
+            <SheetDescription aria-live="polite" className="truncate text-[15px] font-medium text-foreground">
               {resumo}
             </SheetDescription>
           )}
@@ -341,9 +347,9 @@ function ConteudoPeriodo({ layout, periodo, onPeriodo, hoje, resumo, resultado, 
             type="button"
             aria-label="Fechar"
             onClick={onFechar}
-            className={cn('mt-4 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground', FOCO)}
+            className={cn('mt-4 flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-muted text-foreground', FOCO)}
           >
-            <X className="h-4 w-4" aria-hidden />
+            <X className="h-5 w-5" aria-hidden />
           </button>
         )}
       </header>
@@ -355,29 +361,22 @@ function ConteudoPeriodo({ layout, periodo, onPeriodo, hoje, resumo, resultado, 
 
       <footer
         className={cn(
-          'flex shrink-0 items-center justify-between gap-2 border-t border-border px-4',
-          lado ? 'py-3' : 'pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]',
+          'flex shrink-0 items-center justify-between gap-3 border-t border-border',
+          lado ? 'px-5 py-4' : 'px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]',
         )}
       >
         <button
           type="button"
           disabled={!ativo}
           onClick={limpar}
-          className={cn(
-            'h-9 rounded-md px-3 text-[13px] font-medium text-muted-foreground mouse:hover:bg-muted mouse:hover:text-foreground disabled:pointer-events-none disabled:opacity-40 touch:h-11',
-            FOCO,
-          )}
+          className={cn(BOTAO_SECUNDARIO, 'h-10 px-4 text-sm touch:h-12')}
         >
           Limpar
         </button>
         <button
           type="button"
           onClick={onFechar}
-          className={cn(
-            'h-9 rounded-md bg-foreground px-4 text-[13px] font-semibold text-background tabular-nums mouse:hover:opacity-90 touch:h-11',
-            !lado && 'flex-1',
-            FOCO,
-          )}
+          className={cn(BOTAO_PRIMARIO, 'h-10 min-w-[120px] px-5 text-sm tabular-nums touch:h-12', !lado && 'flex-1')}
         >
           {rotuloPronto}
         </button>
@@ -386,32 +385,35 @@ function ConteudoPeriodo({ layout, periodo, onPeriodo, hoje, resumo, resultado, 
   );
 }
 
+const NAV_CALENDARIO = `flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground transition-colors mouse:hover:bg-muted mouse:hover:text-foreground disabled:pointer-events-none disabled:opacity-30 touch:h-11 touch:w-11 ${FOCO}`;
+/** Início e fim do intervalo: verde cheio com texto azul da marca. */
+const PONTA_INTERVALO =
+  '[&>button]:!bg-nexon-verde [&>button]:!text-nexon-azul [&>button]:font-semibold [&>button]:after:!bg-nexon-azul';
+
 const CLASSES_CALENDARIO = {
   root: 'mx-auto w-fit',
   months: 'relative',
-  month_caption: 'flex h-9 items-center justify-center',
-  caption_label: 'text-sm font-semibold capitalize',
-  nav: 'absolute inset-x-0 top-0 z-10 flex h-9 items-center justify-between',
-  button_previous: `flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground mouse:hover:bg-muted mouse:hover:text-foreground disabled:pointer-events-none disabled:opacity-30 touch:h-10 touch:w-10 ${FOCO}`,
-  button_next: `flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground mouse:hover:bg-muted mouse:hover:text-foreground disabled:pointer-events-none disabled:opacity-30 touch:h-10 touch:w-10 ${FOCO}`,
-  chevron: 'h-4 w-4 fill-current',
-  month_grid: 'mt-2 border-collapse',
+  month_caption: 'flex h-10 items-center justify-center touch:h-11',
+  caption_label: 'text-base font-semibold capitalize',
+  nav: 'absolute inset-x-0 top-0 z-10 flex h-10 items-center justify-between touch:h-11',
+  button_previous: NAV_CALENDARIO,
+  button_next: NAV_CALENDARIO,
+  chevron: 'h-5 w-5 fill-current',
+  month_grid: 'mt-3 border-collapse',
   weekdays: 'flex',
-  weekday: 'w-10 pb-1.5 text-center text-[11px] font-medium capitalize text-muted-foreground touch:w-11',
-  week: 'mt-0.5 flex',
+  weekday: 'w-11 pb-2 text-center text-xs font-medium capitalize text-muted-foreground',
+  week: 'mt-1 flex',
   // a célula pinta a faixa do intervalo; o botão redondo fica por cima (início e fim cheios)
-  day: 'h-10 w-10 p-0 text-center text-[13px] touch:h-11 touch:w-11',
+  day: 'h-11 w-11 p-0 text-center text-sm',
   day_button: `relative flex h-full w-full items-center justify-center rounded-full font-medium tabular-nums text-foreground transition-colors mouse:hover:bg-muted ${FOCO}`,
   today:
-    "[&>button]:font-bold [&>button]:text-nexon-verde [&>button]:after:absolute [&>button]:after:bottom-1 [&>button]:after:h-1 [&>button]:after:w-1 [&>button]:after:rounded-full [&>button]:after:bg-nexon-verde [&>button]:after:content-['']",
+    "[&>button]:font-bold [&>button]:text-nexon-link-claro dark:[&>button]:text-nexon-verde [&>button]:after:absolute [&>button]:after:bottom-1.5 [&>button]:after:h-1 [&>button]:after:w-1 [&>button]:after:rounded-full [&>button]:after:bg-current [&>button]:after:content-['']",
   outside: 'invisible',
   hidden: 'invisible',
   disabled: '[&>button]:pointer-events-none [&>button]:font-normal [&>button]:text-muted-foreground [&>button]:opacity-40',
-  selected: VERDE_FAIXA,
-  range_start:
-    'rounded-l-full [&>button]:!bg-nexon-verde [&>button]:!text-neutral-950 [&>button]:font-semibold [&>button]:after:!bg-neutral-950',
-  range_end:
-    'rounded-r-full [&>button]:!bg-nexon-verde [&>button]:!text-neutral-950 [&>button]:font-semibold [&>button]:after:!bg-neutral-950',
+  selected: VERDE_FUNDO,
+  range_start: `rounded-l-full ${PONTA_INTERVALO}`,
+  range_end: `rounded-r-full ${PONTA_INTERVALO}`,
   range_middle: 'first:rounded-l-lg last:rounded-r-lg',
 };
 
@@ -421,16 +423,16 @@ function ReguaHoras({ periodo }: { periodo: PeriodoEventos }) {
   const dia = segs.length === 0;
   return (
     <div aria-hidden className="pt-1">
-      <div className="relative h-2 overflow-hidden rounded-full bg-muted">
+      <div className="relative h-2.5 overflow-hidden rounded-full bg-muted">
         {(dia ? [[0, 1440] as [number, number]] : segs).map(([a, b]) => (
           <span
             key={a}
-            className={cn('absolute inset-y-0', dia ? VERDE_FAIXA : 'bg-nexon-verde')}
+            className={cn('absolute inset-y-0', dia ? VERDE_FUNDO : 'bg-nexon-verde')}
             style={{ left: `${(a / 1440) * 100}%`, width: `${((b - a) / 1440) * 100}%` }}
           />
         ))}
       </div>
-      <div className="mt-1 flex justify-between text-[10px] tabular-nums text-muted-foreground">
+      <div className="mt-1.5 flex justify-between text-xs tabular-nums text-muted-foreground">
         <span>0h</span>
         <span>6h</span>
         <span>12h</span>
@@ -451,7 +453,7 @@ function HorasPersonalizadas({
   return (
     <div className="flex items-end gap-2">
       <SeletorHora rotulo="De" valor={periodo.horaDe} onTrocar={(v) => onTrocar('horaDe', v)} />
-      <span aria-hidden className="pb-2.5 text-muted-foreground touch:pb-3">
+      <span aria-hidden className="pb-3 text-muted-foreground touch:pb-3.5">
         →
       </span>
       <SeletorHora rotulo="Até" valor={periodo.horaAte} onTrocar={(v) => onTrocar('horaAte', v)} />
@@ -462,8 +464,8 @@ function HorasPersonalizadas({
 function SeletorHora({ rotulo, valor, onTrocar }: { rotulo: string; valor: string | null; onTrocar: (v: string) => void }) {
   const id = useId();
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-1">
-      <label htmlFor={id} className="text-[11px] font-medium text-muted-foreground">
+    <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+      <label htmlFor={id} className="text-xs font-medium text-muted-foreground">
         {rotulo}
       </label>
       <div className="relative">
@@ -472,7 +474,7 @@ function SeletorHora({ rotulo, valor, onTrocar }: { rotulo: string; valor: strin
           value={valor ?? ''}
           onChange={(e) => onTrocar(e.target.value)}
           className={cn(
-            'h-10 w-full appearance-none rounded-lg border border-border bg-background pl-3 pr-8 text-sm font-medium tabular-nums text-foreground touch:h-11',
+            'h-11 w-full appearance-none rounded-lg border border-border bg-background pl-3 pr-9 text-[15px] font-medium tabular-nums text-foreground transition-colors mouse:hover:border-[color-mix(in_srgb,var(--nx-verde)_50%,var(--border))] touch:h-12',
             FOCO,
           )}
         >
@@ -483,7 +485,7 @@ function SeletorHora({ rotulo, valor, onTrocar }: { rotulo: string; valor: strin
             </option>
           ))}
         </select>
-        <ChevronDown aria-hidden className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <ChevronDown aria-hidden className="pointer-events-none absolute right-3 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
       </div>
     </div>
   );
@@ -491,27 +493,10 @@ function SeletorHora({ rotulo, valor, onTrocar }: { rotulo: string; valor: strin
 
 function Secao({ titulo, className, children }: { titulo: string; className?: string; children: ReactNode }) {
   return (
-    <section aria-label={titulo} className={cn('flex min-w-0 flex-col gap-2.5', className)}>
-      <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{titulo}</h3>
+    <section aria-label={titulo} className={cn('flex min-w-0 flex-col gap-3', className)}>
+      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{titulo}</h3>
       {children}
     </section>
-  );
-}
-
-function Pilula({ ativo, onClick, children }: { ativo: boolean; onClick: () => void; children: ReactNode }) {
-  return (
-    <button
-      type="button"
-      aria-pressed={ativo}
-      onClick={onClick}
-      className={cn(
-        'inline-flex h-8 items-center rounded-full border px-3 text-xs font-semibold transition-colors touch:h-10',
-        ativo ? `${VERDE_BORDA} ${VERDE_FAIXA} text-foreground` : 'border-border text-foreground mouse:hover:bg-muted',
-        FOCO,
-      )}
-    >
-      {children}
-    </button>
   );
 }
 
@@ -534,16 +519,16 @@ function Bloco({
       aria-pressed={ativo}
       onClick={onClick}
       className={cn(
-        'flex min-h-12 min-w-0 flex-col items-start justify-center gap-0.5 rounded-lg border px-2.5 py-1.5 text-left transition-colors touch:min-h-14',
-        ativo ? `${VERDE_BORDA} ${VERDE_FAIXA}` : 'border-border mouse:hover:bg-muted',
+        'flex min-h-14 min-w-0 flex-col items-start justify-center gap-1 rounded-xl border px-3 py-2 text-left transition-colors touch:min-h-16',
+        ativo ? ITEM_ATIVO : ITEM_INATIVO,
         FOCO,
       )}
     >
-      <span className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-        <Icone aria-hidden className={cn('h-3.5 w-3.5 shrink-0', ativo ? 'text-nexon-verde' : 'text-muted-foreground')} />
-        {titulo}
+      <span className="flex min-w-0 items-center gap-2 text-sm font-semibold text-foreground">
+        <Icone aria-hidden className={cn('h-[18px] w-[18px] shrink-0', ativo ? VERDE_TEXTO : 'text-muted-foreground')} />
+        <span className="truncate">{titulo}</span>
       </span>
-      <span className="text-[11px] tabular-nums text-muted-foreground">{detalhe}</span>
+      <span className="text-[13px] tabular-nums text-muted-foreground">{detalhe}</span>
     </button>
   );
 }
