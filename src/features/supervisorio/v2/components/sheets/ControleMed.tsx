@@ -13,7 +13,7 @@ import { NX, s, NxSeg, NxSwitch, NxDialog, NxDialogHead, NxDialogButtons, type N
 type Modo = 'desligado' | 'sombra' | 'ativo';
 type Controle = 'fp' | 'demanda_g' | 'demanda_c';
 interface Inversor { id: string; nome?: string; pn_kw: number; smax_kva: number; qmax_pct: number; sinal_q: 1 | -1; q_noturno: boolean }
-interface Ufv { id: string; nome: string; ordem: number; p_estatico_kw: number; zera_estagio2: boolean; watchdog_nativo: boolean; rota: 'internet' | 'lora'; inversores: Inversor[] }
+interface Ufv { id: string; nome: string; ordem: number; p_estatico_kw: number; zera_estagio2: boolean; watchdog_nativo: boolean; rota: 'internet' | 'lora'; bi_manual?: number; bi_invertida?: boolean; inversores: Inversor[] }
 interface Candidato { id: string; nome: string; modelo: string | null; pn_kw: number | null; limite_p: boolean; reativo_q: boolean }
 interface Ciclo {
   ts: string; seg: number | null;
@@ -27,6 +27,7 @@ interface Estado {
   params: Record<string, number | string | null>; ufvs: Ufv[]; modos: Record<Controle, Modo>; versao: number;
   validacao: { tetoPlim: number | null; somaEst: number; somaPn: number; tVal: number; avisos: string[]; bloqueios: string[] };
   candidatos: Candidato[]; ultimo_ciclo: Ciclo | null; pode_configurar: boolean; pode_operar: boolean;
+  tons?: Array<{ ton_id: string; modo: string; texto: string }>;   // modo do controle local em cada TON de UFV
 }
 
 const ROTULO: Record<Controle, string> = { demanda_c: 'Demanda de carga', demanda_g: 'Demanda de geração', fp: 'Fator de potência' };
@@ -86,6 +87,9 @@ export function ControleMedResumo({ medId }: { medId: string }) {
             Último ciclo {hora(c.ts)}{c.seg != null ? ` · intervalo fecha em ${Math.round(c.seg)} s` : ''}{idade != null && idade > 180 ? ' · sem minuto novo do medidor' : ''}
           </span>
           {!c.portao.ok && <Aviso tom="bad">{c.portao.motivos.join(' · ')}</Aviso>}
+          {(est.tons ?? []).filter((t) => t.modo && t.modo !== 'A').map((t) => (
+            <Aviso key={t.ton_id} tom={t.modo === 'M' || t.modo.startsWith('S') ? 'bad' : 'warn'}>TON da UFV: {t.texto}</Aviso>
+          ))}
           {ORDEM.map((k) => {
             const p = c.pedidos[k];
             if (!p) return null;
@@ -152,6 +156,7 @@ const AVANCADO: Campo[] = [
   { k: 't_validade_lora_s', t: 'Validade do setpoint · LoRa', u: 's' },
   { k: 't_estagio2_s', t: 'Tempo até o estágio 2', h: 'Modo seguro: P = 0 nas UFVs marcadas', u: 's' },
   { k: 'n_retomada', t: 'Ciclos válidos para retomar' },
+  { k: 'rampa_pct_min', t: 'Rampa da retomada', h: 'Na TON: subida máxima do limite de P por minuto depois do modo seguro', u: '%/min' },
   { k: 'ssu_err_max_min', t: 'Erros de SSU aceitos por minuto' },
   { k: 'idade_max_ssu_s', t: 'Idade máxima do minuto do medidor', u: 's' },
   { k: 'idade_max_inv_internet_s', t: 'Idade máxima do inversor · internet', u: 's' },
@@ -265,6 +270,10 @@ export function ControleMedConfig({ medId }: { medId: string }) {
           <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap' }}>
             <SwitchTxt t="Watchdog nativo validado" h="Sem ele, o limite nunca passa do P estático (R2)" on={u.watchdog_nativo} ro={ro} onChange={() => mudaUfv(i, { watchdog_nativo: !u.watchdog_nativo })} />
             <SwitchTxt t="Zera no estágio 2" h="P = 0 se a comunicação não voltar" on={u.zera_estagio2} ro={ro} onChange={() => mudaUfv(i, { zera_estagio2: !u.zera_estagio2 })} />
+            <Mini t="Chave A/M na entrada" h="Entrada (BI 1 a 8) da TON da UFV ligada à chave Automático/Manual. 0 = sem chave. Em manual: inversores a 100 %, FP 1, sem controle." v={u.bi_manual ?? 0} ro={ro} onChange={(x) => mudaUfv(i, { bi_manual: Math.max(0, Math.min(8, Math.round(x))) })} />
+            {(u.bi_manual ?? 0) > 0 && (
+              <SwitchTxt t="Contato fechado = automático" h="Ligado: a chave FECHA o contato em automático (manual = contato aberto). Desligado: fecha em manual." on={!!u.bi_invertida} ro={ro} onChange={() => mudaUfv(i, { bi_invertida: !u.bi_invertida })} />
+            )}
           </div>
           {u.inversores.map((x, j) => {
             const cand = est.candidatos.find((c) => c.id === x.id);

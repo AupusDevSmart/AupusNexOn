@@ -24,7 +24,8 @@ import {
   type DevicePointDef,
 } from './emulador-catalog';
 import { VALORES_TIPICOS, configPadrao, montarTabela, type Aviso, type EmuladorConfig } from './emulador-encoder';
-import { emuladorSessoes, ALERTA_SEM_CONSULTA_MS } from './emulador-sessao';
+import { emuladorSessoes, ALERTA_SEM_CONSULTA_MS, type RecalcEscritas } from './emulador-sessao';
+import { registradoresSetpoint, valoresObedecendo } from './emulador-setpoints';
 import { pedirPorta, webSerialDisponivel } from './web-serial-transport';
 
 export interface EmulacaoProps {
@@ -187,6 +188,16 @@ export function EmuladorModal({ open, onClose, comp, carregarAlvos, conflitoEnde
     return montarTabela({ model: modelo, props, valores, bi, cfg, pointDefsAi: defsAi, pointDefsBi: defsBi });
   }, [modelo, props, valores, bi, cfg, defsAi, defsBi]);
 
+  // Inversor: limite de P / Q escritos pela TON mudam o que o emulador serve (controle pelo MED).
+  const recalc = useMemo<RecalcEscritas | null>(() => {
+    if (!modelo || !cfg || registradoresSetpoint(modelo).length === 0) return null;
+    return (escritos) => {
+      const r = valoresObedecendo(valores, escritos, modelo);
+      if (!r.efeitos.length) return null;
+      return { table: montarTabela({ model: modelo, props, valores: r.valores, bi, cfg, pointDefsAi: defsAi, pointDefsBi: defsBi }).table, efeitos: r.efeitos };
+    };
+  }, [modelo, props, valores, bi, cfg, defsAi, defsBi]);
+
   // Sessão ao vivo
   useSyncExternalStore(emuladorSessoes.subscribe, emuladorSessoes.versao);
   const sessao = nodeId ? emuladorSessoes.get(nodeId) : null;
@@ -194,8 +205,8 @@ export function EmuladorModal({ open, onClose, comp, carregarAlvos, conflitoEnde
 
   // Troca a tabela/endereço ao vivo enquanto emula.
   useEffect(() => {
-    if (nodeId && ativa && montagem && enderecoValido) emuladorSessoes.atualizar(nodeId, montagem.table, end);
-  }, [nodeId, ativa, montagem, end, enderecoValido]);
+    if (nodeId && ativa && montagem && enderecoValido) emuladorSessoes.atualizar(nodeId, montagem.table, end, recalc);
+  }, [nodeId, ativa, montagem, end, enderecoValido, recalc]);
 
   useEffect(() => {
     if (!open || !ativa) return;
@@ -254,7 +265,7 @@ export function EmuladorModal({ open, onClose, comp, carregarAlvos, conflitoEnde
     try {
       id = await salvar();
       if (!id) throw new Error('Não foi possível salvar o emulador no diagrama.');
-      await emuladorSessoes.iniciar(id, nome, end, porta, montagem.table);
+      await emuladorSessoes.iniciar(id, nome, end, porta, montagem.table, recalc);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setErroSerial(/already open|InvalidStateError/i.test(msg)
@@ -537,6 +548,15 @@ export function EmuladorModal({ open, onClose, comp, carregarAlvos, conflitoEnde
               {outros.length > 0
                 ? <p>Ela está consultando {outros.length === 1 ? 'o endereço' : 'os endereços'} {outros.join(', ')} — o firmware atual não tem este emulador ou o endereço está diferente. Gere o firmware e faça OTA, ou ajuste o endereço.</p>
                 : <p>Nenhum tráfego da TON no fio: confira A/B (tente inverter), o GND, o adaptador e se a TON está ligada. Se o emulador é um equipamento novo no diagrama, a TON precisa de firmware novo (OTA).</p>}
+            </div>
+          )}
+          {sessao && (sessao.obedecendo ?? []).length > 0 && (
+            <div className="mt-2 flex flex-wrap items-center gap-2 rounded border border-sky-500/40 bg-sky-500/5 p-2 text-xs" data-testid="emu-obedecendo">
+              <span className="font-semibold">Setpoints da TON aplicados:</span>
+              <span>{sessao.obedecendo.join(' · ')}</span>
+              {nodeId && (
+                <button type="button" className="ml-auto underline" onClick={() => emuladorSessoes.limparEscritas(nodeId)}>Descartar</button>
+              )}
             </div>
           )}
           {sessao && sessao.log.length > 0 && (

@@ -26,7 +26,12 @@ export interface EstadoSessao {
   foraDoMapa: number;
   erro: string | null;
   log: { ts: number; texto: string; nivel: 'ok' | 'aviso' | 'erro' | 'info' }[];
+  /** Setpoints que a TON escreveu e o efeito nas leituras (controle pelo MED). */
+  obedecendo: string[];
 }
+
+/** Recalcula a tabela com o que a TON escreveu (limite de P / Q). null = não mexe. */
+export type RecalcEscritas = (escritos: Map<number, number>) => { table: RtuTable; efeitos: string[] } | null;
 
 const MAX_LOG = 200;
 /** Sem nenhuma consulta pro nosso endereço depois disso → alerta na UI. */
@@ -37,6 +42,9 @@ type Listener = () => void;
 class Sessao {
   estado: EstadoSessao;
   private tabela: RtuTable;
+  private efetiva: RtuTable | null = null;   // tabela + escritas da TON (cache até mudar algo)
+  private escritos = new Map<number, number>();
+  private recalc: RecalcEscritas | null = null;
   private slave: RtuSlave;
   private serial: EmuladorSerial;
   private notificar: () => void;
@@ -46,9 +54,9 @@ class Sessao {
     this.notificar = notificar;
     this.estado = {
       nodeId, nome, endereco, porta: descreverPorta(porta), ativo: false, inicio: Date.now(),
-      rx: 0, tx: 0, leituras: 0, escritas: 0, ultimaLeitura: null, outrosEnderecos: {}, foraDoMapa: 0, erro: null, log: [],
+      rx: 0, tx: 0, leituras: 0, escritas: 0, ultimaLeitura: null, outrosEnderecos: {}, foraDoMapa: 0, erro: null, log: [], obedecendo: [],
     };
-    this.slave = new RtuSlave({ endereco, tabela: () => this.tabela, onEvento: (e) => this.evento(e) });
+    this.slave = new RtuSlave({ endereco, tabela: () => this.tabelaEfetiva(), onEvento: (e) => this.evento(e) });
     this.serial = new EmuladorSerial({
       porta,
       slave: this.slave,
@@ -60,6 +68,19 @@ class Sessao {
         this.notificar();
       },
     });
+  }
+
+  /** Tabela servida: a do modal + o que a TON escreveu (read-back) + efeito do limite/Q nas leituras. */
+  private tabelaEfetiva(): RtuTable {
+    if (!this.escritos.size) return this.tabela;
+    if (this.efetiva) return this.efetiva;
+    let base = this.tabela;
+    const r = this.recalc ? this.recalc(this.escritos) : null;
+    if (r) { base = r.table; this.estado.obedecendo = r.efeitos; }
+    const holding = new Map(base.holding);
+    for (const [k, v] of this.escritos) holding.set(k, v);
+    this.efetiva = { ...base, holding };
+    return this.efetiva;
   }
 
   private log(texto: string, nivel: EstadoSessao['log'][number]['nivel']) {
@@ -82,10 +103,17 @@ class Sessao {
           this.log(`TON leu func ${fn(e.func)} reg ${e.start} x${e.count}`, 'ok');
         }
         break;
-      case 'escrita':
+      case 'escrita': {
         s.escritas++;
-        this.log(`TON ESCREVEU func ${fn(e.func)} reg/coil ${e.start} x${e.count} valores=[${e.valores.join(', ')}] (comando recebido — o emulador não muda pontos sozinho)`, 'info');
+        if (e.func === 6 || e.func === 16) {
+          e.valores.forEach((v, i) => this.escritos.set(e.start + i, v & 0xffff));
+          this.efetiva = null;
+          this.tabelaEfetiva();
+        }
+        const ef = s.obedecendo.length ? ` → ${s.obedecendo.join(' · ')}` : ' (comando recebido)';
+        this.log(`TON ESCREVEU func ${fn(e.func)} reg/coil ${e.start} x${e.count} valores=[${e.valores.join(', ')}]${ef}`, 'info');
         break;
+      }
       case 'excecao':
         this.log(`Exceção 0x${e.codigo.toString(16).padStart(2, '0')} enviada (func ${fn(e.func)}): ${e.motivo}`, 'aviso');
         break;
@@ -118,8 +146,19 @@ class Sessao {
     this.notificar();
   }
 
-  setTabela(t: RtuTable) {
+  setTabela(t: RtuTable, recalc?: RecalcEscritas | null) {
     this.tabela = t;
+    if (recalc !== undefined) this.recalc = recalc;
+    this.efetiva = null;
+  }
+
+  /** Esquece o que a TON escreveu (volta aos valores digitados). */
+  limparEscritas() {
+    this.escritos.clear();
+    this.efetiva = null;
+    this.estado.obedecendo = [];
+    this.log('Setpoints escritos pela TON descartados — leituras voltam aos valores digitados', 'info');
+    this.notificar();
   }
 
   setEndereco(endereco: number) {
@@ -142,10 +181,11 @@ export const emuladorSessoes = {
   get(nodeId: string): EstadoSessao | null { return sessoes.get(nodeId)?.estado ?? null; },
   ativas(): EstadoSessao[] { return [...sessoes.values()].map((s) => s.estado).filter((e) => e.ativo); },
 
-  async iniciar(nodeId: string, nome: string, endereco: number, porta: PortaSerial, tabela: RtuTable) {
+  async iniciar(nodeId: string, nome: string, endereco: number, porta: PortaSerial, tabela: RtuTable, recalc?: RecalcEscritas | null) {
     const velha = sessoes.get(nodeId);
     if (velha?.estado.ativo) await velha.parar();
     const s = new Sessao(nodeId, nome, endereco, porta, tabela, notificar);
+    if (recalc) s.setTabela(tabela, recalc);
     sessoes.set(nodeId, s);
     try {
       await s.iniciar();
@@ -161,10 +201,13 @@ export const emuladorSessoes = {
   async pararTodas() {
     await Promise.all([...sessoes.values()].map((s) => (s.estado.ativo ? s.parar() : null)));
   },
-  atualizar(nodeId: string, tabela: RtuTable, endereco: number) {
+  atualizar(nodeId: string, tabela: RtuTable, endereco: number, recalc?: RecalcEscritas | null) {
     const s = sessoes.get(nodeId);
     if (!s) return;
-    s.setTabela(tabela);
+    s.setTabela(tabela, recalc);
     s.setEndereco(endereco);
+  },
+  limparEscritas(nodeId: string) {
+    sessoes.get(nodeId)?.limparEscritas();
   },
 };

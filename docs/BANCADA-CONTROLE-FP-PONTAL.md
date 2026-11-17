@@ -151,7 +151,7 @@ Sugestão visual: uma faixa por bloco, de A a F, com o que se faz e o resultado 
 | Medição absurda (corrente 10× na mala) | Portão reprova ou a decisão fica registrada para análise |
 | Volta tudo | Retoma só depois de N ciclos válidos seguidos |
 
-Este bloco se repete depois da **Fase B do firmware**: setpoint com validade e modo seguro na própria TON, que ainda não existem. Vale desenhar como "E (hoje)" e "E (depois da Fase B)".
+Com a **Fase B** (17/11/2026) a TON tem validade do setpoint, modo seguro e chave A/M. Os testes de falha com o comportamento novo estão no §8 (G4–G9).
 
 ### F · Contatoras (apoio)
 - Comandos de saída pelo LoRa batem as contatoras (BO) e o auxiliar volta na BI: prova o caminho de comando físico.
@@ -176,3 +176,62 @@ Este bloco se repete depois da **Fase B do firmware**: setpoint com validade e m
 - O painel da **tabela de equivalência** (seção 2) ajuda quem não conhece a fazenda.
 - Uma segunda figura, opcional: a **linha do tempo A → F** com o "esperado" de cada bloco.
 - Identidade Aupus, se quiser: azul-marinho `#16213e` primário, verde `#3fe04f` só como detalhe.
+
+---
+
+## 8. Roteiro Fazenda Pontal com 2 UFVs (Fase B)
+
+**O que simula:** duas usinas que, somadas, geram **mais** do que a demanda de geração contratada (990 kW), com a SSU no medidor da Equatorial. O controle tem que cortar a geração antes da média do intervalo passar do contrato, e as usinas têm que se proteger sozinhas quando a comunicação cai.
+
+### 8.1 Montagem
+
+| Papel na Pontal | Na bancada | Rota |
+|---|---|---|
+| UFV 1, **mais distante** do medidor (corta primeiro) | `TON_UFV` (satélite LoRa) + inversor emulado **INV-UFV1** no COM16 (USR) | LoRa via `TON_GW` (casa a 2 km) |
+| UFV 2, **mais próxima** | Inversor emulado **INV-UFV2** no RS485 da `TON_MED`, por um **2º adaptador** USB-RS485 no PC (o emulador abre uma porta por inversor) | Internet |
+| MED (SSU Equatorial) | `TON_MED` + E750 + mala CE-6003 | Internet |
+| Chave Automático/Manual da UFV 1 | Contatora/chave no painel → BI da `TON_UFV` (confirmar o número da BI) | — |
+
+Os dois inversores emulados usam o modelo Sungrow SG110CX. No emulador, preencha **potência nominal = 600** e **potência ativa = 550** em cada um. As duas UFVs somam 1.200 kW de capacidade.
+
+### 8.2 Cadastro no NexON (ficha do MED → Configuração → Controle automático)
+
+| Campo | Valor na bancada | Por quê |
+|---|---|---|
+| Contrato de geração | 990 kW | o da Pontal |
+| Intervalo do medidor | 5 min | ciclo mais curto na bancada |
+| UFV 1: ordem / P estático / rota | 2 / 450 kW / LoRa | mais distante: corta primeiro |
+| UFV 2: ordem / P estático / rota | 1 / 450 kW / Internet | Σ P estático 900 ≤ 990 |
+| UFV 1: zera no estágio 2 | sim | mostra o estágio 2 só nela |
+| Watchdog nativo validado | **sim nas duas (só na bancada)** | sem isso o limite dinâmico fica ≤ P estático (R2) e o corte nunca passa de 450 kW |
+| UFV 1: Chave A/M na entrada | BI da chave (confirmar) | teste G8 |
+| Inversores: Pn / Smax | 600 / 660 | |
+| Validade LoRa / internet | 120 s / 90 s | acelera os testes (no campo: 300 / 180) |
+| Tempo até o estágio 2 | 180 s | acelera os testes |
+| Rampa da retomada | 10 %/min | |
+
+### 8.3 Antes de começar
+
+1. Migração `2026-11-05_controle_med_concessionaria.sql` rodada e API reiniciada.
+2. Firmware novo nas três TONs. A `TON_UFV` e a `TON_MED` precisam do controle local (a lib entra sozinha quando a TON tem inversor com setpoint no diagrama). A `TON_MED` também publica `pr`/`vr` da SSU.
+3. Emulador aberto nos dois inversores, cada um na sua porta.
+4. No Serial da `TON_UFV`, `ctl status` responde `D c=1c9dc5 ... n=0` (sem cadastro).
+
+### 8.4 Testes
+
+| # | Faz | Esperado |
+|---|---|---|
+| G1 | Demanda de geração em **Ativo** | 1º ciclo: evento "cadastro do controle local enviado" para as 2 TONs. `ctl status` na `TON_UFV` mostra `A c=<hash> ... n=1` |
+| G2 | Mala exportando o equivalente a ~1.100 kW | Projeção > 990 → corta **primeiro a UFV 1**. Emulador da UFV 1: "limite X% → P … (limitada)". Card: "enviado". O operador baixa a mala no mesmo tanto |
+| G3 | Deixa estável 10 min | Um `ctl` por minuto em cada TON, **sem escrita nova** no log do emulador (só leituras). Escritas só quando o limite muda |
+| G4 | Desliga a `TON_GW` (LoRa cai) | UFV 1: depois de 120 s, **estágio 1** (emulador: limite 75 % = 450/600). +180 s: **estágio 2** (limite 0). A UFV 2 segue normal pela internet |
+| G5 | Religa a `TON_GW` | Evento "ficou N s em modo seguro (chegou ao estágio 2)". O limite **sobe 10 % por minuto** até o pedido do backend (`okr` no ack) |
+| G6 | Desliga a `TON_MED` (sem SSU) | Os ciclos param, as validades vencem: **as duas UFVs** vão ao estágio 1 sozinhas (R9) |
+| G7 | Corrente 10× na mala (medição absurda) | Portão reprova e o backend **não renova**: estágio 1 depois da validade |
+| G8 | Chave da UFV 1 em **manual** | Em ~1 s, emulador da UFV 1 com limite 100 % e Q 0. Card: "TON da UFV: chave em MANUAL". Volta para automático: pedido do backend de novo |
+| G9 | Demanda de geração para **Sombra** | `ctl off` na hora: limite 100 %, Q 0; a TON não entra em modo seguro depois |
+| G10 | FP em Ativo, mala indutiva 0,70 | Q pedido aparece na potência reativa do emulador; read-back `ok` |
+| G11 | Reinicia a `TON_UFV` com o controle ativo | Volta com o cadastro do NVS (sem recadastro). Se o backend parar, a validade corre desde o boot |
+| G12 | `ctl limpar` no Serial da `TON_UFV` | No minuto seguinte o backend reenvia o cadastro sozinho (hash diferente) |
+
+**Onde olhar:** card "Controle automático" (aba Operação do MED), log do emulador (escritas + "Setpoints da TON aplicados") e Serial da TON (`[CTL] ...`).

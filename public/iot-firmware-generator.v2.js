@@ -281,6 +281,11 @@ var FirmwareGenerator = class FirmwareGenerator {
         // Roda DEPOIS de processar todas as conexoes pra ter wifi e lora_peers populados.
         result.lora_role = this._resolveLoraRole(ton, result);
 
+        // Controle pelo MED (Fase B, docs/IOT-CONTROLE-MED-CONCESSIONARIA-IMPLEMENTACAO.md §5): TON com
+        // inversor que aceita limite de P / Q pelo catalogo leva a lib controle_ufv (setpoint com
+        // validade, modo seguro, BI manual, read-back). Inerte ate' o backend mandar "ctl geral/cfg".
+        result.controle_ufv = this._invsComSetpoint(result).length > 0;
+
         // Warnings
         if (!result.wifi && !result.lora) {
             result.warnings.push('Sem WiFi nem LoRa — não conseguirá enviar dados');
@@ -303,11 +308,22 @@ var FirmwareGenerator = class FirmwareGenerator {
                 result.warnings.push(`RS485 desta TON a ${ser.baud} baud, ${ser.stop} stop bit(s), por causa do Encoder: todos os dispositivos do mesmo barramento precisam estar nessa configuração.`);
             }
         }
+        if (result.controle_ufv && typeof ControleUfvGen === 'undefined') {
+            result.warnings.push('iot-firmware-controle.js não carregou — recarregue a página antes de gerar o firmware (controle pelo MED).');
+        }
         if (result.pivo && result.has_relays && typeof PivoLocalGen === 'undefined') {
             result.warnings.push('iot-firmware-pivo.js não carregou — recarregue a página antes de gerar o firmware do pivô.');
         }
 
         return result;
+    }
+
+    // Inversores desta TON com setpoint de limite de P ou de Q no catalogo (controle pelo MED).
+    _invsComSetpoint(spec) {
+        return [...(spec.rs485_devices || []), ...(spec.tcp_devices || [])].filter((d) => {
+            const bo = (d.catalog_device && d.catalog_device.bo_map) || {};
+            return d.type === 'inversor' && (bo.sp_limite_pct || bo.sp_q_pct);
+        });
     }
 
     _processNetwork(ton, other, result, components, connections) {
@@ -713,6 +729,12 @@ var FirmwareGenerator = class FirmwareGenerator {
         // (gerado de firmware-libs/pivo_local/ por tools/sync-pivo-lib.mjs). docs/IOT-PIVO-TON-LOCAL.md
         if (spec.pivo && spec.has_relays) {
             Object.assign(files, PivoLocalGen.files());
+        }
+
+        // Controle pelo MED (Fase B): lib controle_ufv + glue ctl.cpp, de public/iot-firmware-controle.js
+        // (gerado de firmware-libs/controle_ufv/ por tools/sync-controle-lib.mjs).
+        if (spec.controle_ufv && typeof ControleUfvGen !== 'undefined') {
+            Object.assign(files, ControleUfvGen.files());
         }
 
         // Posto de combustivel: lib pura + glue (so' com bomba no diagrama e TON com reles)
@@ -4673,7 +4695,11 @@ void modbus_events_poll(modbus_publish_fn publish);
 
 // Executa comando BO (write coil). device_name do catalogo, cmd_id conforme bo_map.
 bool modbus_exec_command(const char* device_name, const char* cmd_id, int addr = 0, int32_t valor = 0, bool tem_valor = false);
-
+${spec.controle_ufv ? `
+// Controle pelo MED: rele o registrador do setpoint recem-escrito (R5).
+// 1 = confere; -2 = diverge (*lido); 2 = sem read-back p/ esse modelo/leitura falhou.
+int modbus_readback_sp(const char* device_name, const char* cmd_id, int addr, int32_t valor, int32_t* lido);
+` : ''}
 #endif
 `;
     }
@@ -4790,7 +4816,7 @@ void modbus_publish_all(modbus_publish_fn) {}
 void modbus_read_all(modbus_publish_fn) {}
 void modbus_events_poll(modbus_publish_fn) {}
 bool modbus_exec_command(const char*, const char*, int, int32_t, bool) { return false; }
-`;
+${spec.controle_ufv ? 'int modbus_readback_sp(const char*, const char*, int, int32_t, int32_t*) { return 2; }\n' : ''}`;
             return cpp;
         }
 
@@ -5120,8 +5146,71 @@ bool modbus_exec_command(const char* device_name, const char* cmd_id, int addr, 
         cpp += `    return false;
 }
 `;
+        if (spec.controle_ufv) cpp += this._genReadbackSp(devs);
         return cpp;
     }
+
+    // Read-back do setpoint (controle pelo MED, R5): rele o registrador do ULTIMO passo "$valor"
+    // do bo_map (FC06 -> 1 palavra, FC16 hi/lo -> 2). Override no catalogo: bo_map.<sp>.readback =
+    // { func: 3|4, register, words: 1|2 } ou false (registrador so' de escrita).
+    _readbackDoSp(m) {
+        if (!m || m.readback === false) return null;
+        if (m.readback && typeof m.readback === 'object' && m.readback.register !== undefined) {
+            return { func: Number(m.readback.func) === 4 ? 4 : 3, register: Number(m.readback.register), words: Number(m.readback.words) === 2 ? 2 : 1 };
+        }
+        const passos = Array.isArray(m.steps) ? m.steps : [m];
+        for (let i = passos.length - 1; i >= 0; i--) {
+            const st = passos[i];
+            const f = st.func || (m.steps ? 0x06 : 0x05);
+            if (f === 0x13) return { rmw: true };   // SOFAR: o proprio comando ja' rele e confere
+            if (f === 0x06 && st.value === '$valor' && st.register !== undefined) return { func: 3, register: Number(st.register), words: 1 };
+            if (f === 0x10 && Array.isArray(st.values) && st.values.join(',') === '$valor_hi,$valor_lo') return { func: 3, register: Number(st.register), words: 2 };
+        }
+        return null;
+    }
+
+    _genReadbackSp(devs) {
+        let cpp = `
+// Controle pelo MED (R5): confirma o setpoint relendo o registrador.
+int modbus_readback_sp(const char* device_name, const char* cmd_id, int addr, int32_t valor, int32_t* lido) {
+    if (!device_name || !cmd_id) return 2;
+`;
+        devs.forEach((dev) => {
+            const bo = (dev.catalog_device && dev.catalog_device.bo_map) || {};
+            const sps = ['sp_limite_pct', 'sp_q_pct'].filter((k) => bo[k]);
+            if (dev.type !== 'inversor' || !sps.length) return;
+            cpp += `    if (strcmp(device_name, "${this._escStr(dev.name)}") == 0 && (addr == 0 || addr == ${Number(dev.modbus_address) || 0})) {
+`;
+            sps.forEach((k) => {
+                const rb = this._readbackDoSp(bo[k]);
+                if (!rb) { cpp += `        if (strcmp(cmd_id, "${k}") == 0) return 2;   // sem read-back no catalogo
+`; return; }
+                if (rb.rmw) { cpp += `        if (strcmp(cmd_id, "${k}") == 0) { *lido = valor; return 1; }   // 0x13 ja' conferiu
+`; return; }
+                const fn = rb.func === 4 ? 'readInputRegisters' : 'readHoldingRegisters';
+                const valorLido = rb.words === 2
+                    ? `(int32_t)(((uint32_t)_mb.getResponseBuffer(0) << 16) | _mb.getResponseBuffer(1))`
+                    : `(int32_t)(int16_t)_mb.getResponseBuffer(0)`;
+                const igual = rb.words === 2 ? `*lido == valor` : `(uint16_t)*lido == (uint16_t)valor`;
+                cpp += `        if (strcmp(cmd_id, "${k}") == 0) {
+            delay(50);
+            _select(${dev.modbus_address});
+            if (_mb.${fn}(${rb.register}, ${rb.words}) != _mb.ku8MBSuccess) return 2;
+            *lido = ${valorLido};
+            return ${igual} ? 1 : -2;
+        }
+`;
+            });
+            cpp += `        return 2;
+    }
+`;
+        });
+        cpp += `    return 2;
+}
+`;
+        return cpp;
+    }
+
 
     // ========================================================================
     // SOE — buffer de eventos do relé (método privado IEC-103-like sobre Modbus).
@@ -7340,6 +7429,15 @@ esp_err_t wdt_meio() {
 }
 `;
         }
+        if (spec.controle_ufv) {
+            const rs = spec.rs485_devices.length > 0, tcp = spec.tcp_devices.length > 0;
+            cpp += `#include "ctl.h"   // controle pelo MED: src/ctl.cpp (lib controle_ufv)
+// Escrita do setpoint pedida pelo controle (mesmo caminho do comando {"device","cmd","valor"}) + read-back.
+int ctl_escrever_sp(const char* dev, int addr, const char* cid, int32_t valor, int32_t* lido) {
+${rs ? '    if (modbus_exec_command(dev, cid, addr, valor, true)) return modbus_readback_sp(dev, cid, addr, valor, lido);\n' : ''}${tcp ? '    if (inverter_tcp_exec_command(dev, cid, addr, valor, true)) return 2;   // TCP: sem read-back por enquanto\n' : ''}    return 0;
+}
+`;
+        }
         if (spec.bomba && spec.has_relays) {
             cpp += this._genBomba(spec);
         }
@@ -7411,7 +7509,7 @@ static bool _process_command_inner(const char* raw, char* result_msg, size_t msg
         cpp += `            }
         }
     }
-
+${spec.controle_ufv ? '    { int r = ctl_cmd(raw, result_msg, msg_sz); if (r >= 0) return r == 1; }   // controle pelo MED (texto cru: nome do device)\n' : ''}
     String cmd = String(raw); cmd.trim(); cmd.toLowerCase();
     if (cmd.length() == 0) { snprintf(result_msg, msg_sz, "empty"); return false; }
 
@@ -7625,7 +7723,7 @@ void setup() {
     Serial.println("[OK] Transistores (TR1-TR4)");
 
     adc_init();
-${spec.bomba && spec.has_relays ? '    bomba_init();   // posto de combustivel: reles desligados, lista/sessao do NVS\n' : ''}${spec.pivo && spec.has_relays ? '    pivo_init();    // pivo: config do NVS; reles do pivo desligados (reinicio = pivo parado)\n' + (spec.lora_role === 'satellite' && !this._loraAutonomousPush() && this._satelliteHasDevice(spec) ? '    pivo_so_no_poll(true);   // satelite mestre-puxa: status do pivo so\' na resposta ao POLL\n' : '') : ''}    Serial.println("[OK] ADC (AN1/AN2)");
+${spec.controle_ufv ? '    ctl_init();     // controle pelo MED: cadastro do NVS; ativo antes do reinicio = validade corre do boot\n' : ''}${spec.bomba && spec.has_relays ? '    bomba_init();   // posto de combustivel: reles desligados, lista/sessao do NVS\n' : ''}${spec.pivo && spec.has_relays ? '    pivo_init();    // pivo: config do NVS; reles do pivo desligados (reinicio = pivo parado)\n' + (spec.lora_role === 'satellite' && !this._loraAutonomousPush() && this._satelliteHasDevice(spec) ? '    pivo_so_no_poll(true);   // satelite mestre-puxa: status do pivo so\' na resposta ao POLL\n' : '') : ''}    Serial.println("[OK] ADC (AN1/AN2)");
 
     // SD Card - buffer offline para MQTT
     if (sd_buffer_init()) {
@@ -7872,6 +7970,12 @@ ${spec.has_relays ? '        relays_health_tick();   // C3 anti-travamento: conf
             cpp += `
     // Pivo: le BI, roda a sequencia (lib pivo_local), aplica BO + percentimetro, publica.
     pivo_loop(${pivoPub});
+`;
+        }
+        if (spec.controle_ufv) {
+            cpp += `
+    // Controle pelo MED: BI manual, validade do setpoint, modo seguro, retentativas (src/ctl.cpp).
+    ctl_tick();
 `;
         }
         if (spec.bomba && spec.has_relays) {
