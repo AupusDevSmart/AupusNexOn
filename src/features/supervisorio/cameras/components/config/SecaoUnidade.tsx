@@ -31,6 +31,7 @@ interface Estado {
   refletor: PontoComando | null;
   sirene: PontoComando | null;
   abrir_chamado: boolean;
+  auto_cadastrar: boolean;
   emails: string;
 }
 
@@ -42,6 +43,7 @@ function deConfig(c: ConfigCameras): Estado {
     refletor: c.refletor ?? null,
     sirene: c.sirene ?? null,
     abrir_chamado: !!c.abrir_chamado,
+    auto_cadastrar: c.auto_cadastrar !== false,
     emails: (c.notificar_emails ?? []).join(', '),
   };
 }
@@ -119,6 +121,7 @@ export function SecaoUnidade({ unidadeId }: { unidadeId: string }) {
       refletor: f.refletor,
       sirene: f.sirene,
       abrir_chamado: f.abrir_chamado,
+      auto_cadastrar: f.auto_cadastrar,
       notificar_emails: emails,
     });
   };
@@ -164,6 +167,19 @@ export function SecaoUnidade({ unidadeId }: { unidadeId: string }) {
           equipamentos={equipamentos.data ?? []}
         />
         <SeletorPonto rotulo="Sirene" valor={f.sirene} onChange={(v) => setF({ ...f, sirene: v })} equipamentos={equipamentos.data ?? []} />
+      </div>
+
+      <div className="flex flex-col gap-3">
+        <TituloBloco>Câmeras novas</TituloBloco>
+        <label className="flex items-center justify-between gap-3 text-sm">
+          <span>
+            Adicionar câmeras novas sozinho
+            <span className="block text-[11px] text-muted-foreground">
+              Câmera Intelbras nova, de fábrica, ligada na rede do aparelho entra no NexON sozinha: o aparelho cria uma senha forte nela e já começa a vigiar.
+            </span>
+          </span>
+          <Switch checked={f.auto_cadastrar} onCheckedChange={(v) => setF({ ...f, auto_cadastrar: v })} aria-label="Adicionar câmeras novas sozinho" />
+        </label>
       </div>
 
       <div className="flex flex-col gap-3">

@@ -1,5 +1,6 @@
 import { api } from '@/config/api';
 import type {
+  EstadoComandoAparelho,
   Agente,
   Camera,
   CameraDescoberta,
@@ -137,6 +138,29 @@ export const CamerasService = {
   async marcarLido(id: string): Promise<CameraEvento | void> {
     const { data } = await api.post(`/cameras/eventos/${id.trim()}/lido`);
     return unwrap<CameraEvento | void>(data);
+  },
+
+  /** Versão do programa do aparelho publicada (para atualizar pela web). */
+  async atualizacaoDisponivel(): Promise<{ versao: string | null; publicado_em?: string | null; notas?: string | null }> {
+    const { data } = await api.get('/cameras/atualizacao');
+    return unwrap(data);
+  },
+
+  /** Aparelho pela web: atualizar / reiniciar (admin) ou ler os registros. */
+  async comandoAparelho(agenteId: string, tipo: 'atualizar' | 'reiniciar' | 'logs'): Promise<{ id: string }> {
+    const { data } = await api.post(`/cameras/agentes/${agenteId.trim()}/comandos`, { tipo });
+    return unwrap(data);
+  },
+
+  async estadoComandoAparelho(agenteId: string, comandoId: string): Promise<EstadoComandoAparelho> {
+    const { data } = await api.get(`/cameras/agentes/${agenteId.trim()}/comandos/${comandoId.trim()}`);
+    return unwrap(data);
+  },
+
+  /** Só admin: senha da câmera (registrado na auditoria). */
+  async senhaCamera(id: string): Promise<{ usuario: string; senha: string }> {
+    const { data } = await api.get(`/cameras/${id.trim()}/senha`);
+    return unwrap(data);
   },
 
   /** Só admin: apaga eventos (registro, foto e clipe). */

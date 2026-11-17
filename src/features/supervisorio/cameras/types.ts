@@ -185,6 +185,8 @@ export interface ConfigCameras {
   sirene: PontoComando | null;
   abrir_chamado: boolean;
   notificar_emails: string[];
+  /** Câmera nova de fábrica achada pelo aparelho entra sozinha (padrão: sim). */
+  auto_cadastrar?: boolean;
   updated_at: string | null;
 }
 
@@ -292,4 +294,15 @@ export interface ListarEventosParams {
   incluir_descartados?: 0 | 1;
   page?: number;
   limit?: number;
+}
+
+/** Comando do aparelho pela web (NEXON-108). `expirado` = o aparelho não respondeu em 3 min. */
+export interface EstadoComandoAparelho {
+  id: string;
+  tipo: 'atualizar' | 'reiniciar' | 'logs';
+  estado: 'pendente' | 'entregue' | 'ok' | 'erro' | 'expirado';
+  erro: string | null;
+  resultado: { linhas?: string[]; versao?: string; de?: string; para?: string; ja_atualizado?: boolean } | null;
+  criado_em: string;
+  concluido_em: string | null;
 }
