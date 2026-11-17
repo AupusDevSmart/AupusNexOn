@@ -14,3 +14,9 @@ export function ipPrivadoValido(ip: unknown): ip is string {
   const [a, b] = o;
   return a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254);
 }
+
+/** Regra da Intelbras para a senha do admin: 8 a 32 caracteres, com pelo menos dois tipos (letra, número, símbolo). */
+export function senhaForteCamera(senha: string): boolean {
+  if (senha.length < 8 || senha.length > 32) return false;
+  return [/[a-z]/, /[A-Z]/, /\d/, /[^A-Za-z0-9]/].filter((r) => r.test(senha)).length >= 2;
+}

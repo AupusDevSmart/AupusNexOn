@@ -45,7 +45,9 @@ vi.mock('./ConfigCamerasSheet', () => ({ ConfigCamerasSheet: () => null }));
 vi.mock('../hooks/useConfigCameras', () => ({
   useAgentesCameras: () => ({ data: [] }),
   useConfigCameras: () => ({ data: undefined }),
+  useDescobertasAgentes: () => descobertasMock(),
 }));
+const descobertasMock = vi.fn(() => ({ itens: [] as unknown[], carregando: false }));
 
 const hoje = chaveHoje();
 const ontem = deslocarDia(hoje, -1);

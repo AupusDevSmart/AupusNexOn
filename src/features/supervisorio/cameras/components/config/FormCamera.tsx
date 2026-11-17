@@ -14,6 +14,7 @@ import { CamerasService } from '../../services/cameras.service';
 import type { Agente, Camera, CameraDescoberta, CameraPayload, ClasseAlerta, StreamGravacao } from '../../types';
 import { mensagemErro } from '../../utils/erros';
 import { NIVEIS_SENSIBILIDADE, nivelSensibilidade, rotuloFabricante, type ValorSensibilidade } from '../../utils/sensibilidade';
+import { senhaForteCamera } from '../../utils/rede';
 import { Campo, NENHUM, TituloBloco } from './Campo';
 import { CLIPE_ANTES_PADRAO, CLIPE_DEPOIS_PADRAO, OPCOES_ANTES, OPCOES_DEPOIS, opcaoMaisProxima } from '../../utils/clipe';
 import { ClipeEvento } from './ClipeEvento';
@@ -123,6 +124,8 @@ export function FormCamera({ unidadeId, camera, sugestao, agentes, equipamentos,
   // Câmera encontrada: IP fixo (validado na descoberta), só leitura. Edição: IP em "Avançado".
   // Cadastro manual: IP à vista.
   const ipNoAvancado = !!camera && !sugestao;
+  // Câmera nova de fábrica (sem senha): a senha digitada aqui é criada nela pelo aparelho.
+  const deFabrica = !camera && sugestao?.descoberta.inicializada === false;
   const agenteNoAvancado = !!sugestao;
 
   const salvar = useMutation({
@@ -130,7 +133,7 @@ export function FormCamera({ unidadeId, camera, sugestao, agentes, equipamentos,
       const payload: CameraPayload = {
         nome: f.nome.trim(),
         ip: f.ip.trim(),
-        usuario: f.usuario.trim(),
+        usuario: deFabrica ? 'admin' : f.usuario.trim(),
         porta_rtsp: inteiro(f.porta_rtsp, 554, 1, 65535),
         porta_http: inteiro(f.porta_http, 80, 1, 65535),
         canal: inteiro(f.canal, 1, 1),
@@ -172,7 +175,11 @@ export function FormCamera({ unidadeId, camera, sugestao, agentes, equipamentos,
       return;
     }
     if (!camera && !f.senha) {
-      setErro('Informe a senha da câmera.');
+      setErro(deFabrica ? 'Crie a senha da câmera.' : 'Informe a senha da câmera.');
+      return;
+    }
+    if (deFabrica && !senhaForteCamera(f.senha)) {
+      setErro('A senha precisa ter de 8 a 32 caracteres, misturando letras e números.');
       return;
     }
     setErro(null);
@@ -237,9 +244,25 @@ export function FormCamera({ unidadeId, camera, sugestao, agentes, equipamentos,
         )}
         <div className="grid grid-cols-2 gap-3">
           <Campo rotulo="Usuário" htmlFor={`${idBase}-usuario`}>
-            <Input id={`${idBase}-usuario`} value={f.usuario} onChange={(e) => campo('usuario')(e.target.value)} autoComplete="off" />
+            <Input
+              id={`${idBase}-usuario`}
+              value={deFabrica ? 'admin' : f.usuario}
+              onChange={(e) => campo('usuario')(e.target.value)}
+              autoComplete="off"
+              readOnly={deFabrica}
+            />
           </Campo>
-          <Campo rotulo="Senha" htmlFor={`${idBase}-senha`} dica={camera ? 'Em branco mantém a atual.' : 'A senha criada na câmera.'}>
+          <Campo
+            rotulo={deFabrica ? 'Crie a senha' : 'Senha'}
+            htmlFor={`${idBase}-senha`}
+            dica={
+              camera
+                ? 'Em branco mantém a atual.'
+                : deFabrica
+                  ? 'Câmera nova: o aparelho grava esta senha nela. 8+ caracteres, letras e números.'
+                  : 'A senha criada na câmera.'
+            }
+          >
             <Input
               id={`${idBase}-senha`}
               type="password"

@@ -90,13 +90,7 @@ export function SecaoCameras({ unidadeId }: { unidadeId: string }) {
                       {titulo} · {d.ip}
                     </p>
                     {d.inicializada === false ? (
-                      <p className="text-xs text-amber-600 dark:text-amber-400">
-                        Crie a senha da câmera em{' '}
-                        <a href={`http://${d.ip}`} target="_blank" rel="noreferrer" className="font-mono underline underline-offset-2">
-                          http://{d.ip}
-                        </a>{' '}
-                        antes
-                      </p>
+                      <p className="text-xs text-amber-600 dark:text-amber-400">Nova de fábrica, sem senha: você cria a senha ao adicionar</p>
                     ) : (
                       <p className="truncate text-xs text-muted-foreground">Na rede do aparelho {agente.nome}</p>
                     )}

@@ -63,3 +63,12 @@ describe('paraBaixar', () => {
     expect(paraBaixar(null)).toBeNull();
   });
 });
+
+describe('senhaForteCamera', () => {
+  it('8 a 32 caracteres com dois tipos', async () => {
+    const { senhaForteCamera } = await import('./rede');
+    expect(senhaForteCamera('Aupus2026')).toBe(true);
+    expect(senhaForteCamera('12345678')).toBe(false);
+    expect(senhaForteCamera('abc12')).toBe(false);
+  });
+});
