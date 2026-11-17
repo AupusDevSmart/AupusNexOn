@@ -35,7 +35,8 @@ import { ConfigCamerasSheet, type AbaConfigCameras } from './ConfigCamerasSheet'
 import { GradeCameras } from './GradeCameras';
 import { HistoricoCamera } from './HistoricoCamera';
 import { PainelCamera, type ModoPlayer } from './PainelCamera';
-import { PainelEventos, type EscopoEventos } from './PainelEventos';
+import { PainelEventos, type CameraFiltro } from './PainelEventos';
+import { FOCO, ITEM_ATIVO } from './estilo-filtro';
 import { TutorialCameras } from './TutorialCameras';
 
 const PAGINA = 50;
@@ -45,7 +46,11 @@ const P_CAMERA = paramTexto();
 const P_EVENTO = paramTexto();
 const P_FILTRO = paramOpcao<FiltroEventos>(FILTROS_EVENTOS.map((f) => f.valor), 'todas');
 const P_NAO_VISTOS = paramFlag();
-const P_ESCOPO = paramOpcao<EscopoEventos>(['todas', 'camera'], 'todas');
+/**
+ * Câmera da lista de eventos: `?escopo=<id da câmera>`. Sem ele (ou `todas`) = todas.
+ * `escopo=camera` (links antigos, do segmento "Todas / esta câmera") = a câmera do player.
+ */
+const P_ESCOPO = paramTexto();
 /** Histórico gravado no aparelho: `?modo=historico&dia=AAAA-MM-DD&hora=HH:MM:SS` (início do trecho). */
 const P_MODO = paramOpcao<ModoPlayer>(['aovivo', 'historico'], 'aovivo');
 const P_DIA = paramData('dia');
@@ -92,9 +97,9 @@ function rolarAte(el: HTMLElement | null) {
 
 /**
  * Aba Câmeras do Sinóptico (NEXON-88, refeita no NEXON-108): faixa de status com
- * armamento, câmeras online e não vistos; player grande + miniaturas à esquerda e a
- * lista de eventos à direita, cada lado com a própria rolagem (desktop, `lg:`).
- * No celular tudo empilha: status, player, faixa de câmeras, eventos.
+ * armamento, câmeras online e não vistos numa linha; à esquerda o player (o maior 16:9
+ * que cabe) e a faixa de câmeras, à direita os eventos com filtros fixos e lista que rola.
+ * No desktop a página não rola. No celular tudo empilha: status, player, faixa, eventos.
  * Comandos só com `comandar`; configuração pela engrenagem (`cadastroTecnico`/`configOperacional`).
  */
 export function CamerasTab({ unidadeId, unidadeNome }: CamerasTabProps) {
@@ -116,7 +121,7 @@ export function CamerasTab({ unidadeId, unidadeNome }: CamerasTabProps) {
   const [eventoId] = useParamUrl('evento', P_EVENTO);
   const [filtro, setFiltro] = useParamUrl('filtro', P_FILTRO);
   const [somenteNaoVistos, setSomenteNaoVistos] = useParamUrl('naoVistos', P_NAO_VISTOS);
-  const [escopo, setEscopo] = useParamUrl('escopo', P_ESCOPO);
+  const [escopo] = useParamUrl('escopo', P_ESCOPO);
   const [configUrl, setConfigUrl] = useParamUrl('config', P_CONFIG);
   const [modo] = useParamUrl('modo', P_MODO);
   const [diaUrl] = useParamUrl('dia', P_DIA);
@@ -144,11 +149,19 @@ export function CamerasTab({ unidadeId, unidadeNome }: CamerasTabProps) {
   const lista = cameras.data ?? [];
   const resumo = resumoQuery.data ?? RESUMO_VAZIO;
   const cameraSel = lista.find((c) => c.id === cameraSelId) ?? lista[0] ?? null;
+  // Câmera filtrada na lista; id que não existe (câmera apagada, link velho) = todas.
+  const cameraFiltroId =
+    escopo === 'camera' ? cameraSel?.id ?? null : escopo && lista.some((c) => c.id === escopo) ? escopo : null;
+  const camerasFiltro = useMemo<CameraFiltro[]>(
+    () =>
+      (cameras.data ?? []).map((c) => ({ id: c.id, nome: c.nome, status: c.status === 'offline' ? 'offline' : 'online', naoVistos: c.nao_lidos })),
+    [cameras.data],
+  );
 
   const eventos = useEventosCameras(
     {
       unidadeId,
-      cameraId: escopo === 'camera' ? cameraSel?.id : undefined,
+      cameraId: cameraFiltroId ?? undefined,
       filtro,
       somenteNaoLidos: somenteNaoVistos,
       periodo,
@@ -321,23 +334,25 @@ export function CamerasTab({ unidadeId, unidadeNome }: CamerasTabProps) {
 
   return (
     // Esc volta ao vivo de qualquer ponto da aba.
-    // No desktop a grade abaixo ocupa a altura que sobra e cada lado rola sozinho; a rolagem
-    // daqui só aparece em janela muito baixa (nada fica cortado).
-    <div onKeyDown={teclas} className="flex h-full min-h-0 flex-col overflow-y-auto overflow-x-hidden">
-      <header className="flex shrink-0 flex-col gap-3 border-b border-border px-3 py-3 sm:px-4 lg:flex-row lg:items-center lg:justify-between">
-        <div className="min-w-0">
+    // Desktop (lg+): a aba ocupa a altura que sobra da janela e a página não rola; o player
+    // encolhe para caber e só a lista de eventos (vertical) e a faixa de câmeras (lateral)
+    // rolam. A rolagem daqui só aparece em janela muito baixa (nada fica cortado).
+    // Celular: tudo empilha e esta caixa rola (status, player, faixa, eventos).
+    <div onKeyDown={teclas} className="flex h-full min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
+      <header className="flex shrink-0 flex-wrap items-center gap-x-6 gap-y-2.5 border-b border-border px-3 py-3 sm:px-4 lg:py-2.5">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-5 gap-y-1.5">
           <h1 className="text-xl font-bold leading-tight">Câmeras</h1>
           {!semCameras && (
-            <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px]">
-              <span className="inline-flex items-center gap-1.5 font-semibold">
+            <>
+              <span className="inline-flex items-center gap-1.5 text-sm font-semibold">
                 {resumo.armado ? (
-                  <Shield className="h-4 w-4 text-nexon-verde" aria-hidden />
+                  <Shield className="h-[18px] w-[18px] text-nexon-verde" aria-hidden />
                 ) : (
-                  <ShieldOff className="h-4 w-4 text-muted-foreground" aria-hidden />
+                  <ShieldOff className="h-[18px] w-[18px] text-muted-foreground" aria-hidden />
                 )}
                 {textoArmamento(resumo)}
               </span>
-              <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+              <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
                 <span aria-hidden className={cn('h-2 w-2 rounded-full', resumo.offline > 0 ? 'bg-amber-500' : 'bg-nexon-verde')} />
                 <span>
                   {resumo.online} de {resumo.total} online
@@ -348,20 +363,20 @@ export function CamerasTab({ unidadeId, unidadeNome }: CamerasTabProps) {
                 <button
                   type="button"
                   onClick={verNaoVistos}
-                  className="inline-flex items-center gap-1.5 rounded font-medium text-foreground mouse:hover:underline"
+                  className={cn('inline-flex items-center gap-1.5 rounded-md text-sm font-medium text-foreground mouse:hover:underline', FOCO)}
                 >
-                  <span className="min-w-5 rounded-full bg-red-500 px-1.5 py-0.5 text-center text-[11px] font-semibold leading-none text-white tabular-nums">
+                  <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-red-500 px-1.5 text-xs font-semibold text-white tabular-nums">
                     {resumo.nao_lidos > 99 ? '99+' : resumo.nao_lidos}
                   </span>
                   {resumo.nao_lidos === 1 ? 'não visto' : 'não vistos'}
                 </button>
               )}
-            </div>
+              {noite && <span className="text-sm text-muted-foreground">{noite}</span>}
+            </>
           )}
-          {!semCameras && noite && <p className="mt-1 text-xs text-muted-foreground">{noite}</p>}
         </div>
 
-        <div role="group" aria-label="Comandos" className="flex flex-wrap items-center gap-2">
+        <div role="group" aria-label="Comandos" className="flex shrink-0 flex-wrap items-center gap-2">
           {podeComandar && resumo.comandos.refletor && (
             <BotaoComando
               rotulo="Refletores"
@@ -384,16 +399,16 @@ export function CamerasTab({ unidadeId, unidadeNome }: CamerasTabProps) {
             <Button
               type="button"
               variant={resumo.armado ? 'outline' : 'default'}
-              className="h-10 gap-2"
+              className="h-10 gap-2 text-sm touch:h-11"
               disabled={armar.isPending}
               onClick={() => setConfirmarArmar(true)}
             >
               {armar.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                <Loader2 className="h-[18px] w-[18px] animate-spin" aria-hidden />
               ) : resumo.armado ? (
-                <ShieldOff className="h-4 w-4" aria-hidden />
+                <ShieldOff className="h-[18px] w-[18px]" aria-hidden />
               ) : (
-                <Shield className="h-4 w-4" aria-hidden />
+                <Shield className="h-[18px] w-[18px]" aria-hidden />
               )}
               {resumo.armado ? 'Desarmar' : 'Armar'}
             </Button>
@@ -415,7 +430,7 @@ export function CamerasTab({ unidadeId, unidadeNome }: CamerasTabProps) {
       ) : (
         <>
         {podeCadastrar && <AvisoCamerasNovas unidadeId={unidadeId} onAdicionar={() => abrirConfig('cameras')} />}
-        <div className="grid gap-3 p-3 sm:p-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_minmax(340px,380px)] lg:grid-rows-[minmax(0,1fr)] xl:grid-cols-[minmax(0,1fr)_420px]">
+        <div className="grid gap-3 p-3 sm:p-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_380px] lg:grid-rows-[minmax(0,1fr)] xl:grid-cols-[minmax(0,1fr)_420px] 2xl:grid-cols-[minmax(0,1fr)_460px]">
           <div className="flex min-w-0 flex-col gap-3 lg:min-h-0">
             <PainelCamera
               ref={playerRef}
@@ -446,28 +461,24 @@ export function CamerasTab({ unidadeId, unidadeNome }: CamerasTabProps) {
                 ) : undefined
               }
             />
+            {/* uma câmera só: a faixa não tem o que trocar */}
             {lista.length > 1 && (
-              <GradeCameras
-                cameras={lista}
-                selecionadaId={cameraSel?.id ?? null}
-                onSelecionar={selecionarCamera}
-                urlMidia={midia.url}
-                className="lg:min-h-[7.5rem] lg:flex-1"
-              />
+              <GradeCameras cameras={lista} selecionadaId={cameraSel?.id ?? null} onSelecionar={selecionarCamera} urlMidia={midia.url} />
             )}
           </div>
 
           <PainelEventos
             ref={eventosRef}
-            className="min-h-[320px] lg:min-h-0"
+            className="min-h-[420px] lg:min-h-0"
             eventos={eventos}
             filtro={filtro}
             onFiltro={setFiltro}
             somenteNaoVistos={somenteNaoVistos}
             onSomenteNaoVistos={setSomenteNaoVistos}
-            escopo={escopo}
-            onEscopo={setEscopo}
-            cameraNome={cameraSel?.nome ?? null}
+            cameras={camerasFiltro}
+            cameraFiltro={cameraFiltroId}
+            onCameraFiltro={(id) => escreverUrl({ escopo: id })}
+            cameraPlayerId={cameraSel?.id ?? null}
             naoVistos={resumo.nao_lidos}
             eventoSelId={eventoSel?.id ?? null}
             onAbrirEvento={(ev) => abrirEvento(ev)}
@@ -582,8 +593,9 @@ function BotaoComando({
           disabled={ocupado}
           onClick={onClick}
           className={cn(
-            'flex h-10 w-10 items-center justify-center rounded-full border transition-colors disabled:opacity-60',
-            pressionado ? 'border-foreground bg-foreground text-background' : 'border-border bg-card text-foreground mouse:hover:bg-muted',
+            'flex h-10 w-10 items-center justify-center rounded-full border transition-colors disabled:opacity-60 touch:h-11 touch:w-11',
+            pressionado ? ITEM_ATIVO : 'border-border bg-card text-foreground mouse:hover:bg-muted',
+            FOCO,
           )}
         >
           {ocupado ? <Loader2 className="h-[18px] w-[18px] animate-spin" aria-hidden /> : <Icone className="h-[18px] w-[18px]" aria-hidden />}

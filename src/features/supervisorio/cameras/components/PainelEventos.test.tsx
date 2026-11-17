@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { CameraEvento } from '../types';
@@ -38,9 +38,8 @@ function montar(onApagar?: (l: CameraEvento[]) => void, onPeriodo?: (p: unknown)
       onFiltro={vi.fn()}
       somenteNaoVistos={false}
       onSomenteNaoVistos={vi.fn()}
-      escopo="todas"
-      onEscopo={vi.fn()}
-      cameraNome="Portão"
+      cameraFiltro={null}
+      onCameraFiltro={vi.fn()}
       naoVistos={0}
       eventoSelId={null}
       onAbrirEvento={onAbrirEvento}
@@ -110,9 +109,8 @@ describe('PainelEventos · período', () => {
         onFiltro={vi.fn()}
         somenteNaoVistos={false}
         onSomenteNaoVistos={vi.fn()}
-        escopo="todas"
-        onEscopo={vi.fn()}
-        cameraNome="Portão"
+        cameraFiltro={null}
+        onCameraFiltro={vi.fn()}
         naoVistos={0}
         eventoSelId={null}
         onAbrirEvento={vi.fn()}
@@ -146,5 +144,54 @@ describe('PainelEventos · período', () => {
     const ultimo = onPeriodo.mock.lastCall![0];
     expect(ultimo.de).toBe(primeiro);
     expect(ultimo.ate! > primeiro).toBe(true);
+  });
+});
+
+describe('PainelEventos · seletor de câmera', () => {
+  const muitas = Array.from({ length: 12 }, (_, i) => ({
+    id: `c${i + 1}`,
+    nome: i === 6 ? 'Portão' : `Câmera ${i + 1}`,
+    status: 'online' as const,
+    naoVistos: 0,
+  }));
+
+  function montarComCameras(cameraFiltro: string | null, onCameraFiltro = vi.fn()) {
+    render(
+      <PainelEventos
+        eventos={{ data: { data: [], pagination: { total: 0, page: 1, limit: 50, pages: 0 } } as never, isPending: false, isError: false, refetch: vi.fn() }}
+        filtro="todas"
+        onFiltro={vi.fn()}
+        somenteNaoVistos={false}
+        onSomenteNaoVistos={vi.fn()}
+        cameras={muitas}
+        cameraFiltro={cameraFiltro}
+        onCameraFiltro={onCameraFiltro}
+        naoVistos={0}
+        eventoSelId={null}
+        onAbrirEvento={vi.fn()}
+        onMarcarTodos={vi.fn()}
+        marcandoTodos={false}
+        onMostrarMais={vi.fn()}
+        urlMidia={() => null}
+      />,
+    );
+    return onCameraFiltro;
+  }
+
+  it('com muitas câmeras a lista tem busca (sem acento) e escolher filtra', async () => {
+    const onCameraFiltro = montarComCameras(null);
+    await userEvent.click(screen.getByRole('button', { name: 'Câmera: Todas as câmeras' }));
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Buscar câmera' }), 'portao');
+    const opcoes = screen.getByRole('group', { name: 'Câmera' });
+    expect(within(opcoes).getAllByRole('button')).toHaveLength(1);
+    await userEvent.click(within(opcoes).getByRole('button', { name: 'Portão' }));
+    expect(onCameraFiltro).toHaveBeenCalledWith('c7');
+  });
+
+  it('lista vazia de uma câmera oferece voltar para todas', async () => {
+    const onCameraFiltro = montarComCameras('c7');
+    expect(screen.getByText('Nada registrado em Portão até agora.')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Ver todas as câmeras' }));
+    expect(onCameraFiltro).toHaveBeenCalledWith(null);
   });
 });

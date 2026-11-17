@@ -279,7 +279,9 @@ describe('CamerasTab', () => {
     const player = screen.getByRole('region', { name: 'Câmera' });
     expect(within(player).getByText('Veículo')).toBeInTheDocument();
     expect(screen.queryByTestId('player')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Veículos' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Tipo: Veículos' })).toBeInTheDocument();
+    // `escopo=camera` (link antigo) = câmera do player.
+    expect(screen.getByRole('button', { name: 'Câmera: Portão' })).toBeInTheDocument();
     // Restaurar não marca de novo como visto.
     expect(CamerasService.marcarLido).not.toHaveBeenCalled();
   });
@@ -297,7 +299,7 @@ describe('CamerasTab', () => {
     expect(within(player).getByText('Ao vivo')).toBeInTheDocument();
     expect(screen.getByTestId('busca')).toHaveTextContent(/^\?camera=por&filtro=xpto$/);
     // Filtro desconhecido = Todos.
-    expect(screen.getByRole('button', { name: 'Todos' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Tipo: Todos os tipos' })).toBeInTheDocument();
   });
 
   it('abrir evento, trocar câmera e filtrar escrevem na URL', async () => {
@@ -308,8 +310,36 @@ describe('CamerasTab', () => {
     expect(screen.getByTestId('busca')).toHaveTextContent('?camera=cab&evento=e1');
     await usuario.click(screen.getByRole('button', { name: 'Portão — online' }));
     expect(screen.getByTestId('busca')).toHaveTextContent(/^\?camera=por$/);
+    await usuario.click(screen.getByRole('button', { name: 'Tipo: Todos os tipos' }));
     await usuario.click(screen.getByRole('button', { name: 'Pessoas' }));
     expect(screen.getByTestId('busca')).toHaveTextContent('?camera=por&filtro=pessoas');
+  });
+
+  it('seletor de câmera filtra a lista sem trocar o player e cabe em escopo=<id>', async () => {
+    const usuario = userEvent.setup();
+    render('/?camera=por');
+    await usuario.click(screen.getByRole('button', { name: 'Câmera: Todas as câmeras' }));
+    const opcoes = screen.getByRole('group', { name: 'Câmera' });
+    // Situação, não vistos e a câmera do player aparecem na opção.
+    expect(within(opcoes).getByRole('button', { name: 'Arranjo IV3, sem sinal' })).toBeInTheDocument();
+    expect(within(opcoes).getByRole('button', { name: 'Portão, no player' })).toBeInTheDocument();
+    await usuario.click(within(opcoes).getByRole('button', { name: 'Cabine / SSU, 2 não vistos' }));
+    expect(screen.getByTestId('busca')).toHaveTextContent(/^\?camera=por&escopo=cab$/);
+    expect(screen.getByRole('button', { name: 'Câmera: Cabine / SSU' })).toBeInTheDocument();
+    const player = screen.getByRole('region', { name: 'Câmera' });
+    expect(within(player).getByRole('heading', { level: 2, name: 'Portão' })).toBeInTheDocument();
+  });
+
+  it('escopo com câmera que não existe vale como todas', () => {
+    render('/?escopo=sumiu');
+    expect(screen.getByRole('button', { name: 'Câmera: Todas as câmeras' })).toBeInTheDocument();
+  });
+
+  it('com uma câmera só, sem faixa de miniaturas nem seletor de câmera', () => {
+    camerasMock.mockReturnValue(pronto([CAMERAS[0]]));
+    render();
+    expect(screen.queryByRole('region', { name: 'Câmeras da usina' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Câmera:/ })).not.toBeInTheDocument();
   });
 
   it('lista vazia com filtro oferece limpar filtros', async () => {
@@ -317,10 +347,11 @@ describe('CamerasTab', () => {
     eventosMock.mockReturnValue(pronto({ data: [], pagination: { page: 1, limit: 50, total: 0, totalPages: 0 } }));
     render();
     expect(screen.getByText('Nenhum evento ainda')).toBeInTheDocument();
+    await usuario.click(screen.getByRole('button', { name: 'Tipo: Todos os tipos' }));
     await usuario.click(screen.getByRole('button', { name: 'Animais' }));
     expect(screen.getByText('Nada com esse filtro')).toBeInTheDocument();
     await usuario.click(screen.getByRole('button', { name: 'Limpar filtros' }));
-    expect(screen.getByRole('button', { name: 'Todos' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Tipo: Todos os tipos' })).toBeInTheDocument();
   });
 
   describe('histórico gravado no aparelho', () => {

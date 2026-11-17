@@ -53,6 +53,12 @@ interface FiltroPeriodoProps {
   onPeriodo: (p: PeriodoEventos) => void;
   /** Quantos eventos o filtro achou (botão "Ver 12 eventos"); `null` enquanto carrega. */
   resultado?: number | null;
+  /**
+   * Pílula de uma linha (40 px, 44 no toque) para a linha de filtros dos eventos
+   * (NEXON-108). Sem ele, o bloco alto com "Período" em cima do resumo.
+   */
+  compacto?: boolean;
+  className?: string;
 }
 
 const ICONE_HORA: Record<AtalhoHora, LucideIcon> = {
@@ -87,14 +93,24 @@ function opcoesHora(atual: string | null): string[] {
  * no desktop e uma folha de baixo no celular. Tudo aplica na hora; o rodapé fecha com
  * "Ver 12 eventos".
  */
-export function FiltroPeriodo({ periodo, onPeriodo, resultado = null }: FiltroPeriodoProps) {
+export function FiltroPeriodo({ periodo, onPeriodo, resultado = null, compacto = false, className }: FiltroPeriodoProps) {
   const [aberto, setAberto] = useState(false);
   const celular = useIsMobile();
   const hoje = chaveHoje();
   const ativo = temPeriodo(periodo);
   const resumo = resumoPeriodo(periodo, hoje);
 
-  const gatilho = (
+  const gatilho = compacto ? (
+    <button
+      type="button"
+      aria-label={`Filtrar por período: ${resumo}`}
+      className={cn('flex h-full min-w-0 flex-1 items-center gap-2 rounded-[inherit] pl-3 text-left text-sm font-medium', ativo ? 'pr-1' : 'pr-2.5', FOCO)}
+    >
+      <CalendarDays aria-hidden className={cn('h-[18px] w-[18px] shrink-0', ativo ? VERDE_TEXTO : 'text-muted-foreground')} />
+      <span className="min-w-0 flex-1 truncate text-foreground">{resumo}</span>
+      {!ativo && <ChevronDown aria-hidden className="h-[18px] w-[18px] shrink-0 text-muted-foreground" />}
+    </button>
+  ) : (
     <button
       type="button"
       aria-label={`Filtrar por período: ${resumo}`}
@@ -132,8 +148,10 @@ export function FiltroPeriodo({ periodo, onPeriodo, resultado = null }: FiltroPe
   return (
     <div
       className={cn(
-        'flex min-h-12 items-center rounded-xl border transition-colors touch:min-h-14',
-        ativo ? `border-nexon-verde ${VERDE_FUNDO_LEVE}` : ITEM_INATIVO,
+        'flex items-center border transition-colors',
+        compacto ? 'h-10 min-w-0 rounded-full touch:h-11' : 'min-h-12 rounded-xl touch:min-h-14',
+        ativo ? (compacto ? ITEM_ATIVO : `border-nexon-verde ${VERDE_FUNDO_LEVE}`) : ITEM_INATIVO,
+        className,
       )}
     >
       {celular ? (
@@ -164,7 +182,8 @@ export function FiltroPeriodo({ periodo, onPeriodo, resultado = null }: FiltroPe
           aria-label="Limpar período"
           onClick={() => onPeriodo(PERIODO_VAZIO)}
           className={cn(
-            'mr-1.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors mouse:hover:bg-muted mouse:hover:text-foreground touch:h-11 touch:w-11',
+            'flex shrink-0 items-center justify-center text-muted-foreground transition-colors mouse:hover:bg-muted mouse:hover:text-foreground',
+            compacto ? 'h-full w-10 rounded-full touch:w-11' : 'mr-1.5 h-10 w-10 rounded-lg touch:h-11 touch:w-11',
             FOCO,
           )}
         >

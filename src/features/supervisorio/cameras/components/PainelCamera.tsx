@@ -1,15 +1,16 @@
 import { Camera as CameraIcon, ChevronDown, ChevronUp, Download, Image as ImageIcon, Loader2, Maximize, Radio, Trash2, Video, VideoOff, type LucideIcon } from 'lucide-react';
 import { forwardRef, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import type { Camera, CameraEvento } from '../types';
 import { miniaturaComVersao, paraBaixar } from '../utils/midia';
 import { carimboDataHora, diaHoraCurta, horaCurta, textoChamado, tituloEvento } from '../utils/eventos';
+import { BOTAO_PRIMARIO, FOCO, ITEM_ATIVO } from './estilo-filtro';
 import { EtiquetaTipo } from './ItemEvento';
 import { PlayerHls } from './PlayerHls';
 import { PlayerVideo } from './PlayerVideo';
+import { QuadroVideo } from './QuadroVideo';
 
 interface PainelCameraProps {
   camera: Camera | null;
@@ -36,8 +37,8 @@ export type ModoPlayer = 'aovivo' | 'historico';
 
 /**
  * Player principal: ao vivo da câmera escolhida ou a gravação do evento aberto.
- * No desktop a altura acompanha a janela (a lista de eventos fica ao lado sem rolar
- * a página); no celular é 16:9 na largura toda.
+ * No desktop ocupa a altura que sobra na coluna e o vídeo 16:9 é o maior que cabe
+ * (`QuadroVideo`); no celular é 16:9 na largura toda.
  */
 export const PainelCamera = forwardRef<HTMLElement, PainelCameraProps>(function PainelCamera(
   {
@@ -90,8 +91,8 @@ export const PainelCamera = forwardRef<HTMLElement, PainelCameraProps>(function 
 
   if (!camera) {
     return (
-      <section ref={ref} aria-label="Câmera" className="flex aspect-video items-center justify-center rounded-xl border border-border bg-card">
-        <p className="text-[13px] text-muted-foreground">Escolha uma câmera para ver ao vivo.</p>
+      <section ref={ref} aria-label="Câmera" className="flex aspect-video items-center justify-center rounded-xl border border-border bg-card lg:aspect-auto lg:min-h-0 lg:flex-1">
+        <p className="text-sm text-muted-foreground">Escolha uma câmera para ver ao vivo.</p>
       </section>
     );
   }
@@ -99,23 +100,23 @@ export const PainelCamera = forwardRef<HTMLElement, PainelCameraProps>(function 
   const chamado = evento ? textoChamado(evento) : null;
 
   return (
-    <section ref={ref} aria-label="Câmera" className="flex shrink-0 flex-col overflow-hidden rounded-xl border border-border bg-card">
-      <div className="flex min-h-12 flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2">
+    <section ref={ref} aria-label="Câmera" className="flex shrink-0 flex-col overflow-hidden rounded-xl border border-border bg-card lg:min-h-0 lg:flex-1">
+      <div className="flex min-h-14 shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2 sm:px-4">
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          <h2 className="truncate text-[15px] font-semibold">{camera.nome}</h2>
+          <h2 className="truncate text-base font-semibold">{camera.nome}</h2>
           {evento ? (
             <span className="flex min-w-0 items-center gap-1.5">
               <EtiquetaTipo tipo={evento.tipo} />
-              <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{diaHoraCurta(evento.inicio_em)}</span>
-              {chamado && <span className="hidden truncate text-xs text-muted-foreground sm:inline">· {chamado}</span>}
+              <span className="shrink-0 text-sm tabular-nums text-muted-foreground">{diaHoraCurta(evento.inicio_em)}</span>
+              {chamado && <span className="hidden truncate text-sm text-muted-foreground sm:inline">· {chamado}</span>}
             </span>
           ) : emHistorico ? null : offline ? (
-            <span className="inline-flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+            <span className="inline-flex shrink-0 items-center gap-1.5 text-sm text-muted-foreground">
               <span aria-hidden className="h-2 w-2 rounded-full bg-zinc-500" />
               Sem sinal
             </span>
           ) : (
-            <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-nexon-verde">
+            <span className="inline-flex shrink-0 items-center gap-1.5 text-sm font-medium text-nexon-verde">
               <span aria-hidden className="h-2 w-2 rounded-full bg-nexon-verde" />
               Ao vivo
             </span>
@@ -130,10 +131,10 @@ export const PainelCamera = forwardRef<HTMLElement, PainelCameraProps>(function 
               <BotaoIcone rotulo="Evento mais antigo" icone={ChevronDown} onClick={onEventoProximo} desabilitado={!onEventoProximo} />
               <MenuBaixar evento={evento} urlMidia={urlMidia} />
               {onApagarEvento && <BotaoIcone rotulo="Apagar evento" icone={Trash2} onClick={() => onApagarEvento(evento)} perigo />}
-              <Button type="button" size="sm" className="ml-1 h-8 gap-1.5 touch:h-10" onClick={onVoltarAoVivo}>
-                <Radio className="h-3.5 w-3.5" aria-hidden />
+              <button type="button" className={cn(BOTAO_PRIMARIO, 'ml-1 h-9 px-3.5 text-sm touch:h-11')} onClick={onVoltarAoVivo}>
+                <Radio className="h-4 w-4" aria-hidden />
                 Voltar ao vivo
-              </Button>
+              </button>
             </>
           ) : (
             podeComandar &&
@@ -148,25 +149,21 @@ export const PainelCamera = forwardRef<HTMLElement, PainelCameraProps>(function 
       {emHistorico ? (
         historico
       ) : (
-
-      <div
-        ref={quadroRef}
-        className="relative aspect-video w-full overflow-hidden bg-black lg:max-h-[calc(100dvh-25rem)] lg:min-h-[240px]"
-      >
+      <QuadroVideo ref={quadroRef}>
         {evento ? (
           <MidiaEvento evento={evento} urlMidia={urlMidia} />
         ) : offline ? (
           <div role="status" className="flex h-full flex-col items-center justify-center gap-2 text-white/60">
             <VideoOff className="h-6 w-6" aria-hidden />
-            <span className="text-[13px]">Sem sinal{camera.status_em ? ` desde ${horaCurta(camera.status_em)}` : ''}</span>
+            <span className="text-sm">Sem sinal{camera.status_em ? ` desde ${horaCurta(camera.status_em)}` : ''}</span>
           </div>
         ) : (
           <PlayerHls cameraId={camera.id} cameraNome={camera.nome} capa={miniaturaComVersao(urlMidia(camera.miniatura_url), camera.miniatura_em)} />
         )}
         {aoVivo && (
-          <span className="pointer-events-none absolute bottom-2 left-2.5 text-[11px] tabular-nums text-white/70">{carimboDataHora(agora)}</span>
+          <span className="pointer-events-none absolute bottom-2 left-3 text-xs tabular-nums text-white/70">{carimboDataHora(agora)}</span>
         )}
-      </div>
+      </QuadroVideo>
       )}
     </section>
   );
@@ -179,7 +176,7 @@ function SeletorModo({ modo, onModo }: { modo: ModoPlayer; onModo: (m: ModoPlaye
     { valor: 'historico', rotulo: 'Histórico' },
   ];
   return (
-    <div role="group" aria-label="Ver" className="mr-1 flex rounded-md border border-border p-0.5">
+    <div role="group" aria-label="Ver" className="mr-1 flex gap-0.5 rounded-lg border border-border p-0.5">
       {opcoes.map((o) => (
         <button
           key={o.valor}
@@ -187,8 +184,9 @@ function SeletorModo({ modo, onModo }: { modo: ModoPlayer; onModo: (m: ModoPlaye
           aria-pressed={modo === o.valor}
           onClick={() => modo !== o.valor && onModo(o.valor)}
           className={cn(
-            'h-7 rounded px-2.5 text-xs font-medium transition-colors touch:h-9',
-            modo === o.valor ? 'bg-foreground text-background' : 'text-muted-foreground mouse:hover:text-foreground',
+            'h-8 rounded-md border px-3 text-sm font-medium transition-colors touch:h-10',
+            modo === o.valor ? ITEM_ATIVO : 'border-transparent text-muted-foreground mouse:hover:text-foreground',
+            FOCO,
           )}
         >
           {o.rotulo}
@@ -208,7 +206,7 @@ function MidiaEvento({ evento, urlMidia }: { evento: CameraEvento; urlMidia: Pai
   if (foto) {
     return <img src={foto} alt={`${tituloEvento(evento)} em ${evento.camera_nome}`} className="h-full w-full object-contain" />;
   }
-  return <div className="flex h-full items-center justify-center text-[13px] text-white/60">Este evento não tem imagem</div>;
+  return <div className="flex h-full items-center justify-center text-sm text-white/60">Este evento não tem imagem</div>;
 }
 
 /** Baixar o clipe ou a foto do evento (anexo com nome legível; a API registra quem baixou). */
@@ -224,9 +222,9 @@ function MenuBaixar({ evento, urlMidia }: { evento: CameraEvento; urlMidia: Pain
             <button
               type="button"
               aria-label="Baixar"
-              className="flex h-8 w-8 items-center justify-center rounded-md text-[color-mix(in_srgb,var(--foreground)_80%,transparent)] transition-colors mouse:hover:bg-muted touch:h-10 touch:w-10"
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-[color-mix(in_srgb,var(--foreground)_80%,transparent)] transition-colors mouse:hover:bg-muted touch:h-11 touch:w-11"
             >
-              <Download className="h-4 w-4" aria-hidden />
+              <Download className="h-[18px] w-[18px]" aria-hidden />
             </button>
           </DropdownMenuTrigger>
         </TooltipTrigger>
@@ -279,11 +277,11 @@ function BotaoIcone({
           disabled={desabilitado || ocupado}
           onClick={onClick}
           className={cn(
-            'flex h-8 w-8 items-center justify-center rounded-md text-[color-mix(in_srgb,var(--foreground)_80%,transparent)] transition-colors disabled:opacity-40 mouse:hover:bg-muted touch:h-10 touch:w-10',
+            'flex h-9 w-9 items-center justify-center rounded-lg text-[color-mix(in_srgb,var(--foreground)_80%,transparent)] transition-colors disabled:opacity-40 mouse:hover:bg-muted touch:h-11 touch:w-11',
             perigo && 'text-red-500 mouse:hover:bg-red-500/10 mouse:hover:text-red-500',
           )}
         >
-          {ocupado ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Icone className="h-4 w-4" aria-hidden />}
+          {ocupado ? <Loader2 className="h-[18px] w-[18px] animate-spin" aria-hidden /> : <Icone className="h-[18px] w-[18px]" aria-hidden />}
         </button>
       </TooltipTrigger>
       <TooltipContent side="bottom">{rotulo}</TooltipContent>
