@@ -2,6 +2,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { CamerasService } from '../services/cameras.service';
 import type { CameraEvento, FiltroEventos, ListarEventosParams, Paginado } from '../types';
 import { paramTipo } from '../utils/eventos';
+import { paramsPeriodo, type PeriodoEventos } from '../utils/periodo';
 import { INTERVALO_CAMERAS_MS, chavesCameras } from './chaves';
 
 export interface FiltrosEventosCameras {
@@ -9,6 +10,8 @@ export interface FiltrosEventosCameras {
   cameraId?: string | null;
   /** AAAA-MM-DD em America/Sao_Paulo. */
   dia?: string | null;
+  /** Filtro de período da lista (datas e faixa de hora). */
+  periodo?: PeriodoEventos;
   filtro?: FiltroEventos;
   somenteNaoLidos?: boolean;
   incluirDescartados?: boolean;
@@ -21,6 +24,7 @@ export function paramsEventos(f: FiltrosEventosCameras): ListarEventosParams {
   const p: ListarEventosParams = { unidade_id: f.unidadeId?.trim() ?? '' };
   if (f.cameraId) p.camera_id = f.cameraId;
   if (f.dia) p.dia = f.dia;
+  if (f.periodo) Object.assign(p, paramsPeriodo(f.periodo));
   const tipo = paramTipo(f.filtro ?? 'todas');
   if (tipo) p.tipo = tipo;
   if (f.somenteNaoLidos) p.somente_nao_lidos = 1;

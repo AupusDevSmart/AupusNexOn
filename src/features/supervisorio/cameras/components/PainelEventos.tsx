@@ -5,8 +5,10 @@ import { cn } from '@/lib/utils';
 import type { CameraEvento, FiltroEventos, Paginado } from '../types';
 import { agruparPorDia } from '../utils/agrupar-por-dia';
 import { FILTROS_EVENTOS } from '../utils/eventos';
+import { PERIODO_VAZIO, temPeriodo, type PeriodoEventos } from '../utils/periodo';
 import { AreaRolagem } from './AreaRolagem';
 import { EventosSkeleton } from './CamerasSkeleton';
+import { FiltroPeriodo } from './FiltroPeriodo';
 import { ItemEvento } from './ItemEvento';
 
 export type EscopoEventos = 'todas' | 'camera';
@@ -38,6 +40,9 @@ interface PainelEventosProps {
   onApagar?: (eventos: CameraEvento[]) => void;
   /** Muda depois de apagar: limpa a seleção. */
   apagadosEm?: number;
+  /** Filtro de período (dia/intervalo e faixa de hora); sem `onPeriodo` o botão não aparece. */
+  periodo?: PeriodoEventos;
+  onPeriodo?: (p: PeriodoEventos) => void;
   className?: string;
 }
 
@@ -64,6 +69,8 @@ export const PainelEventos = forwardRef<HTMLElement, PainelEventosProps>(functio
     urlMidia,
     onApagar,
     apagadosEm,
+    periodo = PERIODO_VAZIO,
+    onPeriodo,
     className,
   },
   ref,
@@ -77,7 +84,7 @@ export const PainelEventos = forwardRef<HTMLElement, PainelEventosProps>(functio
   const grupos = useMemo(() => agruparPorDia(eventos.data?.data ?? [], (e) => e.inicio_em), [eventos.data]);
   const total = eventos.data?.pagination.total ?? 0;
   const carregados = eventos.data?.data.length ?? 0;
-  const comFiltro = filtro !== 'todas' || somenteNaoVistos;
+  const comFiltro = filtro !== 'todas' || somenteNaoVistos || temPeriodo(periodo);
 
   const lista = eventos.data?.data ?? [];
   const sairDaSelecao = () => {
@@ -96,6 +103,7 @@ export const PainelEventos = forwardRef<HTMLElement, PainelEventosProps>(functio
   const limparFiltros = () => {
     onFiltro('todas');
     onSomenteNaoVistos(false);
+    onPeriodo?.(PERIODO_VAZIO);
   };
 
   return (
@@ -173,6 +181,7 @@ export const PainelEventos = forwardRef<HTMLElement, PainelEventosProps>(functio
         </div>
 
         <div role="group" aria-label="Filtrar eventos" className="flex flex-wrap gap-1.5">
+          {onPeriodo && <FiltroPeriodo periodo={periodo} onPeriodo={onPeriodo} />}
           <Chip ativo={somenteNaoVistos} onClick={() => onSomenteNaoVistos(!somenteNaoVistos)}>
             Não vistos
             {naoVistos > 0 && <span className="tabular-nums opacity-80">{naoVistos > 99 ? '99+' : naoVistos}</span>}
