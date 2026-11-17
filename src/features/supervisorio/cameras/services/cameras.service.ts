@@ -9,6 +9,7 @@ import type {
   ConfigCameras,
   ConfigCamerasPayload,
   DispositivoAcionavel,
+  InstaladorAparelho,
   ListarEventosParams,
   Paginado,
   PedidoPareamento,
@@ -141,8 +142,9 @@ export const CamerasService = {
   },
 
   /** Instalador do Raspberry novo: versão, link da imagem e comando do Terminal (token 2 h). */
-  async instalador(): Promise<{ versao: string; tamanho: number; publicado_em: string | null; valido_ate: string; url_imagem: string; comando: string }> {
-    const { data } = await api.get('/cameras/instalador');
+  async instalador(unidadeId?: string): Promise<InstaladorAparelho> {
+    const id = unidadeId?.trim();
+    const { data } = await api.get('/cameras/instalador', id ? { params: { unidade_id: id } } : undefined);
     return unwrap(data);
   },
 

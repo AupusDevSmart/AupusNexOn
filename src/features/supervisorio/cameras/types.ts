@@ -192,6 +192,25 @@ export interface ConfigCameras {
 
 export type ConfigCamerasPayload = Omit<ConfigCameras, 'unidade_id' | 'updated_at'>;
 
+/**
+ * `GET /cameras/instalador?unidade_id=` (NEXON-108). Com `unidade_id`, o `comando` leva a chave da
+ * usina (uso único, 48 h): o Raspberry gravado por ele entra sozinho nela, sem código.
+ */
+export interface InstaladorAparelho {
+  versao: string;
+  /** Bytes da imagem. */
+  tamanho: number;
+  publicado_em: string | null;
+  /** Validade do comando. */
+  valido_ate: string;
+  url_imagem: string;
+  comando: string;
+  /** `null` = o comando não leva a chave (vincular depois pelo código). */
+  vinculo_automatico: { valido_ate: string } | null;
+  /** Nome da usina que a chave leva. */
+  usina: string | null;
+}
+
 export interface Agente {
   id: string;
   unidade_id: string;

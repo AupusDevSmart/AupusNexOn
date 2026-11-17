@@ -14,13 +14,16 @@ export function useConfigCameras(unidadeId?: string, habilitado = true) {
   });
 }
 
-/** Agentes da unidade (só `cadastroTecnico`); último contato muda, então 30 s. */
-export function useAgentesCameras(unidadeId?: string, habilitado = true) {
+/**
+ * Agentes da unidade (só `cadastroTecnico`); último contato muda, então 30 s. O assistente do
+ * Raspberry novo pede 5 s enquanto espera o aparelho chegar.
+ */
+export function useAgentesCameras(unidadeId?: string, habilitado = true, intervaloMs = 30_000) {
   return useQuery<Agente[]>({
     queryKey: chavesCameras.agentes(unidadeId),
     queryFn: () => CamerasService.agentes(unidadeId!),
     enabled: !!unidadeId?.trim() && habilitado,
-    refetchInterval: 30_000,
+    refetchInterval: intervaloMs,
     staleTime: 30_000,
   });
 }
