@@ -171,7 +171,13 @@ interface PassoGuiado {
   extra?: ReactNode;
 }
 
-const LINHAS_INICIO = ['Instalador do NexON para Raspberry Pi 5', '[1/5] Imagem do NexON', 'OK: baixada e conferida.', '[2/5] Programa da Raspberry', 'OK: pronto.', '[3/5] Conectar o Raspberry'];
+const LINHAS_INICIO = [
+  '==== PASSO 1 de 5: Imagem do NexON ====',
+  '✓ Baixada e conferida.',
+  '==== PASSO 2 de 5: Programa da Raspberry ====',
+  '✓ Pronto.',
+  '==== PASSO 3 de 5: Ligar o Raspberry no computador ====',
+];
 
 function passosComputador(
   win: boolean,
@@ -209,11 +215,11 @@ function passosComputador(
     {
       titulo: 'Espere aparecer esta frase',
       ajuda: 'Na primeira vez pode levar alguns minutos. Não aperte nada ainda.',
-      visual: <TelaTerminal titulo={app} linhas={LINHAS_INICIO} destaque="Fez os 4 passos? Aperte Enter" />,
+      visual: <TelaTerminal titulo={app} linhas={LINHAS_INICIO} destaque=">> Tire TODOS os cabos do Raspberry (fonte, rede, tudo)." />,
     },
     {
-      titulo: 'Deixe o Raspberry sem nenhum cabo',
-      ajuda: 'Se tiver fonte ou cabo ligado nele, tire e espere 5 segundos.',
+      titulo: `Tire todos os cabos do Raspberry e aperte Enter no ${app}`,
+      ajuda: 'Fonte, rede, tudo. O Raspberry fica sem nenhum cabo.',
       visual: <DesenhoRaspberry />,
     },
     {
@@ -231,9 +237,15 @@ function passosComputador(
       visual: <ContarAteTres />,
     },
     {
-      titulo: `Volte ao ${app} e aperte Enter`,
-      ajuda: 'Em até 2 minutos aparece "Achei o SD do Raspberry".',
-      visual: <Teclas teclas={['Enter']} />,
+      titulo: 'Espere aparecer "Raspberry encontrado!"',
+      ajuda: 'Não precisa apertar nada: ele percebe sozinho. Se não aparecer em 3 minutos, o Terminal explica o que fazer.',
+      visual: (
+        <TelaTerminal
+          titulo={app}
+          linhas={['     … esperando o Raspberry (10 s)', '     … esperando o Raspberry (20 s)']}
+          destaque="✓ Raspberry encontrado! Pode soltar o botão."
+        />
+      ),
     },
     {
       titulo: 'Escreva SIM e aperte Enter',
@@ -241,15 +253,15 @@ function passosComputador(
       visual: (
         <TelaTerminal
           titulo={app}
-          linhas={['Achei o SD do Raspberry (32 GB).', 'Tudo o que estiver nele será apagado.']}
-          destaque="Digite SIM para gravar o NexON: SIM"
+          linhas={['  Achei o cartão SD do Raspberry (32 GB).', '  Tudo o que estiver nele será apagado.']}
+          destaque="  >> Escreva SIM e aperte Enter para gravar: SIM"
         />
       ),
     },
     {
       titulo: 'Espere aparecer "Pronto!"',
       ajuda: 'Leva de 5 a 15 minutos. Depois tire o cabo: o Raspberry está pronto.',
-      visual: <TelaTerminal titulo={app} linhas={['[4/5] Gravando…', '[5/5] Conferindo', 'OK: chave da usina gravada.']} destaque="Pronto! Pode tirar o cabo do computador." />,
+      visual: <TelaTerminal titulo={app} linhas={['==== PASSO 4 de 5: Gravando ====', '==== PASSO 5 de 5: Conferindo ====', '✓ Chave da usina gravada.']} destaque="Pronto! Pode tirar o cabo do computador." />,
     },
   ];
 }
