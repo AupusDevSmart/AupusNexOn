@@ -1,5 +1,5 @@
-import { CalendarX2, CheckCheck, ListChecks, RefreshCw, ShieldCheck, Trash2, X } from 'lucide-react';
-import { forwardRef, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { CalendarX2, Cctv, CheckCheck, ListChecks, ListFilter, RefreshCw, ShieldCheck, Trash2, X } from 'lucide-react';
+import { forwardRef, useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { CameraEvento, FiltroEventos, Paginado } from '../types';
@@ -9,11 +9,21 @@ import { PERIODO_VAZIO, resumoPeriodo, temPeriodo, type PeriodoEventos } from '.
 import { AreaRolagem } from './AreaRolagem';
 import { EventosSkeleton } from './CamerasSkeleton';
 import { ChipFiltro } from './ChipFiltro';
-import { BOTAO_SECUNDARIO, DESABILITADO, FOCO, ITEM_ATIVO } from './estilo-filtro';
+import { BOTAO_SECUNDARIO } from './estilo-filtro';
 import { FiltroPeriodo } from './FiltroPeriodo';
 import { ItemEvento } from './ItemEvento';
+import { SeletorFiltro, type OpcaoSeletor } from './SeletorFiltro';
 
-export type EscopoEventos = 'todas' | 'camera';
+/** Câmera no seletor da lista (nome, situação e não vistos). */
+export interface CameraFiltro {
+  id: string;
+  nome: string;
+  status: 'online' | 'offline';
+  naoVistos: number;
+}
+
+/** Valor do seletor de câmera para "todas" (não colide com id de câmera, que é UUID). */
+const TODAS = '';
 
 interface PainelEventosProps {
   /** Resultado de `useEventosCameras` (a aba guarda a consulta para o anterior/próximo do player). */
@@ -29,10 +39,13 @@ interface PainelEventosProps {
   onFiltro: (f: FiltroEventos) => void;
   somenteNaoVistos: boolean;
   onSomenteNaoVistos: (v: boolean) => void;
-  escopo: EscopoEventos;
-  onEscopo: (e: EscopoEventos) => void;
-  /** Nome da câmera do player (rótulo do escopo "Esta câmera"). */
-  cameraNome: string | null;
+  /** Câmeras da usina no seletor; com uma só, o seletor não aparece. */
+  cameras?: CameraFiltro[];
+  /** Câmera filtrada na lista; `null` = todas. */
+  cameraFiltro: string | null;
+  onCameraFiltro: (id: string | null) => void;
+  /** Câmera do player: ganha a nota "no player" no seletor. */
+  cameraPlayerId?: string | null;
   naoVistos: number;
   eventoSelId: string | null;
   onAbrirEvento: (ev: CameraEvento) => void;
@@ -51,8 +64,9 @@ interface PainelEventosProps {
 }
 
 /**
- * Lista de eventos ao lado do player: escopo (todas / esta câmera), chips de tipo e
- * "Não vistos", grupos por dia com cabeçalho fixo e rolagem própria no desktop.
+ * Lista de eventos ao lado do player (NEXON-108): filtros compactos fixos no topo
+ * (câmera, período, tipo e "Não vistos", em duas linhas) e a lista, agrupada por dia,
+ * com rolagem própria no desktop.
  */
 export const PainelEventos = forwardRef<HTMLElement, PainelEventosProps>(function PainelEventos(
   {
@@ -61,9 +75,10 @@ export const PainelEventos = forwardRef<HTMLElement, PainelEventosProps>(functio
     onFiltro,
     somenteNaoVistos,
     onSomenteNaoVistos,
-    escopo,
-    onEscopo,
-    cameraNome,
+    cameras = [],
+    cameraFiltro,
+    onCameraFiltro,
+    cameraPlayerId = null,
     naoVistos,
     eventoSelId,
     onAbrirEvento,
@@ -89,7 +104,23 @@ export const PainelEventos = forwardRef<HTMLElement, PainelEventosProps>(functio
   const total = eventos.data?.pagination.total ?? 0;
   const carregados = eventos.data?.data.length ?? 0;
   const comPeriodo = temPeriodo(periodo);
-  const comFiltro = filtro !== 'todas' || somenteNaoVistos || comPeriodo;
+  const cameraSel = cameraFiltro ? cameras.find((c) => c.id === cameraFiltro) ?? null : null;
+  const comCamera = !!cameraSel;
+  const comFiltro = filtro !== 'todas' || somenteNaoVistos || comPeriodo || comCamera;
+  const seletorCamera = cameras.length > 1;
+  const opcoesCamera = useMemo<OpcaoSeletor<string>[]>(
+    () => [
+      { valor: TODAS, rotulo: 'Todas as câmeras' },
+      ...cameras.map((c) => ({
+        valor: c.id,
+        rotulo: c.nome,
+        status: c.status,
+        contador: c.naoVistos,
+        nota: c.id === cameraPlayerId ? 'no player' : undefined,
+      })),
+    ],
+    [cameras, cameraPlayerId],
+  );
   const contando = eventos.isPending || !!eventos.isPlaceholderData;
   const resultado = contando || eventos.isError ? null : total;
 
@@ -111,11 +142,12 @@ export const PainelEventos = forwardRef<HTMLElement, PainelEventosProps>(functio
     onFiltro('todas');
     onSomenteNaoVistos(false);
     onPeriodo?.(PERIODO_VAZIO);
+    if (comCamera) onCameraFiltro(null);
   };
 
   return (
     <section ref={ref} aria-label="Eventos" className={cn('flex flex-col overflow-hidden rounded-xl border border-border bg-card', className)}>
-      <div className="flex shrink-0 flex-col gap-3 border-b border-border p-4">
+      <div className="flex shrink-0 flex-col gap-3 border-b border-border p-3 sm:p-4">
         {selecionando ? (
           <div className="flex items-center gap-1.5">
             <button type="button" className={cn(BOTAO_SECUNDARIO, '-ml-2 h-10 w-10 touch:h-11 touch:w-11')} aria-label="Cancelar seleção" onClick={sairDaSelecao}>
@@ -148,7 +180,7 @@ export const PainelEventos = forwardRef<HTMLElement, PainelEventosProps>(functio
           </div>
         ) : (
           <div className="flex min-h-10 items-center justify-between gap-2">
-            <h2 className="text-lg font-semibold leading-tight">Eventos</h2>
+            <h2 className="pl-1 text-lg font-semibold leading-tight">Eventos</h2>
             {/* no painel estreito (lg, 340 px) as ações ficam só com ícone; nome continua no leitor de tela e no title */}
             <div className="-mr-2 flex items-center gap-1">
               <button
@@ -177,37 +209,52 @@ export const PainelEventos = forwardRef<HTMLElement, PainelEventosProps>(functio
           </div>
         )}
 
-        <div role="radiogroup" aria-label="Câmeras da lista" className="grid grid-cols-2 gap-1 rounded-xl border border-border p-1">
-          <Segmento ativo={escopo === 'todas'} onClick={() => onEscopo('todas')}>
-            Todas as câmeras
-          </Segmento>
-          <Segmento ativo={escopo === 'camera'} onClick={() => onEscopo('camera')} disabled={!cameraNome}>
-            <span className="truncate">{cameraNome ?? 'Esta câmera'}</span>
-          </Segmento>
-        </div>
-
-        {onPeriodo && <FiltroPeriodo periodo={periodo} onPeriodo={onPeriodo} resultado={resultado} />}
-
-        <div role="group" aria-label="Filtrar eventos" className="flex flex-wrap gap-2">
-          <ChipFiltro ativo={somenteNaoVistos} onClick={() => onSomenteNaoVistos(!somenteNaoVistos)} className="pr-2 touch:pr-2.5">
-            Não vistos
+        <div role="group" aria-label="Filtrar eventos" className="grid grid-cols-2 gap-2">
+          {seletorCamera && (
+            <SeletorFiltro
+              rotulo="Câmera"
+              icone={Cctv}
+              valor={cameraSel?.id ?? TODAS}
+              padrao={TODAS}
+              opcoes={opcoesCamera}
+              onValor={(v) => onCameraFiltro(v || null)}
+            />
+          )}
+          {onPeriodo && (
+            <FiltroPeriodo
+              compacto
+              periodo={periodo}
+              onPeriodo={onPeriodo}
+              resultado={resultado}
+              className={cn(!seletorCamera && 'col-span-2')}
+            />
+          )}
+          <SeletorFiltro
+            rotulo="Tipo"
+            icone={ListFilter}
+            valor={filtro}
+            padrao="todas"
+            opcoes={OPCOES_TIPO}
+            onValor={onFiltro}
+            textoGatilho={filtro === 'todas' ? 'Todos os tipos' : undefined}
+          />
+          <ChipFiltro
+            ativo={somenteNaoVistos}
+            onClick={() => onSomenteNaoVistos(!somenteNaoVistos)}
+            className="min-w-0 justify-center px-3 touch:px-3"
+          >
+            <span className="truncate">Não vistos</span>
             {naoVistos > 0 && (
               <span
                 className={cn(
                   'flex h-6 min-w-6 items-center justify-center rounded-full px-1.5 text-xs font-semibold tabular-nums',
-                  somenteNaoVistos ? 'bg-nexon-verde text-nexon-azul' : 'bg-muted text-foreground',
+                  somenteNaoVistos ? 'bg-nexon-verde text-nexon-azul' : 'bg-red-500 text-white',
                 )}
               >
                 {naoVistos > 99 ? '99+' : naoVistos}
               </span>
             )}
           </ChipFiltro>
-          <span aria-hidden className="my-1.5 w-px self-stretch bg-border" />
-          {FILTROS_EVENTOS.map((f) => (
-            <ChipFiltro key={f.valor} ativo={filtro === f.valor} onClick={() => onFiltro(f.valor)}>
-              {f.rotulo}
-            </ChipFiltro>
-          ))}
         </div>
 
         {comFiltro && (
@@ -249,15 +296,16 @@ export const PainelEventos = forwardRef<HTMLElement, PainelEventosProps>(functio
             onVerTodoPeriodo={() => onPeriodo?.(PERIODO_VAZIO)}
             outrosFiltros={filtro !== 'todas' || somenteNaoVistos}
             comFiltro={comFiltro}
+            filtroTipo={filtro !== 'todas'}
             somenteNaoVistos={somenteNaoVistos && filtro === 'todas'}
-            cameraNome={escopo === 'camera' ? cameraNome : null}
+            cameraNome={cameraSel?.nome ?? null}
             onLimpar={limparFiltros}
           />
         ) : (
           <div className="pb-3">
             {grupos.map((g) => (
               <section key={g.chave || 'sem-data'} aria-label={g.rotulo}>
-                <h3 className="sticky top-0 z-10 bg-card px-4 pb-2 pt-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                <h3 className="sticky top-0 z-10 bg-card px-4 pb-2 pt-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   {g.rotulo}
                 </h3>
                 <ol className="flex flex-col gap-0.5 px-1.5">
@@ -288,6 +336,8 @@ export const PainelEventos = forwardRef<HTMLElement, PainelEventosProps>(functio
   );
 });
 
+const OPCOES_TIPO: OpcaoSeletor<FiltroEventos>[] = FILTROS_EVENTOS.map((f) => ({ valor: f.valor, rotulo: f.rotulo }));
+
 /** "12 eventos neste período" · "1 evento com esse filtro" · "Nenhum evento neste período". */
 function textoResultado(n: number, comPeriodo: boolean): string {
   const onde = comPeriodo ? 'neste período' : 'com esse filtro';
@@ -300,6 +350,7 @@ function Vazio({
   onVerTodoPeriodo,
   outrosFiltros,
   comFiltro,
+  filtroTipo,
   somenteNaoVistos,
   cameraNome,
   onLimpar,
@@ -309,6 +360,8 @@ function Vazio({
   onVerTodoPeriodo: () => void;
   outrosFiltros: boolean;
   comFiltro: boolean;
+  /** Filtro de tipo ligado (Pessoas, Veículos…). */
+  filtroTipo: boolean;
   somenteNaoVistos: boolean;
   cameraNome: string | null;
   onLimpar: () => void;
@@ -343,7 +396,7 @@ function Vazio({
   if (somenteNaoVistos) {
     titulo = 'Tudo visto';
     texto = 'Nenhum evento esperando você.';
-  } else if (comFiltro) {
+  } else if (filtroTipo) {
     titulo = 'Nada com esse filtro';
     texto = cameraNome ? `Nenhum evento desse tipo em ${cameraNome}.` : 'Nenhum evento desse tipo nas câmeras.';
   } else if (cameraNome) {
@@ -356,39 +409,9 @@ function Vazio({
       <p className="max-w-[280px] text-sm text-muted-foreground">{texto}</p>
       {comFiltro && (
         <Button type="button" variant="outline" className="mt-2 h-10 text-sm touch:h-11" onClick={onLimpar}>
-          Limpar filtros
+          {filtroTipo || somenteNaoVistos ? 'Limpar filtros' : 'Ver todas as câmeras'}
         </Button>
       )}
     </div>
-  );
-}
-
-function Segmento({
-  ativo,
-  onClick,
-  disabled,
-  children,
-}: {
-  ativo: boolean;
-  onClick: () => void;
-  disabled?: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={ativo}
-      disabled={disabled}
-      onClick={onClick}
-      className={cn(
-        'flex h-10 min-w-0 items-center justify-center rounded-lg border px-3 text-sm font-semibold transition-colors touch:h-11',
-        ativo ? ITEM_ATIVO : 'border-transparent text-muted-foreground mouse:hover:bg-muted mouse:hover:text-foreground',
-        DESABILITADO,
-        FOCO,
-      )}
-    >
-      {children}
-    </button>
   );
 }

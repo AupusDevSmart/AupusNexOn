@@ -10,6 +10,7 @@ import { rotuloDia } from '../utils/agrupar-por-dia';
 import { rotuloTipo } from '../utils/eventos';
 import { paraBaixar } from '../utils/midia';
 import { PlayerVideo } from './PlayerVideo';
+import { QuadroVideo } from './QuadroVideo';
 import {
   TRECHO_S,
   deslocarTrecho,
@@ -73,11 +74,11 @@ export function HistoricoCamera({ camera, eventos, dias, dia, hora, onDia, onTre
 
   return (
     <>
-      <div className="relative aspect-video w-full overflow-hidden bg-black lg:max-h-[calc(100dvh-30rem)] lg:min-h-[240px]">
+      <QuadroVideo>
         <TelaTrecho fase={fase} url={urlMidia(trecho.url)} mensagem={trecho.mensagem} onTentar={trecho.tentarDeNovo} />
-      </div>
+      </QuadroVideo>
 
-      <div className="flex flex-col gap-2 border-t border-border px-3 py-2.5">
+      <div className="flex shrink-0 flex-col gap-2 border-t border-border px-3 py-2.5">
         <div className="flex flex-wrap items-center gap-2">
           <Select value={dia} onValueChange={onDia}>
             <SelectTrigger aria-label="Dia do histórico" className="h-9 w-[128px] touch:h-10">
@@ -93,7 +94,7 @@ export function HistoricoCamera({ camera, eventos, dias, dia, hora, onDia, onTre
           </Select>
           <div className="ml-auto flex items-center gap-1">
             <BotaoTrecho rotulo={`${TRECHO_S} s antes`} icone="anterior" desabilitado={!anterior} onClick={() => anterior && onTrecho(anterior.dia, anterior.hora)} />
-            <span className="min-w-[7rem] text-center text-[11px] tabular-nums text-muted-foreground" aria-live="polite">
+            <span className="min-w-[7rem] text-center text-xs tabular-nums text-muted-foreground" aria-live="polite">
               {hora ? rotuloTrecho(hora) : 'Escolha um horário'}
             </span>
             <BotaoTrecho
@@ -247,7 +248,7 @@ function LinhaDoTempo({
           />
         )}
       </button>
-      <div aria-hidden className="relative mt-1 h-3 text-[10px] tabular-nums text-muted-foreground">
+      <div aria-hidden className="relative mt-1 h-4 text-xs tabular-nums text-muted-foreground">
         {MARCAS_HORA.map((h) => (
           <span
             key={h}
