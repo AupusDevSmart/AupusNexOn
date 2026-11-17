@@ -42,6 +42,8 @@ export type NavigationLink = {
   hideForClient?: boolean;
   /** Só aparece para quem cadastra algum papel (NEXON-20: `capacidades.cadastra`). */
   requerCadastrarUsuario?: boolean;
+  /** Só para o administrador (papel canônico `admin`). */
+  requerAdmin?: boolean;
   icon: LucideIcon | React.FC<React.SVGProps<SVGSVGElement>>;
   label: string;
   /** Selo curto à direita do nome (ex.: "COA", "Admin"). */
@@ -235,6 +237,14 @@ export const navigationLinks: Array<NavigationLink> = [
         icon: SquareTerminal,
         label: "Logs MQTT",
         hint: "Logs gerados pelas regras MQTT",
+      },
+      {
+        key: "configuracoes-aparelhos",
+        requerAdmin: true,
+        path: "/configuracoes/aparelhos",
+        icon: Cpu,
+        label: "Aparelhos das câmeras",
+        hint: "Todos os Raspberry: versão, contato, atualizar pela internet",
       },
       {
         key: "configuracoes-notificacoes",

@@ -2,6 +2,7 @@ import { api } from '@/config/api';
 import type {
   EstadoComandoAparelho,
   Agente,
+  AgenteGlobal,
   Camera,
   CameraDescoberta,
   CameraEvento,
@@ -179,6 +180,12 @@ export const CamerasService = {
 
   async marcarTodosLidos(body: { unidade_id: string; camera_id?: string }): Promise<void> {
     await api.post('/cameras/eventos/lidos', body);
+  },
+
+  /** Todos os aparelhos de todas as usinas (só administrador). */
+  async todosAgentes(): Promise<AgenteGlobal[]> {
+    const { data } = await api.get('/cameras/agentes/todos');
+    return lista<AgenteGlobal>(data);
   },
 
   async agentes(unidadeId: string): Promise<Agente[]> {

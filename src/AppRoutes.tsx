@@ -145,6 +145,7 @@ const CadastroRegrasLogsPage = lazy(() =>
   import("@/pages/cadastros/regras-logs")
 );
 const ConfiguracoesNotificacoesPage = lazy(() => import("@/pages/configuracoes/notificacoes"));
+const ConfiguracoesAparelhosPage = lazy(() => import("@/pages/configuracoes/aparelhos"));
 
 const CadastroIotCatalogPage = lazy(() =>
   import("@/pages/cadastros/iot-catalog")
@@ -427,6 +428,14 @@ export const appRoutes = createBrowserRouter(comErroDeRota([
             <ConcessionariasPage />
           </FeatureWrapper>
           </RequireNotCliente>
+        ),
+      },
+      {
+        path: "configuracoes/aparelhos",
+        element: (
+          <Suspense fallback={<PaginaSkeleton />}>
+            <ConfiguracoesAparelhosPage />
+          </Suspense>
         ),
       },
       {
