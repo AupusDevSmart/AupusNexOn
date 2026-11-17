@@ -18,6 +18,11 @@ export const chavesCameras = {
    * (marcar lido, salvar config) não pode refazer o POST e pedir outro trecho ao aparelho.
    */
   historico: ['cameras-historico'] as const,
+  /**
+   * Instalador do Raspberry (NEXON-108) também fica fora de `['cameras']`: cada consulta gera uma
+   * chave de uso único da usina, e uma invalidação geral não pode trocar o comando já copiado.
+   */
+  instalador: (unidadeId: string | undefined, sessao: number) => ['cameras-instalador', unidadeId?.trim(), sessao] as const,
   pedidoTrecho: (cameraId?: string | null, inicio?: string | null) => ['cameras-historico', 'pedido', cameraId?.trim(), inicio] as const,
   trecho: (comandoId?: string | null) => ['cameras-historico', 'trecho', comandoId?.trim()] as const,
 };

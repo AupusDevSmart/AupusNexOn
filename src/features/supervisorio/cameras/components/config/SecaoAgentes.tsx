@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Check, Copy, HardDriveDownload, KeyRound, Loader2, Plus, Trash2 } from 'lucide-react';
+import { Check, Copy, Cpu, KeyRound, Link2, Loader2, Plus, Trash2 } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
 import {
@@ -26,11 +26,13 @@ import { agenteEmContato } from '../../utils/agentes';
 import { useUserStore } from '@/store/useUserStore';
 import { AcoesAparelho } from './AcoesAparelho';
 import { DialogAdicionarAparelho } from './DialogAdicionarAparelho';
-import { DialogInstalarAparelho } from './DialogInstalarAparelho';
+import { etapaGuardada } from '../../utils/assistente-raspberry';
+import { AssistenteRaspberry } from './AssistenteRaspberry';
 
 /**
- * Aparelhos (agentes: Raspberry ou mini-PC) da unidade. O caminho normal é parear pelo
- * código (NEXON-108); criar com token copiado à mão fica em "Instalação manual".
+ * Aparelhos (agentes: Raspberry ou mini-PC) da unidade (só `cadastroTecnico`: a aba já fica atrás
+ * disso no ConfigCamerasSheet). Aparelho novo: assistente "Adicionar Raspberry novo" (NEXON-108);
+ * um já instalado: "Adicionar aparelho" (vincular). Token copiado à mão fica em "Instalação manual".
  */
 export function SecaoAgentes({ unidadeId, unidadeNome }: { unidadeId: string; unidadeNome?: string }) {
   const agentes = useAgentesCameras(unidadeId);
@@ -85,26 +87,40 @@ export function SecaoAgentes({ unidadeId, unidadeNome }: { unidadeId: string; un
   };
 
   const lista = agentes.data ?? [];
+  // Lista vazia: o assistente vira o chamado principal (no meio), sem os botões do topo.
+  const vazia = agentes.isSuccess && lista.length === 0;
+  // Instalação em andamento nesta aba (o assistente guarda a etapa ao fechar).
+  const continuar = !instalando && (etapaGuardada(unidadeId) ?? 1) > 1;
 
   return (
     <div className="flex flex-col gap-3">
-      <DialogInstalarAparelho aberto={instalando} onFechar={() => setInstalando(false)} />
+      {instalando && (
+        <AssistenteRaspberry
+          key={unidadeId}
+          unidadeId={unidadeId}
+          unidadeNome={unidadeNome}
+          onFechar={() => setInstalando(false)}
+          onVincular={() => setAdicionando(true)}
+        />
+      )}
       {tokenNovo && <CaixaToken agente={tokenNovo.agente} token={tokenNovo.token} onFechar={() => setTokenNovo(null)} />}
 
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs text-muted-foreground">
           {lista.length} {lista.length === 1 ? 'aparelho' : 'aparelhos'}
         </p>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" size="sm" variant="outline" onClick={() => setInstalando(true)}>
-            <HardDriveDownload aria-hidden />
-            Instalar aparelho novo
-          </Button>
-          <Button type="button" size="sm" onClick={() => setAdicionando(true)}>
-            <Plus aria-hidden />
-            Adicionar aparelho
-          </Button>
-        </div>
+        {!vazia && (
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" size="sm" variant="outline" onClick={() => setAdicionando(true)}>
+              <Link2 aria-hidden />
+              Adicionar aparelho
+            </Button>
+            <Button type="button" size="sm" onClick={() => setInstalando(true)}>
+              <Plus aria-hidden />
+              {continuar ? 'Continuar Raspberry novo' : 'Adicionar Raspberry novo'}
+            </Button>
+          </div>
+        )}
       </div>
 
       {agentes.isPending ? (
@@ -116,9 +132,22 @@ export function SecaoAgentes({ unidadeId, unidadeNome }: { unidadeId: string; un
       ) : agentes.isError ? (
         <p className="text-[13px] text-muted-foreground">{mensagemErro(agentes.error, 'Não foi possível carregar os aparelhos.')}</p>
       ) : lista.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-border p-4 text-center text-[13px] text-muted-foreground">
-          Nenhum aparelho. Ligue o Raspberry (ou mini-PC) com a imagem do NexON na rede das câmeras e toque em Adicionar aparelho.
-        </p>
+        <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border px-4 py-8 text-center">
+          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--nx-verde)_14%,transparent)]">
+            <Cpu className="h-6 w-6 text-nexon-link-claro dark:text-nexon-verde" aria-hidden />
+          </span>
+          <div className="flex flex-col gap-1">
+            <p className="text-[15px] font-semibold">Nenhum Raspberry nesta usina ainda</p>
+            <p className="text-sm text-muted-foreground">O assistente leva você do cartão SD até as câmeras, passo a passo.</p>
+          </div>
+          <Button type="button" className="h-11 px-5" onClick={() => setInstalando(true)}>
+            <Plus aria-hidden />
+            {continuar ? 'Continuar Raspberry novo' : 'Adicionar Raspberry novo'}
+          </Button>
+          <Button type="button" variant="link" className="h-11 text-sm text-muted-foreground" onClick={() => setAdicionando(true)}>
+            Já está instalado? Vincular aparelho
+          </Button>
+        </div>
       ) : (
         <ul className="flex flex-col gap-2">
           {lista.map((a) => {
