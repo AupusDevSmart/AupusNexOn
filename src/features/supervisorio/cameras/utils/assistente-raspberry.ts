@@ -120,8 +120,9 @@ export function validadeTexto(iso: string, agora = new Date()): string {
 }
 
 /** Sistema de quem está na tela, para recomendar o jeito de gravar. */
-export function sistemaDoComputador(ua = typeof navigator !== 'undefined' ? navigator.userAgent : ''): 'mac-linux' | 'windows' | 'celular' {
+export function sistemaDoComputador(ua = typeof navigator !== 'undefined' ? navigator.userAgent : ''): 'mac' | 'linux' | 'windows' | 'celular' {
   if (/Android|iPhone|iPad|iPod|Mobile/i.test(ua)) return 'celular';
   if (/Windows/i.test(ua)) return 'windows';
-  return 'mac-linux';
+  if (/Linux|X11|CrOS|FreeBSD/i.test(ua)) return 'linux';
+  return 'mac';
 }
