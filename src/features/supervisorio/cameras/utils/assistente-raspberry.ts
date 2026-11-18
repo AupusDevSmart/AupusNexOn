@@ -3,11 +3,12 @@ import type { Agente } from '../types';
 /** Etapas do assistente "Adicionar Raspberry novo" (NEXON-108). */
 export const ETAPAS_ASSISTENTE = ['Gravar', 'Ligar', 'Conectar', 'Câmeras'] as const;
 export type EtapaAssistente = 1 | 2 | 3 | 4;
-export type JeitoGravar = 'pc' | 'pendrive' | 'cartao';
+/** pc = cabo USB-C; cartao = cartão no computador; pendrive = pendrive instalador (copia para o cartão); usb = pendrive como memória (sem microSD). */
+export type JeitoGravar = 'pc' | 'pendrive' | 'cartao' | 'usb';
 
 /** Quantas telas tem o guia de gravar de cada jeito (sem contar a tela de escolha). */
 export function totalPassosGravar(jeito: JeitoGravar): number {
-  return jeito === 'pc' ? 12 : jeito === 'pendrive' ? 8 : 9;
+  return jeito === 'pc' ? 12 : jeito === 'pendrive' ? 8 : jeito === 'usb' ? 8 : 9;
 }
 
 /** Depois disto sem aparecer, a etapa Conectar mostra "Não apareceu?". */
@@ -51,7 +52,7 @@ export function lerSessao(unidadeId: string, agora = Date.now()): SessaoAssisten
     if (agora - s.iniciadoEm > VALIDADE_SESSAO_MS) return null;
     return {
       etapa: s.etapa,
-      jeito: s.jeito === 'pendrive' || s.jeito === 'cartao' ? s.jeito : 'pc',
+      jeito: s.jeito === 'pendrive' || s.jeito === 'cartao' || s.jeito === 'usb' ? s.jeito : 'pc',
       iniciadoEm: s.iniciadoEm,
       idsIniciais: Array.isArray(s.idsIniciais) ? s.idsIniciais.filter((x): x is string => typeof x === 'string') : null,
       procurandoDesde: typeof s.procurandoDesde === 'number' ? s.procurandoDesde : null,
@@ -128,7 +129,7 @@ export function sistemaDoComputador(ua = typeof navigator !== 'undefined' ? navi
 }
 
 /** O comando do NexON com o jeito escolhido (o instalador pula o que não é desse jeito). */
-export function comandoComModo(comando: string, modo: 'cartao' | 'cabo', win: boolean): string {
+export function comandoComModo(comando: string, modo: 'cartao' | 'cabo' | 'pendrive', win: boolean): string {
   if (win) return comando.replace('-Command "', `-Command "$env:NEXON_MODO='${modo}'; `);
   return comando.replace(/\| bash$/, `| NEXON_MODO=${modo} bash`);
 }

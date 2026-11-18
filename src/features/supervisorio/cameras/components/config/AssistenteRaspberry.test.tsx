@@ -140,6 +140,21 @@ describe('AssistenteRaspberry', () => {
     expect(screen.getByRole('heading', { name: 'Ligue no local' })).toBeInTheDocument();
   });
 
+  it('pendrive como memória: pergunta primeiro, comando com o jeito pendrive e 8 telas', async () => {
+    const user = userEvent.setup();
+    abrir();
+    expect(screen.getByRole('radio', { name: /Cartão microSD \(recomendado\)/ })).toHaveAttribute('aria-checked', 'true');
+    await user.click(screen.getByRole('radio', { name: /Pendrive \(sem microSD\)/ }));
+    // Sem microSD não pergunta como gravar o cartão.
+    expect(screen.queryByRole('radiogroup', { name: 'Jeito de gravar' })).toBeNull();
+    await user.click(screen.getByRole('button', { name: /Começar/ }));
+    expect(screen.getByText('Passo 1 de 8')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Coloque o pendrive no computador' })).toBeInTheDocument();
+    for (let i = 0; i < 7; i++) await user.click(screen.getByRole('button', { name: /Feito, próximo/ }));
+    expect(screen.getByRole('heading', { name: 'Coloque o pendrive no Raspberry' })).toBeInTheDocument();
+    expect(lerSessao('u1')?.jeito).toBe('usb');
+  });
+
   it('avança pelas etapas, marca o checklist e guarda a etapa para reabrir', async () => {
     const user = userEvent.setup();
     gravarSessao('u1', { ...sessaoNova('pc'), etapa: 2 });
