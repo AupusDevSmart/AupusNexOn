@@ -126,3 +126,9 @@ export function sistemaDoComputador(ua = typeof navigator !== 'undefined' ? navi
   if (/Linux|X11|CrOS|FreeBSD/i.test(ua)) return 'linux';
   return 'mac';
 }
+
+/** O comando do NexON com o jeito escolhido (o instalador pula o que não é desse jeito). */
+export function comandoComModo(comando: string, modo: 'cartao' | 'cabo', win: boolean): string {
+  if (win) return comando.replace('-Command "', `-Command "$env:NEXON_MODO='${modo}'; `);
+  return comando.replace(/\| bash$/, `| NEXON_MODO=${modo} bash`);
+}
