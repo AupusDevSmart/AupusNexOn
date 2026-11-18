@@ -162,10 +162,10 @@ const JEITOS: { valor: JeitoGravar; titulo: string; detalhe: string; tempo: stri
     valor: 'cartao',
     titulo: 'Cartão no computador',
     detalhe: 'Entrada SD ou leitor USB',
-    tempo: '~5 min',
+    tempo: '2 a 5 min*',
     recomendado: true,
     porque:
-      'O computador grava direto no cartão, na velocidade do leitor (dezenas de MB por segundo). Precisa de entrada de cartão SD no computador ou de um leitor USB. A chave da usina vai junto: o Raspberry entra sozinho no NexON.',
+      'O computador grava direto no cartão. Precisa de entrada de cartão SD no computador ou de um leitor USB. O tempo depende do cartão: um cartão rápido (A2, U3 ou V30 escrito nele) leva 2 a 3 min; um cartão comum pode levar 15 min ou mais. A chave da usina vai junto: o Raspberry entra sozinho no NexON.',
     icone: <CreditCard aria-hidden />,
   },
   {
