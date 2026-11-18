@@ -103,7 +103,7 @@ export function AssistenteRaspberry({ unidadeId, unidadeNome, onFechar, onVincul
   const agentesDescoberta = useMemo(() => (etapa === 4 && novo ? [novo] : []), [etapa, novo]);
   const descobertas = useDescobertasAgentes(agentesDescoberta);
   const ipsCadastrados = new Set(camerasDele.map((c) => c.ip));
-  const pendentes = descobertas.itens.filter((d) => !ipsCadastrados.has(d.descoberta.ip));
+  const pendentes = descobertas.itens.filter((d) => d.descoberta.gravador || !ipsCadastrados.has(d.descoberta.ip));
 
   const irPara = (n: EtapaAssistente) => {
     atualizar(n === 3 && sessao.procurandoDesde === null ? { etapa: n, procurandoDesde: Date.now() } : { etapa: n });

@@ -279,6 +279,10 @@ export interface CameraDescoberta {
   /** `false` = câmera de fábrica, sem senha criada. */
   inicializada: boolean | null;
   visto_em: string;
+  /** NEXON-108: gravador (NVR/XVR/DVR): um IP com vários canais. */
+  gravador?: boolean;
+  /** Canais que o modelo sugere (ex.: NVD 1404 → 4). */
+  canais_sugeridos?: number | null;
 }
 
 export interface StreamCamera {

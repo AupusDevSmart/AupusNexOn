@@ -20,11 +20,12 @@ import { useCamerasUnidade } from '../../hooks/useCamerasUnidade';
 import { useAgentesCameras, useDescobertasAgentes } from '../../hooks/useConfigCameras';
 import { useEquipamentosUnidade } from '../../hooks/useEquipamentosPontos';
 import { CamerasService } from '../../services/cameras.service';
-import type { Camera } from '../../types';
+import type { Agente, Camera, CameraDescoberta } from '../../types';
 import { agenteEmContato } from '../../utils/agentes';
 import { ipPrivadoValido } from '../../utils/rede';
 import { mensagemErro } from '../../utils/erros';
 import { rotuloFabricante } from '../../utils/sensibilidade';
+import { DialogCanaisNvr } from './DialogCanaisNvr';
 import { FormCamera, type SugestaoCamera } from './FormCamera';
 
 type Edicao = Camera | 'nova' | { sugestao: SugestaoCamera } | null;
@@ -41,6 +42,7 @@ export function SecaoCameras({ unidadeId }: { unidadeId: string }) {
   const descobertas = useDescobertasAgentes(emContato);
   const [editando, setEditando] = useState<Edicao>(null);
   const [excluindo, setExcluindo] = useState<Camera | null>(null);
+  const [nvr, setNvr] = useState<{ agente: Agente; descoberta: CameraDescoberta } | null>(null);
   const queryClient = useQueryClient();
 
   const excluir = useMutation({
@@ -73,6 +75,9 @@ export function SecaoCameras({ unidadeId }: { unidadeId: string }) {
 
   return (
     <div className="flex flex-col gap-3">
+      {nvr && (
+        <DialogCanaisNvr unidadeId={unidadeId} agente={nvr.agente} descoberta={nvr.descoberta} cameras={lista} onFechar={() => setNvr(null)} />
+      )}
       {descobertas.itens.length > 0 && (
         <section aria-labelledby="cameras-encontradas" className="flex flex-col gap-2">
           <h3 id="cameras-encontradas" className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -89,7 +94,11 @@ export function SecaoCameras({ unidadeId }: { unidadeId: string }) {
                     <p className="truncate text-sm font-medium">
                       {titulo} · {d.ip}
                     </p>
-                    {d.inicializada === false ? (
+                    {d.gravador ? (
+                      <p className="text-xs text-muted-foreground">
+                        Gravador (NVR) · {lista.filter((c) => c.ip === d.ip).length} de {d.canais_sugeridos ?? '?'} canais no NexON
+                      </p>
+                    ) : d.inicializada === false ? (
                       <p className="text-xs text-amber-600 dark:text-amber-400">Nova de fábrica, sem senha: você cria a senha ao adicionar</p>
                     ) : (
                       <p className="truncate text-xs text-muted-foreground">Na rede do aparelho {agente.nome}</p>
@@ -99,10 +108,10 @@ export function SecaoCameras({ unidadeId }: { unidadeId: string }) {
                     type="button"
                     size="sm"
                     aria-label={`Adicionar ${titulo} ${d.ip}`}
-                    onClick={() => setEditando({ sugestao: { descoberta: d, agente } })}
+                    onClick={() => (d.gravador ? setNvr({ agente, descoberta: d }) : setEditando({ sugestao: { descoberta: d, agente } }))}
                   >
                     <Plus aria-hidden />
-                    Adicionar
+                    {d.gravador ? 'Adicionar canais' : 'Adicionar'}
                   </Button>
                 </li>
               );
