@@ -188,7 +188,7 @@ const JEITOS: { valor: JeitoGravar; titulo: string; detalhe: string; tempo: stri
   },
 ];
 
-export type SistemaPc = 'mac-linux' | 'windows';
+export type SistemaPc = 'mac' | 'linux' | 'windows';
 
 interface PassoGuiado {
   titulo: ReactNode;
@@ -199,88 +199,90 @@ interface PassoGuiado {
   extra?: ReactNode;
 }
 
-const LINHAS_INICIO = [
-  '==== PASSO 1 de 5: Imagem do NexON ====',
-  '✓ Baixada e conferida.',
-  '==== PASSO 2 de 5: Programa da Raspberry ====',
-  '✓ Pronto.',
-  '==== PASSO 3 de 5: Ligar o Raspberry no computador ====',
-];
+const ROTULO_SO: Record<SistemaPc, string> = { mac: 'Mac', linux: 'Linux', windows: 'Windows' };
 
-function passosComputador(
-  win: boolean,
-  comando: ReactNode,
-): PassoGuiado[] {
-  const app = win ? 'PowerShell' : 'Terminal';
+/** O que muda de um sistema para outro: nome do programa, teclas e como o Terminal escreve "certo". */
+function doSistema(so: SistemaPc) {
+  const win = so === 'windows';
+  const ok = (t: string) => (win ? t.replace(/^(\s*)✓ /, '$1OK: ') : t);
+  return {
+    win,
+    app: win ? 'PowerShell' : 'Terminal',
+    ok,
+    abrir: {
+      titulo: win ? 'Abra o PowerShell' : 'Abra o Terminal',
+      ajuda:
+        so === 'mac' ? (
+          <>
+            Aperte as duas teclas juntas, escreva <strong>Terminal</strong> e aperte Enter.
+          </>
+        ) : so === 'linux' ? (
+          'Aperte as três teclas juntas. Se não abrir, procure Terminal no menu de aplicativos.'
+        ) : (
+          <>
+            Aperte a tecla Windows, escreva <strong>PowerShell</strong> e aperte Enter.
+          </>
+        ),
+      teclas:
+        so === 'mac'
+          ? ['Cmd', '+', 'Espaço']
+          : so === 'linux'
+            ? ['Ctrl', '+', 'Alt', '+', 'T']
+            : ['Windows', 'depois', 'PowerShell', 'depois', 'Enter'],
+    },
+    colar: {
+      titulo: win ? 'Cole no PowerShell e aperte Enter' : 'Cole no Terminal e aperte Enter',
+      ajuda:
+        so === 'mac'
+          ? 'Se pedir a senha do Mac (Password), digite e aperte Enter. Ela não aparece enquanto você digita.'
+          : so === 'linux'
+            ? 'No Terminal do Linux, colar é Ctrl + Shift + V. Se pedir a senha (sudo), digite a do seu usuário e aperte Enter: ela não aparece.'
+            : 'Vai abrir uma janela pedindo permissão de administrador: clique em Sim. Continua numa janela nova.',
+      teclas:
+        so === 'mac'
+          ? ['Cmd', '+', 'V', 'depois', 'Enter']
+          : so === 'linux'
+            ? ['Ctrl', '+', 'Shift', '+', 'V', 'depois', 'Enter']
+            : ['Ctrl', '+', 'V', 'depois', 'Enter'],
+    },
+  };
+}
+
+function linhasInicio(ok: (t: string) => string) {
   return [
+    '==== PASSO 1 de 5: Imagem do NexON ====',
+    ok('✓ Baixada e conferida.'),
+    '==== PASSO 2 de 5: Programa da Raspberry ====',
+    ok('✓ Pronto.'),
+    '==== PASSO 3 de 5: Ligar o Raspberry no computador ====',
+  ];
+}
+
+/** Passos comuns aos dois jeitos com comando: abrir o Terminal, copiar, colar e esperar a primeira pergunta. */
+function passosComando(so: SistemaPc, comando: ReactNode, esperaTitulo: string): PassoGuiado[] {
+  const d = doSistema(so);
+  return [
+    { titulo: d.abrir.titulo, ajuda: d.abrir.ajuda, visual: <Teclas teclas={d.abrir.teclas} /> },
+    { titulo: 'Copie o comando', ajuda: 'Clique no botão verde.', visual: <Copy className="h-16 w-16 text-muted-foreground" aria-hidden />, extra: comando },
+    { titulo: d.colar.titulo, ajuda: d.colar.ajuda, visual: <Teclas teclas={d.colar.teclas} /> },
     {
-      titulo: 'Separe o Raspberry e um cabo USB-C',
-      ajuda: 'O cartão SD fica dentro do Raspberry. Use um cabo de celular. O cabo da fonte do Raspberry não serve.',
-      visual: <DesenhoRaspberry destaque={['sd', 'usbc']} />,
+      titulo: esperaTitulo,
+      ajuda: 'Na primeira vez pode levar alguns minutos (ele baixa o NexON).',
+      visual: <TelaTerminal sistema={so} titulo={d.app} linhas={linhasInicio(d.ok)} destaque=">> Tire TODOS os cabos do Raspberry (fonte, rede, tudo)." />,
     },
-    {
-      titulo: `Abra o ${app}`,
-      ajuda: win ? (
-        'Aperte a tecla Windows, escreva PowerShell e aperte Enter.'
-      ) : (
-        <>
-          Aperte as duas teclas juntas, escreva <strong>Terminal</strong> e aperte Enter. No Linux: Ctrl + Alt + T.
-        </>
-      ),
-      visual: win ? <Teclas teclas={['Windows', 'depois', 'PowerShell', 'depois', 'Enter']} /> : <Teclas teclas={['Cmd', '+', 'Espaço']} />,
-    },
-    {
-      titulo: 'Copie o comando',
-      ajuda: 'Clique no botão verde.',
-      visual: <Copy className="h-16 w-16 text-muted-foreground" aria-hidden />,
-      extra: comando,
-    },
-    {
-      titulo: `Cole no ${app} e aperte Enter`,
-      ajuda: win ? 'Vai abrir uma janela pedindo permissão: clique em Sim.' : 'Se pedir a senha do computador, digite e aperte Enter. Ela não aparece enquanto você digita.',
-      visual: <Teclas teclas={[win ? 'Ctrl' : 'Cmd', '+', 'V', 'depois', 'Enter']} />,
-    },
-    {
-      titulo: 'Espere aparecer esta frase',
-      ajuda: 'Na primeira vez pode levar alguns minutos. Não aperte nada ainda.',
-      visual: <TelaTerminal titulo={app} linhas={LINHAS_INICIO} destaque=">> Tire TODOS os cabos do Raspberry (fonte, rede, tudo)." />,
-    },
-    {
-      titulo: `Tire todos os cabos do Raspberry e aperte Enter no ${app}`,
-      ajuda: 'Fonte, rede, tudo. O Raspberry fica sem nenhum cabo.',
-      visual: <DesenhoRaspberry />,
-    },
-    {
-      titulo: 'Aperte e segure o botão',
-      ajuda: 'É o botãozinho ao lado da entrada USB-C. Não solte ainda.',
-      visual: <DesenhoRaspberry destaque={['botao']} dedo />,
-    },
-    {
-      titulo: 'Segurando o botão, ligue o cabo',
-      ajuda: 'Uma ponta no Raspberry, a outra no computador. Direto no computador, sem adaptador.',
-      visual: <DesenhoRaspberry destaque={['botao', 'cabo']} dedo />,
-    },
-    {
-      titulo: 'Conte até 3 e solte o botão',
-      visual: <ContarAteTres />,
-    },
-    {
-      titulo: 'Espere aparecer "Encontrei o cartão!"',
-      ajuda: 'Não precisa apertar nada: ele percebe sozinho. Se não aparecer em 3 minutos, o Terminal explica o que fazer.',
-      visual: (
-        <TelaTerminal
-          titulo={app}
-          linhas={['     … esperando o Raspberry (10 s)', '     … esperando o Raspberry (20 s)']}
-          destaque="✓ Encontrei o cartão! Pode soltar o botão (se ainda estiver segurando)."
-        />
-      ),
-    },
+  ];
+}
+
+function passosFinais(so: SistemaPc, minutos: string): PassoGuiado[] {
+  const d = doSistema(so);
+  return [
     {
       titulo: 'Escreva SIM e aperte Enter',
       ajuda: 'Isso apaga o cartão e grava o NexON nele.',
       visual: (
         <TelaTerminal
-          titulo={app}
+          sistema={so}
+          titulo={d.app}
           linhas={['  Achei o cartão SD do Raspberry (32 GB).', '  Tudo o que estiver nele será apagado.']}
           destaque="  >> Escreva SIM e aperte Enter para gravar: SIM"
         />
@@ -288,11 +290,17 @@ function passosComputador(
     },
     {
       titulo: 'Espere a faixa verde "DEU TUDO CERTO!"',
-      ajuda: 'A barra enche de 0 a 100% (5 a 15 minutos). Se pedir a senha do computador, digite: ela não aparece. Se aparecer a faixa vermelha "DEU ERRO", rode o comando de novo.',
+      ajuda: `A barra enche de 0 a 100% (${minutos}). Se aparecer a faixa vermelha "DEU ERRO", rode o comando de novo.`,
       visual: (
         <TelaTerminal
-          titulo={app}
-          linhas={['==== PASSO 4 de 5: Gravando o NexON no cartão ====', '  [##############################] 100%  gravado em 7 min', '  ✓ NexON gravado e conferido no cartão.', '  ✓ Chave da usina gravada.']}
+          sistema={so}
+          titulo={d.app}
+          linhas={[
+            '==== PASSO 4 de 5: Gravando o NexON no cartão ====',
+            '  [##############################] 100%  gravado em 4 min',
+            d.ok('  ✓ NexON gravado e conferido no cartão.'),
+            d.ok('  ✓ Chave da usina gravada.'),
+          ]}
           destaque="   DEU TUDO CERTO! Pode tirar o cabo."
         />
       ),
@@ -300,36 +308,52 @@ function passosComputador(
   ];
 }
 
-function passosCartao(win: boolean, comando: ReactNode): PassoGuiado[] {
-  const app = win ? 'PowerShell' : 'Terminal';
+function passosComputador(so: SistemaPc, comando: ReactNode): PassoGuiado[] {
+  const d = doSistema(so);
+  return [
+    {
+      titulo: 'Separe o Raspberry e um cabo USB-C',
+      ajuda: 'O cartão SD fica dentro do Raspberry. Use um cabo de celular. O cabo da fonte do Raspberry não serve.',
+      visual: <DesenhoRaspberry destaque={['sd', 'usbc']} />,
+    },
+    ...passosComando(so, comando, 'Espere aparecer esta frase'),
+    {
+      titulo: `Tire todos os cabos do Raspberry e aperte Enter no ${d.app}`,
+      ajuda: 'Fonte, rede, tudo. O Raspberry fica sem nenhum cabo.',
+      visual: <DesenhoRaspberry />,
+    },
+    { titulo: 'Aperte e segure o botão', ajuda: 'É o botãozinho ao lado da entrada USB-C. Não solte ainda.', visual: <DesenhoRaspberry destaque={['botao']} dedo /> },
+    {
+      titulo: 'Segurando o botão, ligue o cabo',
+      ajuda: 'Uma ponta no Raspberry, a outra no computador. Direto no computador, sem adaptador.',
+      visual: <DesenhoRaspberry destaque={['botao', 'cabo']} dedo />,
+    },
+    { titulo: 'Conte até 3 e solte o botão', visual: <ContarAteTres /> },
+    {
+      titulo: 'Espere aparecer "Encontrei o cartão!"',
+      ajuda: 'Não precisa apertar nada: ele percebe sozinho. Se não aparecer em 3 minutos, o Terminal explica o que fazer.',
+      visual: (
+        <TelaTerminal
+          sistema={so}
+          titulo={d.app}
+          linhas={['     … esperando o Raspberry (10 s)', '     … esperando o Raspberry (20 s)']}
+          destaque={d.ok('  ✓ Encontrei o cartão! Pode soltar o botão.')}
+        />
+      ),
+    },
+    ...passosFinais(so, '10 a 30 minutos pelo cabo'),
+  ];
+}
+
+function passosCartao(so: SistemaPc, comando: ReactNode): PassoGuiado[] {
+  const d = doSistema(so);
   return [
     {
       titulo: 'Tire o cartão SD do Raspberry',
       ajuda: 'Ele fica embaixo da placa, na ponta. Puxe com cuidado. O Raspberry precisa estar desligado.',
       visual: <DesenhoRaspberry destaque={['sd']} />,
     },
-    {
-      titulo: `Abra o ${app}`,
-      ajuda: win ? (
-        'Aperte a tecla Windows, escreva PowerShell e aperte Enter.'
-      ) : (
-        <>
-          Aperte as duas teclas juntas, escreva <strong>Terminal</strong> e aperte Enter. No Linux: Ctrl + Alt + T.
-        </>
-      ),
-      visual: win ? <Teclas teclas={['Windows', 'depois', 'PowerShell', 'depois', 'Enter']} /> : <Teclas teclas={['Cmd', '+', 'Espaço']} />,
-    },
-    { titulo: 'Copie o comando', ajuda: 'Clique no botão verde.', visual: <Copy className="h-16 w-16 text-muted-foreground" aria-hidden />, extra: comando },
-    {
-      titulo: `Cole no ${app} e aperte Enter`,
-      ajuda: win ? 'Vai abrir uma janela pedindo permissão: clique em Sim.' : 'Se pedir a senha do computador, digite e aperte Enter. Ela não aparece enquanto você digita.',
-      visual: <Teclas teclas={[win ? 'Ctrl' : 'Cmd', '+', 'V', 'depois', 'Enter']} />,
-    },
-    {
-      titulo: 'Espere aparecer esta frase e aperte Enter',
-      ajuda: 'Na primeira vez pode levar alguns minutos (ele baixa o NexON).',
-      visual: <TelaTerminal titulo={app} linhas={LINHAS_INICIO} destaque=">> Tire TODOS os cabos do Raspberry (fonte, rede, tudo)." />,
-    },
+    ...passosComando(so, comando, 'Espere aparecer esta frase e aperte Enter'),
     {
       titulo: 'Coloque o cartão no computador',
       ajuda: 'Na entrada de cartão SD ou num leitor USB. Se for microSD, use o adaptador. Não precisa ligar o Raspberry.',
@@ -338,40 +362,15 @@ function passosCartao(win: boolean, comando: ReactNode): PassoGuiado[] {
     {
       titulo: 'Espere ele achar o cartão',
       ajuda: 'Não precisa apertar nada. Leva alguns segundos.',
-      visual: <TelaTerminal titulo={app} linhas={['     … esperando o Raspberry (4 s)']} destaque="✓ Encontrei o cartão!" />,
+      visual: <TelaTerminal sistema={so} titulo={d.app} linhas={['     … esperando o Raspberry (4 s)']} destaque={d.ok('  ✓ Encontrei o cartão!')} />,
     },
-    {
-      titulo: 'Escreva SIM e aperte Enter',
-      ajuda: 'Isso apaga o cartão e grava o NexON nele.',
-      visual: (
-        <TelaTerminal
-          titulo={app}
-          linhas={['  Achei o cartão SD do Raspberry (32 GB).', '  Tudo o que estiver nele será apagado.']}
-          destaque="  >> Escreva SIM e aperte Enter para gravar: SIM"
-        />
-      ),
-    },
-    {
-      titulo: 'Espere a faixa verde "DEU TUDO CERTO!"',
-      ajuda: 'A barra enche de 0 a 100% (uns 5 minutos). Se aparecer a faixa vermelha "DEU ERRO", rode o comando de novo.',
-      visual: (
-        <TelaTerminal
-          titulo={app}
-          linhas={['  [##############################] 100%  gravado em 4 min', '  ✓ NexON gravado e conferido no cartão.', '  ✓ Chave da usina gravada.']}
-          destaque="   DEU TUDO CERTO! Pode tirar o cabo."
-        />
-      ),
-    },
+    ...passosFinais(so, 'uns 5 minutos'),
     {
       titulo: 'Tire o cartão do computador',
-      ajuda: 'No Mac, se aparecer aviso de disco não ejetado, pode ignorar: ele já foi ejetado.',
+      ajuda: so === 'mac' ? 'Se aparecer aviso de disco não ejetado, pode ignorar: ele já foi ejetado.' : 'Ele já foi desligado do computador: pode tirar.',
       visual: <CreditCard className="h-16 w-16 text-muted-foreground" aria-hidden />,
     },
-    {
-      titulo: 'Coloque o cartão de volta no Raspberry',
-      ajuda: 'Pronto. Agora é só levar o Raspberry para o lugar dele.',
-      visual: <DesenhoRaspberry destaque={['sd']} />,
-    },
+    { titulo: 'Coloque o cartão de volta no Raspberry', ajuda: 'Pronto. Agora é só levar o Raspberry para o lugar dele.', visual: <DesenhoRaspberry destaque={['sd']} /> },
   ];
 }
 
@@ -436,7 +435,7 @@ export function EtapaGravar({
   so: SistemaPc;
   onSo: (s: SistemaPc) => void;
   subpasso: number;
-  sistema: 'mac-linux' | 'windows' | 'celular';
+  sistema: SistemaPc | 'celular';
   instalador: InstaladorAparelho | undefined;
   carregando: boolean;
   erro: unknown;
@@ -518,8 +517,8 @@ export function EtapaGravar({
         {pc && (
           <div className="flex flex-col gap-2">
             <p className="text-sm font-medium">Qual é o computador?</p>
-            <div role="radiogroup" aria-label="Sistema do computador" className="grid grid-cols-2 gap-1 rounded-xl bg-muted p-1">
-              {(['mac-linux', 'windows'] as const).map((v) => (
+            <div role="radiogroup" aria-label="Sistema do computador" className="grid grid-cols-3 gap-1 rounded-xl bg-muted p-1">
+              {(['mac', 'linux', 'windows'] as const).map((v) => (
                 <button
                   key={v}
                   type="button"
@@ -531,7 +530,8 @@ export function EtapaGravar({
                     so === v ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground mouse:hover:text-foreground',
                   )}
                 >
-                  {v === 'windows' ? 'Windows' : 'Mac ou Linux'}
+                  {ROTULO_SO[v]}
+                  {sistema === v && <span className="block text-[11px] font-normal text-muted-foreground">este computador</span>}
                 </button>
               ))}
             </div>
@@ -584,7 +584,7 @@ export function EtapaGravar({
     pecaComando
   );
 
-  const passos = jeito === 'cartao' ? passosCartao(win, pecaComando) : jeito === 'pc' ? passosComputador(win, pecaComando) : passosImagem(baixar);
+  const passos = jeito === 'cartao' ? passosCartao(so, pecaComando) : jeito === 'pc' ? passosComputador(so, pecaComando) : passosImagem(baixar);
   const i = Math.min(subpasso, passos.length) - 1;
   const p = passos[i];
 
@@ -613,7 +613,7 @@ export function EtapaGravar({
           <ul className="flex flex-col gap-3">
             <Dica titulo="Não apareceu o Raspberry">Tire o cabo, segure o botão antes de ligar o cabo de novo e só solte depois de 3 segundos.</Dica>
             <Dica titulo="Continua sem aparecer">Troque o cabo: alguns só carregam e não passam dados. Ligue direto no computador.</Dica>
-            {!win && (
+            {so === 'mac' && (
               <Dica titulo="Pediu o Homebrew (Mac)">
                 <div className="mt-1">
                   <CaixaComando texto={HOMEBREW} rotulo="Copiar Homebrew" />

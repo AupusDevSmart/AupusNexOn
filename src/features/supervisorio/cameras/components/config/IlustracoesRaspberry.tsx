@@ -132,23 +132,59 @@ export function Teclas({ teclas }: { teclas: (string | '+' | 'depois')[] }) {
   );
 }
 
-/** Janela do Terminal com as linhas que a pessoa vai ver; a `destaque` fica em verde. */
-export function TelaTerminal({ linhas, destaque, titulo = 'Terminal' }: { linhas: string[]; destaque?: string; titulo?: string }) {
+/**
+ * Janela do Terminal como ela é em cada sistema: Mac (Terminal, botões coloridos à esquerda), Linux
+ * (Terminal do Ubuntu, roxo, botões à direita) e Windows (PowerShell, azul, botões à direita).
+ * A linha `destaque` fica em verde: é a que a pessoa deve procurar.
+ */
+export function TelaTerminal({
+  linhas,
+  destaque,
+  titulo = 'Terminal',
+  sistema = 'mac',
+}: {
+  linhas: string[];
+  destaque?: string;
+  titulo?: string;
+  sistema?: 'mac' | 'linux' | 'windows';
+}) {
+  const estilo =
+    sistema === 'windows'
+      ? { fundo: '#012456', barra: '#ffffff', textoBarra: 'text-zinc-700', texto: 'text-zinc-100', verde: 'text-[#7CFC00]', fonte: "font-['Consolas',monospace]" }
+      : sistema === 'linux'
+        ? { fundo: '#300a24', barra: '#2c2c2c', textoBarra: 'text-zinc-200', texto: 'text-zinc-100', verde: 'text-[#8ae234]', fonte: "font-['Ubuntu_Mono',monospace]" }
+        : { fundo: '#0d0d12', barra: '#26262b', textoBarra: 'text-zinc-400', texto: 'text-zinc-300', verde: 'text-[#9fdc86]', fonte: 'font-mono' };
+  const nomeJanela = sistema === 'windows' ? 'Administrador: Windows PowerShell' : sistema === 'linux' ? 'usuario@computador: ~' : titulo;
   return (
-    <div className="w-full max-w-[460px] overflow-hidden rounded-xl border border-border bg-[#0d0d12] text-left shadow-md" aria-hidden>
-      <div className="flex items-center gap-1.5 border-b border-white/10 px-3 py-2">
-        <span className="h-3 w-3 rounded-full bg-[#ff5f57]" />
-        <span className="h-3 w-3 rounded-full bg-[#febc2e]" />
-        <span className="h-3 w-3 rounded-full bg-[#28c840]" />
-        <span className="ml-2 text-xs text-zinc-400">{titulo}</span>
+    <div className="w-full max-w-[460px] overflow-hidden rounded-lg border border-border text-left shadow-md" style={{ background: estilo.fundo }} aria-hidden>
+      <div className="flex items-center gap-1.5 px-3 py-1.5" style={{ background: estilo.barra }}>
+        {sistema === 'mac' && (
+          <>
+            <span className="h-3 w-3 rounded-full bg-[#ff5f57]" />
+            <span className="h-3 w-3 rounded-full bg-[#febc2e]" />
+            <span className="h-3 w-3 rounded-full bg-[#28c840]" />
+          </>
+        )}
+        <span className={cn('flex-1 truncate text-xs', estilo.textoBarra, sistema === 'mac' ? 'ml-2' : sistema === 'linux' ? 'text-center font-semibold' : '')}>
+          {nomeJanela}
+        </span>
+        {sistema === 'linux' && (
+          <span className="flex gap-1.5">
+            <span className="h-3.5 w-3.5 rounded-full bg-zinc-500" />
+            <span className="h-3.5 w-3.5 rounded-full bg-zinc-500" />
+            <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#e95420] text-[9px] leading-none text-white">×</span>
+          </span>
+        )}
+        {sistema === 'windows' && <span className="flex gap-3 text-xs text-zinc-600">{'─  □  ✕'}</span>}
       </div>
-      <pre className="whitespace-pre-wrap break-words px-3 py-3 font-mono text-[13px] leading-relaxed text-zinc-300">
+      <pre className={cn('whitespace-pre-wrap break-words px-3 py-3 text-[13px] leading-relaxed', estilo.texto, estilo.fonte)}>
+        {sistema === 'windows' && <span className="block text-zinc-300">PS C:\Users\usuario&gt;</span>}
         {linhas.map((l, i) => (
-          <span key={i} className={cn('block', l === destaque && 'font-bold text-[#9fdc86]')}>
+          <span key={i} className={cn('block', l === destaque && cn('font-bold', estilo.verde))}>
             {l}
           </span>
         ))}
-        {destaque && !linhas.includes(destaque) && <span className="block font-bold text-[#9fdc86]">{destaque}</span>}
+        {destaque && !linhas.includes(destaque) && <span className={cn('block font-bold', estilo.verde)}>{destaque}</span>}
         <span className="inline-block h-4 w-2 translate-y-0.5 bg-zinc-300 motion-safe:animate-pulse" />
       </pre>
     </div>

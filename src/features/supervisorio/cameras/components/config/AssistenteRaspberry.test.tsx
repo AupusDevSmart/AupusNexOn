@@ -96,7 +96,17 @@ describe('AssistenteRaspberry', () => {
 
     // Volta à escolha e troca para Windows: comando do PowerShell.
     for (let i = 0; i < 3; i++) await user.click(screen.getByRole('button', { name: 'Voltar' }));
-    await user.click(screen.getByRole('radio', { name: 'Windows' }));
+    // Linux: teclas do Linux (Ctrl + Alt + T e colar com Ctrl + Shift + V).
+    await user.click(screen.getByRole('radio', { name: /^Linux/ }));
+    await user.click(screen.getByRole('button', { name: /Começar/ }));
+    await user.click(screen.getByRole('button', { name: /Feito, próximo/ }));
+    expect(screen.getByRole('heading', { name: 'Abra o Terminal' })).toBeInTheDocument();
+    expect(screen.getByText('Alt')).toBeInTheDocument();
+    expect(screen.queryByText('Cmd')).toBeNull();
+    for (let i = 0; i < 2; i++) await user.click(screen.getByRole('button', { name: /Feito, próximo/ }));
+    expect(screen.getByText(/Ctrl \+ Shift \+ V/)).toBeInTheDocument();
+    for (let i = 0; i < 4; i++) await user.click(screen.getByRole('button', { name: 'Voltar' }));
+    await user.click(screen.getByRole('radio', { name: /^Windows/ }));
     await user.click(screen.getByRole('button', { name: /Começar/ }));
     await user.click(screen.getByRole('button', { name: /Feito, próximo/ }));
     expect(screen.getByRole('heading', { name: 'Abra o PowerShell' })).toBeInTheDocument();

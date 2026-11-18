@@ -48,7 +48,7 @@ export function AssistenteRaspberry({ unidadeId, unidadeNome, onFechar, onVincul
     () => lerSessao(unidadeId) ?? sessaoNova('cartao'),
   );
   const { etapa, subpasso } = sessao;
-  const [so, setSo] = useState<SistemaPc>(sistema === 'windows' ? 'windows' : 'mac-linux');
+  const [so, setSo] = useState<SistemaPc>(sistema === 'celular' ? 'mac' : sistema);
   const atualizar = (m: Partial<SessaoAssistente>) => setSessao((s) => ({ ...s, ...m }));
 
   useEffect(() => {
