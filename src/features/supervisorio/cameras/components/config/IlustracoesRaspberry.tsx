@@ -152,8 +152,8 @@ export function TelaTerminal({
     sistema === 'windows'
       ? { fundo: '#012456', barra: '#ffffff', textoBarra: 'text-zinc-700', texto: 'text-zinc-100', verde: 'text-[#7CFC00]', fonte: "font-['Consolas',monospace]" }
       : sistema === 'linux'
-        ? { fundo: '#300a24', barra: '#2c2c2c', textoBarra: 'text-zinc-200', texto: 'text-zinc-100', verde: 'text-[#8ae234]', fonte: "font-['Ubuntu_Mono',monospace]" }
-        : { fundo: '#0d0d12', barra: '#26262b', textoBarra: 'text-zinc-400', texto: 'text-zinc-300', verde: 'text-[#9fdc86]', fonte: 'font-mono' };
+        ? { fundo: '#300a24', barra: '#2c2c2c', textoBarra: 'text-zinc-200', texto: 'text-zinc-100', verde: 'text-[#70C04B]', fonte: "font-['Ubuntu_Mono',monospace]" }
+        : { fundo: '#0d0d12', barra: '#26262b', textoBarra: 'text-zinc-400', texto: 'text-zinc-300', verde: 'text-[#70C04B]', fonte: 'font-mono' };
   const nomeJanela = sistema === 'windows' ? 'Administrador: Windows PowerShell' : sistema === 'linux' ? 'usuario@computador: ~' : titulo;
   return (
     <div className="w-full max-w-[460px] overflow-hidden rounded-lg border border-border text-left shadow-md" style={{ background: estilo.fundo }} aria-hidden>
