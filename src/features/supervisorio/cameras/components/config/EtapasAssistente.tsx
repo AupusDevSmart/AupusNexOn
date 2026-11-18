@@ -183,6 +183,12 @@ const COMPRAS: { item: string; qual: string; porque: string; opcional?: boolean 
     porque: 'O Raspberry fica no mesmo switch das câmeras.',
   },
   {
+    item: 'Pendrive USB 3',
+    qual: '32 ou 64 GB de marca. Ex.: SanDisk Ultra Fit, Kingston DataTraveler.',
+    porque: 'Só se for usar pendrive no lugar do cartão microSD.',
+    opcional: true,
+  },
+  {
     item: 'Leitor de cartão USB 3',
     qual: 'Só se o computador não tiver entrada de cartão SD.',
     porque: 'É por ele que o computador grava o cartão (o jeito mais rápido).',
@@ -215,6 +221,24 @@ function OQueComprar() {
 
 /* ------------------------------------------------------------------ 1 · Gravar */
 
+/** Onde o NexON fica no Raspberry (primeira pergunta). */
+const MEMORIAS: { valor: 'cartao' | 'usb'; titulo: string; detalhe: string; porque: string; icone: ReactNode }[] = [
+  {
+    valor: 'cartao',
+    titulo: 'Cartão microSD (recomendado)',
+    detalhe: 'Fica dentro do Raspberry',
+    porque: 'O cartão fica preso dentro do Raspberry, não solta e liga com qualquer fonte. Use um cartão A2, U3 ou V30.',
+    icone: <CreditCard aria-hidden />,
+  },
+  {
+    valor: 'usb',
+    titulo: 'Pendrive (sem microSD)',
+    detalhe: 'O Raspberry liga pelo pendrive',
+    porque: 'Bom quando não tem cartão microSD. O pendrive fica numa porta USB do Raspberry; precisa da fonte oficial 27 W e de um pendrive USB 3 de marca (32 GB ou mais).',
+    icone: <Usb aria-hidden />,
+  },
+];
+
 /** Jeitos de gravar, do mais rápido ao mais lento. `porque` aparece no tooltip e embaixo do escolhido. */
 const JEITOS: { valor: JeitoGravar; titulo: string; detalhe: string; tempo: string; recomendado?: boolean; porque: string; icone: ReactNode }[] = [
   {
@@ -238,8 +262,8 @@ const JEITOS: { valor: JeitoGravar; titulo: string; detalhe: string; tempo: stri
   },
   {
     valor: 'pendrive',
-    titulo: 'Pendrive',
-    detalhe: 'Computador longe do Raspberry',
+    titulo: 'Pendrive instalador',
+    detalhe: 'Copia para o cartão no local',
     tempo: '~25 min',
     porque:
       'Você grava um pendrive com o Raspberry Pi Imager e, no local, o Raspberry copia do pendrive para o cartão e desliga. Use quando o computador não está perto do Raspberry. O vínculo com a usina é feito depois, pelo código.',
@@ -344,7 +368,7 @@ function passosComando(so: SistemaPc, comando: ReactNode, esperaTitulo: string, 
   ];
 }
 
-function passosFinais(so: SistemaPc, minutos: string, gravando: string): PassoGuiado[] {
+function passosFinais(so: SistemaPc, minutos: string, gravando: string, tirar = 'o cabo'): PassoGuiado[] {
   const d = doSistema(so);
   return [
     {
@@ -372,7 +396,7 @@ function passosFinais(so: SistemaPc, minutos: string, gravando: string): PassoGu
             d.ok('  ✓ NexON gravado e conferido no cartão.'),
             d.ok('  ✓ Chave da usina gravada.'),
           ]}
-          destaque="   DEU TUDO CERTO! Pode tirar o cabo."
+          destaque={`   DEU TUDO CERTO! Pode tirar ${tirar}.`}
         />
       ),
     },
@@ -445,13 +469,51 @@ function passosCartao(so: SistemaPc, comando: ReactNode): PassoGuiado[] {
         />
       ),
     },
-    passosFinais(so, 'uns 5 minutos', '3/4')[1],
+    passosFinais(so, 'uns 5 minutos', '3/4', 'o cartão')[1],
     {
       titulo: 'Tire o cartão do computador',
       ajuda: 'Só depois da faixa verde. Ele já foi desligado do computador: pode tirar.',
       visual: <CreditCard className="h-16 w-16 text-muted-foreground" aria-hidden />,
     },
     { titulo: 'Coloque o cartão de volta no Raspberry', ajuda: 'Pronto. Agora é só levar o Raspberry para o lugar dele.', visual: <DesenhoRaspberry destaque={['sd']} /> },
+  ];
+}
+
+function passosUsb(so: SistemaPc, comando: ReactNode): PassoGuiado[] {
+  const d = doSistema(so);
+  const [abrir, copiar, colar] = passosComando(so, comando, '', 'cartao');
+  return [
+    {
+      titulo: 'Coloque o pendrive no computador',
+      ajuda: 'Pendrive USB 3 de 32 GB ou mais. Tudo nele será apagado. Deixe ele lá até o fim.',
+      visual: <Usb className="h-16 w-16 text-muted-foreground" aria-hidden />,
+    },
+    abrir,
+    copiar,
+    colar,
+    {
+      titulo: 'Confira o pendrive e escreva SIM',
+      ajuda: 'Ele acha o pendrive sozinho. Se tiver mais de um, ele pergunta qual é. SIM apaga o pendrive e grava o NexON.',
+      visual: (
+        <TelaTerminal
+          sistema={so}
+          titulo={d.app}
+          linhas={[' 2/4  Achar o pendrive no computador', d.ok('  ✓ Encontrei o pendrive!'), '  Achei o pendrive do Raspberry (32 GB).', '  Tudo o que estiver nele será apagado.']}
+          destaque="  >> Escreva SIM e aperte Enter para gravar: SIM"
+        />
+      ),
+    },
+    passosFinais(so, 'uns 5 minutos', '3/4', 'o pendrive')[1],
+    {
+      titulo: 'Tire o pendrive do computador',
+      ajuda: 'Só depois da faixa verde. Ele já foi desligado do computador: pode tirar.',
+      visual: <Usb className="h-16 w-16 text-muted-foreground" aria-hidden />,
+    },
+    {
+      titulo: 'Coloque o pendrive no Raspberry',
+      ajuda: 'Numa porta USB azul. Tire o cartão microSD de dentro, se tiver: o Raspberry liga pelo pendrive. Use a fonte oficial 27 W.',
+      visual: <DesenhoRaspberry destaque={['rede']} />,
+    },
   ];
 }
 
@@ -529,13 +591,39 @@ export function EtapaGravar({
   if (subpasso === 0) {
     return (
       <div className="flex flex-col gap-6">
-        <TituloEtapa id={tituloId}>Como vai gravar?</TituloEtapa>
+        <TituloEtapa id={tituloId}>Onde o NexON vai ficar?</TituloEtapa>
+        <div role="radiogroup" aria-label="Memória do Raspberry" className="grid gap-2 sm:grid-cols-2 sm:gap-3">
+          {MEMORIAS.map((m) => {
+            const marcado = (jeito === 'usb') === (m.valor === 'usb');
+            return (
+              <button
+                key={m.valor}
+                type="button"
+                role="radio"
+                aria-checked={marcado}
+                onClick={() => onJeito(m.valor === 'usb' ? 'usb' : jeito === 'usb' ? 'cartao' : jeito)}
+                className={cn(
+                  'flex min-h-[72px] items-center gap-3 rounded-xl border-2 p-3 text-left transition-colors',
+                  marcado ? cn('border-nexon-verde', CAIXA_VERDE) : 'border-border mouse:hover:border-muted-foreground',
+                )}
+              >
+                <span className={cn('shrink-0 [&_svg]:h-7 [&_svg]:w-7', marcado ? VERDE_TEXTO : 'text-muted-foreground')}>{m.icone}</span>
+                <span className="flex min-w-0 flex-col gap-0.5">
+                  <span className="text-sm font-semibold leading-tight">{m.titulo}</span>
+                  <span className="text-xs leading-tight text-muted-foreground">{m.detalhe}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        {jeito !== 'usb' && <p className="-mb-3 text-sm font-medium">Como gravar o cartão?</p>}
         {sistema === 'celular' && (
           <p className={cn('flex items-center gap-2 rounded-xl p-3 text-sm', CAIXA_AVISO)}>
             <Laptop className="h-4 w-4 shrink-0" aria-hidden />
             Abra no computador para gravar.
           </p>
         )}
+        {jeito !== 'usb' && (
         <TooltipProvider delayDuration={150}>
         <div role="radiogroup" aria-label="Jeito de gravar" className="grid gap-2 sm:grid-cols-3 sm:gap-3">
           {JEITOS.map((j) => {
@@ -583,8 +671,9 @@ export function EtapaGravar({
           })}
         </div>
         </TooltipProvider>
+        )}
         {(() => {
-          const j = JEITOS.find((x) => x.valor === jeito);
+          const j = jeito === 'usb' ? MEMORIAS[1] : JEITOS.find((x) => x.valor === jeito);
           return j ? (
             <p className="flex gap-2 rounded-xl bg-muted p-3 text-sm text-muted-foreground">
               <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
@@ -627,7 +716,10 @@ export function EtapaGravar({
   }
 
   const comandoBase = win ? instalador?.comando_windows : instalador?.comando;
-  const comandoTexto = comandoBase && jeito !== 'pendrive' ? comandoComModo(comandoBase, jeito === 'cartao' ? 'cartao' : 'cabo', win) : comandoBase;
+  const comandoTexto =
+    comandoBase && jeito !== 'pendrive'
+      ? comandoComModo(comandoBase, jeito === 'cartao' ? 'cartao' : jeito === 'usb' ? 'pendrive' : 'cabo', win)
+      : comandoBase;
   const vencido = instalador ? Date.parse(instalador.valido_ate) <= Date.now() : false;
   const pecaComando = carregando ? (
     <div role="status" className="flex h-14 items-center justify-center gap-2 rounded-xl bg-background text-sm text-muted-foreground">
@@ -669,7 +761,14 @@ export function EtapaGravar({
     pecaComando
   );
 
-  const passos = jeito === 'cartao' ? passosCartao(so, pecaComando) : jeito === 'pc' ? passosComputador(so, pecaComando) : passosImagem(baixar);
+  const passos =
+    jeito === 'cartao'
+      ? passosCartao(so, pecaComando)
+      : jeito === 'usb'
+        ? passosUsb(so, pecaComando)
+        : jeito === 'pc'
+          ? passosComputador(so, pecaComando)
+          : passosImagem(baixar);
   const i = Math.min(subpasso, passos.length) - 1;
   const p = passos[i];
 
