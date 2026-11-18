@@ -24,7 +24,7 @@ import { Button } from '@/components/ui/button';
 import { Expandir } from '@/components/ui/expandir';
 import { cn } from '@/lib/utils';
 import type { Agente, Camera, InstaladorAparelho } from '../../types';
-import { duracaoTexto, validadeTexto, type JeitoGravar } from '../../utils/assistente-raspberry';
+import { comandoComModo, duracaoTexto, validadeTexto, type JeitoGravar } from '../../utils/assistente-raspberry';
 import { mensagemErro } from '../../utils/erros';
 import { rotuloFabricante } from '../../utils/sensibilidade';
 import type { DescobertaDoAgente } from '../../hooks/useConfigCameras';
@@ -248,18 +248,23 @@ function doSistema(so: SistemaPc) {
   };
 }
 
-function linhasInicio(ok: (t: string) => string) {
-  return [
-    '==== PASSO 1 de 5: Imagem do NexON ====',
-    ok('✓ Baixada e conferida.'),
-    '==== PASSO 2 de 5: Programa da Raspberry ====',
-    ok('✓ Pronto.'),
-    '==== PASSO 3 de 5: Ligar o Raspberry no computador ====',
-  ];
+type ModoComando = 'cartao' | 'cabo';
+
+function linhasInicio(ok: (t: string) => string, modo: ModoComando) {
+  return modo === 'cartao'
+    ? ['==== PASSO 1 de 4: Imagem do NexON ====', ok('✓ Baixada e conferida.'), '==== PASSO 2 de 4: Colocar o cartão no computador ====']
+    : [
+        '==== PASSO 1 de 5: Imagem do NexON ====',
+        ok('✓ Baixada e conferida.'),
+        '==== PASSO 2 de 5: Programa da Raspberry ====',
+        ok('✓ Pronto.'),
+        '==== PASSO 3 de 5: Ligar o Raspberry no computador ====',
+      ];
 }
 
+
 /** Passos comuns aos dois jeitos com comando: abrir o Terminal, copiar, colar e esperar a primeira pergunta. */
-function passosComando(so: SistemaPc, comando: ReactNode, esperaTitulo: string): PassoGuiado[] {
+function passosComando(so: SistemaPc, comando: ReactNode, esperaTitulo: string, modo: ModoComando): PassoGuiado[] {
   const d = doSistema(so);
   return [
     { titulo: d.abrir.titulo, ajuda: d.abrir.ajuda, visual: <Teclas teclas={d.abrir.teclas} /> },
@@ -268,12 +273,19 @@ function passosComando(so: SistemaPc, comando: ReactNode, esperaTitulo: string):
     {
       titulo: esperaTitulo,
       ajuda: 'Na primeira vez pode levar alguns minutos (ele baixa o NexON).',
-      visual: <TelaTerminal sistema={so} titulo={d.app} linhas={linhasInicio(d.ok)} destaque=">> Tire TODOS os cabos do Raspberry (fonte, rede, tudo)." />,
+      visual: (
+        <TelaTerminal
+          sistema={so}
+          titulo={d.app}
+          linhas={linhasInicio(d.ok, modo)}
+          destaque={modo === 'cartao' ? '  >> Se o cartão ainda estiver no computador, tire agora.' : '  >> Tire todos os cabos do Raspberry (fonte, rede, tudo).'}
+        />
+      ),
     },
   ];
 }
 
-function passosFinais(so: SistemaPc, minutos: string): PassoGuiado[] {
+function passosFinais(so: SistemaPc, minutos: string, gravando: string): PassoGuiado[] {
   const d = doSistema(so);
   return [
     {
@@ -296,7 +308,7 @@ function passosFinais(so: SistemaPc, minutos: string): PassoGuiado[] {
           sistema={so}
           titulo={d.app}
           linhas={[
-            '==== PASSO 4 de 5: Gravando o NexON no cartão ====',
+            `==== PASSO ${gravando}: Gravando o NexON no cartão ====`,
             '  [##############################] 100%  gravado em 4 min',
             d.ok('  ✓ NexON gravado e conferido no cartão.'),
             d.ok('  ✓ Chave da usina gravada.'),
@@ -316,7 +328,7 @@ function passosComputador(so: SistemaPc, comando: ReactNode): PassoGuiado[] {
       ajuda: 'O cartão SD fica dentro do Raspberry. Use um cabo de celular. O cabo da fonte do Raspberry não serve.',
       visual: <DesenhoRaspberry destaque={['sd', 'usbc']} />,
     },
-    ...passosComando(so, comando, 'Espere aparecer esta frase'),
+    ...passosComando(so, comando, 'Espere aparecer esta frase', 'cabo'),
     {
       titulo: `Tire todos os cabos do Raspberry e aperte Enter no ${d.app}`,
       ajuda: 'Fonte, rede, tudo. O Raspberry fica sem nenhum cabo.',
@@ -336,12 +348,12 @@ function passosComputador(so: SistemaPc, comando: ReactNode): PassoGuiado[] {
         <TelaTerminal
           sistema={so}
           titulo={d.app}
-          linhas={['     … esperando o Raspberry (10 s)', '     … esperando o Raspberry (20 s)']}
+          linhas={['  Esperando o Raspberry… 12 s']}
           destaque={d.ok('  ✓ Encontrei o cartão! Pode soltar o botão.')}
         />
       ),
     },
-    ...passosFinais(so, '10 a 30 minutos pelo cabo'),
+    ...passosFinais(so, '10 a 30 minutos pelo cabo', '4 de 5'),
   ];
 }
 
@@ -353,18 +365,18 @@ function passosCartao(so: SistemaPc, comando: ReactNode): PassoGuiado[] {
       ajuda: 'Ele fica embaixo da placa, na ponta. Puxe com cuidado. O Raspberry precisa estar desligado.',
       visual: <DesenhoRaspberry destaque={['sd']} />,
     },
-    ...passosComando(so, comando, 'Espere aparecer esta frase e aperte Enter'),
+    ...passosComando(so, comando, 'Espere aparecer esta frase e aperte Enter', 'cartao'),
     {
       titulo: 'Coloque o cartão no computador',
-      ajuda: 'Na entrada de cartão SD ou num leitor USB. Se for microSD, use o adaptador. Não precisa ligar o Raspberry.',
+      ajuda: 'Quando o Terminal pedir. Na entrada de cartão SD ou num leitor USB; microSD vai no adaptador. O Raspberry não entra nessa parte.',
       visual: <CreditCard className="h-16 w-16 text-muted-foreground" aria-hidden />,
     },
     {
       titulo: 'Espere ele achar o cartão',
       ajuda: 'Não precisa apertar nada. Leva alguns segundos.',
-      visual: <TelaTerminal sistema={so} titulo={d.app} linhas={['     … esperando o Raspberry (4 s)']} destaque={d.ok('  ✓ Encontrei o cartão!')} />,
+      visual: <TelaTerminal sistema={so} titulo={d.app} linhas={['  Esperando o cartão… 4 s']} destaque={d.ok('  ✓ Encontrei o cartão!')} />,
     },
-    ...passosFinais(so, 'uns 5 minutos'),
+    ...passosFinais(so, 'uns 5 minutos', '3 de 4'),
     {
       titulo: 'Tire o cartão do computador',
       ajuda: so === 'mac' ? 'Se aparecer aviso de disco não ejetado, pode ignorar: ele já foi ejetado.' : 'Ele já foi desligado do computador: pode tirar.',
@@ -542,7 +554,8 @@ export function EtapaGravar({
     );
   }
 
-  const comandoTexto = win ? instalador?.comando_windows : instalador?.comando;
+  const comandoBase = win ? instalador?.comando_windows : instalador?.comando;
+  const comandoTexto = comandoBase && jeito !== 'pendrive' ? comandoComModo(comandoBase, jeito === 'cartao' ? 'cartao' : 'cabo', win) : comandoBase;
   const vencido = instalador ? Date.parse(instalador.valido_ate) <= Date.now() : false;
   const pecaComando = carregando ? (
     <div role="status" className="flex h-14 items-center justify-center gap-2 rounded-xl bg-background text-sm text-muted-foreground">

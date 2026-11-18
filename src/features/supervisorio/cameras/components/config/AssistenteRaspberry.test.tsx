@@ -111,7 +111,8 @@ describe('AssistenteRaspberry', () => {
     await user.click(screen.getByRole('button', { name: /Feito, próximo/ }));
     expect(screen.getByRole('heading', { name: 'Abra o PowerShell' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /Feito, próximo/ }));
-    expect(screen.getByText(INSTALADOR.comando_windows!)).toBeInTheDocument();
+    // O comando leva o jeito escolhido (cabo), para o instalador pular o que não é desse jeito.
+    expect(screen.getByText(/\$env:NEXON_MODO='cabo'; irm 'https:\/\/exemplo\/instalar\?so=windows' \| iex/)).toBeInTheDocument();
   });
 
   it('cartão no computador: 11 telas, comando do Terminal e depois a etapa Ligar', async () => {

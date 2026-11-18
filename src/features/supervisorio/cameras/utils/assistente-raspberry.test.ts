@@ -7,6 +7,7 @@ import {
   lerSessao,
   sessaoNova,
   sistemaDoComputador,
+  comandoComModo,
   VALIDADE_SESSAO_MS,
 } from './assistente-raspberry';
 
@@ -63,5 +64,14 @@ describe('textos', () => {
     expect(sistemaDoComputador('Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:132.0) Gecko/20100101 Firefox/132.0')).toBe('linux');
     expect(sistemaDoComputador('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36')).toBe('linux');
     expect(sistemaDoComputador('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) Mobile')).toBe('celular');
+  });
+
+  it('comando leva o jeito escolhido (cartão ou cabo)', () => {
+    expect(comandoComModo("{ curl -fsSL 'u' 2>/dev/null || wget -qO- 'u'; } | bash", 'cartao', false)).toBe(
+      "{ curl -fsSL 'u' 2>/dev/null || wget -qO- 'u'; } | NEXON_MODO=cartao bash",
+    );
+    expect(comandoComModo(`powershell -ExecutionPolicy Bypass -Command "irm 'u' | iex"`, 'cabo', true)).toBe(
+      `powershell -ExecutionPolicy Bypass -Command "$env:NEXON_MODO='cabo'; irm 'u' | iex"`,
+    );
   });
 });
