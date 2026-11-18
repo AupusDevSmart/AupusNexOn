@@ -61,6 +61,12 @@ export interface RtuSlaveOpts {
   endereco: number;
   tabela: () => RtuTable;
   onEvento?: (e: RtuEvento) => void;
+  /**
+   * Barramento com VÁRIOS escravos emulados na mesma porta (ex.: os 10 inversores de uma UFV):
+   * devolve a tabela e o destino dos eventos de cada endereço; null = não é nosso (outro-escravo).
+   * Com resolver, `endereco`/`tabela` são ignorados.
+   */
+  resolver?: (endereco: number) => { tabela: () => RtuTable; onEvento?: (e: RtuEvento) => void } | null;
 }
 
 export class RtuSlave {
@@ -118,25 +124,28 @@ export class RtuSlave {
     this.opts.onEvento?.(e);
   }
 
-  private excecao(addr: number, fc: number, codigo: number, motivo: string, ts: number): Uint8Array {
-    this.emit({ tipo: 'excecao', func: fc, codigo, motivo, ts });
-    return comCrc([addr, fc | 0x80, codigo]);
-  }
-
   private tratar(f: Uint8Array, ts: number): Uint8Array | null {
     const addr = f[0];
     const fc = f[1];
     if (addr === 0) return null; // broadcast: nunca responde
-    if (addr !== this.opts.endereco) {
+    const alvo = this.opts.resolver
+      ? this.opts.resolver(addr)
+      : addr === this.opts.endereco ? { tabela: this.opts.tabela, onEvento: this.opts.onEvento } : null;
+    if (!alvo) {
       this.emit({ tipo: 'outro-escravo', endereco: addr, func: fc, ts });
       return null;
     }
+    const emitir = (e: RtuEvento) => alvo.onEvento?.(e);
+    const excecao = (codigo: number, motivo: string): Uint8Array => {
+      emitir({ tipo: 'excecao', func: fc, codigo, motivo, ts });
+      return comCrc([addr, fc | 0x80, codigo]);
+    };
     const start = (f[2] << 8) | f[3];
     const qtd = (f[4] << 8) | f[5];
-    const t = this.opts.tabela();
+    const t = alvo.tabela();
 
     if (fc === 1 || fc === 2) {
-      if (qtd < 1 || qtd > 2000) return this.excecao(addr, fc, 0x03, `quantidade inválida (${qtd})`, ts);
+      if (qtd < 1 || qtd > 2000) return excecao(0x03, `quantidade inválida (${qtd})`);
       const mapa = fc === 1 ? t.coils : t.discrete;
       const nbytes = Math.ceil(qtd / 8);
       const dados = new Array(nbytes).fill(0);
@@ -146,11 +155,11 @@ export class RtuSlave {
         if (!mapa.has(a)) fora.push(a);
         if (mapa.get(a)) dados[i >> 3] |= 1 << (i & 7);
       }
-      this.emit({ tipo: 'leitura', func: fc, start, count: qtd, foraDoMapa: fora, ts });
+      emitir({ tipo: 'leitura', func: fc, start, count: qtd, foraDoMapa: fora, ts });
       return comCrc([addr, fc, nbytes, ...dados]);
     }
     if (fc === 3 || fc === 4) {
-      if (qtd < 1 || qtd > 125) return this.excecao(addr, fc, 0x03, `quantidade inválida (${qtd})`, ts);
+      if (qtd < 1 || qtd > 125) return excecao(0x03, `quantidade inválida (${qtd})`);
       const mapa = fc === 3 ? t.holding : t.input;
       const dados: number[] = [];
       const fora: number[] = [];
@@ -160,21 +169,21 @@ export class RtuSlave {
         const w = mapa.get(a) ?? 0;
         dados.push((w >> 8) & 0xff, w & 0xff);
       }
-      this.emit({ tipo: 'leitura', func: fc, start, count: qtd, foraDoMapa: fora, ts });
+      emitir({ tipo: 'leitura', func: fc, start, count: qtd, foraDoMapa: fora, ts });
       return comCrc([addr, fc, qtd * 2, ...dados]);
     }
     // Escritas (comandos BO / setpoints): aceita e registra no log — o emulador não
     // muda os pontos por conta própria, mas mostra que o comando chegou.
     if (fc === 5 || fc === 6) {
-      this.emit({ tipo: 'escrita', func: fc, start, count: 1, valores: [qtd], ts });
+      emitir({ tipo: 'escrita', func: fc, start, count: 1, valores: [qtd], ts });
       return comCrc(Array.from(f.slice(0, 6)));
     }
     if (fc === 15 || fc === 16) {
       const valores: number[] = [];
       if (fc === 16) for (let i = 0; i < qtd; i++) valores.push((f[7 + 2 * i] << 8) | f[8 + 2 * i]);
-      this.emit({ tipo: 'escrita', func: fc, start, count: qtd, valores, ts });
+      emitir({ tipo: 'escrita', func: fc, start, count: qtd, valores, ts });
       return comCrc(Array.from(f.slice(0, 6)));
     }
-    return this.excecao(addr, fc, 0x01, `função ${fc} não suportada`, ts);
+    return excecao(0x01, `função ${fc} não suportada`);
   }
 }

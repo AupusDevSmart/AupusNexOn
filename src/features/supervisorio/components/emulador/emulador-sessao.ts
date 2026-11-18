@@ -7,6 +7,7 @@
  */
 import { RtuSlave, type RtuEvento, type RtuTable } from './modbus-rtu-slave';
 import { EmuladorSerial, type PortaSerial, descreverPorta } from './web-serial-transport';
+import type { EstadoInversor } from './emulador-setpoints';
 
 export interface EstadoSessao {
   nodeId: string;
@@ -28,10 +29,15 @@ export interface EstadoSessao {
   log: { ts: number; texto: string; nivel: 'ok' | 'aviso' | 'erro' | 'info' }[];
   /** Setpoints que a TON escreveu e o efeito nas leituras (controle pelo MED). */
   obedecendo: string[];
+  /** Inversor: como a TON deixou (chave de limite, modo de reativo, ligado) e o que está sendo servido. */
+  inversor: EstadoInversor | null;
 }
 
-/** Recalcula a tabela com o que a TON escreveu (limite de P / Q). null = não mexe. */
-export type RecalcEscritas = (escritos: Map<number, number>) => { table: RtuTable; efeitos: string[] } | null;
+/**
+ * Recalcula a tabela com o que a TON escreveu (limite de P / Q / FP / ligar-desligar), já com os
+ * holding registers no estado de fábrica. Chamado também sem escrita nenhuma. null = não mexe.
+ */
+export type RecalcEscritas = (escritos: Map<number, number>) => { table: RtuTable; efeitos: string[]; inversor?: EstadoInversor } | null;
 
 const MAX_LOG = 200;
 /** Sem nenhuma consulta pro nosso endereço depois disso → alerta na UI. */
@@ -45,51 +51,41 @@ class Sessao {
   private efetiva: RtuTable | null = null;   // tabela + escritas da TON (cache até mudar algo)
   private escritos = new Map<number, number>();
   private recalc: RecalcEscritas | null = null;
-  private slave: RtuSlave;
-  private serial: EmuladorSerial;
   private notificar: () => void;
+  readonly porta: PortaSerial;
 
   constructor(nodeId: string, nome: string, endereco: number, porta: PortaSerial, tabela: RtuTable, notificar: () => void) {
+    this.porta = porta;
     this.tabela = tabela;
     this.notificar = notificar;
     this.estado = {
       nodeId, nome, endereco, porta: descreverPorta(porta), ativo: false, inicio: Date.now(),
-      rx: 0, tx: 0, leituras: 0, escritas: 0, ultimaLeitura: null, outrosEnderecos: {}, foraDoMapa: 0, erro: null, log: [], obedecendo: [],
+      rx: 0, tx: 0, leituras: 0, escritas: 0, ultimaLeitura: null, outrosEnderecos: {}, foraDoMapa: 0, erro: null, log: [], obedecendo: [], inversor: null,
     };
-    this.slave = new RtuSlave({ endereco, tabela: () => this.tabelaEfetiva(), onEvento: (e) => this.evento(e) });
-    this.serial = new EmuladorSerial({
-      porta,
-      slave: this.slave,
-      onTrafego: (dir, n) => { if (dir === 'rx') this.estado.rx += n; else this.estado.tx += n; },
-      onErro: (e) => {
-        this.estado.ativo = false;
-        this.estado.erro = `Porta serial caiu: ${e instanceof Error ? e.message : String(e)}`;
-        this.log(this.estado.erro, 'erro');
-        this.notificar();
-      },
-    });
   }
 
   /** Tabela servida: a do modal + o que a TON escreveu (read-back) + efeito do limite/Q nas leituras. */
-  private tabelaEfetiva(): RtuTable {
-    if (!this.escritos.size) return this.tabela;
+  tabelaEfetiva(): RtuTable {
+    if (!this.escritos.size && !this.recalc) return this.tabela;
     if (this.efetiva) return this.efetiva;
     let base = this.tabela;
     const r = this.recalc ? this.recalc(this.escritos) : null;
-    if (r) { base = r.table; this.estado.obedecendo = r.efeitos; }
+    this.estado.obedecendo = r?.efeitos ?? [];
+    this.estado.inversor = r?.inversor ?? null;
+    if (r) base = r.table;
     const holding = new Map(base.holding);
     for (const [k, v] of this.escritos) holding.set(k, v);
     this.efetiva = { ...base, holding };
     return this.efetiva;
   }
 
-  private log(texto: string, nivel: EstadoSessao['log'][number]['nivel']) {
+  log(texto: string, nivel: EstadoSessao['log'][number]['nivel']) {
     const l = this.estado.log;
     l.push({ ts: Date.now(), texto, nivel });
     if (l.length > MAX_LOG) l.splice(0, l.length - MAX_LOG);
   }
 
-  private evento(e: RtuEvento) {
+  evento(e: RtuEvento) {
     const s = this.estado;
     const fn = (f: number) => `0${f}`;
     switch (e.tipo) {
@@ -130,19 +126,18 @@ class Sessao {
     this.notificar();
   }
 
-  async iniciar() {
-    await this.serial.iniciar();
+  /** Barramento abriu a porta / passou a atender este endereço. */
+  marcarAtivo(compartilhada: number) {
     this.estado.ativo = true;
     this.estado.erro = null;
     this.estado.inicio = Date.now();
-    this.log(`Porta aberta (${this.estado.porta}) 9600 8N1 — respondendo como escravo ${this.estado.endereco}`, 'ok');
+    this.log(`Porta ${this.estado.porta} 9600 8N1 — respondendo como escravo ${this.estado.endereco}${compartilhada > 1 ? ` (porta compartilhada com ${compartilhada - 1} outro(s) emulado(s))` : ''}`, 'ok');
     this.notificar();
   }
 
-  async parar() {
-    await this.serial.parar();
+  marcarParado(motivo: string | null) {
     this.estado.ativo = false;
-    this.log('Emulação parada, porta fechada', 'info');
+    if (motivo) { this.estado.erro = motivo; this.log(motivo, 'erro'); } else this.log('Emulação parada', 'info');
     this.notificar();
   }
 
@@ -156,21 +151,84 @@ class Sessao {
   limparEscritas() {
     this.escritos.clear();
     this.efetiva = null;
-    this.estado.obedecendo = [];
-    this.log('Setpoints escritos pela TON descartados — leituras voltam aos valores digitados', 'info');
+    this.tabelaEfetiva();
+    this.log('Comandos da TON descartados — inversor volta ao estado de fábrica (sem limite, reativo desligado, ligado)', 'info');
     this.notificar();
   }
 
   setEndereco(endereco: number) {
     if (endereco === this.estado.endereco) return;
-    this.slave.setEndereco(endereco);
     this.log(`Endereço alterado para ${endereco}`, 'info');
     this.estado.endereco = endereco;
     this.notificar();
   }
 }
 
+/**
+ * Barramento = uma porta serial aberta. Vários emulados (endereços diferentes) dividem a mesma
+ * porta — um PC com UM adaptador RS485 faz o papel de todos os inversores de uma UFV.
+ */
+class Barramento {
+  readonly porta: PortaSerial;
+  readonly membros = new Set<Sessao>();
+  private serial: EmuladorSerial;
+  private slave: RtuSlave;
+  private aberta = false;
+
+  constructor(porta: PortaSerial, private aoFechar: () => void) {
+    this.porta = porta;
+    this.slave = new RtuSlave({
+      endereco: 0,
+      tabela: () => ({ holding: new Map(), input: new Map(), coils: new Map(), discrete: new Map() }),
+      resolver: (end) => {
+        const m = this.deEndereco(end);
+        return m ? { tabela: () => m.tabelaEfetiva(), onEvento: (e) => m.evento(e) } : null;
+      },
+      onEvento: (e) => { for (const m of this.ativos()) m.evento(e); },   // outro-escravo / descartado
+    });
+    this.serial = new EmuladorSerial({
+      porta,
+      slave: this.slave,
+      onTrafego: (dir, n) => { for (const m of this.ativos()) { if (dir === 'rx') m.estado.rx += n; else m.estado.tx += n; } },
+      onErro: (e) => {
+        this.aberta = false;
+        const msg = `Porta serial caiu: ${e instanceof Error ? e.message : String(e)}`;
+        for (const m of [...this.membros]) m.marcarParado(msg);
+        this.membros.clear();
+        this.aoFechar();
+      },
+    });
+  }
+
+  private ativos() { return [...this.membros].filter((m) => m.estado.ativo); }
+  deEndereco(end: number): Sessao | null { return this.ativos().find((m) => m.estado.endereco === end) ?? null; }
+
+  async entrar(s: Sessao) {
+    const dono = this.deEndereco(s.estado.endereco);
+    if (dono && dono !== s) throw new Error(`O endereço ${s.estado.endereco} já é emulado nesta porta por "${dono.estado.nome}". Use outro endereço.`);
+    if (!this.aberta) { await this.serial.iniciar(); this.aberta = true; }
+    this.membros.add(s);
+    s.marcarAtivo(this.membros.size);
+  }
+
+  async sair(s: Sessao) {
+    if (!this.membros.delete(s)) return;
+    s.marcarParado(null);
+    if (this.membros.size === 0 && this.aberta) {
+      this.aberta = false;
+      await this.serial.parar();
+      this.aoFechar();
+    }
+  }
+}
+
 const sessoes = new Map<string, Sessao>();
+const barramentos = new Map<PortaSerial, Barramento>();
+const barramentoDe = (porta: PortaSerial) => {
+  let b = barramentos.get(porta);
+  if (!b) { b = new Barramento(porta, () => { barramentos.delete(porta); notificar(); }); barramentos.set(porta, b); }
+  return b;
+};
 const listeners = new Set<Listener>();
 let versao = 0;
 const notificar = () => { versao++; listeners.forEach((l) => l()); };
@@ -181,14 +239,22 @@ export const emuladorSessoes = {
   get(nodeId: string): EstadoSessao | null { return sessoes.get(nodeId)?.estado ?? null; },
   ativas(): EstadoSessao[] { return [...sessoes.values()].map((s) => s.estado).filter((e) => e.ativo); },
 
+  /** Portas já abertas por este navegador (para mais um emulado entrar no mesmo barramento). */
+  portasAbertas(): { porta: PortaSerial; descricao: string; enderecos: number[] }[] {
+    return [...barramentos.values()].map((b) => ({
+      porta: b.porta, descricao: descreverPorta(b.porta),
+      enderecos: [...b.membros].filter((m) => m.estado.ativo).map((m) => m.estado.endereco).sort((x, y) => x - y),
+    })).filter((x) => x.enderecos.length > 0);
+  },
+
   async iniciar(nodeId: string, nome: string, endereco: number, porta: PortaSerial, tabela: RtuTable, recalc?: RecalcEscritas | null) {
     const velha = sessoes.get(nodeId);
-    if (velha?.estado.ativo) await velha.parar();
+    if (velha?.estado.ativo) await barramentos.get(velha.porta)?.sair(velha);
     const s = new Sessao(nodeId, nome, endereco, porta, tabela, notificar);
     if (recalc) s.setTabela(tabela, recalc);
     sessoes.set(nodeId, s);
     try {
-      await s.iniciar();
+      await barramentoDe(porta).entrar(s);
     } catch (e) {
       s.estado.erro = e instanceof Error ? e.message : String(e);
       notificar();
@@ -196,15 +262,18 @@ export const emuladorSessoes = {
     }
   },
   async parar(nodeId: string) {
-    await sessoes.get(nodeId)?.parar();
+    const s = sessoes.get(nodeId);
+    if (s) await barramentos.get(s.porta)?.sair(s);
   },
   async pararTodas() {
-    await Promise.all([...sessoes.values()].map((s) => (s.estado.ativo ? s.parar() : null)));
+    for (const s of sessoes.values()) if (s.estado.ativo) await barramentos.get(s.porta)?.sair(s);
   },
   atualizar(nodeId: string, tabela: RtuTable, endereco: number, recalc?: RecalcEscritas | null) {
     const s = sessoes.get(nodeId);
     if (!s) return;
     s.setTabela(tabela, recalc);
+    const dono = s.estado.ativo ? barramentos.get(s.porta)?.deEndereco(endereco) : null;
+    if (dono && dono !== s) { s.log(`Endereço ${endereco} já é de "${dono.estado.nome}" nesta porta — mantido ${s.estado.endereco}`, 'aviso'); notificar(); return; }
     s.setEndereco(endereco);
   },
   limparEscritas(nodeId: string) {

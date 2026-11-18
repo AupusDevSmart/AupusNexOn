@@ -25,8 +25,8 @@ import {
 } from './emulador-catalog';
 import { VALORES_TIPICOS, configPadrao, montarTabela, type Aviso, type EmuladorConfig } from './emulador-encoder';
 import { emuladorSessoes, ALERTA_SEM_CONSULTA_MS, type RecalcEscritas } from './emulador-sessao';
-import { registradoresSetpoint, valoresObedecendo } from './emulador-setpoints';
-import { pedirPorta, webSerialDisponivel } from './web-serial-transport';
+import { estadoFabrica, registradoresSetpoint, simularInversor } from './emulador-setpoints';
+import { pedirPorta, webSerialDisponivel, type PortaSerial } from './web-serial-transport';
 
 export interface EmulacaoProps {
   valores: Record<string, number | string>;
@@ -188,13 +188,16 @@ export function EmuladorModal({ open, onClose, comp, carregarAlvos, conflitoEnde
     return montarTabela({ model: modelo, props, valores, bi, cfg, pointDefsAi: defsAi, pointDefsBi: defsBi });
   }, [modelo, props, valores, bi, cfg, defsAi, defsBi]);
 
-  // Inversor: limite de P / Q escritos pela TON mudam o que o emulador serve (controle pelo MED).
+  // Inversor: acata os comandos da TON como o equipamento real (chave de limite, modo de reativo,
+  // FP, Q%, ligar/desligar) e recalcula P, Q, S, FP e correntes (controle pelo MED).
   const recalc = useMemo<RecalcEscritas | null>(() => {
     if (!modelo || !cfg || registradoresSetpoint(modelo).length === 0) return null;
+    const fabrica = estadoFabrica(modelo);
     return (escritos) => {
-      const r = valoresObedecendo(valores, escritos, modelo);
-      if (!r.efeitos.length) return null;
-      return { table: montarTabela({ model: modelo, props, valores: r.valores, bi, cfg, pointDefsAi: defsAi, pointDefsBi: defsBi }).table, efeitos: r.efeitos };
+      const r = simularInversor(valores, escritos, modelo);
+      const table = montarTabela({ model: modelo, props, valores: r.valores, bi, cfg, pointDefsAi: defsAi, pointDefsBi: defsBi }).table;
+      for (const [k, v] of fabrica) if (!table.holding.has(k)) table.holding.set(k, v);
+      return { table, efeitos: r.efeitos, inversor: r.estado };
     };
   }, [modelo, props, valores, bi, cfg, defsAi, defsBi]);
 
@@ -248,13 +251,15 @@ export function EmuladorModal({ open, onClose, comp, carregarAlvos, conflitoEnde
     }
   };
 
-  const iniciar = async () => {
+  const iniciar = async (aberta?: PortaSerial) => {
     setErroSerial(null);
     if (!montagem) return;
     let id = nodeId;
     // Pede a porta ANTES de qualquer await longo (exige gesto do usuário).
-    let porta;
-    try {
+    // Porta já aberta (outro inversor emulado neste PC): entra no mesmo barramento RS485.
+    let porta: PortaSerial;
+    if (aberta) porta = aberta;
+    else try {
       porta = await pedirPorta();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -269,7 +274,7 @@ export function EmuladorModal({ open, onClose, comp, carregarAlvos, conflitoEnde
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setErroSerial(/already open|InvalidStateError/i.test(msg)
-        ? 'A porta já está aberta (outro programa ou outra aba usando o adaptador). Feche e tente de novo.'
+        ? 'A porta já está aberta (outro programa ou outra aba usando o adaptador). Se é outro inversor emulado aqui, use "Mesma porta". Senão feche e tente de novo.'
         : msg);
     } finally {
       setIniciando(false);
@@ -523,10 +528,18 @@ export function EmuladorModal({ open, onClose, comp, carregarAlvos, conflitoEnde
         <section className="rounded-md border p-3" data-testid="emu-sessao">
           <div className="flex flex-wrap items-center gap-2">
             {!ativa ? (
-              <Button type="button" onClick={iniciar} disabled={!serialOk || !podeSalvar || iniciando} data-testid="emu-iniciar">
-                {iniciando ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Play className="mr-1 h-4 w-4" />}
-                Salvar, escolher porta e iniciar
-              </Button>
+              <>
+                <Button type="button" onClick={() => iniciar()} disabled={!serialOk || !podeSalvar || iniciando} data-testid="emu-iniciar">
+                  {iniciando ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Play className="mr-1 h-4 w-4" />}
+                  Salvar, escolher porta e iniciar
+                </Button>
+                {emuladorSessoes.portasAbertas().map((p, i) => (
+                  <Button key={i} type="button" variant="outline" onClick={() => iniciar(p.porta)} disabled={!podeSalvar || iniciando || p.enderecos.includes(end)}
+                    title={p.enderecos.includes(end) ? `O endereço ${end} já está em uso nesta porta` : undefined} data-testid="emu-mesma-porta">
+                    <Plug className="mr-1 h-4 w-4" />Mesma porta ({p.descricao} · end. {p.enderecos.join(', ')})
+                  </Button>
+                ))}
+              </>
             ) : (
               <Button type="button" variant="destructive" onClick={parar} data-testid="emu-parar"><CircleStop className="mr-1 h-4 w-4" />Parar emulação</Button>
             )}
@@ -550,13 +563,23 @@ export function EmuladorModal({ open, onClose, comp, carregarAlvos, conflitoEnde
                 : <p>Nenhum tráfego da TON no fio: confira A/B (tente inverter), o GND, o adaptador e se a TON está ligada. Se o emulador é um equipamento novo no diagrama, a TON precisa de firmware novo (OTA).</p>}
             </div>
           )}
-          {sessao && (sessao.obedecendo ?? []).length > 0 && (
-            <div className="mt-2 flex flex-wrap items-center gap-2 rounded border border-sky-500/40 bg-sky-500/5 p-2 text-xs" data-testid="emu-obedecendo">
-              <span className="font-semibold">Setpoints da TON aplicados:</span>
-              <span>{sessao.obedecendo.join(' · ')}</span>
-              {nodeId && (
-                <button type="button" className="ml-auto underline" onClick={() => emuladorSessoes.limparEscritas(nodeId)}>Descartar</button>
+          {sessao?.inversor && (
+            <div className="mt-2 rounded border border-sky-500/40 bg-sky-500/5 p-2 text-xs" data-testid="emu-inversor">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                <span className="font-semibold">Inversor (como a TON deixou):</span>
+                <span className={sessao.inversor.ligado ? 'text-green-600' : 'font-semibold text-red-600'}>{sessao.inversor.ligado ? 'Ligado' : 'PARADO'}</span>
+                <span>Limite de P: {sessao.inversor.limite.ativo ? `${sessao.inversor.limite.pct ?? '—'} %` : 'desabilitado'}</span>
+                <span>Reativo: {sessao.inversor.reativo.modo === 'q_pct' ? `Q ${sessao.inversor.reativo.valor} %` : sessao.inversor.reativo.modo === 'fp' ? `FP ${sessao.inversor.reativo.valor}` : 'desligado (FP 1)'}</span>
+                {nodeId && (
+                  <button type="button" className="ml-auto underline" onClick={() => emuladorSessoes.limparEscritas(nodeId)}>Voltar ao estado de fábrica</button>
+                )}
+              </div>
+              {sessao.inversor.P != null && (
+                <div className="mt-1 tabular-nums text-muted-foreground">
+                  Servindo: P {sessao.inversor.P} · Q {sessao.inversor.Q} · S {sessao.inversor.S} · FP {sessao.inversor.fp}{sessao.inversor.qCortado ? ' · Q cortado pela potência aparente' : ''}
+                </div>
               )}
+              {(sessao.obedecendo ?? []).length > 0 && <div className="mt-1">{sessao.obedecendo.join(' · ')}</div>}
             </div>
           )}
           {sessao && sessao.log.length > 0 && (

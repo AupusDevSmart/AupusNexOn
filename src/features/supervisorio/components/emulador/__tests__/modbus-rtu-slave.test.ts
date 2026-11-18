@@ -85,3 +85,23 @@ describe('RtuSlave', () => {
     expect(eventos.filter((e) => e.tipo === 'escrita')).toHaveLength(2);
   });
 });
+
+describe('barramento com vários escravos na mesma porta (resolver)', () => {
+  it('responde cada endereço com a sua tabela e ignora os outros', () => {
+    const tab = (v: number) => ({ holding: new Map([[10, v]]), input: new Map(), coils: new Map(), discrete: new Map() });
+    const evs: Record<number, string[]> = { 1: [], 2: [] };
+    const outros: number[] = [];
+    const s = new RtuSlave({
+      endereco: 0, tabela: () => tab(0),
+      resolver: (a) => (a === 1 || a === 2 ? { tabela: () => tab(a * 100), onEvento: (e) => evs[a].push(e.tipo) } : null),
+      onEvento: (e) => { if (e.tipo === 'outro-escravo') outros.push(e.endereco); },
+    });
+    const req = (a: number) => comCrc([a, 3, 0, 10, 0, 1]);
+    const r1 = s.feed(req(1), 0)[0], r2 = s.feed(req(2), 100)[0];
+    expect([r1[0], (r1[3] << 8) | r1[4]]).toEqual([1, 100]);
+    expect([r2[0], (r2[3] << 8) | r2[4]]).toEqual([2, 200]);
+    expect(s.feed(req(3), 200)).toEqual([]);
+    expect(outros).toEqual([3]);
+    expect(evs).toEqual({ 1: ['leitura'], 2: ['leitura'] });
+  });
+});
