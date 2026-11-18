@@ -3,6 +3,7 @@ import type {
   EstadoComandoAparelho,
   Agente,
   AgenteGlobal,
+  InstalacaoPc,
   Camera,
   CameraDescoberta,
   CameraEvento,
@@ -180,6 +181,18 @@ export const CamerasService = {
 
   async marcarTodosLidos(body: { unidade_id: string; camera_id?: string }): Promise<void> {
     await api.post('/cameras/eventos/lidos', body);
+  },
+
+  /** Instalações feitas pelo computador, mais novas primeiro (só administrador). */
+  async instalacoesPc(): Promise<InstalacaoPc[]> {
+    const { data } = await api.get('/cameras/instalacoes');
+    return lista<InstalacaoPc>(data);
+  },
+
+  /** Registro do Terminal de uma instalação (só administrador). */
+  async registroInstalacao(id: string): Promise<string> {
+    const { data } = await api.get(`/cameras/instalacoes/${id.trim()}`);
+    return ((data?.data ?? data)?.registro as string | null) ?? '';
   },
 
   /** Todos os aparelhos de todas as usinas (só administrador). */

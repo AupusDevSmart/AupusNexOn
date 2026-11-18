@@ -228,6 +228,22 @@ export interface Agente {
   updated_at: string;
 }
 
+/** Instalação feita pelo computador (relato do instalador, NEXON-108). */
+export interface InstalacaoPc {
+  id: string;
+  sessao: string;
+  usuario_nome: string | null;
+  unidade_id: string | null;
+  unidade_nome: string | null;
+  sistema: string | null;
+  passo: string | null;
+  estado: 'andamento' | 'erro' | 'ok' | string;
+  mensagem: string | null;
+  versao: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 /** Aparelho na lista de todas as usinas (administrador, NEXON-108). */
 export interface AgenteGlobal extends Agente {
   planta_id?: string;
