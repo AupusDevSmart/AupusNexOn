@@ -10,6 +10,7 @@ export const chavesCameras = {
   config: (unidadeId?: string) => ['cameras', 'config', unidadeId?.trim()] as const,
   agentes: (unidadeId?: string) => ['cameras', 'agentes', unidadeId?.trim()] as const,
   agentesTodos: ['cameras', 'agentes-todos'] as const,
+  instalacoesPc: ['cameras', 'instalacoes-pc'] as const,
   pareamentos: ['cameras', 'pareamentos'] as const,
   descobertas: (agenteId?: string) => ['cameras', 'descobertas', agenteId?.trim()] as const,
   stream: (cameraId?: string) => ['cameras', 'stream', cameraId?.trim()] as const,
