@@ -154,6 +154,65 @@ function BotaoGerarOutro({ onClick, gerando, principal = false }: { onClick: () 
   );
 }
 
+/* ------------------------------------------------------------------ o que comprar */
+
+const COMPRAS: { item: string; qual: string; porque: string; opcional?: boolean }[] = [
+  {
+    item: 'Cartão microSD',
+    qual: '32 ou 64 GB com A2, U3 ou V30 escrito nele. Ex.: SanDisk Extreme, Samsung PRO Plus, Kingston Canvas Go! Plus.',
+    porque: 'Grava o NexON em 2 a 3 min e aguenta a gravação das câmeras. Cartão comum (Classe 10 sem A2/U3) leva 15 min ou mais e gasta rápido.',
+  },
+  {
+    item: 'Raspberry Pi 5',
+    qual: '4 GB ou 8 GB de memória. 8 GB para mais de 4 câmeras.',
+    porque: 'É o aparelho que liga as câmeras ao NexON.',
+  },
+  {
+    item: 'Fonte oficial 27 W USB-C',
+    qual: 'Raspberry Pi 27W USB-C Power Supply.',
+    porque: 'Carregador de celular também liga, mas sem força para HD externo.',
+  },
+  {
+    item: 'Case com cooler',
+    qual: 'Case oficial do Pi 5 com ventoinha, ou o Active Cooler oficial.',
+    porque: 'A análise de vídeo esquenta o Raspberry; sem ventilação ele fica lento.',
+  },
+  {
+    item: 'Cabo de rede',
+    qual: 'Cat 5e ou Cat 6, do tamanho até o switch das câmeras.',
+    porque: 'O Raspberry fica no mesmo switch das câmeras.',
+  },
+  {
+    item: 'Leitor de cartão USB 3',
+    qual: 'Só se o computador não tiver entrada de cartão SD.',
+    porque: 'É por ele que o computador grava o cartão (o jeito mais rápido).',
+    opcional: true,
+  },
+  {
+    item: 'HD ou SSD externo USB',
+    qual: '500 GB ou mais.',
+    porque: 'Guarda 7 dias de histórico das câmeras. Precisa da fonte oficial.',
+    opcional: true,
+  },
+];
+
+function OQueComprar() {
+  return (
+    <ul className="flex flex-col gap-3">
+      {COMPRAS.map((c) => (
+        <li key={c.item} className="flex flex-col gap-0.5 border-t border-border pt-3 text-sm first:border-t-0 first:pt-0">
+          <span className="font-semibold">
+            {c.item}
+            {c.opcional && <span className="font-normal text-muted-foreground"> (opcional)</span>}
+          </span>
+          <span>{c.qual}</span>
+          <span className="text-muted-foreground">{c.porque}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /* ------------------------------------------------------------------ 1 · Gravar */
 
 /** Jeitos de gravar, do mais rápido ao mais lento. `porque` aparece no tooltip e embaixo do escolhido. */
@@ -559,6 +618,9 @@ export function EtapaGravar({
             </div>
           </div>
         )}
+        <Expansivel titulo="O que comprar" aviso={false}>
+          <OQueComprar />
+        </Expansivel>
         <p className="text-sm text-muted-foreground">Depois é uma coisa por tela. Clique em Começar.</p>
       </div>
     );

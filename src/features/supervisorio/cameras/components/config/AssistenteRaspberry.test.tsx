@@ -78,6 +78,9 @@ describe('AssistenteRaspberry', () => {
     expect(screen.getByText('Mais rápido')).toBeInTheDocument();
     expect(screen.getByText(/grava direto no cartão/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Por que Cabo USB-C?' })).toBeInTheDocument();
+    // O que comprar: cartão rápido em primeiro.
+    await user.click(screen.getByRole('button', { name: /O que comprar/ }));
+    expect(screen.getByText(/A2, U3 ou V30 escrito nele/)).toBeInTheDocument();
     await waitFor(() => expect(CamerasService.instalador).toHaveBeenCalledWith('u1'));
     await user.click(screen.getByRole('radio', { name: /Cabo USB-C/ }));
 
