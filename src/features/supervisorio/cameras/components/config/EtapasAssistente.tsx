@@ -278,7 +278,7 @@ function passosComando(so: SistemaPc, comando: ReactNode, esperaTitulo: string, 
           sistema={so}
           titulo={d.app}
           linhas={linhasInicio(d.ok, modo)}
-          destaque={modo === 'cartao' ? '  >> Se o cartão ainda estiver no computador, tire agora.' : '  >> Tire todos os cabos do Raspberry (fonte, rede, tudo).'}
+          destaque={modo === 'cartao' ? '  ✓ Encontrei o cartão!' : '  >> Tire todos os cabos do Raspberry (fonte, rede, tudo).'}
         />
       ),
     },
@@ -302,7 +302,7 @@ function passosFinais(so: SistemaPc, minutos: string, gravando: string): PassoGu
     },
     {
       titulo: 'Espere a faixa verde "DEU TUDO CERTO!"',
-      ajuda: `A barra enche de 0 a 100% (${minutos}). Se aparecer a faixa vermelha "DEU ERRO", rode o comando de novo.`,
+      ajuda: `Antes de gravar ele pode pedir a sua senha do computador (não aparece enquanto você digita). Depois a barra enche de 0 a 100% (${minutos}). Se aparecer a faixa vermelha "DEU ERRO", rode o comando de novo.`,
       visual: (
         <TelaTerminal
           sistema={so}
@@ -359,27 +359,37 @@ function passosComputador(so: SistemaPc, comando: ReactNode): PassoGuiado[] {
 
 function passosCartao(so: SistemaPc, comando: ReactNode): PassoGuiado[] {
   const d = doSistema(so);
+  const [abrir, copiar, colar] = passosComando(so, comando, '', 'cartao');
   return [
     {
       titulo: 'Tire o cartão SD do Raspberry',
-      ajuda: 'Ele fica embaixo da placa, na ponta. Puxe com cuidado. O Raspberry precisa estar desligado.',
+      ajuda: 'Com o Raspberry desligado. O cartão fica embaixo da placa, na ponta: puxe com cuidado.',
       visual: <DesenhoRaspberry destaque={['sd']} />,
     },
-    ...passosComando(so, comando, 'Espere aparecer esta frase e aperte Enter', 'cartao'),
     {
       titulo: 'Coloque o cartão no computador',
-      ajuda: 'Quando o Terminal pedir. Na entrada de cartão SD ou num leitor USB; microSD vai no adaptador. O Raspberry não entra nessa parte.',
+      ajuda: 'Na entrada de cartão SD ou num leitor USB. microSD vai no adaptador. Deixe ele lá até o fim.',
       visual: <CreditCard className="h-16 w-16 text-muted-foreground" aria-hidden />,
     },
+    abrir,
+    copiar,
+    colar,
     {
-      titulo: 'Espere ele achar o cartão',
-      ajuda: 'Não precisa apertar nada. Leva alguns segundos.',
-      visual: <TelaTerminal sistema={so} titulo={d.app} linhas={['  Esperando o cartão… 4 s']} destaque={d.ok('  ✓ Encontrei o cartão!')} />,
+      titulo: 'Confira o cartão e escreva SIM',
+      ajuda: 'Ele acha o cartão sozinho. Se tiver mais de um cartão ou pendrive, ele pergunta qual é. SIM apaga o cartão e grava o NexON.',
+      visual: (
+        <TelaTerminal
+          sistema={so}
+          titulo={d.app}
+          linhas={['==== PASSO 2 de 4: Achar o cartão no computador ====', d.ok('  ✓ Encontrei o cartão!'), '  Achei o cartão SD do Raspberry (32 GB).', '  Tudo o que estiver nele será apagado.']}
+          destaque="  >> Escreva SIM e aperte Enter para gravar: SIM"
+        />
+      ),
     },
-    ...passosFinais(so, 'uns 5 minutos', '3 de 4'),
+    passosFinais(so, 'uns 5 minutos', '3 de 4')[1],
     {
       titulo: 'Tire o cartão do computador',
-      ajuda: so === 'mac' ? 'Se aparecer aviso de disco não ejetado, pode ignorar: ele já foi ejetado.' : 'Ele já foi desligado do computador: pode tirar.',
+      ajuda: 'Só depois da faixa verde. Ele já foi desligado do computador: pode tirar.',
       visual: <CreditCard className="h-16 w-16 text-muted-foreground" aria-hidden />,
     },
     { titulo: 'Coloque o cartão de volta no Raspberry', ajuda: 'Pronto. Agora é só levar o Raspberry para o lugar dele.', visual: <DesenhoRaspberry destaque={['sd']} /> },
