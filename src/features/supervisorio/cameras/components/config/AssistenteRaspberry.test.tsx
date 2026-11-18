@@ -115,16 +115,22 @@ describe('AssistenteRaspberry', () => {
     expect(screen.getByText(/\$env:NEXON_MODO='cabo'; irm 'https:\/\/exemplo\/instalar\?so=windows' \| iex/)).toBeInTheDocument();
   });
 
-  it('cartão no computador: 11 telas, comando do Terminal e depois a etapa Ligar', async () => {
+  it('cartão no computador: 9 telas, cartão no computador antes do comando e depois a etapa Ligar', async () => {
     const user = userEvent.setup();
     abrir();
     await user.click(screen.getByRole('button', { name: /Começar/ }));
-    expect(screen.getByText('Passo 1 de 11')).toBeInTheDocument();
+    expect(screen.getByText('Passo 1 de 9')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Tire o cartão SD do Raspberry' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /Feito, próximo/ }));
+    expect(screen.getByRole('heading', { name: 'Coloque o cartão no computador' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /Feito, próximo/ }));
-    expect(await screen.findByText(INSTALADOR.comando)).toBeInTheDocument();
-    for (let i = 0; i < 8; i++) await user.click(screen.getByRole('button', { name: /Feito, próximo/ }));
+    await user.click(screen.getByRole('button', { name: /Feito, próximo/ }));
+    expect(await screen.findByText(/NEXON_MODO=cartao|curl -fsSL/)).toBeInTheDocument();
+    // Nenhuma tela manda tirar o cartão do computador antes de gravar.
+    for (let i = 0; i < 5; i++) {
+      expect(screen.queryByText(/tire agora/i)).toBeNull();
+      await user.click(screen.getByRole('button', { name: /Feito, próximo/ }));
+    }
     expect(screen.getByRole('heading', { name: 'Coloque o cartão de volta no Raspberry' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /Terminei de gravar/ }));
     expect(screen.getByRole('heading', { name: 'Ligue no local' })).toBeInTheDocument();

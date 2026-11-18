@@ -7,7 +7,7 @@ export type JeitoGravar = 'pc' | 'pendrive' | 'cartao';
 
 /** Quantas telas tem o guia de gravar de cada jeito (sem contar a tela de escolha). */
 export function totalPassosGravar(jeito: JeitoGravar): number {
-  return jeito === 'pc' ? 12 : jeito === 'pendrive' ? 8 : 11;
+  return jeito === 'pc' ? 12 : jeito === 'pendrive' ? 8 : 9;
 }
 
 /** Depois disto sem aparecer, a etapa Conectar mostra "Não apareceu?". */
