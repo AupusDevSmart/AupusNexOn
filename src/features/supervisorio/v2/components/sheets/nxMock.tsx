@@ -156,6 +156,11 @@ export function NxShell({ title, subtitle, right, tabs, tab, onTab, onClose, chi
   tabs?: Array<{ key: string; label: string }>; tab?: string; onTab?: (k: string) => void;
   onClose: () => void; children: ReactNode;
 }) {
+  // Operação é a tela principal; Configuração abre pela engrenagem (canto superior direito)
+  // e volta pela seta à esquerda do título.
+  const temCfg = !!tabs?.some((t) => t.key === 'cfg') && !!tabs?.some((t) => t.key === 'op');
+  const emCfg = temCfg && tab === 'cfg';
+  const outrasAbas = temCfg ? [] : (tabs ?? []);
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent
@@ -164,20 +169,30 @@ export function NxShell({ title, subtitle, right, tabs, tab, onTab, onClose, chi
       >
         <NxStyle />
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', padding: '20px 24px 0 24px', gap: 16 }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+          {emCfg && (
+            <button type="button" aria-label="Voltar" title="Voltar" onClick={() => onTab?.('op')} style={{ width: 36, height: 36, marginLeft: -8, borderRadius: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none', color: NX.mudo }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M19 12H5" /><path d="m12 19-7-7 7-7" /></svg>
+            </button>
+          )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: 1 }}>
             <DialogTitle style={{ margin: 0, fontSize: 22, fontWeight: 800, color: NX.texto }}>{title}</DialogTitle>
             {subtitle && <span style={{ fontSize: 14, color: NX.mudo }}>{subtitle}</span>}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             {right}
+            {temCfg && !emCfg && (
+              <button type="button" aria-label="Configurações" title="Configurações" onClick={() => onTab?.('cfg')} style={{ width: 32, height: 32, borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', color: NX.mudo, opacity: 0.7 }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" /><circle cx="12" cy="12" r="3" /></svg>
+              </button>
+            )}
             <button type="button" aria-label="Fechar" onClick={onClose} style={{ width: 36, height: 36, borderRadius: 18, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <IcoX />
             </button>
           </div>
         </div>
-        {tabs && tabs.length > 1 && (
-          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))`, gap: 4, margin: '16px 24px 0 24px', padding: 4, borderRadius: 14, background: NX.trilho }}>
-            {tabs.map((t) => (
+        {outrasAbas.length > 1 && (
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${outrasAbas.length}, minmax(0, 1fr))`, gap: 4, margin: '16px 24px 0 24px', padding: 4, borderRadius: 14, background: NX.trilho }}>
+            {outrasAbas.map((t) => (
               <button key={t.key} type="button" aria-pressed={tab === t.key} onClick={() => onTab?.(t.key)} style={s.tab(tab === t.key)}>{t.label}</button>
             ))}
           </div>
