@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { api } from '@/config/api';
 import { fmt } from '@/features/supervisorio/v2/components/sheets/sheetParts';
 import { useHistorico, bucketize, brl, unwrap } from '@/features/supervisorio/v2/components/sheets/equipUi';
-import { NX, s, NxShell, NxDialog, NxDialogHead, NxDialogButtons, NxSeg } from '@/features/supervisorio/v2/components/sheets/nxMock';
+import { NX, s, NxShell, NxDialog, NxDialogButtons, NxReview } from '@/features/supervisorio/v2/components/sheets/nxMock';
 import { curveMonotoneX } from '@visx/curve';
 import { ComposedChart } from '@/components/charts/composed-chart';
 import { Area } from '@/components/charts/area-chart';
@@ -15,6 +15,19 @@ import { ChartTooltip } from '@/components/charts/tooltip';
 import { COR } from '@/components/graficos/cores';
 import { TooltipDestaque } from '@/components/graficos/tooltip-destaque';
 import { LINHA_SO_DOMINIO, linhasDeBuckets } from '@/components/graficos/linhas-de-buckets';
+import { CAIXA_ROW, CARD, CSS, TINTA, botaoLinha } from './carregador.estilos';
+import {
+  MES_LONGO, RASCUNHO_VAZIO, amanhaYmd, bloqueioIniciar, corpoLiberar, dataBR, dm, duracaoTxt, durTxt, erroMsg, hm, hojeYmd, isoDate, kwDe,
+  limiteTxt, notaDaRevisao, num, numTxt, orientacaoOcioso, parseDm, revisarConfig, rotuloOrigem, situacaoDe, subRecarga, textoSituacao,
+  type Carregador, type CarregadorInfo, type Credenciais, type Estado, type Morador, type Papel, type Pode,
+  type RascunhoConfig, type RevisaoConfig, type Sessao,
+} from './carregador.util';
+import { AvisoFalha, LimitesAoIniciar, MedicoesRecarga } from './CarregadorOperacao';
+import { CarregadorLimites } from './CarregadorLimites';
+import { CarregadorComandos } from './CarregadorComandos';
+import { CarregadorConexaoOcpp } from './CarregadorConexaoOcpp';
+import { CarregadorParametros } from './CarregadorParametros';
+import { CarregadorExportar } from './CarregadorExportar';
 
 /**
  * Modal do Carregador (condomínio) — porte 1:1 do mockup "Web — Modal do Carregador" (NEXON-5).
@@ -24,82 +37,38 @@ import { LINHA_SO_DOMINIO, linhasDeBuckets } from '@/components/graficos/linhas-
  * Configuração: valor do kWh (analista edita: PUT :id/config, vale para recargas novas),
  * dados do carregador e moradores autorizados com validade (vence sozinho; aviso 1 dia antes).
  * Perfis vêm da API (estado.papel): analista, proprietário, operador (sem moradores nem exportação) e morador (só as próprias recargas).
+ *
+ * Carregador ligado por OCPP (NEXON-130, `estado.ocpp` presente): estado real na pílula e na
+ * linha de status, aviso de falha, medições da recarga, pedido aguardando o carro, limite ao
+ * iniciar e, na Configuração, limites de uso, corrente máxima, comandos, conexão e parâmetros.
+ * Carregador que não é OCPP fica como sempre foi; só ganha a seção Conexão OCPP (analista),
+ * que é onde se vincula. O que cada um vê sai de `estado.pode` (a API é quem protege).
+ * Este arquivo só orquestra: contas e tipos em carregador.util.ts, seções novas em arquivos próprios.
  */
 
-interface Carregador { id: string; nome: string; unidade_nome?: string; planta_id?: string }
-interface CarregadorInfo extends Carregador { potencia_kw?: number | string | null; tarifa_kwh?: number | string | null }
-interface Morador {
-  id: string; nome: string; apartamento?: string | null; tag_uid?: string | null; email?: string | null;
-  validade?: string | null; ativo?: boolean; em_recarga?: boolean; aviso_validade_em?: string | null;
-}
-interface Sessao {
-  id: string; equipamento_id?: string; planta_id?: string | null; morador_nome?: string | null; morador_id?: string | null; status?: string;
-  kwh_total?: number | string | null; inicio?: string | null; fim?: string | null; inicio_iso?: string | null; fim_iso?: string | null;
-  tarifa_kwh?: number | string | null; ocioso_inicio?: string | null; ocioso_por_nome?: string | null;
-}
-type Papel = 'analista' | 'proprietario' | 'operador' | 'morador';
-interface Estado {
-  estado?: string; fonte_kwh?: string; tarifa_kwh?: number | string | null; soc?: number | string | null;
-  potencia_kw?: number | string | null; capacidade_bateria_kwh?: number | string | null;
-  papel?: Papel; meu_morador?: { id: string; nome: string; apartamento?: string | null } | null;
-  sessao_ativa?: Sessao | null; sessoes?: Sessao[];
-}
-interface LinhaExport { apartamento?: string | null; morador?: string | null; recargas?: number; kwh: number | string; ocioso_min: number | string; valor_reais: number | string }
-interface DetalheExport {
-  apartamento?: string | null; morador?: string | null; vaga?: string | null; inicio?: string; fim?: string;
-  duracao_min?: number; kwh: number | string; tarifa_kwh?: number | string | null; valor_reais: number | string;
-}
 type Modal = null | 'iniciar' | 'parar' | 'vaga' | 'export' | 'review';
 
-const erroMsg = (e: unknown, padrao: string) =>
-  (e as { response?: { data?: { message?: string } } })?.response?.data?.message || padrao;
-
-/** Grade de 2 colunas do mockup; vira 1 coluna abaixo de ~760 px de largura. */
-const CSS = `
-.nxc-grid{display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:16px;align-items:stretch}
-@media (max-width: 759px){.nxc-grid{grid-template-columns:minmax(0, 1fr)}}
-`;
-
-/** "09/10 18:40" → Date (ano corrente; se cair no futuro, ano anterior). */
-function parseDm(v?: string | null): Date | null {
-  const m = /^(\d{2})\/(\d{2}) (\d{2}):(\d{2})$/.exec(String(v ?? '').trim());
-  if (!m) return null;
-  const now = new Date();
-  const d = new Date(now.getFullYear(), Number(m[2]) - 1, Number(m[1]), Number(m[3]), Number(m[4]));
-  if (d.getTime() - now.getTime() > 86400000) d.setFullYear(d.getFullYear() - 1);
-  return d;
-}
-const isoDate = (v?: string | null) => (v ? new Date(v) : null);
-const hojeYmd = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
-const amanhaYmd = () => { const d = new Date(); d.setDate(d.getDate() + 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
-const dataBR = (ymd?: string | null) => (ymd ? ymd.slice(0, 10).split('-').reverse().join('/') : 'Sem validade');
-const durTxt = (a: Date | null, b: Date | null) => {
-  if (!a || !b) return '—';
-  const min = Math.max(0, Math.round((b.getTime() - a.getTime()) / 60000));
-  return `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')} min`;
-};
-const hm = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-const dm = (d: Date) => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
-const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-const MES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-const MES_LONGO = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-const kwDe = (d: Record<string, unknown> | null | undefined): number | null => {
-  const v = Number(d?.Pt ?? d?.potencia_kw ?? d?.potencia ?? d?.power);
-  return Number.isFinite(v) ? (Math.abs(v) > 100 ? v / 1000 : v) : null;
-};
-
 // Estilos repetidos do mockup
-const CARD: CSSProperties = { background: NX.card, border: `1px solid ${NX.borda}` };
-const HIST_COLS = '160px 60px 1fr 90px 90px 120px';
-const MOR_COLS = '90px 1fr 150px 170px';
-const EXP_COLS = '1.6fr 0.8fr 1fr 1fr';
-const CAIXA_ROW: CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: 44, fontSize: 15, gap: 12 };
+// Tabelas: a coluna flexível tem largura mínima, e a tabela, a largura mínima que comporta todas
+// as colunas (colunas + espaços de 12 px + 32 px de margem interna). Em tela estreita ela rola
+// dentro do cartão com as colunas alinhadas. Com `1fr` solto a coluna flexível encolhia (48 px
+// no período, 82 px no nome do morador) e, na tabela do morador, as colunas nem cabiam na largura
+// mínima: cada linha saía com uma largura. Na tela larga nada muda (a coluna passa do mínimo).
+const HIST_COLS = '160px 60px minmax(100px, 1fr) 90px 90px 120px';
+const HIST_MIN = 712;
+const HIST_COLS_MORADOR = '70px minmax(100px, 1fr) 100px 100px 140px';
+const HIST_MIN_MORADOR = 590;
+const MOR_COLS = '90px minmax(180px, 1fr) 150px 170px';
+const MOR_MIN = 658;
 const SELECT_ROW: CSSProperties = { fontSize: 15, fontWeight: 700, color: NX.texto, background: 'transparent', border: 0, textAlign: 'right', maxWidth: '62%', cursor: 'pointer' };
 const ENTRADA: CSSProperties = { width: '100%', height: 34, boxSizing: 'border-box', borderRadius: 10, border: `1px solid ${NX.borda}`, background: NX.card, color: NX.texto, fontSize: 14, padding: '0 10px' };
 
 export function CarregadorModal({ carregador, open, onOpenChange }: { carregador: Carregador | null; open: boolean; onOpenChange: (v: boolean) => void }) {
   const [aba, setAba] = useState('op');
   const [estado, setEstado] = useState<Estado | null>(null);
+  // A leitura falhou e ainda não há estado nenhum na tela: mostra o erro (a mensagem da API,
+  // se veio) com "Tentar de novo". Vazio = não falhou.
+  const [erroLer, setErroLer] = useState('');
   const [carregadores, setCarregadores] = useState<CarregadorInfo[]>([]);
   const [moradores, setMoradores] = useState<Morador[]>([]);
   const [todas, setTodas] = useState<Sessao[]>([]);
@@ -108,23 +77,39 @@ export function CarregadorModal({ carregador, open, onOpenChange }: { carregador
   const [lidoEm, setLidoEm] = useState(() => Date.now());
   const [modal, setModal] = useState<Modal>(null);
   const [moradorSel, setMoradorSel] = useState('');
+  // Limites opcionais do diálogo de iniciar (texto do campo; vazio = usa o padrão do carregador).
+  const [limTempo, setLimTempo] = useState('');
+  const [limEnergia, setLimEnergia] = useState('');
   const [busy, setBusy] = useState(false);
   const [erro, setErro] = useState('');
+  // Parada pedida e o carregador ainda não confirmou (no OCPP a recarga só fecha com a resposta dele).
+  const [parando, setParando] = useState(false);
   const [erroCfg, setErroCfg] = useState('');
+  const [erroSalvar, setErroSalvar] = useState('');
   const [novo, setNovo] = useState<null | { nome: string; apartamento: string; tag_uid: string; email: string; validade: string }>(null);
-  const [tarifaDraft, setTarifaDraft] = useState<string | null>(null);
+  // Configuração: rascunho do que ainda não foi gravado (valor do kWh, limites, corrente) e a
+  // revisão que está aberta no diálogo (o que se confirma é o que se envia).
+  const [rascunho, setRascunho] = useState<RascunhoConfig>(RASCUNHO_VAZIO);
+  const [emRevisao, setEmRevisao] = useState<RevisaoConfig | null>(null);
   const [salvando, setSalvando] = useState(false);
-  // Exportação
-  const mesesOpc = useMemo(() => {
-    const h = new Date();
-    return [2, 1, 0].map((k) => new Date(h.getFullYear(), h.getMonth() - k, 1));
-  }, []);
-  const [mesExp, setMesExp] = useState(() => ymd(mesesOpc[1]));
-  const [formato, setFormato] = useState<'xlsx' | 'csv'>('xlsx');
-  const [exp, setExp] = useState<{ csv?: string; linhas: LinhaExport[]; detalhe: DetalheExport[] } | null>(null);
-  const [baixado, setBaixado] = useState('');
+  // Depois de um comando a tela atualiza a cada 5 s até este instante (1 minuto).
+  const [rapidoAte, setRapidoAte] = useState(0);
+  // Chave e URLs do vínculo: a API devolve uma vez; ficam aqui para não sumirem ao trocar de aba.
+  // Só em memória e só com a tela aberta: saem em "Já guardei", ao desvincular, ao trocar de carregador e ao fechar.
+  const [credenciais, setCredenciais] = useState<Credenciais | null>(null);
 
   const id = carregador?.id;
+  /** Carregador na tela: resposta atrasada de outro carregador não entra. */
+  const idAtual = useRef<string | undefined>(undefined);
+
+  /** Só o estado (leve): é o que a atualização rápida relê. */
+  const lerEstado = useCallback(async () => {
+    if (!id) return;
+    try {
+      const e = await api.get(`/carregador-eletrico/${id}/estado`);
+      if (idAtual.current === id) setEstado(unwrap<Estado>(e));
+    } catch { /* mantém o que tinha */ } finally { setLidoEm(Date.now()); }
+  }, [id]);
 
   const carregar = useCallback(async () => {
     if (!id) return;
@@ -134,7 +119,8 @@ export function CarregadorModal({ carregador, open, onOpenChange }: { carregador
         api.get('/carregador-eletrico/carregadores'),
         api.get('/carregador-eletrico/sessoes', { params: { carregadorId: id, limite: 500 } }).catch(() => null),
       ]);
-      setEstado(unwrap<Estado>(e));
+      if (idAtual.current !== id) return;
+      setEstado(unwrap<Estado>(e)); setErroLer('');
       const lista = unwrap<CarregadorInfo[]>(cs) ?? [];
       setCarregadores(Array.isArray(lista) ? lista : []);
       if (ss) { const l = unwrap<Sessao[]>(ss); setTodas(Array.isArray(l) ? l : []); }
@@ -144,39 +130,43 @@ export function CarregadorModal({ carregador, open, onOpenChange }: { carregador
       const m = await api.get('/carregador-eletrico/moradores', { params: pid ? { plantaId: pid } : undefined });
       const ml = unwrap<Morador[]>(m);
       setMoradores(Array.isArray(ml) ? ml : []);
-    } catch { /* mantém o que tinha */ } finally { setLidoEm(Date.now()); }
+    } catch (e) { if (idAtual.current === id) setErroLer(erroMsg(e, 'Não foi possível ler o carregador.')); /* mantém o que tinha */ } finally { setLidoEm(Date.now()); }
   }, [id, carregador?.planta_id]);
 
-  useEffect(() => { if (open) { setAba('op'); setErro(''); setErroCfg(''); setVerTodas(false); carregar(); } }, [open, carregar]);
+  useEffect(() => {
+    if (!open) return;
+    // Outro carregador: nada do anterior fica na tela enquanto o novo carrega.
+    if (idAtual.current !== id) { idAtual.current = id; setEstado(null); setErroLer(''); setTodas([]); }
+    setAba('op'); setErro(''); setErroCfg(''); setErroSalvar(''); setVerTodas(false);
+    setRascunho(RASCUNHO_VAZIO); setCredenciais(null); setRapidoAte(0); setParando(false);
+    carregar();
+  }, [open, id, carregar]);
+  // A chave de conexão só existe com a tela aberta. O modal fica montado na página depois de
+  // fechado (só deixa de desenhar), então ao fechar a chave sai da memória aqui.
+  useEffect(() => { if (!open) setCredenciais(null); }, [open]);
+
+  const sa = estado?.sessao_ativa ?? null;
+  // Liberada no NexON e o carregador ainda não confirmou: espera o carro, não é recarga ainda.
+  const aguardando = sa?.aguardando_inicio === true;
+  const carregando = !!sa && !aguardando;
+
+  // Atualização: 30 s; enquanto espera o carro ou por 1 minuto depois de um comando, 5 s (só o estado).
+  const rapido = aguardando || rapidoAte > lidoEm;
   useEffect(() => {
     if (!open || !id) return;
-    const t = setInterval(carregar, 30000);
+    const t = setInterval(rapido ? lerEstado : carregar, rapido ? 5000 : 30000);
     return () => clearInterval(t);
-  }, [open, id, carregar]);
+  }, [open, id, carregar, lerEstado, rapido]);
 
   // Curva de potência: leituras do equipamento desde o início da recarga em andamento.
-  const sa = estado?.sessao_ativa ?? null;
-  const carregando = !!sa;
+  // O fim anda de 30 em 30 s: a atualização rápida não refaz a busca do histórico a cada 5 s.
   const inicioMs = (isoDate(sa?.inicio_iso) ?? parseDm(sa?.inicio))?.getTime() ?? null;
+  const lidoCurva = Math.floor(lidoEm / 30000) * 30000;
   const [curvaIni, curvaFim] = useMemo<[Date | null, Date | null]>(
-    () => (inicioMs == null ? [null, null] : [new Date(inicioMs), new Date(Math.max(lidoEm, inicioMs + 60000))]),
-    [inicioMs, lidoEm],
+    () => (inicioMs == null ? [null, null] : [new Date(inicioMs), new Date(Math.max(lidoCurva, inicioMs + 60000))]),
+    [inicioMs, lidoCurva],
   );
   const { pts } = useHistorico(id, curvaIni, curvaFim, open && carregando);
-
-  useEffect(() => {
-    if (modal !== 'export') return;
-    let vivo = true;
-    setExp(null); setBaixado('');
-    api.get('/carregador-eletrico/export', { params: { mes: mesExp, plantaId } })
-      .then((r) => {
-        if (!vivo) return;
-        const d = unwrap<{ csv?: string; linhas?: LinhaExport[]; detalhe?: DetalheExport[] }>(r);
-        setExp({ csv: d?.csv, linhas: d?.linhas ?? [], detalhe: d?.detalhe ?? [] });
-      })
-      .catch((e) => { if (vivo) { setExp({ linhas: [], detalhe: [] }); setErro(erroMsg(e, 'Falha ao montar a planilha')); } });
-    return () => { vivo = false; };
-  }, [modal, mesExp, plantaId]);
 
   if (!open || !carregador) return null;
 
@@ -186,9 +176,28 @@ export function CarregadorModal({ carregador, open, onOpenChange }: { carregador
   // NEXON-20 (PER-38): moradores (aba Configuração) e exportação só analista e
   // proprietário; operador e morador ficam na operação.
   const podeGerir = papel === 'analista' || papel === 'proprietario';
+  // NEXON-130: o que o usuário pode neste carregador vem da API (ausente em API antiga = nada novo aparece).
+  const pode: Pode = estado?.pode ?? {};
+  const ocpp = estado?.ocpp ?? null;
+  const ehOcpp = ocpp != null;
+  const limites = estado?.limites ?? null;
+  const leitura = estado?.leitura ?? null;
+  const situacao = situacaoDe(estado);
+  // Antes da primeira resposta a tela não afirma nada do carregador: "Lendo…" (ou "Sem leitura", se falhou).
+  const lendo = estado == null;
+  const falhouLer = erroLer !== '';
+  const selo = lendo ? { rotulo: falhouLer ? 'Sem leitura' : 'Lendo…', tom: 'off' as const } : { rotulo: situacao.rotulo, tom: situacao.tom };
+  // Configuração: quem gere (analista e proprietário) e, no carregador OCPP, quem pode
+  // bloquear (operador com o carregador liberado), que entra para usar os Comandos.
+  const temCfg = !lendo && (podeGerir || (ehOcpp && !!pode.bloquear));
+  const podeComandar = pode.comandar !== false;
   const tarifaCfg = estado?.tarifa_kwh != null ? Number(estado.tarifa_kwh) : info?.tarifa_kwh != null ? Number(info.tarifa_kwh) : null;
   // A recarga em andamento usa o valor do kWh gravado quando começou.
   const tarifa = sa?.tarifa_kwh != null ? Number(sa.tarifa_kwh) : tarifaCfg;
+  // Energia da recarga: só `sessao_ativa.kwh_total`, que a API atualiza a cada medição. Não cai para
+  // `leitura.energia_sessao_kwh`: a leitura é a última recebida e, até a primeira medição de uma recarga
+  // iniciada pelo cartão (ou sozinha), ainda é a da recarga ANTERIOR; e quando a API esconde o `kwh_total`
+  // (morador vendo a recarga de outro) a leitura mostraria o que ela escondeu.
   const kwhAtual = sa?.kwh_total != null ? Number(sa.kwh_total) : null;
   const inicioSa = inicioMs != null ? new Date(inicioMs) : null;
   const potencia = info?.potencia_kw != null ? Number(info.potencia_kw) : estado?.potencia_kw != null ? Number(estado.potencia_kw) : null;
@@ -207,17 +216,29 @@ export function CarregadorModal({ carregador, open, onOpenChange }: { carregador
   const abrir = (m: Modal) => {
     setErro('');
     setMoradorSel(ehMorador && estado?.meu_morador ? estado.meu_morador.id : moradores.filter((x) => x.ativo !== false).length === 1 ? moradores.filter((x) => x.ativo !== false)[0].id : '');
+    // O limite da recarga já vem com o padrão do carregador (que também é o teto).
+    if (m === 'iniciar') { setLimTempo(numTxt(limites?.tempo_min)); setLimEnergia(numTxt(limites?.energia_kwh)); }
     setModal(m);
   };
   const fechar = () => { setModal(null); };
+  /** Depois de um comando: 1 minuto atualizando a cada 5 s, para o carregador ter tempo de responder. */
+  const marcarComando = () => setRapidoAte(Date.now() + 60000);
+  const aposComando = () => { marcarComando(); void lerEstado(); };
   const comando = async (fn: () => Promise<unknown>, falha: string) => {
-    setModal(null); setBusy(true); setErro('');
-    try { await fn(); await carregar(); }
+    setModal(null); setBusy(true); setErro(''); setParando(false);
+    try { await fn(); marcarComando(); await carregar(); }
     catch (e) { setErro(erroMsg(e, falha)); }
     finally { setBusy(false); }
   };
-  const iniciar = () => { const mid = moradorSel; if (mid) comando(() => api.post(`/carregador-eletrico/${id}/liberar`, { morador_id: mid }), 'Falha ao iniciar a recarga'); };
-  const parar = () => comando(() => api.post(`/carregador-eletrico/${id}/parar`), 'Falha ao parar a recarga');
+  // null = falta o morador ou há limite fora da faixa: o botão Iniciar fica desligado.
+  const corpoIniciar = corpoLiberar(moradorSel, limTempo, limEnergia, limites);
+  const iniciar = () => { if (corpoIniciar) comando(() => api.post(`/carregador-eletrico/${id}/liberar`, corpoIniciar), 'Falha ao iniciar a recarga'); };
+  const parar = () => comando(async () => {
+    const r = unwrap<{ aguardando_carregador?: boolean }>(await api.post(`/carregador-eletrico/${id}/parar`));
+    setParando(r?.aguardando_carregador === true);
+  }, 'Falha ao parar a recarga');
+  // Pedido que ainda espera o carro: o mesmo POST :id/parar cancela na hora.
+  const cancelarPedido = () => comando(() => api.post(`/carregador-eletrico/${id}/parar`), 'Falha ao cancelar o pedido');
   const pedirVaga = () => { const mid = moradorSel; if (mid) comando(() => api.post(`/carregador-eletrico/${id}/pedir-vaga`, { morador_id: mid }), 'Falha ao pedir a vaga'); };
 
   const addMorador = async () => {
@@ -238,15 +259,29 @@ export function CarregadorModal({ carregador, open, onOpenChange }: { carregador
     catch (e) { setErroCfg(erroMsg(e, 'Falha ao remover o morador')); }
   };
 
-  const tarifaTxtEdit = tarifaDraft ?? (tarifaCfg != null ? fmt(tarifaCfg, 2) : '');
-  const tarifaNum = Number(String(tarifaTxtEdit).replace(',', '.'));
-  const tarifaRuim = tarifaTxtEdit === '' || !Number.isFinite(tarifaNum) || tarifaNum < 0.3 || tarifaNum > 5;
-  const tarifaMudou = !tarifaRuim && (tarifaCfg == null || Math.abs(tarifaNum - tarifaCfg) > 0.00001);
-  const salvarTarifa = async () => {
-    setSalvando(true); setErroCfg('');
-    try { await api.put(`/carregador-eletrico/${id}/config`, { tarifa_kwh: tarifaNum }); setTarifaDraft(null); setModal(null); await carregar(); }
-    catch (e) { setErroCfg(erroMsg(e, 'Falha ao salvar o valor do kWh')); setModal(null); }
-    finally { setSalvando(false); }
+  // Um Salvar só na aba: valor do kWh (analista), limites de uso (analista e proprietário) e
+  // corrente máxima (analista) vão no mesmo PUT :id/config, só com o que mudou.
+  const tarifaTxtEdit = rascunho.tarifa ?? (tarifaCfg != null ? fmt(tarifaCfg, 2) : '');
+  const revisao = revisarConfig({ tarifa: tarifaCfg, limites }, rascunho, { tarifa: papel === 'analista', limites: !!pode.limites, corrente: !!pode.tecnico });
+  const tarifaRuim = revisao.ruins.tarifa;
+  const nMud = revisao.mudancas.length;
+  const podeSalvar = papel === 'analista' || (limites != null && !!pode.limites);
+  const salvarConfig = async () => {
+    const corpo = emRevisao?.corpo;
+    if (!corpo) return;
+    setSalvando(true); setErroSalvar('');
+    try {
+      await api.put(`/carregador-eletrico/${id}/config`, corpo);
+      setRascunho(RASCUNHO_VAZIO);
+    } catch (e) {
+      // 409 = o carregador recusou a corrente: a mensagem da API vai para a tela.
+      const soTarifa = Object.keys(corpo).length === 1 && 'tarifa_kwh' in corpo;
+      setErroSalvar(erroMsg(e, soTarifa ? 'Falha ao salvar o valor do kWh' : 'Falha ao salvar a configuração'));
+    }
+    setModal(null);
+    // A corrente vai ao carregador na hora: acompanha de perto a resposta dele.
+    if ('limite_corrente_a' in corpo) marcarComando();
+    try { await carregar(); } finally { setSalvando(false); }
   };
 
   // ------------------------------------------------------------------ operação
@@ -267,20 +302,33 @@ export function CarregadorModal({ carregador, open, onOpenChange }: { carregador
   const maxLido = Math.max(0, ...curva.map((p) => Number(p.potencia)));
   const MAXP = Math.ceil((Math.max(potencia ?? 0, maxLido, 1) + 1) / 2) * 2;
   curva.forEach((p) => { p.teto = MAXP; });
-  const kwAgora = curva.length ? Number(curva[curva.length - 1].potencia) : null;
+  // Potência agora: a última medição do carregador OCPP; sem ela, o último ponto da curva (como sempre).
+  const kwAgora = num(leitura?.potencia_kw) ?? (curva.length ? Number(curva[curva.length - 1].potencia) : null);
 
-  const pillText = carregando ? 'Carregando' : 'Disponível';
-  const stText = carregando
-    ? `Carregando${kwAgora != null ? ` · ${fmt(kwAgora, 1)} kW` : ''}${sa?.ocioso_inicio ? ` · vaga pedida por ${sa.ocioso_por_nome ?? '—'}` : ''}`
-    : 'Disponível';
+  // Linha de status: no carregador antigo continua "Normal" + Carregando/Disponível; no OCPP é o estado real.
+  const rotuloLinha = lendo ? selo.rotulo : situacao.chave === 'legado' ? 'Normal' : situacao.rotulo;
+  const textoLinha = lendo ? '' : textoSituacao(situacao, estado, kwAgora);
+  // A bateria só "corre" com energia passando de verdade (pausado, em falha ou finalizando fica parada).
+  const energizando = carregando && (situacao.chave === 'legado' || situacao.chave === 'carregando');
+  // Sem recarga e o carregador não aceitaria (sem comunicação, falha, bloqueado): Iniciar desligado, com a razão.
+  const bloqueio = podeComandar && !sa ? bloqueioIniciar(situacao) : null;
+  const limiteRecarga = limiteTxt(sa, kwhAtual);
   const desde = inicioSa ? hm(inicioSa) : sa?.inicio ?? '—';
-  const etaTxt = carregando
-    ? falta && fimPrev
-      ? `Faltam ${Math.floor(falta.h)} h ${String(Math.round((falta.h % 1) * 60)).padStart(2, '0')} min para 100% · término ~${hm(fimPrev)}`
-      : soc != null
-        ? `${morLabel(sa?.morador_nome)} · carregando desde ${desde}`
-        : `Bateria do carro não informada · ${morLabel(sa?.morador_nome)} · desde ${desde}`
-    : 'Conecte o carro e inicie a recarga';
+  // Recarga que começou sozinha no carregador OCPP (início automático) não tem morador.
+  const quem = !sa?.morador_nome && ehOcpp ? 'Sem morador' : morLabel(sa?.morador_nome);
+  const etaTxt = lendo
+    ? (falhouLer ? 'Sem leitura do carregador' : 'Lendo o carregador…')
+    : aguardando
+    ? 'Aguardando o carro ser conectado'
+    : carregando
+      ? falta && fimPrev
+        ? `Faltam ${Math.floor(falta.h)} h ${String(Math.round((falta.h % 1) * 60)).padStart(2, '0')} min para 100% · término ~${hm(fimPrev)}`
+        : soc != null
+          ? `${quem} · carregando desde ${desde}`
+          : ehOcpp
+            ? `${quem} · desde ${desde}`
+            : `Bateria do carro não informada · ${quem} · desde ${desde}`
+      : orientacaoOcioso(situacao);
   const previsto = carregando && kwhAtual != null && tarifa != null ? brl((kwhAtual + (falta?.kwh ?? 0)) * tarifa) : 'R$ 0,00';
 
   // Histórico
@@ -290,14 +338,22 @@ export function CarregadorModal({ carregador, open, onOpenChange }: { carregador
     const kwh = x.kwh_total != null ? Number(x.kwh_total) : null;
     const t = x.tarifa_kwh != null ? Number(x.tarifa_kwh) : tarifa;
     const ativa = x.status === 'ativa';
+    const dur = num(x.duracao_min);
+    // `aguardando_inicio` só vem em `sessao_ativa` (as linhas de `sessoes` não trazem): a linha
+    // que ainda espera o carro é a da recarga ativa, reconhecida pelo id.
+    const esperaCarro = ativa && aguardando && String(x.id).trim() === String(sa?.id).trim();
     return {
       id: x.id,
-      mor: morLabel(x.morador_nome),
+      // Recarga que começou sozinha (início automático) não tem morador.
+      mor: !x.morador_nome && rotuloOrigem(x.origem) === 'Automático' ? 'Sem morador' : morLabel(x.morador_nome),
       data: a ? (a.toDateString() === agora.toDateString() ? 'Hoje' : dm(a)) : '—',
-      per: `${a ? hm(a) : '—'} → ${ativa ? 'em andamento' : b ? hm(b) : '—'}`,
-      dur: durTxt(a, ativa ? agora : b),
+      per: `${a ? hm(a) : '—'} → ${ativa ? (esperaCarro ? 'aguardando o carro' : 'em andamento') : b ? hm(b) : '—'}`,
+      // A duração calculada no servidor vale mais que a conta com o relógio deste aparelho.
+      dur: dur != null ? duracaoTxt(dur) : durTxt(a, ativa ? agora : b),
       kwh: kwh != null ? `${fmt(kwh, 1)} kWh` : '—',
       rs: kwh != null && t != null ? brl(kwh * t) : '—',
+      // Segunda linha: de onde veio (cartão ou automático) e como terminou. Não ocupa coluna.
+      sub: subRecarga(x),
     };
   };
   const recentes = estado?.sessoes ?? [];
@@ -309,59 +365,24 @@ export function CarregadorModal({ carregador, open, onOpenChange }: { carregador
   const kwhMes = doMes.reduce((acc, x) => acc + Number(x.kwh_total || 0), 0);
   const rsMes = doMes.reduce((acc, x) => acc + Number(x.kwh_total || 0) * Number(x.tarifa_kwh ?? tarifa ?? 0), 0);
   const histTotal = `${MES_LONGO[agora.getMonth()]} · ${fmt(kwhMes, 1)} kWh${!ehMorador && tarifa != null ? ` · ${brl(rsMes)} (estimado)` : ''}`;
-  const histCols = ehMorador ? '70px 1fr 100px 100px 140px' : HIST_COLS;
-
-  // ------------------------------------------------------------------ exportação
-  const mesSel = mesesOpc.find((d) => ymd(d) === mesExp) ?? mesesOpc[1];
-  const mesIdx = mesesOpc.indexOf(mesSel);
-  const monthLabel = `${MES_LONGO[mesSel.getMonth()]}/${mesSel.getFullYear()}${mesIdx === 2 ? ' (parcial)' : ''}`;
-  const sumRows = (exp?.linhas ?? []).map((r) => ({
-    apto: `${r.apartamento ? `${r.apartamento} · ` : ''}${r.morador ?? '—'}`, n: r.recargas ?? null, kwh: Number(r.kwh || 0), rs: Number(r.valor_reais || 0),
-  }));
-  const sessCount = exp ? sumRows.reduce((a, r) => a + (r.n ?? 0), 0) : null;
-  const totKwh = sumRows.reduce((a, r) => a + r.kwh, 0);
-  const totRs = sumRows.reduce((a, r) => a + r.rs, 0);
-  const slug = vagaNum ? `vaga${vagaNum}`.toLowerCase()
-    : (carregador.nome || 'carregador').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-  const nomeArq = `recargas-${slug}-${MES[mesSel.getMonth()].toLowerCase()}-${mesSel.getFullYear()}`;
-
-  const baixar = async () => {
-    if (!exp) return;
-    try {
-      if (formato === 'csv') {
-        const blob = new Blob([exp.csv ?? ''], { type: 'text/csv;charset=utf-8' });
-        const url = URL.createObjectURL(blob); const a = document.createElement('a');
-        a.href = url; a.download = `${nomeArq}.csv`; a.click(); URL.revokeObjectURL(url);
-        setBaixado(`${nomeArq}.csv`);
-      } else {
-        const XLSX = await import('xlsx');
-        const wb = XLSX.utils.book_new();
-        const resumo = exp.linhas.map((r) => ({
-          Apartamento: r.apartamento ?? '', Morador: r.morador ?? '—', Recargas: r.recargas ?? '',
-          'Energia (kWh)': Number(r.kwh), 'Ocioso (min)': Number(r.ocioso_min), 'Valor estimado (R$)': Number(r.valor_reais),
-        }));
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(resumo), 'Resumo por apartamento');
-        const detalhe = exp.detalhe.map((x) => {
-          const min = Number(x.duracao_min ?? 0);
-          return {
-            Apto: x.apartamento ?? '', Morador: x.morador ?? '—', Vaga: x.vaga ?? '',
-            'Início': x.inicio ?? '', Fim: x.fim ?? '', 'Duração': `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')} min`,
-            kWh: Number(x.kwh), 'R$/kWh': x.tarifa_kwh != null ? Number(x.tarifa_kwh) : '', 'Valor (R$)': Number(x.valor_reais),
-          };
-        });
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detalhe), 'Detalhe por recarga');
-        XLSX.writeFile(wb, `${nomeArq}.xlsx`);
-        setBaixado(`${nomeArq}.xlsx`);
-      }
-    } catch (e) { setErro(erroMsg(e, 'Falha ao gerar a planilha')); }
-  };
+  const histCols = ehMorador ? HIST_COLS_MORADOR : HIST_COLS;
 
   // ------------------------------------------------------------------ configuração
+
+  const salvarOff = revisao.invalido || nMud === 0;
+  const botaoSalvar = podeSalvar ? (
+    <>
+      {erroSalvar && <span role="alert" style={{ fontSize: 13, color: NX.bad }}>{erroSalvar}</span>}
+      <button type="button" disabled={salvarOff} onClick={() => { setErroSalvar(''); setEmRevisao(revisao); setModal('review'); }} style={s.save(salvarOff)}>
+        {revisao.invalido ? 'Valor fora da faixa' : nMud > 0 ? `Revisar ${nMud} ${nMud > 1 ? 'alterações' : 'alteração'}` : 'Salvar'}
+      </button>
+    </>
+  ) : null;
 
   const selectMorador = (
     <div style={CAIXA_ROW}>
       <span>Morador</span>
-      <select aria-label="Morador" value={moradorSel} onChange={(e) => setMoradorSel(e.target.value)} style={SELECT_ROW}>
+      <select className="nxc-campo" aria-label="Morador" value={moradorSel} onChange={(e) => setMoradorSel(e.target.value)} style={SELECT_ROW}>
         <option value="">{moradores.length ? 'Escolha…' : 'Nenhum morador cadastrado'}</option>
         {moradores.filter((m) => m.ativo !== false).map((m) => <option key={m.id} value={m.id}>{morLabel(m.nome)}</option>)}
       </select>
@@ -369,22 +390,63 @@ export function CarregadorModal({ carregador, open, onOpenChange }: { carregador
   );
   const erroDlg = erro ? <span style={{ fontSize: 13, color: NX.bad }}>{erro}</span> : null;
 
+  // Linha de status e curva: as mesmas peças nas duas grades (a do mockup e a do OCPP).
+  const linhaStatus = (
+    <div className="nxc-a-status" style={{ ...CARD, borderRadius: 14, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 8, ...(ehOcpp ? { flexWrap: 'wrap', rowGap: 2 } : {}) }}>
+      <span style={s.stDot(selo.tom)} />
+      <span style={s.stLabel(selo.tom)}>{rotuloLinha}</span>
+      <span style={{ fontSize: 14, color: NX.mudo }}>{textoLinha}</span>
+    </div>
+  );
+  const cartaoCurva = (
+    <div className="nxc-a-curva" style={{ ...CARD, borderRadius: 14, padding: '14px 16px 10px 16px', flex: 1, display: 'flex', flexDirection: 'column' }}>
+      <span style={{ fontSize: 15, fontWeight: 800 }}>Curva de potência</span>
+      <div style={{ height: 150, marginTop: 8 }} role="img" aria-label="Curva de potência da recarga">
+        <ComposedChart data={curva} aspectRatio="auto" className="h-full"
+          margin={{ top: 8, right: 8, bottom: 24, left: 48 }} animationDuration={0}>
+          <Grid horizontal numTicksRows={3} />
+          <Area dataKey="potencia" fill={COR.potencia} fillOpacity={0.25} gradientToOpacity={0.04} strokeWidth={2.2} curve={curveMonotoneX} animate={false} />
+          <Line dataKey="teto" {...LINHA_SO_DOMINIO} />
+          <XAxis numTicks={2} />
+          <YAxis numTicks={3} formatValue={(x) => `${fmt(x, Number.isInteger(x) ? 0 : 1)} kW`} />
+          <ChartTooltip showDots content={({ point }) => {
+            const p = point as { date: Date; potencia: number };
+            return <TooltipDestaque titulo={hm(p.date)} valor={fmt(p.potencia, 1)} unidade="kW" rotulo="Potência" />;
+          }} />
+        </ComposedChart>
+      </div>
+    </div>
+  );
+
+  // Pílula de estado: ao lado do título na tela larga; no celular, embaixo do subtítulo (classes
+  // `.nxc-selo-*`). Só uma das duas aparece: quem decide é a largura da tela, no CSS.
+  const pilula = <span style={s.pill(selo.tom)}><span style={s.pillDot(selo.tom)} />{selo.rotulo}</span>;
+  const subtitulo = [unidade, potencia != null ? `${fmt(potencia, 0)} kW` : null].filter(Boolean).join(' · ');
+
   return (
     <NxShell
       title={carregador.nome || 'Carregador'}
-      subtitle={[unidade, potencia != null ? `${fmt(potencia, 0)} kW` : null].filter(Boolean).join(' · ') || undefined}
-      right={<span style={s.pill('ok')}><span style={s.pillDot('ok')} />{pillText}</span>}
-      tabs={!podeGerir ? undefined : [{ key: 'op', label: 'Operação' }, { key: 'cfg', label: 'Configuração' }]}
-      tab={!podeGerir ? 'op' : aba}
+      subtitle={<>{subtitulo}<span className="nxc-selo-sub">{pilula}</span></>}
+      right={<span className="nxc-selo-topo">{pilula}</span>}
+      tabs={!temCfg ? undefined : [{ key: 'op', label: 'Operação' }, { key: 'cfg', label: 'Configuração' }]}
+      tab={!temCfg ? 'op' : aba}
       onTab={setAba}
       onClose={() => onOpenChange(false)}
     >
       <style>{CSS}</style>
 
-      {aba === 'op' || !podeGerir ? (
+      {aba === 'op' || !temCfg ? (
         <div style={{ padding: '20px 24px 28px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div className="nxc-grid">
-            <div style={{ ...CARD, borderRadius: 16, padding: 20, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
+          {lendo && falhouLer && (
+            <div role="alert" style={{ ...TINTA.bad, borderRadius: 14, padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+              <span style={{ fontSize: 15, fontWeight: 800, minWidth: 0, overflowWrap: 'anywhere' }}>{erroLer}</span>
+              <button type="button" onClick={() => { setErroLer(''); void carregar(); }} style={botaoLinha()}>Tentar de novo</button>
+            </div>
+          )}
+          {estado?.falha && <AvisoFalha falha={estado.falha} tecnico={!!pode.tecnico} />}
+          {/* OCPP: carro ao lado do status e da curva, medições na largura toda (grade .nxc-op). */}
+          <div className={ehOcpp ? 'nxc-op' : 'nxc-grid'}>
+            <div className="nxc-a-carro" style={{ ...CARD, borderRadius: 16, padding: 20, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, ...(ehOcpp ? { justifyContent: 'center' } : {}) }}>
               <svg viewBox="0 0 300 110" width="300" height="110" role="img" aria-label="Carro conectado ao carregador" style={{ maxWidth: '100%' }}>
                 <rect x="250" y="24" width="34" height="70" rx="8" fill={NX.trilho} stroke="#B9BDCB" />
                 <rect x="258" y="34" width="18" height="12" rx="3" fill={carregando ? '#2E8B47' : '#B9BDCB'} />
@@ -395,72 +457,72 @@ export function CarregadorModal({ carregador, open, onOpenChange }: { carregador
                 <circle cx="186" cy="86" r="16" fill={NX.card} stroke={NX.mudo} strokeWidth="3" />
                 <circle cx="62" cy="86" r="5" fill={NX.mudo} />
                 <circle cx="186" cy="86" r="5" fill={NX.mudo} />
-                {carregando && <path className="nxw-pulse" d="M126 58 L116 72 L124 72 L118 84 L132 68 L124 68 Z" fill="#2E8B47" />}
+                {carregando && <path className={energizando ? 'nxw-pulse' : undefined} d="M126 58 L116 72 L124 72 L118 84 L132 68 L124 68 Z" fill="#2E8B47" />}
               </svg>
               <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8 }}>
                 <div style={{ flex: 1, height: 36, borderRadius: 12, border: '2px solid #B9BDCB', padding: 3, boxSizing: 'border-box', overflow: 'hidden' }}>
-                  <div className={carregando ? 'nxw-flow' : ''} style={fillStyle} />
+                  <div className={energizando ? 'nxw-flow' : ''} style={fillStyle} />
                 </div>
                 <div style={{ width: 6, height: 14, borderRadius: '0 3px 3px 0', background: '#B9BDCB' }} />
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-                <span style={{ fontSize: 46, lineHeight: '50px', fontWeight: 800, fontVariantNumeric: 'tabular-nums', letterSpacing: -1 }}>{soc != null ? `${Math.round(soc)}%` : '—'}</span>
+                {/* O carregador OCPP de corrente alternada não lê a bateria do carro: sem leitura, nada de "—" gigante. */}
+                {(!ehOcpp || soc != null) && (
+                  <span style={{ fontSize: 46, lineHeight: '50px', fontWeight: 800, fontVariantNumeric: 'tabular-nums', letterSpacing: -1 }}>{soc != null ? `${Math.round(soc)}%` : '—'}</span>
+                )}
                 <span style={{ fontSize: 14, color: NX.mudo, textAlign: 'center' }}>{etaTxt}</span>
               </div>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div style={{ ...CARD, borderRadius: 14, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={s.stDot('ok')} />
-                <span style={s.stLabel('ok')}>Normal</span>
-                <span style={{ fontSize: 14, color: NX.mudo }}>{stText}</span>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
-                <div style={{ ...CARD, borderRadius: 14, height: 56, padding: '0 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                  <span style={{ fontSize: 13, color: NX.mudo, whiteSpace: 'nowrap' }}>Energia</span>
-                  <span style={{ fontSize: 18, fontWeight: 800, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{fmt(carregando ? kwhAtual ?? 0 : 0, 1)} kWh</span>
+            {ehOcpp ? (
+              <>
+                {linhaStatus}
+                {cartaoCurva}
+                {/* Sem o valor do kWh (a API não manda para quem não vê R$) não há o que estimar: "—", não "R$ 0,00". */}
+                <MedicoesRecarga ativa={carregando} potenciaKw={kwAgora} energiaKwh={kwhAtual} duracaoMin={num(sa?.duracao_min)}
+                  valor={carregando && tarifa == null ? '—' : previsto} leitura={leitura} limite={limiteRecarga} />
+              </>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {linhaStatus}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
+                  <div style={{ ...CARD, borderRadius: 14, height: 56, padding: '0 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                    <span style={{ fontSize: 13, color: NX.mudo, whiteSpace: 'nowrap' }}>Energia</span>
+                    <span style={{ fontSize: 18, fontWeight: 800, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{fmt(carregando ? kwhAtual ?? 0 : 0, 1)} kWh</span>
+                  </div>
+                  <div style={{ ...CARD, borderRadius: 14, height: 56, padding: '0 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                    <span style={{ fontSize: 13, color: NX.mudo, whiteSpace: 'nowrap' }}>Previsto</span>
+                    <span style={{ fontSize: 18, fontWeight: 800, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{previsto}</span>
+                  </div>
                 </div>
-                <div style={{ ...CARD, borderRadius: 14, height: 56, padding: '0 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                  <span style={{ fontSize: 13, color: NX.mudo, whiteSpace: 'nowrap' }}>Previsto</span>
-                  <span style={{ fontSize: 18, fontWeight: 800, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{previsto}</span>
-                </div>
+                {cartaoCurva}
               </div>
-              <div style={{ ...CARD, borderRadius: 14, padding: '14px 16px 10px 16px', flex: 1, display: 'flex', flexDirection: 'column' }}>
-                <span style={{ fontSize: 15, fontWeight: 800 }}>Curva de potência</span>
-                <div style={{ height: 150, marginTop: 8 }} role="img" aria-label="Curva de potência da recarga">
-                  <ComposedChart data={curva} aspectRatio="auto" className="h-full"
-                    margin={{ top: 8, right: 8, bottom: 24, left: 48 }} animationDuration={0}>
-                    <Grid horizontal numTicksRows={3} />
-                    <Area dataKey="potencia" fill={COR.potencia} fillOpacity={0.25} gradientToOpacity={0.04} strokeWidth={2.2} curve={curveMonotoneX} animate={false} />
-                    <Line dataKey="teto" {...LINHA_SO_DOMINIO} />
-                    <XAxis numTicks={2} />
-                    <YAxis numTicks={3} formatValue={(x) => `${fmt(x, Number.isInteger(x) ? 0 : 1)} kW`} />
-                    <ChartTooltip showDots content={({ point }) => {
-                      const p = point as { date: Date; potencia: number };
-                      return <TooltipDestaque titulo={hm(p.date)} valor={fmt(p.potencia, 1)} unidade="kW" rotulo="Potência" />;
-                    }} />
-                  </ComposedChart>
-                </div>
-              </div>
-            </div>
+            )}
           </div>
 
-          <button type="button" onClick={() => abrir(carregando ? 'parar' : 'iniciar')} disabled={busy} style={s.cmd(busy ? 'busy' : carregando ? 'outline' : 'primary')}>
-            {busy ? 'Executando…' : carregando ? 'Parar recarga' : 'Iniciar recarga'}
-          </button>
-          {(carregando || erro) && (
+          {podeComandar && (
+            <button type="button" onClick={aguardando ? cancelarPedido : () => abrir(carregando ? 'parar' : 'iniciar')} disabled={busy || lendo || !!bloqueio}
+              style={s.cmd(busy || lendo || bloqueio ? 'busy' : sa ? 'outline' : 'primary')}>
+              {busy ? 'Executando…' : aguardando ? 'Cancelar' : carregando ? 'Parar recarga' : 'Iniciar recarga'}
+            </button>
+          )}
+          {(carregando || aguardando || bloqueio || erro) && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, marginTop: -8 }}>
-              {carregando && !ehMorador && (
+              {aguardando && <span style={{ fontSize: 13, color: NX.mudo, textAlign: 'center' }}>Se o carro não for conectado em 3 minutos, o pedido é cancelado.</span>}
+              {parando && carregando && rapido && <span role="status" style={{ fontSize: 13, color: NX.mudo, textAlign: 'center' }}>Parada enviada. A recarga fecha quando o carregador confirmar.</span>}
+              {bloqueio && <span style={{ fontSize: 13, color: NX.mudo, textAlign: 'center' }}>{bloqueio}</span>}
+              {carregando && !ehMorador && podeComandar && (
                 <button type="button" onClick={() => abrir('vaga')} disabled={busy} style={{ height: 30, padding: '0 8px', fontSize: 13, fontWeight: 700, color: NX.mudo, textAlign: 'center' }}>
                   Outro morador quer a vaga?
                 </button>
               )}
-              {erro && modal == null && <span style={{ fontSize: 13, color: NX.bad, textAlign: 'center' }}>{erro}</span>}
+              {erro && modal == null && <span role="alert" style={{ fontSize: 13, color: NX.bad, textAlign: 'center' }}>{erro}</span>}
             </div>
           )}
 
           <div style={{ ...CARD, borderRadius: 14, overflow: 'hidden' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', gap: 12 }}>
+            {/* Em 390 px o título e o botão não cabem lado a lado: o botão desce em vez de espremer o título em três linhas. */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', gap: 12 }}>
               <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 <span style={{ fontSize: 15, fontWeight: 800 }}>{ehMorador ? 'Minhas recargas' : 'Recargas de todos os moradores'}</span>
                 <span style={{ fontSize: 13, color: NX.mudo }}>{histTotal}</span>
@@ -471,7 +533,7 @@ export function CarregadorModal({ carregador, open, onOpenChange }: { carregador
               </button>}
             </div>
             <div style={{ overflowX: 'auto' }}>
-              <div style={{ minWidth: ehMorador ? 480 : 660 }}>
+              <div style={{ minWidth: ehMorador ? HIST_MIN_MORADOR : HIST_MIN }}>
                 <div style={{ display: 'grid', gridTemplateColumns: histCols, gap: 12, padding: '8px 16px', fontSize: 11, fontWeight: 700, color: NX.mudo, letterSpacing: 0.4, borderTop: `1px solid ${NX.linha2}` }}>
                   {!ehMorador && <span>MORADOR</span>}<span>DATA</span><span>INÍCIO → FIM</span><span>DURAÇÃO</span><span style={{ textAlign: 'right' }}>ENERGIA</span><span style={{ textAlign: 'right' }}>VALOR (ESTIMADO)</span>
                 </div>
@@ -486,6 +548,7 @@ export function CarregadorModal({ carregador, open, onOpenChange }: { carregador
                     <span style={{ color: NX.mudo }}>{h.dur}</span>
                     <span style={{ textAlign: 'right', fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{h.kwh}</span>
                     <span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{h.rs}</span>
+                    {h.sub && <span style={{ gridColumn: '1 / -1', marginTop: -8, fontSize: 12, color: NX.mudo }}>{h.sub}</span>}
                   </div>
                 ))}
               </div>
@@ -505,15 +568,24 @@ export function CarregadorModal({ carregador, open, onOpenChange }: { carregador
           <div style={{ ...CARD, borderRadius: 14, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
             <label htmlFor="w-kwh" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
               <span style={{ fontSize: 15, fontWeight: 700 }}>Valor do kWh</span>
-              <span style={{ fontSize: 12, color: papel === 'analista' && tarifaDraft != null && tarifaRuim ? NX.bad : NX.mudo }}>
-                {papel === 'analista' ? (tarifaDraft != null && tarifaRuim ? 'Faixa R$ 0,30 a R$ 5,00' : 'Faixa R$ 0,30 a R$ 5,00 · valores em R$ são estimados') : 'Pré-cadastrado pelo analista · valores em R$ são estimados'}
+              <span style={{ fontSize: 12, color: papel === 'analista' && tarifaRuim ? NX.bad : NX.mudo }}>
+                {papel === 'analista' ? (tarifaRuim ? 'Faixa R$ 0,30 a R$ 5,00' : 'Faixa R$ 0,30 a R$ 5,00 · valores em R$ são estimados') : 'Pré-cadastrado pelo analista · valores em R$ são estimados'}
               </span>
             </label>
             <span style={{ fontSize: 14, color: NX.mudo }}>R$</span>
-            <input id="w-kwh" inputMode="decimal" value={papel === 'analista' ? tarifaTxtEdit : tarifaCfg != null ? fmt(tarifaCfg, 2) : '—'}
-              onChange={(e) => setTarifaDraft(e.target.value)} readOnly={papel !== 'analista'} disabled={papel !== 'analista'}
-              style={s.campo(papel !== 'analista', papel === 'analista' && tarifaDraft != null && tarifaRuim, 90)} />
+            <input id="w-kwh" className="nxc-campo" inputMode="decimal" value={papel === 'analista' ? tarifaTxtEdit : tarifaCfg != null ? fmt(tarifaCfg, 2) : '—'}
+              onChange={(e) => setRascunho((r) => ({ ...r, tarifa: e.target.value }))} readOnly={papel !== 'analista'} disabled={papel !== 'analista'}
+              style={s.campo(papel !== 'analista', papel === 'analista' && tarifaRuim, 90)} />
           </div>
+
+          {/* Carregador OCPP: tudo que se edita fica junto, com o Salvar logo embaixo. */}
+          {limites && (
+            <>
+              <CarregadorLimites limites={limites} rascunho={rascunho} ruins={revisao.ruins} onRascunho={(p) => setRascunho((r) => ({ ...r, ...p }))}
+                podeLimites={!!pode.limites} podeCorrente={!!pode.tecnico} />
+              {botaoSalvar}
+            </>
+          )}
 
           <span style={{ ...s.label, marginTop: 10 }}>CARREGADOR</span>
           <div style={{ ...CARD, borderRadius: 14, padding: '0 16px' }}>
@@ -529,8 +601,17 @@ export function CarregadorModal({ carregador, open, onOpenChange }: { carregador
               <span style={{ fontSize: 15, fontWeight: 700 }}>Leitura da bateria do carro</span>
               <span style={{ fontSize: 15, color: NX.mudo, textAlign: 'right' }}>{estado?.soc != null ? 'Pelo carregador, ao conectar' : 'Não informada pelo carregador'}</span>
             </div>
+            {(ocpp?.fabricante || ocpp?.modelo) && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: 50, gap: 12, borderTop: `1px solid ${NX.linha}` }}>
+                <span style={{ fontSize: 15, fontWeight: 700 }}>Modelo</span>
+                {/* Vem do carregador: modelo comprido e sem espaço quebra em qualquer ponto em vez de estourar a largura. */}
+                <span style={{ fontSize: 15, color: NX.mudo, textAlign: 'right', minWidth: 0, overflowWrap: 'anywhere' }}>{[ocpp.fabricante, ocpp.modelo].filter(Boolean).join(' ')}</span>
+              </div>
+            )}
           </div>
 
+          {/* Moradores: só quem gere (PER-38). O operador entra nesta aba só pelos Comandos. */}
+          {podeGerir && (<>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, gap: 12 }}>
             <span style={s.label}>MORADORES AUTORIZADOS · {moradores.length}</span>
             <button type="button" onClick={() => { setErroCfg(''); setNovo(novo ? null : { nome: '', apartamento: '', tag_uid: '', email: '', validade: '' }); }}
@@ -540,19 +621,19 @@ export function CarregadorModal({ carregador, open, onOpenChange }: { carregador
           </div>
           <div style={{ ...CARD, borderRadius: 14, overflow: 'hidden' }}>
             <div style={{ overflowX: 'auto' }}>
-              <div style={{ minWidth: 560 }}>
+              <div style={{ minWidth: MOR_MIN }}>
                 <div style={{ display: 'grid', gridTemplateColumns: MOR_COLS, gap: 12, padding: '8px 16px', fontSize: 11, fontWeight: 700, color: NX.mudo, letterSpacing: 0.4 }}>
                   <span>APTO</span><span>MORADOR</span><span>VALIDADE</span><span />
                 </div>
                 {novo && (
                   <div style={{ display: 'grid', gridTemplateColumns: MOR_COLS, gap: 12, alignItems: 'center', padding: '10px 16px', borderTop: `1px solid ${NX.linha}`, fontSize: 14 }}>
-                    <input aria-label="Apartamento" placeholder="Apto 302" value={novo.apartamento} onChange={(e) => setNovo({ ...novo, apartamento: e.target.value })} style={ENTRADA} />
+                    <input className="nxc-campo" aria-label="Apartamento" placeholder="Apto 302" value={novo.apartamento} onChange={(e) => setNovo({ ...novo, apartamento: e.target.value })} style={ENTRADA} />
                     <span style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <input aria-label="Nome do morador" placeholder="Nome do morador" autoFocus value={novo.nome} onChange={(e) => setNovo({ ...novo, nome: e.target.value })} style={ENTRADA} />
-                      <input aria-label="E-mail (aviso de vencimento)" placeholder="E-mail (aviso de vencimento)" type="email" value={novo.email} onChange={(e) => setNovo({ ...novo, email: e.target.value })} style={ENTRADA} />
-                      <input aria-label="Tag (opcional)" placeholder="Tag (opcional)" value={novo.tag_uid} onChange={(e) => setNovo({ ...novo, tag_uid: e.target.value })} style={ENTRADA} />
+                      <input className="nxc-campo" aria-label="Nome do morador" placeholder="Nome do morador" autoFocus value={novo.nome} onChange={(e) => setNovo({ ...novo, nome: e.target.value })} style={ENTRADA} />
+                      <input className="nxc-campo" aria-label="E-mail (aviso de vencimento)" placeholder="E-mail (aviso de vencimento)" type="email" value={novo.email} onChange={(e) => setNovo({ ...novo, email: e.target.value })} style={ENTRADA} />
+                      <input className="nxc-campo" aria-label="Tag (opcional)" placeholder="Tag (opcional)" value={novo.tag_uid} onChange={(e) => setNovo({ ...novo, tag_uid: e.target.value })} style={ENTRADA} />
                     </span>
-                    <input aria-label="Validade (vazio = sem validade)" title="Vazio = sem validade" type="date" min={hojeYmd()} value={novo.validade} onChange={(e) => setNovo({ ...novo, validade: e.target.value })} style={ENTRADA} />
+                    <input className="nxc-campo" aria-label="Validade (vazio = sem validade)" title="Vazio = sem validade" type="date" min={hojeYmd()} value={novo.validade} onChange={(e) => setNovo({ ...novo, validade: e.target.value })} style={ENTRADA} />
                     <span style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
                       <button type="button" onClick={() => setNovo(null)} style={{ height: 34, padding: '0 10px', borderRadius: 10, fontSize: 13, fontWeight: 700, background: NX.seg }}>Cancelar</button>
                       <button type="button" onClick={addMorador} disabled={!novo.nome.trim() || salvando}
@@ -590,13 +671,17 @@ export function CarregadorModal({ carregador, open, onOpenChange }: { carregador
               </div>
             </div>
           </div>
-          {erroCfg && <span style={{ fontSize: 13, color: NX.bad }}>{erroCfg}</span>}
+          {erroCfg && <span role="alert" style={{ fontSize: 13, color: NX.bad }}>{erroCfg}</span>}
           <span style={{ fontSize: 12, color: NX.mudo }}>Não é possível remover, desativar ou deixar vencer o acesso de um morador com recarga em andamento: o acesso expira logo após o fim da recarga. Aviso de vencimento: 1 dia antes, para o morador e para o proprietário.</span>
-          {papel === 'analista' && (
-            <button type="button" disabled={!tarifaMudou} onClick={() => setModal('review')} style={s.save(!tarifaMudou)}>
-              {tarifaDraft != null && tarifaRuim ? 'Valor fora da faixa' : tarifaMudou ? 'Revisar 1 alteração' : 'Salvar'}
-            </button>
+          </>)}
+          {/* Carregador que não é OCPP: o Salvar (valor do kWh) continua no fim, como sempre. */}
+          {!limites && botaoSalvar}
+
+          {ocpp && pode.bloquear && id && <CarregadorComandos id={id} ocpp={ocpp} tecnico={!!pode.tecnico} onExecutado={aposComando} />}
+          {pode.tecnico && id && (
+            <CarregadorConexaoOcpp id={id} relerEm={lidoEm} credenciais={credenciais} onCredenciais={setCredenciais} onMudou={aposComando} />
           )}
+          {pode.tecnico && ocpp && id && <CarregadorParametros id={id} conectado={ocpp.conectado !== false} />}
         </div>
       )}
 
@@ -604,13 +689,18 @@ export function CarregadorModal({ carregador, open, onOpenChange }: { carregador
       <NxDialog open={modal === 'iniciar'} onClose={fechar} label="Confirmar comando" width={400}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <span style={{ fontSize: 18, fontWeight: 800 }}>Iniciar recarga?</span>
-          <div style={{ background: NX.caixa, borderRadius: 12, padding: '0 14px' }}>
+          {/* As linhas da caixa se separam pela classe: a primeira muda conforme o perfil e o carregador. */}
+          <div className="nxc-caixa">
             {!ehMorador && selectMorador}
-            <div style={{ ...CAIXA_ROW, ...(ehMorador ? {} : { borderTop: `1px solid ${NX.trilho}` }) }}><span>Bateria do carro</span><b>{estado?.soc != null ? `${Math.round(Number(estado.soc))}%` : '—'}</b></div>
-            <div style={{ ...CAIXA_ROW, borderTop: `1px solid ${NX.trilho}` }}><span>Valor do kWh</span><b>{tarifa != null ? `${brl(tarifa)} (estimado)` : '—'}</b></div>
+            {/* O carregador OCPP não lê a bateria do carro: a linha só aparece quando há leitura. */}
+            {(!ehOcpp || estado?.soc != null) && (
+              <div style={CAIXA_ROW}><span>Bateria do carro</span><b>{estado?.soc != null ? `${Math.round(Number(estado.soc))}%` : '—'}</b></div>
+            )}
+            <div style={CAIXA_ROW}><span>Valor do kWh</span><b>{tarifa != null ? `${brl(tarifa)} (estimado)` : '—'}</b></div>
+            {limites && <LimitesAoIniciar limites={limites} tempo={limTempo} energia={limEnergia} onTempo={setLimTempo} onEnergia={setLimEnergia} />}
           </div>
           {erroDlg}
-          <NxDialogButtons onCancel={fechar} onConfirm={iniciar} confirmLabel="Iniciar" disabled={!moradorSel} marginTop={8} />
+          <NxDialogButtons onCancel={fechar} onConfirm={iniciar} confirmLabel="Iniciar" disabled={!corpoIniciar} marginTop={8} />
           {ehMorador && !estado?.meu_morador && <span style={{ fontSize: 13, color: NX.bad }}>Seu usuário não está ligado a um morador autorizado.</span>}
         </div>
       </NxDialog>
@@ -631,9 +721,9 @@ export function CarregadorModal({ carregador, open, onOpenChange }: { carregador
       <NxDialog open={modal === 'vaga'} onClose={fechar} label="Confirmar comando" width={400}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <span style={{ fontSize: 18, fontWeight: 800 }}>Pedir a vaga?</span>
-          <div style={{ background: NX.caixa, borderRadius: 12, padding: '0 14px' }}>
+          <div className="nxc-caixa">
             {selectMorador}
-            <div style={{ ...CAIXA_ROW, borderTop: `1px solid ${NX.trilho}` }}><span>Em recarga</span><b style={{ textAlign: 'right' }}>{morLabel(sa?.morador_nome)}</b></div>
+            <div style={CAIXA_ROW}><span>Em recarga</span><b style={{ textAlign: 'right' }}>{morLabel(sa?.morador_nome)}</b></div>
           </div>
           <span style={{ fontSize: 14, color: NX.mudo }}>Avisa quem está carregando e começa a contar o tempo ocioso da vaga.</span>
           {erroDlg}
@@ -641,65 +731,11 @@ export function CarregadorModal({ carregador, open, onOpenChange }: { carregador
         </div>
       </NxDialog>
 
-      {/* Confirmar alterações (valor do kWh) */}
-      <NxDialog open={modal === 'review'} onClose={fechar} label="Confirmar alterações" width={420}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <span style={{ fontSize: 18, fontWeight: 800 }}>Confirmar alterações</span>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 15, padding: '6px 0', borderBottom: `1px solid ${NX.linha}` }}>
-            <span>Valor do kWh</span><span><span style={{ color: NX.mudo }}>{tarifaCfg != null ? brl(tarifaCfg) : '—'}</span> → <b>{brl(tarifaNum)}</b></span>
-          </div>
-          <span style={{ fontSize: 13, color: NX.mudo }}>O novo valor vale a partir de agora. Recargas já fechadas não são recalculadas.</span>
-          <NxDialogButtons onCancel={fechar} onConfirm={salvarTarifa} cancelLabel="Voltar" disabled={salvando} marginTop={8} />
-        </div>
-      </NxDialog>
+      {/* Confirmar alterações (valor do kWh, limites de uso e corrente máxima): de → para */}
+      <NxReview open={modal === 'review'} onClose={() => { if (!salvando) fechar(); }} changes={emRevisao?.mudancas ?? []} writing={salvando}
+        onWrite={salvarConfig} nota={emRevisao ? notaDaRevisao(emRevisao.corpo) : undefined} width={420} />
 
-      {/* Exportar recargas */}
-      <NxDialog open={modal === 'export'} onClose={fechar} label="Exportar recargas" width={560}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <NxDialogHead title="Exportar recargas" sub="Para a contabilidade cobrar no boleto do condomínio" onClose={fechar} />
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 15, fontWeight: 700 }}>Mês de referência</span>
-            <NxSeg value={mesExp} onChange={(v) => { setMesExp(v); setBaixado(''); }}
-              options={mesesOpc.map((d, i) => ({ v: ymd(d), label: `${MES[d.getMonth()]}${i === 2 ? ' (parcial)' : ''}` }))} />
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 15, fontWeight: 700 }}>Formato</span>
-            <NxSeg value={formato} onChange={(v) => { setFormato(v); setBaixado(''); }} options={[{ v: 'xlsx', label: 'Excel (.xlsx)' }, { v: 'csv', label: 'CSV' }]} />
-          </div>
-          <div style={{ border: `1px solid ${NX.borda}`, borderRadius: 12, overflow: 'hidden' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: NX.caixa, gap: 12 }}>
-              <span style={{ fontSize: 13, fontWeight: 800 }}>Resumo por apartamento · {monthLabel}</span>
-              <span style={{ fontSize: 12, color: NX.mudo, whiteSpace: 'nowrap' }}>{exp ? `${sessCount ?? '—'} recargas` : '…'}</span>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: EXP_COLS, gap: 10, padding: '8px 14px', fontSize: 11, fontWeight: 700, color: NX.mudo, letterSpacing: 0.4, borderTop: `1px solid ${NX.linha2}` }}>
-              <span>APARTAMENTO</span><span style={{ textAlign: 'right' }}>RECARGAS</span><span style={{ textAlign: 'right' }}>ENERGIA</span><span style={{ textAlign: 'right' }}>VALOR</span>
-            </div>
-            {!exp && <div style={{ padding: '8px 14px', fontSize: 14, color: NX.mudo, borderTop: `1px solid ${NX.linha}` }}>Carregando…</div>}
-            {exp && sumRows.length === 0 && <div style={{ padding: '8px 14px', fontSize: 14, color: NX.mudo, borderTop: `1px solid ${NX.linha}` }}>Sem recargas encerradas no mês.</div>}
-            {sumRows.map((r, i) => (
-              <div key={`${r.apto}-${i}`} style={{ display: 'grid', gridTemplateColumns: EXP_COLS, gap: 10, padding: '8px 14px', fontSize: 14, borderTop: `1px solid ${NX.linha}` }}>
-                <span style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.apto}>{r.apto}</span>
-                <span style={{ textAlign: 'right' }}>{r.n ?? '—'}</span>
-                <span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(r.kwh, 1)} kWh</span>
-                <span style={{ textAlign: 'right', fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{brl(r.rs)}</span>
-              </div>
-            ))}
-            <div style={{ display: 'grid', gridTemplateColumns: EXP_COLS, gap: 10, padding: '10px 14px', fontSize: 14, fontWeight: 800, borderTop: `2px solid ${NX.texto}` }}>
-              <span>Total</span><span style={{ textAlign: 'right' }}>{sessCount ?? '—'}</span><span style={{ textAlign: 'right' }}>{fmt(totKwh, 1)} kWh</span><span style={{ textAlign: 'right' }}>{brl(totRs)}</span>
-            </div>
-          </div>
-          <div style={{ background: NX.caixa, borderRadius: 12, padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, color: NX.caixaTx }}>
-            <span><b>A planilha tem 2 abas:</b> Resumo por apartamento e Detalhe por recarga (apto, morador, vaga, início, fim, duração, kWh, R$/kWh, valor).</span>
-            <span>Valores estimados: kWh medido × {tarifa != null ? `${brl(tarifa)}/kWh` : 'valor do kWh'} cadastrado no carregador.</span>
-            <span>Recarga é atribuída ao mês em que <b>começou</b>. Recargas em andamento ficam para o mês seguinte.</span>
-          </div>
-          {erroDlg}
-          <button type="button" onClick={baixar} disabled={!exp}
-            style={{ height: 48, borderRadius: 12, fontSize: 16, fontWeight: 800, textAlign: 'center', color: '#FFFFFF', background: baixado ? '#2E8B47' : NX.acao, opacity: exp ? 1 : 0.6 }}>
-            {baixado ? `✓ Download iniciado: ${baixado}` : 'Baixar planilha'}
-          </button>
-        </div>
-      </NxDialog>
+      <CarregadorExportar open={modal === 'export'} onClose={fechar} plantaId={plantaId} nome={carregador.nome} vagaNum={vagaNum} tarifa={tarifa} />
     </NxShell>
   );
 }
