@@ -252,13 +252,13 @@ type ModoComando = 'cartao' | 'cabo';
 
 function linhasInicio(ok: (t: string) => string, modo: ModoComando) {
   return modo === 'cartao'
-    ? ['==== PASSO 1 de 4: Imagem do NexON ====', ok('✓ Baixada e conferida.'), '==== PASSO 2 de 4: Colocar o cartão no computador ====']
+    ? [' 1/4  Imagem do NexON', ok('✓ Baixada e conferida.'), ' 2/4  Colocar o cartão no computador']
     : [
-        '==== PASSO 1 de 5: Imagem do NexON ====',
+        ' 1/5  Imagem do NexON',
         ok('✓ Baixada e conferida.'),
-        '==== PASSO 2 de 5: Programa da Raspberry ====',
+        ' 2/5  Programa da Raspberry',
         ok('✓ Pronto.'),
-        '==== PASSO 3 de 5: Ligar o Raspberry no computador ====',
+        ' 3/5  Ligar o Raspberry no computador',
       ];
 }
 
@@ -308,8 +308,8 @@ function passosFinais(so: SistemaPc, minutos: string, gravando: string): PassoGu
           sistema={so}
           titulo={d.app}
           linhas={[
-            `==== PASSO ${gravando}: Gravando o NexON no cartão ====`,
-            '  [##############################] 100%  gravado em 4 min',
+            ` ${gravando}  Gravando o NexON no cartão`,
+            '  ██████████████████████████████ 100%  gravado em 4 min',
             d.ok('  ✓ NexON gravado e conferido no cartão.'),
             d.ok('  ✓ Chave da usina gravada.'),
           ]}
@@ -353,7 +353,7 @@ function passosComputador(so: SistemaPc, comando: ReactNode): PassoGuiado[] {
         />
       ),
     },
-    ...passosFinais(so, '10 a 30 minutos pelo cabo', '4 de 5'),
+    ...passosFinais(so, '10 a 30 minutos pelo cabo', '4/5'),
   ];
 }
 
@@ -381,12 +381,12 @@ function passosCartao(so: SistemaPc, comando: ReactNode): PassoGuiado[] {
         <TelaTerminal
           sistema={so}
           titulo={d.app}
-          linhas={['==== PASSO 2 de 4: Achar o cartão no computador ====', d.ok('  ✓ Encontrei o cartão!'), '  Achei o cartão SD do Raspberry (32 GB).', '  Tudo o que estiver nele será apagado.']}
+          linhas={[' 2/4  Achar o cartão no computador', d.ok('  ✓ Encontrei o cartão!'), '  Achei o cartão SD do Raspberry (32 GB).', '  Tudo o que estiver nele será apagado.']}
           destaque="  >> Escreva SIM e aperte Enter para gravar: SIM"
         />
       ),
     },
-    passosFinais(so, 'uns 5 minutos', '3 de 4')[1],
+    passosFinais(so, 'uns 5 minutos', '3/4')[1],
     {
       titulo: 'Tire o cartão do computador',
       ajuda: 'Só depois da faixa verde. Ele já foi desligado do computador: pode tirar.',
