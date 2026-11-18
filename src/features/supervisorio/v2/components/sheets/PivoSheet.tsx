@@ -68,7 +68,7 @@ interface Estado {
     canhao?: { comando: boolean; tem_status: boolean; ligado: Bin };
     /** Chave seletora CLP/TON ligada a uma BI (NEXON-103). 1 = modo TON; null = sem leitura. Ausentes em API antiga. */
     tem_modo_ton?: boolean; modo_ton?: 0 | 1 | null;
-    /** Chave Local/Remoto (ponto Remoto, BI07, 17/11): valor 1 = REMOTO (a TON não liga), 0 = LOCAL, null = sem leitura. Ausente em API antiga. */
+    /** Chave Local/Remoto (ponto Remoto, BI07): valor 1 = REMOTO (a TON comanda), 0 = LOCAL (manual no painel, a TON não liga), null = sem leitura. Ausente em API antiga. */
     remoto?: { tem: boolean; valor: 0 | 1 | null };
     /** Pressão OK (BI01) e Tensão OK (BI02), com a polaridade: 1 ok, 0 falta, null sem ponto/leitura (12/11). */
     entradas?: { pressao: Bin; tensao: Bin; alinhamento?: Bin };
@@ -810,10 +810,10 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
   // irrigação em curso continua se a chave Local/Remoto mudar). Chave em remoto = "Local".
   const rem = estado?.pivo.remoto;
   const ent = estado?.pivo.entradas;
-  const remotoTrava = !on && !desligaAgenda && !!rem?.tem && rem.valor !== 0;
+  const remotoTrava = !on && !desligaAgenda && !!rem?.tem && rem.valor !== 1;
   const naoLiga: { label: string; dica: string } | null = on || desligaAgenda ? null
-    : remotoTrava ? (rem!.valor === 1
-      ? { label: 'Local', dica: 'Chave do painel em Local/Remoto (BI07) travando: o NexON não liga o pivô. Ligue pelo painel ou mude a chave.' }
+    : remotoTrava ? (rem!.valor === 0
+      ? { label: 'Local', dica: 'Chave do painel em LOCAL (BI07): o pivô é operado manualmente no painel. Passe para REMOTO para ligar pelo NexON.' }
       : { label: 'Sem leitura Local/Remoto', dica: 'Sem leitura da chave Local/Remoto (BI07): não dá para confirmar que o NexON pode ligar.' })
     : emUsoPor ? { label: `Bomba em uso pelo ${emUsoPor}`, dica: `Desligue o ${emUsoPor} antes de ligar este pivô.` }
     : st?.erro === 1 ? { label: 'Falha no painel', dica: 'O painel sinaliza ERRO: verifique antes de ligar.' }
@@ -943,15 +943,15 @@ export function PivoSheet({ equipamentoId, nome, onClose }: { equipamentoId: str
                   <span style={s.stLabel(tone)}>{label}</span>
                   <span style={{ fontSize: 14, color: NX.mudo }}>{texto}</span>
                 </div>
-                {rem?.tem && rem.valor !== 0 && (
-                  // Chave Local/Remoto (BI07) fechada: o pivô é comandado no LOCAL (painel) e o NexON não liga.
-                  <span role="status" title="Chave Local/Remoto do painel (BI07). O NexON não liga o pivô nesta posição; Desligar continua valendo."
+                {rem?.tem && rem.valor !== 1 && (
+                  // Chave Local/Remoto (BI07) em LOCAL (0): o pivô é operado à mão no painel e o NexON não liga.
+                  <span role="status" title="Chave Local/Remoto do painel (BI07) em LOCAL: operação manual no painel. O NexON só liga em REMOTO; Desligar continua valendo."
                     style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 2, padding: '4px 10px', borderRadius: 999,
                       fontSize: 13, fontWeight: 700, color: NX.warn, border: `1px solid ${NX.warn}`, background: 'transparent' }}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                       <rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" />
                     </svg>
-                    {rem.valor === 1 ? 'Local · liga só pelo painel' : 'Sem leitura da chave Local/Remoto · ligar travado'}
+                    {rem.valor === 0 ? 'Local · operação manual no painel' : 'Sem leitura da chave Local/Remoto · ligar travado'}
                   </span>
                 )}
                 {eta && <span style={{ fontSize: 13, color: NX.mudo }}>{eta}</span>}
