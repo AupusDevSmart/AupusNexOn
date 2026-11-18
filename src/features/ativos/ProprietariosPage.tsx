@@ -1,7 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Briefcase, Factory, Mail, MapPin, Pencil, Phone, RefreshCw } from 'lucide-react';
+import { Briefcase, Factory, KeyRound, Loader2, Mail, MapPin, Pencil, Phone, RefreshCw } from 'lucide-react';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { useUserStore } from '@/store/useUserStore';
 import { Layout } from '@/core/components/common/Layout';
 import { TitleCard } from '@/core/components/common/title-card';
@@ -93,6 +103,30 @@ function Campo({ rotulo, children }: { rotulo: string; children: React.ReactNode
 function FichaProprietario({ p, onFechar }: { p: Proprietario | null; onFechar: () => void }) {
   const navigate = useNavigate();
   const podeEditar = useUserStore((s) => (s.capacidades?.cadastra?.length ?? 0) > 0);
+  const podeReenviarSenha = useUserStore((s) => s.hasPermission('usuarios.manage'));
+  const [confirmarSenha, setConfirmarSenha] = useState(false);
+  const [enviandoSenha, setEnviandoSenha] = useState(false);
+  // NEXON-129: gera senha nova e manda por e-mail. A API só troca a senha se o
+  // e-mail sair; a anterior para de valer e as sessões abertas caem.
+  const reenviarSenha = async () => {
+    if (!p) return;
+    setEnviandoSenha(true);
+    try {
+      const res = await api.post(`/usuarios/${p.id.trim()}/reenviar-senha`);
+      const email = (res.data as { email?: string })?.email ?? p.email;
+      toast({ title: 'Nova senha enviada', description: `Enviamos a nova senha para ${email}.` });
+      setConfirmarSenha(false);
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message;
+      toast({
+        title: 'Não foi possível reenviar a senha',
+        description: (Array.isArray(msg) ? msg[0] : msg) || 'Tente de novo em instantes.',
+        variant: 'destructive',
+      });
+    } finally {
+      setEnviandoSenha(false);
+    }
+  };
   const ir = (rota: string) => {
     onFechar();
     navigate(rota);
@@ -140,6 +174,23 @@ function FichaProprietario({ p, onFechar }: { p: Proprietario | null; onFechar: 
                 </dl>
               </section>
 
+              {podeReenviarSenha && (
+                <section className="flex flex-col gap-3">
+                  <h3 className="text-sm font-semibold">Acesso</h3>
+                  <div>
+                    <button
+                      className="btn-minimal-outline"
+                      disabled={!p.email || enviandoSenha}
+                      title={p.email ? undefined : 'Cadastre um e-mail para reenviar a senha'}
+                      onClick={() => setConfirmarSenha(true)}
+                    >
+                      <KeyRound className="h-4 w-4 mr-2" />
+                      Reenviar senha por e-mail
+                    </button>
+                  </div>
+                </section>
+              )}
+
               <section className="flex flex-col gap-3">
                 <h3 className="text-sm font-semibold">Endereço</h3>
                 <dl className="grid gap-3 sm:grid-cols-2">
@@ -181,6 +232,30 @@ function FichaProprietario({ p, onFechar }: { p: Proprietario | null; onFechar: 
           </>
         )}
       </SheetContent>
+      <AlertDialog open={confirmarSenha} onOpenChange={(v) => !enviandoSenha && setConfirmarSenha(v)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reenviar senha para {p?.nome}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Uma senha nova será gerada e enviada para <strong>{p?.email}</strong>. A senha atual deixa de valer e o
+              proprietário precisará entrar de novo no site e nos aplicativos.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={enviandoSenha}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={enviandoSenha}
+              onClick={(e) => {
+                e.preventDefault();
+                void reenviarSenha();
+              }}
+            >
+              {enviandoSenha && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Enviar nova senha
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Sheet>
   );
 }
