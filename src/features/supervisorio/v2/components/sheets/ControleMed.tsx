@@ -180,7 +180,7 @@ function BlocoControle({ k, modo, c, hist }: { k: Controle; modo: Modo; c: Ciclo
     const pct = p.contrato ? Math.min(130, Math.max(0, ((p.D_proj ?? 0) / p.contrato) * 100)) : 0;
     medida = (
       <>
-        <span>Projeção do intervalo <b>{n1(p.D_proj)} kW</b> · contrato {n1(p.contrato)} kW · alvo {n1(p.alvo)} kW</span>
+        <span>Projeção do intervalo <b>{n1(p.D_proj)} kW</b> · limite {n1(p.contrato)} kW{k === 'demanda_c' ? ' (contrato + tolerância)' : ''} · alvo {n1(p.alvo)} kW</span>
         <span style={{ position: 'relative', height: 8, borderRadius: 4, background: NX.linha, overflow: 'hidden', maxWidth: 420 }}>
           <span style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${(pct / 130) * 100}%`, background: COR[sit.tom], borderRadius: 4 }} />
           <span style={{ position: 'absolute', left: `${(100 / 130) * 100}%`, top: -2, bottom: -2, width: 2, background: NX.texto }} title="contrato" />
@@ -254,7 +254,8 @@ const LIMITES: Campo[] = [
   { k: 'alvo_g_pct', t: 'Alvo de geração', h: 'Ritmo planejado; a projeção nunca passa do contrato', u: '%' },
   { k: 'd_contr_c_kw', t: 'Contrato de carga', h: 'Fora de ponta (verde: valor único). Vazio = o da unidade', u: 'kW' },
   { k: 'd_contr_c_ponta_kw', t: 'Contrato de carga na ponta', h: 'Só tarifa azul', u: 'kW' },
-  { k: 'alvo_c_pct', t: 'Alvo de carga', u: '%' },
+  { k: 'alvo_c_pct', t: 'Alvo de carga', h: '% do limite (contrato + tolerância)', u: '%' },
+  { k: 'tol_c_pct', t: 'Tolerância de ultrapassagem (carga)', h: 'Aneel: multa só acima do contrato + 5 %', u: '%' },
   { k: 'fp_lim_ind', t: 'FP limite indutivo', h: 'Regulatório (0,92)' },
   { k: 'fp_alvo_ind', t: 'FP alvo indutivo', h: 'Pelo menos 0,005 acima do limite' },
   { k: 'fp_lim_cap', t: 'FP limite capacitivo' },
