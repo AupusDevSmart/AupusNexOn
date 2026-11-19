@@ -33,7 +33,7 @@ interface Estado {
 const ROTULO: Record<Controle, string> = { demanda_c: 'Demanda de carga', demanda_g: 'Demanda de geração', fp: 'Fator de potência' };
 const SUB: Record<Controle, string> = {
   demanda_c: 'Libera geração limitada quando a projeção do intervalo passa do contrato',
-  demanda_g: 'Corta geração (UFV mais distante primeiro) antes da projeção passar do contrato',
+  demanda_g: 'Corta geração igual em todos os inversores (nunca abaixo da parte do contrato de cada um) antes da projeção passar do contrato',
   fp: 'Ajusta o reativo das UFVs para fechar a hora acima do FP alvo',
 };
 const ORDEM: Controle[] = ['demanda_g', 'demanda_c', 'fp'];
@@ -379,7 +379,7 @@ export function ControleMedConfig({ medId }: { medId: string }) {
         <div key={u.id} style={{ ...s.card, padding: '12px 18px', ...col(8) }}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <input aria-label="Nome da UFV" value={u.nome} disabled={ro} onChange={(e) => mudaUfv(i, { nome: e.target.value })} style={{ ...s.campo(ro, false, 180), textAlign: 'left' }} />
-            <Mini t="Ordem" h="1 = mais perto do medidor" v={u.ordem} ro={ro} onChange={(x) => mudaUfv(i, { ordem: x })} />
+            <Mini t="Ordem" h="1 = mais perto do medidor (hoje só informativo: o corte de P é igual em todos)" v={u.ordem} ro={ro} onChange={(x) => mudaUfv(i, { ordem: x })} />
             <Mini t="P estático" u="kW" v={u.p_estatico_kw} ro={ro} onChange={(x) => mudaUfv(i, { p_estatico_kw: x })} />
             <NxSeg<'internet' | 'lora'> value={u.rota} disabled={ro} options={[{ v: 'internet', label: 'Internet' }, { v: 'lora', label: 'LoRa' }]} onChange={(r) => mudaUfv(i, { rota: r })} />
             {!ro && <button type="button" onClick={() => { setUfvs((l) => l.filter((_, k) => k !== i)); setSujo(true); }} style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 700, color: NX.bad }}>Remover UFV</button>}
