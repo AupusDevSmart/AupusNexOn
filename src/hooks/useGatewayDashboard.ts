@@ -115,7 +115,7 @@ export function useGatewayDashboard(equipamentoId: string | null, n = 5) {
     void fetchDashboard();
     // A TON-V2 publica a cada 1 min: atualiza em segundo plano enquanto o modal está aberto.
     if (!equipamentoId) return;
-    const t = setInterval(() => void fetchDashboard(true), 60_000);
+    const t = setInterval(() => void fetchDashboard(true), 15_000);
     return () => clearInterval(t);
   }, [fetchDashboard, equipamentoId]);
 
