@@ -261,7 +261,6 @@ const LIMITES: Campo[] = [
   { k: 'fp_alvo_cap', t: 'FP alvo capacitivo' },
   { k: 'janela_cap_ini', t: 'Janela capacitiva · início', h: 'Até a TON publicar o posto reativo da SSU', tipo: 'hora' },
   { k: 'janela_cap_fim', t: 'Janela capacitiva · fim', tipo: 'hora' },
-  { k: 'posto_reativo_medidor', t: 'Janela pelo medidor', h: '1 = usa o posto reativo que o medidor informa na SSU; 0 = sempre a janela cadastrada acima (bancada)' },
 ];
 const AVANCADO: Campo[] = [
   { k: 'banda_pct', t: 'Banda', h: 'Folga antes de devolver Q ou liberar P', u: '%' },
