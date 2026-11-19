@@ -150,7 +150,7 @@ function BlocoControle({ k, modo, c, hist }: { k: Controle; modo: Modo; c: Ciclo
   const sit = situacao(k, c) ?? { tom: 'off' as NxTone, rotulo: 'Sem decisão neste minuto' };
   const norm = normalizadoEm(k, hist);
   const p = c.pedidos[k] as Pedido | undefined;
-  const e = c.entradas as Ciclo['entradas'] & { hora?: { E_P?: number }; janela?: 'ind' | 'cap' };
+  const e = c.entradas as Ciclo['entradas'] & { hora?: { E_P?: number; E_ind?: number; E_cap?: number; t_rest?: number }; janela?: 'ind' | 'cap' };
   let medida: ReactNode = null;
   if (k === 'fp') {
     const P = (e.P_imp ?? 0) - (e.P_exp ?? 0);
@@ -159,10 +159,19 @@ function BlocoControle({ k, modo, c, hist }: { k: Controle; modo: Modo; c: Ciclo
     const Q = Qi >= Qc ? Qi : Qc;
     const tipoQ = Qi >= Qc ? 'ind.' : 'cap.';
     const fp = fpDe(P, Q);
+    const h = e.hora;
+    const hr = h && h.t_rest != null ? (() => {
+      const dec = Math.max(0, 3600 - h.t_rest);
+      const ini = new Date(new Date(c.ts).getTime() - dec * 1000).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      return { dec, ini, E_P: h.E_P ?? 0, E_Q: (jan === 'cap' ? h.E_cap : h.E_ind) ?? 0 };
+    })() : null;
     medida = (
       <>
         <span>Agora: <b>{n1(Math.abs(P))} kW</b> {P >= 0 ? 'importando' : 'exportando'} · <b>{n1(Q)} kvar {tipoQ}</b> · FP <b>{n1(fp, 3)}</b> {Q > 0.05 ? tipoQ : ''}</span>
-        {p && <span>Hora: FP <b>{n1(p.fp_hora, 3)}</b> · reativo permitido {n1(p.Q_perm_alvo)} kvar · correção {n1(p.dQ)} kvar · janela {jan === 'cap' ? 'capacitiva' : 'indutiva'}</span>}
+        {hr && hr.dec > 0 && (
+          <span>Hora (desde {hr.ini}, {Math.round(hr.dec / 60)} min): P média <b>{n1(hr.E_P / (hr.dec / 3600))} kW</b> · Q média <b>{n1(hr.E_Q / (hr.dec / 3600))} kvar {jan === 'cap' ? 'cap.' : 'ind.'}</b> · {n1(hr.E_P, 2)} kWh / {n1(hr.E_Q, 2)} kvarh</span>
+        )}
+        {p && <span>FP da hora <b>{n1(p.fp_hora, 3)}</b> · reativo permitido no resto da hora {n1(p.Q_perm_alvo)} kvar · correção {n1(p.dQ)} kvar · janela {jan === 'cap' ? 'capacitiva' : 'indutiva'}</span>}
       </>
     );
   } else if (p) {
