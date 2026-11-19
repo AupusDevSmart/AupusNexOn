@@ -22,10 +22,12 @@ export type RtuEvento =
   | { tipo: 'escrita'; func: number; start: number; count: number; valores: number[]; ts: number }
   | { tipo: 'excecao'; func: number; codigo: number; motivo: string; ts: number }
   | { tipo: 'outro-escravo'; endereco: number; func: number; ts: number }
-  | { tipo: 'descartado'; bytes: number; ts: number };
+  | { tipo: 'descartado'; bytes: number; ts: number; hex?: string };
 
 export const GAP_RESET_MS = 40;
 const MAX_BUF = 512;
+
+const hexDe = (b: ArrayLike<number>) => Array.from(b, (x) => x.toString(16).padStart(2, '0')).join(' ');
 
 export function crc16(buf: Uint8Array, len = buf.length): number {
   let crc = 0xffff;
@@ -86,7 +88,7 @@ export class RtuSlave {
   /** Alimenta bytes recebidos; devolve as respostas a escrever no barramento. */
   feed(chunk: Uint8Array, agora: number = Date.now()): Uint8Array[] {
     if (agora - this.ultimoByte > GAP_RESET_MS && this.n > 0) {
-      this.emit({ tipo: 'descartado', bytes: this.n, ts: agora });
+      this.emit({ tipo: 'descartado', bytes: this.n, ts: agora, hex: hexDe(this.buf.subarray(0, this.n)) + ' (pausa no meio)' });
       this.n = 0;
     }
     this.ultimoByte = agora;
@@ -96,29 +98,36 @@ export class RtuSlave {
     }
     const respostas: Uint8Array[] = [];
     let descartados = 0;
+    const lixo: number[] = [];
+    const descarta = (k: number) => { for (let i = 0; i < k && lixo.length < 64; i++) lixo.push(this.buf[i]); this.shift(k); descartados += k; };
+    const avisa = () => {
+      if (!descartados) return;
+      this.emit({ tipo: 'descartado', bytes: descartados, ts: agora, hex: hexDe(lixo) + (descartados > lixo.length ? ' …' : '') });
+      descartados = 0; lixo.length = 0;
+    };
     while (this.n >= 4) {
       const len = tamanhoRequisicao(this.buf, this.n);
       if (len === null) break;
-      if (len === -1 || len > 256) { this.shift(1); descartados++; continue; }
+      if (len === -1 || len > 256) { descarta(1); continue; }
       if (this.n < len) {
         // Pode ser lixo parecendo o início de um FC15/16 (ex.: ECO da nossa própria resposta — conversor
         // RS485 que devolve o que transmite, como o USR). Se mais adiante já há um frame completo e
         // válido, pula para ele em vez de ficar esperando bytes que nunca vêm (a pergunta real se perdia).
         const adiante = this.proximoFrameValido(1);
         if (adiante < 0) break;
-        this.shift(adiante); descartados += adiante; continue;
+        descarta(adiante); continue;
       }
       const c = crc16(this.buf, len - 2);
       if (this.buf[len - 2] !== (c & 0xff) || this.buf[len - 1] !== ((c >>> 8) & 0xff)) {
-        this.shift(1); descartados++; continue;
+        descarta(1); continue;
       }
       const frame = this.buf.slice(0, len);
       this.shift(len);
-      if (descartados) { this.emit({ tipo: 'descartado', bytes: descartados, ts: agora }); descartados = 0; }
+      avisa();
       const r = this.tratar(frame, agora);
       if (r) respostas.push(r);
     }
-    if (descartados) this.emit({ tipo: 'descartado', bytes: descartados, ts: agora });
+    avisa();
     return respostas;
   }
 

@@ -120,7 +120,8 @@ class Sessao {
         break;
       }
       case 'descartado':
-        // ruído/eco/frames de outros escravos — não polui o log
+        // Diagnóstico: bytes que não formaram pergunta válida (eco, ruído, pergunta picada/corrompida).
+        this.log(`Descartados ${e.bytes} byte(s) que não formam pergunta válida: ${e.hex ?? ''}`, 'aviso');
         break;
     }
     this.notificar();
