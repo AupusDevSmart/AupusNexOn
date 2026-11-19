@@ -167,7 +167,9 @@ function BlocoControle({ k, modo, c, hist }: { k: Controle; modo: Modo; c: Ciclo
     })() : null;
     medida = (
       <>
-        <span>Agora: <b>{n1(Math.abs(P))} kW</b> {P >= 0 ? 'importando' : 'exportando'} · <b>{n1(Q)} kvar {tipoQ}</b> · FP <b>{n1(fp, 3)}</b> {Q > 0.05 ? tipoQ : ''}</span>
+        <span>Agora: <b>{n1(Math.abs(P))} kW</b> {P >= 0 ? 'importando' : 'exportando'} · <b>{n1(Q)} kvar {tipoQ}</b> · FP <b>{n1(fp, 3)}</b> {Q > 0.05 ? tipoQ : ''}
+          {Q > 0.05 && jan && (tipoQ === 'ind.') !== (jan === 'ind') && <span style={{ color: NX.warn }}> · {tipoQ === 'ind.' ? 'indutivo' : 'capacitivo'} não é cobrado na janela {jan === 'cap' ? 'capacitiva' : 'indutiva'}</span>}
+        </span>
         {hr && hr.dec > 0 && (
           <span>Hora (desde {hr.ini}, {Math.round(hr.dec / 60)} min): P média <b>{n1(hr.E_P / (hr.dec / 3600))} kW</b> · Q média <b>{n1(hr.E_Q / (hr.dec / 3600))} kvar {jan === 'cap' ? 'cap.' : 'ind.'}</b> · {n1(hr.E_P, 2)} kWh / {n1(hr.E_Q, 2)} kvarh</span>
         )}
@@ -259,6 +261,7 @@ const LIMITES: Campo[] = [
   { k: 'fp_alvo_cap', t: 'FP alvo capacitivo' },
   { k: 'janela_cap_ini', t: 'Janela capacitiva · início', h: 'Até a TON publicar o posto reativo da SSU', tipo: 'hora' },
   { k: 'janela_cap_fim', t: 'Janela capacitiva · fim', tipo: 'hora' },
+  { k: 'posto_reativo_medidor', t: 'Janela pelo medidor', h: '1 = usa o posto reativo que o medidor informa na SSU; 0 = sempre a janela cadastrada acima (bancada)' },
 ];
 const AVANCADO: Campo[] = [
   { k: 'banda_pct', t: 'Banda', h: 'Folga antes de devolver Q ou liberar P', u: '%' },
