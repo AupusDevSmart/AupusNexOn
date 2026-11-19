@@ -75,6 +75,8 @@ export class RtuSlave {
   private buf = new Uint8Array(MAX_BUF);
   private n = 0;
   private ultimoByte = -Infinity;
+  /** Último byte (CRC alto) de uma pergunta já respondida com 7 bytes — descarta quando chegar atrasado. */
+  private engolir: number | null = null;
   private opts: RtuSlaveOpts;
 
   constructor(opts: RtuSlaveOpts) {
@@ -96,6 +98,10 @@ export class RtuSlave {
       if (this.n >= MAX_BUF) { this.buf.copyWithin(0, 1); this.n--; }
       this.buf[this.n++] = b;
     }
+    if (this.engolir !== null && this.n > 0) {
+      if (this.buf[0] === this.engolir) this.shift(1);
+      this.engolir = null;
+    }
     const respostas: Uint8Array[] = [];
     let descartados = 0;
     const lixo: number[] = [];
@@ -109,6 +115,23 @@ export class RtuSlave {
       const len = tamanhoRequisicao(this.buf, this.n);
       if (len === null) break;
       if (len === -1 || len > 256) { descarta(1); continue; }
+      if (len === 8 && this.n === 7) {
+        // Pergunta de 8 bytes com o ÚLTIMO byte retido no caminho (USR + HW VSP seguram o CRC alto até o
+        // próximo tráfego, ~35 s, e a TON desiste em 2 s). Os 7 bytes trazem o CRC baixo: batendo, o CRC
+        // alto é conhecido → responde já e descarta o byte atrasado quando ele chegar.
+        const c = crc16(this.buf, 6);
+        if (this.buf[6] === (c & 0xff)) {
+          const frame = new Uint8Array(8);
+          frame.set(this.buf.subarray(0, 7));
+          frame[7] = (c >>> 8) & 0xff;
+          this.shift(7);
+          this.engolir = frame[7];
+          avisa();
+          const r = this.tratar(frame, agora);
+          if (r) respostas.push(r);
+          continue;
+        }
+      }
       if (this.n < len) {
         // Pode ser lixo parecendo o início de um FC15/16 (ex.: ECO da nossa própria resposta — conversor
         // RS485 que devolve o que transmite, como o USR). Se mais adiante já há um frame completo e

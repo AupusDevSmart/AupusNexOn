@@ -126,3 +126,28 @@ describe('eco do conversor (USR devolve o que transmite)', () => {
     expect(s.feed(req.subarray(5), 5)).toHaveLength(1);
   });
 });
+
+describe('último byte da pergunta retido no caminho (USR + HW VSP)', () => {
+  it('responde com 7 bytes (CRC baixo confere) e descarta o byte atrasado', () => {
+    const tab = { holding: new Map(), input: new Map([[7012, 7]]), coils: new Map(), discrete: new Map() };
+    const evs: RtuEvento[] = [];
+    const s = new RtuSlave({ endereco: 1, tabela: () => tab, onEvento: (e) => evs.push(e) });
+    const req = comCrc([1, 4, 0x1b, 0x64, 0, 1]);
+    const r = s.feed(req.subarray(0, 7), 0);
+    expect(r).toHaveLength(1);
+    expect((r[0][3] << 8) | r[0][4]).toBe(7);
+    // byte atrasado chega 35 s depois, colado na próxima pergunta: é engolido e a próxima é respondida
+    const prox = comCrc([1, 4, 0x1b, 0x64, 0, 1]);
+    const r2 = s.feed(new Uint8Array([req[7], ...prox]), 35_000);
+    expect(r2).toHaveLength(1);
+    expect(evs.filter((e) => e.tipo === 'descartado')).toEqual([]);
+  });
+
+  it('7 bytes com CRC baixo errado continuam esperando', () => {
+    const tab = { holding: new Map(), input: new Map(), coils: new Map(), discrete: new Map() };
+    const s = new RtuSlave({ endereco: 1, tabela: () => tab });
+    const req = comCrc([1, 4, 0x1b, 0x64, 0, 1]);
+    const ruim = new Uint8Array(req.subarray(0, 7)); ruim[6] ^= 0xff;
+    expect(s.feed(ruim, 0)).toEqual([]);
+  });
+});
