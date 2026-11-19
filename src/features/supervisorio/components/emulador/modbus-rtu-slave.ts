@@ -100,7 +100,14 @@ export class RtuSlave {
       const len = tamanhoRequisicao(this.buf, this.n);
       if (len === null) break;
       if (len === -1 || len > 256) { this.shift(1); descartados++; continue; }
-      if (this.n < len) break;
+      if (this.n < len) {
+        // Pode ser lixo parecendo o início de um FC15/16 (ex.: ECO da nossa própria resposta — conversor
+        // RS485 que devolve o que transmite, como o USR). Se mais adiante já há um frame completo e
+        // válido, pula para ele em vez de ficar esperando bytes que nunca vêm (a pergunta real se perdia).
+        const adiante = this.proximoFrameValido(1);
+        if (adiante < 0) break;
+        this.shift(adiante); descartados += adiante; continue;
+      }
       const c = crc16(this.buf, len - 2);
       if (this.buf[len - 2] !== (c & 0xff) || this.buf[len - 1] !== ((c >>> 8) & 0xff)) {
         this.shift(1); descartados++; continue;
@@ -113,6 +120,18 @@ export class RtuSlave {
     }
     if (descartados) this.emit({ tipo: 'descartado', bytes: descartados, ts: agora });
     return respostas;
+  }
+
+  /** Primeira posição >= de onde começa uma requisição COMPLETA com CRC válido; -1 se não há. */
+  private proximoFrameValido(de: number): number {
+    for (let i = de; i + 8 <= this.n; i++) {
+      const sub = this.buf.subarray(i, this.n);
+      const len = tamanhoRequisicao(sub, sub.length);
+      if (len === null || len === -1 || len > 256 || len > sub.length) continue;
+      const c = crc16(sub, len - 2);
+      if (sub[len - 2] === (c & 0xff) && sub[len - 1] === ((c >>> 8) & 0xff)) return i;
+    }
+    return -1;
   }
 
   private shift(k: number) {

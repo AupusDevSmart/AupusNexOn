@@ -105,3 +105,24 @@ describe('barramento com vários escravos na mesma porta (resolver)', () => {
     expect(evs).toEqual({ 1: ['leitura'], 2: ['leitura'] });
   });
 });
+
+describe('eco do conversor (USR devolve o que transmite)', () => {
+  it('lixo parecendo início de FC16 não engole a pergunta que vem colada', () => {
+    const tab = { holding: new Map(), input: new Map([[7012, 7]]), coils: new Map(), discrete: new Map() };
+    const s = new RtuSlave({ endereco: 1, tabela: () => tab });
+    // eco: 2º byte 0x10 (FC16) e 7º byte 0x50 → "frame" de 89 bytes que nunca completa
+    const eco = [0x01, 0x10, 0x00, 0x00, 0x00, 0x00, 0x50, 0x12, 0x34, 0x56, 0x78];
+    const req = Array.from(comCrc([1, 4, 0x1b, 0x64, 0, 1]));
+    const r = s.feed(new Uint8Array([...eco, ...req]), 0);
+    expect(r).toHaveLength(1);
+    expect([r[0][0], r[0][1], (r[0][3] << 8) | r[0][4]]).toEqual([1, 4, 7]);
+  });
+
+  it('frame incompleto de verdade continua esperando o resto', () => {
+    const tab = { holding: new Map([[0, 1]]), input: new Map(), coils: new Map(), discrete: new Map() };
+    const s = new RtuSlave({ endereco: 1, tabela: () => tab });
+    const req = comCrc([1, 16, 0, 0, 0, 1, 2, 0, 9]);
+    expect(s.feed(req.subarray(0, 5), 0)).toEqual([]);
+    expect(s.feed(req.subarray(5), 5)).toHaveLength(1);
+  });
+});
