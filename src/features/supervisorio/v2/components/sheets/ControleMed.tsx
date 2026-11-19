@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import { api } from '@/config/api';
-import { NX, s, NxSeg, NxSwitch, NxDialog, NxDialogHead, NxDialogButtons, type NxTone } from './nxMock';
+import { NX, COR, s, NxSeg, NxSwitch, NxDialog, NxDialogHead, NxDialogButtons, type NxTone } from './nxMock';
 
 /**
  * Controle automático pelo MED Concessionária (backend controle-med):
@@ -60,62 +60,167 @@ function useControle(medId: string) {
 
 // ------------------------------------------------------------------ Operação
 
-const TOM_ACAO: Record<string, NxTone> = { reduzir: 'warn', aguardar: 'warn', liberar: 'ok', compensar: 'warn', devolver: 'ok', hora_perdida: 'bad', sem_atuador: 'bad' };
+type Pedido = NonNullable<Ciclo['pedidos'][Controle]> & { Q_med?: number; Q_perm_alvo?: number; janela?: 'ind' | 'cap'; espera_s?: number; P_perm?: number | null; alvo?: number | null };
+interface Situacao { tom: NxTone; rotulo: string }
+
+/** Situação de um controle num ciclo: normal · fora do alvo e corrigindo · sem como corrigir. */
+function situacao(k: Controle, c: Ciclo): Situacao | null {
+  if (!c.portao.ok) return { tom: 'bad', rotulo: 'Medição reprovada — mantém o último comando' };
+  const p = c.pedidos[k] as Pedido | undefined;
+  if (!p) {
+    const ev = (c.entradas.eventos ?? []).find((e) => e.startsWith('Retomada'));
+    return ev ? { tom: 'warn', rotulo: 'Retomando após falha' } : null;
+  }
+  if (k === 'fp') {
+    switch (p.acao) {
+      case 'nada': return { tom: 'ok', rotulo: 'FP dentro do alvo' };
+      case 'compensar': return { tom: 'warn', rotulo: 'FP fora do alvo — corrigindo' };
+      case 'devolver': return { tom: 'warn', rotulo: 'Compensação além do necessário — devolvendo' };
+      case 'aguardar_ritmo': return { tom: 'warn', rotulo: `FP fora do alvo — aguardando efeito da correção${p.espera_s != null ? ` (novo ajuste em ${p.espera_s} s)` : ''}` };
+      case 'hora_perdida': return { tom: 'bad', rotulo: 'Hora perdida — não dá mais para fechar o FP' };
+      case 'sem_atuador': return { tom: 'bad', rotulo: 'FP fora do alvo — sem reativo disponível nas UFVs' };
+      default: return { tom: 'off', rotulo: p.acao };
+    }
+  }
+  switch (p.acao) {
+    case 'nada': return { tom: 'ok', rotulo: 'Dentro do contrato' };
+    case 'liberar': return { tom: 'ok', rotulo: 'Com folga — liberando geração' };
+    case 'aguardar': return { tom: 'warn', rotulo: 'Projeção acima — aguardando 1 minuto' };
+    case 'reduzir': return { tom: 'warn', rotulo: k === 'demanda_g' ? 'Projeção acima do contrato — cortando geração' : 'Projeção acima do contrato — liberando geração' };
+    case 'sem_contrato': return { tom: 'bad', rotulo: 'Contrato não cadastrado' };
+    default: return { tom: 'off', rotulo: p.acao };
+  }
+}
+
+/** "Normalizado às HH:MM": o ciclo atual está ok e houve alerta nos últimos ciclos. */
+function normalizadoEm(k: Controle, hist: Ciclo[]): string | null {
+  const st = hist.map((c) => situacao(k, c)?.tom ?? 'off');
+  if (st[0] !== 'ok') return null;
+  let i = 0;
+  while (i < st.length && st[i] === 'ok') i++;
+  if (i >= st.length || i > 15) return null;           // nunca esteve fora, ou faz tempo
+  return hora(hist[i - 1].ts);
+}
+
+const fpDe = (P: number, Q: number) => { const S = Math.hypot(P, Q); return S > 0.01 ? Math.abs(P) / S : null; };
 
 /** Card da aba Operação: só aparece com algum controle fora de "desligado". */
 export function ControleMedResumo({ medId }: { medId: string }) {
   const { est, carregar } = useControle(medId);
-  useEffect(() => { const t = setInterval(() => void carregar(), 30_000); return () => clearInterval(t); }, [carregar]);
+  const [hist, setHist] = useState<Ciclo[]>([]);
+  const carregarHist = useCallback(async () => {
+    try { setHist(corpo<Ciclo[]>(await api.get(`/controle-med/${medId.trim()}/ciclos`, { params: { limite: 30 } })) ?? []); } catch { /* card segue com o último ciclo */ }
+  }, [medId]);
+  useEffect(() => {
+    void carregarHist();
+    const t = setInterval(() => { void carregar(); void carregarHist(); }, 15_000);
+    return () => clearInterval(t);
+  }, [carregar, carregarHist]);
   if (!est || ORDEM.every((c) => est.modos[c] === 'desligado')) return null;
-  const c = est.ultimo_ciclo;
+  const c = hist[0] ?? est.ultimo_ciclo;
   const idade = c ? (Date.now() - new Date(c.ts).getTime()) / 1000 : null;
+  const ligados = ORDEM.filter((k) => est.modos[k] !== 'desligado');
   return (
-    <div style={{ ...s.card, padding: '14px 18px', ...col(10) }}>
+    <div style={{ ...s.card, padding: '14px 18px', ...col(12) }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 16, fontWeight: 800 }}>Controle automático</span>
-        <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {ORDEM.filter((k) => est.modos[k] !== 'desligado').map((k) => (
-            <span key={k} style={s.pill(est.modos[k] === 'ativo' ? 'ok' : 'off')}>{ROTULO[k]} · {est.modos[k] === 'ativo' ? 'Ativo' : 'Sombra'}</span>
-          ))}
-        </span>
+        {c && (
+          <span style={{ fontSize: 12, color: idade != null && idade > 180 ? NX.warn : NX.mudo }}>
+            Último ciclo {hora(c.ts)}{c.seg != null ? ` · intervalo fecha em ${Math.round(c.seg)} s` : ''}{idade != null && idade > 180 ? ' · sem minuto novo do medidor' : ''}
+          </span>
+        )}
       </div>
       {!c ? (
         <span style={{ fontSize: 13, color: NX.mudo }}>Aguardando o primeiro minuto do medidor.</span>
       ) : (
         <>
-          <span style={{ fontSize: 12, color: idade != null && idade > 180 ? NX.warn : NX.mudo }}>
-            Último ciclo {hora(c.ts)}{c.seg != null ? ` · intervalo fecha em ${Math.round(c.seg)} s` : ''}{idade != null && idade > 180 ? ' · sem minuto novo do medidor' : ''}
-          </span>
-          {!c.portao.ok && <Aviso tom="bad">{c.portao.motivos.join(' · ')}</Aviso>}
           {(est.tons ?? []).filter((t) => t.modo && t.modo !== 'A').map((t) => (
             <Aviso key={t.ton_id} tom={t.modo === 'M' || t.modo.startsWith('S') ? 'bad' : 'warn'}>TON da UFV: {t.texto}</Aviso>
           ))}
-          {ORDEM.map((k) => {
-            const p = c.pedidos[k];
-            if (!p) return null;
-            const tom = TOM_ACAO[p.acao] ?? 'ok';
-            return (
-              <div key={k} style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 13 }}>
-                <span style={s.stDot(tom)} />
-                <span style={{ fontWeight: 800, whiteSpace: 'nowrap' }}>{ROTULO[k]}</span>
-                <span style={{ color: NX.mudo }}>{p.motivo}{k === 'fp' && p.fp_hora != null ? ` · FP da hora ${n1(p.fp_hora, 3)}` : ''}</span>
-              </div>
-            );
-          })}
-          {c.comandos.some((x) => x.enviado_p || x.enviado_q) && (
-            <div style={{ ...col(4), borderTop: `1px solid ${NX.linha}`, paddingTop: 8 }}>
-              {c.comandos.filter((x) => x.enviado_p || x.enviado_q).map((x) => (
-                <span key={x.inversor_id} style={{ fontSize: 13 }}>
-                  <b>{x.nome}</b>{' '}
-                  {x.enviado_p && <>limite {n1(x.p_pct, 0)}% ({n1(x.p_lim_kw)} kW) <Envio r={x.enviado_p} /> </>}
-                  {x.enviado_q && <>· reativo {n1(x.q_kvar)} kvar <Envio r={x.enviado_q} /></>}
-                </span>
-              ))}
-            </div>
-          )}
-          {(c.entradas.eventos ?? []).map((e, i) => <Aviso key={i} tom="warn">{e}</Aviso>)}
+          {ligados.map((k) => <BlocoControle key={k} k={k} modo={est.modos[k]} c={c} hist={hist} />)}
+          <Inversores c={c} />
+          {(c.entradas.eventos ?? []).filter((e) => !e.startsWith('Retomada')).map((e, i) => <Aviso key={i} tom="warn">{e}</Aviso>)}
         </>
       )}
+    </div>
+  );
+}
+
+function BlocoControle({ k, modo, c, hist }: { k: Controle; modo: Modo; c: Ciclo; hist: Ciclo[] }) {
+  const sit = situacao(k, c) ?? { tom: 'off' as NxTone, rotulo: 'Sem decisão neste minuto' };
+  const norm = normalizadoEm(k, hist);
+  const p = c.pedidos[k] as Pedido | undefined;
+  const e = c.entradas as Ciclo['entradas'] & { hora?: { E_P?: number }; janela?: 'ind' | 'cap' };
+  let medida: ReactNode = null;
+  if (k === 'fp') {
+    const P = (e.P_imp ?? 0) - (e.P_exp ?? 0);
+    const jan = p?.janela ?? e.janela;
+    const Qi = e.Q_ind ?? 0, Qc = e.Q_cap ?? 0;
+    const Q = Qi >= Qc ? Qi : Qc;
+    const tipoQ = Qi >= Qc ? 'ind.' : 'cap.';
+    const fp = fpDe(P, Q);
+    medida = (
+      <>
+        <span>Agora: <b>{n1(Math.abs(P))} kW</b> {P >= 0 ? 'importando' : 'exportando'} · <b>{n1(Q)} kvar {tipoQ}</b> · FP <b>{n1(fp, 3)}</b> {Q > 0.05 ? tipoQ : ''}</span>
+        {p && <span>Hora: FP <b>{n1(p.fp_hora, 3)}</b> · reativo permitido {n1(p.Q_perm_alvo)} kvar · correção {n1(p.dQ)} kvar · janela {jan === 'cap' ? 'capacitiva' : 'indutiva'}</span>}
+      </>
+    );
+  } else if (p) {
+    const pct = p.contrato ? Math.min(130, Math.max(0, ((p.D_proj ?? 0) / p.contrato) * 100)) : 0;
+    medida = (
+      <>
+        <span>Projeção do intervalo <b>{n1(p.D_proj)} kW</b> · contrato {n1(p.contrato)} kW · alvo {n1(p.alvo)} kW</span>
+        <span style={{ position: 'relative', height: 8, borderRadius: 4, background: NX.linha, overflow: 'hidden', maxWidth: 420 }}>
+          <span style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${(pct / 130) * 100}%`, background: COR[sit.tom], borderRadius: 4 }} />
+          <span style={{ position: 'absolute', left: `${(100 / 130) * 100}%`, top: -2, bottom: -2, width: 2, background: NX.texto }} title="contrato" />
+        </span>
+      </>
+    );
+  }
+  return (
+    <div style={{ ...col(6), borderTop: `1px solid ${NX.linha}`, paddingTop: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <span style={{ fontWeight: 800, fontSize: 14 }}>{ROTULO[k]}</span>
+        <span style={{ fontSize: 11, fontWeight: 700, color: NX.mudo, textTransform: 'uppercase', letterSpacing: 0.5 }}>{modo === 'ativo' ? 'Ativo' : 'Sombra · só simula'}</span>
+      </div>
+      <span style={{ ...s.pill(sit.tom), alignSelf: 'flex-start', height: 'auto', minHeight: 30, padding: '4px 12px', whiteSpace: 'normal' }}>
+        <span style={s.pillDot(sit.tom)} />{sit.rotulo}{norm ? ` · normalizado às ${norm}` : ''}
+      </span>
+      <div style={{ ...col(3), fontSize: 13, color: NX.mudo }}>{medida}</div>
+      {hist.length > 1 && <Linha30 k={k} hist={hist} />}
+    </div>
+  );
+}
+
+/** Últimos minutos (antigo → recente): um quadrado por ciclo, na cor da situação. */
+function Linha30({ k, hist }: { k: Controle; hist: Ciclo[] }) {
+  const lista = [...hist].reverse();
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <span style={{ fontSize: 11, color: NX.mudo, whiteSpace: 'nowrap' }}>{hora(lista[0].ts)}</span>
+      <div style={{ display: 'flex', gap: 2, flexWrap: 'wrap' }} role="img" aria-label={`Situação de ${ROTULO[k]} nos últimos ${lista.length} minutos`}>
+        {lista.map((c) => {
+          const st = situacao(k, c);
+          return <span key={c.ts} title={`${hora(c.ts)} · ${st?.rotulo ?? '—'}${c.pedidos[k]?.motivo ? ` · ${c.pedidos[k]!.motivo}` : ''}`} style={{ width: 10, height: 14, borderRadius: 2, background: st ? COR[st.tom] : NX.off }} />;
+        })}
+      </div>
+      <span style={{ fontSize: 11, color: NX.mudo, whiteSpace: 'nowrap' }}>agora</span>
+    </div>
+  );
+}
+
+function Inversores({ c }: { c: Ciclo }) {
+  if (!c.comandos.length) return null;
+  return (
+    <div style={{ ...col(4), borderTop: `1px solid ${NX.linha}`, paddingTop: 10 }}>
+      <span style={{ fontSize: 12, fontWeight: 800, color: NX.mudo, textTransform: 'uppercase', letterSpacing: 0.5 }}>Comando por inversor</span>
+      {c.comandos.map((x) => (
+        <span key={x.inversor_id} style={{ fontSize: 13, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'baseline' }}>
+          <b>{x.nome}</b><span style={{ color: NX.mudo }}>{x.ufv}</span>
+          <span>· limite {n1(x.p_pct, 0)}% ({n1(x.p_lim_kw)} kW){x.enviado_p ? <> <Envio r={x.enviado_p} /></> : ''}</span>
+          <span>· reativo {n1(x.q_kvar)} kvar{x.enviado_q ? <> <Envio r={x.enviado_q} /></> : ''}</span>
+        </span>
+      ))}
     </div>
   );
 }
