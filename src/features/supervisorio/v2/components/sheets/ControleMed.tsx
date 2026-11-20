@@ -14,13 +14,13 @@ type Modo = 'desligado' | 'sombra' | 'ativo';
 type Controle = 'fp' | 'demanda_g' | 'demanda_c';
 interface Inversor { id: string; nome?: string; pn_kw: number; smax_kva: number; qmax_pct: number; sinal_q: 1 | -1; q_noturno: boolean }
 interface Ufv { id: string; nome: string; ordem: number; p_estatico_kw: number; zera_estagio2: boolean; watchdog_nativo: boolean; rota: 'internet' | 'lora'; bi_manual?: number; bi_invertida?: boolean; inversores: Inversor[] }
-interface Candidato { id: string; nome: string; modelo: string | null; pn_kw: number | null; limite_p: boolean; reativo_q: boolean }
+interface Candidato { id: string; nome: string; modelo: string | null; pn_kw: number | null; limite_p: boolean; reativo_q: boolean; sinal_q_padrao?: 1 | -1 }
 interface Ciclo {
   ts: string; seg: number | null;
   entradas: { E_imp?: number; E_exp?: number; P_imp?: number; P_exp?: number; Q_ind?: number; Q_cap?: number; janela?: 'ind' | 'cap'; eventos?: string[] };
   portao: { ok: boolean; motivos: string[] };
   pedidos: Partial<Record<Controle, { acao: string; motivo: string; D_proj?: number | null; contrato?: number | null; dQ?: number; fp_hora?: number | null }>>;
-  comandos: Array<{ inversor_id: string; nome: string; ufv: string; p_lim_kw: number; p_pct: number; q_kvar: number; q_pct: number; muda_p: boolean; muda_q: boolean; enviado_p?: string; enviado_q?: string; motivo: string[] }>;
+  comandos: Array<{ inversor_id: string; nome: string; ufv: string; p_lim_kw: number; p_pct: number; q_kvar: number; q_pct: number; muda_p: boolean; muda_q: boolean; p_por_q?: boolean; enviado_p?: string; enviado_q?: string; motivo: string[] }>;
   modos: Record<Controle, Modo>;
 }
 interface Estado {
@@ -228,8 +228,8 @@ function Inversores({ c }: { c: Ciclo }) {
       {c.comandos.map((x) => (
         <span key={x.inversor_id} style={{ fontSize: 13, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'baseline' }}>
           <b>{x.nome}</b><span style={{ color: NX.mudo }}>{x.ufv}</span>
-          <span>· limite {n1(x.p_pct, 0)}% ({n1(x.p_lim_kw)} kW){x.enviado_p ? <> <Envio r={x.enviado_p} /></> : ''}</span>
-          <span>· reativo {n1(x.q_kvar)} kvar{x.enviado_q ? <> <Envio r={x.enviado_q} /></> : ''}</span>
+          <span>· limite {n1(x.p_pct, 0)}% ({n1(x.p_lim_kw)} kW){x.p_por_q ? ' · reduzido p/ caber o reativo' : ''}{x.enviado_p ? <> <Envio r={x.enviado_p} /></> : ''}</span>
+          <span>· reativo {n1(x.q_kvar)} kvar ({n1(x.q_pct, 1)}%){x.enviado_q ? <> <Envio r={x.enviado_q} /></> : ''}</span>
         </span>
       ))}
     </div>
@@ -248,7 +248,7 @@ function Aviso({ tom, children }: { tom: NxTone; children: ReactNode }) {
 
 // ------------------------------------------------------------------ Configuração
 
-interface Campo { k: string; t: string; h?: string; u?: string; tipo?: 'hora' }
+interface Campo { k: string; t: string; h?: string; u?: string; tipo?: 'hora' | 'bool' }
 const LIMITES: Campo[] = [
   { k: 'd_contr_g_kw', t: 'Contrato de geração', h: 'Vazio = o da unidade consumidora', u: 'kW' },
   { k: 'alvo_g_pct', t: 'Alvo de geração', h: 'Ritmo planejado; a projeção nunca passa do contrato', u: '%' },
@@ -260,6 +260,7 @@ const LIMITES: Campo[] = [
   { k: 'fp_alvo_ind', t: 'FP alvo indutivo', h: 'Pelo menos 0,005 acima do limite' },
   { k: 'fp_lim_cap', t: 'FP limite capacitivo' },
   { k: 'fp_alvo_cap', t: 'FP alvo capacitivo' },
+  { k: 'prioridade_q', t: 'Reativo tem prioridade', h: 'Reduz o limite de potência ativa para caber o reativo pedido na carta do inversor (S² = P² + Q²)', tipo: 'bool' },
   { k: 'janela_cap_ini', t: 'Janela capacitiva · início', h: 'Até a TON publicar o posto reativo da SSU', tipo: 'hora' },
   { k: 'janela_cap_fim', t: 'Janela capacitiva · fim', tipo: 'hora' },
 ];
@@ -315,6 +316,7 @@ export function ControleMedConfig({ medId }: { medId: string }) {
     const params: Record<string, number | string | null> = {};
     for (const f of [...LIMITES, ...AVANCADO]) {
       if (f.tipo === 'hora') { params[f.k] = vals[f.k]; continue; }
+      if (f.tipo === 'bool') { params[f.k] = vals[f.k] === '0' ? 0 : 1; continue; }
       const x = numOuNull(vals[f.k] ?? '');
       if (Number.isNaN(x)) { toast.error(`${f.t}: número inválido`); return; }
       params[f.k] = x;
@@ -405,6 +407,7 @@ export function ControleMedConfig({ medId }: { medId: string }) {
                 <Mini t="Pn" u="kW" v={x.pn_kw} ro={ro} onChange={(y) => mudaInv(i, j, { pn_kw: y })} />
                 <Mini t="Smax" u="kVA" v={x.smax_kva} ro={ro} onChange={(y) => mudaInv(i, j, { smax_kva: y })} />
                 <Mini t="Q máx" u="%" v={x.qmax_pct} ro={ro} onChange={(y) => mudaInv(i, j, { qmax_pct: y })} />
+                <span title="Sinal do percentual de Q que FORNECE reativo (corrige FP indutivo). Sungrow: Q −" style={{ fontSize: 12, color: NX.mudo }}>fornece com</span>
                 <NxSeg<'1' | '-1'> value={x.sinal_q === -1 ? '-1' : '1'} disabled={ro} options={[{ v: '1', label: 'Q +' }, { v: '-1', label: 'Q −' }]} onChange={(z) => mudaInv(i, j, { sinal_q: z === '-1' ? -1 : 1 })} />
                 <SwitchTxt t="Q à noite" on={x.q_noturno} ro={ro} onChange={() => mudaInv(i, j, { q_noturno: !x.q_noturno })} />
                 {!ro && <button type="button" aria-label={`Tirar ${x.nome ?? x.id}`} onClick={() => mudaUfv(i, { inversores: u.inversores.filter((_, k) => k !== j) })} style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 700, color: NX.mudo }}>Tirar</button>}
@@ -416,7 +419,7 @@ export function ControleMedConfig({ medId }: { medId: string }) {
               const c = est.candidatos.find((k) => k.id === e.target.value);
               if (!c) return;
               const pn = c.pn_kw ?? 0;
-              mudaUfv(i, { inversores: [...u.inversores, { id: c.id, nome: c.nome, pn_kw: pn, smax_kva: pn ? Math.round(pn * 1.1 * 10) / 10 : 0, qmax_pct: 44, sinal_q: 1, q_noturno: false }] });
+              mudaUfv(i, { inversores: [...u.inversores, { id: c.id, nome: c.nome, pn_kw: pn, smax_kva: pn ? Math.round(pn * 1.1 * 10) / 10 : 0, qmax_pct: 44, sinal_q: c.sinal_q_padrao === -1 ? -1 : 1, q_noturno: false }] });
             }} style={{ ...s.campo(false, false, 260), textAlign: 'left' }}>
               <option value="">+ Adicionar inversor…</option>
               {livres.map((c) => <option key={c.id} value={c.id}>{c.nome}{c.modelo ? ` · ${c.modelo}` : ''}</option>)}
@@ -465,11 +468,17 @@ function Linha({ f, v, ro, first, onChange }: { f: Campo; v: string; ro: boolean
         <span style={{ fontSize: 15, fontWeight: 700 }}>{f.t}</span>
         {f.h && <span style={{ fontSize: 12, color: NX.mudo }}>{f.h}</span>}
       </label>
+      {f.tipo === 'bool' ? (
+        <button type="button" id={`cm-${f.k}`} disabled={ro} onClick={() => onChange(f.k, v === '0' ? '1' : '0')} aria-pressed={v !== '0'}>
+          <NxSwitch on={v !== '0'} disabled={ro} />
+        </button>
+      ) : (
       <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         <input id={`cm-${f.k}`} type={f.tipo === 'hora' ? 'time' : 'text'} inputMode={f.tipo === 'hora' ? undefined : 'decimal'} value={v} disabled={ro}
           onChange={(e) => onChange(f.k, e.target.value)} style={s.campo(ro, f.tipo !== 'hora' && Number.isNaN(numOuNull(v) as number), f.tipo === 'hora' ? 110 : 96)} />
         <span style={{ fontSize: 14, color: NX.mudo, width: 34 }}>{f.u ?? ''}</span>
       </span>
+      )}
     </div>
   );
 }
