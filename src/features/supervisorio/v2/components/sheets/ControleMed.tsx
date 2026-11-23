@@ -60,7 +60,7 @@ function useControle(medId: string) {
 
 // ------------------------------------------------------------------ Operação
 
-type Pedido = NonNullable<Ciclo['pedidos'][Controle]> & { Q_med?: number; Q_perm_alvo?: number; janela?: 'ind' | 'cap'; espera_s?: number; P_perm?: number | null; alvo?: number | null };
+type Pedido = NonNullable<Ciclo['pedidos'][Controle]> & { Q_med?: number; Q_perm_alvo?: number; janela?: 'ind' | 'cap'; espera_s?: number; t_rest_hora?: number; P_perm?: number | null; alvo?: number | null };
 interface Situacao { tom: NxTone; rotulo: string }
 
 /** Situação de um controle num ciclo: normal · fora do alvo e corrigindo · sem como corrigir. */
@@ -173,7 +173,7 @@ function BlocoControle({ k, modo, c, hist }: { k: Controle; modo: Modo; c: Ciclo
         {hr && hr.dec > 0 && (
           <span>Hora (desde {hr.ini}, {Math.round(hr.dec / 60)} min): P média <b>{n1(hr.E_P / (hr.dec / 3600))} kW</b> · Q média <b>{n1(hr.E_Q / (hr.dec / 3600))} kvar {jan === 'cap' ? 'cap.' : 'ind.'}</b> · {n1(hr.E_P, 2)} kWh / {n1(hr.E_Q, 2)} kvarh</span>
         )}
-        {p && <span>FP da hora <b>{n1(p.fp_hora, 3)}</b> · reativo permitido no resto da hora {n1(p.Q_perm_alvo)} kvar · correção {n1(p.dQ)} kvar · janela {jan === 'cap' ? 'capacitiva' : 'indutiva'}</span>}
+        {p && <span>FP da hora <b>{n1(p.fp_hora, 3)}</b>{p.t_rest_hora != null ? <> · hora fecha em <b>{Math.floor(p.t_rest_hora / 60)} min {String(Math.round(p.t_rest_hora % 60)).padStart(2, '0')} s</b></> : null} · reativo permitido no resto da hora {n1(p.Q_perm_alvo)} kvar · correção {n1(p.dQ)} kvar · janela {jan === 'cap' ? 'capacitiva' : 'indutiva'}</span>}
       </>
     );
   } else if (p) {
