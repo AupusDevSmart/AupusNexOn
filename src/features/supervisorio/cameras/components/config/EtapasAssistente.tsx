@@ -234,7 +234,7 @@ const MEMORIAS: { valor: 'cartao' | 'usb'; titulo: string; detalhe: string; porq
     valor: 'usb',
     titulo: 'Pendrive (sem microSD)',
     detalhe: 'O Raspberry liga pelo pendrive',
-    porque: 'Bom quando não tem cartão microSD. O pendrive fica numa porta USB do Raspberry; precisa da fonte oficial 27 W e de um pendrive USB 3 de marca (32 GB ou mais).',
+    porque: 'Bom quando não tem cartão microSD. O pendrive fica numa porta USB do Raspberry; na primeira vez precisa da fonte oficial 27 W (depois aceita carregador de celular) e de um pendrive USB 3 de marca (32 GB ou mais).',
     icone: <Usb aria-hidden />,
   },
 ];
@@ -511,7 +511,7 @@ function passosUsb(so: SistemaPc, comando: ReactNode): PassoGuiado[] {
     },
     {
       titulo: 'Coloque o pendrive no Raspberry',
-      ajuda: 'Numa porta USB azul. Tire o cartão microSD de dentro, se tiver: o Raspberry liga pelo pendrive. Use a fonte oficial 27 W.',
+      ajuda: 'Numa porta USB azul. Tire o cartão microSD de dentro, se tiver. Na primeira vez, ligue na fonte oficial 27 W: com carregador de celular o Raspberry não liga pelo pendrive. Depois que ele aparecer no NexON, pode usar carregador de celular.',
       visual: <DesenhoRaspberry destaque={['rede']} />,
     },
   ];
