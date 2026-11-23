@@ -234,7 +234,7 @@ const MEMORIAS: { valor: 'cartao' | 'usb'; titulo: string; detalhe: string; porq
     valor: 'usb',
     titulo: 'Pendrive (sem microSD)',
     detalhe: 'O Raspberry liga pelo pendrive',
-    porque: 'Bom quando não tem cartão microSD. O pendrive fica numa porta USB do Raspberry; na primeira vez precisa da fonte oficial 27 W (depois aceita carregador de celular) e de um pendrive USB 3 de marca (32 GB ou mais).',
+    porque: 'Bom quando não tem cartão microSD. O pendrive fica numa porta USB do Raspberry; liga com a fonte oficial 27 W ou com carregador de celular; precisa de um pendrive USB 3 de marca (32 GB ou mais).',
     icone: <Usb aria-hidden />,
   },
 ];
@@ -484,8 +484,13 @@ function passosUsb(so: SistemaPc, comando: ReactNode): PassoGuiado[] {
   const [abrir, copiar, colar] = passosComando(so, comando, '', 'cartao');
   return [
     {
+      titulo: 'Separe o pendrive, o Raspberry e um cabo USB-C',
+      ajuda: 'Pendrive USB 3 de 32 GB ou mais (tudo nele será apagado). O cabo é de celular, que passa dados: no fim ele libera o Raspberry para ligar com qualquer carregador.',
+      visual: <DesenhoRaspberry destaque={['usbc']} />,
+    },
+    {
       titulo: 'Coloque o pendrive no computador',
-      ajuda: 'Pendrive USB 3 de 32 GB ou mais. Tudo nele será apagado. Deixe ele lá até o fim.',
+      ajuda: 'Numa porta USB livre. Deixe ele lá até o Terminal pedir para tirar.',
       visual: <Usb className="h-16 w-16 text-muted-foreground" aria-hidden />,
     },
     abrir,
@@ -498,20 +503,50 @@ function passosUsb(so: SistemaPc, comando: ReactNode): PassoGuiado[] {
         <TelaTerminal
           sistema={so}
           titulo={d.app}
-          linhas={[' 2/4  Achar o pendrive no computador', d.ok('  ✓ Encontrei o pendrive!'), '  Achei o pendrive do Raspberry (32 GB).', '  Tudo o que estiver nele será apagado.']}
+          linhas={[' 3/6  Achar o pendrive no computador', d.ok('  ✓ Encontrei o pendrive!'), '  Achei o pendrive do Raspberry (32 GB).', '  Tudo o que estiver nele será apagado.']}
           destaque="  >> Escreva SIM e aperte Enter para gravar: SIM"
         />
       ),
     },
-    passosFinais(so, 'uns 5 minutos', '3/4', 'o pendrive')[1],
     {
-      titulo: 'Tire o pendrive do computador',
-      ajuda: 'Só depois da faixa verde. Ele já foi desligado do computador: pode tirar.',
-      visual: <Usb className="h-16 w-16 text-muted-foreground" aria-hidden />,
+      titulo: 'Espere a barra chegar a 100%',
+      ajuda: 'Uns 5 minutos. Antes de gravar ele pode pedir a senha do computador (não aparece enquanto você digita). Se aparecer a faixa vermelha "DEU ERRO", rode o comando de novo.',
+      visual: (
+        <TelaTerminal
+          sistema={so}
+          titulo={d.app}
+          linhas={[' 4/6  Gravando o NexON no pendrive', '  ██████████████████████████████ 100%  gravado em 4 min']}
+          destaque={d.ok('  ✓ NexON gravado e conferido no pendrive.')}
+        />
+      ),
     },
     {
-      titulo: 'Coloque o pendrive no Raspberry',
-      ajuda: 'Numa porta USB azul. Tire o cartão microSD de dentro, se tiver. Na primeira vez, ligue na fonte oficial 27 W: com carregador de celular o Raspberry não liga pelo pendrive. Depois que ele aparecer no NexON, pode usar carregador de celular.',
+      titulo: 'Tire o pendrive e todos os cabos do Raspberry',
+      ajuda: `Deixe o pendrive de lado por 1 minuto e aperte Enter no ${d.app}. Agora o NexON libera o Raspberry para ligar com carregador de celular (só esta vez, vale para sempre).`,
+      visual: <DesenhoRaspberry />,
+    },
+    { titulo: 'Aperte e segure o botão', ajuda: 'É o botãozinho ao lado da entrada USB-C. Não solte ainda.', visual: <DesenhoRaspberry destaque={['botao']} dedo /> },
+    {
+      titulo: 'Segurando o botão, ligue o cabo',
+      ajuda: 'Uma ponta no Raspberry, a outra no computador. Direto no computador, sem adaptador.',
+      visual: <DesenhoRaspberry destaque={['botao', 'cabo']} dedo />,
+    },
+    { titulo: 'Conte até 3 e solte o botão', visual: <ContarAteTres /> },
+    {
+      titulo: 'Espere a faixa verde "DEU TUDO CERTO!"',
+      ajuda: 'Uns 20 segundos. Não precisa apertar nada. Se ele não liberar, tudo bem: na primeira vez ligue na fonte oficial 27 W e ele se libera sozinho.',
+      visual: (
+        <TelaTerminal
+          sistema={so}
+          titulo={d.app}
+          linhas={[' 6/6  Liberar o Raspberry para qualquer carregador', d.ok('  ✓ Liberado: liga pelo pendrive com a fonte oficial ou com carregador de celular.')]}
+          destaque={d.ok('  DEU TUDO CERTO! Pode tirar o pendrive.')}
+        />
+      ),
+    },
+    {
+      titulo: 'Coloque o pendrive no Raspberry e ligue',
+      ajuda: 'Tire o cabo do computador. Pendrive numa porta USB azul, sem cartão microSD dentro. Ligue o cabo de rede e a fonte: a oficial 27 W ou um carregador de celular USB-C.',
       visual: <DesenhoRaspberry destaque={['rede']} />,
     },
   ];

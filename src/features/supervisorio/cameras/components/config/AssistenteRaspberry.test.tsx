@@ -140,7 +140,7 @@ describe('AssistenteRaspberry', () => {
     expect(screen.getByRole('heading', { name: 'Ligue no local' })).toBeInTheDocument();
   });
 
-  it('pendrive como memória: pergunta primeiro, comando com o jeito pendrive e 8 telas', async () => {
+  it('pendrive como memória: pergunta primeiro, comando com o jeito pendrive e 13 telas (com a liberação do carregador)', async () => {
     const user = userEvent.setup();
     abrir();
     expect(screen.getByRole('radio', { name: /Cartão microSD \(recomendado\)/ })).toHaveAttribute('aria-checked', 'true');
@@ -148,10 +148,10 @@ describe('AssistenteRaspberry', () => {
     // Sem microSD não pergunta como gravar o cartão.
     expect(screen.queryByRole('radiogroup', { name: 'Jeito de gravar' })).toBeNull();
     await user.click(screen.getByRole('button', { name: /Começar/ }));
-    expect(screen.getByText('Passo 1 de 8')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Coloque o pendrive no computador' })).toBeInTheDocument();
-    for (let i = 0; i < 7; i++) await user.click(screen.getByRole('button', { name: /Feito, próximo/ }));
-    expect(screen.getByRole('heading', { name: 'Coloque o pendrive no Raspberry' })).toBeInTheDocument();
+    expect(screen.getByText('Passo 1 de 13')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Separe o pendrive, o Raspberry e um cabo USB-C' })).toBeInTheDocument();
+    for (let i = 0; i < 12; i++) await user.click(screen.getByRole('button', { name: /Feito, próximo/ }));
+    expect(screen.getByRole('heading', { name: 'Coloque o pendrive no Raspberry e ligue' })).toBeInTheDocument();
     expect(lerSessao('u1')?.jeito).toBe('usb');
   });
 
