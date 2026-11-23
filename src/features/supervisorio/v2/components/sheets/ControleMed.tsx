@@ -230,7 +230,7 @@ function Inversores({ c }: { c: Ciclo }) {
       {c.comandos.map((x) => (
         <span key={x.inversor_id} style={{ fontSize: 13, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'baseline' }}>
           <b>{x.nome}</b><span style={{ color: NX.mudo }}>{x.ufv}</span>
-          <span>· limite {n1(x.p_pct, 0)}% ({n1(x.p_lim_kw)} kW){x.p_por_q ? ' · reduzido p/ caber o reativo' : ''}{x.enviado_p ? <> <Envio r={x.enviado_p} /></> : ''}</span>
+          <span>· limite {n1(x.p_pct)}% ({n1(x.p_lim_kw)} kW){x.p_por_q ? ' · reduzido p/ caber o reativo' : ''}{x.enviado_p ? <> <Envio r={x.enviado_p} /></> : ''}</span>
           <span>· reativo {n1(x.q_kvar)} kvar ({n1(x.q_pct, 1)}%){x.enviado_q ? <> <Envio r={x.enviado_q} /></> : ''}</span>
         </span>
       ))}
