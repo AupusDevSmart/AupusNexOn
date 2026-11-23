@@ -1,4 +1,4 @@
-# Controle pelo MED — como funciona o despacho (estado em 20/11/2026)
+# Controle pelo MED — como funciona o despacho (estado em 23/11/2026)
 
 > Módulo `controle-med` do aupus-nexon-api (`controle-med.calc.ts` = regras puras, `controle-med.service.ts` = ciclo, banco e TON).
 > Tela: ficha do Medidor Concessionária → aba **Configuração** (cadastro) e aba **Operação** (card "Controle automático").
@@ -97,7 +97,16 @@ Reprovou → **não comanda e não renova**. Depois disso precisa de **3 minutos
   - A base do corte é o que o inversor está entregando: o P medido, nunca acima do limite já dado.
 - **Ainda acima do contrato com todos no piso:** não corta mais e registra o alarme *"Medidor acima do contrato com a geração já no piso… verificar a medição ou os inversores"*. Com os inversores obedecendo, isso é fisicamente impossível.
 - **Liberação:** proporcional à folga de cada um (Pn − limite), até 100 %.
-- **Abaixo do contrato não há limite:** os inversores ficam em 100 %. O teto de segurança R4 (pior caso de queda de comunicação) virou **só aviso no cadastro** e não limita mais o despacho (decisão 19/11). Na queda de comunicação, quem protege é a TON (§7).
+- **Abaixo do contrato, a princípio, não há limite.** O único teto é o **R4 olhando o medidor** (decisão 23/11).
+  - A cada ciclo ele calcula a maior soma de limites que, se a comunicação cair **agora** e o consumo for a zero, ainda fecha o intervalo ≤ contrato.
+  - Pior caso considerado: último limite durante a validade → P estático (estágio 1) → só as UFVs que não zeram (estágio 2).
+  - Usa a **energia já exportada** no intervalo:
+    - com a fazenda consumindo, o teto fica alto e **não limita**;
+    - com a exportação perto do contrato, aperta só o necessário.
+  - Não depende mais do alvo, então o **alvo pode ser 100 %** do contrato.
+  - O excesso sobre o teto sai proporcional, nunca abaixo do piso. O card mostra "teto p/ queda de comunicação".
+  - Exemplo no campo (15 min, validade 60 s, P estático 45/45 com a B zerando): no início do intervalo o teto dá 420 kW, então não limita.
+- **Σ P estático > contrato bloqueia o modo Ativo:** sem comunicação, as UFVs exportariam acima do contrato.
 - **R2:** UFV sem "watchdog nativo validado" nunca passa do seu P estático.
 - **Ordem da UFV:** hoje é só informativa. O corte não usa mais "a mais distante primeiro".
 
@@ -149,7 +158,7 @@ Reprovou → **não comanda e não renova**. Depois disso precisa de **3 minutos
 |---|---|---|
 | 1 | Lê o minuto da TON-V2 direta (acumulado em `data{}`) | o ciclo nunca rodava com a TON-MED no WiFi |
 | 2 | Corte proporcional + **piso = parte do contrato** + alarme no piso | pedido do usuário; o corte "mais distante primeiro" zerava uma UFV |
-| 3 | Sem teto R4 no despacho | abaixo do contrato os inversores ficavam travados em 50–72 % |
+| 3 | R4 fixo saiu do despacho (19/11) e voltou **olhando o medidor** (23/11) | o fixo travava em 50–72 % mesmo com folga; sem nenhum, a queda de comunicação podia estourar o contrato |
 | 4 | Sem nova espera de 1 min depois de cortar | alternava "aguardando" e "cortando" |
 | 5 | Janela do reativo pelo horário cadastrado | o E750 da bancada dizia capacitivo 24 h |
 | 6 | Tolerância Aneel (5 %) no contrato de carga | multa só acima de contrato + 5 % |
@@ -163,6 +172,7 @@ Reprovou → **não comanda e não renova**. Depois disso precisa de **3 minutos
 ## 9. Pendências
 
 - **Validar em campo o sinal do Sungrow.** Com FP indutivo e o comando negativo, o FP no medidor tem que **subir**. Se descer, inverter para Q+ no cadastro do inversor.
-- **R4 como aviso:** decidir se, no campo (intervalo de 15 min), o teto volta a limitar ou fica só no P estático da TON.
+- **Piso dinâmico** (proposto 23/11, não implementado): piso das UFVs que respondem = contrato − pior valor plausível das que não respondem (último limite na validade, depois P estático; TON desligada ou chave em manual = Pn).
+- **Watchdog nativo do inversor:** é a única proteção no caso "TON desligada + NexON fora". Configurar no campo.
 - **TON-MED caindo** (4 quedas em 19/11, boot 122): pegar o Serial na próxima.
 - **Bancada da Pontal ativa:** projeto IoT, contrato de geração 100 e de carga 230 kW, RTC 100 no nó da SSU. Zerar tudo ao final (backup em `bkp_20261119_pontal_contrato`).
