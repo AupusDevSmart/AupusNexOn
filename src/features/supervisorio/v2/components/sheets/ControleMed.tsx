@@ -180,7 +180,9 @@ function BlocoControle({ k, modo, c, hist }: { k: Controle; modo: Modo; c: Ciclo
     const pct = p.contrato ? Math.min(130, Math.max(0, ((p.D_proj ?? 0) / p.contrato) * 100)) : 0;
     medida = (
       <>
-        <span>Projeção do intervalo <b>{n1(p.D_proj)} kW</b> · limite {n1(p.contrato)} kW{k === 'demanda_c' ? ' (contrato + tolerância)' : ''} · alvo {n1(p.alvo)} kW</span>
+        <span>Projeção do intervalo <b>{n1(p.D_proj)} kW</b> · limite {n1(p.contrato)} kW{k === 'demanda_c' ? ' (contrato + tolerância)' : ''} · alvo {n1(p.alvo)} kW
+          {k === 'demanda_g' && (c.entradas as { teto_queda_kw?: number | null }).teto_queda_kw != null && <> · teto p/ queda de comunicação {n1((c.entradas as { teto_queda_kw?: number }).teto_queda_kw)} kW</>}
+        </span>
         <span style={{ position: 'relative', height: 8, borderRadius: 4, background: NX.linha, overflow: 'hidden', maxWidth: 420 }}>
           <span style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${(pct / 130) * 100}%`, background: COR[sit.tom], borderRadius: 4 }} />
           <span style={{ position: 'absolute', left: `${(100 / 130) * 100}%`, top: -2, bottom: -2, width: 2, background: NX.texto }} title="contrato" />
@@ -366,7 +368,7 @@ export function ControleMedConfig({ medId }: { medId: string }) {
       {[...v.bloqueios.map((t) => ({ t, tom: 'bad' as NxTone })), ...v.avisos.map((t) => ({ t, tom: 'warn' as NxTone }))].map((a, i) => <Aviso key={i} tom={a.tom}>{a.t}</Aviso>)}
       {v.tetoPlim != null && (
         <span style={{ fontSize: 12, color: NX.mudo }}>
-          Pior caso de perda de comunicação (validade {v.tVal} s): soma dos limites de P até {n1(v.tetoPlim, 0)} kW · Σ P estático {n1(v.somaEst, 0)} kW · Σ Pn {n1(v.somaPn, 0)} kW
+          Queda de comunicação com consumo zero (validade {v.tVal} s): no início do intervalo a soma dos limites de P pode ir até {n1(v.tetoPlim, 0)} kW — a cada minuto o controle refaz a conta com a energia já exportada · Σ P estático {n1(v.somaEst, 0)} kW · Σ Pn {n1(v.somaPn, 0)} kW
         </span>
       )}
 
