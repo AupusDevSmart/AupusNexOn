@@ -2142,6 +2142,9 @@ esp_err_t wdt_meio();
 // enfileira minutos e blocos e manda na resposta ao POLL; sem poll, so' o bloco na hora.
 // Satelite LoRa (sem internet): bucket em JSON plano -> frame binario LORA_TYPE_SSU (cabe no MTU 200)
 #define SSU_LORA_BIN                ${spec.lora_role === 'satellite' && !spec.wifi ? 1 : 0}
+// Parcial do medidor (fim=0) a cada SSU_PARCIAL_S, alinhada ao seg regressivo do intervalo. 30 s no MQTT
+// direto (controle pelo MED decide 2x por minuto); 60 s no satelite LoRa (MTU/fila — formato plano sem "dur").
+#define SSU_PARCIAL_S               (SSU_LORA_BIN ? 60 : 30)
 // Satelite MESTRE-PUXA: minutos (fim=0) e blocos (fim=1) do SSU vao para uma fila e
 // saem na resposta ao POLL do gateway (igual ao PM). 0 = empurra so' o bloco na hora.
 #define SSU_LORA_POLL               ${spec.lora_role === 'satellite' && !spec.wifi && !this._loraAutonomousPush() ? 1 : 0}
@@ -2681,14 +2684,14 @@ static void _montarJson(char* payload, size_t n, const ssu::Resultado& ult, int 
         "{\\"NSU\\":%lu,\\"ver\\":\\"%s\\",\\"data\\":{\\"cdo\\":\\"%lu\\",\\"phf\\":%lu,\\"phr\\":%lu,\\"sts\\":%d,"
         "\\"qhfi\\":%lu,\\"qhfc\\":%lu,\\"qhri\\":%lu,\\"qhrc\\":%lu,\\"frame\\":\\"%s\\"},\\"time\\":\\"%ld\\","
         "\\"ke\\":%.6f,\\"fmt\\":%u,\\"q\\":%u,\\"seg\\":%u,\\"posto\\":%u,\\"ssu_err\\":%lu,\\"fim\\":%d,"
-        "\\"pr\\":%u,\\"vr\\":%d,"
+        "\\"pr\\":%u,\\"vr\\":%d,\\"dur\\":%d,"
         "\\"min\\":{\\"phf\\":%lu,\\"phr\\":%lu,\\"qhfi\\":%lu,\\"qhfc\\":%lu,\\"qhri\\":%lu,\\"qhrc\\":%lu}}",
         (unsigned long)_nsu, FIRMWARE_VERSION, cdo,
         (unsigned long)_acum[1], (unsigned long)_acum[2], sts,
         (unsigned long)_acum[3], (unsigned long)_acum[4], (unsigned long)_acum[5], (unsigned long)_acum[6],
         frame, (long)time(nullptr), (double)SSU_KE, (unsigned)st.formato, (unsigned)ult.quadrante,
         (unsigned)ult.segundos, (unsigned)ult.postoHorario, (unsigned long)st.blocosInvalidos, fim,
-        (unsigned)ult.postoReativo, _viradaReativo ? 1 : 0,   // controle pelo MED: janela do reativo pelo medidor
+        (unsigned)ult.postoReativo, _viradaReativo ? 1 : 0, (int)SSU_PARCIAL_S,   // controle pelo MED: janela do reativo pelo medidor; dur = s da parcial
         (unsigned long)_minuto[1], (unsigned long)_minuto[2], (unsigned long)_minuto[3],
         (unsigned long)_minuto[4], (unsigned long)_minuto[5], (unsigned long)_minuto[6]);
 #endif
@@ -2786,7 +2789,7 @@ void ssu_tick(ssu_publish_fn publish) {
         // intervalo (alinhado ao intervalo da concessionaria). Na virada do intervalo o seg
         // SOBE (fimIntervaloDemanda) e quem publica e' o _publicar (fim=1).
         {
-            int16_t m = (int16_t)(r.segundos / 60);
+            int16_t m = (int16_t)(r.segundos / SSU_PARCIAL_S);
             if (_minAnt >= 0 && m < _minAnt) _publicarMinuto(publish, r);
             _minAnt = m;
         }
