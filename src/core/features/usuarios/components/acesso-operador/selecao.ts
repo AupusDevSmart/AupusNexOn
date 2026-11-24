@@ -208,6 +208,47 @@ export function alternarEquipamento(u: UnidadeArvore, e: EquipamentoArvore, sel:
   return { ...sel, equipamentos, geracao };
 }
 
+// ---------------------------------------------------------------------------
+// Planta e "tudo" (NEXON-143): o nível de cima da árvore
+// ---------------------------------------------------------------------------
+
+/**
+ * Tri-state de um conjunto de plantas (uma planta ou todas). Conta só
+ * equipamentos: instalação sem equipamento não tem o que liberar.
+ */
+export function estadoPlantas(plantas: PlantaArvore[], sel: Selecao): {
+  estado: EstadoMarcacao;
+  marcados: number;
+  total: number;
+} {
+  const eqs = todosEquipamentos(plantas);
+  const marcados = eqs.filter((e) => e.id in sel.equipamentos).length;
+  return { estado: estadoDe(marcados, eqs.length), marcados, total: eqs.length };
+}
+
+/**
+ * Caixa da planta (ou "Marcar tudo"): todos → limpa tudo dentro, inclusive o
+ * "Ver geração"; alguns/nenhum → marca todos os equipamentos. "Ver R$" já
+ * ligado é mantido; o que entra novo chega desligado.
+ */
+export function alternarPlantas(plantas: PlantaArvore[], sel: Selecao): Selecao {
+  const { estado } = estadoPlantas(plantas, sel);
+  return estado === 'todos' ? limparPlantas(plantas, sel) : marcarPlantas(plantas, sel);
+}
+
+export function marcarPlantas(plantas: PlantaArvore[], sel: Selecao): Selecao {
+  const equipamentos = { ...sel.equipamentos };
+  for (const e of todosEquipamentos(plantas)) if (!(e.id in equipamentos)) equipamentos[e.id] = false;
+  return { ...sel, equipamentos };
+}
+
+export function limparPlantas(plantas: PlantaArvore[], sel: Selecao): Selecao {
+  const equipamentos = { ...sel.equipamentos };
+  for (const e of todosEquipamentos(plantas)) delete equipamentos[e.id];
+  const fora = new Set(todasUnidades(plantas).map((u) => u.id).filter(Boolean) as string[]);
+  return { ...sel, equipamentos, geracao: sel.geracao.filter((g) => !fora.has(g)) };
+}
+
 /** "Ver geração" ligado marca todos os inversores; desligado só tira a geração. */
 export function definirVerGeracao(u: UnidadeArvore, ligado: boolean, sel: Selecao): Selecao {
   if (!u.id || !u.tem_usina) return sel;
@@ -249,6 +290,13 @@ const normalizar = (s: string) =>
  * Busca por nome. Instalação cujo nome casa aparece inteira; senão só os
  * equipamentos que casam (e a instalação some se nenhum casar).
  */
+/** Busca na planta: nome da planta casa → planta inteira; senão filtra as instalações. */
+export function filtrarPlanta(p: PlantaArvore, termo: string): UnidadeArvore[] {
+  const t = normalizar(termo);
+  if (t && normalizar(p.nome).includes(t)) return p.unidades;
+  return filtrarUnidades(p.unidades, termo);
+}
+
 export function filtrarUnidades(unidades: UnidadeArvore[], termo: string): UnidadeArvore[] {
   const t = normalizar(termo);
   if (!t) return unidades;

@@ -32,13 +32,6 @@ import { Switch } from '@/core/components/ui/switch';
 import { Input } from '@/core/components/ui/input';
 import { Combobox } from '@/core/components/ui/combobox';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/core/components/ui/select';
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -67,13 +60,16 @@ import {
   alternarCategoria,
   alternarEquipamento,
   alternarInstalacao,
+  alternarPlantas,
   categoriaDe,
   chipsDe,
   dataBr,
   definirVerGeracao,
   definirVerRs,
   estadoInstalacao,
-  filtrarUnidades,
+  estadoPlantas,
+  filtrarPlanta as unidadesDaBusca,
+  limparPlantas,
   payloadDe,
   resumoDe,
   revisar,
@@ -162,7 +158,7 @@ export function AcessoOperadorSheet({ isOpen, operador, onClose, onVerDados, nov
   const [erro, setErro] = useState<string | null>(null);
   const [inicial, setInicial] = useState<Selecao>(VAZIA);
   const [sel, setSel] = useState<Selecao>(VAZIA);
-  const [plantaId, setPlantaId] = useState<string>('todas');
+  const [plantasAbertas, setPlantasAbertas] = useState<Set<string>>(new Set());
   const [busca, setBusca] = useState('');
   const [abertas, setAbertas] = useState<Set<string>>(new Set());
   const [revisando, setRevisando] = useState(false);
@@ -216,7 +212,14 @@ export function AcessoOperadorSheet({ isOpen, operador, onClose, onVerDados, nov
         setArvore(arv);
         setInicial(s0);
         setSel(s0);
-        setPlantaId(plantas.length > 1 ? plantas[0].id : 'todas');
+        // Planta: poucas, todas abertas; muitas, só as que já têm algo marcado.
+        setPlantasAbertas(
+          new Set(
+            plantas
+              .filter((p) => plantas.length <= 3 || estadoPlantas([p], s0).estado !== 'nenhum')
+              .map((p) => p.id),
+          ),
+        );
         setBusca('');
         // Poucas instalações: tudo aberto. Muitas: só as que já têm algo marcado.
         const todas = plantas.flatMap((p) => p.unidades.map((u) => ({ p, u })));
@@ -268,11 +271,8 @@ export function AcessoOperadorSheet({ isOpen, operador, onClose, onVerDados, nov
   // ---------------------------------------------------------------------------
 
   const plantas = useMemo(() => arvore?.plantas ?? [], [arvore]);
-  const plantasVisiveis = useMemo(
-    () => (plantaId === 'todas' ? plantas : plantas.filter((p) => p.id === plantaId)),
-    [plantas, plantaId],
-  );
-  const chips = useMemo(() => chipsDe(plantasVisiveis, sel), [plantasVisiveis, sel]);
+  const chips = useMemo(() => chipsDe(plantas, sel), [plantas, sel]);
+  const geral = useMemo(() => estadoPlantas(plantas, sel), [plantas, sel]);
   const resumo = useMemo(() => resumoDe(plantas, sel), [plantas, sel]);
   const revisao = useMemo(() => revisar(plantas, inicial, sel), [plantas, inicial, sel]);
   const sujo = revisao.mudou;
@@ -331,6 +331,14 @@ export function AcessoOperadorSheet({ isOpen, operador, onClose, onVerDados, nov
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   });
+
+  const alternarPlantaAberta = (id: string) =>
+    setPlantasAbertas((prev) => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
 
   const alternarAberta = (chave: string) =>
     setAbertas((prev) => {
@@ -505,25 +513,28 @@ export function AcessoOperadorSheet({ isOpen, operador, onClose, onVerDados, nov
 
               {arvore && !carregandoArvore && plantas.length > 0 && (
                 <>
-                  {/* Planta */}
-                  {plantas.length > 1 && (
-                    <section className="space-y-1.5">
-                      <label className="text-sm font-medium">Planta</label>
-                      <Select value={plantaId} onValueChange={setPlantaId}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Escolha a planta" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="todas">Todas as plantas ({plantas.length})</SelectItem>
-                          {plantas.map((p) => (
-                            <SelectItem key={p.id} value={p.id}>
-                              {p.nome}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </section>
-                  )}
+                  {/* Tudo: atalho do nível de cima */}
+                  <section className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md border px-3 py-2.5">
+                    <Checkbox
+                      id="acesso-tudo"
+                      checked={checkedDe(geral.estado)}
+                      onCheckedChange={() => setSel((s) => alternarPlantas(plantas, s))}
+                    />
+                    <label htmlFor="acesso-tudo" className="flex-1 min-w-0 cursor-pointer">
+                      <span className="text-sm font-medium block">
+                        Tudo de {arvore.proprietario.nome || 'este proprietário'}
+                      </span>
+                      <span className="text-xs text-muted-foreground tabular-nums block">
+                        {geral.marcados} de {geral.total} equipamentos · {plantas.length}{' '}
+                        {plantas.length === 1 ? 'planta' : 'plantas'}
+                      </span>
+                    </label>
+                    {geral.estado !== 'nenhum' && (
+                      <Button type="button" variant="ghost" size="sm" onClick={() => setSel((s) => limparPlantas(plantas, s))}>
+                        Limpar
+                      </Button>
+                    )}
+                  </section>
 
                   {/* Chips por tipo */}
                   {chips.length > 0 && (
@@ -535,7 +546,7 @@ export function AcessoOperadorSheet({ isOpen, operador, onClose, onVerDados, nov
                             key={c.chave}
                             type="button"
                             aria-pressed={c.estado === 'todos'}
-                            onClick={() => setSel((s) => alternarCategoria(plantasVisiveis, s, c.chave))}
+                            onClick={() => setSel((s) => alternarCategoria(plantas, s, c.chave))}
                             className={cn(
                               'inline-flex items-center gap-1.5 rounded-full border px-3 h-8 text-sm transition-colors',
                               c.estado === 'todos' && 'bg-foreground text-background border-foreground',
@@ -561,22 +572,48 @@ export function AcessoOperadorSheet({ isOpen, operador, onClose, onVerDados, nov
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') e.preventDefault();
                       }}
-                      placeholder="Buscar instalação ou equipamento"
+                      placeholder="Buscar planta, instalação ou equipamento"
                       className="pl-9"
                     />
                   </div>
 
-                  {/* Árvore instalação → equipamentos */}
-                  <section className="space-y-4">
-                    {plantasVisiveis.map((p) => {
-                      const unidades = filtrarUnidades(p.unidades, busca);
+                  {/* Árvore planta → instalação → equipamentos */}
+                  <section className="space-y-3">
+                    {plantas.map((p) => {
+                      const unidades = unidadesDaBusca(p, busca);
                       if (unidades.length === 0) return null;
+                      const stP = estadoPlantas([p], sel);
+                      const plantaAberta = !!busca.trim() || plantasAbertas.has(p.id);
                       return (
-                        <div key={p.id} className="space-y-2">
-                          {plantaId === 'todas' && plantas.length > 1 && (
-                            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{p.nome}</h4>
-                          )}
-                          <ul className="border rounded-md divide-y">
+                        <div key={p.id} className="border rounded-md overflow-hidden">
+                          <div className="flex items-center gap-3 px-3 py-2.5 bg-muted/40">
+                            <button
+                              type="button"
+                              onClick={() => alternarPlantaAberta(p.id)}
+                              className="h-6 w-6 -ml-1 flex items-center justify-center rounded hover:bg-muted shrink-0"
+                              aria-label={plantaAberta ? 'Recolher planta' : 'Expandir planta'}
+                              aria-expanded={plantaAberta}
+                            >
+                              {plantaAberta ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                            </button>
+                            <Checkbox
+                              checked={checkedDe(stP.estado)}
+                              disabled={stP.total === 0}
+                              onCheckedChange={() => setSel((s) => alternarPlantas([p], s))}
+                              aria-label={`Marcar tudo da planta ${p.nome}`}
+                            />
+                            <Factory className="h-4 w-4 text-muted-foreground shrink-0" />
+                            <button type="button" onClick={() => alternarPlantaAberta(p.id)} className="flex-1 min-w-0 text-left">
+                              <div className="text-sm font-semibold truncate">{p.nome}</div>
+                              <div className="text-xs text-muted-foreground tabular-nums">
+                                {stP.estado === 'todos'
+                                  ? `Planta inteira · ${stP.total} equipamentos`
+                                  : `${stP.marcados} de ${stP.total} equipamentos · ${p.unidades.length} ${p.unidades.length === 1 ? 'instalação' : 'instalações'}`}
+                              </div>
+                            </button>
+                          </div>
+                          {plantaAberta && (
+                          <ul className="border-t divide-y">
                             {unidades.map((u) => {
                               const chave = chaveUnidade(p, u);
                               // Contagem e tri-state sempre pela instalação inteira, não pelo filtro.
@@ -667,10 +704,11 @@ export function AcessoOperadorSheet({ isOpen, operador, onClose, onVerDados, nov
                               );
                             })}
                           </ul>
+                          )}
                         </div>
                       );
                     })}
-                    {busca.trim() && plantasVisiveis.every((p) => filtrarUnidades(p.unidades, busca).length === 0) && (
+                    {busca.trim() && plantas.every((p) => unidadesDaBusca(p, busca).length === 0) && (
                       <p className="text-sm text-muted-foreground text-center py-4">Nada encontrado para "{busca}".</p>
                     )}
                   </section>

@@ -120,6 +120,7 @@ export function UsuariosPage() {
               onView={(usuario) => handleOpenModal('view', usuario)}
               onEdit={(usuario) => handleOpenModal('edit', usuario)}
               onPlantasClick={handleGerenciarPlantas}
+              onAbrirAcesso={(u) => handleAbrirAcesso(u)}
             />
           </div>
         </div>
