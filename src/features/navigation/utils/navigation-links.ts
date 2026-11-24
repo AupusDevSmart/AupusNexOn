@@ -137,7 +137,7 @@ export const navigationLinks: Array<NavigationLink> = [
     icon: Wrench,
     label: "Chamados",
     contador: "chamados-abertos",
-    hint: "Pedidos de reparo de equipamento",
+    hint: "Reparos e chamados com a concessionária (Equatorial...)",
   },
   // Ativos - grupo, visivel se pelo menos um filho for visivel
   {
