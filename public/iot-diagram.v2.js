@@ -651,6 +651,10 @@ var COMPONENT_TYPES = {
                 { key: 'mqtt_topic_base', label: 'Tópico Base', type: 'text', placeholder: 'PROPRIETARIO/ESTADO/PLANTA/INSTALACAO' },
                 { key: '_topic_preview', label: 'Tópicos Dispositivos', type: 'topic_preview' },
                 { key: 'equipamento_id', label: 'Equipamento NexOn (ID)', type: 'text', placeholder: 'CUID 26 chars — necessário para Implantar OTA' },
+                // Falta de energia da rede (NEXON-146): DIN ligada ao relé de falta de fase. Um ponto de BI
+                // da TON com nome de rede/energia ("Configurar BIs") tem prioridade sobre estes campos.
+                { key: 'energia_bi', label: 'Aviso de falta de energia (entrada)', type: 'select', options: [['', 'Desligado'], ['1', 'DIN1'], ['2', 'DIN2'], ['3', 'DIN3'], ['4', 'DIN4'], ['5', 'DIN5'], ['6', 'DIN6'], ['7', 'DIN7'], ['8', 'DIN8']] },
+                { key: 'energia_logica', label: 'Contato do relé de rede', type: 'select', options: [['na', 'Fechado = rede presente (NA)'], ['nf', 'Aberto = rede presente (NF)']] },
             ],
         };
         if (hasLora) def.antennaIcon = COMPONENT_TYPES.ton2.antennaIcon;

@@ -134,21 +134,30 @@ export function buildBombaIoMap(components) {
   const rows = psqlJson(`
     WITH ch AS (
       SELECT 'bo' AS kind, b.bo_numero AS numero, b.ativo, NULL::int AS mv0, NULL::int AS mv100,
-             p.nome AS ponto_nome, TRIM(p.equipamento_id) AS ponto_eq
+             p.nome AS ponto_nome, TRIM(p.equipamento_id) AS ponto_eq, TRIM(b.ton_id) AS ton, false AS invertido
       FROM ton_bo b JOIN equipamento_pontos p ON p.id = b.equipamento_ponto_id
       WHERE TRIM(b.ton_id) IN (${inList}) AND b.deleted_at IS NULL
       UNION ALL
-      SELECT 'bi', b.bi_numero, b.ativo, NULL, NULL, p.nome, TRIM(p.equipamento_id)
+      SELECT 'bi', b.bi_numero, b.ativo, NULL, NULL, p.nome, TRIM(p.equipamento_id), TRIM(b.ton_id), b.invertido
       FROM ton_bi b JOIN equipamento_pontos p ON p.id = b.equipamento_ponto_id
       WHERE TRIM(b.ton_id) IN (${inList}) AND b.deleted_at IS NULL
       UNION ALL
-      SELECT 'ai', a.ai_numero, a.ativo, a.mv_0, a.mv_100, p.nome, TRIM(p.equipamento_id)
+      SELECT 'ai', a.ai_numero, a.ativo, a.mv_0, a.mv_100, p.nome, TRIM(p.equipamento_id), TRIM(a.ton_id), false
       FROM ton_ai a JOIN equipamento_pontos p ON p.id = a.equipamento_ponto_id
       WHERE TRIM(a.ton_id) IN (${inList}) AND a.deleted_at IS NULL
     )
     SELECT COALESCE(json_agg(row_to_json(ch)), '[]'::json) FROM ch`) || [];
 
   for (const r of rows) {
+    // Falta de energia (NEXON-146): BI de rede/energia indexada pela propria TON (iot-diagram.tsx).
+    if (r.kind === 'bi' && r.ativo && /energi|\brede\b|concession|falta de fase/.test(norm(r.ponto_nome || ''))) {
+      const n = norm(r.ponto_nome || '');
+      const ativoFechado = !r.invertido;
+      const alvo = (map[r.ton] ||= { bo: {}, bi: {}, ai: {} });
+      alvo.bi.energia = r.numero;
+      alvo.bi.energia_ok_fechado = ((/falta|queda|sem rede|ausen/.test(n)) ? !ativoFechado : ativoFechado) ? 1 : 0;
+      continue;
+    }
     if (!r.ativo || !r.ponto_eq) continue;
     const eq = String(r.ponto_eq).trim();
     if (r.kind === 'bo') {
