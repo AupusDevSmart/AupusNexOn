@@ -13,7 +13,7 @@ import { NX, COR, s, NxSeg, NxSwitch, NxDialog, NxDialogHead, NxDialogButtons, t
 type Modo = 'desligado' | 'sombra' | 'ativo';
 type Controle = 'fp' | 'demanda_g' | 'demanda_c';
 interface Inversor { id: string; nome?: string; pn_kw: number; smax_kva: number; qmax_pct: number; sinal_q: 1 | -1; q_noturno: boolean }
-interface Ufv { id: string; nome: string; ordem: number; p_estatico_kw: number; zera_estagio2: boolean; watchdog_nativo: boolean; rota: 'internet' | 'lora'; bi_manual?: number; bi_invertida?: boolean; inversores: Inversor[] }
+interface Ufv { id: string; nome: string; ordem: number; p_estatico_kw: number; piso_pct?: number; zera_estagio2: boolean; watchdog_nativo: boolean; rota: 'internet' | 'lora'; bi_manual?: number; bi_invertida?: boolean; inversores: Inversor[] }
 interface Candidato { id: string; nome: string; modelo: string | null; pn_kw: number | null; limite_p: boolean; reativo_q: boolean; sinal_q_padrao?: 1 | -1 }
 interface Ciclo {
   ts: string; seg: number | null;
@@ -254,20 +254,25 @@ interface Campo { k: string; t: string; h?: string; u?: string; tipo?: 'hora' | 
 const LIMITES: Campo[] = [
   { k: 'd_contr_g_kw', t: 'Contrato de geração', h: 'Vazio = o da unidade consumidora', u: 'kW' },
   { k: 'alvo_g_pct', t: 'Alvo de geração', h: 'Ritmo planejado; a projeção nunca passa do contrato', u: '%' },
+  { k: 'tol_g_pct', t: 'Tolerância de ultrapassagem (geração)', h: 'Multa só acima do contrato + tolerância; usada pela proteção de queda de comunicação', u: '%' },
+  { k: 'r4_ativo', t: 'Proteção de queda de comunicação (R4)', h: 'Limita a soma dos limites para que, se a comunicação cair e a carga for a zero, o intervalo não passe do contrato + tolerância', tipo: 'bool' },
+  { k: 't_ciclo_s', t: 'Tempo do ciclo de demanda', h: 'Intervalo de integração do medidor (padrão 900 s = 15 min)', u: 's' },
   { k: 'd_contr_c_kw', t: 'Contrato de carga', h: 'Fora de ponta (verde: valor único). Vazio = o da unidade', u: 'kW' },
   { k: 'd_contr_c_ponta_kw', t: 'Contrato de carga na ponta', h: 'Só tarifa azul', u: 'kW' },
   { k: 'alvo_c_pct', t: 'Alvo de carga', h: '% do limite (contrato + tolerância)', u: '%' },
   { k: 'tol_c_pct', t: 'Tolerância de ultrapassagem (carga)', h: 'Aneel: multa só acima do contrato + 5 %', u: '%' },
   { k: 'fp_lim_ind', t: 'FP limite indutivo', h: 'Regulatório (0,92)' },
-  { k: 'fp_alvo_ind', t: 'FP alvo indutivo', h: 'Pelo menos 0,005 acima do limite' },
+  { k: 'fp_alvo', t: 'FP alvo', h: 'Vale para as janelas indutiva e capacitiva; pelo menos 0,005 acima dos limites' },
   { k: 'fp_lim_cap', t: 'FP limite capacitivo' },
-  { k: 'fp_alvo_cap', t: 'FP alvo capacitivo' },
   { k: 'prioridade_q', t: 'Reativo tem prioridade', h: 'Reduz o limite de potência ativa para caber o reativo pedido na carta do inversor (S² = P² + Q²)', tipo: 'bool' },
   { k: 'janela_cap_ini', t: 'Janela capacitiva · início', h: 'Até a TON publicar o posto reativo da SSU', tipo: 'hora' },
   { k: 'janela_cap_fim', t: 'Janela capacitiva · fim', tipo: 'hora' },
 ];
 const AVANCADO: Campo[] = [
-  { k: 'banda_pct', t: 'Banda', h: 'Folga antes de devolver Q ou liberar P', u: '%' },
+  { k: 'kp_min', t: 'Kp mínimo (liberação)', h: 'Ganho da liberação no início do ciclo; sobe até o Kp máximo no fim' },
+  { k: 'kp_max', t: 'Kp máximo (liberação)', h: 'Ganho da liberação no fim do ciclo' },
+  { k: 'kp_reduzir', t: 'Kp do corte', h: 'Projeção acima do contrato: corta Kp × excesso (1,1 = 10 % além)' },
+  { k: 'banda_pct', t: 'Banda', h: 'Folga antes de devolver Q', u: '%' },
   { k: 'margem_q3_kvar', t: 'Margem de Q exportando', u: 'kvar' },
   { k: 't_min_ajuste_fp_s', t: 'Intervalo mínimo entre ajustes de FP', u: 's' },
   { k: 't_resposta_s', t: 'Tempo de resposta', h: 'Nuvem → TON → inversor + rampa', u: 's' },
@@ -385,6 +390,7 @@ export function ControleMedConfig({ medId }: { medId: string }) {
             <input aria-label="Nome da UFV" value={u.nome} disabled={ro} onChange={(e) => mudaUfv(i, { nome: e.target.value })} style={{ ...s.campo(ro, false, 180), textAlign: 'left' }} />
             <Mini t="Ordem" h="1 = mais perto do medidor (hoje só informativo: o corte de P é igual em todos)" v={u.ordem} ro={ro} onChange={(x) => mudaUfv(i, { ordem: x })} />
             <Mini t="P estático" u="kW" v={u.p_estatico_kw} ro={ro} onChange={(x) => mudaUfv(i, { p_estatico_kw: x })} />
+            <Mini t="Mínimo" u="%" h="Menor limite de P (% de Pn) no corte de geração. 0 = automático (parte do contrato)" v={u.piso_pct ?? 0} ro={ro} onChange={(x) => mudaUfv(i, { piso_pct: Math.max(0, Math.min(100, x)) })} />
             <NxSeg<'internet' | 'lora'> value={u.rota} disabled={ro} options={[{ v: 'internet', label: 'Internet' }, { v: 'lora', label: 'LoRa' }]} onChange={(r) => mudaUfv(i, { rota: r })} />
             {!ro && <button type="button" onClick={() => { setUfvs((l) => l.filter((_, k) => k !== i)); setSujo(true); }} style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 700, color: NX.bad }}>Remover UFV</button>}
           </div>
