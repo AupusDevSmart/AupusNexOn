@@ -3,25 +3,27 @@ import { Combobox } from '@/components/ui/combobox';
 import { PlantasService } from '@/services/plantas.services';
 import { getUnidadesByPlanta } from '@/services/unidades.services';
 import { equipamentosApi } from '@/services/equipamentos.services';
+import type { Vinculo } from '../utils/vinculo';
 
 interface Opcao {
   value: string;
   label: string;
 }
 
+
 /**
- * Planta → unidade → equipamento, em cascata (mesmo desenho do seletor das Regras de Logs,
- * sem o filtro de MQTT: chamado vale para qualquer equipamento).
+ * Planta → instalação → equipamento, controlado. No chamado de reparo o equipamento é
+ * obrigatório; no externo (Equatorial...) basta a planta, instalação e equipamento são opcionais.
  */
-export function EquipamentoSelector({
+export function VinculoSelector({
   value,
   onChange,
+  equipamentoObrigatorio,
 }: {
-  value: string;
-  onChange: (equipamentoId: string) => void;
+  value: Vinculo;
+  onChange: (v: Vinculo) => void;
+  equipamentoObrigatorio: boolean;
 }) {
-  const [plantaId, setPlantaId] = useState('');
-  const [unidadeId, setUnidadeId] = useState('');
   const [plantas, setPlantas] = useState<Opcao[]>([]);
   const [unidades, setUnidades] = useState<Opcao[]>([]);
   const [equipamentos, setEquipamentos] = useState<Opcao[]>([]);
@@ -34,20 +36,19 @@ export function EquipamentoSelector({
 
   useEffect(() => {
     setUnidades([]);
-    setUnidadeId('');
-    if (!plantaId) return;
-    getUnidadesByPlanta(plantaId)
+    if (!value.planta_id) return;
+    getUnidadesByPlanta(value.planta_id)
       .then((d: any) =>
         setUnidades((Array.isArray(d) ? d : []).map((u: any) => ({ value: String(u.id).trim(), label: u.nome }))),
       )
       .catch(() => setUnidades([]));
-  }, [plantaId]);
+  }, [value.planta_id]);
 
   useEffect(() => {
     setEquipamentos([]);
-    if (!unidadeId) return;
+    if (!value.unidade_id) return;
     equipamentosApi
-      .findAll({ unidade_id: unidadeId, limit: 200 } as any)
+      .findAll({ unidade_id: value.unidade_id, limit: 200 } as any)
       .then((r: any) => {
         const lista = r?.data?.data ?? r?.data ?? [];
         setEquipamentos(
@@ -58,7 +59,9 @@ export function EquipamentoSelector({
         );
       })
       .catch(() => setEquipamentos([]));
-  }, [unidadeId]);
+  }, [value.unidade_id]);
+
+  const opcional = equipamentoObrigatorio ? '' : ' (opcional)';
 
   return (
     <div className="grid gap-3 sm:grid-cols-3">
@@ -66,41 +69,35 @@ export function EquipamentoSelector({
         <label className="text-sm font-medium">Planta</label>
         <Combobox
           options={plantas}
-          value={plantaId}
-          onValueChange={(v) => {
-            setPlantaId(v);
-            onChange('');
-          }}
+          value={value.planta_id}
+          onValueChange={(v) => onChange({ planta_id: v, unidade_id: '', equipamento_id: '' })}
           placeholder="Selecione a planta"
           searchPlaceholder="Buscar planta..."
           emptyText="Nenhuma planta"
         />
       </div>
       <div className="space-y-1">
-        <label className="text-sm font-medium">Unidade</label>
+        <label className="text-sm font-medium">Instalação{opcional}</label>
         <Combobox
           options={unidades}
-          value={unidadeId}
-          onValueChange={(v) => {
-            setUnidadeId(v);
-            onChange('');
-          }}
-          placeholder={plantaId ? 'Selecione a unidade' : 'Escolha a planta'}
-          searchPlaceholder="Buscar unidade..."
-          emptyText="Nenhuma unidade"
-          disabled={!plantaId}
+          value={value.unidade_id}
+          onValueChange={(v) => onChange({ ...value, unidade_id: v, equipamento_id: '' })}
+          placeholder={value.planta_id ? 'Selecione a instalação' : 'Escolha a planta'}
+          searchPlaceholder="Buscar instalação..."
+          emptyText="Nenhuma instalação"
+          disabled={!value.planta_id}
         />
       </div>
       <div className="space-y-1">
-        <label className="text-sm font-medium">Equipamento</label>
+        <label className="text-sm font-medium">Equipamento{opcional}</label>
         <Combobox
           options={equipamentos}
-          value={value}
-          onValueChange={onChange}
-          placeholder={unidadeId ? 'Selecione o equipamento' : 'Escolha a unidade'}
+          value={value.equipamento_id}
+          onValueChange={(v) => onChange({ ...value, equipamento_id: v })}
+          placeholder={value.unidade_id ? 'Selecione o equipamento' : 'Escolha a instalação'}
           searchPlaceholder="Buscar equipamento..."
           emptyText="Nenhum equipamento"
-          disabled={!unidadeId}
+          disabled={!value.unidade_id}
         />
       </div>
     </div>
