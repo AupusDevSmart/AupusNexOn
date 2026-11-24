@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Plus, Wrench, X } from 'lucide-react';
+import { Plus, Wrench, X, ZapOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { Layout } from '@/components/common/Layout';
 import { TitleCard } from '@/components/common/title-card';
@@ -15,6 +15,9 @@ import { ChamadosService, type ListarChamadosParams } from './services';
 import { useAtualizarContagem, useChamadosContagem } from './hooks/useChamadosContagem';
 import { ChamadoFormModal } from './components/ChamadoFormModal';
 import { ChamadoDetalheModal } from './components/ChamadoDetalheModal';
+import { AvisarFaltaEnergiaModal } from './falta-energia/AvisarFaltaEnergiaModal';
+import { useUserStore } from '@/store/useUserStore';
+import { isGlobal } from '@/store/papeis';
 import { ChamadosIndicadores } from './components/ChamadosIndicadores';
 import { SeloStatus } from './components/SeloStatus';
 import { duracaoDoChamado, formatarDuracao } from './utils/datas';
@@ -179,6 +182,8 @@ export default function ChamadosPage() {
   const [loadingStats, setLoadingStats] = useState(false);
   const [form, setForm] = useState<{ chamado: Chamado | null } | null>(null);
   const [detalheId, setDetalheId] = useState<string | null>(null);
+  const [avisarFalta, setAvisarFalta] = useState(false);
+  const podeAvisarFalta = isGlobal(useUserStore((u) => u.papel));
   const [versaoDetalhe, setVersaoDetalhe] = useState(0);
   const { data: contagem } = useChamadosContagem();
   const atualizarContagem = useAtualizarContagem();
@@ -249,6 +254,12 @@ export default function ChamadosPage() {
             <div className="flex-1">
               <BaseFilters filters={f} config={filterConfig} onFilterChange={(p: Partial<ChamadosFilters>) => mudarFiltros(p)} />
             </div>
+            {podeAvisarFalta && (
+              <button onClick={() => setAvisarFalta(true)} className="btn-minimal-outline w-full lg:w-auto whitespace-nowrap">
+                <ZapOff className="mr-2 h-4 w-4" />
+                <span>Avisar falta de energia</span>
+              </button>
+            )}
             <button onClick={() => setForm({ chamado: null })} className="btn-minimal-primary w-full lg:w-auto whitespace-nowrap">
               <Plus className="mr-2 h-4 w-4" />
               <span>Abrir chamado</span>
@@ -307,6 +318,15 @@ export default function ChamadosPage() {
             mudou();
             if (editando) setVersaoDetalhe((v) => v + 1);
             setDetalheId(c.id);
+          }}
+        />
+        <AvisarFaltaEnergiaModal
+          aberto={avisarFalta}
+          onClose={() => setAvisarFalta(false)}
+          onAberto={(id) => {
+            setAvisarFalta(false);
+            mudou();
+            if (id) setDetalheId(id);
           }}
         />
         <ChamadoDetalheModal

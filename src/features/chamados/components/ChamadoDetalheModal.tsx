@@ -22,6 +22,7 @@ import {
 } from '../types';
 import { deInputLocal, duracaoDoChamado, formatarDuracao, paraInputLocal } from '../utils/datas';
 import { SeloStatus } from './SeloStatus';
+import { FaltaEnergiaPainel } from '../falta-energia/FaltaEnergiaPainel';
 
 type Painel = null | 'encaminhar' | 'fechar' | 'status' | 'nota' | 'excluir';
 
@@ -188,6 +189,8 @@ export function ChamadoDetalheModal({
               ))}
             </section>
             )}
+
+            {externo && c.motivo === 'FALTA_ENERGIA' && <FaltaEnergiaPainel chamadoId={c.id} />}
 
             <LinhaDoTempo itens={c.atualizacoes ?? []} />
 
