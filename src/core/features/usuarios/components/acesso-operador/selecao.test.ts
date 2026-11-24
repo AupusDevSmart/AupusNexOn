@@ -7,6 +7,10 @@ import {
   alternarCategoria,
   alternarEquipamento,
   alternarInstalacao,
+  alternarPlantas,
+  estadoPlantas,
+  limparPlantas,
+  marcarPlantas,
   categoriaDe,
   chipsDe,
   dataBr,
@@ -248,5 +252,41 @@ describe('revisão e payload', () => {
   it('dataBr', () => {
     expect(dataBr('2026-12-31')).toBe('31/12/2026');
     expect(dataBr(null)).toBe('');
+  });
+});
+
+describe('planta e tudo (NEXON-143)', () => {
+  const outra: PlantaArvore = {
+    id: 'P2',
+    nome: 'Outra',
+    unidades: [{ id: 'U3', nome: 'Sítio', tipo_unidade: 'CARGA', tem_usina: false, ver_geracao: false, equipamentos: [eq('c1', 'CARREGADOR_ELETRICO')] }],
+  };
+  const duas = [...plantas, outra];
+
+  it('marcar a planta marca todos os equipamentos dela e só dela', () => {
+    const s = alternarPlantas(plantas, vazia);
+    expect(Object.keys(s.equipamentos).sort()).toEqual(['dj1', 'inv1', 'inv2', 'med1', 'piv1', 'piv2', 'x1']);
+    expect(estadoPlantas(plantas, s)).toEqual({ estado: 'todos', marcados: 7, total: 7 });
+    expect(estadoPlantas([outra], s).estado).toBe('nenhum');
+    expect(estadoPlantas(duas, s).estado).toBe('alguns');
+  });
+
+  it('alguns → marca o resto mantendo o Ver R$ já ligado', () => {
+    const s0: Selecao = { equipamentos: { piv1: true }, geracao: [], validade: null };
+    const s = alternarPlantas(plantas, s0);
+    expect(s.equipamentos.piv1).toBe(true);
+    expect(s.equipamentos.piv2).toBe(false);
+  });
+
+  it('todos → limpa a planta, inclusive o Ver geração, sem tocar na outra', () => {
+    const s0 = { ...marcarPlantas(duas, vazia), geracao: ['U1'] };
+    const s = alternarPlantas(plantas, s0);
+    expect(Object.keys(s.equipamentos)).toEqual(['c1']);
+    expect(s.geracao).toEqual([]);
+  });
+
+  it('limpar tudo zera a seleção mas guarda a validade', () => {
+    const s0 = { ...marcarPlantas(duas, vazia), geracao: ['U1'], validade: '2026-12-31' };
+    expect(limparPlantas(duas, s0)).toEqual({ equipamentos: {}, geracao: [], validade: '2026-12-31' });
   });
 });

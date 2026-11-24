@@ -16,6 +16,7 @@ import { Usuario, ModalMode, UsuarioFormData } from '../types';
 import { usuariosFormFields } from '../config/form-config';
 import { useUsuarios, useUserStore } from '@/core/context/hooks';
 import { AbasUsuario } from './acesso-operador/AcessoOperadorSheet';
+import { isOperador } from './acesso-operador/ehOperador';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -41,18 +42,6 @@ interface UsuarioModalProps {
   onAbrirAcesso?: (usuario: Usuario, novo?: boolean) => void;
 }
 
-/** Identifica se o usuario tem role "operador" considerando os varios formatos do backend. */
-function isOperador(usuario: Usuario | null): boolean {
-  if (!usuario) return false;
-  if (usuario.role_details?.name === 'operador') return true;
-  if (Array.isArray(usuario.roles)) {
-    return usuario.roles.some((r: any) => {
-      if (typeof r === 'string') return r === 'operador';
-      return r?.name === 'operador';
-    });
-  }
-  return (usuario as any).role === 'operador';
-}
 
 export function UsuarioModal({
   isOpen,
