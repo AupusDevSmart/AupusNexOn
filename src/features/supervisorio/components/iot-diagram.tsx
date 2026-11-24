@@ -215,7 +215,7 @@ function ensureIoTScripts(): Promise<void> {
     //
     // O catalogo de dispositivos foi movido pro backend (GET /iot-catalog/device-catalog.js)
     // — ele revalida sozinho via ETag. Os demais ainda sao estaticos.
-    const IOT_SCRIPTS_VERSION = '20261117a-controle-ufv';
+    const IOT_SCRIPTS_VERSION = '20261124a-energia';
     const scripts = [
       `${BASE_URL}/iot-catalog/device-catalog.js`,
       // Pivo na TON (lib pivo_local + glue), usado pelos 2 geradores: gerado por tools/sync-pivo-lib.mjs
@@ -1443,6 +1443,17 @@ export function IoTDiagram({ unidadeId, unidadeNome }: IoTDiagramProps) {
             (map[eq] ||= { bo: {}, bi: {}, ai: {} }).bo[role] = bo.bo_numero;
           }
           for (const bi of bis) {
+            // Falta de energia da rede (NEXON-146): ponto de BI da TON com nome de rede/energia vira
+            // a entrada do aviso, indexada pela PROPRIA TON (o ponto pode estar no medidor/planta).
+            const nomeBi = norm(bi?.ponto?.nome || '');
+            if (bi?.ativo && /energi|\brede\b|concession|falta de fase/.test(nomeBi)) {
+              const ativoFechado = !bi.invertido;
+              const pontoDeFalta = /falta|queda|sem rede|ausen/.test(nomeBi);
+              const alvo = (map[tonId] ||= { bo: {}, bi: {}, ai: {} });
+              alvo.bi.energia = bi.bi_numero;
+              alvo.bi.energia_ok_fechado = (pontoDeFalta ? !ativoFechado : ativoFechado) ? 1 : 0;
+              continue;
+            }
             if (!bi?.ativo || !bi?.ponto?.equipamento_id) continue;
             const role = biRole(bi.ponto.nome);
             if (!role) continue;

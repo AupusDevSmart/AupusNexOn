@@ -288,6 +288,10 @@ var FirmwareGeneratorTonV2 = class FirmwareGeneratorTonV2 {
         // validade, modo seguro, BI manual, read-back). Inerte ate' o backend mandar "ctl geral/cfg".
         result.controle_ufv = this._invsComSetpoint(result).length > 0;
 
+        // Falta/retorno da rede da concessionaria (NEXON-146): uma DIN ligada a um rele de falta de
+        // fase (ou rele auxiliar com bobina na rede). So' gera com a entrada configurada.
+        this._processEnergia(ton, result);
+
         // Warnings
         if (!result.wifi && !result.lora) {
             result.warnings.push('Sem WiFi nem LoRa — não conseguirá enviar dados');
@@ -676,6 +680,31 @@ var FirmwareGeneratorTonV2 = class FirmwareGeneratorTonV2 {
         }
     }
 
+
+    // Falta de energia da rede (NEXON-146, docs/IOT-TON-FALTA-ENERGIA.md). Entrada vem de:
+    //  1) ponto de BI da propria TON ("Configurar BIs") com nome de rede/energia — buildBombaIoMap
+    //     resolve o numero e se o contato fechado = rede presente (energia / energia_ok_fechado);
+    //  2) campos da TON no diagrama (energia_bi, energia_logica 'na'|'nf').
+    _processEnergia(ton, result) {
+        const p = ton.props || {};
+        const eqId = (p.equipamento_id || '').trim();
+        const io = (this._bombaIoByEquip && eqId && this._bombaIoByEquip[eqId]) || {};
+        const ioi = io.bi || {};
+        const doPonto = parseInt(ioi.energia, 10);
+        const doCampo = parseInt(p.energia_bi, 10);
+        const bi = (doPonto >= 1 && doPonto <= 8) ? doPonto : ((doCampo >= 1 && doCampo <= 8) ? doCampo : 0);
+        if (!bi) return;
+        const okFechado = (doPonto >= 1 && doPonto <= 8) ? (ioi.energia_ok_fechado !== 0 && ioi.energia_ok_fechado !== false) : p.energia_logica !== 'nf';
+        result.energia = { bi, rede_ok_fechado: okFechado };
+        if (!result.wifi) {
+            result.warnings.push('Aviso de falta de energia só sai de TON com internet própria (Ethernet/WiFi) — esta TON não tem: o aviso não será gerado.');
+            result.energia = null;
+            return;
+        }
+        if (result.carregador && result.carregador.bi_conectado === bi) {
+            result.warnings.push(`Aviso de falta de energia na DIN${bi}, a mesma do Carregador (Conectado) — use outra entrada.`);
+        }
+    }
 
     // Carregador eletrico: a TON habilita a recarga (BO mantido) e detecta desconexao
     // (BI Conectado) -> corta + encerra. Espelha _processBomba (BO/BI vem do ton_bo/bi).
@@ -8537,6 +8566,103 @@ void Maquina::tick(uint32_t now, const Entradas& in) {
     }
 
     // Emitida so quando spec.carregador && spec.has_relays.
+    // Falta/retorno da rede (NEXON-146). Le a DIN do rele de falta de fase, filtra 2 s e publica
+    // <BASE>/energia {"evento":"falta"|"retorno","ts":<epoch>} nao retido. Sem broker o evento fica
+    // numa fila curta (RAM + NVS) e sai na reconexao, com o ts de quando aconteceu.
+    _genEnergia(spec) {
+        const e = spec.energia;
+        return `// ===== FALTA DE ENERGIA DA REDE (NEXON-146, docs/IOT-TON-FALTA-ENERGIA.md) =====
+// DIN${e.bi} = contato do rele de falta de fase: ${e.rede_ok_fechado ? 'FECHADO' : 'ABERTO'} = rede presente.
+// A TON (e o roteador) ficam no nobreak; a API espera 3 min e abre o chamado na concessionaria.
+#include <Preferences.h>
+#define ENERGIA_BI          ${e.bi}
+#define ENERGIA_OK_FECHADO  ${e.rede_ok_fechado ? 1 : 0}
+#define ENERGIA_FILTRO_MS   2000UL
+#define ENERGIA_REENVIO_MS  5000UL
+#define ENERGIA_FILA        4
+
+static int8_t   _en_estado = -1;          // 1 = rede presente, 0 = falta, -1 = ainda nao lido
+static int8_t   _en_cand = -1;
+static unsigned long _en_cand_desde = 0;
+static bool     _en_carregado = false;
+static uint8_t  _en_n = 0;                // fila de eventos ainda nao publicados (mais antigo primeiro)
+static uint8_t  _en_ev[ENERGIA_FILA];     // 1 = retorno, 0 = falta
+static uint32_t _en_ts[ENERGIA_FILA];     // epoch (0 = relogio ainda nao valido)
+static uint32_t _en_ms[ENERGIA_FILA];     // millis() do evento, para carimbar o ts depois
+static unsigned long _en_ult_tent = 0;
+
+static bool _en_rede_lida() {
+    bool fechado = (inputs_get_state() >> (ENERGIA_BI - 1)) & 1;
+    return ENERGIA_OK_FECHADO ? fechado : !fechado;
+}
+static void _en_nvs_grava() {
+    Preferences pr;
+    if (!pr.begin("energia", false)) return;
+    pr.putChar("est", _en_estado);
+    pr.putUChar("n", _en_n);
+    pr.putBytes("ev", _en_ev, sizeof(_en_ev));
+    pr.putBytes("ts", _en_ts, sizeof(_en_ts));
+    pr.end();
+}
+static void _en_nvs_carrega() {
+    Preferences pr;
+    if (!pr.begin("energia", true)) return;
+    _en_estado = pr.getChar("est", -1);
+    _en_n = pr.getUChar("n", 0);
+    if (_en_n > ENERGIA_FILA) _en_n = 0;
+    pr.getBytes("ev", _en_ev, sizeof(_en_ev));
+    pr.getBytes("ts", _en_ts, sizeof(_en_ts));
+    pr.end();
+    for (uint8_t i = 0; i < ENERGIA_FILA; i++) _en_ms[i] = 0;   // millis de antes do boot nao valem
+}
+static void _en_enfileira(bool rede) {
+    if (_en_n >= ENERGIA_FILA) {           // cheia: descarta o mais antigo
+        for (uint8_t i = 1; i < ENERGIA_FILA; i++) { _en_ev[i-1] = _en_ev[i]; _en_ts[i-1] = _en_ts[i]; _en_ms[i-1] = _en_ms[i]; }
+        _en_n = ENERGIA_FILA - 1;
+    }
+    time_t agora = time(nullptr);
+    _en_ev[_en_n] = rede ? 1 : 0;
+    _en_ts[_en_n] = agora > 1700000000 ? (uint32_t)agora : 0;
+    _en_ms[_en_n] = millis();
+    _en_n++;
+    _en_estado = rede ? 1 : 0;
+    _en_nvs_grava();
+    bb_log("energia %s", rede ? "retorno" : "falta");
+    Serial.printf("[ENERGIA] %s (DIN%d)\\n", rede ? "RETORNO da rede" : "FALTA de rede", ENERGIA_BI);
+}
+static void _en_envia() {
+    while (_en_n > 0) {
+        if (!mqtt_connected()) return;
+        uint32_t ts = _en_ts[0];
+        time_t agora = time(nullptr);
+        if (!ts && _en_ms[0] && agora > 1700000000) ts = (uint32_t)agora - (millis() - _en_ms[0]) / 1000;
+        char payload[64];
+        if (ts) snprintf(payload, sizeof(payload), "{\\"evento\\":\\"%s\\",\\"ts\\":%lu}", _en_ev[0] ? "retorno" : "falta", (unsigned long)ts);
+        else    snprintf(payload, sizeof(payload), "{\\"evento\\":\\"%s\\"}", _en_ev[0] ? "retorno" : "falta");
+        if (!mqtt_publish_raw(MQTT_TOPIC_BASE "/energia", payload)) return;   // nao retido; tenta de novo depois
+        Serial.printf("[ENERGIA] publicado %s/energia %s\\n", MQTT_TOPIC_BASE, payload);
+        for (uint8_t i = 1; i < _en_n; i++) { _en_ev[i-1] = _en_ev[i]; _en_ts[i-1] = _en_ts[i]; _en_ms[i-1] = _en_ms[i]; }
+        _en_n--;
+        _en_nvs_grava();
+    }
+}
+void energia_loop() {
+    if (!_en_carregado) { _en_carregado = true; _en_nvs_carrega(); }
+    int8_t lida = _en_rede_lida() ? 1 : 0;
+    if (lida != _en_cand) { _en_cand = lida; _en_cand_desde = millis(); }
+    else if (lida != _en_estado && millis() - _en_cand_desde >= ENERGIA_FILTRO_MS) {
+        // Primeiro boot (sem estado gravado) com rede: so' grava. Mudou (inclusive com a TON
+        // desligada, comparando com o NVS): vira evento.
+        if (_en_estado < 0 && lida == 1) { _en_estado = 1; _en_nvs_grava(); }
+        else _en_enfileira(lida == 1);
+    }
+    if (_en_n > 0 && millis() - _en_ult_tent >= ENERGIA_REENVIO_MS) { _en_ult_tent = millis(); _en_envia(); }
+}
+const char* energia_estado() { return _en_estado < 0 ? "?" : (_en_estado ? "rede" : "falta"); }
+
+`;
+    }
+
     _genCarregador(spec) {
         const c = spec.carregador;
         const biReadConn = c.bi_conectado ? `((inputs_get_state() >> ${c.bi_conectado - 1}) & 1)` : 'true';
@@ -8728,6 +8854,9 @@ ${rs ? '    if (modbus_exec_command(dev, cid, addr, valor, true)) return modbus_
         }
         if (spec.carregador && spec.has_relays) {
             cpp += this._genCarregador(spec);
+        }
+        if (spec.energia && spec.wifi) {
+            cpp += this._genEnergia(spec);
         }
 
         if (spec.has_relays) {
@@ -9328,6 +9457,12 @@ ${spec.has_relays ? '        relays_health_tick();   // C3 anti-travamento: conf
             cpp += `
     // Carregador: habilita/corta + detecta desconexao (BI Conectado).
     carregador_loop();
+`;
+        }
+        if (spec.energia && spec.wifi) {
+            cpp += `
+    // Falta/retorno da rede (DIN do rele de falta de fase) -> <BASE>/energia.
+    energia_loop();
 `;
         }
 
