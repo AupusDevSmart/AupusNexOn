@@ -25,23 +25,25 @@ export interface FaltaEnergiaEvento {
   created_at: string;
 }
 
-function unwrap(r: any) {
-  if (r?.success !== undefined && r?.data !== undefined) return r.data;
-  return r;
+/** A API às vezes embrulha em { success, data }. */
+function unwrap<T>(r: unknown): T {
+  const o = r as { success?: unknown; data?: unknown } | null;
+  return (o?.success !== undefined && o?.data !== undefined ? o.data : r) as T;
 }
 
 export const FaltaEnergiaService = {
   async doChamado(chamadoId: string): Promise<FaltaEnergiaEvento | null> {
     const { data } = await api.get('/falta-energia', { params: { chamado_id: chamadoId, limit: 1 } });
-    const r = unwrap(data);
-    return (r?.data ?? r ?? [])[0] ?? null;
+    const r = unwrap<{ data?: FaltaEnergiaEvento[] } | FaltaEnergiaEvento[]>(data);
+    const lista = Array.isArray(r) ? r : (r?.data ?? []);
+    return lista[0] ?? null;
   },
   async reenviar(id: string): Promise<FaltaEnergiaEvento> {
     const { data } = await api.post(`/falta-energia/${id}/reenviar`);
-    return unwrap(data);
+    return unwrap<FaltaEnergiaEvento>(data);
   },
   async avisar(payload: { equipamento_id?: string; unidade_id?: string }): Promise<FaltaEnergiaEvento> {
     const { data } = await api.post('/falta-energia/avisar', payload);
-    return unwrap(data);
+    return unwrap<FaltaEnergiaEvento>(data);
   },
 };
