@@ -12,9 +12,9 @@ import { NX, COR, s, NxSeg, NxSwitch, NxDialog, NxDialogHead, NxDialogButtons, t
 
 type Modo = 'desligado' | 'sombra' | 'ativo';
 type Controle = 'fp' | 'demanda_g' | 'demanda_c';
-interface Inversor { id: string; nome?: string; pn_kw: number; smax_kva: number; qmax_pct: number; sinal_q: 1 | -1; q_noturno: boolean }
+interface Inversor { id: string; nome?: string; pn_kw: number; smax_kva: number; qmax_pct: number; fp_min?: number; sinal_q: 1 | -1; q_noturno: boolean }
 interface Ufv { id: string; nome: string; ordem: number; p_estatico_kw: number; piso_pct?: number; zera_estagio2: boolean; watchdog_nativo: boolean; rota: 'internet' | 'lora'; bi_manual?: number; bi_invertida?: boolean; inversores: Inversor[] }
-interface Candidato { id: string; nome: string; modelo: string | null; pn_kw: number | null; limite_p: boolean; reativo_q: boolean; sinal_q_padrao?: 1 | -1 }
+interface Candidato { id: string; nome: string; modelo: string | null; pn_kw: number | null; limite_p: boolean; reativo_q: boolean; sinal_q_padrao?: 1 | -1; outra_planta?: boolean; planta_nome?: string | null }
 interface Ciclo {
   ts: string; seg: number | null;
   entradas: { E_imp?: number; E_exp?: number; P_imp?: number; P_exp?: number; Q_ind?: number; Q_cap?: number; janela?: 'ind' | 'cap'; eventos?: string[] };
@@ -26,7 +26,7 @@ interface Ciclo {
 interface Estado {
   params: Record<string, number | string | null>; ufvs: Ufv[]; modos: Record<Controle, Modo>; versao: number;
   validacao: { tetoPlim: number | null; somaEst: number; somaPn: number; tVal: number; avisos: string[]; bloqueios: string[] };
-  candidatos: Candidato[]; ultimo_ciclo: Ciclo | null; pode_configurar: boolean; pode_operar: boolean;
+  candidatos: Candidato[]; ultimo_ciclo: Ciclo | null; pode_configurar: boolean; pode_operar: boolean; pode_outra_planta?: boolean;
   tons?: Array<{ ton_id: string; modo: string; texto: string }>;   // modo do controle local em cada TON de UFV
 }
 
@@ -47,13 +47,14 @@ const n1 = (v: number | null | undefined, d = 1) => (v == null || !Number.isFini
 const hora = (t: string) => new Date(t).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 const col = (gap: number): CSSProperties => ({ display: 'flex', flexDirection: 'column', gap });
 
-function useControle(medId: string) {
+function useControle(medId: string, plantaExtra = '') {
   const [est, setEst] = useState<Estado | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const carregar = useCallback(async () => {
-    try { setEst(corpo<Estado>(await api.get(`/controle-med/${medId.trim()}`))); setErro(null); }
+    const q = plantaExtra ? `?planta_extra=${encodeURIComponent(plantaExtra)}` : '';
+    try { setEst(corpo<Estado>(await api.get(`/controle-med/${medId.trim()}${q}`))); setErro(null); }
     catch (e) { setErro(erroMsg(e)); }
-  }, [medId]);
+  }, [medId, plantaExtra]);
   useEffect(() => { void carregar(); }, [carregar]);
   return { est, setEst, erro, carregar };
 }
@@ -293,7 +294,9 @@ const numOuNull = (v: string) => { const t = v.trim().replace(',', '.'); if (!t)
 
 /** Aba Configuração do MED: controle automático. */
 export function ControleMedConfig({ medId }: { medId: string }) {
-  const { est, setEst, erro } = useControle(medId);
+  const [plantaExtra, setPlantaExtra] = useState('');
+  const [plantas, setPlantas] = useState<Array<{ id: string; nome: string; n: number }> | null>(null);
+  const { est, setEst, erro } = useControle(medId, plantaExtra);
   const [vals, setVals] = useState<Record<string, string>>({});
   const [ufvs, setUfvs] = useState<Ufv[]>([]);
   const [sujo, setSujo] = useState(false);
@@ -408,6 +411,7 @@ export function ControleMedConfig({ medId }: { medId: string }) {
               <div key={x.id} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', borderTop: `1px solid ${NX.linha}`, paddingTop: 8 }}>
                 <span style={{ ...col(0), minWidth: 140 }}>
                   <span style={{ fontSize: 14, fontWeight: 800 }}>{x.nome ?? x.id}</span>
+                  {cand?.outra_planta && <span style={{ fontSize: 11, fontWeight: 700, color: NX.warn }}>Outra planta (teste): {cand.planta_nome ?? '—'}</span>}
                   <span style={{ fontSize: 11, color: cand && (!cand.limite_p || !cand.reativo_q) ? NX.warn : NX.mudo }}>
                     {cand ? `${cand.modelo ?? 'sem modelo'}${!cand.limite_p ? ' · sem limite de P' : ''}${!cand.reativo_q ? ' · sem reativo' : ''}` : ''}
                   </span>
@@ -415,6 +419,7 @@ export function ControleMedConfig({ medId }: { medId: string }) {
                 <Mini t="Pn" u="kW" v={x.pn_kw} ro={ro} onChange={(y) => mudaInv(i, j, { pn_kw: y })} />
                 <Mini t="Smax" u="kVA" v={x.smax_kva} ro={ro} onChange={(y) => mudaInv(i, j, { smax_kva: y })} />
                 <Mini t="Q máx" u="%" v={x.qmax_pct} ro={ro} onChange={(y) => mudaInv(i, j, { qmax_pct: y })} />
+                <Mini t="FP mín" h="FP mínimo do fabricante (curva de capabilidade, datasheet): o Q nunca passa de P·tan(acos FP mín). 0 = sem trava." v={x.fp_min ?? 0} ro={ro} onChange={(y) => mudaInv(i, j, { fp_min: y > 0 && y < 1 ? y : undefined })} />
                 <span title="Sinal do percentual de Q que FORNECE reativo (corrige FP indutivo). Sungrow: Q −" style={{ fontSize: 12, color: NX.mudo }}>fornece com</span>
                 <NxSeg<'1' | '-1'> value={x.sinal_q === -1 ? '-1' : '1'} disabled={ro} options={[{ v: '1', label: 'Q +' }, { v: '-1', label: 'Q −' }]} onChange={(z) => mudaInv(i, j, { sinal_q: z === '-1' ? -1 : 1 })} />
                 <SwitchTxt t="Q à noite" on={x.q_noturno} ro={ro} onChange={() => mudaInv(i, j, { q_noturno: !x.q_noturno })} />
@@ -430,7 +435,7 @@ export function ControleMedConfig({ medId }: { medId: string }) {
               mudaUfv(i, { inversores: [...u.inversores, { id: c.id, nome: c.nome, pn_kw: pn, smax_kva: pn ? Math.round(pn * 1.1 * 10) / 10 : 0, qmax_pct: 44, sinal_q: c.sinal_q_padrao === -1 ? -1 : 1, q_noturno: false }] });
             }} style={{ ...s.campo(false, false, 260), textAlign: 'left' }}>
               <option value="">+ Adicionar inversor…</option>
-              {livres.map((c) => <option key={c.id} value={c.id}>{c.nome}{c.modelo ? ` · ${c.modelo}` : ''}</option>)}
+              {livres.map((c) => <option key={c.id} value={c.id}>{c.outra_planta ? `[${c.planta_nome ?? 'outra planta'}] ` : ''}{c.nome}{c.modelo ? ` · ${c.modelo}` : ''}</option>)}
             </select>
           )}
         </div>
@@ -442,6 +447,19 @@ export function ControleMedConfig({ medId }: { medId: string }) {
         </button>
       )}
       {est.candidatos.length === 0 && !ro && <span style={{ fontSize: 12, color: NX.mudo }}>Nenhum inversor nesta unidade/planta.</span>}
+      {!ro && est.pode_outra_planta && (
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: NX.mudo, flexWrap: 'wrap' }}
+          title="Só administrador. Para teste: os inversores da planta escolhida aparecem em “Adicionar inversor”. Eles comandam geração REAL dessa planta.">
+          Teste: trazer inversores de outra planta
+          <select aria-label="Planta para inversores de teste" value={plantaExtra}
+            onFocus={() => { if (!plantas) api.get(`/controle-med/${medId.trim()}/plantas`).then((r) => setPlantas(corpo(r) ?? [])).catch((e) => toast.error(erroMsg(e))); }}
+            onChange={(e) => setPlantaExtra(e.target.value)} style={{ ...s.campo(false, false, 260), textAlign: 'left' }}>
+            <option value="">— nenhuma —</option>
+            {plantaExtra && !plantas && <option value={plantaExtra}>{plantaExtra}</option>}
+            {(plantas ?? []).map((p) => <option key={p.id} value={p.id}>{p.nome} ({p.n})</option>)}
+          </select>
+        </label>
+      )}
 
       <button type="button" onClick={() => setAvancado((x) => !x)} style={{ ...s.label, marginTop: 12, textAlign: 'left' }}>{avancado ? '▾' : '▸'} AVANÇADO</button>
       {avancado && (
