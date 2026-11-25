@@ -859,6 +859,9 @@ export function IoTDiagram({ unidadeId, unidadeNome }: IoTDiagramProps) {
           const nomeComTipo = `${e.nome ?? ''} ${tipoNome} ${catNome}`;
           if (isTon) return String(catNome).trim().toUpperCase() === 'TON';
           if ((tipo === 'medidor_comum' || tipo === 'medidor_ssu') && /CONCESSION|EQTL/i.test(`${codigo} ${nomeComTipo}`)) return true;
+          // Nó Pivô ↔ equipamento PIVO do unifilar: o pivô é ativo de POTÊNCIA (filtro abaixo
+          // o escondia), mas é ele que o nó Pivô vincula (I/O padrão + config). 25/11/2026.
+          if (tipo === 'pivo') return /PIVO|PIVÔ/i.test(`${codigo} ${nomeComTipo}`);
           // Identidade = componente IoT ↔ SEU equipamento Modbus (inversor 'ambos',
           // PM/relé 'iot'). Exclui só ativos de POTÊNCIA pura (disjuntor/trafo) — esses
           // não são identidade; o PM apenas os ASSOCIA depois (disjuntor associado).
