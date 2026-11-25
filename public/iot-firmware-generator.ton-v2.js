@@ -70,6 +70,16 @@ var FirmwareGeneratorTonV2 = class FirmwareGeneratorTonV2 {
         return m ? m[1] : '';
     }
 
+    // Gateway da malha: a TON com papel gateway neste gerador OU — quando a TON e' do OUTRO
+    // gerador (V1 x V2 no mesmo desenho, ex.: TON2 V1 com satelite TON4V2) e nao tem spec
+    // aqui — a TON LoRa com saida de internet (WiFi/RJ45) no desenho.
+    _loraEhGateway(id, idToSpec, connections) {
+        const sp = idToSpec[id];
+        if (sp) return (sp.lora_role || 'tx') === 'gateway';
+        return (connections || []).some(c => (c.style === 'wifi' || c.style === 'ethernet') &&
+            ((c.from && c.from.componentId === id) || (c.to && c.to.componentId === id)));
+    }
+
     _buildLoraRoutes(specs, components, connections) {
         // 1) Nos LoRa = TONs com capacidade LoRa que participam de >=1 aresta lora_radio.
         // 2) Arestas = pares (a,b) de lora_radio onde ambos tem cap LoRa.
@@ -129,6 +139,22 @@ var FirmwareGeneratorTonV2 = class FirmwareGeneratorTonV2 {
             spec.lora_routes = routes;
         }
 
+        // 4b) VIZINHANCA (anti-duplicacao): pares ligados DIRETO por LoRa no desenho. O gateway
+        //     entra como "GW" (o MAC dele so' e' aprendido em runtime). O firmware so' repassa um
+        //     frame se origem e destino NAO forem vizinhos — senao o destino ja' ouviu o original.
+        const identOf = (id) => (this._loraEhGateway(id, idToSpec, connections) ? 'GW' : (macOf[id] || ''));
+        const adjPairs = [];
+        const vistos = new Set();
+        for (const a of Object.keys(adj)) for (const b of adj[a]) {
+            const ia = identOf(a), ib = identOf(b);
+            if (!ia || !ib) continue;
+            const k = [ia, ib].sort().join('|');
+            if (vistos.has(k)) continue;
+            vistos.add(k);
+            adjPairs.push([ia, ib]);
+        }
+        for (const s of specs) s.lora_adj = adjPairs;
+
         // 5) POLL TARGETS (modo MESTRE-PUXA) — pro role gateway, lista os satelites
         //    com device que ele deve POLLar (round-robin). Um satelite e' alvo se:
         //      - participa da malha LoRa deste gateway (BFS o alcanca);
@@ -183,8 +209,7 @@ var FirmwareGeneratorTonV2 = class FirmwareGeneratorTonV2 {
         //    A telemetria BINARIA ("$B$") so' roteia 1-salto (sem to/ttl); se um
         //    satelite com device binario estiver a 2+ saltos, o firmware avisa em
         //    build/Serial (sem falha silenciosa). 1-salto -> nenhuma mudanca.
-        const gwIds = new Set(Object.keys(adj).filter(id =>
-            idToSpec[id] && (idToSpec[id].lora_role || 'tx') === 'gateway'));
+        const gwIds = new Set(Object.keys(adj).filter(id => this._loraEhGateway(id, idToSpec, connections)));
         for (const nodeId of Object.keys(adj)) {
             const ns = idToSpec[nodeId];
             if (!ns) continue;
@@ -4282,6 +4307,45 @@ static const char* _lora_next_hop(const char* dst) {
     return dst;  // desconhecido -> tenta direto
 }
 
+// ---- ANTI-DUPLICACAO (25/11/2026) ----
+// Pares de TONs ligadas DIRETO por LoRa no desenho ("GW" = o gateway). Uma TON que escuta um
+// frame endereçado a outra so' o REPASSA se a origem e o destino NAO forem vizinhos: sendo
+// vizinhos, o destino ja' recebeu o original e o repasse viraria copia. No fora do desenho
+// (sem MAC) -> repassa como antes; a copia que sobrar o gateway descarta (hash, 10 s).
+// Regra pro desenho: so' ligar por LoRa as TONs que realmente se alcancam no radio.
+#define LORA_SOU_GW ${role === 'gateway' ? 1 : 0}
+static const char* const _LORA_ADJ[][2] = {
+${(spec.lora_adj || []).map(([a, b]) => `    { "${cEsc(a)}", "${cEsc(b)}" },`).join('\n')}
+    { NULL, NULL }
+};
+static char _lora_gw_mac_c[20] = "";
+static void _lora_set_gw(const char* mac) {
+    if (mac && mac[0] && mac[0] != '*') snprintf(_lora_gw_mac_c, sizeof(_lora_gw_mac_c), "%s", mac);
+}
+static const char* _lora_canon(const char* mac) {
+    if (!mac || !mac[0] || (mac[0] == '*' && !mac[1])) return "GW";   // "*" = o gateway (sat sem MAC dele)
+#if LORA_SOU_GW
+    { static String _me = WiFi.macAddress(); if (_lora_mac_eq(mac, _me.c_str())) return "GW"; }
+#endif
+    if (_lora_gw_mac_c[0] && _lora_mac_eq(mac, _lora_gw_mac_c)) return "GW";
+    return mac;
+}
+static bool _lora_no_no_desenho(const char* c) {
+    for (int i = 0; _LORA_ADJ[i][0]; i++)
+        if (_lora_mac_eq(_LORA_ADJ[i][0], c) || _lora_mac_eq(_LORA_ADJ[i][1], c)) return true;
+    return false;
+}
+static bool _lora_vizinhos(const char* a, const char* b) {
+    const char* x = _lora_canon(a);
+    const char* y = _lora_canon(b);
+    if (!_lora_no_no_desenho(x) || !_lora_no_no_desenho(y)) return false;   // desconhecido -> repassa
+    for (int i = 0; _LORA_ADJ[i][0]; i++) {
+        if ((_lora_mac_eq(_LORA_ADJ[i][0], x) && _lora_mac_eq(_LORA_ADJ[i][1], y)) ||
+            (_lora_mac_eq(_LORA_ADJ[i][0], y) && _lora_mac_eq(_LORA_ADJ[i][1], x))) return true;
+    }
+    return false;
+}
+
 // ----- Dedup por cmd_id (ring buffer) — compartilhado por todos os roles LoRa.
 // Usado pra: (sat) nao reaplicar cmd reenviado; (todos) anti-loop no repasse
 // multi-hop (nao repassar o mesmo cmd_id 2x). Retorna true se ja' visto.
@@ -4661,7 +4725,38 @@ void lora_send_pollresp(const char* gw_mac, const char* req_id) {
     lora_send_envelope(gw, "pollresp", req_id, "ok", nullptr, nullptr, nullptr);
 }
 
+// Repasse de telemetria BINARIA roteavel ("$C$", 25/11/2026): o satelite nao consome
+// telemetria; so' repassa em direcao ao gateway se origem e destino nao forem vizinhos
+// no desenho, com TTL e dedup por from|seq (nenhuma repetidora repassa 2x o mesmo frame).
+static void _lora_bin_repassar(const char* raw) {
+    size_t rl = strlen(raw);
+    uint8_t b[200];
+    int n = _lora_b64_decode(raw + 3, rl - 3, b, sizeof(b));
+    if (n < 18) return;
+    char from[20], to[20];
+    _lora_mac_bytes_to_str(&b[2], from);
+    bool toGw = true;
+    for (int i = 8; i < 14; i++) if (b[i] != 0xFF) { toGw = false; break; }
+    if (toGw) snprintf(to, sizeof(to), "*"); else _lora_mac_bytes_to_str(&b[8], to);
+    String me = WiFi.macAddress();
+    if (_lora_mac_eq(from, me.c_str()) || _lora_mac_eq(to, me.c_str())) return;
+    char k[12];
+    snprintf(k, sizeof(k), "c%u", (unsigned)((b[15] << 8) | b[16]));
+    if (_sat_seen_or_add(k, "bin", from)) return;   // ja' repassado
+    if (b[14] == 0) return;                          // TTL esgotado
+    if (_lora_vizinhos(from, to)) return;            // destino ja' ouviu o original
+    b[14]--;
+    char out[LORA_MAX_PAYLOAD + 4];
+    out[0] = '$'; out[1] = 'C'; out[2] = '$';
+    int bl = _lora_b64_encode(b, n, out + 3, sizeof(out) - 4);
+    if (bl < 0 || 3 + bl > LORA_MAX_PAYLOAD) return;
+    Serial.printf("[LORA-SAT] FORWARD bin from=%s ttl=%u\\n", from, (unsigned)b[14]);
+    _lora_safe_send(out);
+}
+
 static void lora_handle_rx(const char* raw) {
+    if (raw && raw[0] == '$' && raw[1] == 'C' && raw[2] == '$') { _lora_bin_repassar(raw); return; }
+    if (raw && raw[0] == '$' && raw[1] == 'B' && raw[2] == '$') return;   // binario 1-salto: so' o gateway usa
     if (!raw || !*raw || raw[0] != '{') {
         Serial.printf("[LORA-SAT] payload nao-JSON descartado: %s\\n", raw ? raw : "(null)");
         return;
@@ -4686,6 +4781,7 @@ static void lora_handle_rx(const char* raw) {
         if (cmd_id[0] && _sat_seen_or_add(cmd_id, env["type"] | "", from)) return;
         int ttl = env["ttl"] | 0;   // ausente -> 0 -> nao repassa (compat: era so' p/ mim)
         if (ttl <= 0) return;       // esgotou TTL ou envelope antigo sem ttl
+        if (_lora_vizinhos(from, to)) return;   // origem e destino se falam direto: repasse seria copia
         const char* nh = _lora_next_hop(to);
         if (!nh || !nh[0] || _lora_mac_eq(nh, myMac.c_str())) return;  // sem rota
         Serial.printf("[LORA-SAT] FORWARD to=%s nh=%s ttl=%d->%d\\n", to, nh, ttl, ttl - 1);
@@ -4696,7 +4792,7 @@ static void lora_handle_rx(const char* raw) {
     // ---- Daqui pra baixo: 'to' == meu MAC (fluxo ponto-a-ponto original) ----
     // Memoriza MAC do gateway pra responder ack/telemetria.
     if (from[0] && _ton2_gw_mac.length() == 0) {
-        _ton2_gw_mac = String(from);
+        _ton2_gw_mac = String(from); _lora_set_gw(from);
         Serial.printf("[LORA-SAT] Gateway descoberto: %s\\n", from);
     }
 
@@ -4709,6 +4805,18 @@ static void lora_handle_rx(const char* raw) {
     {
         const char* _ptype = env["type"] | "";
         if (strcmp(_ptype, "poll") == 0) {
+            // Copia repassada do MESMO POLL chega segundos depois do original -> responde 1x so'.
+            // A retransmissao do mestre vem depois do POLL_TIMEOUT (10 s) -> essa e' respondida.
+            static char _pk[72] = {0};
+            static unsigned long _pt = 0;
+            char _k[72];
+            snprintf(_k, sizeof(_k), "%s|%s", from, cmd_id);
+            if (cmd_id[0] && _pk[0] && strcmp(_k, _pk) == 0 && millis() - _pt < 4000UL) {
+                Serial.printf("[LORA-SAT] POLL %s repetido (repasse) — ignorado\\n", cmd_id);
+                return;
+            }
+            snprintf(_pk, sizeof(_pk), "%s", _k);
+            _pt = millis();
             Serial.printf("[LORA-SAT] POLL recebido req_id=%s de %s — lendo device e respondendo\\n",
                           cmd_id[0] ? cmd_id : "(sem)", from);
             // Responde p/ quem perguntou (o mestre). Le devices + publica telemetria
@@ -4785,15 +4893,27 @@ static bool _lora_try_publish_binary(const char* subtopic, const char* payload_j
         return false;
     }
 
-    // Header: type(1) + version(1) + from_mac(6) + sublen(1), depois subtopic + payload
+    // "$B$" (gateway vizinho, 1 salto): type(1) version(1) from_mac(6) sublen(1).
+    // "$C$" (2+ saltos, roteavel): type version from(6) to(6) ttl(1) seq(2) sublen(1) — a repetidora
+    // sabe o destino e o TTL, e todo mundo descarta copia pelo from|seq. Depois: subtopic + payload.
     uint8_t binbuf[200];
+    const int H = LORA_GW_DIRECT ? 9 : 18;
     binbuf[0] = fs->type_code;
     binbuf[1] = fs->version;
     String my_mac = WiFi.macAddress();
     _lora_mac_str_to_bytes(my_mac.c_str(), &binbuf[2]);
-    binbuf[8] = (uint8_t)sublen;
-    memcpy(&binbuf[9], subtopic, sublen);
-    int payload_off = 9 + (int)sublen;
+#if !LORA_GW_DIRECT
+    if (_ton2_gw_mac.length()) _lora_mac_str_to_bytes(_ton2_gw_mac.c_str(), &binbuf[8]);
+    else memset(&binbuf[8], 0xFF, 6);                // gateway ainda desconhecido: FF = "o gateway"
+    binbuf[14] = (uint8_t)LORA_DEFAULT_TTL;
+    static uint16_t _bseq = (uint16_t)esp_random();
+    _bseq++;
+    binbuf[15] = (uint8_t)(_bseq >> 8);
+    binbuf[16] = (uint8_t)(_bseq & 0xFF);
+#endif
+    binbuf[H - 1] = (uint8_t)sublen;
+    memcpy(&binbuf[H], subtopic, sublen);
+    int payload_off = H + (int)sublen;
 
     int payload_len = _lora_pack_fields(fs->fields, doc, &binbuf[payload_off],
                                         (int)sizeof(binbuf) - payload_off);
@@ -4804,7 +4924,7 @@ static bool _lora_try_publish_binary(const char* subtopic, const char* payload_j
     int bin_total = payload_off + payload_len;
 
     char out[LORA_MAX_PAYLOAD + 4];
-    out[0] = '$'; out[1] = 'B'; out[2] = '$';
+    out[0] = '$'; out[1] = LORA_GW_DIRECT ? 'B' : 'C'; out[2] = '$';
     int b64_len = _lora_b64_encode(binbuf, bin_total, out + 3, sizeof(out) - 4);
     if (b64_len < 0) {
         Serial.println("[LORA-SAT] bin: b64 encode falhou");
@@ -4825,17 +4945,7 @@ static bool _lora_try_publish_binary(const char* subtopic, const char* payload_j
 // nao ha field-set conhecido, cai pro JSON envelope — que pode exceder o MTU.
 // FAIL-LOUD: avisa no Serial quando vai pro JSON, pra diagnosticar perda.
 static void lora_publish_data(const char* subtopic, const char* payload_json) {
-#if !LORA_GW_DIRECT
-    // Este satelite esta a 2+ saltos do gateway. O frame binario "$B$" NAO carrega
-    // to/ttl -> a repetidora (que so' repassa JSON) o descarta e a telemetria nao
-    // chega. Avisa ALTO (sem silencio). Correcao: colocar o medidor a 1 salto do
-    // gateway, ou aguardar o suporte a binario roteavel multi-hop (TODO).
-    if (_lora_typecode_for_subtopic(subtopic)) {
-        Serial.printf("[LORA-SAT] ⚠ sub=%s usa telemetria BINARIA e este no esta a 2+ saltos do "
-                      "gateway — o frame nao roteia multi-hop ainda; a telemetria deste device NAO "
-                      "chegara. Coloque o medidor a 1 salto do gateway.\\n", subtopic ? subtopic : "?");
-    }
-#endif
+    // 2+ saltos: a telemetria binaria sai como "$C$" (roteavel) — ver _lora_try_publish_binary.
     if (_lora_try_publish_binary(subtopic, payload_json)) return;
     size_t plen = payload_json ? strlen(payload_json) : 0;
     if (plen > 120) {
@@ -5050,11 +5160,13 @@ void lora_loop_tick() {
 // Republica em <BASE>/satellite/<from_mac>/<subtopic> com JSON expandido.
 // O subtopic vem DO frame (nao de tabela), entao casa o que o satellite emitiu.
 static bool _lora_handle_binary(const char* raw, size_t raw_len) {
-    if (raw_len < 4 || raw[0] != '$' || raw[1] != 'B' || raw[2] != '$') return false;
+    if (raw_len < 4 || raw[0] != '$' || (raw[1] != 'B' && raw[1] != 'C') || raw[2] != '$') return false;
+    const bool rot = raw[1] == 'C';      // "$C$" = roteavel (to/ttl/seq no cabecalho)
+    const int H = rot ? 18 : 9;
 
     uint8_t binbuf[200];
     int bin_len = _lora_b64_decode(raw + 3, raw_len - 3, binbuf, sizeof(binbuf));
-    if (bin_len < 9) {
+    if (bin_len < H) {
         Serial.println("[LORA-GW] BIN: b64 decode falhou ou < header");
         return true;  // foi reconhecido como binario, so descartado
     }
@@ -5063,15 +5175,15 @@ static bool _lora_handle_binary(const char* raw, size_t raw_len) {
     uint8_t version = binbuf[1];
     uint8_t from_bytes[6];
     memcpy(from_bytes, &binbuf[2], 6);
-    uint8_t sublen = binbuf[8];
-    if (9 + (int)sublen > bin_len || sublen >= LORA_SUBTOPIC_MAX) {
+    uint8_t sublen = binbuf[H - 1];
+    if (H + (int)sublen > bin_len || sublen >= LORA_SUBTOPIC_MAX) {
         Serial.printf("[LORA-GW] BIN: sublen invalido (%u)\\n", sublen);
         return true;
     }
     char subtopic[LORA_SUBTOPIC_MAX + 1];
-    memcpy(subtopic, &binbuf[9], sublen);
+    memcpy(subtopic, &binbuf[H], sublen);
     subtopic[sublen] = 0;
-    int payload_off = 9 + (int)sublen;
+    int payload_off = H + (int)sublen;
 
     const LoraFieldSet* fs = _lora_fieldset_for_type(type_code, version);
     if (!fs) {
@@ -5088,6 +5200,14 @@ static bool _lora_handle_binary(const char* raw, size_t raw_len) {
 
     char from_str[20];
     _lora_mac_bytes_to_str(from_bytes, from_str);
+    if (rot) {   // copia repassada por outro caminho: mesmo from|seq -> publica 1x so'
+        char _k[12];
+        snprintf(_k, sizeof(_k), "c%u", (unsigned)((binbuf[15] << 8) | binbuf[16]));
+        if (_sat_seen_or_add(_k, "bin", from_str)) {
+            Serial.printf("[LORA-GW] BIN copia descartada from=%s %s\\n", from_str, _k);
+            return true;
+        }
+    }
     _poll_note_activity(from_str);  // frame do alvo -> estende a janela do poll
 
     // CARIMBO de hora no GATEWAY: o satelite nao tem internet/NTP e o frame binario
@@ -5145,6 +5265,7 @@ static void lora_handle_rx(const char* raw) {
         if (cmd_id[0] && _sat_seen_or_add(cmd_id, env["type"] | "", from)) return;  // ja' repassado -> descarta
         int ttl = env["ttl"] | 0;
         if (ttl <= 0) return;
+        if (_lora_vizinhos(from, to)) return;   // origem e destino se falam direto: repasse seria copia
         const char* nh = _lora_next_hop(to);
         if (!nh || !nh[0] || _lora_mac_eq(nh, myMac.c_str())) return;
         Serial.printf("[LORA-GW] FORWARD to=%s nh=%s ttl=%d->%d\\n", to, nh, ttl, ttl - 1);
@@ -5154,6 +5275,32 @@ static void lora_handle_rx(const char* raw) {
     if (!from[0]) {
         Serial.println("[LORA-GW] envelope sem 'from' — descartado");
         return;
+    }
+    // ANTI-DUPLICACAO: a mesma mensagem pode chegar 2x (original + repasse de uma TON que a
+    // escutou; ou o satelite re-enviando o ack de um comando repassado). Hash do envelope SEM o
+    // "ttl" (o unico campo que o repasse muda) e sem o "ts" (o ack re-enviado pelo satelite traz
+    // outro ts); copia identica em 10 s nao e' publicada de novo. O ts volta ao envelope depois.
+    {
+        env.remove("ttl");
+        const bool _temTs = env.containsKey("ts");
+        const unsigned long _tsv = env["ts"] | 0UL;
+        env.remove("ts");
+        char _hb[700];
+        size_t _hn = serializeJson(env, _hb, sizeof(_hb));
+        if (_temTs) env["ts"] = _tsv;
+        uint32_t _h = 2166136261u;
+        for (size_t _i = 0; _i < _hn; _i++) _h = (_h ^ (uint8_t)_hb[_i]) * 16777619u;
+        static uint32_t _gh[16] = {0};
+        static unsigned long _gt[16] = {0};
+        static int _gi = 0;
+        unsigned long _agora = millis();
+        for (int _i = 0; _i < 16; _i++) {
+            if (_gt[_i] && _gh[_i] == _h && _agora - _gt[_i] < 10000UL) {
+                Serial.printf("[LORA-GW] copia descartada from=%s type=%s\\n", from, (const char*)(env["type"] | ""));
+                return;
+            }
+        }
+        _gh[_gi] = _h; _gt[_gi] = _agora ? _agora : 1; _gi = (_gi + 1) % 16;
     }
     _poll_note_activity(from);  // frame do alvo (pollresp/data/status) -> estende a janela
 
