@@ -413,6 +413,48 @@ export function payloadDe(proprietarioId: string, sel: Selecao) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Vários proprietários na mesma tela (NEXON-143)
+// ---------------------------------------------------------------------------
+
+export interface GrupoAcesso {
+  proprietario: { id: string; nome: string };
+  vinculo: { id: string; validade: string | null } | null;
+  plantas: PlantaArvore[];
+}
+
+/** Só a parte da seleção que pertence a estas plantas (o vínculo é por dono). */
+export function recortar(plantas: PlantaArvore[], sel: Selecao): Selecao {
+  const equipamentos: Record<string, boolean> = {};
+  for (const e of todosEquipamentos(plantas)) if (e.id in sel.equipamentos) equipamentos[e.id] = sel.equipamentos[e.id];
+  const minhas = new Set(todasUnidades(plantas).map((u) => u.id).filter(Boolean) as string[]);
+  return { equipamentos, geracao: sel.geracao.filter((g) => minhas.has(g)), validade: sel.validade };
+}
+
+/** Seleção inicial de todos os grupos; validade = a do primeiro vínculo que tiver. */
+export function selecaoInicialGrupos(grupos: GrupoAcesso[]): Selecao {
+  const plantas = grupos.flatMap((g) => g.plantas);
+  const validade = grupos.find((g) => g.vinculo?.validade)?.vinculo?.validade ?? null;
+  return { ...selecaoInicial({ plantas, vinculo: null }), validade };
+}
+
+/**
+ * Um PUT por proprietário que mudou. Dono sem vínculo e sem nada marcado fica
+ * de fora (a validade sozinha não cria vínculo vazio).
+ */
+export function gravacoesDe(grupos: GrupoAcesso[], antes: Selecao, depois: Selecao) {
+  const out: Array<{ grupo: GrupoAcesso; payload: ReturnType<typeof payloadDe>; remove: boolean }> = [];
+  for (const g of grupos) {
+    const a = recortar(g.plantas, antes);
+    const d = recortar(g.plantas, depois);
+    const vazio = Object.keys(d.equipamentos).length === 0;
+    if (vazio && !g.vinculo) continue;
+    if (!revisar(g.plantas, a, d).mudou) continue;
+    out.push({ grupo: g, payload: payloadDe(g.proprietario.id, d), remove: vazio });
+  }
+  return out;
+}
+
 /** "2026-12-31" → "31/12/2026". */
 export function dataBr(iso: string | null | undefined): string {
   if (!iso) return '';

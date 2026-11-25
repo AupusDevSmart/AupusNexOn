@@ -232,7 +232,7 @@ export function UsuarioModal({
     },
     // Permissões diretas só para papéis globais (PER-3); o proprietário não vê.
     ...(mostrarPermissoes
-      ? [{ key: 'permissoes', title: 'Permissões', fields: ['permissions'] }]
+      ? [{ key: 'permissoes', title: 'Permissões do sistema (avançado)', fields: ['permissions'] }]
       : []),
   ];
 
@@ -288,13 +288,13 @@ export function UsuarioModal({
       {/* ACESSO DO OPERADOR - o que ele vê fica na aba Acesso (NEXON-20, PER-21) */}
       {!isCreateMode && usuario?.id && ehOperador && podeGerirAcesso && (
         <div className="mt-6 pt-4 border-t border-border space-y-2">
-          <h3 className="text-sm font-semibold">Acesso</h3>
+          <h3 className="text-sm font-semibold">Plantas e equipamentos</h3>
           <p className="text-xs text-muted-foreground">
-            Quais equipamentos {usuario.nome} vê e comanda, por proprietário, com "Ver R$", "Ver geração" e validade.
+            O que {usuario.nome} vê e comanda: proprietário → planta → instalação → equipamento, com "Ver R$", "Ver geração" e validade.
           </p>
-          <Button type="button" variant="outline" size="sm" onClick={() => onAbrirAcesso?.(usuario)}>
+          <Button type="button" size="sm" onClick={() => onAbrirAcesso?.(usuario)}>
             <Shield className="h-4 w-4 mr-2" />
-            Abrir acesso
+            Abrir permissões de plantas
           </Button>
         </div>
       )}
