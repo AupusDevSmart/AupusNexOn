@@ -4,7 +4,6 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Layout } from '@/core/components/common/Layout';
 import { TitleCard } from '@/core/components/common/TitleCard';
-import { Button } from '@/core/components/ui/button';
 import { Plus } from 'lucide-react';
 import { UsuariosTable } from './usuarios-table';
 import { UsuariosFilters } from './usuarios-filters';
@@ -90,7 +89,15 @@ export function UsuariosPage() {
         <div className="flex flex-col h-full w-full">
           <TitleCard
             title="Usuários"
-            description="Gerencie os usuários cadastrados no sistema"
+            description={
+              loading && !pagination?.total
+                ? 'Gerencie os usuários cadastrados no sistema'
+                : `${pagination?.total ?? 0} ${pagination?.total === 1 ? 'usuário' : 'usuários'}${
+                    (filters.role && filters.role !== 'all') || (filters.status && filters.status !== 'all') || filters.search
+                      ? ' com estes filtros'
+                      : ' cadastrados'
+                  } · a chave na linha do operador abre as permissões de plantas`
+            }
           />
 
           {/* Filtros e Botão de Cadastrar */}

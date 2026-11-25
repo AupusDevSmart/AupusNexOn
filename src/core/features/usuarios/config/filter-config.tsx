@@ -1,6 +1,7 @@
 // src/features/usuarios/config/filter-config.ts - ATUALIZADO
 import { FilterConfig } from '@/core/types/base';
-import { UsuarioStatus, UsuarioRole } from '../types';
+import { UsuarioStatus } from '../types';
+import { ROTULO_PAPEL } from '@/store/papeis';
 
 export const usuariosFilterConfig: FilterConfig[] = [
   {
@@ -26,10 +27,13 @@ export const usuariosFilterConfig: FilterConfig[] = [
     type: 'select',
     options: [
       { value: 'all', label: 'Todos os tipos' },
-      { value: UsuarioRole.ADMIN, label: 'Administrador' },
-      { value: UsuarioRole.GERENTE, label: 'Gerente' },
-      { value: UsuarioRole.VENDEDOR, label: 'Vendedor' },
-      { value: UsuarioRole.CONSULTOR, label: 'Consultor' }
+      // Papéis reais (NEXON-143). "Admin" junta super admin e admin na API.
+      { value: 'admin', label: 'Admin (inclui super admin)' },
+      { value: 'super_admin', label: 'Só super admin' },
+      { value: 'analista_automacao', label: ROTULO_PAPEL.analista_automacao },
+      { value: 'analista_operacao', label: ROTULO_PAPEL.analista_operacao },
+      { value: 'proprietario', label: ROTULO_PAPEL.proprietario },
+      { value: 'operador', label: ROTULO_PAPEL.operador },
     ]
   }
 ];

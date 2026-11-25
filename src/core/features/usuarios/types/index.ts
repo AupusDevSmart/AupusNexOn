@@ -148,7 +148,8 @@ export interface ResetPasswordDto {
 // ✅ FILTROS COMPATÍVEIS
 export interface UsuariosFilters extends BaseFiltersType {
   status?: UsuarioStatus | 'all';
-  role?: UsuarioRole | 'all';
+  /** Papel canônico ou nome da role (NEXON-143). */
+  role?: string;
   cidade?: string;
   estado?: string;
   concessionariaId?: string;
