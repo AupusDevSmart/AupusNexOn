@@ -8,6 +8,9 @@ import {
   alternarEquipamento,
   alternarInstalacao,
   alternarPlantas,
+  gravacoesDe,
+  recortar,
+  selecaoInicialGrupos,
   estadoPlantas,
   limparPlantas,
   marcarPlantas,
@@ -288,5 +291,40 @@ describe('planta e tudo (NEXON-143)', () => {
   it('limpar tudo zera a seleção mas guarda a validade', () => {
     const s0 = { ...marcarPlantas(duas, vazia), geracao: ['U1'], validade: '2026-12-31' };
     expect(limparPlantas(duas, s0)).toEqual({ equipamentos: {}, geracao: [], validade: '2026-12-31' });
+  });
+});
+
+describe('vários proprietários (NEXON-143)', () => {
+  const pB: PlantaArvore = {
+    id: 'PB',
+    nome: 'Planta B',
+    unidades: [{ id: 'UB', nome: 'Sítio B', tipo_unidade: 'CARGA', tem_usina: false, ver_geracao: false, equipamentos: [eq('b1', 'PIVO', { liberado: true })] }],
+  };
+  const grupos = [
+    { proprietario: { id: 'A', nome: 'Ana' }, vinculo: null, plantas },
+    { proprietario: { id: 'B', nome: 'Beto' }, vinculo: { id: 'V', validade: '2027-01-31' }, plantas: [pB] },
+  ];
+
+  it('inicial junta os grupos e pega a validade do vínculo', () => {
+    const s0 = selecaoInicialGrupos(grupos);
+    expect(Object.keys(s0.equipamentos)).toEqual(['b1']);
+    expect(s0.validade).toBe('2027-01-31');
+  });
+
+  it('recorta a seleção pelas plantas do dono', () => {
+    const s = { equipamentos: { b1: true, piv1: false }, geracao: ['U1'], validade: null };
+    expect(recortar([pB], s)).toEqual({ equipamentos: { b1: true }, geracao: [], validade: null });
+  });
+
+  it('um PUT por dono que mudou; dono sem vínculo e sem marcação fica de fora', () => {
+    const s0 = selecaoInicialGrupos(grupos);
+    expect(gravacoesDe(grupos, s0, s0)).toEqual([]);
+    const s1 = { ...s0, equipamentos: { ...s0.equipamentos, piv1: false } };
+    const g1 = gravacoesDe(grupos, s0, s1);
+    expect(g1.map((g) => g.grupo.proprietario.id)).toEqual(['A']);
+    expect(g1[0].payload.equipamentos).toEqual([{ id: 'piv1', verRs: false }]);
+    const s2 = { ...s0, equipamentos: {} };
+    const g2 = gravacoesDe(grupos, s0, s2);
+    expect(g2.map((g) => [g.grupo.proprietario.id, g.remove])).toEqual([['B', true]]);
   });
 });

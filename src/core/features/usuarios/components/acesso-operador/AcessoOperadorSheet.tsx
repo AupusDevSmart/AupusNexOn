@@ -20,7 +20,7 @@ import {
   Search,
   Sun,
   ToggleRight,
-  Trash2,
+  UserRound,
   X,
   Zap,
   type LucideIcon,
@@ -30,7 +30,6 @@ import { Button } from '@/core/components/ui/button';
 import { Checkbox } from '@/core/components/ui/checkbox';
 import { Switch } from '@/core/components/ui/switch';
 import { Input } from '@/core/components/ui/input';
-import { Combobox } from '@/core/components/ui/combobox';
 import {
   Dialog,
   DialogContent,
@@ -49,11 +48,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/core/components/ui/alert-dialog';
-import { useHttpClient, useProprietariosForPlantas, useUserStore } from '@/core/context/hooks';
+import { useHttpClient, useUserStore } from '@/core/context/hooks';
 import {
-  type ArvoreAcesso,
   type EquipamentoArvore,
   type EstadoMarcacao,
+  type GrupoAcesso,
   type PlantaArvore,
   type Selecao,
   type UnidadeArvore,
@@ -69,25 +68,17 @@ import {
   estadoInstalacao,
   estadoPlantas,
   filtrarPlanta as unidadesDaBusca,
+  gravacoesDe,
   limparPlantas,
-  payloadDe,
   resumoDe,
   revisar,
-  selecaoInicial,
+  selecaoInicialGrupos,
 } from './selecao';
 
 export interface OperadorBasico {
   id: string;
   nome: string;
   email?: string;
-}
-
-interface VinculoResumo {
-  id: string;
-  proprietario: { id: string; nome: string };
-  validade: string | null;
-  vencido: boolean;
-  resumo: string;
 }
 
 interface AcessoOperadorSheetProps {
@@ -146,255 +137,298 @@ const checkedDe = (estado: EstadoMarcacao): boolean | 'indeterminate' =>
 
 export function AcessoOperadorSheet({ isOpen, operador, onClose, onVerDados, novo }: AcessoOperadorSheetProps) {
   const http = useHttpClient();
-  const { user, capacidades } = useUserStore();
-  const ehGlobal = !!capacidades?.global;
+  const { capacidades } = useUserStore();
   const podeVerGeracao = !!capacidades?.liberarVerGeracao;
-  const { proprietarios, loading: carregandoProps } = useProprietariosForPlantas();
 
-  const [vinculos, setVinculos] = useState<VinculoResumo[] | null>(null);
-  const [proprietarioId, setProprietarioId] = useState<string | null>(null);
-  const [arvore, setArvore] = useState<ArvoreAcesso | null>(null);
-  const [carregandoArvore, setCarregandoArvore] = useState(false);
+  const [grupos, setGrupos] = useState<GrupoAcesso[] | null>(null);
+  const [nomeApi, setNomeApi] = useState<string | null>(null);
+  const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [inicial, setInicial] = useState<Selecao>(VAZIA);
   const [sel, setSel] = useState<Selecao>(VAZIA);
-  const [plantasAbertas, setPlantasAbertas] = useState<Set<string>>(new Set());
   const [busca, setBusca] = useState('');
-  const [abertas, setAbertas] = useState<Set<string>>(new Set());
+  const [abertos, setAbertos] = useState<Set<string>>(new Set());
   const [revisando, setRevisando] = useState(false);
   const [salvando, setSalvando] = useState(false);
-  const [confirmarRemocao, setConfirmarRemocao] = useState(false);
   const [descartar, setDescartar] = useState<(() => void) | null>(null);
-  const pedidoArvore = useRef(0);
+  const pedido = useRef(0);
 
   const operadorId = operador?.id?.trim() ?? '';
-  const nomeOperador = arvore?.operador?.nome ?? operador?.nome ?? 'O operador';
+  const nomeOperador = nomeApi || operador?.nome || 'O operador';
 
   // ---------------------------------------------------------------------------
-  // Carga
+  // Carga: todos os proprietários de uma vez (NEXON-143)
   // ---------------------------------------------------------------------------
 
-  const carregarVinculos = useCallback(async () => {
-    if (!operadorId) return [] as VinculoResumo[];
+  const carregar = useCallback(async () => {
+    if (!operadorId) return;
+    const meu = ++pedido.current;
+    setCarregando(true);
+    setErro(null);
     try {
-      const d = dadosDe(await http.get(`/usuarios/${operadorId}/vinculos`));
-      const lista: VinculoResumo[] = Array.isArray(d?.vinculos) ? d.vinculos : [];
-      setVinculos(lista);
-      return lista;
+      const d = dadosDe(await http.get(`/usuarios/${operadorId}/vinculos/arvore-completa`));
+      if (meu !== pedido.current) return;
+      const lista: GrupoAcesso[] = Array.isArray(d?.grupos) ? d.grupos : [];
+      const s0 = selecaoInicialGrupos(lista);
+      setGrupos(lista);
+      setNomeApi(d?.operador?.nome ?? null);
+      setInicial(s0);
+      setSel(s0);
+      setBusca('');
+      // Pouca coisa: tudo aberto até a instalação. Muita: só o que já tem algo marcado.
+      const plantas = lista.flatMap((g) => g.plantas);
+      const unidades = plantas.flatMap((p) => p.unidades.map((u) => ({ p, u })));
+      const abre = new Set<string>();
+      for (const g of lista) {
+        if (lista.length <= 3 || estadoPlantas(g.plantas, s0).estado !== 'nenhum') abre.add(`g:${g.proprietario.id}`);
+      }
+      for (const p of plantas) {
+        if (plantas.length <= 4 || estadoPlantas([p], s0).estado !== 'nenhum') abre.add(`p:${p.id}`);
+      }
+      for (const { p, u } of unidades) {
+        if (unidades.length <= 4 || estadoInstalacao(u, s0).estado !== 'nenhum') abre.add(`u:${chaveUnidade(p, u)}`);
+      }
+      setAbertos(abre);
     } catch (e) {
-      setVinculos([]);
-      setErro(mensagemDe(e, 'Não foi possível carregar os vínculos do operador.'));
-      return [] as VinculoResumo[];
+      if (meu !== pedido.current) return;
+      setGrupos(null);
+      setErro(mensagemDe(e, 'Não foi possível carregar as plantas.'));
+    } finally {
+      if (meu === pedido.current) setCarregando(false);
     }
   }, [http, operadorId]);
 
-  const carregarArvore = useCallback(
-    async (propId: string) => {
-      if (!operadorId || !propId) return;
-      const meu = ++pedidoArvore.current;
-      setCarregandoArvore(true);
-      setErro(null);
-      try {
-        const d = dadosDe(
-          await http.get(`/usuarios/${operadorId}/vinculos/arvore`, {
-            params: ehGlobal ? { proprietarioId: propId } : undefined,
-          }),
-        ) as ArvoreAcesso | null;
-        if (meu !== pedidoArvore.current) return;
-        const plantas = Array.isArray(d?.plantas) ? d!.plantas : [];
-        const arv: ArvoreAcesso = {
-          operador: d?.operador ?? { id: operadorId, nome: operador?.nome ?? '' },
-          proprietario: d?.proprietario ?? { id: propId, nome: '' },
-          vinculo: d?.vinculo ?? null,
-          plantas,
-        };
-        const s0 = selecaoInicial(arv);
-        setArvore(arv);
-        setInicial(s0);
-        setSel(s0);
-        // Planta: poucas, todas abertas; muitas, só as que já têm algo marcado.
-        setPlantasAbertas(
-          new Set(
-            plantas
-              .filter((p) => plantas.length <= 3 || estadoPlantas([p], s0).estado !== 'nenhum')
-              .map((p) => p.id),
-          ),
-        );
-        setBusca('');
-        // Poucas instalações: tudo aberto. Muitas: só as que já têm algo marcado.
-        const todas = plantas.flatMap((p) => p.unidades.map((u) => ({ p, u })));
-        setAbertas(
-          new Set(
-            todas
-              .filter(({ u }) => todas.length <= 4 || estadoInstalacao(u, s0).estado !== 'nenhum')
-              .map(({ p, u }) => chaveUnidade(p, u)),
-          ),
-        );
-      } catch (e) {
-        if (meu !== pedidoArvore.current) return;
-        setArvore(null);
-        setErro(mensagemDe(e, 'Não foi possível carregar as plantas deste proprietário.'));
-      } finally {
-        if (meu === pedidoArvore.current) setCarregandoArvore(false);
-      }
-    },
-    [http, operadorId, ehGlobal, operador?.nome],
-  );
-
-  // Ao abrir: vínculos do operador; o proprietário inicial é o próprio (papel
-  // proprietário) ou o do primeiro vínculo.
   useEffect(() => {
     if (!isOpen || !operadorId) return;
-    setArvore(null);
-    setVinculos(null);
-    setErro(null);
+    setGrupos(null);
     setSel(VAZIA);
     setInicial(VAZIA);
-    let vivo = true;
-    carregarVinculos().then((lista) => {
-      if (!vivo) return;
-      const proprio = (user?.id ?? '').trim();
-      const inicialId = ehGlobal ? lista[0]?.proprietario?.id?.trim() ?? null : proprio || null;
-      setProprietarioId(inicialId);
-    });
-    return () => {
-      vivo = false;
-    };
-  }, [isOpen, operadorId, ehGlobal, user?.id, carregarVinculos]);
-
-  useEffect(() => {
-    if (isOpen && proprietarioId) carregarArvore(proprietarioId);
-  }, [isOpen, proprietarioId, carregarArvore]);
+    carregar();
+  }, [isOpen, operadorId, carregar]);
 
   // ---------------------------------------------------------------------------
   // Derivados
   // ---------------------------------------------------------------------------
 
-  const plantas = useMemo(() => arvore?.plantas ?? [], [arvore]);
+  const lista = useMemo(() => grupos ?? [], [grupos]);
+  const plantas = useMemo(() => lista.flatMap((g) => g.plantas), [lista]);
+  const variosDonos = lista.length > 1;
   const chips = useMemo(() => chipsDe(plantas, sel), [plantas, sel]);
   const geral = useMemo(() => estadoPlantas(plantas, sel), [plantas, sel]);
   const resumo = useMemo(() => resumoDe(plantas, sel), [plantas, sel]);
   const revisao = useMemo(() => revisar(plantas, inicial, sel), [plantas, inicial, sel]);
+  const gravacoes = useMemo(() => gravacoesDe(lista, inicial, sel), [lista, inicial, sel]);
   const sujo = revisao.mudou;
   const hoje = hojeSP();
   const validadeNoPassado = !!sel.validade && sel.validade < hoje;
-
-  const opcoesProprietarios = useMemo(() => {
-    const vistos = new Set<string>();
-    const out: { value: string; label: string }[] = [];
-    for (const v of vinculos ?? []) {
-      const id = v.proprietario.id.trim();
-      if (!vistos.has(id)) {
-        vistos.add(id);
-        out.push({ value: id, label: v.proprietario.nome });
-      }
-    }
-    for (const p of (proprietarios ?? []) as Array<{ id: string; nome: string }>) {
-      const id = String(p.id).trim();
-      if (!vistos.has(id)) {
-        vistos.add(id);
-        out.push({ value: id, label: p.nome });
-      }
-    }
-    return out;
-  }, [vinculos, proprietarios]);
+  const buscando = !!busca.trim();
 
   // ---------------------------------------------------------------------------
   // Ações
   // ---------------------------------------------------------------------------
 
-  /** Troca de proprietário / fechar com alteração não salva pede confirmação. */
   const protegido = (acao: () => void) => {
     if (sujo) setDescartar(() => acao);
     else acao();
   };
-
-  const trocarProprietario = (id: string | null) => {
-    const alvo = id?.trim() || null;
-    if (alvo === proprietarioId) return;
-    protegido(() => {
-      setArvore(null);
-      setSel(VAZIA);
-      setInicial(VAZIA);
-      setProprietarioId(alvo);
-    });
-  };
-
   const fechar = () => protegido(onClose);
   const irParaDados = () => onVerDados && protegido(onVerDados);
 
   useEffect(() => {
     if (!isOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !revisando && !confirmarRemocao && !descartar) fechar();
+      if (e.key === 'Escape' && !revisando && !descartar) fechar();
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   });
 
-  const alternarPlantaAberta = (id: string) =>
-    setPlantasAbertas((prev) => {
-      const n = new Set(prev);
-      if (n.has(id)) n.delete(id);
-      else n.add(id);
-      return n;
-    });
-
-  const alternarAberta = (chave: string) =>
-    setAbertas((prev) => {
+  const alternarAberto = (chave: string) =>
+    setAbertos((prev) => {
       const n = new Set(prev);
       if (n.has(chave)) n.delete(chave);
       else n.add(chave);
       return n;
     });
+  const aberto = (chave: string) => buscando || abertos.has(chave);
 
   const salvar = async () => {
-    const propId = proprietarioId ?? arvore?.proprietario?.id;
-    if (!operadorId || !propId) return;
+    if (!operadorId || gravacoes.length === 0) return;
     setSalvando(true);
-    try {
-      const d = dadosDe(await http.put(`/usuarios/${operadorId}/vinculos`, payloadDe(propId, sel)));
-      if (Array.isArray(d?.vinculos)) setVinculos(d.vinculos);
-      toast.success(revisao.removeTudo ? 'Acesso removido' : 'Acesso salvo', {
-        description: revisao.removeTudo
-          ? `${nomeOperador} não vê mais as plantas de ${arvore?.proprietario?.nome ?? 'este proprietário'}.`
-          : `${nomeOperador} verá: ${resumo}`,
-      });
-      setRevisando(false);
-      await carregarArvore(propId);
-    } catch (e) {
-      toast.error('Não foi possível salvar o acesso', { description: mensagemDe(e, 'Tente de novo.') });
-    } finally {
-      setSalvando(false);
+    const falhas: string[] = [];
+    for (const g of gravacoes) {
+      try {
+        await http.put(`/usuarios/${operadorId}/vinculos`, g.payload);
+      } catch (e) {
+        falhas.push(`${g.grupo.proprietario.nome}: ${mensagemDe(e, 'erro')}`);
+      }
     }
-  };
-
-  const removerVinculo = async () => {
-    const propId = proprietarioId ?? arvore?.proprietario?.id;
-    if (!operadorId || !propId) return;
-    setSalvando(true);
-    try {
-      await http.delete(`/usuarios/${operadorId}/vinculos/${propId}`);
-      toast.success('Acesso removido', {
-        description: `${nomeOperador} não vê mais as plantas de ${arvore?.proprietario?.nome ?? 'este proprietário'}.`,
+    setSalvando(false);
+    setRevisando(false);
+    if (falhas.length) {
+      toast.error('Parte do acesso não foi salva', { description: falhas.join(' · ') });
+    } else {
+      toast.success(revisao.removeTudo ? 'Acesso removido' : 'Permissões salvas', {
+        description: revisao.removeTudo ? `${nomeOperador} não vê mais nenhuma planta.` : `${nomeOperador} verá: ${resumo}`,
       });
-      setConfirmarRemocao(false);
-      await carregarVinculos();
-      await carregarArvore(propId);
-    } catch (e) {
-      toast.error('Não foi possível remover o acesso', { description: mensagemDe(e, 'Tente de novo.') });
-    } finally {
-      setSalvando(false);
     }
+    await carregar();
   };
 
   if (!isOpen || !operador) return null;
 
-  const temVinculoSalvo = !!arvore?.vinculo;
+  // ---------------------------------------------------------------------------
+  // Render: Proprietário → Planta → Instalação → Equipamento
+  // ---------------------------------------------------------------------------
 
-  // ---------------------------------------------------------------------------
-  // Render
-  // ---------------------------------------------------------------------------
+  const linhaNo = (props: {
+    chave: string;
+    nivel: 0 | 1 | 2;
+    estado: EstadoMarcacao;
+    desabilitado?: boolean;
+    onMarcar: () => void;
+    Icone: LucideIcon;
+    titulo: string;
+    sub: string;
+    rotulo: string;
+    extra?: React.ReactNode;
+  }) => {
+    const aberta = aberto(props.chave);
+    return (
+      <div
+        className={cn(
+          'flex flex-wrap items-center gap-x-3 gap-y-2 py-2.5 pr-3',
+          props.nivel === 0 && 'pl-3 bg-muted/60',
+          props.nivel === 1 && (variosDonos ? 'pl-7 bg-muted/30' : 'pl-3 bg-muted/40'),
+          props.nivel === 2 && (variosDonos ? 'pl-11' : 'pl-7'),
+        )}
+      >
+        <button
+          type="button"
+          onClick={() => alternarAberto(props.chave)}
+          className="h-6 w-6 -ml-1 flex items-center justify-center rounded hover:bg-muted shrink-0"
+          aria-label={aberta ? 'Recolher' : 'Expandir'}
+          aria-expanded={aberta}
+        >
+          {aberta ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+        </button>
+        <Checkbox
+          checked={checkedDe(props.estado)}
+          disabled={props.desabilitado}
+          onCheckedChange={props.onMarcar}
+          aria-label={props.rotulo}
+        />
+        <props.Icone className="h-4 w-4 text-muted-foreground shrink-0" />
+        <button type="button" onClick={() => alternarAberto(props.chave)} className="flex-1 min-w-0 text-left">
+          <div className={cn('text-sm truncate', props.nivel < 2 ? 'font-semibold' : 'font-medium')}>{props.titulo}</div>
+          <div className="text-xs text-muted-foreground tabular-nums truncate">{props.sub}</div>
+        </button>
+        {props.extra}
+      </div>
+    );
+  };
+
+  const subDe = (st: { estado: EstadoMarcacao; marcados: number; total: number }, inteiro: string) =>
+    st.estado === 'todos' ? `${inteiro} · ${st.total} equipamentos` : `${st.marcados} de ${st.total} equipamentos`;
+
+  const renderUnidade = (p: PlantaArvore, u: UnidadeArvore) => {
+    const chave = chaveUnidade(p, u);
+    const original = p.unidades.find((x) => chaveUnidade(p, x) === chave) ?? u;
+    const st = estadoInstalacao(original, sel);
+    const geracaoOn = !!original.id && sel.geracao.includes(original.id);
+    return (
+      <li key={chave}>
+        {linhaNo({
+          chave: `u:${chave}`,
+          nivel: 2,
+          estado: st.estado,
+          onMarcar: () => setSel((s) => alternarInstalacao(original, s)),
+          Icone: iconeInstalacao(original),
+          titulo: original.nome,
+          sub: subDe(st, 'Instalação inteira'),
+          rotulo: `Marcar tudo da instalação ${original.nome}`,
+          extra:
+            original.tem_usina && original.id && podeVerGeracao ? (
+              <label className="flex items-center gap-2 text-xs text-muted-foreground ml-auto">
+                <span>Ver geração</span>
+                <Switch
+                  checked={geracaoOn}
+                  onCheckedChange={(v) => setSel((s) => definirVerGeracao(original, v, s))}
+                  aria-label={`Ver geração de ${original.nome}`}
+                />
+              </label>
+            ) : undefined,
+        })}
+        {aberto(`u:${chave}`) && (
+          <ul className="border-t">
+            {u.equipamentos.map((e) => {
+              const marcado = e.id in sel.equipamentos;
+              const IconeEq = iconeEquipamento(e);
+              return (
+                <li
+                  key={e.id}
+                  className={cn(
+                    'flex flex-wrap items-center gap-x-3 gap-y-1.5 pr-3 py-2',
+                    variosDonos ? 'pl-[4.75rem]' : 'pl-[3.75rem]',
+                  )}
+                >
+                  <Checkbox
+                    id={`acesso-${e.id}`}
+                    checked={marcado}
+                    onCheckedChange={() => setSel((s) => alternarEquipamento(original, e, s))}
+                  />
+                  <IconeEq className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <label htmlFor={`acesso-${e.id}`} className="flex-1 min-w-0 cursor-pointer">
+                    <span className="text-sm truncate block">{e.nome}</span>
+                    {e.tipo_nome && <span className="text-xs text-muted-foreground truncate block">{e.tipo_nome}</span>}
+                  </label>
+                  {e.novo && (
+                    <span className="text-[10px] font-semibold uppercase rounded px-1.5 py-0.5 bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                      Novo
+                    </span>
+                  )}
+                  {e.aceita_ver_rs && marcado && (
+                    <label className="flex items-center gap-2 text-xs text-muted-foreground ml-auto">
+                      <span>Ver R$</span>
+                      <Switch
+                        checked={!!sel.equipamentos[e.id]}
+                        onCheckedChange={(v) => setSel((s) => definirVerRs(e, v, s))}
+                        aria-label={`Ver valores em R$ de ${e.nome}`}
+                      />
+                    </label>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </li>
+    );
+  };
+
+  const renderPlanta = (p: PlantaArvore) => {
+    const unidades = unidadesDaBusca(p, busca);
+    if (unidades.length === 0) return null;
+    const st = estadoPlantas([p], sel);
+    return (
+      <li key={p.id}>
+        {linhaNo({
+          chave: `p:${p.id}`,
+          nivel: 1,
+          estado: st.estado,
+          desabilitado: st.total === 0,
+          onMarcar: () => setSel((s) => alternarPlantas([p], s)),
+          Icone: Factory,
+          titulo: p.nome,
+          sub: `${subDe(st, 'Planta inteira')} · ${p.unidades.length} ${p.unidades.length === 1 ? 'instalação' : 'instalações'}`,
+          rotulo: `Marcar tudo da planta ${p.nome}`,
+        })}
+        {aberto(`p:${p.id}`) && <ul className="border-t divide-y">{unidades.map((u) => renderUnidade(p, u))}</ul>}
+      </li>
+    );
+  };
+
+  const nadaNaBusca = buscando && plantas.every((p) => unidadesDaBusca(p, busca).length === 0);
 
   return (
     <>
@@ -403,10 +437,10 @@ export function AcessoOperadorSheet({ isOpen, operador, onClose, onVerDados, nov
       <div className="fixed inset-0 z-50 pointer-events-none flex items-center justify-end">
         <div
           role="dialog"
-          aria-label={`Acesso de ${nomeOperador}`}
+          aria-label={`Permissões de ${nomeOperador}`}
           className={cn(
             'bg-background shadow-2xl pointer-events-auto overflow-hidden flex flex-col',
-            'w-full h-full md:w-[50vw] md:min-w-[560px] md:border-l md:border-border',
+            'w-full h-full md:w-[50vw] md:min-w-[600px] md:border-l md:border-border',
           )}
         >
           {/* Cabeçalho */}
@@ -415,9 +449,11 @@ export function AcessoOperadorSheet({ isOpen, operador, onClose, onVerDados, nov
               <div className="flex items-center gap-3 min-w-0">
                 <KeyRound className="hidden md:block h-5 w-5 shrink-0 text-muted-foreground" />
                 <div className="min-w-0">
-                  <h2 className="text-base md:text-lg font-semibold truncate">Acesso de {nomeOperador}</h2>
+                  <h2 className="text-base md:text-lg font-semibold truncate">Permissões de {nomeOperador}</h2>
                   <p className="text-xs text-muted-foreground truncate">
-                    {novo ? 'Passo 2 de 2 · escolha o que o operador vê e comanda' : operador.email || 'Operador'}
+                    {novo
+                      ? 'Passo 2 de 2 · marque as plantas e equipamentos que ele vê e comanda'
+                      : 'Marque a planta inteira ou abra e escolha instalações e equipamentos'}
                   </p>
                 </div>
               </div>
@@ -430,61 +466,7 @@ export function AcessoOperadorSheet({ isOpen, operador, onClose, onVerDados, nov
 
           {/* Corpo */}
           <div className="flex-1 overflow-y-auto">
-            <div className="p-4 md:p-6 space-y-5">
-              {/* Vínculos existentes */}
-              {vinculos && vinculos.length > 0 && (
-                <section className="space-y-2">
-                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Vínculos de {nomeOperador}
-                  </h3>
-                  <div className="flex flex-wrap gap-2">
-                    {vinculos.map((v) => {
-                      const ativo = v.proprietario.id.trim() === proprietarioId;
-                      return (
-                        <button
-                          key={v.id}
-                          type="button"
-                          disabled={!ehGlobal}
-                          onClick={() => trocarProprietario(v.proprietario.id)}
-                          className={cn(
-                            'text-left rounded-md border px-3 py-2 text-xs transition-colors max-w-full',
-                            ativo ? 'border-foreground bg-muted' : 'hover:bg-muted/60',
-                            !ehGlobal && 'cursor-default',
-                          )}
-                        >
-                          <div className="font-medium text-sm truncate">{v.proprietario.nome}</div>
-                          <div className="text-muted-foreground truncate">{v.resumo}</div>
-                          {(v.validade || v.vencido) && (
-                            <div className={cn('mt-0.5', v.vencido ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground')}>
-                              {v.vencido ? `Vencido em ${dataBr(v.validade)}` : `Até ${dataBr(v.validade)}`}
-                            </div>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </section>
-              )}
-
-              {/* Proprietário (só papéis globais; o proprietário é ele mesmo) */}
-              {ehGlobal && (
-                <section className="space-y-1.5">
-                  <label className="text-sm font-medium">Proprietário</label>
-                  <Combobox
-                    options={opcoesProprietarios}
-                    value={proprietarioId ?? undefined}
-                    onValueChange={(v) => trocarProprietario(v || null)}
-                    placeholder={carregandoProps ? 'Carregando proprietários...' : 'Escolha o proprietário'}
-                    searchPlaceholder="Buscar proprietário..."
-                    emptyText="Nenhum proprietário encontrado."
-                    disabled={carregandoProps && opcoesProprietarios.length === 0}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Um vínculo por proprietário. O operador pode atender mais de um.
-                  </p>
-                </section>
-              )}
-
+            <div className="p-4 md:p-6 space-y-4">
               {erro && (
                 <div className="p-3 bg-red-50 border border-red-200 rounded-md dark:bg-red-950 dark:border-red-800 flex items-start gap-2">
                   <AlertCircle className="h-4 w-4 text-red-600 mt-0.5 shrink-0" />
@@ -492,28 +474,20 @@ export function AcessoOperadorSheet({ isOpen, operador, onClose, onVerDados, nov
                 </div>
               )}
 
-              {!proprietarioId && vinculos !== null && !erro && (
-                <p className="text-sm text-muted-foreground py-6 text-center">
-                  Escolha o proprietário para ver as plantas dele.
-                </p>
-              )}
-
-              {(carregandoArvore || (vinculos === null && !erro)) && (
+              {(carregando || (grupos === null && !erro)) && (
                 <div className="text-sm text-muted-foreground flex items-center gap-2 py-6 justify-center">
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Carregando...
+                  Carregando plantas...
                 </div>
               )}
 
-              {arvore && !carregandoArvore && plantas.length === 0 && (
-                <p className="text-sm text-muted-foreground py-6 text-center">
-                  {arvore.proprietario.nome || 'Este proprietário'} ainda não tem plantas com equipamentos.
-                </p>
+              {grupos && !carregando && plantas.length === 0 && (
+                <p className="text-sm text-muted-foreground py-6 text-center">Nenhuma planta com equipamentos cadastrada.</p>
               )}
 
-              {arvore && !carregandoArvore && plantas.length > 0 && (
+              {grupos && !carregando && plantas.length > 0 && (
                 <>
-                  {/* Tudo: atalho do nível de cima */}
+                  {/* Tudo */}
                   <section className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md border px-3 py-2.5">
                     <Checkbox
                       id="acesso-tudo"
@@ -521,12 +495,11 @@ export function AcessoOperadorSheet({ isOpen, operador, onClose, onVerDados, nov
                       onCheckedChange={() => setSel((s) => alternarPlantas(plantas, s))}
                     />
                     <label htmlFor="acesso-tudo" className="flex-1 min-w-0 cursor-pointer">
-                      <span className="text-sm font-medium block">
-                        Tudo de {arvore.proprietario.nome || 'este proprietário'}
-                      </span>
+                      <span className="text-sm font-medium block">Dar acesso a tudo</span>
                       <span className="text-xs text-muted-foreground tabular-nums block">
                         {geral.marcados} de {geral.total} equipamentos · {plantas.length}{' '}
                         {plantas.length === 1 ? 'planta' : 'plantas'}
+                        {variosDonos && ` · ${lista.length} proprietários`}
                       </span>
                     </label>
                     {geral.estado !== 'nenhum' && (
@@ -539,7 +512,7 @@ export function AcessoOperadorSheet({ isOpen, operador, onClose, onVerDados, nov
                   {/* Chips por tipo */}
                   {chips.length > 0 && (
                     <section className="space-y-1.5">
-                      <div className="text-xs text-muted-foreground">Toque para marcar ou desmarcar todos do tipo</div>
+                      <div className="text-xs text-muted-foreground">Marcar ou desmarcar por tipo, em todas as plantas</div>
                       <div className="flex flex-wrap gap-2">
                         {chips.map((c) => (
                           <button
@@ -577,141 +550,33 @@ export function AcessoOperadorSheet({ isOpen, operador, onClose, onVerDados, nov
                     />
                   </div>
 
-                  {/* Árvore planta → instalação → equipamentos */}
-                  <section className="space-y-3">
-                    {plantas.map((p) => {
-                      const unidades = unidadesDaBusca(p, busca);
-                      if (unidades.length === 0) return null;
-                      const stP = estadoPlantas([p], sel);
-                      const plantaAberta = !!busca.trim() || plantasAbertas.has(p.id);
-                      return (
-                        <div key={p.id} className="border rounded-md overflow-hidden">
-                          <div className="flex items-center gap-3 px-3 py-2.5 bg-muted/40">
-                            <button
-                              type="button"
-                              onClick={() => alternarPlantaAberta(p.id)}
-                              className="h-6 w-6 -ml-1 flex items-center justify-center rounded hover:bg-muted shrink-0"
-                              aria-label={plantaAberta ? 'Recolher planta' : 'Expandir planta'}
-                              aria-expanded={plantaAberta}
-                            >
-                              {plantaAberta ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                            </button>
-                            <Checkbox
-                              checked={checkedDe(stP.estado)}
-                              disabled={stP.total === 0}
-                              onCheckedChange={() => setSel((s) => alternarPlantas([p], s))}
-                              aria-label={`Marcar tudo da planta ${p.nome}`}
-                            />
-                            <Factory className="h-4 w-4 text-muted-foreground shrink-0" />
-                            <button type="button" onClick={() => alternarPlantaAberta(p.id)} className="flex-1 min-w-0 text-left">
-                              <div className="text-sm font-semibold truncate">{p.nome}</div>
-                              <div className="text-xs text-muted-foreground tabular-nums">
-                                {stP.estado === 'todos'
-                                  ? `Planta inteira · ${stP.total} equipamentos`
-                                  : `${stP.marcados} de ${stP.total} equipamentos · ${p.unidades.length} ${p.unidades.length === 1 ? 'instalação' : 'instalações'}`}
-                              </div>
-                            </button>
-                          </div>
-                          {plantaAberta && (
-                          <ul className="border-t divide-y">
-                            {unidades.map((u) => {
-                              const chave = chaveUnidade(p, u);
-                              // Contagem e tri-state sempre pela instalação inteira, não pelo filtro.
-                              const original = p.unidades.find((x) => chaveUnidade(p, x) === chave) ?? u;
-                              const st = estadoInstalacao(original, sel);
-                              const aberta = !!busca.trim() || abertas.has(chave);
-                              const Icone = iconeInstalacao(original);
-                              const geracaoOn = !!original.id && sel.geracao.includes(original.id);
-                              return (
-                                <li key={chave}>
-                                  <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5">
-                                    <button
-                                      type="button"
-                                      onClick={() => alternarAberta(chave)}
-                                      className="h-6 w-6 -ml-1 flex items-center justify-center rounded hover:bg-muted shrink-0"
-                                      aria-label={aberta ? 'Recolher' : 'Expandir'}
-                                      aria-expanded={aberta}
-                                    >
-                                      {aberta ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                                    </button>
-                                    <Checkbox
-                                      checked={checkedDe(st.estado)}
-                                      onCheckedChange={() => setSel((s) => alternarInstalacao(original, s))}
-                                      aria-label={`Marcar ${original.nome}`}
-                                    />
-                                    <Icone className="h-4 w-4 text-muted-foreground shrink-0" />
-                                    <button
-                                      type="button"
-                                      onClick={() => alternarAberta(chave)}
-                                      className="flex-1 min-w-0 text-left"
-                                    >
-                                      <div className="text-sm font-medium truncate">{original.nome}</div>
-                                      <div className="text-xs text-muted-foreground tabular-nums">
-                                        {st.marcados} de {st.total}
-                                      </div>
-                                    </button>
-                                    {original.tem_usina && original.id && podeVerGeracao && (
-                                      <label className="flex items-center gap-2 text-xs text-muted-foreground ml-auto">
-                                        <span>Ver geração</span>
-                                        <Switch
-                                          checked={geracaoOn}
-                                          onCheckedChange={(v) => setSel((s) => definirVerGeracao(original, v, s))}
-                                          aria-label={`Ver geração de ${original.nome}`}
-                                        />
-                                      </label>
-                                    )}
-                                  </div>
-                                  {aberta && (
-                                    <ul className="border-t bg-muted/20">
-                                      {u.equipamentos.map((e) => {
-                                        const marcado = e.id in sel.equipamentos;
-                                        const IconeEq = iconeEquipamento(e);
-                                        return (
-                                          <li key={e.id} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 pl-12 pr-3 py-2">
-                                            <Checkbox
-                                              id={`acesso-${e.id}`}
-                                              checked={marcado}
-                                              onCheckedChange={() => setSel((s) => alternarEquipamento(original, e, s))}
-                                            />
-                                            <IconeEq className="h-4 w-4 text-muted-foreground shrink-0" />
-                                            <label htmlFor={`acesso-${e.id}`} className="flex-1 min-w-0 cursor-pointer">
-                                              <span className="text-sm truncate block">{e.nome}</span>
-                                              {e.tipo_nome && (
-                                                <span className="text-xs text-muted-foreground truncate block">{e.tipo_nome}</span>
-                                              )}
-                                            </label>
-                                            {e.novo && (
-                                              <span className="text-[10px] font-semibold uppercase rounded px-1.5 py-0.5 bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
-                                                Novo
-                                              </span>
-                                            )}
-                                            {e.aceita_ver_rs && marcado && (
-                                              <label className="flex items-center gap-2 text-xs text-muted-foreground ml-auto">
-                                                <span>Ver R$</span>
-                                                <Switch
-                                                  checked={!!sel.equipamentos[e.id]}
-                                                  onCheckedChange={(v) => setSel((s) => definirVerRs(e, v, s))}
-                                                  aria-label={`Ver valores em R$ de ${e.nome}`}
-                                                />
-                                              </label>
-                                            )}
-                                          </li>
-                                        );
-                                      })}
-                                    </ul>
-                                  )}
-                                </li>
-                              );
-                            })}
-                          </ul>
-                          )}
-                        </div>
-                      );
-                    })}
-                    {busca.trim() && plantas.every((p) => unidadesDaBusca(p, busca).length === 0) && (
-                      <p className="text-sm text-muted-foreground text-center py-4">Nada encontrado para "{busca}".</p>
-                    )}
-                  </section>
+                  {/* Árvore */}
+                  <ul className="border rounded-md divide-y overflow-hidden">
+                    {variosDonos
+                      ? lista.map((g) => {
+                          const visiveis = g.plantas.filter((p) => unidadesDaBusca(p, busca).length > 0);
+                          if (visiveis.length === 0) return null;
+                          const st = estadoPlantas(g.plantas, sel);
+                          const chave = `g:${g.proprietario.id}`;
+                          return (
+                            <li key={g.proprietario.id}>
+                              {linhaNo({
+                                chave,
+                                nivel: 0,
+                                estado: st.estado,
+                                onMarcar: () => setSel((s) => alternarPlantas(g.plantas, s)),
+                                Icone: UserRound,
+                                titulo: g.proprietario.nome || 'Proprietário',
+                                sub: `${subDe(st, 'Tudo deste proprietário')} · ${g.plantas.length} ${g.plantas.length === 1 ? 'planta' : 'plantas'}`,
+                                rotulo: `Marcar tudo de ${g.proprietario.nome}`,
+                              })}
+                              {aberto(chave) && <ul className="border-t divide-y">{visiveis.map(renderPlanta)}</ul>}
+                            </li>
+                          );
+                        })
+                      : plantas.map(renderPlanta)}
+                  </ul>
+                  {nadaNaBusca && <p className="text-sm text-muted-foreground text-center py-4">Nada encontrado para "{busca}".</p>}
 
                   {/* Validade */}
                   <section className="space-y-1.5">
@@ -740,28 +605,13 @@ export function AcessoOperadorSheet({ isOpen, operador, onClose, onVerDados, nov
                         : 'Depois dessa data o acesso deixa de valer sozinho. Em branco, vale até alguém tirar.'}
                     </p>
                   </section>
-
-                  {temVinculoSalvo && (
-                    <div className="pt-2 border-t">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setConfirmarRemocao(true)}
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950"
-                      >
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Remover acesso deste proprietário
-                      </Button>
-                    </div>
-                  )}
                 </>
               )}
             </div>
           </div>
 
           {/* Rodapé fixo: resumo + Revisar */}
-          {arvore && plantas.length > 0 && (
+          {grupos && plantas.length > 0 && (
             <div className="sticky bottom-0 bg-background/95 backdrop-blur-sm border-t px-4 py-3 md:px-6 md:py-4 shrink-0">
               <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
                 <p className="text-sm flex-1 min-w-0">
@@ -771,10 +621,10 @@ export function AcessoOperadorSheet({ isOpen, operador, onClose, onVerDados, nov
                 <Button
                   type="button"
                   onClick={() => setRevisando(true)}
-                  disabled={!sujo || validadeNoPassado || salvando}
+                  disabled={!sujo || gravacoes.length === 0 || validadeNoPassado || salvando}
                   className="w-full sm:w-auto"
                 >
-                  {sujo ? 'Revisar' : 'Sem alterações'}
+                  {sujo ? 'Revisar e salvar' : 'Sem alterações'}
                 </Button>
               </div>
             </div>
@@ -786,15 +636,16 @@ export function AcessoOperadorSheet({ isOpen, operador, onClose, onVerDados, nov
       <Dialog open={revisando} onOpenChange={(v) => !salvando && setRevisando(v)}>
         <DialogContent className="w-[95vw] max-w-lg max-h-[85dvh] overflow-y-auto z-[60]">
           <DialogHeader>
-            <DialogTitle>Revisar acesso</DialogTitle>
+            <DialogTitle>Revisar permissões</DialogTitle>
             <DialogDescription>
-              {nomeOperador} · {arvore?.proprietario?.nome}
+              {nomeOperador}
+              {variosDonos && gravacoes.length > 0 && ` · ${gravacoes.map((g) => g.grupo.proprietario.nome).join(', ')}`}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 text-sm">
             {revisao.removeTudo && (
               <div className="p-3 rounded-md border border-amber-200 bg-amber-50 text-amber-800 dark:bg-amber-950 dark:border-amber-800 dark:text-amber-200">
-                Nada marcado: {nomeOperador} perde o acesso às plantas de {arvore?.proprietario?.nome ?? 'este proprietário'}.
+                Nada marcado: {nomeOperador} perde o acesso a todas as plantas.
               </div>
             )}
             <ListaRevisao titulo="Entram" itens={revisao.entram} />
@@ -830,38 +681,12 @@ export function AcessoOperadorSheet({ isOpen, operador, onClose, onVerDados, nov
         </DialogContent>
       </Dialog>
 
-      {/* Remover vínculo */}
-      <AlertDialog open={confirmarRemocao} onOpenChange={(v) => !salvando && setConfirmarRemocao(v)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remover acesso</AlertDialogTitle>
-            <AlertDialogDescription>
-              {nomeOperador} deixa de ver e comandar os equipamentos de{' '}
-              <span className="font-semibold">{arvore?.proprietario?.nome}</span>. Os vínculos com outros proprietários continuam.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={salvando}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(e) => {
-                e.preventDefault();
-                removerVinculo();
-              }}
-              disabled={salvando}
-              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
-            >
-              {salvando ? 'Removendo...' : 'Remover acesso'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
       {/* Descartar alterações */}
       <AlertDialog open={!!descartar} onOpenChange={(v) => !v && setDescartar(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Descartar alterações?</AlertDialogTitle>
-            <AlertDialogDescription>O acesso que você marcou ainda não foi salvo.</AlertDialogDescription>
+            <AlertDialogDescription>As permissões que você marcou ainda não foram salvas.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Continuar editando</AlertDialogCancel>
@@ -927,7 +752,7 @@ export function AbasUsuario({
   return (
     <div className="inline-flex items-center gap-1 rounded-[4px] border p-0.5">
       {aba('dados', 'Dados', onDados)}
-      {aba('acesso', 'Acesso', onAcesso)}
+      {aba('acesso', 'Plantas e equipamentos', onAcesso)}
     </div>
   );
 }
