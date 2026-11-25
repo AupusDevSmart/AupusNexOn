@@ -1446,6 +1446,12 @@ static void _publish_tcp_inv_${idx}(tcp_publish_fn publish) {
                           : m.decimal_src === 'dpq' ? '_fDPQ' : null;
                 if (_dv) decoder = `(${decoder}) * ${_dv}`;
             }
+            // SIGN do M160 (reg 36 byte baixo: bit7=Pa bit6=Pb bit5=Pc bit4=Pt bit3=Qa bit2=Qb bit1=Qc bit0=Qt; 1 = negativo).
+            // Valor = |raw| com o sinal do bit (funciona com registro em magnitude ou ja assinado).
+            if (m.sign_bit != null && cat.decimal_regs && !this._tpTcDisabled()) {
+                const _b = Number(m.sign_bit) | 0;
+                decoder = `(((_lSIGN >> ${_b}) & 1) ? -fabsf(${decoder}) : fabsf(${decoder}))`;
+            }
             // Fator TP/TC (mesma logica do RS485): _fTP/_fTC/_fatorEnergia computados em _sample_tcp_inv.
             if (m.apply_factor && cat.tp_tc && !this._tpTcDisabled()) {
                 const _fv = m.apply_factor === 'tp' ? '_fTP'
@@ -1596,14 +1602,14 @@ ${_tpOv ? `        _fTP = ${_tpOv.toFixed(1)}f;  // override tp_ratio (diagrama)
             cpp += `    // Casas decimais (reg ${d.register}: DPT/DCT/DPQ). value = raw*10^(exp-baseline).
     // Cache do ultimo valor bom (init=baseline => fator 1.0): expoentes mudam raro, entao
     // se a leitura falhar usa o ultimo lido em vez de cair pra 1.0. Retry 3x (flush interno do _readFn).
-    static uint8_t _lDPT = ${dpt ? dpt.base : 4}, _lDCT = ${dct ? dct.base : 4}, _lDPQ = ${dpq ? dpq.base : 4};
+    static uint8_t _lDPT = ${dpt ? dpt.base : 4}, _lDCT = ${dct ? dct.base : 4}, _lDPQ = ${dpq ? dpq.base : 4}, _lSIGN = 0;   // _lSIGN: ultimo SIGN bom (reg36 lo)
     float _fDPT = 1.0f, _fDCT = 1.0f, _fDPQ = 1.0f;
     {
         uint16_t _dec[${d.count}];
         bool _okDec = false;
         for (int _t = 0; _t < 3 && !_okDec; _t++) _okDec = ${_readFn}(${_gwArgs}, ${slave}, 0x03, ${d.register}, ${d.count}, _dec);
         if (_okDec) {
-${dpt ? `            _lDPT = ${dpt.expr};\n` : ''}${dct ? `            _lDCT = ${dct.expr};\n` : ''}${dpq ? `            _lDPQ = ${dpq.expr};\n` : ''}            uint8_t _sign = _dec[${(d.sign && d.sign.word) || 1}] & 0xFF;
+${dpt ? `            _lDPT = ${dpt.expr};\n` : ''}${dct ? `            _lDCT = ${dct.expr};\n` : ''}${dpq ? `            _lDPQ = ${dpq.expr};\n` : ''}            uint8_t _sign = _dec[${(d.sign && d.sign.word) || 1}] & 0xFF; _lSIGN = _sign;
             Serial.printf("[M160] DPT=%u DCT=%u DPQ=%u SIGN=0x%02X (raw r35=0x%04X r36=0x%04X)\\n", _lDPT, _lDCT, _lDPQ, _sign, _dec[0], _dec[${d.count > 1 ? 1 : 0}]);
         } else {
             Serial.printf("[M160] reg35 falhou — usando ultimo bom DPT=%u DCT=%u DPQ=%u\\n", _lDPT, _lDCT, _lDPQ);
@@ -5468,6 +5474,12 @@ static void _tcp_evt_poll_dev_${idx}(tcp_publish_fn publish) {
                              : null;
                 if (decVar) decoder = `(${decoder}) * ${decVar}`;
             }
+            // SIGN do M160 (reg 36 byte baixo: bit7=Pa bit6=Pb bit5=Pc bit4=Pt bit3=Qa bit2=Qb bit1=Qc bit0=Qt; 1 = negativo).
+            // Valor = |raw| com o sinal do bit (funciona com registro em magnitude ou ja assinado).
+            if (m.sign_bit != null && cat.decimal_regs && !this._tpTcDisabled()) {
+                const _b = Number(m.sign_bit) | 0;
+                decoder = `(((_lSIGN >> ${_b}) & 1) ? -fabsf(${decoder}) : fabsf(${decoder}))`;
+            }
 
             // Aplica fator TP/TC quando configurado no campo (vide cat.tp_tc).
             // Replica comportamento das referências PlatformIO (M-160 LORA_TX_MODBUS,
@@ -5665,7 +5677,7 @@ ${_tpOv ? `        _fTP = ${_tpOv.toFixed(1)}f;  // override tp_ratio (diagrama)
             cpp += `    // Casas decimais (reg ${d.register}: DPT/DCT/DPQ). value = raw*10^(exp-baseline).
     // Cache do ultimo valor bom (init=baseline => fator 1.0): expoentes mudam raro, entao se a
     // leitura falhar usa o ultimo lido em vez de cair pra 1.0. Flush+retry (mesmo do bloco principal).
-    static uint8_t _lDPT = ${dpt ? dpt.base : 4}, _lDCT = ${dct ? dct.base : 4}, _lDPQ = ${dpq ? dpq.base : 4};
+    static uint8_t _lDPT = ${dpt ? dpt.base : 4}, _lDCT = ${dct ? dct.base : 4}, _lDPQ = ${dpq ? dpq.base : 4}, _lSIGN = 0;   // _lSIGN: ultimo SIGN bom (reg36 lo)
     float _fDPT = 1.0f, _fDCT = 1.0f, _fDPQ = 1.0f;
     {
         uint8_t rc_dec = 0xFF;
@@ -5677,7 +5689,7 @@ ${_tpOv ? `        _fTP = ${_tpOv.toFixed(1)}f;  // override tp_ratio (diagrama)
         if (rc_dec == _mb.ku8MBSuccess) {
             uint16_t _dec0 = _mb.getResponseBuffer(0);
             uint16_t _dec1 = _mb.getResponseBuffer(${d.count > 1 ? 1 : 0});
-${dpt ? `            _lDPT = ${dpt.expr};\n` : ''}${dct ? `            _lDCT = ${dct.expr};\n` : ''}${dpq ? `            _lDPQ = ${dpq.expr};\n` : ''}            uint8_t _sign = _dec1 & 0xFF;
+${dpt ? `            _lDPT = ${dpt.expr};\n` : ''}${dct ? `            _lDCT = ${dct.expr};\n` : ''}${dpq ? `            _lDPQ = ${dpq.expr};\n` : ''}            uint8_t _sign = _dec1 & 0xFF; _lSIGN = _sign;
             Serial.printf("[M160] DPT=%u DCT=%u DPQ=%u SIGN=0x%02X (raw r35=0x%04X r36=0x%04X)\\n", _lDPT, _lDCT, _lDPQ, _sign, _dec0, _dec1);
         } else {
             Serial.printf("[M160] reg35 falhou (rc=0x%02X) — usando ultimo bom DPT=%u DCT=%u DPQ=%u\\n", rc_dec, _lDPT, _lDCT, _lDPQ);
