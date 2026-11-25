@@ -104,6 +104,7 @@ export function DisjuntorSheet({ equipamentoId, onClose, onConfigurarPontos }: {
   const [loading, setLoading] = useState(true);
   const [aba, setAba] = useState('op');
   const [ff, setFf] = useState(true);
+  const [ffCalc, setFfCalc] = useState(false);   // medição só com FN: FF calculada pelas FN (alternável)
   const [custosAberto, setCustosAberto] = useState(false);
   // PER-36: sem capacidade de comandar, os botões Abrir/Fechar nem aparecem.
   const podeComandar = useUserStore((st) => st.capacidades.comandar);
@@ -247,12 +248,27 @@ export function DisjuntorSheet({ equipamentoId, onClose, onConfigurarPontos }: {
   // Por fase: FF (Vab/Vbc/Vca) e FN (Va/Vb/Vc) conforme o que a medição publica.
   const temFF = ['Vab', 'Vbc', 'Vca'].some((k) => num(k) != null);
   const temFN = ['Va', 'Vb', 'Vc'].some((k) => num(k) != null);
-  const mostraFF = temFF && (!temFN || ff);
+  const mostraFF = temFF ? (!temFN || ff) : temFN && ffCalc;
   const vTxt = (k: string) => (num(k) == null ? '—' : `${fmt(num(k), 0)} V`);
   const aTxt = (k: string) => (num(k) == null ? '—' : `${fmt(num(k), 1)} A`);
+  // Sem FF publicada: Vab = √(Va² + Vb² + Va·Vb) (fasores a 120°) — aproximação, marcada com ≈
+  const ffDeFn = (a: string, b: string) => {
+    const x = num(a), y = num(b);
+    return x == null || y == null ? '—' : `≈ ${fmt(Math.sqrt(x * x + y * y + x * y), 0)} V`;
+  };
   const fases: Array<[string, string, string]> = mostraFF
-    ? [['AB', vTxt('Vab'), aTxt('Ia')], ['BC', vTxt('Vbc'), aTxt('Ib')], ['CA', vTxt('Vca'), aTxt('Ic')]]
+    ? temFF
+      ? [['AB', vTxt('Vab'), aTxt('Ia')], ['BC', vTxt('Vbc'), aTxt('Ib')], ['CA', vTxt('Vca'), aTxt('Ic')]]
+      : [['AB', ffDeFn('Va', 'Vb'), aTxt('Ia')], ['BC', ffDeFn('Vb', 'Vc'), aTxt('Ib')], ['CA', ffDeFn('Vc', 'Va'), aTxt('Ic')]]
     : [['A', vTxt('Va'), aTxt('Ia')], ['B', vTxt('Vb'), aTxt('Ib')], ['C', vTxt('Vc'), aTxt('Ic')]];
+  // Natureza do FP pelo quadrante: P·Q > 0 indutivo (Q1/Q3), < 0 capacitivo (Q2/Q4); FP ≥ 0,995 ou Q ≈ 0 = resistivo
+  const naturezaFp = (() => {
+    const P = num('Pt'), Q = num('Qt'), fp = num('FPt');
+    if (Q == null) return null;
+    const S = Math.hypot(P ?? 0, Q);
+    if ((fp != null && Math.abs(fp) >= 0.995) || S <= 0 || Math.abs(Q) < 0.01 * S) return 'resistivo';
+    return (P ?? 0) * Q >= 0 ? 'indutivo' : 'capacitivo';
+  })();
 
   const pickN = (k: string, div = 1) => (d: Telemetria) => { const x = d?.[k]; const v = Number(x); return x == null || x === '' || !Number.isFinite(v) ? null : v / div; };
   const catalogo: GrupoGrandezaNx[] = [
@@ -269,7 +285,7 @@ export function DisjuntorSheet({ equipamentoId, onClose, onConfigurarPontos }: {
     { k: 'Ativa', v: pt != null ? `${fmt(pt, 1)} kW${pt < -0.05 ? ' · injetando' : ''}` : '—' },
     { k: 'Reativa', v: kilo('Qt') != null ? `${fmt(kilo('Qt'), 1)} kvar` : '—' },
     { k: 'Aparente', v: kilo('St') != null ? `${fmt(kilo('St'), 1)} kVA` : '—' },
-    { k: 'Fator de potência', v: num('FPt') != null ? fmt(num('FPt'), 2) : '—', sub: bundle?.pm_hoje?.fp_min != null ? `menor hoje ${fmt(bundle.pm_hoje.fp_min, 2)}` : undefined },
+    { k: 'Fator de potência', v: num('FPt') != null ? `${fmt(Math.abs(num('FPt') as number), 2)}${naturezaFp ? ` · ${naturezaFp}` : ''}` : '—', sub: bundle?.pm_hoje?.fp_min != null ? `menor hoje ${fmt(bundle.pm_hoje.fp_min, 2)}` : undefined },
     { k: 'Frequência', v: num('Freq') != null ? `${fmt(num('Freq'), 2)} Hz` : '—' },
     In
       ? { k: 'Carregamento', v: `${fmt((iMax / In) * 100, 0)}%`, sub: `${fmt(iMax, 0)} A de ${fmt(In, 0)} A`, opcional: !medDados }
@@ -467,21 +483,12 @@ export function DisjuntorSheet({ equipamentoId, onClose, onConfigurarPontos }: {
               resumo={pt != null ? (velha && temPm ? `${fmt(pt, 1)} kW em ${velha.quando}` : `${fmt(pt, 1)} kW agora`) : undefined} />
           )}
 
-          <Duas>
-            {medOk ? (
-              <FasesNx rows={fases} ff={mostraFF} onFF={setFf} temToggle={temFF && temFN}
-                nota={(temPm ? `PM: ${bundle.pm?.nome ?? bundle.pm?.equipamento_id}` : `IED: ${bundle.status_fonte?.rele_nome ?? bundle.status_fonte?.rele_equipamento_id}`) + (velha && temPm ? ` · última leitura ${velha.quando}` : '')} />
-            ) : null}
-            {/* Sem medição a coluna das fases some: o cadastro ocupa a largura toda em vez de deixar metade vazia. */}
-            <div className={medOk ? 'min-w-0' : 'min-w-0 min-[760px]:col-span-2'}>
-            <LinhasNx titulo="Cadastro" rows={[
-              { k: 'Corrente nominal', v: bundle.cadastro?.corrente_nominal_a ? `${fmt(bundle.cadastro.corrente_nominal_a, 0)} A` : '—' },
-              { k: 'Tensão nominal', v: bundle.cadastro?.tensao_nominal_v ? `${fmt(bundle.cadastro.tensao_nominal_v, 0)} V` : '—', opcional: true },
-              { k: 'Alimentado por', v: bundle.cadastro?.alimentado_por?.length ? bundle.cadastro.alimentado_por.join(', ') : '—' },
-              { k: 'Alimenta', v: alimenta.length ? alimenta.join(', ') : '—' },
-            ]} />
-            </div>
-          </Duas>
+          {/* Cartão "Cadastro" removido da visão (24/11 — pedido do usuário); segue na aba de configuração. */}
+          {medOk ? (
+            <FasesNx rows={fases} ff={mostraFF} onFF={temFF ? setFf : setFfCalc} temToggle={temFN}
+              nota={(temPm ? `PM: ${bundle.pm?.nome ?? bundle.pm?.equipamento_id}` : `IED: ${bundle.status_fonte?.rele_nome ?? bundle.status_fonte?.rele_equipamento_id}`)
+                + (mostraFF && !temFF ? ' · FF calculada pelas tensões FN' : '') + (velha && temPm ? ` · última leitura ${velha.quando}` : '')} />
+          ) : null}
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <Registros equipamentoId={equipamentoId} extra={extras} />
