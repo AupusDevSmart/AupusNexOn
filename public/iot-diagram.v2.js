@@ -1784,7 +1784,10 @@ var DiagramEditor = class {
                 fill: cStyle.stroke || this.T.nodeTextSub, 'font-size': '8', 'font-weight': '600',
                 'font-family': 'system-ui, sans-serif'
             });
-            labelText.textContent = cStyle.label;
+            // Pivô ↔ TON e' fio de reles/entradas (BO/BI), nao barramento RS485: so' o
+            // rotulo muda (o estilo segue 'rs485', que o gerador usa p/ achar o pivo).
+            labelText.textContent = (conn.style === 'rs485' && (fromComp.type === 'pivo' || toComp.type === 'pivo'))
+                ? 'E/S' : cStyle.label;
             this.connectionsGroup.appendChild(labelText);
 
             // Edit mode: click on connection to show context menu
