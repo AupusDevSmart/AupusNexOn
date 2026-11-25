@@ -327,4 +327,15 @@ describe('vários proprietários (NEXON-143)', () => {
     const g2 = gravacoesDe(grupos, s0, s2);
     expect(g2.map((g) => [g.grupo.proprietario.id, g.remove])).toEqual([['B', true]]);
   });
+
+  it('validade de um dono não vai para outro; mexer no campo vale para todos os salvos', () => {
+    const s0 = selecaoInicialGrupos(grupos);
+    const s1 = { ...s0, equipamentos: { ...s0.equipamentos, piv1: false } };
+    expect(gravacoesDe(grupos, s0, s1)[0].payload.validade).toBeNull();
+    const s2 = { ...s1, validade: '2027-06-30' };
+    expect(gravacoesDe(grupos, s0, s2).map((g) => [g.grupo.proprietario.id, g.payload.validade])).toEqual([
+      ['A', '2027-06-30'],
+      ['B', '2027-06-30'],
+    ]);
+  });
 });

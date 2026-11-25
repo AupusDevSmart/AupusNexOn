@@ -602,7 +602,9 @@ export function AcessoOperadorSheet({ isOpen, operador, onClose, onVerDados, nov
                     <p className={cn('text-xs', validadeNoPassado ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground')}>
                       {validadeNoPassado
                         ? 'A validade não pode estar no passado.'
-                        : 'Depois dessa data o acesso deixa de valer sozinho. Em branco, vale até alguém tirar.'}
+                        : variosDonos && lista.some((g) => g.vinculo)
+                          ? 'Cada proprietário mantém a validade que já tem; mudar este campo aplica a nova data a todos os que forem salvos.'
+                          : 'Depois dessa data o acesso deixa de valer sozinho. Em branco, vale até alguém tirar.'}
                     </p>
                   </section>
                 </>

@@ -444,9 +444,13 @@ export function selecaoInicialGrupos(grupos: GrupoAcesso[]): Selecao {
  */
 export function gravacoesDe(grupos: GrupoAcesso[], antes: Selecao, depois: Selecao) {
   const out: Array<{ grupo: GrupoAcesso; payload: ReturnType<typeof payloadDe>; remove: boolean }> = [];
+  // Cada vínculo guarda a própria validade; o campo da tela só vale para todos
+  // quando a pessoa mexe nele (senão a validade de um dono iria para outro).
+  const mexeuNaValidade = (antes.validade ?? null) !== (depois.validade ?? null);
   for (const g of grupos) {
-    const a = recortar(g.plantas, antes);
-    const d = recortar(g.plantas, depois);
+    const propria = g.vinculo?.validade ?? null;
+    const a = { ...recortar(g.plantas, antes), validade: propria };
+    const d = { ...recortar(g.plantas, depois), validade: mexeuNaValidade ? depois.validade ?? null : propria };
     const vazio = Object.keys(d.equipamentos).length === 0;
     if (vazio && !g.vinculo) continue;
     if (!revisar(g.plantas, a, d).mudou) continue;
