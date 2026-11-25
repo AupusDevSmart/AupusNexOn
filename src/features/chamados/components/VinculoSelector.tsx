@@ -61,11 +61,11 @@ export function VinculoSelector({
       .catch(() => setEquipamentos([]));
   }, [value.unidade_id]);
 
-  const opcional = equipamentoObrigatorio ? '' : ' (opcional)';
+  const opcional = equipamentoObrigatorio ? null : <span className="font-normal text-muted-foreground"> (opcional)</span>;
 
   return (
     <div className="grid gap-3 sm:grid-cols-3">
-      <div className="space-y-1">
+      <div className="min-w-0 space-y-1.5">
         <label className="text-sm font-medium">Planta</label>
         <Combobox
           options={plantas}
@@ -76,7 +76,7 @@ export function VinculoSelector({
           emptyText="Nenhuma planta"
         />
       </div>
-      <div className="space-y-1">
+      <div className="min-w-0 space-y-1.5">
         <label className="text-sm font-medium">Instalação{opcional}</label>
         <Combobox
           options={unidades}
@@ -88,7 +88,7 @@ export function VinculoSelector({
           disabled={!value.planta_id}
         />
       </div>
-      <div className="space-y-1">
+      <div className="min-w-0 space-y-1.5">
         <label className="text-sm font-medium">Equipamento{opcional}</label>
         <Combobox
           options={equipamentos}

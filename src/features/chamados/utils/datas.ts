@@ -42,3 +42,39 @@ export function rotuloMes(mes: string): string {
   const nomes = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
   return `${nomes[(m ?? 1) - 1]}/${String(a).slice(2)}`;
 }
+
+/** Atalhos de período dos filtros. Vazio = sem recorte. */
+export type Periodo = '30d' | '90d' | '12m' | '';
+
+export const PERIODOS: { valor: Periodo; rotulo: string }[] = [
+  { valor: '30d', rotulo: '30 dias' },
+  { valor: '90d', rotulo: '90 dias' },
+  { valor: '12m', rotulo: '12 meses' },
+  { valor: '', rotulo: 'Tudo' },
+];
+
+const diaLocal = (d: Date) => {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+};
+
+/** Período → `de` (YYYY-MM-DD, hora local) para a API. Sem período = sem `de`. */
+export function inicioDoPeriodo(periodo: string, hoje: Date = new Date()): string | undefined {
+  const d = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+  if (periodo === '30d') d.setDate(d.getDate() - 29);
+  else if (periodo === '90d') d.setDate(d.getDate() - 89);
+  else if (periodo === '12m') {
+    d.setMonth(d.getMonth() - 11);
+    d.setDate(1);
+  } else return undefined;
+  return diaLocal(d);
+}
+
+/** "2026-11-03" → "03/11/2026". */
+export function diaBR(iso: string): string {
+  const [a, m, d] = iso.split('-');
+  return a && m && d ? `${d}/${m}/${a}` : iso;
+}
+
+/** "1 aberto", "3 abertos". */
+export const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`;
