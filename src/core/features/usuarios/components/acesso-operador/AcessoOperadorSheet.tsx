@@ -20,6 +20,7 @@ import {
   Search,
   Sun,
   ToggleRight,
+  ShieldCheck,
   UserRound,
   X,
   Zap,
@@ -467,7 +468,27 @@ export function AcessoOperadorSheet({ isOpen, operador, onClose, onVerDados, nov
           {/* Corpo */}
           <div className="flex-1 overflow-y-auto">
             <div className="p-4 md:p-6 space-y-4">
-              {erro && (
+              {erro && /só para operador/i.test(erro) && (
+                <div className="rounded-md border p-4 space-y-3">
+                  <div className="flex items-start gap-3">
+                    <ShieldCheck className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium">{nomeOperador} já vê todas as plantas</p>
+                      <p className="text-xs text-muted-foreground">
+                        O papel dele não é Operador, então o acesso não é limitado por planta. Para escolher só algumas
+                        plantas, instalações ou equipamentos, mude o papel para Operador na aba Dados e volte aqui.
+                      </p>
+                    </div>
+                  </div>
+                  {onVerDados && (
+                    <Button type="button" variant="outline" size="sm" onClick={irParaDados}>
+                      Ir para Dados
+                    </Button>
+                  )}
+                </div>
+              )}
+
+              {erro && !/só para operador/i.test(erro) && (
                 <div className="p-3 bg-red-50 border border-red-200 rounded-md dark:bg-red-950 dark:border-red-800 flex items-start gap-2">
                   <AlertCircle className="h-4 w-4 text-red-600 mt-0.5 shrink-0" />
                   <p className="text-xs text-red-700 dark:text-red-300">{erro}</p>
