@@ -113,6 +113,9 @@ export interface ChamadosFilters {
   tipo: string;
   motivo: string;
   orgao: string;
+  /** Atalho de período ('30d', '90d', '12m', '' = tudo). Vale mais que `de`/`ate`. */
+  periodo: string;
+  /** Intervalo livre (links antigos); a tela não edita, só mostra e deixa tirar. */
   de: string;
   ate: string;
   prioridade: string;

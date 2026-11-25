@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deInputLocal, duracaoDoChamado, formatarDuracao, paraInputLocal, rotuloMes } from './datas';
+import { deInputLocal, diaBR, duracaoDoChamado, formatarDuracao, inicioDoPeriodo, paraInputLocal, plural, rotuloMes } from './datas';
 
 describe('datas dos chamados (NEXON-144)', () => {
   it('formata duração em min, h e dias', () => {
@@ -23,5 +23,19 @@ describe('datas dos chamados (NEXON-144)', () => {
 
   it('rótulo do mês', () => {
     expect(rotuloMes('2026-11')).toBe('nov/26');
+  });
+
+  it('início do período em dia local', () => {
+    const hoje = new Date(2026, 10, 25, 15, 0);
+    expect(inicioDoPeriodo('30d', hoje)).toBe('2026-10-27');
+    expect(inicioDoPeriodo('90d', hoje)).toBe('2026-08-28');
+    expect(inicioDoPeriodo('12m', hoje)).toBe('2025-12-01');
+    expect(inicioDoPeriodo('', hoje)).toBeUndefined();
+  });
+
+  it('dia em BR e plural', () => {
+    expect(diaBR('2026-11-03')).toBe('03/11/2026');
+    expect(plural(1, 'aberto', 'abertos')).toBe('1 aberto');
+    expect(plural(0, 'aberto', 'abertos')).toBe('0 abertos');
   });
 });
