@@ -13,8 +13,8 @@
 //   pivo ligar <id> <d|e> <agua 0|1> <permil> <canhao 0|1> <g|t> <valor> [f <de> <ate> ...]
 //        g = graus a percorrer (voltas = 360 x n, no NexON) · t = segundos (provisorio, pivo sem encoder)
 //        f = trechos sem canhao (graus do encoder 0..359, ate' 4 pares): dentro de [de, ate] o canhao fica OFF
-//   pivo cfg <BOs 6 dig> <BIs 6 dig> <inv 6 dig> <9 tempos> <resolucao>   (tudo de uma vez; o ack do status traz k<CRC16>)
-//   pivo ligado <bo>   BO de "pivo ligado" (alto o tempo todo da partida ate' parar; 0 = sem). Padrao BO07. NVS "bl"
+//   pivo cfg <BOs 6 dig> <BIs 6 dig> <inv 6 dig> <9 tempos> <resolucao> [<bo_ligado>]   (tudo de uma vez; o ack do status traz k<CRC16>)
+//   pivo ligado <bo>   BO de "pivo ligado" (alto o tempo todo da partida ate' parar; 0 = sem). Padrao 0 (sem). NVS "bl"
 //   pivo desligar | pivo perc <permil> | pivo canhao <0|1> [f <de> <ate> ...] (sem f = mantem os trechos) | pivo status | pivo mostrar
 // Segurança (BI5): normal = 1 (spec); 0 ou sem sinal = atuou.
 // Compatibilidade (sequencia ainda no servidor, ate' a Fase 3): com a sequencia local PARADA,
@@ -50,9 +50,10 @@ enum { BI_PRESSAO = 0, BI_TENSAO, BI_GIR_DIR, BI_GIR_ESQ, BI_SEGURANCA, BI_CANHA
 static uint8_t  _bo[6] = {1, 2, 3, 4, 5, 6};
 static uint8_t  _bi[6] = {1, 2, 3, 4, 5, 6};
 // BO "pivo ligado" (26/11/2026, Pivo 11): alta enquanto a sequencia nao esta' PARADA (partindo ou girando).
-// Fica FORA do mapa de 6 papeis (o "pivo cfg"/"io" do NexON nao muda): comando proprio "pivo ligado <n>".
+// Fica FORA do mapa de 6 papeis: vem como 14o argumento OPCIONAL do "pivo cfg" (o NexON so' manda quando o
+// pivo tem ponto "Pivo ligado" com BO) ou pelo comando "pivo ligado <n>". Padrao 0 = sem (config por pivo).
 // Se o NexON puser outro papel na mesma BO, esta fica inerte (o papel do mapa ganha).
-static uint8_t  _bo_lig = 7;
+static uint8_t  _bo_lig = 0;
 static int8_t   _apl_lig = -1;
 static uint8_t  _inv = 0;                // bit k = BI do papel k ativa em baixo
 // s: espera_pressao, confirma_giro, confirma_canhao, tol_pressao, tol_tensao, tol_lado, sem_posicao, janela_giro, ciclo_perc
@@ -227,7 +228,7 @@ void pivo_init() {
         if (pr.getBytesLength("bo") == sizeof(_bo)) pr.getBytes("bo", _bo, sizeof(_bo));
         if (pr.getBytesLength("bi") == sizeof(_bi)) pr.getBytes("bi", _bi, sizeof(_bi));
         _inv = pr.getUChar("inv", 0);
-        _bo_lig = pr.getUChar("bl", 7);
+        _bo_lig = pr.getUChar("bl", 0);
         if (pr.getBytesLength("tp2") == sizeof(_tp)) pr.getBytes("tp2", _tp, sizeof(_tp));
         _enc_res = pr.getUInt("er", 0);
         _enc_inv = pr.getBool("ei", false);
@@ -723,14 +724,15 @@ int pivo_cmd(const String& cmd, char* msg, size_t sz) {
         return 1;
     }
     if (!strcmp(verbo, "cfg")) {
-        // Configuracao inteira num comando (cabe no LoRa): "pivo cfg <BOs> <BIs> <inv> <9 tempos> <resolucao>"
+        // Configuracao inteira num comando (cabe no LoRa): "pivo cfg <BOs> <BIs> <inv> <9 tempos> <resolucao> [<bo_ligado>]"
         //   BOs/BIs = 6 digitos (0 = nao ligado; papeis na ordem do "pivo io"), inv = 6 digitos 0/1
         //   tempos = os 9 do "pivo tempos"; resolucao do encoder (0 = sem encoder; angulo BRUTO).
         // Guarda o CRC16 do texto: o "pivo status" devolve "k<crc>" e o NexON so' reenvia se mudou.
         char bs[8] = "", is[8] = "", inv[8] = "";
-        unsigned long t[PIVO_NTP], res = 0;
-        if (!resto || sscanf(resto, "%7s %7s %7s %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu", bs, is, inv,
-                &t[0], &t[1], &t[2], &t[3], &t[4], &t[5], &t[6], &t[7], &t[8], &res) != 13
+        unsigned long t[PIVO_NTP], res = 0, blig = 0;
+        int nargs = resto ? sscanf(resto, "%7s %7s %7s %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu", bs, is, inv,
+                &t[0], &t[1], &t[2], &t[3], &t[4], &t[5], &t[6], &t[7], &t[8], &res, &blig) : 0;
+        if ((nargs != 13 && nargs != 14) || blig > PIVO_IO_MAX
             || strlen(bs) != 6 || strlen(is) != 6 || strlen(inv) != 6)
             return _erro(msg, sz, "pivo_cfg_invalido");
         static const unsigned long lo[PIVO_NTP] = {5,    5,   1,   0,  0,  0,  10,   30,   5};
@@ -747,6 +749,9 @@ int pivo_cmd(const String& cmd, char* msg, size_t sz) {
         if (res != 0 && (res < 2 || res > 1000000UL)) return _erro(msg, sz, "pivo_cfg_faixa");
         for (int k = 0; k < 6; k++) if (_bo[k] && _bo[k] != nb[k]) relay_set(_bo[k], false);   // mapa mudou: BO antiga em OFF
         for (int k = 0; k < 6; k++) { _bo[k] = nb[k]; _bi[k] = ni[k]; _apl[k] = -1; }
+        // BO "pivo ligado" (14o arg; ausente = 0 = sem). Trocou: a antiga vai para OFF.
+        if (_ligValida() && _bo_lig != (uint8_t)blig) relay_set(_bo_lig, false);
+        _bo_lig = (uint8_t)blig; _apl_lig = -1;
         _inv = m;
         for (int k = 0; k < PIVO_NTP; k++) _tp[k] = (uint32_t)t[k];
         _enc_res = (uint32_t)res; _enc_inv = false; _enc_zero = 0;
