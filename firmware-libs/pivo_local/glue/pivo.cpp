@@ -14,6 +14,7 @@
 //        g = graus a percorrer (voltas = 360 x n, no NexON) · t = segundos (provisorio, pivo sem encoder)
 //        f = trechos sem canhao (graus do encoder 0..359, ate' 4 pares): dentro de [de, ate] o canhao fica OFF
 //   pivo cfg <BOs 6 dig> <BIs 6 dig> <inv 6 dig> <9 tempos> <resolucao>   (tudo de uma vez; o ack do status traz k<CRC16>)
+//   pivo ligado <bo>   BO de "pivo ligado" (alto o tempo todo da partida ate' parar; 0 = sem). Padrao BO07. NVS "bl"
 //   pivo desligar | pivo perc <permil> | pivo canhao <0|1> [f <de> <ate> ...] (sem f = mantem os trechos) | pivo status | pivo mostrar
 // Segurança (BI5): normal = 1 (spec); 0 ou sem sinal = atuou.
 // Compatibilidade (sequencia ainda no servidor, ate' a Fase 3): com a sequencia local PARADA,
@@ -48,6 +49,11 @@ enum { BI_PRESSAO = 0, BI_TENSAO, BI_GIR_DIR, BI_GIR_ESQ, BI_SEGURANCA, BI_CANHA
 // a TON ja' liga/desliga sozinha logo apos gravar. O NexON sobrescreve com "pivo io" se o mapa for outro.
 static uint8_t  _bo[6] = {1, 2, 3, 4, 5, 6};
 static uint8_t  _bi[6] = {1, 2, 3, 4, 5, 6};
+// BO "pivo ligado" (26/11/2026, Pivo 11): alta enquanto a sequencia nao esta' PARADA (partindo ou girando).
+// Fica FORA do mapa de 6 papeis (o "pivo cfg"/"io" do NexON nao muda): comando proprio "pivo ligado <n>".
+// Se o NexON puser outro papel na mesma BO, esta fica inerte (o papel do mapa ganha).
+static uint8_t  _bo_lig = 7;
+static int8_t   _apl_lig = -1;
 static uint8_t  _inv = 0;                // bit k = BI do papel k ativa em baixo
 // s: espera_pressao, confirma_giro, confirma_canhao, tol_pressao, tol_tensao, tol_lado, sem_posicao, janela_giro, ciclo_perc
 #define PIVO_NTP 9
@@ -199,6 +205,7 @@ static void _salvarCfg() {
     pr.putBytes("bo", _bo, sizeof(_bo));
     pr.putBytes("bi", _bi, sizeof(_bi));
     pr.putUChar("inv", _inv);
+    pr.putUChar("bl", _bo_lig);
     pr.putBytes("tp2", _tp, sizeof(_tp));   // "tp2": formato de 12/11 (o "tp" antigo e' ignorado)
     pr.putUInt("er", _enc_res);
     pr.putBool("ei", _enc_inv);
@@ -220,6 +227,7 @@ void pivo_init() {
         if (pr.getBytesLength("bo") == sizeof(_bo)) pr.getBytes("bo", _bo, sizeof(_bo));
         if (pr.getBytesLength("bi") == sizeof(_bi)) pr.getBytes("bi", _bi, sizeof(_bi));
         _inv = pr.getUChar("inv", 0);
+        _bo_lig = pr.getUChar("bl", 7);
         if (pr.getBytesLength("tp2") == sizeof(_tp)) pr.getBytes("tp2", _tp, sizeof(_tp));
         _enc_res = pr.getUInt("er", 0);
         _enc_inv = pr.getBool("ei", false);
@@ -231,6 +239,7 @@ void pivo_init() {
         pr.end();
     }
     for (int k = 0; k < 6; k++) { if (_bo[k] > PIVO_IO_MAX) _bo[k] = 0; if (_bi[k] > PIVO_IO_MAX) _bi[k] = 0; }
+    if (_bo_lig > PIVO_IO_MAX) _bo_lig = 0;
     static Maquina m(_montarConfig(), &_ouv);
     _m = &m;
     // Reles do pivo ja' saem desligados (RELAYS_RESTORE_ON_SW_RESET = 0): reinicio = pivo parado.
@@ -266,6 +275,7 @@ void pivo_init() {
         _ativo_nvs = true;
         _salvarAtivo(false);
     }
+    Serial.printf("[PIVO] init: BO ligado=%u\n", _bo_lig);
     Serial.printf("[PIVO] init: cfg=%d BO %u/%u/%u/%u/%u/%u BI %u/%u/%u/%u/%u/%u inv=0x%02X enc=%lu%s\n",
         _cfg_ok, _bo[0], _bo[1], _bo[2], _bo[3], _bo[4], _bo[5], _bi[0], _bi[1], _bi[2], _bi[3], _bi[4], _bi[5],
         _inv, (unsigned long)_enc_res, estava ? " (estava irrigando: reinicio)" : "");
@@ -281,6 +291,20 @@ static bool _biPapel(uint8_t st, int papel) {
     if (!n) return false;
     bool v = (st >> (n - 1)) & 1;
     return (_inv >> papel) & 1 ? !v : v;
+}
+
+// BO "pivo ligado" vale se nao colide com uma BO do mapa
+static bool _ligValida() {
+    if (!_bo_lig) return false;
+    for (int k = 0; k < 6; k++) if (_bo[k] == _bo_lig) return false;
+    return true;
+}
+static void _setLig(bool on) {
+    if (!_ligValida()) return;
+    int8_t v = on ? 1 : 0;
+    if (_apl_lig == v) return;
+    _apl_lig = v;
+    relay_set(_bo_lig, on);
 }
 
 static void _setBo(int papel, bool on) {
@@ -407,13 +431,14 @@ void pivo_tick() {
     static unsigned long _parou_ms = 0;
     if (_m->estado() == PARADO && _e_ant != PARADO) _parou_ms = now ? now : 1;
     // Saiu de PARADO (ligar): a sequencia assume TODAS as saidas na hora (rele ligado a mao cai ja').
-    if (_m->estado() != PARADO && _e_ant == PARADO) for (int k = 0; k < 6; k++) _apl[k] = -1;
+    if (_m->estado() != PARADO && _e_ant == PARADO) { for (int k = 0; k < 6; k++) _apl[k] = -1; _apl_lig = -1; }
     _e_ant = (uint8_t)_m->estado();
     bool reafirmar = _m->estado() != PARADO || (now - _parou_ms) < 5000UL;
     if (reafirmar) {
         if (now - _reafirma_ms >= 1000UL) {
             _reafirma_ms = now ? now : 1;
             for (int k = 0; k < 6; k++) _apl[k] = -1;
+            _apl_lig = -1;
         }
     } else if (_bo[BO_DIR] && _bo[BO_ESQ] && relay_get(_bo[BO_DIR]) && relay_get(_bo[BO_ESQ])) {
         relay_set(_bo[BO_DIR], false); relay_set(_bo[BO_ESQ], false);
@@ -430,11 +455,13 @@ void pivo_tick() {
     if (!o.bomba) _setBo(BO_BOMBA, false);
     if (!o.valvula) _setBo(BO_VALVULA, false);
     if (!o.canhao) _setBo(BO_CANHAO, false);
+    if (_m->estado() == PARADO) _setLig(false);
     if (qDir) _setBo(BO_DIR, true);   // o oposto ja' foi para OFF acima (e e' reafirmado a cada 1 s)
     if (qEsq) _setBo(BO_ESQ, true);
     if (o.bomba) _setBo(BO_BOMBA, true);
     if (o.valvula) _setBo(BO_VALVULA, true);
     if (o.canhao) _setBo(BO_CANHAO, true);
+    if (_m->estado() != PARADO) _setLig(true);   // pivo ligado: alto da partida ate' parar
     bool ladoOk = (o.dir && (!_bi[BI_GIR_DIR] || in.gir_dir)) || (o.esq && (!_bi[BI_GIR_ESQ] || in.gir_esq));
     if (_m->estado() == PARADO && _leg_pm >= 0 && _leg_bo) {
         // Percentimetro legado (servidor): ciclo na BO pedida, so' com DIN de girando em 1.
@@ -606,6 +633,7 @@ int pivo_cmd(const String& cmd, char* msg, size_t sz) {
         _m->desligar(M_COMANDO, millis());
         // Alem da sequencia: BOs do pivo ligadas por fora (rN on, percentimetro legado) tambem caem.
         for (int k = 0; k < 6; k++) if (_bo[k]) { relay_set(_bo[k], false); _apl[k] = 0; }
+        if (_ligValida()) { relay_set(_bo_lig, false); _apl_lig = 0; }
         if (_leg_bo) relay_set(_leg_bo, false);
         _leg_pm = -1; _leg_ini = 0; _leg_saida = -1; _perc_on = false;
         pivo_publicar_agora();
@@ -672,6 +700,7 @@ int pivo_cmd(const String& cmd, char* msg, size_t sz) {
         return 1;
     }
     if (!strcmp(verbo, "mostrar")) {   // imprime a configuracao na Serial
+        Serial.printf("[PIVO] BO ligado=%u%s\n", _bo_lig, _bo_lig && !_ligValida() ? " (inerte: BO usada no mapa)" : "");
         Serial.printf("[PIVO] cfg=%d BO %u %u %u %u %u %u | BI %u %u %u %u %u %u inv=0x%02X | tempos %lu %lu %lu %lu %lu %lu %lu %lu %lu | enc %lu inv=%d zero=%.1f\n",
             _cfg_ok, _bo[0], _bo[1], _bo[2], _bo[3], _bo[4], _bo[5], _bi[0], _bi[1], _bi[2], _bi[3], _bi[4], _bi[5], _inv,
             (unsigned long)_tp[0], (unsigned long)_tp[1], (unsigned long)_tp[2], (unsigned long)_tp[3], (unsigned long)_tp[4],
@@ -681,9 +710,18 @@ int pivo_cmd(const String& cmd, char* msg, size_t sz) {
     }
 
     // Configuracao: so' com o pivo parado (trocar I/O com saida ligada deixaria rele preso).
-    bool cfgCmd = !strcmp(verbo, "cfg") || !strcmp(verbo, "io") || !strcmp(verbo, "tempos") || !strcmp(verbo, "enc");
+    bool cfgCmd = !strcmp(verbo, "cfg") || !strcmp(verbo, "ligado") || !strcmp(verbo, "io") || !strcmp(verbo, "tempos") || !strcmp(verbo, "enc");
     if (cfgCmd && _m->estado() != PARADO) return _erro(msg, sz, "pivo_ligado");
 
+    if (!strcmp(verbo, "ligado")) {   // "pivo ligado <bo>" (0 = sem saida de pivo ligado)
+        int n = resto ? atoi(resto) : -1;
+        if (!resto || n < 0 || n > PIVO_IO_MAX) return _erro(msg, sz, "pivo_ligado_invalido");
+        if (_ligValida()) relay_set(_bo_lig, false);
+        _bo_lig = (uint8_t)n; _apl_lig = -1;
+        _salvarCfg();
+        snprintf(msg, sz, "pivo_ligado_bo %d%s", n, n && !_ligValida() ? " inerte" : "");
+        return 1;
+    }
     if (!strcmp(verbo, "cfg")) {
         // Configuracao inteira num comando (cabe no LoRa): "pivo cfg <BOs> <BIs> <inv> <9 tempos> <resolucao>"
         //   BOs/BIs = 6 digitos (0 = nao ligado; papeis na ordem do "pivo io"), inv = 6 digitos 0/1
